@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { ArrowLeft, ListTree, MessageSquare, PencilLine, Radio } from 'lucide-react'
 import { Link, useParams } from 'react-router'
@@ -10,8 +10,10 @@ import { MetadataGrid, type MetadataGridItem } from '@/components/ui/metadata-gr
 import { PlanStatusBadge } from '@/components/ui/plan-status-badge'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
+import type { PlanItemComment } from '@/api/types/plans'
 import { usePlanDetailData } from '@/hooks/usePlanDetailData'
 import { ROUTES } from '@/router/routes'
+import { usePlanCommentsStore } from '@/stores/planComments'
 import { usePlansStore } from '@/stores/plans'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import {
@@ -129,6 +131,27 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
   )
   const titleById = useMemo(() => planItemTitleMap(plan.items), [plan.items])
   const editable = plan.status === 'pending_review' || plan.status === 'draft'
+  const comments = usePlanCommentsStore((s) => s.comments)
+  useEffect(() => {
+    void usePlanCommentsStore.getState().fetchComments(plan.id)
+    return () => {
+      usePlanCommentsStore.getState().reset()
+    }
+  }, [plan.id])
+  const commentsByItem = useMemo(() => {
+    const map = new Map<string, PlanItemComment[]>()
+    for (const comment of comments) {
+      const bucket = map.get(comment.item_id) ?? []
+      bucket.push(comment)
+      map.set(comment.item_id, bucket)
+    }
+    return map
+  }, [comments])
+  const addComment = useCallback(
+    (itemId: string, body: string) =>
+      usePlanCommentsStore.getState().addComment(plan.id, itemId, body),
+    [plan.id],
+  )
   const chooseOption = useCallback(
     (itemId: string, optionId: string) => {
       // Record the pick by round-tripping the whole item list through the
@@ -168,6 +191,8 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
               index={index}
               onCriticalPath={criticalPath.has(item.id)}
               titleById={titleById}
+              comments={commentsByItem.get(item.id) ?? []}
+              onAddComment={addComment}
               {...(editable ? { onChooseOption: chooseOption } : {})}
             />
           ))}

@@ -1,6 +1,6 @@
 import { CircleCheck, GitBranch, Package, Scale, Sparkles, UserRound } from 'lucide-react'
 
-import type { PlanItem } from '@/api/types/plans'
+import type { PlanItem, PlanItemComment } from '@/api/types/plans'
 import { Button } from '@/components/ui/button'
 import { StatusPill } from '@/components/ui/status-pill'
 import { cn } from '@/lib/utils'
@@ -13,6 +13,8 @@ import {
   planItemAnchorId,
 } from '@/utils/plans'
 
+import { PlanItemComments } from './PlanItemComments'
+
 export interface PlanItemCardProps {
   item: PlanItem
   index: number
@@ -24,6 +26,10 @@ export interface PlanItemCardProps {
    * without an affordance to change it.
    */
   onChooseOption?: (itemId: string, optionId: string) => void
+  /** This item's discussion thread (omitted renders no discussion section). */
+  comments?: readonly PlanItemComment[]
+  /** Post a comment on this item; enables the discussion compose box. */
+  onAddComment?: (itemId: string, body: string) => Promise<unknown>
   className?: string
 }
 
@@ -174,6 +180,8 @@ export function PlanItemCard({
   onCriticalPath,
   titleById,
   onChooseOption,
+  comments,
+  onAddComment,
   className,
 }: PlanItemCardProps) {
   const deps = dependencyTitles(item, titleById)
@@ -206,6 +214,12 @@ export function PlanItemCard({
           <span className="uppercase tracking-wide">Depends on</span>
           <span className="text-text-secondary">{deps.join(', ')}</span>
         </p>
+      )}
+      {onAddComment !== undefined && (
+        <PlanItemComments
+          comments={comments ?? []}
+          onSubmit={(body) => onAddComment(item.id, body)}
+        />
       )}
     </section>
   )

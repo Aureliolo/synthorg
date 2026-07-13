@@ -65,6 +65,7 @@ from tests.unit.api.fakes import (
     FakeMessageRepository,
     FakeParkedContextRepository,
     FakePersonalityPresetRepository,
+    FakePlanItemCommentRepository,
     FakePlanRepository,
     FakeProjectBrainRepository,
     FakeProjectEnvironmentRepository,
@@ -754,6 +755,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._artifacts = FakeArtifactRepository()
         self._projects = FakeProjectRepository()
         self._plans = FakePlanRepository()
+        self._plan_comments = FakePlanItemCommentRepository()
         self._project_workspaces = FakeProjectWorkspaceRepository()
         self._codebase_structure_maps = FakeCodebaseStructureMapRepository()
         self._project_environments = FakeProjectEnvironmentRepository()
@@ -943,6 +945,11 @@ class FakePersistenceBackend(PersistenceBackend):
     @property
     def plans(self) -> FakePlanRepository:
         return self._plans
+
+    @override
+    @property
+    def plan_comments(self) -> FakePlanItemCommentRepository:
+        return self._plan_comments
 
     @override
     @property

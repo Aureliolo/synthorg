@@ -8,6 +8,7 @@ import { cancelPendingMcpCatalogSearch } from '@/stores/mcp-catalog/_state'
 import { useConversationsStore } from '@/stores/conversations'
 import { resetMessageIds } from '@/pages/chat/message-id'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
+import { usePlanCommentsStore } from '@/stores/planComments'
 import { usePlanForecastStore } from '@/stores/planForecast'
 import { useThemeStore } from '@/stores/theme'
 import { useToastStore } from '@/stores/toast'
@@ -318,6 +319,9 @@ afterEach(() => {
   // Plan-forecast store holds a per-view forecast + request token; clear it so
   // a prior test's forecast does not bleed into the next in the same worker.
   usePlanForecastStore.getState().clear()
+  // Plan-comments store holds the current plan's thread + request token; reset
+  // it so a prior test's comments do not bleed into the next in the same worker.
+  usePlanCommentsStore.getState().reset()
   // MCP-catalog ``setSearchQuery`` schedules a 200ms debounce
   // ``setTimeout``; clear any pending handle so it cannot outlive
   // the test and trip the active-handle gate.

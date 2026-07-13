@@ -50,6 +50,13 @@ export interface WsPlanChangesRequestedPayload {
   note: string
 }
 
+export interface WsPlanCommentAddedPayload {
+  plan_id: string
+  item_id: string
+  comment_id: string
+  author: string
+}
+
 export interface WsWorkflowExecutionStatusChangedPayload {
   execution_id: string
   definition_id: string

@@ -107,6 +107,7 @@ from synthorg.persistence.ontology_protocol import (
 from synthorg.persistence.parked_context_protocol import (
     ParkedContextRepository,
 )
+from synthorg.persistence.plan_comment_protocol import PlanItemCommentRepository
 from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.preset_override_protocol import PresetOverrideRepo
 from synthorg.persistence.preset_protocol import PersonalityPresetRepository
@@ -202,6 +203,7 @@ class _BackendRepositoryAccessors:
     _artifacts: ArtifactRepository | None
     _projects: ProjectRepository | None
     _plans: PlanRepository | None
+    _plan_comments: PlanItemCommentRepository | None
     _project_workspaces: ProjectWorkspaceRepository | None
     _codebase_structure_maps: CodebaseStructureMapRepository | None
     _project_environments: ProjectEnvironmentRepository | None
@@ -430,6 +432,11 @@ class _BackendRepositoryAccessors:
     def plans(self) -> PlanRepository:
         """Repository for durable Plan persistence."""
         return self._require_connected(self._plans, "plans")
+
+    @property
+    def plan_comments(self) -> PlanItemCommentRepository:
+        """Repository for per-item plan comment threads."""
+        return self._require_connected(self._plan_comments, "plan_comments")
 
     @property
     def project_workspaces(self) -> ProjectWorkspaceRepository:

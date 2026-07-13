@@ -110,6 +110,7 @@ class WsEventType(StrEnum):
 
     PLAN_UPDATED = "plan.updated"
     PLAN_CHANGES_REQUESTED = "plan.changes_requested"
+    PLAN_COMMENT_ADDED = "plan.comment_added"
 
     WORKFLOW_EXECUTION_STATUS_CHANGED = "workflow_execution.status_changed"
 

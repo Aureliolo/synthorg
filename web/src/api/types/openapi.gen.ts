@@ -3490,6 +3490,40 @@ export type paths = {
         readonly patch: operations["ApiV1PlansPlanIdEditPlan"];
         readonly trace?: never;
     };
+    readonly "/api/v1/plans/{plan_id}/comments": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListComments */
+        readonly get: operations["ApiV1PlansPlanIdCommentsListComments"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/plans/{plan_id}/comments/items/{item_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** AddComment */
+        readonly post: operations["ApiV1PlansPlanIdCommentsItemsItemIdAddComment"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/plans/{plan_id}/request-changes": {
         readonly parameters: {
             readonly query?: never;
@@ -7049,6 +7083,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[list[PlanItemComment]] */
+        readonly ApiResponse_list_PlanItemComment_: {
+            readonly data: readonly components["schemas"]["PlanItemComment"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[list[RiskOverrideResponse]] */
         readonly ApiResponse_list_RiskOverrideResponse_: {
             readonly data: readonly components["schemas"]["RiskOverrideResponse"][] | null;
@@ -7164,6 +7206,14 @@ export type components = {
         /** ApiResponse[Plan] */
         readonly ApiResponse_Plan_: {
             readonly data: components["schemas"]["Plan"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[PlanItemComment] */
+        readonly ApiResponse_PlanItemComment_: {
+            readonly data: components["schemas"]["PlanItemComment"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -14097,6 +14147,11 @@ export type components = {
              */
             readonly version_history: readonly components["schemas"]["PlanVersionSnapshot"][];
         };
+        /** PlanCommentPayload */
+        readonly PlanCommentPayload: {
+            /** @description The comment text */
+            readonly body: string;
+        };
         /** PlanItem */
         readonly PlanItem: {
             /** @description Per-item criteria that define done (never empty) */
@@ -14144,6 +14199,27 @@ export type components = {
             readonly stakes: components["schemas"]["Stakes"];
             /** @description Short item title */
             readonly title: string;
+        };
+        /** PlanItemComment */
+        readonly PlanItemComment: {
+            /** @description Who wrote the comment */
+            readonly author: string;
+            /** @description The comment text */
+            readonly body: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
+            /**
+             * Format: uuid
+             * @description Comment identifier
+             */
+            readonly id: string;
+            /** @description Plan item this comment is attached to */
+            readonly item_id: string;
+            /** @description Plan the commented item belongs to */
+            readonly plan_id: string;
         };
         /**
          * PlanItemKind
@@ -26509,6 +26585,76 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_Plan_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PlansPlanIdCommentsListComments: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Narrow the thread to a single plan item */
+                readonly item_id?: string | null;
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly plan_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_list_PlanItemComment_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PlansPlanIdCommentsItemsItemIdAddComment: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly item_id: string;
+                /** @description Resource identifier */
+                readonly plan_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PlanCommentPayload"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_PlanItemComment_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

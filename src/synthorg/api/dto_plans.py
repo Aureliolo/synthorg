@@ -187,3 +187,16 @@ class RequestPlanChangesRequest(BaseModel):
     note: NotBlankStr = Field(
         max_length=8192, description="What the operator wants changed"
     )
+
+
+class PlanCommentPayload(BaseModel):
+    """Payload posting a comment on a plan item's discussion thread.
+
+    Attributes:
+        body: The comment text. The author is taken from the authenticated
+            user, never the request body.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    body: NotBlankStr = Field(max_length=8192, description="The comment text")

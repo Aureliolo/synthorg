@@ -105,6 +105,7 @@ from synthorg.persistence.ontology_protocol import (
 from synthorg.persistence.parked_context_protocol import (
     ParkedContextRepository,
 )
+from synthorg.persistence.plan_comment_protocol import PlanItemCommentRepository
 from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.postgres.agent_contribution_repo import (
     PostgresAgentContributionRepository,
@@ -257,6 +258,7 @@ class _PostgresBackendRepositoryAccessors:
     _artifacts: ArtifactRepository | None
     _projects: ProjectRepository | None
     _plans: PlanRepository | None
+    _plan_comments: PlanItemCommentRepository | None
     _project_workspaces: ProjectWorkspaceRepository | None
     _codebase_structure_maps: CodebaseStructureMapRepository | None
     _project_environments: ProjectEnvironmentRepository | None
@@ -505,6 +507,11 @@ class _PostgresBackendRepositoryAccessors:
     def plans(self) -> PlanRepository:
         """Repository for durable Plan persistence."""
         return self._require_connected(self._plans, "plans")
+
+    @property
+    def plan_comments(self) -> PlanItemCommentRepository:
+        """Repository for per-item plan comment threads."""
+        return self._require_connected(self._plan_comments, "plan_comments")
 
     @property
     def project_workspaces(self) -> ProjectWorkspaceRepository:

@@ -23,6 +23,7 @@ from synthorg.core.persistence_errors import (
     RecordNotFoundError,
 )
 from synthorg.core.plan import Plan
+from synthorg.core.plan_comment import PlanItemComment
 from synthorg.core.project import Project
 from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.project_workspace import ProjectWorkspace
@@ -49,6 +50,7 @@ from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameFilterSpec,
 )
 from synthorg.persistence.message_protocol import MessageFilterSpec
+from synthorg.persistence.plan_comment_protocol import PlanItemCommentFilterSpec
 from synthorg.persistence.plan_protocol import PlanFilterSpec
 from synthorg.persistence.preset_protocol import Preset
 from synthorg.persistence.project_brain_protocol import BrainFilterSpec
@@ -1328,6 +1330,41 @@ class FakePlanRepository:
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         return self._plans.pop(entity_id, None) is not None
+
+
+class FakePlanItemCommentRepository:
+    """In-memory plan-item comment repository for tests."""
+
+    def __init__(self) -> None:
+        self._comments: dict[str, PlanItemComment] = {}
+
+    async def append(self, event: PlanItemComment) -> None:
+        if str(event.id) in self._comments:
+            msg = f"Comment with id {event.id!r} already exists"
+            raise DuplicateRecordError(msg)
+        self._comments[str(event.id)] = event
+
+    async def query(
+        self,
+        filter_spec: PlanItemCommentFilterSpec,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[PlanItemComment, ...]:
+        matched = [
+            c
+            for c in self._comments.values()
+            if c.plan_id == filter_spec.plan_id
+            and (filter_spec.item_id is None or c.item_id == filter_spec.item_id)
+        ]
+        matched.sort(key=lambda c: (c.created_at, str(c.id)))
+        return tuple(matched[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime) -> int:
+        stale = [cid for cid, c in self._comments.items() if c.created_at < threshold]
+        for cid in stale:
+            del self._comments[cid]
+        return len(stale)
 
 
 class FakeArtifactStorage:

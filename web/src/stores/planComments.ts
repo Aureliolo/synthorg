@@ -1,0 +1,88 @@
+import type { StoreApi } from 'zustand'
+import { create } from 'zustand'
+
+import { addPlanComment, listPlanComments } from '@/api/endpoints/plan-comments'
+import type { PlanItemComment } from '@/api/types/plans'
+import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
+
+const log = createLogger('plan-comments')
+
+// Monotonic request token: a plan-navigation change can leave an older thread
+// fetch in flight, and its late resolve must not clobber the current thread.
+let requestToken = 0
+
+export interface PlanCommentsState {
+  comments: PlanItemComment[]
+  loading: boolean
+  error: string | null
+  fetchComments: (planId: string) => Promise<void>
+  addComment: (
+    planId: string,
+    itemId: string,
+    body: string,
+  ) => Promise<PlanItemComment | null>
+  reset: () => void
+}
+
+type PcSet = StoreApi<PlanCommentsState>['setState']
+type PcGet = StoreApi<PlanCommentsState>['getState']
+
+async function fetchCommentsImpl(set: PcSet, planId: string): Promise<void> {
+  const token = (requestToken += 1)
+  set({ loading: true, error: null, comments: [] })
+  try {
+    const comments = await listPlanComments(planId)
+    if (token !== requestToken) return
+    set({ comments, loading: false })
+  } catch (err) {
+    if (token !== requestToken) return
+    const message = getErrorMessage(err)
+    log.warn('Fetch plan comments failed', message)
+    set({ loading: false, error: message })
+  }
+}
+
+async function addCommentImpl(
+  set: PcSet,
+  get: PcGet,
+  planId: string,
+  itemId: string,
+  body: string,
+): Promise<PlanItemComment | null> {
+  try {
+    const comment = await addPlanComment(planId, itemId, { body })
+    // Append if not already present (a WS echo of our own post may race).
+    if (!get().comments.some((c) => c.id === comment.id)) {
+      set({ comments: [...get().comments, comment] })
+    }
+    return comment
+  } catch (err) {
+    log.error('Add plan comment failed:', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to post comment'),
+      description: getErrorMessage(err),
+    })
+    return null
+  }
+}
+
+/**
+ * Per-item plan comment threads for the plan currently open in the workspace. A
+ * pure API consumer: the thread is re-hydrated from the backend on mount and
+ * every post writes through the API; nothing is persisted client-side.
+ */
+export const usePlanCommentsStore = create<PlanCommentsState>((set, get) => ({
+  comments: [],
+  loading: false,
+  error: null,
+  fetchComments: (planId) => fetchCommentsImpl(set, planId),
+  addComment: (planId, itemId, body) => addCommentImpl(set, get, planId, itemId, body),
+  reset: () => {
+    requestToken += 1
+    set({ comments: [], loading: false, error: null })
+  },
+}))

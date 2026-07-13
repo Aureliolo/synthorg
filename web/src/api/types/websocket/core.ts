@@ -39,6 +39,7 @@ import type {
   WsMemoryFineTuneFailedPayload,
   WsMemoryFineTuneStageChangedPayload,
   WsPlanChangesRequestedPayload,
+  WsPlanCommentAddedPayload,
   WsPlanUpdatedPayload,
   WsProjectCreatedPayload,
   WsProjectDeletedPayload,
@@ -184,6 +185,7 @@ export interface WsEventPayloadMap {
   'project.status_changed': WsProjectStatusChangedPayload
   'plan.updated': WsPlanUpdatedPayload
   'plan.changes_requested': WsPlanChangesRequestedPayload
+  'plan.comment_added': WsPlanCommentAddedPayload
   'workflow_execution.status_changed': WsWorkflowExecutionStatusChangedPayload
   'memory.fine_tune.progress': WsMemoryFineTuneEventPayload
   'memory.fine_tune.stage_changed': WsMemoryFineTuneStageChangedPayload
