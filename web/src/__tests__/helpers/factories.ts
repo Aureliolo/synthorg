@@ -361,6 +361,7 @@ export function makePlan(id: string, overrides?: Partial<Plan>): Plan {
     review: null,
     open_questions: [],
     assumptions: [],
+    objective_criteria: [],
     version_history: [],
     version: 1,
     created_at: '2026-07-01T10:00:00Z',

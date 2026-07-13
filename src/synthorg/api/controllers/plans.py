@@ -80,6 +80,7 @@ def _item_from_payload(payload: PlanItemPayload) -> PlanItem:
         kind=payload.kind,
         options=payload.options,
         chosen_option_id=payload.chosen_option_id,
+        satisfies=payload.satisfies,
     )
 
 

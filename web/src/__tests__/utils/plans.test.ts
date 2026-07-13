@@ -10,6 +10,7 @@ import {
   isHighComplexity,
   isHighStakes,
   itemFlags,
+  derivePlanCoverage,
   itemNeedsAttention,
   planDetailPath,
   planItemToPayload,
@@ -188,6 +189,28 @@ describe('dependency resolution', () => {
 describe('planDetailPath', () => {
   it('encodes the plan id into the detail route', () => {
     expect(planDetailPath('plan 1')).toBe('/plans/plan%201')
+  })
+})
+
+describe('derivePlanCoverage', () => {
+  it('maps each criterion to the items that advance it and flags gaps', () => {
+    const items = [
+      makePlanItem('a', { title: 'Board', satisfies: ['Playable board'] }),
+      makePlanItem('b', { title: 'Score', satisfies: ['playable board'] }),
+    ]
+    const coverage = derivePlanCoverage(['Playable board', 'Score tracking'], items)
+    expect(coverage.total).toBe(2)
+    expect(coverage.covered).toBe(1)
+    expect(coverage.uncovered).toEqual(['Score tracking'])
+    // Case-insensitive match unions both items under the first criterion.
+    expect(coverage.entries[0]?.coveredBy).toEqual(['Board', 'Score'])
+    expect(coverage.entries[1]?.coveredBy).toEqual([])
+  })
+
+  it('returns empty coverage when the objective declared no criteria', () => {
+    const coverage = derivePlanCoverage([], [makePlanItem('a')])
+    expect(coverage.total).toBe(0)
+    expect(coverage.uncovered).toEqual([])
   })
 })
 

@@ -5,16 +5,19 @@
 -- review surface never resolves (or falls back to) a raw id. review holds the
 -- consolidated stakeholder-panel review (JSONB, null until reviewed).
 -- open_questions / assumptions are JSONB string arrays the owner surfaces for the
--- human. version_history is a JSONB array of prior-version snapshots, for diffing.
--- plan_item_comments is an async discussion thread keyed by (plan_id, item_id),
--- written independently of the version-guarded plan row so a comment never
--- conflicts with a plan rework.
+-- human. objective_criteria denormalises the objective's acceptance criteria onto
+-- the plan so the coverage map can flag any criterion no item advances, without
+-- resolving the parent task. version_history is a JSONB array of prior-version
+-- snapshots, for diffing. plan_item_comments is an async discussion thread keyed
+-- by (plan_id, item_id), written independently of the version-guarded plan row so
+-- a comment never conflicts with a plan rework.
 
 ALTER TABLE plans
     ADD COLUMN objective_title TEXT NOT NULL DEFAULT '',
     ADD COLUMN review JSONB,
     ADD COLUMN open_questions JSONB NOT NULL DEFAULT '[]'::JSONB,
     ADD COLUMN assumptions JSONB NOT NULL DEFAULT '[]'::JSONB,
+    ADD COLUMN objective_criteria JSONB NOT NULL DEFAULT '[]'::JSONB,
     ADD COLUMN version_history JSONB NOT NULL DEFAULT '[]'::JSONB;
 
 -- Backfill any pre-existing plan's title from its objective id (no human title

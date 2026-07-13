@@ -24,6 +24,7 @@ export const decompositionHandlers = [
               required_role: null,
               expected_artifacts: [],
               acceptance_criteria: [],
+              satisfies: [],
               kind: 'work',
               options: [],
             },

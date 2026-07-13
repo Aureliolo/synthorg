@@ -43,6 +43,7 @@ def _plan(
                 description=NotBlankStr("Set up the game board grid"),
                 estimated_complexity=Complexity.MEDIUM,
                 acceptance_criteria=(NotBlankStr("board grid renders"),),
+                satisfies=(NotBlankStr("A playable board"),),
             ),
             PlanItem(
                 id=NotBlankStr(sid("item-2")),
@@ -56,6 +57,7 @@ def _plan(
         task_structure=TaskStructure.SEQUENTIAL,
         coordination_topology=CoordinationTopology.AUTO,
         status=status,
+        objective_criteria=(NotBlankStr("A playable board"), NotBlankStr("Scoring")),
         created_at=_CREATED_AT,
         updated_at=_CREATED_AT,
     )
@@ -73,6 +75,8 @@ class TestPlanRepository:
         assert len(fetched.items) == 2
         assert fetched.items[1].dependencies == (sid("item-1"),)
         assert fetched.items[1].owner == "engineering"
+        assert fetched.items[0].satisfies == ("A playable board",)
+        assert fetched.objective_criteria == ("A playable board", "Scoring")
         assert fetched.created_at == _CREATED_AT
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:

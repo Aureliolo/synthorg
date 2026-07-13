@@ -167,6 +167,7 @@ class PlanService:
                 review=existing.review,
                 open_questions=existing.open_questions,
                 assumptions=existing.assumptions,
+                objective_criteria=existing.objective_criteria,
                 version_history=existing.version_history,
                 version=existing.version + 1,
                 created_at=existing.created_at,

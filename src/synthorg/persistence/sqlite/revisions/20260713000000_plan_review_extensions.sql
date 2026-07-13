@@ -5,15 +5,18 @@
 -- review surface never resolves (or falls back to) a raw id. review holds the
 -- consolidated stakeholder-panel review (JSON, null until reviewed).
 -- open_questions / assumptions are JSON string arrays the owner surfaces for the
--- human. version_history is a JSON array of prior-version snapshots, for diffing.
--- plan_item_comments is an async discussion thread keyed by (plan_id, item_id),
--- written independently of the version-guarded plan row so a comment never
--- conflicts with a plan rework.
+-- human. objective_criteria denormalises the objective's acceptance criteria onto
+-- the plan so the coverage map can flag any criterion no item advances, without
+-- resolving the parent task. version_history is a JSON array of prior-version
+-- snapshots, for diffing. plan_item_comments is an async discussion thread keyed
+-- by (plan_id, item_id), written independently of the version-guarded plan row so
+-- a comment never conflicts with a plan rework.
 
 ALTER TABLE plans ADD COLUMN objective_title TEXT NOT NULL DEFAULT '';
 ALTER TABLE plans ADD COLUMN review TEXT;
 ALTER TABLE plans ADD COLUMN open_questions TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE plans ADD COLUMN assumptions TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE plans ADD COLUMN objective_criteria TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE plans ADD COLUMN version_history TEXT NOT NULL DEFAULT '[]';
 
 -- Backfill any pre-existing plan's title from its objective id (no human title

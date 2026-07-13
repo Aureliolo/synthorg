@@ -2607,6 +2607,7 @@ CREATE TABLE plans (
     review TEXT,
     open_questions TEXT NOT NULL DEFAULT '[]',
     assumptions TEXT NOT NULL DEFAULT '[]',
+    objective_criteria TEXT NOT NULL DEFAULT '[]',
     version_history TEXT NOT NULL DEFAULT '[]',
     version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
     created_at TEXT NOT NULL,

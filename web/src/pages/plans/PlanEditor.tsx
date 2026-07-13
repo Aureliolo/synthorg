@@ -25,10 +25,12 @@ interface DraftItem {
   complexity: PlanItem['estimated_complexity']
   stakes: PlanItem['stakes']
   // Preserved verbatim so editing a plan that holds a decision item does not
-  // strip its options and fail the decision validator on save.
+  // strip its options and fail the decision validator on save, and so a rework
+  // keeps each item's objective-criteria coverage.
   kind: PlanItem['kind']
   options: PlanItem['options']
   chosenOptionId: PlanItem['chosen_option_id']
+  satisfies: PlanItem['satisfies']
 }
 
 function toDraft(item: PlanItem): DraftItem {
@@ -47,6 +49,7 @@ function toDraft(item: PlanItem): DraftItem {
     kind: item.kind,
     options: item.options,
     chosenOptionId: item.chosen_option_id,
+    satisfies: item.satisfies,
   }
 }
 
@@ -67,6 +70,7 @@ function toPayload(draft: DraftItem): EditPlanRequest['items'][number] {
     kind: draft.kind,
     options: draft.options,
     chosen_option_id: draft.chosenOptionId,
+    satisfies: draft.satisfies,
   }
 }
 
@@ -86,6 +90,7 @@ function newDraft(): DraftItem {
     kind: 'work',
     options: [],
     chosenOptionId: null,
+    satisfies: [],
   }
 }
 

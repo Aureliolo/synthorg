@@ -101,6 +101,16 @@ def build_decomposition_tool() -> ToolDefinition:
                 "items": {"type": "string"},
                 "description": "Verifiable criteria that define done for this subtask",
             },
+            "satisfies": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Which of the objective's acceptance criteria (copied "
+                    "verbatim) this item advances, so success-criteria coverage "
+                    "can be checked. Omit only for pure-support items that "
+                    "advance no objective criterion directly."
+                ),
+            },
             "kind": {
                 "type": "string",
                 "enum": [k.value for k in PlanItemKind],
@@ -208,6 +218,9 @@ def build_system_message() -> ChatMessage:
         "- For each item, list concrete expected_artifacts (file paths, docs, "
         "or test suites) and verifiable acceptance_criteria that define when it "
         "is done. Never leave these empty.\n"
+        "- Tag each item with the objective acceptance criteria it advances "
+        "(satisfies, copied verbatim) so coverage is checkable. Between them, "
+        "the items must cover every objective criterion.\n"
         "- Where the plan hinges on a real choice (stack, architecture), surface "
         "a decision item (kind 'decision') with 2-4 options and a recommended "
         "one, rather than silently deciding; its criterion is that the decision "

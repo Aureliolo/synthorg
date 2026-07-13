@@ -14049,6 +14049,11 @@ export type components = {
             readonly id: string;
             /** @description Ordered plan items */
             readonly items: readonly components["schemas"]["PlanItem"][];
+            /**
+             * @description The objective's acceptance criteria, denormalised so the coverage map can flag any criterion no item advances
+             * @default []
+             */
+            readonly objective_criteria: readonly string[];
             /** @description Charter/objective the plan serves */
             readonly objective_id: string;
             /** @description Human title of the objective this plan serves */
@@ -14180,6 +14185,11 @@ export type components = {
              * @default []
              */
             readonly required_tags: readonly string[];
+            /**
+             * @description Objective success criteria this item advances
+             * @default []
+             */
+            readonly satisfies: readonly string[];
             readonly stakes?: components["schemas"]["Stakes"];
             /** @description Short item title */
             readonly title: string;
@@ -16961,6 +16971,11 @@ export type components = {
              * @default []
              */
             readonly required_tags: readonly string[];
+            /**
+             * @description Objective success criteria this subtask advances
+             * @default []
+             */
+            readonly satisfies: readonly string[];
             readonly stakes: components["schemas"]["Stakes"];
             /** @description Short subtask title */
             readonly title: string;

@@ -452,6 +452,39 @@ class TestParseToolCallResponse:
             "cells recolour",
         )
 
+    def test_satisfies_parses_onto_the_subtask(self) -> None:
+        """The objective-criteria a subtask advances parse onto ``satisfies``."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Build board renderer",
+                    "description": "Render the Tetris grid",
+                    "acceptance_criteria": ["grid renders 10x20"],
+                    "satisfies": ["Playable board", "Score tracking"],
+                }
+            ],
+        }
+        response = _make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.subtasks[0].satisfies == ("Playable board", "Score tracking")
+
+    def test_satisfies_defaults_to_empty_when_absent(self) -> None:
+        """A subtask without ``satisfies`` parses to an empty tuple, not an error."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Support task",
+                    "description": "Housekeeping",
+                    "acceptance_criteria": ["tidy"],
+                }
+            ],
+        }
+        response = _make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.subtasks[0].satisfies == ()
+
     def test_non_array_expected_artifacts_raises(self) -> None:
         """Non-array expected_artifacts field raises DecompositionError."""
         args: dict[str, object] = {

@@ -2483,6 +2483,7 @@ CREATE TABLE plans (
     review JSONB,
     open_questions JSONB NOT NULL DEFAULT '[]'::JSONB,
     assumptions JSONB NOT NULL DEFAULT '[]'::JSONB,
+    objective_criteria JSONB NOT NULL DEFAULT '[]'::JSONB,
     version_history JSONB NOT NULL DEFAULT '[]'::JSONB,
     version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
     created_at TIMESTAMPTZ NOT NULL,

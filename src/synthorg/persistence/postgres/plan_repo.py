@@ -61,6 +61,7 @@ def _row_to_plan(row: DictRow) -> Plan:
     row["review"] = PlanReview.model_validate(review) if review else None
     row["open_questions"] = tuple(row["open_questions"] or [])
     row["assumptions"] = tuple(row["assumptions"] or [])
+    row["objective_criteria"] = tuple(row["objective_criteria"] or [])
     row["version_history"] = tuple(
         PlanVersionSnapshot.model_validate(snapshot)
         for snapshot in (row["version_history"] or [])
@@ -101,6 +102,7 @@ class PostgresPlanRepository:
             Jsonb(plan.review.model_dump(mode="json")) if plan.review else None,
             Jsonb(list(plan.open_questions)),
             Jsonb(list(plan.assumptions)),
+            Jsonb(list(plan.objective_criteria)),
             Jsonb([snap.model_dump(mode="json") for snap in plan.version_history]),
             plan.version,
             plan.created_at,
@@ -122,10 +124,10 @@ class PostgresPlanRepository:
                                        parent_task_id, items, task_structure,
                                        coordination_topology, status, forecast_id,
                                        review, open_questions, assumptions,
-                                       version_history, version, created_at,
-                                       updated_at)
+                                       objective_criteria, version_history, version,
+                                       created_at, updated_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s)
+                            %s, %s, %s, %s)
                     """,
                     self._row_params(plan),
                 )
@@ -180,6 +182,7 @@ class PostgresPlanRepository:
                         review=%s,
                         open_questions=%s,
                         assumptions=%s,
+                        objective_criteria=%s,
                         version_history=%s,
                         version=%s,
                         created_at=%s,
@@ -264,10 +267,10 @@ class PostgresPlanRepository:
                                        parent_task_id, items, task_structure,
                                        coordination_topology, status, forecast_id,
                                        review, open_questions, assumptions,
-                                       version_history, version, created_at,
-                                       updated_at)
+                                       objective_criteria, version_history, version,
+                                       created_at, updated_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s)
+                            %s, %s, %s, %s)
                     ON CONFLICT(id) DO UPDATE SET
                         project=EXCLUDED.project,
                         objective_id=EXCLUDED.objective_id,
@@ -281,6 +284,7 @@ class PostgresPlanRepository:
                         review=EXCLUDED.review,
                         open_questions=EXCLUDED.open_questions,
                         assumptions=EXCLUDED.assumptions,
+                        objective_criteria=EXCLUDED.objective_criteria,
                         version_history=EXCLUDED.version_history,
                         version=EXCLUDED.version,
                         created_at=EXCLUDED.created_at,

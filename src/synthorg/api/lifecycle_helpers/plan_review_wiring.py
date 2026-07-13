@@ -133,6 +133,9 @@ class PlanReviewApprovalGate:
             created_at=now,
             forecast_id=work_item.forecast_id,
             review=review,
+            objective_criteria=tuple(
+                NotBlankStr(c.description) for c in task.acceptance_criteria
+            ),
         )
         await self._plans.create(durable_plan)
         approval = ApprovalItem(

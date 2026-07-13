@@ -50,6 +50,7 @@ def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
         stakes=subtask.stakes,
         kind=subtask.kind,
         options=subtask.options,
+        satisfies=subtask.satisfies,
     )
 
 
@@ -64,6 +65,7 @@ def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance
     status: PlanStatus = PlanStatus.PENDING_REVIEW,
     forecast_id: UUID | None = None,
     review: PlanReview | None = None,
+    objective_criteria: tuple[NotBlankStr, ...] = (),
 ) -> Plan:
     """Build a durable ``Plan`` from an executed ``DecompositionResult``.
 
@@ -81,6 +83,9 @@ def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance
         forecast_id: Cost forecast released alongside the plan, if any.
         review: The consolidated stakeholder-panel review, if the plan was
             reviewed before parking (``None`` when no panel ran).
+        objective_criteria: The objective's acceptance criteria, denormalised
+            onto the plan so the coverage map can flag any criterion no item
+            advances (empty when the objective declared none).
 
     Returns:
         A validated :class:`Plan` mirroring the decomposition's structure.
@@ -97,6 +102,7 @@ def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance
         status=status,
         forecast_id=forecast_id,
         review=review,
+        objective_criteria=objective_criteria,
         created_at=created_at,
         updated_at=created_at,
     )
@@ -126,6 +132,7 @@ def _subtask_from_item(item: PlanItem) -> SubtaskDefinition:
         acceptance_criteria=item.acceptance_criteria,
         kind=item.kind,
         options=item.options,
+        satisfies=item.satisfies,
     )
 
 

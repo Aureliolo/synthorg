@@ -45,7 +45,8 @@ _MAX_LIST_ROWS: Final[int] = 10_000
 _COLUMNS = (
     "id, project, objective_id, objective_title, parent_task_id, items, "
     "task_structure, coordination_topology, status, forecast_id, review, "
-    "open_questions, assumptions, version_history, version, created_at, updated_at"
+    "open_questions, assumptions, objective_criteria, version_history, version, "
+    "created_at, updated_at"
 )
 
 _INSERT_PLACEHOLDERS = "(" + ", ".join("?" for _ in _COLUMNS.split(", ")) + ")"
@@ -70,6 +71,7 @@ def _row_to_plan(row: aiosqlite.Row) -> Plan:
     data["review"] = PlanReview.model_validate(json.loads(review)) if review else None
     data["open_questions"] = tuple(json.loads(data["open_questions"]))
     data["assumptions"] = tuple(json.loads(data["assumptions"]))
+    data["objective_criteria"] = tuple(json.loads(data["objective_criteria"]))
     data["version_history"] = tuple(
         PlanVersionSnapshot.model_validate(snapshot)
         for snapshot in json.loads(data["version_history"])
@@ -119,6 +121,7 @@ class SQLitePlanRepository:
             json.dumps(plan.review.model_dump(mode="json")) if plan.review else None,
             json.dumps(list(plan.open_questions)),
             json.dumps(list(plan.assumptions)),
+            json.dumps(list(plan.objective_criteria)),
             json.dumps([snap.model_dump(mode="json") for snap in plan.version_history]),
             plan.version,
             format_iso_utc(plan.created_at),
@@ -211,6 +214,7 @@ UPDATE plans SET
     review=?,
     open_questions=?,
     assumptions=?,
+    objective_criteria=?,
     version_history=?,
     version=?,
     created_at=?,
@@ -300,6 +304,7 @@ WHERE id=?{guard}""",  # noqa: S608 -- guard is a fixed literal, values paramete
                     "review=excluded.review, "
                     "open_questions=excluded.open_questions, "
                     "assumptions=excluded.assumptions, "
+                    "objective_criteria=excluded.objective_criteria, "
                     "version_history=excluded.version_history, "
                     "version=excluded.version, "
                     "created_at=excluded.created_at, "

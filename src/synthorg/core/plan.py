@@ -315,6 +315,11 @@ class Plan(BaseModel):
         default=(),
         description="Assumptions the plan rests on",
     )
+    objective_criteria: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="The objective's acceptance criteria, denormalised so the "
+        "coverage map can flag any criterion no item advances",
+    )
     version_history: tuple[PlanVersionSnapshot, ...] = Field(
         default=(),
         description="Snapshots of prior submitted versions, for diffing",

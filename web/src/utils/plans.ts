@@ -37,6 +37,7 @@ export function planItemToPayload(item: PlanItem): PlanItemPayload {
     kind: item.kind,
     options: item.options,
     chosen_option_id: item.chosen_option_id,
+    satisfies: item.satisfies,
   }
 }
 
@@ -294,6 +295,66 @@ export function computeWaves(items: readonly PlanItem[]): readonly PlanWave[] {
   return [...waves.entries()]
     .sort(([a], [b]) => a - b)
     .map(([index, waveItems]) => ({ index, items: waveItems }))
+}
+
+// ── Success-criteria coverage ──────────────────────────────────────────────
+
+export interface CoverageEntry {
+  /** An objective acceptance criterion. */
+  readonly criterion: string
+  /** Titles of the plan items that advance it (empty when uncovered). */
+  readonly coveredBy: readonly string[]
+}
+
+export interface PlanCoverage {
+  /** One entry per objective criterion, in objective order. */
+  readonly entries: readonly CoverageEntry[]
+  /** Criteria at least one item advances. */
+  readonly covered: number
+  /** Total objective criteria. */
+  readonly total: number
+  /** Criteria no item advances (the gaps a reviewer must close). */
+  readonly uncovered: readonly string[]
+}
+
+/** Normalise a criterion for matching (trim + case-fold) so near-copies align. */
+function coverageKey(text: string): string {
+  return text.trim().toLowerCase()
+}
+
+/**
+ * Map each objective acceptance criterion to the plan items that advance it
+ * (via their ``satisfies`` tags), so the review surface can flag any criterion
+ * nothing covers. Matching is trim + case-insensitive so a verbatim-ish copy
+ * still aligns. Returns an empty coverage when the objective declared no
+ * criteria (nothing to check).
+ */
+export function derivePlanCoverage(
+  objectiveCriteria: readonly string[],
+  items: readonly PlanItem[],
+): PlanCoverage {
+  const coveringTitles = new Map<string, string[]>()
+  for (const item of items) {
+    for (const tag of item.satisfies) {
+      const key = coverageKey(tag)
+      const bucket = coveringTitles.get(key) ?? []
+      if (!bucket.includes(item.title)) bucket.push(item.title)
+      coveringTitles.set(key, bucket)
+    }
+  }
+  const entries: CoverageEntry[] = objectiveCriteria.map((criterion) => ({
+    criterion,
+    coveredBy: coveringTitles.get(coverageKey(criterion)) ?? [],
+  }))
+  const uncovered = entries
+    .filter((entry) => entry.coveredBy.length === 0)
+    .map((entry) => entry.criterion)
+  return {
+    entries,
+    covered: entries.length - uncovered.length,
+    total: entries.length,
+    uncovered,
+  }
 }
 
 // ── Whole-plan summary stats ───────────────────────────────────────────────

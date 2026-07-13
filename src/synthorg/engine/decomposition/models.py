@@ -83,6 +83,10 @@ class SubtaskDefinition(BaseModel):
         default=(),
         description="Per-subtask criteria that define done",
     )
+    satisfies: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Objective success criteria this subtask advances",
+    )
     kind: PlanItemKind = Field(
         default=PlanItemKind.WORK,
         description="Whether this subtask is work to execute or a decision point",

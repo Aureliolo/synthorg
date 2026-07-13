@@ -99,6 +99,11 @@ class PlanItemPayload(BaseModel):
     chosen_option_id: NotBlankStr | None = Field(
         default=None, description="The option a reviewer chose (DECISION items)"
     )
+    satisfies: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        max_length=_MAX_CRITERIA,
+        description="Objective success criteria this item advances",
+    )
 
     @model_validator(mode="after")
     def _validate_item(self) -> Self:

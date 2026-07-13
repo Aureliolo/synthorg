@@ -167,6 +167,7 @@ def _parse_subtask(raw: dict[str, JsonValue]) -> SubtaskDefinition:
             "required_role": raw.get("required_role"),
             "expected_artifacts": artifacts,
             "acceptance_criteria": acceptance,
+            "satisfies": _string_array(raw, "satisfies"),
         }
     )
 

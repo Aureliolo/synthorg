@@ -179,6 +179,44 @@ class TestPlanFromDecomposition:
         )
         assert plan.review is None
 
+    def test_objective_criteria_are_denormalised_onto_the_plan(self) -> None:
+        plan = plan_from_decomposition(
+            _decomposition(),
+            project="beachhead",
+            objective_id="obj-1",
+            objective_title="Ship the game",
+            parent_task_id=sid("root"),
+            created_at=_CREATED_AT,
+            objective_criteria=(NotBlankStr("Playable board"),),
+        )
+        assert plan.objective_criteria == ("Playable board",)
+
+    def test_satisfies_projects_from_subtask_to_item(self) -> None:
+        decomposition = DecompositionResult(
+            plan=DecompositionPlan(
+                parent_task_id=sid("root"),
+                subtasks=(
+                    SubtaskDefinition(
+                        id=sid("sub-1"),
+                        title="Board",
+                        description="Grid",
+                        acceptance_criteria=(NotBlankStr("board renders"),),
+                        satisfies=(NotBlankStr("Playable board"),),
+                    ),
+                ),
+            ),
+            created_tasks=(_result_task("sub-1"),),
+        )
+        plan = plan_from_decomposition(
+            decomposition,
+            project="beachhead",
+            objective_id="obj-1",
+            objective_title="Ship the game",
+            parent_task_id=sid("root"),
+            created_at=_CREATED_AT,
+        )
+        assert plan.items[0].satisfies == ("Playable board",)
+
     def test_artifacts_and_criteria_projected_from_subtask(self) -> None:
         # The subtask-level expected_artifacts + acceptance_criteria must land
         # on the plan item so the durable plan (and every task built from it)
@@ -338,6 +376,28 @@ class TestDecompositionFromPlan:
         by_id = {s.id: s for s in result.plan.subtasks}
         assert by_id[str(as_uuid("sub-1"))].required_skills == ("frontend",)
         assert by_id[str(as_uuid("sub-2"))].required_role == "engineering"
+
+    def test_satisfies_survives_round_trip(self) -> None:
+        plan = Plan(
+            id=as_uuid("plan-cov"),
+            project=NotBlankStr("beachhead"),
+            objective_id=NotBlankStr("obj-1"),
+            objective_title=NotBlankStr("Ship the game"),
+            parent_task_id=NotBlankStr(str(as_uuid("root"))),
+            items=(
+                PlanItem(
+                    id=NotBlankStr(str(as_uuid("sub-1"))),
+                    title=NotBlankStr("Board"),
+                    description=NotBlankStr("Grid"),
+                    acceptance_criteria=(NotBlankStr("board renders"),),
+                    satisfies=(NotBlankStr("Playable board"),),
+                ),
+            ),
+            created_at=_CREATED_AT,
+            updated_at=_CREATED_AT,
+        )
+        result = decomposition_from_plan(plan, parent_task=_parent_task())
+        assert result.plan.subtasks[0].satisfies == ("Playable board",)
 
     def test_plan_from_decomposition_round_trips(self) -> None:
         # A plan built from a decomposition, then projected back, preserves the
