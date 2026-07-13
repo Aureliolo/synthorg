@@ -11,6 +11,7 @@ import {
   isHighStakes,
   itemFlags,
   derivePlanCoverage,
+  derivePlanStaffing,
   itemNeedsAttention,
   planDetailPath,
   planItemToPayload,
@@ -211,6 +212,36 @@ describe('derivePlanCoverage', () => {
     const coverage = derivePlanCoverage([], [makePlanItem('a')])
     expect(coverage.total).toBe(0)
     expect(coverage.uncovered).toEqual([])
+  })
+})
+
+describe('derivePlanStaffing', () => {
+  it('summarises owner load, high-stakes, unassigned, and bottlenecks', () => {
+    const items = [
+      makePlanItem('a', { owner: 'Backend', stakes: 'critical' }),
+      makePlanItem('b', { owner: 'Backend' }),
+      makePlanItem('c', { owner: 'Backend' }),
+      makePlanItem('d', { owner: 'Design' }),
+      makePlanItem('e', { owner: null }),
+    ]
+    const staffing = derivePlanStaffing(items)
+    expect(staffing.totalOwners).toBe(2)
+    expect(staffing.unassigned).toBe(1)
+    // Busiest owner first; Backend owns 3 of 5 (>= ceil(5/2)) so it is a bottleneck.
+    expect(staffing.roles[0]?.owner).toBe('Backend')
+    expect(staffing.roles[0]?.itemCount).toBe(3)
+    expect(staffing.roles[0]?.highStakesCount).toBe(1)
+    expect(staffing.roles[0]?.overloaded).toBe(true)
+    expect(staffing.roles[1]?.overloaded).toBe(false)
+  })
+
+  it('never flags a bottleneck when a single owner holds everything', () => {
+    const staffing = derivePlanStaffing([
+      makePlanItem('a', { owner: 'Solo' }),
+      makePlanItem('b', { owner: 'Solo' }),
+      makePlanItem('c', { owner: 'Solo' }),
+    ])
+    expect(staffing.roles[0]?.overloaded).toBe(false)
   })
 })
 

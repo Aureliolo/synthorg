@@ -27,6 +27,7 @@ import { PlanEditor } from './plans/PlanEditor'
 import { PlanForecastPanel } from './plans/PlanForecastPanel'
 import { PlanItemCard } from './plans/PlanItemCard'
 import { PlanMetricsHeader } from './plans/PlanMetricsHeader'
+import { PlanStaffingPanel } from './plans/PlanStaffingPanel'
 import { PlanRequestChanges } from './plans/PlanRequestChanges'
 import { PlanReviewPanel } from './plans/PlanReviewPanel'
 import { PlanTimeline } from './plans/PlanTimeline'
@@ -150,6 +151,7 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
       <PlanMetricsHeader stats={stats} taskStructure={plan.task_structure} />
       <PlanAttentionPanel items={plan.items} criticalPath={criticalPath} />
       <PlanForecastPanel forecastId={plan.forecast_id} />
+      <PlanStaffingPanel plan={plan} />
       <PlanCoveragePanel plan={plan} />
       <PlanReviewPanel review={plan.review} />
       <PlanTimeline items={plan.items} />

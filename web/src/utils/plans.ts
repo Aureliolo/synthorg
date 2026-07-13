@@ -357,6 +357,63 @@ export function derivePlanCoverage(
   }
 }
 
+// ── Staffing / team summary ────────────────────────────────────────────────
+
+export interface StaffingEntry {
+  /** The owning role or agent name. */
+  readonly owner: string
+  /** Items this owner is accountable for. */
+  readonly itemCount: number
+  /** How many of those items are high or critical stakes. */
+  readonly highStakesCount: number
+  /** Whether this owner carries a bottleneck share of the plan. */
+  readonly overloaded: boolean
+}
+
+export interface PlanStaffing {
+  /** One entry per distinct owner, busiest first. */
+  readonly roles: readonly StaffingEntry[]
+  /** Items with no owner (a staffing gap). */
+  readonly unassigned: number
+  /** Distinct owners on the plan. */
+  readonly totalOwners: number
+}
+
+/** An owner below this item count is never flagged a bottleneck on a small plan. */
+const OVERLOAD_MIN_ITEMS = 3
+
+/**
+ * Summarise who is accountable for the plan: each owner's item load, how much of
+ * it is high-stakes, and whether they carry a bottleneck share (at least half a
+ * non-trivial plan while others also own work), plus the count of unassigned
+ * items. Pure derivation from item owners; no persisted team structure.
+ */
+export function derivePlanStaffing(items: readonly PlanItem[]): PlanStaffing {
+  const byOwner = new Map<string, { itemCount: number; highStakesCount: number }>()
+  let unassigned = 0
+  for (const item of items) {
+    if (item.owner === null) {
+      unassigned += 1
+      continue
+    }
+    const entry = byOwner.get(item.owner) ?? { itemCount: 0, highStakesCount: 0 }
+    entry.itemCount += 1
+    if (isHighStakes(item)) entry.highStakesCount += 1
+    byOwner.set(item.owner, entry)
+  }
+  const totalOwners = byOwner.size
+  const bottleneckAt = Math.max(OVERLOAD_MIN_ITEMS, Math.ceil(items.length / 2))
+  const roles: StaffingEntry[] = [...byOwner.entries()]
+    .map(([owner, entry]) => ({
+      owner,
+      itemCount: entry.itemCount,
+      highStakesCount: entry.highStakesCount,
+      overloaded: totalOwners > 1 && entry.itemCount >= bottleneckAt,
+    }))
+    .sort((a, b) => b.itemCount - a.itemCount || a.owner.localeCompare(b.owner))
+  return { roles, unassigned, totalOwners }
+}
+
 // ── Whole-plan summary stats ───────────────────────────────────────────────
 
 export interface PlanStats {
