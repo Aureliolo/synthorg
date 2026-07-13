@@ -30,9 +30,6 @@ from synthorg.security.autonomy.errors import AutonomyStrategyConfigError
 from synthorg.security.autonomy.escalation_chain import (
     EscalationChainPromotionStrategy,
 )
-from synthorg.security.autonomy.performance_gated import (
-    PerformanceGatedPromotionStrategy,
-)
 from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
 
 logger = get_logger(__name__)
@@ -61,38 +58,6 @@ def _build_human_only(
         The base ``HumanOnlyPromotionStrategy``.
     """
     return _base(deps)
-
-
-def _build_performance_gated(
-    config: AutonomyStrategyConfig,
-    deps: AutonomyStrategyDeps,
-) -> AutonomyChangeStrategy:
-    """Build the PERFORMANCE_GATED strategy wrapping the base.
-
-    Returns:
-        A ``PerformanceGatedPromotionStrategy``.
-
-    Raises:
-        AutonomyStrategyConfigError: If no ``performance_signal`` was
-            provided.
-    """
-    if deps.performance_signal is None:
-        msg = (
-            "PERFORMANCE_GATED autonomy strategy requires a "
-            "'performance_signal' dependency but none was provided"
-        )
-        logger.warning(
-            SECURITY_AUTONOMY_STRATEGY_CONFIG_INVALID,
-            strategy="performance_gated",
-            missing_dependency="performance_signal",
-            error_type=AutonomyStrategyConfigError.__name__,
-        )
-        raise AutonomyStrategyConfigError(msg)
-    return PerformanceGatedPromotionStrategy(
-        base=_base(deps),
-        performance_signal=deps.performance_signal,
-        success_threshold=config.promotion_success_threshold,
-    )
 
 
 def _build_budget_aware(
@@ -145,7 +110,6 @@ def _build_escalation_chain(
 _REGISTRY: StrategyRegistry[AutonomyChangeStrategy] = StrategyRegistry(
     {
         AutonomyStrategyType.HUMAN_ONLY: _build_human_only,
-        AutonomyStrategyType.PERFORMANCE_GATED: _build_performance_gated,
         AutonomyStrategyType.BUDGET_AWARE: _build_budget_aware,
         AutonomyStrategyType.ESCALATION_CHAIN: _build_escalation_chain,
     },

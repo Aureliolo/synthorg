@@ -133,11 +133,11 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `risk_classifier_config.py::RiskClassifierType` discriminator + frozen `RiskClassifierConfig` + `RiskClassifierDeps` (in-flight probe / `Clock` collaborators).
 - `risk_classifier_factory.py::build_risk_tier_classifier()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `RiskClassifierConfigError` surfaces a missing required dep. Wired at `timeout/factory.py::create_timeout_policy` (tiered seam); `SecOpsService` + approval-tool consumers stay on the default pending a `SecurityConfig.risk_classifier` field.
 
-### Autonomy change strategy (promotion/downgrade plugin, REWORK #9)
+### Autonomy change strategy (promotion/downgrade plugin)
 
 - `security/autonomy/protocol.py::AutonomyChangeStrategy` Protocol (`request_promotion` / `auto_downgrade` / `request_recovery`).
-- Impls: `change_strategy.py::HumanOnlyPromotionStrategy` (safe default + override store), `performance_gated.py`, `budget_aware.py`, `escalation_chain.py` (each wraps the base via `_base_delegate.py::BaseDelegatingStrategy`).
-- Signal Protocols: `signals.py::PerformanceSignalProvider`, `RiskBudgetSignalProvider` (injected, never concrete `hr/` / `budget/` imports).
+- Impls: `change_strategy.py::HumanOnlyPromotionStrategy` (safe default + override store), `budget_aware.py`, `escalation_chain.py` (each wraps the base via `_base_delegate.py::BaseDelegatingStrategy`).
+- Signal Protocols: `signals.py::RiskBudgetSignalProvider` (injected, never a concrete `budget/` import).
 - `change_strategy_config.py::AutonomyStrategyType` discriminator + frozen `AutonomyStrategyConfig` + `AutonomyStrategyDeps`.
 - `change_strategy_factory.py::build_autonomy_change_strategy()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `AutonomyStrategyConfigError` surfaces a missing required signal provider. No production seam wires a non-default strategy yet (surface-only, follow-up wires it end-to-end).
 

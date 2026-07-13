@@ -8303,8 +8303,6 @@ export type components = {
             /** @default [] */
             readonly escalation_chain: readonly string[];
             readonly kind: components["schemas"]["AutonomyStrategyType"];
-            /** @default 0.9 */
-            readonly promotion_success_threshold: number;
         };
         /**
          * AutonomyStrategyType
@@ -8312,9 +8310,6 @@ export type components = {
          *
          *     - ``HUMAN_ONLY`` -- promotions + recovery always require human
          *       approval; byte-identical to a bare ``HumanOnlyPromotionStrategy()``.
-         *     - ``PERFORMANCE_GATED`` -- grants promotion when the agent's
-         *       rolling success rate clears a threshold; downgrade/recovery
-         *       delegate to the base (HumanOnly) strategy.
          *     - ``BUDGET_AWARE`` -- denies promotion while risk-budget headroom
          *       is below the warn fraction; otherwise delegates to the base.
          *     - ``ESCALATION_CHAIN`` -- promotion is routed through a configured
@@ -8322,7 +8317,7 @@ export type components = {
          * @default human_only
          * @enum {string}
          */
-        readonly AutonomyStrategyType: "human_only" | "performance_gated" | "budget_aware" | "escalation_chain";
+        readonly AutonomyStrategyType: "human_only" | "budget_aware" | "escalation_chain";
         /** AvailableLocalesResponse */
         readonly AvailableLocalesResponse: {
             readonly display_names: {

@@ -105,7 +105,6 @@ export type AutonomyLevel = (typeof AUTONOMY_LEVEL_VALUES)[number]
 
 export const AUTONOMY_STRATEGY_TYPE_VALUES = [
     'human_only',
-    'performance_gated',
     'budget_aware',
     'escalation_chain',
 ] as const

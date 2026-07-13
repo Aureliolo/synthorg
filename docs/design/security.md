@@ -89,7 +89,6 @@ override only the promotion decision.
 | `AutonomyStrategyType` | Implementation | Behaviour |
 |---|---|---|
 | `HUMAN_ONLY` | `HumanOnlyPromotionStrategy` | Promotions + recovery always require human approval. Byte-identical with the pre-plugin default. |
-| `PERFORMANCE_GATED` | `PerformanceGatedPromotionStrategy` | Auto-grants promotion when the agent's rolling success rate (injected `PerformanceSignalProvider`) is at/above `promotion_success_threshold`; `None` history defers. |
 | `BUDGET_AWARE` | `BudgetAwarePromotionStrategy` | Denies promotion while risk-budget headroom (injected `RiskBudgetSignalProvider`) is below `budget_warn_fraction`; otherwise delegates the decision to the base. |
 | `ESCALATION_CHAIN` | `EscalationChainPromotionStrategy` | Records the configured approver-role `escalation_chain` and returns pending (`False`); per-role approvals arrive out-of-band. |
 
@@ -111,10 +110,10 @@ auto-decided approval item (`status=APPROVED`,
 `decided_by="strategy:<name>"`, `decided_at` set) and the registry
 applies the level change immediately, so the queue remains the apply
 driver and the audit trail stays intact while a non-`HUMAN_ONLY`
-strategy actually takes effect. The performance / risk-budget signal
-providers the `PERFORMANCE_GATED` and `BUDGET_AWARE` strategies
-require are not wired by the boot seam: selecting one of those kinds
-without supplying its provider fails fast at construction.
+strategy actually takes effect. The risk-budget signal provider the
+`BUDGET_AWARE` strategy requires is not wired by the boot seam:
+selecting that kind without supplying its provider fails fast at
+construction.
 
 ## Security Operations Agent
 
