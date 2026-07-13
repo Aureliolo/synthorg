@@ -32,6 +32,7 @@ import { PlanStaffingPanel } from './plans/PlanStaffingPanel'
 import { PlanRequestChanges } from './plans/PlanRequestChanges'
 import { PlanReviewPanel } from './plans/PlanReviewPanel'
 import { PlanTimeline } from './plans/PlanTimeline'
+import { PlanVersionDiff } from './plans/PlanVersionDiff'
 
 type Mode = 'view' | 'edit' | 'request-changes'
 
@@ -156,6 +157,7 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
       <PlanStaffingPanel plan={plan} />
       <PlanCoveragePanel plan={plan} />
       <PlanReviewPanel review={plan.review} />
+      <PlanVersionDiff plan={plan} />
       <PlanTimeline items={plan.items} />
       <SectionCard title="Plan items" icon={ListTree}>
         <div className="flex flex-col gap-2">

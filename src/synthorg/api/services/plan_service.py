@@ -9,6 +9,8 @@ and every write is version-guarded so a concurrent edit cannot silently clobber
 another.
 """
 
+from typing import Final
+
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.clock import Clock
@@ -20,7 +22,7 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
-from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan import Plan, PlanItem, PlanVersionSnapshot
 from synthorg.core.plan_enums import REWORKABLE_STATUSES, PlanStatus
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
@@ -39,6 +41,25 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
 
 logger = get_logger(__name__)
+
+# Cap the retained version history so a plan reworked many times cannot bloat
+# its row's JSON column without bound; the oldest snapshots drop off first.
+_MAX_VERSION_HISTORY: Final[int] = 20
+
+
+def _snapshot(plan: Plan) -> PlanVersionSnapshot:
+    """Freeze a plan's current items as a diffable version snapshot.
+
+    Returns:
+        A :class:`PlanVersionSnapshot` capturing *plan*'s version, items, and
+        classified structure at its current ``updated_at``.
+    """
+    return PlanVersionSnapshot(
+        version=plan.version,
+        items=plan.items,
+        task_structure=plan.task_structure,
+        captured_at=plan.updated_at,
+    )
 
 
 class PlanService:
@@ -150,6 +171,11 @@ class PlanService:
             QueryError: Repository write failure (logged before propagating).
         """
         self._require_reworkable(existing)
+        # Snapshot the pre-edit version so a reviewer can diff the rework against
+        # what the panel saw, capped so the JSON column cannot grow unbounded.
+        history = (*existing.version_history, _snapshot(existing))[
+            -_MAX_VERSION_HISTORY:
+        ]
         try:
             revised = Plan(
                 id=existing.id,
@@ -168,7 +194,7 @@ class PlanService:
                 open_questions=existing.open_questions,
                 assumptions=existing.assumptions,
                 objective_criteria=existing.objective_criteria,
-                version_history=existing.version_history,
+                version_history=history,
                 version=existing.version + 1,
                 created_at=existing.created_at,
                 updated_at=self._clock.now(),

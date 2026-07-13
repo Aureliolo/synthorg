@@ -162,6 +162,11 @@ class TestPlanController:
         assert len(data["items"]) == 1
         assert data["items"][0]["title"] == "Reworked scaffold"
         assert data["items"][0]["owner"] == "engineering"
+        # The pre-edit version is snapshotted so a reviewer can diff the rework.
+        assert len(data["version_history"]) == 1
+        snapshot = data["version_history"][0]
+        assert snapshot["version"] == 1
+        assert [item["id"] for item in snapshot["items"]] == [_I1, _I2]
 
     async def test_edit_rejects_unresolvable_dependency(
         self, async_test_client: LoopAsyncClient

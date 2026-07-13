@@ -8,9 +8,11 @@ export type {
   Plan,
   PlanItem,
   PlanItemPayload,
+  PlanOption,
   PlanReview,
   PlanReviewerVerdict,
   PlanReviewFinding,
+  PlanVersionSnapshot,
   RequestPlanChangesRequest,
 } from './dtos.gen'
 
