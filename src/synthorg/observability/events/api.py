@@ -264,6 +264,7 @@ API_PLAN_CHANGES_REQUESTED: Final[str] = "api.plan.changes_requested"
 API_PLAN_CHANGES_REQUEST_FAILED: Final[str] = "api.plan.changes_request_failed"
 API_PLAN_STATUS_TRANSITIONED: Final[str] = "api.plan.status_transitioned"
 API_PLAN_TRANSITION_REJECTED: Final[str] = "api.plan.transition_rejected"
+API_PLAN_COMMENT_ADDED: Final[str] = "api.plan.comment_added"
 
 # Artifact mutations
 API_ARTIFACT_CREATED: Final[str] = "api.artifact.created"

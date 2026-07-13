@@ -47,6 +47,8 @@ class PlanOption(BaseModel):
 
 
 _MIN_DECISION_OPTIONS: Final[int] = 2
+_MAX_DECISION_OPTIONS: Final[int] = 50
+MAX_PLAN_VERSION_HISTORY: Final[int] = 20
 
 
 def validate_decision_options(
@@ -148,6 +150,7 @@ class PlanItem(BaseModel):
     )
     options: tuple[PlanOption, ...] = Field(
         default=(),
+        max_length=_MAX_DECISION_OPTIONS,
         description="For a DECISION item, the options to choose among",
     )
     chosen_option_id: NotBlankStr | None = Field(
@@ -156,7 +159,9 @@ class PlanItem(BaseModel):
     )
     satisfies: tuple[NotBlankStr, ...] = Field(
         default=(),
-        description="Objective success criteria this item advances",
+        description="Advisory tags naming the objective criteria this item "
+        "advances; matched leniently for the coverage map, not enforced to "
+        "name an entry of the plan's objective_criteria",
     )
 
     @model_validator(mode="after")
@@ -220,12 +225,23 @@ class PlanItem(BaseModel):
         Returns:
             The resolved :class:`PlanOption`, or ``None`` for a WORK item (which
             carries no options).
+
+        Raises:
+            ValueError: The decision has no resolvable option (its construction
+                invariant was bypassed, e.g. a raw-SQL backfill).
         """
         if self.kind is not PlanItemKind.DECISION:
             return None
         if self.chosen_option_id is not None:
-            return next(o for o in self.options if o.id == self.chosen_option_id)
-        return next(o for o in self.options if o.recommended)
+            match = next(
+                (o for o in self.options if o.id == self.chosen_option_id), None
+            )
+        else:
+            match = next((o for o in self.options if o.recommended), None)
+        if match is None:
+            msg = f"Decision item {self.id!r} has no resolvable option"
+            raise ValueError(msg)
+        return match
 
 
 class PlanVersionSnapshot(BaseModel):
@@ -322,7 +338,9 @@ class Plan(BaseModel):
     )
     version_history: tuple[PlanVersionSnapshot, ...] = Field(
         default=(),
-        description="Snapshots of prior submitted versions, for diffing",
+        max_length=MAX_PLAN_VERSION_HISTORY,
+        description="Snapshots of prior submitted versions, for diffing "
+        f"(oldest dropped past {MAX_PLAN_VERSION_HISTORY})",
     )
     version: int = Field(
         default=1,

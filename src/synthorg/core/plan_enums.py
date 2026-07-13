@@ -54,8 +54,10 @@ class PlanReviewVerdict(StrEnum):
     """A reviewer's (or the panel's synthesised) verdict on a plan.
 
     ``ENDORSED`` means the reviewer backs the plan as-is. ``CONCERNS`` means the
-    reviewer raised findings the owner should address; the synthesised
-    ``REVISION_REQUESTED`` sends the plan back to the owner to revise.
+    reviewer raised findings the owner should address. ``REVISION_REQUESTED``
+    sends the plan back to the owner to revise; a panellist may pick it
+    directly, and it is also the synthesised overall verdict when any panellist
+    requests one.
     """
 
     ENDORSED = "endorsed"

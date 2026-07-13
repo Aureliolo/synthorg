@@ -11,13 +11,14 @@ the coordinator; the spine records the stage but never re-collects.
 """
 
 from collections.abc import Awaitable
-from typing import TYPE_CHECKING, NamedTuple, TypeVar
+from typing import TYPE_CHECKING, Final, NamedTuple, TypeVar
 
 from synthorg.client.models import ClientRequest, TaskRequirement
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.concurrency.refcounted_lock_map import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan_review import PlanReview
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
@@ -68,6 +69,7 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_PHASE_FAILED,
     PIPELINE_PLAN_REVIEW_PANEL_ATTACHED,
     PIPELINE_PLAN_REVIEW_REQUESTED,
+    PIPELINE_PROJECT_LEAD_CONTENDED,
     PIPELINE_PROJECT_LEAD_ORPHANED,
     PIPELINE_PROJECT_LEAD_STAMPED,
     PIPELINE_PROJECT_NOT_FOUND,
@@ -100,6 +102,11 @@ _PHASE_REFINE = "refinement_handoff"
 _PHASE_PLAN_REVIEW = "plan_review_handoff"
 _PHASE_REVIEW_PANEL = "plan_review_panel"
 _PHASE_METRICS = "coordination_metrics"
+
+#: Bounded compare-and-swap retries when a concurrent process stamps a
+#: project's lead between our read and our version-guarded write; the re-read
+#: then observes the winning lead, so a couple of attempts always resolves.
+_MAX_STAFF_ATTEMPTS: Final[int] = 3
 
 #: Work sources whose ``requested_by`` is a human user id (not an agent or
 #: system identity). Only these stamp ``Task.requested_by_user_id`` so the SSE
@@ -718,47 +725,68 @@ class DefaultWorkPipeline:
     ) -> AgentIdentity | None:
         """Resolve or stamp the project's owner while holding the project lock.
 
-        Re-reads the project under the per-project lock so a lead stamped by a
-        concurrent run for the same project is observed here (no lost update on
-        ``Project.lead``). An already-led project resolves its lead via the
-        registry regardless of status, so a paused or offboarded lead is
-        surfaced as an orphan rather than silently dropped.
+        The in-process lock serialises same-process runs, but a second worker
+        process shares only the database, so the lead stamp is written under
+        optimistic concurrency: the version-guarded write loses to a concurrent
+        stamp rather than clobbering it, and a lost write re-reads to return the
+        winner's lead (bounded by ``_MAX_STAFF_ATTEMPTS``). An already-led
+        project resolves its lead via the registry regardless of status, so a
+        paused or offboarded lead is surfaced as an orphan rather than dropped.
 
         Returns:
             The owning :class:`AgentIdentity`, or ``None`` when the project
             vanished mid-flight, the durable lead no longer resolves, the
             roster is empty, or the selector abstains.
         """
-        project = await self._project_repository.get(work_item.project)
-        if project is None:
-            return None
-        if project.lead is not None:
-            owner = await self._agent_registry.get(project.lead)
-            if owner is None:
+        for attempt in range(1, _MAX_STAFF_ATTEMPTS + 1):
+            project = await self._project_repository.get(work_item.project)
+            if project is None:
+                return None
+            if project.lead is not None:
+                owner = await self._agent_registry.get(project.lead)
+                if owner is None:
+                    logger.warning(
+                        PIPELINE_PROJECT_LEAD_ORPHANED,
+                        project=work_item.project,
+                        lead=project.lead,
+                    )
+                return owner
+            if not active:
                 logger.warning(
-                    PIPELINE_PROJECT_LEAD_ORPHANED,
+                    PIPELINE_PROJECT_ROSTER_EMPTY,
                     project=work_item.project,
-                    lead=project.lead,
                 )
-            return owner
-        if not active:
-            logger.warning(
-                PIPELINE_PROJECT_ROSTER_EMPTY,
+                return None
+            owner = select_project_owner(task, active, scorer=self._scorer)
+            if owner is None:
+                return None
+            try:
+                await self._project_repository.update(
+                    project.model_copy(
+                        update={
+                            "lead": str(owner.id),
+                            "version": project.version + 1,
+                        }
+                    ),
+                    expected_version=project.version,
+                )
+            except PersistenceVersionConflictError:
+                # A concurrent process stamped a lead first; re-read to return
+                # the winner rather than clobbering it (never raise off this
+                # best-effort staffing path).
+                logger.info(
+                    PIPELINE_PROJECT_LEAD_CONTENDED,
+                    project=work_item.project,
+                    attempt=attempt,
+                )
+                continue
+            logger.info(
+                PIPELINE_PROJECT_LEAD_STAMPED,
                 project=work_item.project,
+                lead=str(owner.id),
             )
-            return None
-        owner = select_project_owner(task, active, scorer=self._scorer)
-        if owner is None:
-            return None
-        await self._project_repository.update(
-            project.model_copy(update={"lead": str(owner.id)})
-        )
-        logger.info(
-            PIPELINE_PROJECT_LEAD_STAMPED,
-            project=work_item.project,
-            lead=str(owner.id),
-        )
-        return owner
+            return owner
+        return None
 
     async def _decompose(
         self,

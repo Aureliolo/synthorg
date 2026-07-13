@@ -39,10 +39,27 @@ function clearDetailImpl(set: PlansSet): void {
   set({ selectedPlan: null, detailLoading: false, detailError: null })
 }
 
+function resetImpl(set: PlansSet): void {
+  // Bump both request tokens so any in-flight fetch resolves as stale and
+  // cannot write back onto the reset state.
+  nextListRequestToken()
+  bumpDetailRequestToken()
+  set({
+    plans: [],
+    listLoading: false,
+    listError: null,
+    statusFilter: null,
+    selectedPlan: null,
+    detailLoading: false,
+    detailError: null,
+  })
+}
+
 export function createListActions(set: PlansSet) {
   return {
     fetchPlans: () => fetchPlansImpl(set),
     setStatusFilter: (status: PlanStatus | null) => set({ statusFilter: status }),
     clearDetail: () => clearDetailImpl(set),
+    reset: () => resetImpl(set),
   }
 }

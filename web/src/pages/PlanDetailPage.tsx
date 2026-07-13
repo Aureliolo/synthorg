@@ -153,17 +153,17 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
     [plan.id],
   )
   const chooseOption = useCallback(
-    (itemId: string, optionId: string) => {
+    (itemId: string, optionId: string) =>
       // Record the pick by round-tripping the whole item list through the
       // wholesale edit endpoint, touching only the target decision's choice.
-      void usePlansStore.getState().editPlan(plan.id, {
+      // Returned so the option button can reflect the in-flight write.
+      usePlansStore.getState().editPlan(plan.id, {
         items: plan.items.map((item) =>
           item.id === itemId
             ? { ...planItemToPayload(item), chosen_option_id: optionId }
             : planItemToPayload(item),
         ),
-      })
-    },
+      }),
     [plan.id, plan.items],
   )
   return (

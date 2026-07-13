@@ -7,6 +7,10 @@ import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { formatRelativeTime } from '@/utils/format'
 
+// Mirror PlanCommentPayload.body's max_length (api/dto_plans.py) so an
+// over-long comment is capped in the browser, not rejected after a round trip.
+const COMMENT_MAX = 8192
+
 function CommentRow({ comment }: { comment: PlanItemComment }) {
   return (
     <li className="rounded-md border border-border p-2">
@@ -60,23 +64,26 @@ export function PlanItemComments({ comments, onSubmit }: PlanItemCommentsProps) 
           ))}
         </ul>
       )}
-      <div className="flex items-end gap-2">
+      <form
+        className="flex items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void handleSubmit()
+        }}
+      >
         <div className="flex-1">
           <InputField
             label="Add a comment"
             value={draft}
+            maxLength={COMMENT_MAX}
             onValueChange={setDraft}
           />
         </div>
-        <Button
-          size="sm"
-          onClick={() => void handleSubmit()}
-          disabled={saving || draft.trim() === ''}
-        >
+        <Button type="submit" size="sm" disabled={saving || draft.trim() === ''}>
           <Send aria-hidden="true" />
           {saving ? 'Posting…' : 'Comment'}
         </Button>
-      </div>
+      </form>
     </div>
   )
 }

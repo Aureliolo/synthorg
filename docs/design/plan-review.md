@@ -65,12 +65,18 @@ panel is attached the plan is parked with `review = None`.
 
 ### Lifecycle (`PlanStatus`)
 
-```text
-DRAFT ──▶ PENDING_REVIEW ──▶ APPROVED
-              │      ▲
-              │      └── edit / request-changes (only from a non-terminal status)
-              └──────────▶ REJECTED
+```mermaid
+stateDiagram-v2
+    [*] --> DRAFT
+    DRAFT --> PENDING_REVIEW
+    PENDING_REVIEW --> APPROVED
+    PENDING_REVIEW --> REJECTED
+    PENDING_REVIEW --> DRAFT: edit / request-changes
+    APPROVED --> [*]
+    REJECTED --> [*]
 ```
+
+An edit or request-changes is accepted only from a non-terminal status.
 
 `DRAFT` and `PENDING_REVIEW` are the reworkable statuses; `APPROVED`, `REJECTED`,
 and `SUPERSEDED` are terminal. An operator rework or request-changes is accepted
@@ -149,6 +155,20 @@ Approve/reject route through the existing idempotent `/approvals/{id}` path into
 - On reject, the parent task is cancelled and nothing builds.
 - The gate persists the plan before parking the approval; if the approval write
   fails, the just-created plan is compensated (deleted) so no orphan remains.
+
+## Configuration
+
+The subsystem is gated and sized by five `coordination.*` settings
+(`settings/definitions/coordination.py`), all applied on the next
+runtime-services rebuild:
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `coordination.plan_approval_required` | `false` | Master gate: when off, splittable team work dispatches straight to the coordinator and no plan is parked. Everything below is inert until this is on. |
+| `coordination.plan_review_panel_enabled` | `true` | Whether the stakeholder panel runs before the human sees the plan. Defaults on, but only takes effect once approval is gated and a provider is wired; otherwise the plan is parked with `review = None`. |
+| `coordination.plan_review_panel_size` | `4` (max `8`) | Maximum panellists seated (the relevant leads sized to the plan, not everyone). |
+| `coordination.plan_review_panel_max_turns` | `6` | Hard turn cap per panellist session before it must submit a verdict. |
+| `coordination.plan_review_panel_cost_ceiling` | `1.0` | Per-reviewer spend ceiling (base currency); the session halts once accumulated cost reaches it. |
 
 ## Workspace
 

@@ -13,7 +13,10 @@ PLAN_REVIEW_PANEL_COMPLETED: Final[str] = "plan_review.panel.completed"
 PLAN_REVIEW_REVIEWER_STARTED: Final[str] = "plan_review.reviewer.started"
 PLAN_REVIEW_REVIEWER_COMPLETED: Final[str] = "plan_review.reviewer.completed"
 PLAN_REVIEW_REVIEWER_NO_VERDICT: Final[str] = "plan_review.reviewer.no_verdict"
+PLAN_REVIEW_REVIEWER_PROVIDER_ERROR: Final[str] = "plan_review.reviewer.provider_error"
+PLAN_REVIEW_REVIEWER_SESSION_FAILED: Final[str] = "plan_review.reviewer.session_failed"
 PLAN_REVIEW_REVIEWER_DUPLICATE_SUBMIT: Final[str] = (
     "plan_review.reviewer.duplicate_submit"
 )
+PLAN_REVIEW_REVIEWER_ACCEPTED: Final[str] = "plan_review.reviewer.accepted"
 PLAN_REVIEW_VALIDATION_ERROR: Final[str] = "plan_review.validation.error"

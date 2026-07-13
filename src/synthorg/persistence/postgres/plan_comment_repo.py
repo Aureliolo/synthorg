@@ -14,9 +14,10 @@ from synthorg.core.persistence_errors import (
 from synthorg.core.plan_comment import PlanItemComment
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.plan import (
-    PERSISTENCE_PLAN_DESERIALIZE_FAILED,
-    PERSISTENCE_PLAN_LIST_FAILED,
-    PERSISTENCE_PLAN_SAVE_FAILED,
+    PERSISTENCE_PLAN_COMMENT_DESERIALIZE_FAILED,
+    PERSISTENCE_PLAN_COMMENT_LIST_FAILED,
+    PERSISTENCE_PLAN_COMMENT_PURGE_FAILED,
+    PERSISTENCE_PLAN_COMMENT_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp, normalize_utc
@@ -72,7 +73,7 @@ class PostgresPlanItemCommentRepository:
                 await conn.commit()
         except psycopg.errors.UniqueViolation as exc:
             logger.warning(
-                PERSISTENCE_PLAN_SAVE_FAILED,
+                PERSISTENCE_PLAN_COMMENT_SAVE_FAILED,
                 plan_id=event.plan_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -81,7 +82,7 @@ class PostgresPlanItemCommentRepository:
             raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
             logger.warning(
-                PERSISTENCE_PLAN_SAVE_FAILED,
+                PERSISTENCE_PLAN_COMMENT_SAVE_FAILED,
                 plan_id=event.plan_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -104,10 +105,10 @@ class PostgresPlanItemCommentRepository:
         Raises:
             QueryError: If the operation fails or pagination args are invalid.
         """
-        validate_pagination_args(
+        limit = validate_pagination_args(
             limit,
             offset,
-            event=PERSISTENCE_PLAN_LIST_FAILED,
+            event=PERSISTENCE_PLAN_COMMENT_LIST_FAILED,
             plan_id=filter_spec.plan_id,
         )
         where = "plan_id = %s"
@@ -130,7 +131,7 @@ class PostgresPlanItemCommentRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             logger.warning(
-                PERSISTENCE_PLAN_LIST_FAILED,
+                PERSISTENCE_PLAN_COMMENT_LIST_FAILED,
                 plan_id=filter_spec.plan_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -141,7 +142,7 @@ class PostgresPlanItemCommentRepository:
             return tuple(_row_to_comment(row) for row in rows)
         except (ValueError, ValidationError, KeyError) as exc:
             logger.warning(
-                PERSISTENCE_PLAN_DESERIALIZE_FAILED,
+                PERSISTENCE_PLAN_COMMENT_DESERIALIZE_FAILED,
                 plan_id=filter_spec.plan_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -168,7 +169,7 @@ class PostgresPlanItemCommentRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             logger.warning(
-                PERSISTENCE_PLAN_SAVE_FAILED,
+                PERSISTENCE_PLAN_COMMENT_PURGE_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

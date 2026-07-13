@@ -117,6 +117,13 @@ class TestDecisionItem:
         with pytest.raises(ValueError, match="exactly one recommended"):
             _decision_item("a", options=(_opt("o1"), _opt("o2")))
 
+    def test_decision_rejects_duplicate_option_ids(self) -> None:
+        with pytest.raises(ValueError, match="duplicate option ids"):
+            _decision_item(
+                "a",
+                options=(_opt("dup", recommended=True), _opt("dup")),
+            )
+
     def test_decision_rejects_unknown_chosen_option(self) -> None:
         with pytest.raises(ValueError, match="chose an unknown option"):
             _decision_item(

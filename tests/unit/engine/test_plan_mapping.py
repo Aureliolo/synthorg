@@ -33,6 +33,7 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.decomposition.plan_mapping import (
+    PlanProvenance,
     decomposition_from_plan,
     plan_from_decomposition,
 )
@@ -41,6 +42,24 @@ from tests._shared import as_uuid, sid
 pytestmark = pytest.mark.unit
 
 _CREATED_AT = datetime(2026, 3, 1, 9, 0, tzinfo=UTC)
+
+
+def _provenance(
+    *,
+    status: PlanStatus = PlanStatus.PENDING_REVIEW,
+    review: PlanReview | None = None,
+    objective_criteria: tuple[NotBlankStr, ...] = (),
+) -> PlanProvenance:
+    return PlanProvenance(
+        project=NotBlankStr("beachhead"),
+        objective_id=NotBlankStr("obj-1"),
+        objective_title=NotBlankStr("Ship the game"),
+        parent_task_id=sid("root"),
+        created_at=_CREATED_AT,
+        status=status,
+        review=review,
+        objective_criteria=objective_criteria,
+    )
 
 
 def _result_task(subtask_id: str) -> Task:
@@ -87,14 +106,7 @@ def _decomposition() -> DecompositionResult:
 
 class TestPlanFromDecomposition:
     def test_maps_structure_and_items(self) -> None:
-        plan = plan_from_decomposition(
-            _decomposition(),
-            project="beachhead",
-            objective_id="obj-1",
-            objective_title="Ship the game",
-            parent_task_id=sid("root"),
-            created_at=_CREATED_AT,
-        )
+        plan = plan_from_decomposition(_decomposition(), _provenance())
 
         assert plan.project == "beachhead"
         assert plan.objective_id == "obj-1"
@@ -107,14 +119,7 @@ class TestPlanFromDecomposition:
         assert plan.version == 1
 
     def test_item_fields_projected(self) -> None:
-        plan = plan_from_decomposition(
-            _decomposition(),
-            project="beachhead",
-            objective_id="obj-1",
-            objective_title="Ship the game",
-            parent_task_id=sid("root"),
-            created_at=_CREATED_AT,
-        )
+        plan = plan_from_decomposition(_decomposition(), _provenance())
 
         first, second = plan.items
         assert first.id == sid("sub-1")
@@ -126,13 +131,7 @@ class TestPlanFromDecomposition:
 
     def test_status_override(self) -> None:
         plan = plan_from_decomposition(
-            _decomposition(),
-            project="beachhead",
-            objective_id="obj-1",
-            objective_title="Ship the game",
-            parent_task_id=sid("root"),
-            created_at=_CREATED_AT,
-            status=PlanStatus.DRAFT,
+            _decomposition(), _provenance(status=PlanStatus.DRAFT)
         )
         assert plan.status is PlanStatus.DRAFT
 
@@ -155,28 +154,13 @@ class TestPlanFromDecomposition:
             summary=NotBlankStr("1 of 1 reviewer(s) raised concerns"),
             reviewed_at=_CREATED_AT,
         )
-        plan = plan_from_decomposition(
-            _decomposition(),
-            project="beachhead",
-            objective_id="obj-1",
-            objective_title="Ship the game",
-            parent_task_id=sid("root"),
-            created_at=_CREATED_AT,
-            review=review,
-        )
+        plan = plan_from_decomposition(_decomposition(), _provenance(review=review))
         assert plan.review is not None
         assert plan.review.verdict is PlanReviewVerdict.CONCERNS
         assert plan.review.reviewers[0].reviewer_role == "CTO"
 
     def test_review_defaults_to_none(self) -> None:
-        plan = plan_from_decomposition(
-            _decomposition(),
-            project="beachhead",
-            objective_id="obj-1",
-            objective_title="Ship the game",
-            parent_task_id=sid("root"),
-            created_at=_CREATED_AT,
-        )
+        plan = plan_from_decomposition(_decomposition(), _provenance())
         assert plan.review is None
 
     def test_open_questions_and_assumptions_carry_from_the_decomposition(self) -> None:
@@ -196,26 +180,14 @@ class TestPlanFromDecomposition:
             ),
             created_tasks=(_result_task("sub-1"),),
         )
-        plan = plan_from_decomposition(
-            decomposition,
-            project="beachhead",
-            objective_id="obj-1",
-            objective_title="Ship the game",
-            parent_task_id=sid("root"),
-            created_at=_CREATED_AT,
-        )
+        plan = plan_from_decomposition(decomposition, _provenance())
         assert plan.open_questions == ("Which backend?",)
         assert plan.assumptions == ("Single-player only",)
 
     def test_objective_criteria_are_denormalised_onto_the_plan(self) -> None:
         plan = plan_from_decomposition(
             _decomposition(),
-            project="beachhead",
-            objective_id="obj-1",
-            objective_title="Ship the game",
-            parent_task_id=sid("root"),
-            created_at=_CREATED_AT,
-            objective_criteria=(NotBlankStr("Playable board"),),
+            _provenance(objective_criteria=(NotBlankStr("Playable board"),)),
         )
         assert plan.objective_criteria == ("Playable board",)
 
@@ -235,14 +207,7 @@ class TestPlanFromDecomposition:
             ),
             created_tasks=(_result_task("sub-1"),),
         )
-        plan = plan_from_decomposition(
-            decomposition,
-            project="beachhead",
-            objective_id="obj-1",
-            objective_title="Ship the game",
-            parent_task_id=sid("root"),
-            created_at=_CREATED_AT,
-        )
+        plan = plan_from_decomposition(decomposition, _provenance())
         assert plan.items[0].satisfies == ("Playable board",)
 
     def test_artifacts_and_criteria_projected_from_subtask(self) -> None:
@@ -267,14 +232,7 @@ class TestPlanFromDecomposition:
             ),
             created_tasks=(_result_task("sub-1"),),
         )
-        plan = plan_from_decomposition(
-            decomposition,
-            project="beachhead",
-            objective_id="obj-1",
-            objective_title="Ship the game",
-            parent_task_id=sid("root"),
-            created_at=_CREATED_AT,
-        )
+        plan = plan_from_decomposition(decomposition, _provenance())
         item = plan.items[0]
         assert item.expected_artifacts == ("src/board.tsx", "tests/board.test.tsx")
         assert item.acceptance_criteria == ("renders a 10x20 grid",)
@@ -430,14 +388,7 @@ class TestDecompositionFromPlan:
     def test_plan_from_decomposition_round_trips(self) -> None:
         # A plan built from a decomposition, then projected back, preserves the
         # item identity, dependency edges, and structure (the mapping's contract).
-        plan = plan_from_decomposition(
-            _decomposition(),
-            project="beachhead",
-            objective_id="obj-1",
-            objective_title="Ship the game",
-            parent_task_id=sid("root"),
-            created_at=_CREATED_AT,
-        )
+        plan = plan_from_decomposition(_decomposition(), _provenance())
         rebuilt = decomposition_from_plan(plan, parent_task=_parent_task())
         assert {s.id for s in rebuilt.plan.subtasks} == {item.id for item in plan.items}
         assert rebuilt.plan.task_structure is plan.task_structure

@@ -21,6 +21,9 @@ PIPELINE_PROJECT_LEAD_STAMPED: Final[str] = "pipeline.project.lead_stamped"
 PIPELINE_PROJECT_LEAD_ORPHANED: Final[str] = "pipeline.project.lead_orphaned"
 """A project's durable lead no longer resolves to a known agent."""
 
+PIPELINE_PROJECT_LEAD_CONTENDED: Final[str] = "pipeline.project.lead_contended"
+"""A concurrent write won the lead-stamp race; re-reading the durable lead."""
+
 PIPELINE_PROJECT_ROSTER_EMPTY: Final[str] = "pipeline.project.roster_empty"
 """No agents exist to staff as the initiative's owner."""
 

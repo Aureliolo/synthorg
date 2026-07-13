@@ -12,6 +12,25 @@ import { usePlansStore } from '@/stores/plans'
 const COMPLEXITY_OPTIONS = COMPLEXITY_VALUES.map((v) => ({ value: v, label: v }))
 const STAKES_OPTIONS = STAKES_VALUES.map((v) => ({ value: v, label: v }))
 
+// Mirror the backend field bounds (api/dto_plans.py) so an over-long or
+// over-count edit is caught in the browser rather than after a 422 round trip.
+const TITLE_MAX = 256
+const TEXT_MAX = 8192
+const MAX_ITEMS = 50
+const MAX_CRITERIA = 50
+
+function isComplexity(value: string): value is PlanItem['estimated_complexity'] {
+  return (COMPLEXITY_VALUES as readonly string[]).includes(value)
+}
+
+function isStakes(value: string): value is PlanItem['stakes'] {
+  return (STAKES_VALUES as readonly string[]).includes(value)
+}
+
+function nonBlankCriteria(criteria: readonly string[]): readonly string[] {
+  return criteria.map((c) => c.trim()).filter((c) => c !== '')
+}
+
 interface DraftItem {
   id: string
   title: string
@@ -61,7 +80,7 @@ function toPayload(draft: DraftItem): EditPlanRequest['items'][number] {
     description: draft.description,
     owner: owner === '' ? null : owner,
     dependencies: draft.dependencies,
-    acceptance_criteria: draft.acceptanceCriteria,
+    acceptance_criteria: nonBlankCriteria(draft.acceptanceCriteria),
     expected_artifacts: draft.expectedArtifacts,
     required_skills: draft.requiredSkills,
     required_tags: draft.requiredTags,
@@ -72,6 +91,10 @@ function toPayload(draft: DraftItem): EditPlanRequest['items'][number] {
     chosen_option_id: draft.chosenOptionId,
     satisfies: draft.satisfies,
   }
+}
+
+function acceptanceText(draft: DraftItem): string {
+  return draft.acceptanceCriteria.join('\n')
 }
 
 function newDraft(): DraftItem {
@@ -121,6 +144,7 @@ function PlanEditorRow({ index, draft, canRemove, onChange, onRemove }: RowProps
       <InputField
         label="Title"
         value={draft.title}
+        maxLength={TITLE_MAX}
         onValueChange={(value) => onChange(index, { title: value })}
       />
       <InputField
@@ -128,11 +152,24 @@ function PlanEditorRow({ index, draft, canRemove, onChange, onRemove }: RowProps
         multiline
         rows={2}
         value={draft.description}
+        maxLength={TEXT_MAX}
         onValueChange={(value) => onChange(index, { description: value })}
+      />
+      <InputField
+        label="Acceptance criteria (one per line)"
+        multiline
+        rows={2}
+        value={acceptanceText(draft)}
+        maxLength={TEXT_MAX}
+        hint="Every item needs at least one criterion that defines done."
+        onValueChange={(value) =>
+          onChange(index, { acceptanceCriteria: value.split('\n') })
+        }
       />
       <InputField
         label="Owner (role or agent)"
         value={draft.owner}
+        maxLength={TITLE_MAX}
         onValueChange={(value) => onChange(index, { owner: value })}
       />
       <div className="grid grid-cols-2 gap-grid-gap">
@@ -140,17 +177,17 @@ function PlanEditorRow({ index, draft, canRemove, onChange, onRemove }: RowProps
           label="Complexity"
           options={COMPLEXITY_OPTIONS}
           value={draft.complexity}
-          onChange={(value) =>
-            onChange(index, { complexity: value as DraftItem['complexity'] })
-          }
+          onChange={(value) => {
+            if (isComplexity(value)) onChange(index, { complexity: value })
+          }}
         />
         <SelectField
           label="Stakes"
           options={STAKES_OPTIONS}
           value={draft.stakes}
-          onChange={(value) =>
-            onChange(index, { stakes: value as DraftItem['stakes'] })
-          }
+          onChange={(value) => {
+            if (isStakes(value)) onChange(index, { stakes: value })
+          }}
         />
       </div>
     </div>
@@ -192,7 +229,16 @@ export function PlanEditor({ plan, onDone }: PlanEditorProps) {
     if (result) onDone()
   }, [plan.id, drafts, onDone])
 
-  const canSave = drafts.length > 0 && drafts.every((d) => d.title.trim() !== '')
+  // The backend requires every item to carry a title and at least one
+  // acceptance criterion (and caps criteria at MAX_CRITERIA), so gate the save
+  // on both rather than surfacing the 422 after a round trip.
+  const canSave =
+    drafts.length > 0 &&
+    drafts.length <= MAX_ITEMS &&
+    drafts.every((d) => {
+      const criteria = nonBlankCriteria(d.acceptanceCriteria)
+      return d.title.trim() !== '' && criteria.length >= 1 && criteria.length <= MAX_CRITERIA
+    })
 
   return (
     <div className="space-y-3">
@@ -207,7 +253,12 @@ export function PlanEditor({ plan, onDone }: PlanEditorProps) {
         />
       ))}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm" onClick={handleAdd}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleAdd}
+          disabled={drafts.length >= MAX_ITEMS}
+        >
           <Plus aria-hidden="true" />
           Add item
         </Button>

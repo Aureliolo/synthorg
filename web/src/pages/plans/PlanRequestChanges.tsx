@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { usePlansStore } from '@/stores/plans'
 
+// Mirror RequestPlanChangesRequest.note's max_length (api/dto_plans.py).
+const NOTE_MAX = 8192
+
 export interface PlanRequestChangesProps {
   planId: string
   onDone: () => void
@@ -41,6 +44,7 @@ export function PlanRequestChanges({ planId, onDone }: PlanRequestChangesProps) 
         multiline
         rows={3}
         value={note}
+        maxLength={NOTE_MAX}
         placeholder="e.g. Split the movement item into drop and rotate, and add a scoring item."
         onValueChange={setNote}
       />

@@ -25,6 +25,14 @@ ADD COLUMN version_history JSONB NOT NULL DEFAULT '[]'::JSONB;
 UPDATE plans SET objective_title = objective_id
 WHERE objective_title = '';
 
+-- objective_title carries the same non-blank guard as its sibling id columns.
+-- The transient '' default (needed to add the NOT NULL column to existing rows)
+-- is dropped now the backfill guarantees every row is non-blank.
+ALTER TABLE plans ALTER COLUMN objective_title DROP DEFAULT;
+ALTER TABLE plans
+ADD CONSTRAINT plans_objective_title_check
+CHECK (CHAR_LENGTH(TRIM(objective_title)) > 0);
+
 CREATE TABLE plan_item_comments (
     id TEXT NOT NULL PRIMARY KEY CHECK (CHAR_LENGTH(TRIM(id)) > 0),
     plan_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(plan_id)) > 0),
@@ -33,6 +41,12 @@ CREATE TABLE plan_item_comments (
     body TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(body)) > 0),
     created_at TIMESTAMPTZ NOT NULL
 );
-CREATE INDEX idx_plan_item_comments_plan ON plan_item_comments (plan_id);
 CREATE INDEX idx_plan_item_comments_plan_item
 ON plan_item_comments (plan_id, item_id, created_at);
+
+-- Optimistic concurrency for the Project aggregate: a version column so a
+-- staffing write (stamping a project's lead) cannot silently clobber a
+-- concurrent update from another worker process. DEFAULT 1 satisfies the CHECK
+-- for every existing row, so the column adds cleanly to a populated table.
+ALTER TABLE projects
+ADD COLUMN version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1);

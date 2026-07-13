@@ -508,7 +508,8 @@ CREATE TABLE projects (
     task_ids TEXT NOT NULL DEFAULT '[]',
     deadline TEXT,
     budget REAL NOT NULL DEFAULT 0.0 CHECK (budget >= 0.0),
-    status TEXT NOT NULL DEFAULT 'planning'
+    status TEXT NOT NULL DEFAULT 'planning',
+    version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1)
 );
 
 CREATE INDEX idx_projects_status ON projects (status);
@@ -2595,7 +2596,7 @@ CREATE TABLE plans (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     project TEXT NOT NULL CHECK (LENGTH(TRIM(project)) > 0),
     objective_id TEXT NOT NULL CHECK (LENGTH(TRIM(objective_id)) > 0),
-    objective_title TEXT NOT NULL DEFAULT '',
+    objective_title TEXT NOT NULL CHECK (LENGTH(TRIM(objective_title)) > 0),
     parent_task_id TEXT NOT NULL CHECK (LENGTH(TRIM(parent_task_id)) > 0),
     items TEXT NOT NULL
     CHECK (JSON_VALID(items) AND JSON_TYPE(items) = 'array' AND JSON_ARRAY_LENGTH(items) > 0),
@@ -2626,6 +2627,5 @@ CREATE TABLE plan_item_comments (
     body TEXT NOT NULL CHECK (LENGTH(TRIM(body)) > 0),
     created_at TEXT NOT NULL
 );
-CREATE INDEX idx_plan_item_comments_plan ON plan_item_comments (plan_id);
 CREATE INDEX idx_plan_item_comments_plan_item
 ON plan_item_comments (plan_id, item_id, created_at);

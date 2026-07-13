@@ -530,8 +530,8 @@
     },
     "src/synthorg/engine/pipeline/service.py": {
       "cap": 1100,
-      "loc": 880,
-      "ratio": 0.8,
+      "loc": 901,
+      "ratio": 0.819,
       "tier": "complex_service"
     },
     "src/synthorg/engine/plan_execute_loop.py": {
@@ -1112,8 +1112,8 @@
     },
     "src/synthorg/persistence/postgres/plan_repo.py": {
       "cap": 500,
-      "loc": 453,
-      "ratio": 0.906,
+      "loc": 412,
+      "ratio": 0.824,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/project_brain_repo.py": {
@@ -1238,8 +1238,8 @@
     },
     "src/synthorg/persistence/sqlite/project_repo.py": {
       "cap": 500,
-      "loc": 419,
-      "ratio": 0.838,
+      "loc": 446,
+      "ratio": 0.892,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/session_repo.py": {
@@ -1603,22 +1603,22 @@
     "synthorg.core.auth.roles": 31,
     "synthorg.core.autonomy_enums": 36,
     "synthorg.core.boundary": 65,
-    "synthorg.core.clock": 225,
-    "synthorg.core.critical_errors": 663,
-    "synthorg.core.domain_errors": 242,
+    "synthorg.core.clock": 226,
+    "synthorg.core.critical_errors": 664,
+    "synthorg.core.domain_errors": 243,
     "synthorg.core.effective_autonomy": 24,
     "synthorg.core.error_taxonomy": 63,
     "synthorg.core.iso_datetime": 30,
     "synthorg.core.memory_enums": 49,
     "synthorg.core.normalization": 114,
     "synthorg.core.pagination": 33,
-    "synthorg.core.persistence_errors": 251,
+    "synthorg.core.persistence_errors": 252,
     "synthorg.core.project_enums": 31,
     "synthorg.core.registry": 28,
     "synthorg.core.role": 21,
     "synthorg.core.task": 126,
     "synthorg.core.task_enums": 114,
-    "synthorg.core.types": 1265,
+    "synthorg.core.types": 1266,
     "synthorg.engine.context": 44,
     "synthorg.engine.decomposition.models": 38,
     "synthorg.engine.errors": 94,
@@ -1673,9 +1673,9 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 23,
     "synthorg.notifications.models": 24,
-    "synthorg.observability": 1840,
+    "synthorg.observability": 1842,
     "synthorg.observability.background_tasks": 27,
-    "synthorg.observability.events.api": 217,
+    "synthorg.observability.events.api": 218,
     "synthorg.observability.events.approval_gate": 25,
     "synthorg.observability.events.chief_of_staff": 35,
     "synthorg.observability.events.client": 24,
@@ -1795,7 +1795,7 @@
     },
     "synthorg.engine.pipeline.service:DefaultWorkPipeline": {
       "lcom4": 1,
-      "loc": 777
+      "loc": 795
     },
     "synthorg.engine.review_gate:ReviewGateService": {
       "lcom4": 1,

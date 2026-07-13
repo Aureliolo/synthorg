@@ -47,6 +47,22 @@ class TestPlanItemCommentRepository:
         assert [c.id for c in result] == [as_uuid("c1"), as_uuid("c2")]
         assert result[0].author == "reviewer"
 
+    async def test_query_paginates_with_limit_and_offset(
+        self, backend: PersistenceBackend
+    ) -> None:
+        for i in range(5):
+            await backend.plan_comments.append(_comment(f"c{i}", minute=i))
+
+        first = await backend.plan_comments.query(
+            PlanItemCommentFilterSpec(plan_id=NotBlankStr("plan-1")), limit=2
+        )
+        assert [c.id for c in first] == [as_uuid("c0"), as_uuid("c1")]
+
+        second = await backend.plan_comments.query(
+            PlanItemCommentFilterSpec(plan_id=NotBlankStr("plan-1")), limit=2, offset=2
+        )
+        assert [c.id for c in second] == [as_uuid("c2"), as_uuid("c3")]
+
     async def test_query_narrows_to_one_item(self, backend: PersistenceBackend) -> None:
         await backend.plan_comments.append(_comment("a", item_id="item-1"))
         await backend.plan_comments.append(_comment("b", item_id="item-2"))

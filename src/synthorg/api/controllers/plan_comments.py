@@ -9,8 +9,7 @@ broadcast on the shared ``plans`` WebSocket channel so an open workspace sees it
 live.
 """
 
-from typing import Annotated, Final
-from uuid import uuid4
+from typing import Annotated
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State
@@ -23,15 +22,26 @@ from synthorg.api.dto_plans import PlanCommentPayload
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.services.plan_comment_service import PlanCommentService
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.plan_comment import PlanItemComment
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence.plan_comment_protocol import PlanItemCommentFilterSpec
 from synthorg.persistence.state import persistence_of
 
-#: A plan's whole thread is loaded at once (threads are naturally bounded); the
-#: cap guards against an unbounded materialisation on a pathological plan.
-_MAX_THREAD: Final[int] = 500
+
+def _service(state: State) -> PlanCommentService:
+    """Build the per-request :class:`PlanCommentService`.
+
+    Returns:
+        A service bound to this backend's comment + plan repositories and clock.
+    """
+    persistence = persistence_of(state.app_state)
+    return PlanCommentService(
+        comments=persistence.plan_comments,
+        plans=persistence.plans,
+        clock=state.app_state.clock,
+    )
+
 
 PlanCommentItemFilter = Annotated[
     NotBlankStr | None,
@@ -66,10 +76,7 @@ class PlanCommentController(Controller):
         Returns:
             The plan's comments, oldest first.
         """
-        comments = await persistence_of(state.app_state).plan_comments.query(
-            PlanItemCommentFilterSpec(plan_id=plan_id, item_id=item_id),
-            limit=_MAX_THREAD,
-        )
+        comments = await _service(state).list_comments(plan_id, item_id=item_id)
         return ApiResponse(data=list(comments))
 
     @post(
@@ -102,17 +109,15 @@ class PlanCommentController(Controller):
 
         Raises:
             UnauthorizedError: If the user is missing from the request scope.
+            NotFoundError: The plan or item does not exist (404).
         """
         auth_user = require_authenticated_user(request)
-        comment = PlanItemComment(
-            id=uuid4(),
+        comment = await _service(state).add_comment(
             plan_id=plan_id,
             item_id=item_id,
             author=NotBlankStr(auth_user.username),
             body=data.body,
-            created_at=state.app_state.clock.now(),
         )
-        await persistence_of(state.app_state).plan_comments.append(comment)
         publish_ws_event(
             request,
             WsEventType.PLAN_COMMENT_ADDED,

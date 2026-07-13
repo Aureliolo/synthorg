@@ -8,6 +8,7 @@ import pytest
 from pydantic import JsonValue
 
 from synthorg.core.completion_enums import FinishReason
+from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import (
     Complexity,
@@ -484,6 +485,56 @@ class TestParseToolCallResponse:
         response = _make_tool_call_response(args)
         plan = parse_tool_call_response(response, "task-1")
         assert plan.subtasks[0].satisfies == ()
+
+    def test_decision_kind_and_options_parse_onto_the_subtask(self) -> None:
+        """A ``decision`` subtask with options parses into a DECISION item."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Choose the rendering stack",
+                    "description": "Canvas or DOM",
+                    "acceptance_criteria": ["decision recorded"],
+                    "kind": "decision",
+                    "options": [
+                        {
+                            "id": "canvas",
+                            "title": "Canvas",
+                            "summary": "Fast, lower-level",
+                            "recommended": True,
+                        },
+                        {
+                            "id": "dom",
+                            "title": "DOM",
+                            "summary": "Simple, slower",
+                            "recommended": False,
+                        },
+                    ],
+                }
+            ],
+        }
+        response = _make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        subtask = plan.subtasks[0]
+        assert subtask.kind is PlanItemKind.DECISION
+        assert [o.id for o in subtask.options] == ["canvas", "dom"]
+
+    def test_unknown_kind_defaults_to_work(self) -> None:
+        """An unrecognised ``kind`` string defaults to WORK, not an error."""
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Build",
+                    "description": "Do it",
+                    "acceptance_criteria": ["done"],
+                    "kind": "mystery",
+                }
+            ],
+        }
+        response = _make_tool_call_response(args)
+        plan = parse_tool_call_response(response, "task-1")
+        assert plan.subtasks[0].kind is PlanItemKind.WORK
 
     def test_open_questions_and_assumptions_parse_onto_the_plan(self) -> None:
         """Plan-level open_questions + assumptions parse off the tool arguments."""

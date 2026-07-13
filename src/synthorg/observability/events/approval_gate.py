@@ -43,6 +43,19 @@ APPROVAL_GATE_REVIEW_AUDIT_DRAIN_FAILED: Final[str] = (
 APPROVAL_GATE_DECISION_RECORD_FAILED: Final[str] = (
     "approval_gate.decision.record_failed"
 )
+# Plan-review resume failure modes, kept distinct from the generic
+# APPROVAL_GATE_RESUME_FAILED so an operator can tell a dispatch failure from a
+# status-sync lag from a decision-record miss without parsing a free-text note.
+APPROVAL_GATE_PLAN_DISPATCH_FAILED: Final[str] = "approval_gate.plan.dispatch_failed"
+APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED: Final[str] = (
+    "approval_gate.plan.status_sync_failed"
+)
+APPROVAL_GATE_PLAN_TASK_TRANSITION_FAILED: Final[str] = (
+    "approval_gate.plan.task_transition_failed"
+)
+APPROVAL_GATE_PLAN_DECISION_RECORD_FAILED: Final[str] = (
+    "approval_gate.plan.decision_record_failed"
+)
 APPROVAL_GATE_TASK_NOT_FOUND: Final[str] = "approval_gate.task.not_found"
 APPROVAL_GATE_TASK_UNASSIGNED: Final[str] = "approval_gate.task.unassigned"
 APPROVAL_GATE_NOTIFICATION_FAILED: Final[str] = "approval_gate.notification.failed"

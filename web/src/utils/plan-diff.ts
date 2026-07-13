@@ -38,10 +38,23 @@ const DIFF_FIELDS: ReadonlyArray<readonly [keyof PlanItem, string]> = [
   ['acceptance_criteria', 'acceptance criteria'],
   ['expected_artifacts', 'artifacts'],
   ['satisfies', 'coverage'],
+  ['kind', 'kind'],
+  ['options', 'options'],
   ['chosen_option_id', 'chosen option'],
 ]
 
+// ``options`` is an array of objects, so a reference compare would flag every
+// round-tripped plan as changed; compare a content signature instead.
+function optionsSignature(item: PlanItem): string {
+  return JSON.stringify(
+    item.options.map((o) => [o.id, o.title, o.summary, o.recommended]),
+  )
+}
+
 function fieldDiffers(a: PlanItem, b: PlanItem, field: keyof PlanItem): boolean {
+  if (field === 'options') {
+    return optionsSignature(a) !== optionsSignature(b)
+  }
   const av = a[field]
   const bv = b[field]
   if (Array.isArray(av) && Array.isArray(bv)) {

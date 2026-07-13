@@ -26,6 +26,7 @@ export interface PlansState {
   requestPlanChanges: (id: string, note: string) => Promise<Plan | null>
   setStatusFilter: (status: PlanStatus | null) => void
   clearDetail: () => void
+  reset: () => void
   updateFromWsEvent: (event: WsEvent) => void
 }
 

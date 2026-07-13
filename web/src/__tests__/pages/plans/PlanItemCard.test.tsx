@@ -51,7 +51,7 @@ describe('PlanItemCard', () => {
   })
 
   it('offers a Choose action only on unchosen options when editable', async () => {
-    const onChooseOption = vi.fn()
+    const onChooseOption = vi.fn().mockResolvedValue(undefined)
     render(
       <PlanItemCard
         item={makeDecision()}
@@ -61,8 +61,9 @@ describe('PlanItemCard', () => {
         onChooseOption={onChooseOption}
       />,
     )
-    // One Choose button: the already-chosen option (SQLite) shows none.
-    const choose = screen.getAllByRole('button', { name: 'Choose' })
+    // One Choose button (each labelled by its option): the already-chosen
+    // option (SQLite) shows none.
+    const choose = screen.getAllByRole('button', { name: /^Choose / })
     expect(choose).toHaveLength(1)
     await userEvent.click(choose[0]!)
     expect(onChooseOption).toHaveBeenCalledWith('decide-1', 'opt-a')
@@ -77,6 +78,6 @@ describe('PlanItemCard', () => {
         titleById={NO_TITLES}
       />,
     )
-    expect(screen.queryByRole('button', { name: 'Choose' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Choose / })).not.toBeInTheDocument()
   })
 })

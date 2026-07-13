@@ -1214,10 +1214,16 @@ class FakeProjectRepository:
             raise DuplicateRecordError(msg)
         self._projects[str(project.id)] = project
 
-    async def update(self, project: Project) -> None:
-        if str(project.id) not in self._projects:
+    async def update(
+        self, project: Project, *, expected_version: int | None = None
+    ) -> None:
+        existing = self._projects.get(str(project.id))
+        if existing is None:
             msg = f"No project with id {project.id!r}"
             raise RecordNotFoundError(msg)
+        if expected_version is not None and existing.version != expected_version:
+            msg = f"Project {project.id!r} was modified concurrently"
+            raise PersistenceVersionConflictError(msg)
         self._projects[str(project.id)] = project
 
     async def save(self, entity: Project) -> None:

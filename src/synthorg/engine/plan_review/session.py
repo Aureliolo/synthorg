@@ -12,19 +12,25 @@ submits a usable verdict, it returns ``None`` and the plan is parked for human
 approval without a panel review (a greenlight is never blocked on the panel).
 """
 
+import asyncio
 from typing import override
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan_review import PlanReview, PlanReviewerVerdict
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.context import AgentContext
 from synthorg.engine.decomposition.models import DecompositionResult, SubtaskDefinition
-from synthorg.engine.loop_protocol import BudgetChecker, ShutdownChecker
+from synthorg.engine.loop_protocol import (
+    BudgetChecker,
+    ShutdownChecker,
+    TerminationReason,
+)
 from synthorg.engine.pipeline.plan_review_panel_port import PlanReviewPanel
 from synthorg.engine.plan_review._panel_selection import select_review_panel
 from synthorg.engine.plan_review.models import PlanReviewPanelConfig
@@ -32,13 +38,15 @@ from synthorg.engine.plan_review.review_tool import SubmitPlanReviewTool, Verdic
 from synthorg.engine.plan_review.synthesis import synthesise_review
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.react_loop import ReactLoop
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.plan_review import (
     PLAN_REVIEW_PANEL_COMPLETED,
     PLAN_REVIEW_PANEL_EMPTY,
     PLAN_REVIEW_PANEL_STARTED,
     PLAN_REVIEW_REVIEWER_COMPLETED,
     PLAN_REVIEW_REVIEWER_NO_VERDICT,
+    PLAN_REVIEW_REVIEWER_PROVIDER_ERROR,
+    PLAN_REVIEW_REVIEWER_SESSION_FAILED,
     PLAN_REVIEW_REVIEWER_STARTED,
 )
 from synthorg.providers.cost_recording import cost_recording_scope
@@ -121,12 +129,13 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             panel_size=len(panel),
             subtask_count=len(plan.plan.subtasks),
         )
-        rendered = _render_plan(task, plan)
-        verdicts: list[PlanReviewerVerdict] = []
-        for reviewer in panel:
-            verdict = await self._run_reviewer_session(task, reviewer, rendered)
-            if verdict is not None:
-                verdicts.append(verdict)
+        rendered = _render_plan(plan)
+        async with asyncio.TaskGroup() as group:
+            sessions = [
+                group.create_task(self._run_reviewer_session(task, reviewer, rendered))
+                for reviewer in panel
+            ]
+        verdicts = [v for session in sessions if (v := session.result()) is not None]
         if not verdicts:
             logger.info(
                 PLAN_REVIEW_PANEL_EMPTY, task_id=str(task.id), reason="no_verdicts"
@@ -149,45 +158,59 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
     ) -> PlanReviewerVerdict | None:
         """Run one panellist's bounded review session, capturing its verdict.
 
+        Isolated so one panellist's failure never blocks the greenlight: any
+        unexpected exception (critical errors excepted) degrades to "no verdict"
+        rather than aborting the panel, so the fan-out under a ``TaskGroup``
+        never cancels its siblings on a single bad session.
+
         Returns:
             The panellist's :class:`PlanReviewerVerdict`, or ``None`` when the
             session ended without submitting a usable verdict.
         """
         capture = VerdictCapture()
-        invoker = self._build_invoker(reviewer, capture)
-        ctx = self._build_context(reviewer, task, rendered_plan)
-        logger.info(
-            PLAN_REVIEW_REVIEWER_STARTED,
-            task_id=str(task.id),
-            reviewer_id=str(reviewer.id),
-            reviewer_role=reviewer.role,
-        )
-        loop = ReactLoop(approval_gate=None)
-        async with cost_recording_scope(
-            cost_tracker=self._cost_tracker,
-            agent_id=NotBlankStr(str(reviewer.id)),
-            task_id=str(task.id),
-            # Panellist-run review session, not a registered system prompt class.
-            purpose=None,
-            call_category=LLMCallCategory.SYSTEM,
-        ):
-            await loop.execute(
-                context=ctx,
-                provider=self._provider,
-                tool_invoker=invoker,
-                budget_checker=self._budget_checker(),
-                shutdown_checker=self._shutdown_checker,
-                completion_config=CompletionConfig(
-                    temperature=self._config.temperature
-                ),
-            )
-        verdict = capture.verdict
-        if verdict is None:
-            logger.warning(
-                PLAN_REVIEW_REVIEWER_NO_VERDICT,
+        try:
+            invoker = self._build_invoker(reviewer, capture)
+            ctx = self._build_context(reviewer, task, rendered_plan)
+            logger.info(
+                PLAN_REVIEW_REVIEWER_STARTED,
                 task_id=str(task.id),
                 reviewer_id=str(reviewer.id),
+                reviewer_role=reviewer.role,
             )
+            loop = ReactLoop(approval_gate=None)
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=NotBlankStr(str(reviewer.id)),
+                task_id=str(task.id),
+                # Panellist-run review session, not a registered system prompt.
+                purpose=None,
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                result = await loop.execute(
+                    context=ctx,
+                    provider=self._provider,
+                    tool_invoker=invoker,
+                    budget_checker=self._budget_checker(),
+                    shutdown_checker=self._shutdown_checker,
+                    completion_config=CompletionConfig(
+                        temperature=self._config.temperature
+                    ),
+                )
+        except Exception as exc:  # noqa: BLE001 -- isolate one panellist's failure
+            # lint-allow: swallow-ok -- panellist failure degrades to no-verdict
+            reraise_critical(exc)
+            logger.warning(
+                PLAN_REVIEW_REVIEWER_SESSION_FAILED,
+                task_id=str(task.id),
+                reviewer_id=str(reviewer.id),
+                reviewer_role=reviewer.role,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        verdict = capture.verdict
+        if verdict is None:
+            self._log_no_verdict(task, reviewer, result.termination_reason)
             return None
         logger.info(
             PLAN_REVIEW_REVIEWER_COMPLETED,
@@ -197,6 +220,33 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             finding_count=len(verdict.findings),
         )
         return verdict
+
+    def _log_no_verdict(
+        self,
+        task: Task,
+        reviewer: AgentIdentity,
+        termination: TerminationReason,
+    ) -> None:
+        """Log a verdict-less session, distinguishing a provider failure.
+
+        A session that ended in an ``ERROR`` termination (a provider outage the
+        loop absorbed) is logged distinctly from a reviewer that simply chose
+        not to submit, so a systematic outage is observable rather than looking
+        like a quiet panel.
+        """
+        if termination is TerminationReason.ERROR:
+            logger.warning(
+                PLAN_REVIEW_REVIEWER_PROVIDER_ERROR,
+                task_id=str(task.id),
+                reviewer_id=str(reviewer.id),
+                reviewer_role=reviewer.role,
+            )
+            return
+        logger.warning(
+            PLAN_REVIEW_REVIEWER_NO_VERDICT,
+            task_id=str(task.id),
+            reviewer_id=str(reviewer.id),
+        )
 
     def _build_invoker(
         self,
@@ -296,7 +346,7 @@ def _review_brief(reviewer: AgentIdentity, task: Task, rendered_plan: str) -> st
     )
 
 
-def _render_plan(task: Task, plan: DecompositionResult) -> str:
+def _render_plan(plan: DecompositionResult) -> str:
     """Render the plan's items as review-legible text.
 
     Returns:
@@ -304,7 +354,6 @@ def _render_plan(task: Task, plan: DecompositionResult) -> str:
         dependencies, acceptance criteria, and decision options) for the
         reviewer to read.
     """
-    del task
     lines = [f"Plan structure: {plan.plan.task_structure.value}", "Items:"]
     for index, subtask in enumerate(plan.plan.subtasks, start=1):
         lines.extend(_render_item(index, subtask))

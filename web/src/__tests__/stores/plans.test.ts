@@ -8,20 +8,10 @@ import { server } from '@/test-setup'
 
 import { makePlan } from '../helpers/factories'
 
-function resetStore(): void {
-  usePlansStore.setState({
-    plans: [],
-    listLoading: false,
-    listError: null,
-    statusFilter: null,
-    selectedPlan: null,
-    detailLoading: false,
-    detailError: null,
-  })
-}
-
 describe('usePlansStore', () => {
-  beforeEach(resetStore)
+  beforeEach(() => {
+    usePlansStore.getState().reset()
+  })
 
   describe('fetchPlans', () => {
     it('populates plans on success', async () => {

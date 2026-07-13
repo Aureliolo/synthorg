@@ -14142,7 +14142,7 @@ export type components = {
              */
             readonly version: number;
             /**
-             * @description Snapshots of prior submitted versions, for diffing
+             * @description Snapshots of prior submitted versions, for diffing (oldest dropped past 20)
              * @default []
              */
             readonly version_history: readonly components["schemas"]["PlanVersionSnapshot"][];
@@ -14192,7 +14192,7 @@ export type components = {
              */
             readonly required_tags: readonly string[];
             /**
-             * @description Objective success criteria this item advances
+             * @description Advisory tags naming the objective criteria this item advances; matched leniently for the coverage map, not enforced to name an entry of the plan's objective_criteria
              * @default []
              */
             readonly satisfies: readonly string[];
@@ -14339,8 +14339,10 @@ export type components = {
          * @description A reviewer's (or the panel's synthesised) verdict on a plan.
          *
          *     ``ENDORSED`` means the reviewer backs the plan as-is. ``CONCERNS`` means the
-         *     reviewer raised findings the owner should address; the synthesised
-         *     ``REVISION_REQUESTED`` sends the plan back to the owner to revise.
+         *     reviewer raised findings the owner should address. ``REVISION_REQUESTED``
+         *     sends the plan back to the owner to revise; a panellist may pick it
+         *     directly, and it is also the synthesised overall verdict when any panellist
+         *     requests one.
          * @enum {string}
          */
         readonly PlanReviewVerdict: "endorsed" | "concerns" | "revision_requested";
@@ -14660,6 +14662,11 @@ export type components = {
              * @default []
              */
             readonly team: readonly string[];
+            /**
+             * @description Optimistic-concurrency revision, bumped on each edit
+             * @default 1
+             */
+            readonly version: number;
         };
         /** Citation */
         readonly project_brain_models_Citation: {

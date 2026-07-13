@@ -13,9 +13,10 @@ from synthorg.core.persistence_errors import (
 from synthorg.core.plan_comment import PlanItemComment
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.plan import (
-    PERSISTENCE_PLAN_DESERIALIZE_FAILED,
-    PERSISTENCE_PLAN_LIST_FAILED,
-    PERSISTENCE_PLAN_SAVE_FAILED,
+    PERSISTENCE_PLAN_COMMENT_DESERIALIZE_FAILED,
+    PERSISTENCE_PLAN_COMMENT_LIST_FAILED,
+    PERSISTENCE_PLAN_COMMENT_PURGE_FAILED,
+    PERSISTENCE_PLAN_COMMENT_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
@@ -91,7 +92,7 @@ class SQLitePlanItemCommentRepository:
             except (sqlite3.IntegrityError, aiosqlite.IntegrityError) as exc:
                 await self._safe_rollback()
                 logger.warning(
-                    PERSISTENCE_PLAN_SAVE_FAILED,
+                    PERSISTENCE_PLAN_COMMENT_SAVE_FAILED,
                     plan_id=event.plan_id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
@@ -104,7 +105,7 @@ class SQLitePlanItemCommentRepository:
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 logger.warning(
-                    PERSISTENCE_PLAN_SAVE_FAILED,
+                    PERSISTENCE_PLAN_COMMENT_SAVE_FAILED,
                     plan_id=event.plan_id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
@@ -127,10 +128,10 @@ class SQLitePlanItemCommentRepository:
         Raises:
             QueryError: If the operation fails or pagination args are invalid.
         """
-        validate_pagination_args(
+        limit = validate_pagination_args(
             limit,
             offset,
-            event=PERSISTENCE_PLAN_LIST_FAILED,
+            event=PERSISTENCE_PLAN_COMMENT_LIST_FAILED,
             plan_id=filter_spec.plan_id,
         )
         where = "plan_id = ?"
@@ -148,7 +149,7 @@ class SQLitePlanItemCommentRepository:
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             logger.warning(
-                PERSISTENCE_PLAN_LIST_FAILED,
+                PERSISTENCE_PLAN_COMMENT_LIST_FAILED,
                 plan_id=filter_spec.plan_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -159,7 +160,7 @@ class SQLitePlanItemCommentRepository:
             return tuple(_row_to_comment(row) for row in rows)
         except (ValueError, ValidationError, KeyError) as exc:
             logger.warning(
-                PERSISTENCE_PLAN_DESERIALIZE_FAILED,
+                PERSISTENCE_PLAN_COMMENT_DESERIALIZE_FAILED,
                 plan_id=filter_spec.plan_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -188,7 +189,7 @@ class SQLitePlanItemCommentRepository:
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
                 logger.warning(
-                    PERSISTENCE_PLAN_SAVE_FAILED,
+                    PERSISTENCE_PLAN_COMMENT_PURGE_FAILED,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -202,7 +203,7 @@ class SQLitePlanItemCommentRepository:
             await self._db.rollback()
         except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
             logger.warning(
-                PERSISTENCE_PLAN_SAVE_FAILED,
+                PERSISTENCE_PLAN_COMMENT_SAVE_FAILED,
                 error_type=type(rollback_exc).__name__,
                 rollback_failed=True,
             )

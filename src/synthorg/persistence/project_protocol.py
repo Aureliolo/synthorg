@@ -65,7 +65,9 @@ class ProjectRepository(
         """
         ...
 
-    async def update(self, project: Project) -> None:
+    async def update(
+        self, project: Project, *, expected_version: int | None = None
+    ) -> None:
         """Update an existing project, failing if no row matches.
 
         Atomic update-only operation paired with :meth:`create` to
@@ -75,8 +77,13 @@ class ProjectRepository(
         Args:
             project: The project to update.  ``project.id`` selects
                 the row.
+            expected_version: When supplied, the write only lands if the
+                stored row still carries this version (optimistic concurrency);
+                a concurrent write that moved the version is rejected.
 
         Raises:
+            PersistenceVersionConflictError: ``expected_version`` was supplied
+                and the stored version has moved (a concurrent write won).
             RecordNotFoundError: No project with this id exists.
             QueryError: If the database operation fails.
         """

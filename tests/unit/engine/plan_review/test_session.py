@@ -145,3 +145,16 @@ class TestAgentSessionPlanReviewPanel:
         )
 
         assert review is None
+
+    async def test_reviewer_session_failure_degrades_without_raising(self) -> None:
+        # A failing reviewer session must never abort the whole gated-plan flow:
+        # the panel degrades to no review (a greenlight is never blocked on it).
+        provider = ScriptedProvider(error=RuntimeError("provider down"))
+        panel = _panel(provider)
+        reviewer = _agent("cto", role="CTO", level=SeniorityLevel.C_SUITE)
+
+        review = await panel.review(
+            task=_task(), plan=_plan(), agents=(reviewer,), owner=None
+        )
+
+        assert review is None

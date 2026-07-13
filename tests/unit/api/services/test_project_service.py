@@ -39,7 +39,10 @@ class _FakeProjectRepo:
             raise DuplicateRecordError(msg)
         self._rows[str(project.id)] = project
 
-    async def update(self, project: Project) -> None:
+    async def update(
+        self, project: Project, *, expected_version: int | None = None
+    ) -> None:
+        del expected_version
         if str(project.id) not in self._rows:
             msg = f"No project with id {project.id!r}"
             raise RecordNotFoundError(msg)

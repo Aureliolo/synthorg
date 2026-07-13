@@ -27,7 +27,10 @@ from synthorg.core.plan_review import PlanReview
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult
-from synthorg.engine.decomposition.plan_mapping import plan_from_decomposition
+from synthorg.engine.decomposition.plan_mapping import (
+    PlanProvenance,
+    plan_from_decomposition,
+)
 from synthorg.engine.pipeline.models import PlanReviewHandoff, WorkItem
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -126,15 +129,17 @@ class PlanReviewApprovalGate:
         now = self._clock.now()
         durable_plan = plan_from_decomposition(
             plan,
-            project=work_item.project,
-            objective_id=work_item.correlation_id,
-            objective_title=NotBlankStr(task.title),
-            parent_task_id=NotBlankStr(str(task.id)),
-            created_at=now,
-            forecast_id=work_item.forecast_id,
-            review=review,
-            objective_criteria=tuple(
-                NotBlankStr(c.description) for c in task.acceptance_criteria
+            PlanProvenance(
+                project=work_item.project,
+                objective_id=work_item.correlation_id,
+                objective_title=NotBlankStr(task.title),
+                parent_task_id=NotBlankStr(str(task.id)),
+                created_at=now,
+                forecast_id=work_item.forecast_id,
+                review=review,
+                objective_criteria=tuple(
+                    NotBlankStr(c.description) for c in task.acceptance_criteria
+                ),
             ),
         )
         await self._plans.create(durable_plan)

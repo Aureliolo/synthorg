@@ -560,6 +560,7 @@ waves; it runs small coordination groups drawn from the roster.
 | Scope | Bound | Enforcement |
 |-------|-------|-------------|
 | Per-coordination-group (agents in a single `coordination_topology` wave) | **3-4 agents** (recommended) | `CoordinationConfig.max_concurrency_per_wave` |
+| Per plan-review panel (stakeholder leads reviewing a gated plan) | **4 default, 8 hard cap** | `coordination.plan_review_panel_size` |
 | Per-task total team (orchestrator + sub-agents + verifiers) | **~7 agents** | Soft cap; logged warning above threshold |
 | Per-meeting participants | **3-5 ideal, 8 hard cap** | Enforced by meeting protocol token budgets and quadratic-growth warnings (see [Meeting Protocol](communication-coordination.md#meeting-protocol)) |
 | Per-company / org roster | **No hard bound** | Organisational-simulation fidelity, not per-task reasoning efficiency |
@@ -603,10 +604,11 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    before reaching any prompt, and the system prompt appends the canonical
    `untrusted_content_directive`. See
    [SEC-1: Prompt Safety](../reference/sec-prompt-safety.md). When the plan-approval
-   gate is enabled, a bounded **stakeholder review panel** (sized to the plan within
-   the group-size bounds below, excluding the owner) reviews the decomposed plan
-   between decompose and the human gate and attaches its consolidated verdict to the
-   durable plan. See [Plan Review](plan-review.md).
+   gate is enabled, a bounded **stakeholder review panel** (sized by
+   `coordination.plan_review_panel_size`, default 4 and hard-capped at 8, excluding
+   the owner) reviews the decomposed plan between decompose and the human gate and
+   attaches its consolidated verdict to the durable plan. See
+   [Plan Review](plan-review.md).
 2. **Route**: `TaskRoutingService` assigns each subtask to an agent based on
    skills, workload, and topology
 3. **Resolve topology**: reads topology from routing decisions; falls back to

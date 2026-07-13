@@ -14,6 +14,8 @@ build regardless) and quietly no-ops when the brain is not wired, so a
 brain-write fault never strands an approved plan.
 """
 
+from typing import Final
+
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan import Plan
@@ -21,7 +23,7 @@ from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
-    APPROVAL_GATE_RESUME_FAILED,
+    APPROVAL_GATE_PLAN_DECISION_RECORD_FAILED,
 )
 from synthorg.project_brain.models import (
     BrainEntryStatus,
@@ -34,8 +36,8 @@ logger = get_logger(__name__)
 #: Field bounds from ``project_brain.models`` (BrainTitle / BrainShortText); the
 #: option text is clamped to fit so a long option cannot fail model validation
 #: and lose the whole plan-decision record.
-_TITLE_MAX: int = 512
-_TEXT_MAX: int = 4096
+_TITLE_MAX: Final[int] = 512
+_TEXT_MAX: Final[int] = 4096
 
 
 async def record_plan_decisions(
@@ -85,7 +87,7 @@ async def record_plan_decisions(
         except Exception as exc:  # noqa: BLE001 -- best-effort: never strand dispatch
             reraise_critical(exc)
             logger.warning(
-                APPROVAL_GATE_RESUME_FAILED,
+                APPROVAL_GATE_PLAN_DECISION_RECORD_FAILED,
                 plan_id=str(plan.id),
                 item_id=item.id,
                 note="failed to record plan decision in the brain",

@@ -208,7 +208,9 @@ class _FakeProjectRepo:
         self.items[str(project.id)] = project
         self.created.append(project)
 
-    async def update(self, project: Project) -> None:
+    async def update(
+        self, project: Project, *, expected_version: int | None = None
+    ) -> None:
         raise NotImplementedError
 
     async def save(self, entity: Project) -> None:

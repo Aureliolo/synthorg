@@ -16,8 +16,16 @@ from synthorg.core.plan_enums import PlanReviewFindingCategory, PlanReviewVerdic
 from synthorg.core.plan_review import PlanReviewerVerdict, PlanReviewFinding
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import PlanReviewParseError
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.plan_review import (
+    PLAN_REVIEW_REVIEWER_ACCEPTED,
+    PLAN_REVIEW_REVIEWER_DUPLICATE_SUBMIT,
+    PLAN_REVIEW_VALIDATION_ERROR,
+)
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
+
+logger = get_logger(__name__)
 
 REVIEW_TOOL_NAME: Final[str] = "submit_plan_review"
 
@@ -230,6 +238,13 @@ class SubmitPlanReviewTool(BaseTool):
                 reviewer_id=self._reviewer_id,
             )
         except PlanReviewParseError as exc:
+            logger.warning(
+                PLAN_REVIEW_VALIDATION_ERROR,
+                reviewer_id=self._reviewer_id,
+                reviewer_role=self._reviewer_role,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ToolExecutionResult(
                 content=(
                     f"Review rejected: {exc}. Fix the issue and call "
@@ -237,7 +252,23 @@ class SubmitPlanReviewTool(BaseTool):
                 ),
                 is_error=True,
             )
+        if self._capture.verdict is not None:
+            # The tool is instructed to be called once; a second successful
+            # call overwrites the earlier verdict, so surface it rather than
+            # silently replacing it.
+            logger.warning(
+                PLAN_REVIEW_REVIEWER_DUPLICATE_SUBMIT,
+                reviewer_id=self._reviewer_id,
+                reviewer_role=self._reviewer_role,
+            )
         self._capture.verdict = verdict
+        logger.debug(
+            PLAN_REVIEW_REVIEWER_ACCEPTED,
+            reviewer_id=self._reviewer_id,
+            reviewer_role=self._reviewer_role,
+            verdict=verdict.verdict.value,
+            finding_count=len(verdict.findings),
+        )
         return ToolExecutionResult(
             content=(
                 f"Review accepted ({verdict.verdict.value}, "

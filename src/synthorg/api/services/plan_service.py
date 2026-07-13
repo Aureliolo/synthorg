@@ -9,8 +9,6 @@ and every write is version-guarded so a concurrent edit cannot silently clobber
 another.
 """
 
-from typing import Final
-
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.clock import Clock
@@ -22,7 +20,12 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
-from synthorg.core.plan import Plan, PlanItem, PlanVersionSnapshot
+from synthorg.core.plan import (
+    MAX_PLAN_VERSION_HISTORY,
+    Plan,
+    PlanItem,
+    PlanVersionSnapshot,
+)
 from synthorg.core.plan_enums import REWORKABLE_STATUSES, PlanStatus
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
@@ -41,10 +44,6 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
 
 logger = get_logger(__name__)
-
-# Cap the retained version history so a plan reworked many times cannot bloat
-# its row's JSON column without bound; the oldest snapshots drop off first.
-_MAX_VERSION_HISTORY: Final[int] = 20
 
 
 def _snapshot(plan: Plan) -> PlanVersionSnapshot:
@@ -174,7 +173,7 @@ class PlanService:
         # Snapshot the pre-edit version so a reviewer can diff the rework against
         # what the panel saw, capped so the JSON column cannot grow unbounded.
         history = (*existing.version_history, _snapshot(existing))[
-            -_MAX_VERSION_HISTORY:
+            -MAX_PLAN_VERSION_HISTORY:
         ]
         try:
             revised = Plan(

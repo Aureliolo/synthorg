@@ -39,6 +39,21 @@ logger = get_logger(__name__)
 
 _MAX_LIST_ROWS: Final[int] = 10_000
 
+_COLUMNS = (
+    "id, project, objective_id, objective_title, parent_task_id, items, "
+    "task_structure, coordination_topology, status, forecast_id, review, "
+    "open_questions, assumptions, objective_criteria, version_history, version, "
+    "created_at, updated_at"
+)
+_COLUMN_NAMES = tuple(name.strip() for name in _COLUMNS.split(","))
+# Derive placeholders + SET clauses from the single column list so the arity can
+# never drift from ``_row_params`` (the sqlite repo drift-proofs the same way).
+_INSERT_PLACEHOLDERS = "(" + ", ".join("%s" for _ in _COLUMN_NAMES) + ")"
+_UPDATE_SET = ", ".join(f"{name}=%s" for name in _COLUMN_NAMES if name != "id")
+_UPSERT_SET = ", ".join(
+    f"{name}=EXCLUDED.{name}" for name in _COLUMN_NAMES if name != "id"
+)
+
 
 def _row_to_plan(row: DictRow) -> Plan:
     """Reconstruct a ``Plan`` from a Postgres dict_row.
@@ -119,16 +134,8 @@ class PostgresPlanRepository:
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    """
-                    INSERT INTO plans (id, project, objective_id, objective_title,
-                                       parent_task_id, items, task_structure,
-                                       coordination_topology, status, forecast_id,
-                                       review, open_questions, assumptions,
-                                       objective_criteria, version_history, version,
-                                       created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s)
-                    """,
+                    f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608 -- fixed columns
+                    f"VALUES {_INSERT_PLACEHOLDERS}",
                     self._row_params(plan),
                 )
                 await conn.commit()
@@ -168,27 +175,8 @@ class PostgresPlanRepository:
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    f"""
-                    UPDATE plans SET
-                        project=%s,
-                        objective_id=%s,
-                        objective_title=%s,
-                        parent_task_id=%s,
-                        items=%s,
-                        task_structure=%s,
-                        coordination_topology=%s,
-                        status=%s,
-                        forecast_id=%s,
-                        review=%s,
-                        open_questions=%s,
-                        assumptions=%s,
-                        objective_criteria=%s,
-                        version_history=%s,
-                        version=%s,
-                        created_at=%s,
-                        updated_at=%s
-                    WHERE id=%s{guard}
-                    """,  # noqa: S608 -- guard is a fixed literal, values parameterized
+                    # ``_UPDATE_SET`` + guard are fixed literals; values parameterized.
+                    f"UPDATE plans SET {_UPDATE_SET} WHERE id=%s{guard}",  # noqa: S608
                     params,
                 )
                 rowcount = cur.rowcount
@@ -262,34 +250,10 @@ class PostgresPlanRepository:
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    """
-                    INSERT INTO plans (id, project, objective_id, objective_title,
-                                       parent_task_id, items, task_structure,
-                                       coordination_topology, status, forecast_id,
-                                       review, open_questions, assumptions,
-                                       objective_criteria, version_history, version,
-                                       created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s)
-                    ON CONFLICT(id) DO UPDATE SET
-                        project=EXCLUDED.project,
-                        objective_id=EXCLUDED.objective_id,
-                        objective_title=EXCLUDED.objective_title,
-                        parent_task_id=EXCLUDED.parent_task_id,
-                        items=EXCLUDED.items,
-                        task_structure=EXCLUDED.task_structure,
-                        coordination_topology=EXCLUDED.coordination_topology,
-                        status=EXCLUDED.status,
-                        forecast_id=EXCLUDED.forecast_id,
-                        review=EXCLUDED.review,
-                        open_questions=EXCLUDED.open_questions,
-                        assumptions=EXCLUDED.assumptions,
-                        objective_criteria=EXCLUDED.objective_criteria,
-                        version_history=EXCLUDED.version_history,
-                        version=EXCLUDED.version,
-                        created_at=EXCLUDED.created_at,
-                        updated_at=EXCLUDED.updated_at
-                    """,
+                    # Fixed columns + derived SET; values fully parameterized.
+                    f"INSERT INTO plans ({_COLUMNS}) "  # noqa: S608
+                    f"VALUES {_INSERT_PLACEHOLDERS} "
+                    f"ON CONFLICT(id) DO UPDATE SET {_UPSERT_SET}",
                     self._row_params(plan),
                 )
                 await conn.commit()

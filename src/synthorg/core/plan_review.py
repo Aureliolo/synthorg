@@ -45,7 +45,8 @@ class PlanReviewerVerdict(BaseModel):
         reviewer_role: The role the reviewer sits on the panel as (e.g. 'CTO').
         reviewer_id: The reviewing agent's identifier.
         verdict: This reviewer's verdict (endorsed, or concerns raised).
-        findings: The concerns this reviewer raised (empty when endorsed).
+        findings: The concerns this reviewer raised (typically empty when
+            endorsed, though an endorsement may still note minor findings).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -73,6 +74,7 @@ class PlanReview(BaseModel):
 
     verdict: PlanReviewVerdict = Field(description="Synthesised overall verdict")
     reviewers: tuple[PlanReviewerVerdict, ...] = Field(
+        min_length=1,
         description="Each panellist's verdict and findings",
     )
     summary: NotBlankStr | None = Field(

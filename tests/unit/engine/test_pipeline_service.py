@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
@@ -607,7 +608,13 @@ class TestOwnerStaffing:
         async def _get(_project_id: str) -> Project:
             return stored["project"]
 
-        async def _update(project: Project) -> Project:
+        async def _update(
+            project: Project, *, expected_version: int | None = None
+        ) -> Project:
+            current = stored["project"]
+            if expected_version is not None and current.version != expected_version:
+                msg = "project modified concurrently"
+                raise PersistenceVersionConflictError(msg)
             stored["project"] = project
             return project
 

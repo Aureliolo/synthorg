@@ -764,7 +764,9 @@ class _FakeProjectRepository:
     async def create(self, project: Project) -> None:
         pass
 
-    async def update(self, project: Project) -> None:
+    async def update(
+        self, project: Project, *, expected_version: int | None = None
+    ) -> None:
         pass
 
     async def save(self, entity: Project) -> None:
