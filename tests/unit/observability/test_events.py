@@ -326,6 +326,7 @@ class TestEventConstants:
             "skill_evolver",
             "procedural_memory",
             "pipeline",
+            "plan_review",
             "reporting",
             "review_pipeline",
             "red_team",
