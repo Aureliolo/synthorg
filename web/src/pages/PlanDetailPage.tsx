@@ -24,6 +24,7 @@ import { PlanEditor } from './plans/PlanEditor'
 import { PlanItemCard } from './plans/PlanItemCard'
 import { PlanMetricsHeader } from './plans/PlanMetricsHeader'
 import { PlanRequestChanges } from './plans/PlanRequestChanges'
+import { PlanReviewPanel } from './plans/PlanReviewPanel'
 import { PlanTimeline } from './plans/PlanTimeline'
 
 type Mode = 'view' | 'edit' | 'request-changes'
@@ -131,6 +132,7 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
       />
       <PlanMetricsHeader stats={stats} taskStructure={plan.task_structure} />
       <PlanAttentionPanel items={plan.items} criticalPath={criticalPath} />
+      <PlanReviewPanel review={plan.review} />
       <PlanTimeline items={plan.items} />
       <SectionCard title="Plan items" icon={ListTree}>
         <div className="flex flex-col gap-2">

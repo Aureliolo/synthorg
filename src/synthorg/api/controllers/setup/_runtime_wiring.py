@@ -151,6 +151,7 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
     )
     from synthorg.api.lifecycle_helpers.plan_review_wiring import (  # noqa: PLC0415
         wire_plan_review_gate,
+        wire_plan_review_panel,
     )
     from synthorg.api.lifecycle_helpers.refinement_wiring import (  # noqa: PLC0415
         wire_refinement_router,
@@ -212,6 +213,11 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
             await wire_refinement_router(app_state)
             await wire_conversational_actor(app_state, si_config=si_config)
         await wire_plan_review_gate(app_state)
+        await wire_plan_review_panel(
+            app_state,
+            provider_registry=registry,
+            cost_tracker=cost_tracker,
+        )
         await wire_sprint_service(app_state)
         await wire_kanban_board(app_state)
     except Exception as exc:

@@ -36,6 +36,7 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
 from synthorg.engine.pipeline.narrator_port import RunNarrator
+from synthorg.engine.pipeline.plan_review_panel_port import PlanReviewPanel
 from synthorg.engine.pipeline.plan_review_port import PlanReviewGate
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.pipeline.refinement_port import WorkRefinementRouter
@@ -177,6 +178,10 @@ class ForecastGate:
     def attach_plan_review_gate(self, gate: PlanReviewGate) -> None:
         """Forward the plan-review gate to the wrapped pipeline (passthrough)."""
         self._work_pipeline.attach_plan_review_gate(gate)
+
+    def attach_plan_review_panel(self, panel: PlanReviewPanel) -> None:
+        """Forward the plan-review panel to the wrapped pipeline (passthrough)."""
+        self._work_pipeline.attach_plan_review_panel(panel)
 
     async def _gated_dispatch(self, work_item: WorkItem) -> WorkPipelineResult:
         """Run the forecast-gated dispatch branches.

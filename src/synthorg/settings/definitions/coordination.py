@@ -183,6 +183,80 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="plan_review_panel_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Run a bounded stakeholder panel over a gated plan before the human"
+            " approver sees it: the relevant leads (a technical lead, a budget"
+            " lead, the department heads for the domains touched, plus a senior"
+            " peer, never the plan's own owner) each review the plan and their"
+            " consolidated verdict is attached to it. Only applies when plan"
+            " approval is gated and a provider is wired; degrades to no panel"
+            " review otherwise. Applied on the next runtime-services rebuild."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="plan_review_panel_size",
+        type=SettingType.INTEGER,
+        default="4",
+        description=(
+            "Maximum number of reviewers on the stakeholder plan-review panel"
+            " (the coordination group bound: the relevant leads sized to the"
+            " plan, not everyone). Resolved on the next runtime-services rebuild."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=8,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="plan_review_panel_max_turns",
+        type=SettingType.INTEGER,
+        default="6",
+        description=(
+            "Hard turn cap for each panellist's plan-review session before it"
+            " must submit a verdict. Resolved on the next runtime-services"
+            " rebuild."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=50,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="plan_review_panel_cost_ceiling",
+        type=SettingType.FLOAT,
+        default="1.0",
+        description=(
+            "Per-reviewer spend ceiling (base currency) for a plan-review"
+            " session: the session halts once accumulated cost reaches it."
+            " Resolved on the next runtime-services rebuild."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=0.01,
+        max_value=100.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="leaf_subtask_threshold",
         type=SettingType.INTEGER,
         default="1",

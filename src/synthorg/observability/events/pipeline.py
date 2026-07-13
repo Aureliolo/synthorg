@@ -45,5 +45,8 @@ PIPELINE_REFINEMENT_REQUESTED: Final[str] = "pipeline.refinement.requested"
 PIPELINE_PLAN_REVIEW_REQUESTED: Final[str] = "pipeline.plan_review.requested"
 """A decomposed plan was parked for human approval before team dispatch."""
 
+PIPELINE_PLAN_REVIEW_PANEL_ATTACHED: Final[str] = "pipeline.plan_review.panel_attached"
+"""The stakeholder plan-review panel was attached to the work pipeline."""
+
 PIPELINE_ENTRY_UNKNOWN_SOURCE: Final[str] = "pipeline.entry.unknown_source"
 """No work-entry adapter is wired for the requested work source."""

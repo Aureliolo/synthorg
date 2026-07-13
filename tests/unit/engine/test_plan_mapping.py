@@ -6,7 +6,17 @@ import pytest
 
 from synthorg.core.artifact import ArtifactType
 from synthorg.core.plan import Plan, PlanItem, PlanOption
-from synthorg.core.plan_enums import PlanItemKind, PlanStatus
+from synthorg.core.plan_enums import (
+    PlanItemKind,
+    PlanReviewFindingCategory,
+    PlanReviewVerdict,
+    PlanStatus,
+)
+from synthorg.core.plan_review import (
+    PlanReview,
+    PlanReviewerVerdict,
+    PlanReviewFinding,
+)
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     Complexity,
@@ -125,6 +135,49 @@ class TestPlanFromDecomposition:
             status=PlanStatus.DRAFT,
         )
         assert plan.status is PlanStatus.DRAFT
+
+    def test_review_is_attached_when_supplied(self) -> None:
+        review = PlanReview(
+            verdict=PlanReviewVerdict.CONCERNS,
+            reviewers=(
+                PlanReviewerVerdict(
+                    reviewer_role=NotBlankStr("CTO"),
+                    reviewer_id=NotBlankStr("agent-cto"),
+                    verdict=PlanReviewVerdict.CONCERNS,
+                    findings=(
+                        PlanReviewFinding(
+                            category=PlanReviewFindingCategory.GAP,
+                            detail=NotBlankStr("no rollback"),
+                        ),
+                    ),
+                ),
+            ),
+            summary=NotBlankStr("1 of 1 reviewer(s) raised concerns"),
+            reviewed_at=_CREATED_AT,
+        )
+        plan = plan_from_decomposition(
+            _decomposition(),
+            project="beachhead",
+            objective_id="obj-1",
+            objective_title="Ship the game",
+            parent_task_id=sid("root"),
+            created_at=_CREATED_AT,
+            review=review,
+        )
+        assert plan.review is not None
+        assert plan.review.verdict is PlanReviewVerdict.CONCERNS
+        assert plan.review.reviewers[0].reviewer_role == "CTO"
+
+    def test_review_defaults_to_none(self) -> None:
+        plan = plan_from_decomposition(
+            _decomposition(),
+            project="beachhead",
+            objective_id="obj-1",
+            objective_title="Ship the game",
+            parent_task_id=sid("root"),
+            created_at=_CREATED_AT,
+        )
+        assert plan.review is None
 
     def test_artifacts_and_criteria_projected_from_subtask(self) -> None:
         # The subtask-level expected_artifacts + acceptance_criteria must land

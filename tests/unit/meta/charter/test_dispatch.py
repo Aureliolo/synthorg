@@ -256,6 +256,9 @@ class _FakeWorkPipeline:
     def attach_plan_review_gate(self, gate: object) -> None:
         raise NotImplementedError
 
+    def attach_plan_review_panel(self, panel: object) -> None:
+        raise NotImplementedError
+
 
 class SimpleResult:
     def __init__(self, *, task_id: NotBlankStr, is_success: bool) -> None:
@@ -518,6 +521,9 @@ class TestApprove:
                 raise NotImplementedError
 
             def attach_plan_review_gate(self, gate: object) -> None:
+                raise NotImplementedError
+
+            def attach_plan_review_panel(self, panel: object) -> None:
                 raise NotImplementedError
 
         charter_repo = _FakeCharterRepo(_charter())

@@ -19,9 +19,11 @@ from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.approval.state import approval_store_of
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.plan_review import PlanReview
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult
@@ -30,6 +32,7 @@ from synthorg.engine.pipeline.models import PlanReviewHandoff, WorkItem
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.plan_protocol import PlanRepository
+from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 
@@ -107,6 +110,7 @@ class PlanReviewApprovalGate:
         work_item: WorkItem,
         task: Task,
         plan: DecompositionResult,
+        review: PlanReview | None = None,
     ) -> PlanReviewHandoff:
         """Persist *plan* durably and park it as an approval item.
 
@@ -128,6 +132,7 @@ class PlanReviewApprovalGate:
             parent_task_id=NotBlankStr(str(task.id)),
             created_at=now,
             forecast_id=work_item.forecast_id,
+            review=review,
         )
         await self._plans.create(durable_plan)
         approval = ApprovalItem(
@@ -234,3 +239,65 @@ async def wire_plan_review_gate(app_state: AppState) -> None:
     )
     work_pipeline_of(app_state).attach_plan_review_gate(gate)
     logger.info(API_APP_STARTUP, service="plan_review_gate", note="wired")
+
+
+async def wire_plan_review_panel(
+    app_state: AppState,
+    *,
+    provider_registry: ProviderRegistry | None,
+    cost_tracker: CostTrackerProtocol | None,
+) -> None:
+    """Attach the stakeholder plan-review panel when enabled and a provider exists.
+
+    Best-effort + opt-out: the panel is on by default but only meaningful when
+    plan approval is gated (it runs inside the gated-plan flow) and a provider
+    serves the decomposition model. It reviews the same plans the decomposer
+    builds, so it reuses ``coordination.decomposition_model`` rather than
+    introducing a second required model setting. An absent provider or a
+    disabled setting leaves the pipeline panel-less (a gated plan is parked for
+    approval with no panel review), so wiring this never blocks a boot.
+    """
+    from synthorg.engine.plan_review.models import (  # noqa: PLC0415
+        PlanReviewPanelConfig,
+    )
+    from synthorg.engine.plan_review.session import (  # noqa: PLC0415
+        AgentSessionPlanReviewPanel,
+    )
+    from synthorg.engine.state import (  # noqa: PLC0415
+        EngineStateSlice,
+        work_pipeline_of,
+    )
+    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
+
+    if app_state.slice(EngineStateSlice).work_pipeline is None:
+        return
+    resolver = config_resolver_of(app_state)
+    if not await resolver.get_bool("coordination", "plan_review_panel_enabled"):
+        return
+    if provider_registry is None:
+        return
+    from synthorg.api._feature_provider_resolution import (  # noqa: PLC0415
+        resolve_feature_provider,
+    )
+
+    model = await resolver.get_str("coordination", "decomposition_model")
+    provider = resolve_feature_provider(
+        provider_registry, model, feature="plan_review_panel"
+    )
+    if provider is None:
+        return
+    config = PlanReviewPanelConfig(
+        panel_size=await resolver.get_int("coordination", "plan_review_panel_size"),
+        max_turns=await resolver.get_int("coordination", "plan_review_panel_max_turns"),
+        cost_ceiling=await resolver.get_float(
+            "coordination", "plan_review_panel_cost_ceiling"
+        ),
+    )
+    panel = AgentSessionPlanReviewPanel(
+        provider=provider,
+        config=config,
+        cost_tracker=cost_tracker,
+        clock=app_state.clock,
+    )
+    work_pipeline_of(app_state).attach_plan_review_panel(panel)
+    logger.info(API_APP_STARTUP, service="plan_review_panel", note="wired")

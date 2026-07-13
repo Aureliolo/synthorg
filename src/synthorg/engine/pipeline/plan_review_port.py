@@ -14,6 +14,7 @@ exact approved plan is dispatched (no re-decomposition).
 
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.plan_review import PlanReview
 from synthorg.core.task import Task
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.pipeline.models import PlanReviewHandoff, WorkItem
@@ -29,6 +30,7 @@ class PlanReviewGate(Protocol):
         work_item: WorkItem,
         task: Task,
         plan: DecompositionResult,
+        review: PlanReview | None = None,
     ) -> PlanReviewHandoff:
         """Park *plan* for human approval instead of dispatching the team.
 
@@ -37,6 +39,8 @@ class PlanReviewGate(Protocol):
             task: The persisted parent task that was decomposed.
             plan: The decomposed subtask tree awaiting approval; the gate
                 persists it so the exact approved plan is what later builds.
+            review: The consolidated stakeholder-panel review to attach to the
+                durable plan, or ``None`` when no panel reviewed it.
 
         Returns:
             A :class:`PlanReviewHandoff` the caller surfaces so the human

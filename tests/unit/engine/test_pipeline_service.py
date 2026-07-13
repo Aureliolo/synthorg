@@ -12,6 +12,11 @@ from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.decomposition.models import (
+    DecompositionPlan,
+    DecompositionResult,
+    SubtaskDefinition,
+)
 from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
@@ -84,6 +89,34 @@ def _task(
 def _post_task(status: TaskStatus) -> Task:
     """A terminal-status task (requires an assignee)."""
     return _task(status, assigned_to="agent-1")
+
+
+def _preview() -> DecompositionResult:
+    """A minimal real decomposition the gated-plan path feeds to the panel."""
+    plan = DecompositionPlan(
+        parent_task_id=sid("task-1"),
+        subtasks=(
+            SubtaskDefinition(
+                id=sid("sub-1"),
+                title="Slice",
+                description="Deliver the slice",
+            ),
+        ),
+    )
+    return DecompositionResult(
+        plan=plan,
+        created_tasks=(
+            Task(
+                id=as_uuid("sub-1"),
+                title="Slice",
+                description="Deliver the slice",
+                type=TaskType.DEVELOPMENT,
+                priority=Priority.MEDIUM,
+                project="proj-1",
+                created_by="operator-1",
+            ),
+        ),
+    )
 
 
 def _project(*, lead: str | None = None) -> Project:
@@ -283,7 +316,7 @@ class TestTeamPath:
 class TestPlanReviewGate:
     async def test_splittable_gates_plan_when_gate_wired(self) -> None:
         coordinator = mock_of[MultiAgentCoordinator]()
-        coordinator.plan_preview.return_value = object()
+        coordinator.plan_preview.return_value = _preview()
         pipeline, _ = _pipeline(
             intake_result=IntakeResult.accepted_result(
                 request_id="corr-1", task_id="task-1"
@@ -349,7 +382,7 @@ class TestPlanRequired:
 
     async def test_plan_required_parks_plan_over_leaf_verdict(self) -> None:
         coordinator = mock_of[MultiAgentCoordinator]()
-        coordinator.plan_preview.return_value = object()
+        coordinator.plan_preview.return_value = _preview()
         pipeline, handles = _pipeline(
             intake_result=IntakeResult.accepted_result(
                 request_id="corr-1", task_id="task-1"
@@ -409,7 +442,7 @@ class TestOwnerStaffing:
 
     async def test_plan_required_staffs_and_threads_owner(self) -> None:
         coordinator = mock_of[MultiAgentCoordinator]()
-        coordinator.plan_preview.return_value = object()
+        coordinator.plan_preview.return_value = _preview()
         pipeline, handles = _pipeline(
             intake_result=IntakeResult.accepted_result(
                 request_id="corr-1", task_id="task-1"
@@ -446,7 +479,7 @@ class TestOwnerStaffing:
 
     async def test_already_led_project_keeps_its_lead(self) -> None:
         coordinator = mock_of[MultiAgentCoordinator]()
-        coordinator.plan_preview.return_value = object()
+        coordinator.plan_preview.return_value = _preview()
         owner = make_e2e_identity()
         pipeline, handles = _pipeline(
             intake_result=IntakeResult.accepted_result(
@@ -483,7 +516,7 @@ class TestOwnerStaffing:
 
     async def test_orphaned_lead_proceeds_unowned(self) -> None:
         coordinator = mock_of[MultiAgentCoordinator]()
-        coordinator.plan_preview.return_value = object()
+        coordinator.plan_preview.return_value = _preview()
         pipeline, handles = _pipeline(
             intake_result=IntakeResult.accepted_result(
                 request_id="corr-1", task_id="task-1"
@@ -517,7 +550,7 @@ class TestOwnerStaffing:
 
     async def test_empty_roster_stamps_no_lead(self) -> None:
         coordinator = mock_of[MultiAgentCoordinator]()
-        coordinator.plan_preview.return_value = object()
+        coordinator.plan_preview.return_value = _preview()
         pipeline, handles = _pipeline(
             intake_result=IntakeResult.accepted_result(
                 request_id="corr-1", task_id="task-1"
@@ -555,7 +588,7 @@ class TestOwnerStaffing:
         the second re-reads under the lock and resolves the stamped lead.
         """
         coordinator = mock_of[MultiAgentCoordinator]()
-        coordinator.plan_preview.return_value = object()
+        coordinator.plan_preview.return_value = _preview()
         pipeline, handles = _pipeline(
             intake_result=IntakeResult.accepted_result(
                 request_id="corr-1", task_id="task-1"

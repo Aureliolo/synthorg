@@ -14,6 +14,7 @@ from uuid import UUID
 
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
+from synthorg.core.plan_review import PlanReview
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
@@ -62,6 +63,7 @@ def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance
     created_at: datetime,
     status: PlanStatus = PlanStatus.PENDING_REVIEW,
     forecast_id: UUID | None = None,
+    review: PlanReview | None = None,
 ) -> Plan:
     """Build a durable ``Plan`` from an executed ``DecompositionResult``.
 
@@ -77,6 +79,8 @@ def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance
         status: Initial lifecycle status (defaults to pending review, since
             a plan is built to be reviewed).
         forecast_id: Cost forecast released alongside the plan, if any.
+        review: The consolidated stakeholder-panel review, if the plan was
+            reviewed before parking (``None`` when no panel ran).
 
     Returns:
         A validated :class:`Plan` mirroring the decomposition's structure.
@@ -92,6 +96,7 @@ def plan_from_decomposition(  # noqa: PLR0913 -- decomposition + plan provenance
         coordination_topology=result.plan.coordination_topology,
         status=status,
         forecast_id=forecast_id,
+        review=review,
         created_at=created_at,
         updated_at=created_at,
     )
