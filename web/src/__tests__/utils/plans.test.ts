@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { makePlanItem } from '@/__tests__/helpers/factories'
 import {
   computeCriticalPath,
+  computeWaves,
   criticalPathFor,
   dependencyTitles,
   derivePlanStats,
@@ -105,6 +106,35 @@ describe('criticalPathFor', () => {
       makePlanItem('c', { dependencies: ['b'] }),
     ]
     expect(criticalPathFor(linear, 'parallel').size).toBe(0)
+  })
+})
+
+describe('computeWaves', () => {
+  it('groups items into dependency-depth waves, parallel within a wave', () => {
+    // a gates b and d (which run in parallel); c follows b.
+    const items = [
+      makePlanItem('a', { dependencies: [] }),
+      makePlanItem('b', { dependencies: ['a'] }),
+      makePlanItem('c', { dependencies: ['b'] }),
+      makePlanItem('d', { dependencies: ['a'] }),
+    ]
+    const waves = computeWaves(items)
+    expect(waves.map((w) => w.index)).toEqual([0, 1, 2])
+    expect(waves[0]?.items.map((i) => i.id)).toEqual(['a'])
+    expect(
+      waves[1]?.items
+        .map((i) => i.id)
+        .slice()
+        .sort(),
+    ).toEqual(['b', 'd'])
+    expect(waves[2]?.items.map((i) => i.id)).toEqual(['c'])
+  })
+
+  it('puts independent items in a single wave', () => {
+    const items = [makePlanItem('a'), makePlanItem('b'), makePlanItem('c')]
+    const waves = computeWaves(items)
+    expect(waves).toHaveLength(1)
+    expect(waves[0]?.items).toHaveLength(3)
   })
 })
 

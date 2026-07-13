@@ -224,6 +224,54 @@ export function criticalPathFor(
   return path.size < items.length ? path : new Set<string>()
 }
 
+// ── Execution waves (the timeline) ─────────────────────────────────────────
+
+export interface PlanWave {
+  /** Zero-based execution order: everything in wave N can run once wave N-1 is done. */
+  readonly index: number
+  /** Items that run together in this wave (no dependency between them). */
+  readonly items: readonly PlanItem[]
+}
+
+/**
+ * Group items into execution waves by dependency depth, so the plan reads as a
+ * timeline: wave 0 is everything with no prerequisites, and each later wave is
+ * the work that unlocks once the previous one lands. Items within a wave have no
+ * dependency between them, so they run in parallel. This is the legible form of
+ * the plan's parallelism, derived from the DAG (no persisted structure).
+ */
+export function computeWaves(items: readonly PlanItem[]): readonly PlanWave[] {
+  const byId = new Map(items.map((item) => [item.id, item]))
+  const depthCache = new Map<string, number>()
+  const visiting = new Set<string>()
+
+  function depthOf(id: string): number {
+    const cached = depthCache.get(id)
+    if (cached !== undefined) return cached
+    if (visiting.has(id)) return 0 // defensive cycle guard; backend rejects cycles
+    visiting.add(id)
+    const item = byId.get(id)
+    let depth = 0
+    for (const dep of item?.dependencies ?? []) {
+      if (byId.has(dep)) depth = Math.max(depth, depthOf(dep) + 1)
+    }
+    visiting.delete(id)
+    depthCache.set(id, depth)
+    return depth
+  }
+
+  const waves = new Map<number, PlanItem[]>()
+  for (const item of items) {
+    const depth = depthOf(item.id)
+    const bucket = waves.get(depth) ?? []
+    bucket.push(item)
+    waves.set(depth, bucket)
+  }
+  return [...waves.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([index, waveItems]) => ({ index, items: waveItems }))
+}
+
 // ── Whole-plan summary stats ───────────────────────────────────────────────
 
 export interface PlanStats {
