@@ -68,6 +68,19 @@ async def _cascade_supersede_children(
     non-terminal task is cancelled, each through its audited lifecycle
     transition, so no row is left pointing at a deleted project.
 
+    The cascade and the subsequent delete run as separate audited operations,
+    not one database transaction: the task-engine transitions emit domain
+    events that cannot be rolled back, and no unit-of-work seam spans the plan
+    service, the task engine, and the project repository. Consistency comes from
+    idempotent forward-recovery instead: the cascade only acts on non-terminal
+    children (already-terminal ones are skipped) and the delete runs only after
+    it fully succeeds, so a mid-cascade failure or a failed delete leaves a
+    retriable, never-orphaning state: re-issuing the delete re-runs the cascade
+    as a no-op over the already-resolved children and removes the project. The
+    teardown assumes no concurrent child creation for the project being deleted
+    (child creation requires a live project; a delete is an exclusive operator
+    action), so paginating the existing children is sufficient.
+
     Args:
         app_state: Application state (carries persistence, clock, task engine).
         project_id: The project whose children are being resolved.
