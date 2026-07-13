@@ -12,6 +12,7 @@ from litestar.status_codes import (
     HTTP_204_NO_CONTENT,
 )
 
+from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.dto import (
     ApiResponse,
     CancelTaskRequest,
@@ -57,7 +58,6 @@ from synthorg.observability import (
 )
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.api import (
-    API_AUTH_FALLBACK,
     API_RESOURCE_NOT_FOUND,
     API_TASK_BOARD_PIPELINE_FAILED,
     API_TASK_BOARD_REJECTED_NO_ADAPTER,
@@ -72,26 +72,6 @@ from synthorg.workers.state import worker_execution_service_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
-
-
-def _extract_requester(state: State) -> str:
-    """Extract requester identity from the authenticated user.
-
-    Falls back to ``"api"`` when the connection carries no user
-    (e.g. in tests without auth middleware). Logs a warning on
-    fallback so auth misconfiguration is visible in production.
-
-    Returns:
-        Resulting string.
-    """
-    user = getattr(state, "_connection_user", None)
-    if user is not None and hasattr(user, "user_id"):
-        return str(user.user_id)
-    logger.warning(
-        API_AUTH_FALLBACK,
-        note="No authenticated user found, falling back to 'api'",
-    )
-    return "api"
 
 
 async def process_task_board_pipeline(
@@ -295,7 +275,7 @@ class TaskController(Controller):
                 "needs a provider" signal explicit.
         """
         app_state: AppState = state.app_state
-        requester = _extract_requester(state)
+        requester = extract_requester(state)
         # Read the adapter once and reuse the same instance for the
         # presence check and the spawn; otherwise a concurrent unwire/
         # rewire between the check and the second ``*_of(app_state)``
@@ -375,7 +355,7 @@ class TaskController(Controller):
         task = await task_engine.update_task(
             task_id,
             updates,
-            requested_by=_extract_requester(state),
+            requested_by=extract_requester(state),
             expected_version=data.expected_version,
         )
         logger.info(API_TASK_UPDATED, task_id=task_id, fields=list(updates))
@@ -407,7 +387,7 @@ class TaskController(Controller):
             ``ApiResponse[Task]`` instance.
         """
         app_state: AppState = state.app_state
-        requester = _extract_requester(state)
+        requester = extract_requester(state)
         overrides: dict[str, object] = {}
         if data.assigned_to is not None:
             overrides["assigned_to"] = data.assigned_to
@@ -454,7 +434,7 @@ class TaskController(Controller):
         task_engine = task_engine_of(app_state)
         await task_engine.delete_task(
             task_id,
-            requested_by=_extract_requester(state),
+            requested_by=extract_requester(state),
         )
         logger.info(API_TASK_DELETED, task_id=task_id)
 
@@ -489,7 +469,7 @@ class TaskController(Controller):
             ``ApiResponse[Task]`` instance.
         """
         app_state: AppState = state.app_state
-        requester = _extract_requester(state)
+        requester = extract_requester(state)
         task = await worker_execution_service_of(app_state).execute_once(
             task_id=task_id,
             previous_status=data.previous_status,
@@ -536,7 +516,7 @@ class TaskController(Controller):
         task_engine = task_engine_of(app_state)
         task, _prior_status = await task_engine.cancel_task(
             task_id,
-            requested_by=_extract_requester(state),
+            requested_by=extract_requester(state),
             reason=data.reason,
         )
         logger.info(API_TASK_CANCELLED, task_id=task_id)

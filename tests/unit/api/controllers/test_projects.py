@@ -311,15 +311,27 @@ class TestProjectController:
         for task in (created_task, running_task, stuck_task):
             await backend.tasks.save(task)
 
-        delete_resp = await async_test_client.delete(
-            f"/api/v1/projects/{project_id}",
-            headers=make_auth_headers("ceo"),
-        )
+        with structlog.testing.capture_logs() as logs:
+            delete_resp = await async_test_client.delete(
+                f"/api/v1/projects/{project_id}",
+                headers=make_auth_headers("ceo"),
+            )
         assert delete_resp.status_code == 204
 
         superseded = await backend.plans.get(str(plan.id))
         assert superseded is not None
         assert superseded.status is PlanStatus.SUPERSEDED
+
+        # The supersede must keep the initiating actor + reason on its audit
+        # log, matching the context a task transition records.
+        transitions = [
+            log for log in logs if log["event"] == "api.plan.status_transitioned"
+        ]
+        assert len(transitions) == 1
+        assert transitions[0]["reason"] == "project deleted"
+        # No auth middleware in the unit harness, so the requester resolves to
+        # the documented "api" fallback; the point is the context flows through.
+        assert transitions[0]["requested_by"] == "api"
 
         async def _reloaded_status(task_id: str) -> TaskStatus:
             reloaded = await backend.tasks.get(task_id)

@@ -9,7 +9,7 @@ from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.channels import CHANNEL_PROJECTS, publish_ws_event
-from synthorg.api.controllers.tasks import _extract_requester
+from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.dto import (
     ApiResponse,
     CreateProjectRequest,
@@ -85,7 +85,12 @@ async def _cascade_supersede_children(
         )
         for plan in plans:
             if plan.status in REWORKABLE_STATUSES:
-                await plan_service.sync_status(plan, PlanStatus.SUPERSEDED)
+                await plan_service.sync_status(
+                    plan,
+                    PlanStatus.SUPERSEDED,
+                    requested_by=requested_by,
+                    reason=_CASCADE_REASON,
+                )
         if len(plans) < DEFAULT_PAGE_SIZE:
             break
         offset += DEFAULT_PAGE_SIZE
@@ -308,7 +313,7 @@ class ProjectController(Controller):
         await _cascade_supersede_children(
             state.app_state,
             project_id,
-            requested_by=_extract_requester(state),
+            requested_by=extract_requester(state),
         )
         deleted = await service.delete(project_id)
         if not deleted:

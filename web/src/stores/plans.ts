@@ -17,7 +17,7 @@ export const usePlansStore = create<PlansState>()((set, get) => ({
   detailLoading: false,
   detailError: null,
   parentTaskTitle: null,
-  ...createListActions(set),
+  ...createListActions(set, get),
   ...createDetailActions(set),
   ...createWsHandler(get),
 }))

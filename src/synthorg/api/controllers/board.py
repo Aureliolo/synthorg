@@ -9,7 +9,7 @@ from litestar import Controller, get, post
 from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.controllers.tasks import _extract_requester
+from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -79,6 +79,6 @@ class BoardController(Controller):
         task = await kanban_board_service_of(app_state).move_task(
             data.task_id,
             data.target_column,
-            requested_by=_extract_requester(state),
+            requested_by=extract_requester(state),
         )
         return ApiResponse(data=task)

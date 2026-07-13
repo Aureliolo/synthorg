@@ -60,7 +60,9 @@ async function fetchPlanDetailImpl(set: PlansSet, id: string): Promise<void> {
   try {
     const plan = await getPlan(id)
     if (isStaleDetailRequest(token)) return
-    set({ selectedPlan: plan })
+    // Render the detail immediately; the decorative headline fills in after,
+    // so the page never blocks its loading state on the parent-task lookup.
+    set({ selectedPlan: plan, detailLoading: false })
     await resolveParentTaskTitle(set, token, plan.parent_task_id)
   } catch (err) {
     if (isStaleDetailRequest(token)) return

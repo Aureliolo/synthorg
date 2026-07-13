@@ -91,6 +91,47 @@ describe('usePlansStore', () => {
       expect(usePlansStore.getState().planTitles['plan-1']).toBeUndefined()
     })
 
+    it('reuses cached headlines and prunes departed plans on refetch', async () => {
+      const plansPage = (plans: ReturnType<typeof makePlan>[]) =>
+        HttpResponse.json(
+          paginatedFor<typeof listPlans>({
+            data: plans,
+            limit: 200,
+            nextCursor: null,
+            hasMore: false,
+            pagination: { limit: 200, next_cursor: null, has_more: false },
+          }),
+        )
+      let taskCalls = 0
+      const plan1 = makePlan('plan-1', { parent_task_id: 'task-a' })
+      server.use(
+        http.get('/api/v1/plans', () => plansPage([plan1])),
+        http.get('/api/v1/tasks/:id', () => {
+          taskCalls += 1
+          return HttpResponse.json(apiSuccess(makeTask('task-a', 'First title')))
+        }),
+      )
+      await usePlansStore.getState().fetchPlans()
+      expect(usePlansStore.getState().planTitles['plan-1']).toBe('First title')
+      expect(taskCalls).toBe(1)
+
+      // Refetch the same plan: the cached headline is reused, not re-fetched.
+      await usePlansStore.getState().fetchPlans()
+      expect(taskCalls).toBe(1)
+
+      // A refetch without plan-1 prunes its cached headline.
+      const plan2 = makePlan('plan-2', { parent_task_id: 'task-b' })
+      server.use(
+        http.get('/api/v1/plans', () => plansPage([plan2])),
+        http.get('/api/v1/tasks/:id', () =>
+          HttpResponse.json(apiSuccess(makeTask('task-b', 'Second title'))),
+        ),
+      )
+      await usePlansStore.getState().fetchPlans()
+      expect(usePlansStore.getState().planTitles['plan-1']).toBeUndefined()
+      expect(usePlansStore.getState().planTitles['plan-2']).toBe('Second title')
+    })
+
     it('records an error message on failure', async () => {
       server.use(
         http.get('/api/v1/plans', () =>
