@@ -8,7 +8,7 @@ from synthorg.observability.events.autonomy import (
     AUTONOMY_RESOLVED,
 )
 from synthorg.security.action_types import ActionTypeRegistry
-from synthorg.security.autonomy.models import AutonomyConfig
+from synthorg.security.autonomy.models import AutonomyConfig, AutonomyPreset
 
 logger = get_logger(__name__)
 
@@ -59,19 +59,7 @@ class AutonomyResolver:
             ValueError: If the resolved level has no matching preset.
         """
         level = agent_level or department_level or self._config.level
-
-        preset = self._config.presets.get(level)
-        if preset is None:
-            msg = (
-                f"No preset found for autonomy level {level!r} "
-                f"(available: {sorted(self._config.presets)})"
-            )
-            logger.warning(
-                AUTONOMY_RESOLVED,
-                resolved_level=level.value if hasattr(level, "value") else str(level),
-                error=msg,
-            )
-            raise ValueError(msg)
+        preset = self._resolve_preset(level)
 
         auto_approve = self._expand_patterns(preset.auto_approve)
         human_approval = self._expand_patterns(preset.human_approval)
@@ -92,6 +80,29 @@ class AutonomyResolver:
             human_approval_count=len(human_approval),
         )
         return result
+
+    def _resolve_preset(self, level: AutonomyLevel) -> AutonomyPreset:
+        """Return the preset for *level*, raising when none is registered.
+
+        Returns:
+            The matching :class:`AutonomyPreset`.
+
+        Raises:
+            ValueError: If the resolved level has no matching preset.
+        """
+        preset = self._config.presets.get(level)
+        if preset is None:
+            msg = (
+                f"No preset found for autonomy level {level!r} "
+                f"(available: {sorted(self._config.presets)})"
+            )
+            logger.warning(
+                AUTONOMY_RESOLVED,
+                resolved_level=level.value if hasattr(level, "value") else str(level),
+                error=msg,
+            )
+            raise ValueError(msg)
+        return preset
 
     def _expand_patterns(
         self,

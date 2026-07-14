@@ -417,6 +417,30 @@ class TestLoadBalancedAssignmentStrategy:
 
         assert result.selected is None
 
+    def test_unconstrained_subtask_assigns_best_available(self) -> None:
+        """A subtask with no requirement never deadlocks on a staffed pool.
+
+        With neither a required role nor required skills every agent scores
+        zero; rather than return no-eligible, the best available agent is
+        assigned and flagged low-confidence.
+        """
+        scorer = AgentTaskScorer()
+        strategy = _load_balanced_strategy(scorer)
+
+        agent = make_assignment_agent("qa", primary_skills=("testing",))
+        task = make_assignment_task(estimated_complexity=Complexity.EPIC)
+        request = AssignmentRequest(
+            task=task,
+            available_agents=(agent,),
+            min_score=0.5,
+        )
+
+        result = strategy.assign(request)
+
+        assert result.selected is not None
+        assert result.selected.agent_identity.name == "qa"
+        assert result.low_confidence is True
+
     def test_partial_workload_data_falls_back(self) -> None:
         """Incomplete workload data falls back to score-based ranking."""
         scorer = AgentTaskScorer()

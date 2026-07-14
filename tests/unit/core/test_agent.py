@@ -367,6 +367,23 @@ class TestModelConfig:
         with pytest.raises(ValidationError, match="whitespace-only"):
             ModelConfig(provider="test", model_id="m", fallback_model="   ")
 
+    @pytest.mark.parametrize("tier", ["small", "medium", "large"])
+    def test_tier_literal_as_model_id_rejected(self, tier: str) -> None:
+        """Reject a bare capability-tier literal used as model_id."""
+        with pytest.raises(ValidationError, match="capability tier"):
+            ModelConfig(provider="test", model_id=tier)
+
+    @pytest.mark.parametrize("tier", ["small", "medium", "large"])
+    def test_tier_literal_as_fallback_model_rejected(self, tier: str) -> None:
+        """Reject a bare capability-tier literal used as fallback_model."""
+        with pytest.raises(ValidationError, match="capability tier"):
+            ModelConfig(provider="test", model_id="m", fallback_model=tier)
+
+    def test_model_id_containing_tier_substring_accepted(self) -> None:
+        """Accept a concrete model id that merely contains a tier word."""
+        m = ModelConfig(provider="test", model_id="test-model-medium-001")
+        assert m.model_id == "test-model-medium-001"
+
     def test_frozen(self, sample_model_config: ModelConfig) -> None:
         """Ensure ModelConfig is immutable."""
         with pytest.raises(ValidationError):

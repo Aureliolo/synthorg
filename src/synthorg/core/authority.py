@@ -4,9 +4,9 @@
 Authority is a structural property of an agent's position in the
 organisation, not a scalar rank: a role's standing follows the
 ``Role.reports_to`` chain up to the CEO (a root with ``reports_to
-is None``). These helpers answer the two questions the org actually
-asks: "does A outrank B?" (is A on B's chain of superiors) and "who
-is the most senior agent here?" (the shallowest reporting depth).
+is None``). These helpers answer the question the org actually asks:
+"who is the most senior agent here?" (the shallowest reporting depth),
+via a reporting-depth lookup and a pairwise seniority comparison.
 
 The graph is resolved over the built-in role catalog. A role unknown
 to the catalog (a bespoke custom role) resolves to the least-senior
@@ -76,19 +76,6 @@ def role_depth(role_name: str) -> int:
     if get_builtin_role(role_name) is None:
         return _UNKNOWN_DEPTH
     return len(reporting_chain(role_name))
-
-
-def outranks(superior_role: str, subordinate_role: str) -> bool:
-    """Return whether *superior_role* is above *subordinate_role*.
-
-    True only when *superior_role* sits on *subordinate_role*'s chain
-    of superiors (strict: a role does not outrank itself).
-
-    Returns:
-        ``True`` when *superior_role* is a (transitive) superior of
-        *subordinate_role*.
-    """
-    return normalize_identifier(superior_role) in reporting_chain(subordinate_role)
 
 
 def compare_authority(a_role: str, b_role: str) -> int:

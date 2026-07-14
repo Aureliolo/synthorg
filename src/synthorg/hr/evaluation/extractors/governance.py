@@ -1,15 +1,15 @@
 """Governance pillar metric extractor.
 
 Lifts audit-compliance / trust-level / autonomy-compliance
-sub-metrics from the audit counts, trust system, and autonomy
+sub-metrics from the audit counts, tool-access tier, and autonomy
 counters in ``EvaluationContext``. Composed with
 ``ConfigurablePillarScorer`` to produce the governance
 ``PillarScoringStrategy``.
 
-The trust-level mapping (``_TRUST_LEVEL_SCORES``) and
-``_DOWNGRADE_PENALTY`` constant are preserved verbatim from the
-prior ``AuditBasedGovernanceStrategy`` so behavioural parity is
-exact (same trust-level numerics, same demotion penalty).
+``_TRUST_LEVEL_SCORES`` maps each tool-access sandbox tier name to a
+base governance score; ``_DOWNGRADE_PENALTY`` subtracts a fixed amount
+per autonomy/tier demotion in the window, so a governance score
+reflects both the current tier and any recent tightening.
 """
 
 from synthorg.core.types import NotBlankStr
@@ -23,8 +23,7 @@ from synthorg.observability.events.evaluation import EVAL_TRUST_LEVEL_UNKNOWN
 
 logger = get_logger(__name__)
 
-# Trust level to score mapping (preserved verbatim from
-# AuditBasedGovernanceStrategy).
+# Tool-access sandbox tier to base governance score.
 _TRUST_LEVEL_SCORES: dict[str, float] = {
     "sandboxed": 2.5,
     "restricted": 5.0,

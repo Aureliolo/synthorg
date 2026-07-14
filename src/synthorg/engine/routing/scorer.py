@@ -44,9 +44,9 @@ class RoutingScorerConfig(BaseModel):
     construction reproduces legacy behaviour. Production wiring
     populates the fields from :func:`ConfigResolver.get_engine_bridge_config`
     via :meth:`from_bridge_config` so operators can tune via ``/settings``
-    without code changes. Sum of skill-weights + bonuses is 1.1 (tag
-    bonus pushes the maximum above 1.0); the caller caps the final
-    score at 1.0.
+    without code changes. Sum of skill-weights + bonuses is 0.9 by
+    default; the caller caps the final score at 1.0, which matters only
+    when an operator tunes weights above the documented envelope.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -94,11 +94,6 @@ class RoutingScorerConfig(BaseModel):
     @classmethod
     def from_bridge_config(cls, bridge: EngineBridgeConfig) -> RoutingScorerConfig:
         """Project the routing-scorer subset out of an ``EngineBridgeConfig``.
-
-        ``EngineBridgeConfig`` is imported under ``TYPE_CHECKING`` so the
-        routing module stays free of a runtime dependency on
-        ``settings.bridge_configs`` (which would cycle through the engine
-        namespace).
 
         Returns:
             A :class:`RoutingScorerConfig` populated from the
@@ -196,34 +191,16 @@ class AgentTaskScorer:
             A routing candidate with the computed score.
         """
         if agent.status != AgentStatus.ACTIVE:
-            logger.debug(
-                TASK_ROUTING_AGENT_INACTIVE_SKIPPED,
-                agent_name=agent.name,
-                subtask_id=subtask.id,
-                status=agent.status.value,
-            )
-            return RoutingCandidate(
-                agent_identity=agent,
-                score=0.0,
-                matched_skills=(),
-                reason=f"Agent status is {agent.status.value}, not active",
-            )
+            return _inactive_candidate(agent, subtask)
 
-        reasons: list[str] = []
-        total_score, all_matched = _score_skill_tiers(
-            agent, subtask, reasons, self._config
+        skill_score, all_matched, skill_reasons = _score_skill_tiers(
+            agent, subtask, self._config
         )
-        total_score += _score_role(agent, subtask, reasons, self._config)
+        role_score, role_reason = _score_role(agent, subtask, self._config)
 
-        total_score = min(total_score, 1.0)
+        total_score = min(skill_score + role_score, 1.0)
+        reasons = [*skill_reasons, role_reason] if role_reason else list(skill_reasons)
         reason = "; ".join(reasons) if reasons else "no matching criteria"
-
-        candidate = RoutingCandidate(
-            agent_identity=agent,
-            score=total_score,
-            matched_skills=tuple(all_matched),
-            reason=reason,
-        )
 
         logger.debug(
             TASK_ROUTING_AGENT_SCORED,
@@ -233,28 +210,54 @@ class AgentTaskScorer:
             reason=reason,
         )
 
-        return candidate
+        return RoutingCandidate(
+            agent_identity=agent,
+            score=total_score,
+            matched_skills=tuple(all_matched),
+            reason=reason,
+        )
+
+
+def _inactive_candidate(
+    agent: AgentIdentity,
+    subtask: SubtaskDefinition,
+) -> RoutingCandidate:
+    """Return the zero-score candidate for a non-active agent.
+
+    Returns:
+        A :class:`RoutingCandidate` with score ``0.0`` and a reason
+        naming the agent's non-active status.
+    """
+    logger.debug(
+        TASK_ROUTING_AGENT_INACTIVE_SKIPPED,
+        agent_name=agent.name,
+        subtask_id=subtask.id,
+        status=agent.status.value,
+    )
+    return RoutingCandidate(
+        agent_identity=agent,
+        score=0.0,
+        matched_skills=(),
+        reason=f"Agent status is {agent.status.value}, not active",
+    )
 
 
 def _score_skill_tiers(
     agent: AgentIdentity,
     subtask: SubtaskDefinition,
-    reasons: list[str],
     config: RoutingScorerConfig,
-) -> tuple[float, list[str]]:
-    """Score primary, secondary, and tag tiers; return (score, matched_ids).
-
-    Mutates *reasons* with human-readable explanations.
+) -> tuple[float, list[str], tuple[str, ...]]:
+    """Score primary, secondary, and tag tiers.
 
     Returns:
-        ``(score, matched_ids)`` -- the aggregated skill / tag score
-        and the sorted list of matched skill ids (primary first,
-        then secondary).
+        ``(score, matched_ids, reason_fragments)`` -- the aggregated
+        skill / tag score, the sorted list of matched skill ids
+        (primary first, then secondary), and the human-readable
+        explanation fragments for each tier that contributed.
     """
     required = set(subtask.required_skills)
     if not required:
-        reasons.append("no skills required, skill matching skipped")
-        return 0.0, []
+        return 0.0, [], ("no skills required, skill matching skipped",)
 
     primary_by_id = {s.id: s for s in agent.skills.primary}
     secondary_by_id = {s.id: s for s in agent.skills.secondary}
@@ -267,23 +270,22 @@ def _score_skill_tiers(
 
     score = 0.0
     all_matched: list[str] = []
+    reasons: list[str] = []
 
-    primary_contrib = (
+    score += (
         sum(primary_by_id[sid].proficiency for sid in primary_matched)
         / len(required)
         * config.primary_skill_weight
     )
-    score += primary_contrib
     all_matched.extend(primary_matched)
     if primary_matched:
         reasons.append(f"primary skills: {primary_matched}")
 
-    secondary_contrib = (
+    score += (
         sum(secondary_by_id[sid].proficiency for sid in secondary_matched)
         / len(required)
         * config.secondary_skill_weight
     )
-    score += secondary_contrib
     all_matched.extend(secondary_matched)
     if secondary_matched:
         reasons.append(f"secondary skills: {secondary_matched}")
@@ -299,24 +301,23 @@ def _score_skill_tiers(
             score += config.tag_match_bonus
             reasons.append(f"tag match: {sorted(required_tags)}")
 
-    return score, all_matched
+    return score, all_matched, tuple(reasons)
 
 
 def _score_role(
     agent: AgentIdentity,
     subtask: SubtaskDefinition,
-    reasons: list[str],
     config: RoutingScorerConfig,
-) -> float:
+) -> tuple[float, str | None]:
     """Award the role-match bonus when the agent's role matches required_role.
 
     Returns:
-        ``config.role_match_bonus`` when the agent's role matches the
-        subtask's required role (case-insensitive); ``0.0`` otherwise.
+        ``(config.role_match_bonus, "role match")`` when the agent's
+        role matches the subtask's required role (case-insensitive);
+        ``(0.0, None)`` otherwise.
     """
     if subtask.required_role is not None and compare_ci(
         agent.role, subtask.required_role
     ):
-        reasons.append("role match")
-        return config.role_match_bonus
-    return 0.0
+        return config.role_match_bonus, "role match"
+    return 0.0, None

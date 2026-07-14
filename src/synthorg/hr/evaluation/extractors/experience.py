@@ -23,8 +23,9 @@ from synthorg.hr.evaluation.extractors._shared import log_disabled_metrics
 from synthorg.hr.evaluation.metric_extractor_protocol import ExtractedMetrics
 from synthorg.hr.evaluation.models import EvaluationContext, InteractionFeedback
 
-# Full confidence at min_feedback_count * this multiplier.
-# Preserved verbatim from FeedbackBasedUxStrategy.
+# Confidence saturates at min_feedback_count * this multiplier rather
+# than the default FULL_CONFIDENCE_DATA_POINTS, so a small sample of
+# ratings can still reach full weight.
 _FULL_CONFIDENCE_FEEDBACK_MULTIPLIER: int = 3
 
 # Rating field accessors keyed by metric name.

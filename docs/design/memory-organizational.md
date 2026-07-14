@@ -30,12 +30,22 @@ org_memory:
   extended_store:
     backend: "sqlite"                   # sqlite, postgresql
     max_retrieved_per_query: 5
-  write_access:
-    policies: ["human"]                 # only humans write core policies
-    adrs: ["human", "senior", "lead", "c_suite"]
-    procedures: ["human", "senior", "lead", "c_suite"]
-    conventions: ["human", "senior", "lead", "c_suite"]
-    entity_definitions: ["human", "senior", "lead", "c_suite"]  # ontology sync publishes at senior authority
+  write_access:                         # per-category: human vs capable agent
+    core_policy:                        # human-only; agents cannot write
+      human_allowed: true
+      agent_allowed: false
+    adrs:                               # capable agents (memory.write grant) may write
+      human_allowed: true
+      agent_allowed: true
+    procedures:
+      human_allowed: true
+      agent_allowed: true
+    conventions:
+      human_allowed: true
+      agent_allowed: true
+    entity_definitions:                 # ontology sync publishes as a capable agent
+      human_allowed: true
+      agent_allowed: true
 ```
 
 `OrgMemoryBackend` stays a Protocol so future backends can substitute structurally, but the configuration discriminator is gone: `HybridPromptRetrievalBackend` is the single shipping implementation and is wired directly. New backends supply their own configuration block when they ship.
@@ -118,6 +128,7 @@ Neo4j/FalkorDB, which could reduce implementation effort for the research direct
 
 !!! tip "Write Access Control"
 
-    Core policies are human-only. ADRs and procedures can be written by senior+ agents. All
-    writes are append-only and auditable. This prevents agents from corrupting shared organisational
-    knowledge while allowing senior agents to document decisions.
+    Core policies are human-only. ADRs, procedures, conventions, and entity definitions admit
+    capable agents (those whose role grants the `memory.write` tool permission). All
+    writes are append-only and auditable. This prevents agents without the capability from
+    corrupting shared organisational knowledge while letting capable agents document decisions.

@@ -7,9 +7,9 @@ description: Approval workflow, autonomy levels, security operations agent, outp
 
 !!! info "Runtime enforcement"
 
-    This page is the source of truth for the behaviour of this subsystem. Governance runs on the live agent runtime behind the provider-present switch: the approval producer parks blocked actions, the boot `ApprovalGate` resumes them on a decision, the progressive-trust strategy narrows tool access at the invoker, an agent can call SynthOrg's own MCP tools under its trust level with the admin guardrails fail-closed, and the autonomy controller routes changes through the configured `AutonomyChangeStrategy`.
+    This page is the source of truth for the behaviour of this subsystem. Governance runs on the live agent runtime behind the provider-present switch: the approval producer parks blocked actions, the boot `ApprovalGate` resumes them on a decision, an agent can call SynthOrg's own MCP tools scoped to its static tool-access level with the admin guardrails fail-closed, and the autonomy controller routes changes through the configured `AutonomyChangeStrategy`.
 
-SynthOrg enforces a fail-closed security model: every agent action is evaluated by a rule engine (with an optional LLM fallback) before execution, every output is scanned for leaked secrets, and every credential flows through an isolated **hands** plane that never enters the model context. Four configurable autonomy levels (`full`, `semi`, `supervised`, `locked`) control which actions require human approval, and a pluggable trust system lets agents earn higher tool access over time.
+SynthOrg enforces a fail-closed security model: every agent action is evaluated by a rule engine (with an optional LLM fallback) before execution, every output is scanned for leaked secrets, and every credential flows through an isolated **hands** plane that never enters the model context. Four configurable autonomy levels (`full`, `semi`, `supervised`, `locked`) control which actions require human approval, and each agent's tool access is a static `access_level` set per agent or department.
 
 ## Approval Workflow
 

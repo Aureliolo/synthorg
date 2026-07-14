@@ -75,9 +75,15 @@ class ScoringBasedAssignmentStrategy:
     def assign(self, request: AssignmentRequest) -> AssignmentResult:
         """Run the filter -> score -> rank pipeline.
 
-        Returns ``selected=None`` when either the filter narrows to
-        an empty pool (with the filter's ``reason``) or when no
-        survivor scores above ``request.min_score``.
+        Returns ``selected=None`` when the pool is empty after filtering
+        (the ``pool_filter`` narrows to nothing, or no agent is active and
+        below capacity), or when the subtask carries a hard requirement (a
+        ``required_role`` / ``required_skills``) that no agent satisfies --
+        an unstaffable requirement surfaces as no-eligible rather than
+        drawing an unqualified agent. A subtask with *no* requirement is
+        staffable by anyone: the best available agent is assigned and
+        flagged ``low_confidence`` so the organisation never deadlocks on
+        an unconstrained task.
 
         Returns:
             The :class:`AssignmentResult` carrying the selected

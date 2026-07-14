@@ -284,7 +284,6 @@ template:
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
-      level: "senior"
       model:
         priority: "balanced"
         requires_tools: true
@@ -292,7 +291,6 @@ template:
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-mid"
-      level: "mid"
       model:
         priority: "cost"
         requires_tools: true

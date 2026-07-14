@@ -265,7 +265,7 @@ list):
 | `GET /api/v1/integrations/health`                     | connection name (unique within the catalog)           |
 | `GET /api/v1/settings`                                | `(definition.namespace, definition.key)` (unique pair)|
 | `GET /api/v1/webhooks/{connection}/activity`          | `received_at DESC` (repo offset window)               |
-| `GET /api/v1/agents/{id}/promotion-history`           | in-memory list order (offset slice)                   |
+| `GET /api/v1/agents/{id}/history`                     | in-memory list order (offset slice)                   |
 | `GET /api/v1/projects/{id}/docs/{slug}/history`       | `git log` order (`--skip` offset)                     |
 | `GET /api/v1/projects/{id}/brain/{entry}/history`     | `git log` order (`--skip` offset)                     |
 

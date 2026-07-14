@@ -2,7 +2,7 @@
 
 Computes A2A Agent Cards from the current ``AgentIdentity`` at
 request time.  The safe subset excludes sensitive internal
-fields (personality, seniority, authority, model config, memory,
+fields (personality, authority, model config, memory,
 tool permissions, budget, autonomy, strategic mode, hiring date).
 """
 

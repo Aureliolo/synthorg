@@ -184,7 +184,7 @@ def _wire_communication_services(  # noqa: PLR0913 -- keyword-only collaborator 
             service can build its LLM judge (``None`` -> no judge).
         cost_tracker: The cost tracker the LLM judge attributes spend to.
         agent_registry: The agent registry the meeting-conflict bridge reads
-            department/seniority from to build conflict positions.
+            department/role from to build conflict positions.
 
     Returns:
         The settings ``config_resolver`` for the bridge and later consumers.

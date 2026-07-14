@@ -63,7 +63,6 @@ class TestTrainingStartSessionArgs:
                 {
                     "new_agent_id": "a1",
                     "new_agent_role": "r",
-                    "new_agent_level": "mid",
                     "enabled_content_types": ("procedural", "unknown_type"),
                 },
             )

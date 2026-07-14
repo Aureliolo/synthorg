@@ -365,7 +365,7 @@ Full field reference and architectural rationale are in the
 
 ---
 
-## Security & Trust
+## Security
 
 Security configuration is covered in detail in the [Security Policies](security.md) guide. Key fields:
 
@@ -374,8 +374,6 @@ Security configuration is covered in detail in the [Security Policies](security.
 | `security.enabled` | bool | `true` | Master security switch |
 | `security.audit_enabled` | bool | `true` | Audit logging |
 | `security.output_scan_policy_type` | string | `"autonomy_tiered"` | Output scan policy |
-| `trust.strategy` | string | `"disabled"` | Trust strategy type |
-| `trust.initial_level` | ToolAccessLevel | `"standard"` | Default trust level |
 
 ---
 
