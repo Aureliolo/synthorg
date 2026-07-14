@@ -31,8 +31,16 @@ INSERT INTO roles (
     system_prompt_template, description, is_builtin, created_at, updated_at
 )
 SELECT
-    name, department, required_skills, NULL, tool_access,
-    system_prompt_template, description, is_builtin, created_at, updated_at
+    name,
+    department,
+    required_skills,
+    NULL AS reports_to,
+    tool_access,
+    system_prompt_template,
+    description,
+    is_builtin,
+    created_at,
+    updated_at
 FROM roles_pre_reports_to;
 DROP TABLE roles_pre_reports_to;
 CREATE INDEX idx_roles_department ON roles (department);
