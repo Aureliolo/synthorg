@@ -72,7 +72,6 @@ The following SynthOrg concepts have no equivalent in the ACG formalism:
 
 | Concept | Module | Description |
 |---|---|---|
-| **Progressive trust** | `security/trust/service.py` | Agent trust levels (RESTRICTED/STANDARD/ELEVATED) with mandatory human approval for promotion. |
 | **Personality and behavioural config** | `core/personality.py` | Big Five traits + behavioural enums affecting decision style. |
 | **Memory injection** | `memory/retrieval/` | Episodic and procedural memory retrieval shaping context before execution. |
 | **Prompt profiles** | `engine/prompt/profiles.py` | Verbosity adaptation by model tier. |

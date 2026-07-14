@@ -337,7 +337,7 @@ REST (read-only, dashboard):
 Agent tools (in-process, per-task binding):
 
 - `SearchKnowledgeTool` (`memory:read` action type)
-- `IngestKnowledgeTool` (`knowledge:ingest` action type, admin via TrustService)
+- `IngestKnowledgeTool` (`knowledge:ingest` action type, admin-gated via `require_admin_guardrails`)
 
 MCP handlers (operator-driven, `meta/mcp/domains/knowledge.py`):
 

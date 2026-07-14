@@ -253,7 +253,7 @@ class OffboardingService:
 
         Args:
             agent_id: The departing agent's ID.
-            identity: The agent's identity (for seniority).
+            identity: The agent's identity (its role tags the archived memory).
 
         Returns:
             Archival result (default if archival was skipped/failed).

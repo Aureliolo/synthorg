@@ -39,7 +39,7 @@ For services whose `stop()` drains across `await` boundaries, wrap the drain in 
 
 ### Periodic cycle-scheduler base
 
-`AsyncCycleScheduler` (`core/scheduler.py`) packages this entire pattern (deferred loop-bound primitives, lifecycle lock across start/stop, bounded stop-drain marking the scheduler unrestartable, per-tick kill-switch) for periodic background schedulers. New periodic schedulers MUST extend it and supply `_run_cycle_once` (+ optional `_resolve_cycle_enabled` / `_log_cycle_paused`) rather than re-implementing the machinery. Subclasses: `ToolsmithCycleScheduler` (`meta/toolsmith/cycle_scheduler.py`), `PromotionCycleScheduler` (`hr/promotion/cycle_scheduler.py`), `ModelRefreshScheduler` (`providers/management/refresh_scheduler.py`, passes `reset_primitives_on_stop=False`).
+`AsyncCycleScheduler` (`core/scheduler.py`) packages this entire pattern (deferred loop-bound primitives, lifecycle lock across start/stop, bounded stop-drain marking the scheduler unrestartable, per-tick kill-switch) for periodic background schedulers. New periodic schedulers MUST extend it and supply `_run_cycle_once` (+ optional `_resolve_cycle_enabled` / `_log_cycle_paused`) rather than re-implementing the machinery. Subclasses: `ToolsmithCycleScheduler` (`meta/toolsmith/cycle_scheduler.py`), `ModelRefreshScheduler` (`providers/management/refresh_scheduler.py`, passes `reset_primitives_on_stop=False`).
 
 ### In-place runner variant
 

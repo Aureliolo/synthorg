@@ -67,8 +67,7 @@ Consultancy). See the
 [Company Types table](organization.md#company-types) for per-template defaults.
 
 **Autonomy scope** ([Decision Log](../architecture/decisions.md) D6): Three-level
-resolution chain: per-agent > per-department > company default. Seniority validation prevents
-Juniors/Interns from being set to `full`.
+resolution chain: per-agent > per-department > company default.
 
 **Runtime changes** ([Decision Log](../architecture/decisions.md) D7): Human-only
 promotion via REST API (no agent, including CEO, can escalate privileges). Automatic downgrade
@@ -101,9 +100,8 @@ strategy missing its required signal provider raises
 `AutonomyStrategyConfigError` at construction. The strategy is built
 at boot from `config.autonomy.change_strategy` and attached to
 application state; the autonomy controller consults it on every
-change request (the D6 seniority rule is enforced first, then the
-request is enqueued as an approval, the queue being the apply
-driver). With the `HUMAN_ONLY` default every promotion pends for
+change request (the request is enqueued as an approval, the queue
+being the apply driver). With the `HUMAN_ONLY` default every promotion pends for
 human review. The strategy verdict is enforced, not audit-only: a
 strategy that returns `True` from `request_promotion` produces an
 auto-decided approval item (`status=APPROVED`,
@@ -409,7 +407,7 @@ shutdown-time mechanism.
 
 The `RiskTierClassifier` protocol (`security/timeout/protocol.py`,
 `classify(action_type) -> ApprovalRiskLevel`) is a pluggable subsystem
-following the `security/trust/` pattern: a `StrEnum` discriminator +
+following the `security/autonomy/` pattern: a `StrEnum` discriminator +
 frozen config + safe default + `StrategyRegistry` factory.
 
 | `RiskClassifierType` | Implementation | Behaviour |
@@ -722,7 +720,7 @@ untrusted input and attacks it along four locked surfaces:
 
 ### Shape
 
-- The red team is a built-in `Role` (`name="Red Team"`, department `quality_assurance`, seniority `senior`) carried in `BUILTIN_ROLES`. The role is instantiated as a real `AgentIdentity` at boot via `build_red_team_agent_identity` and dispatched through `AgentEngine.run` like any other agent.
+- The red team is a built-in `Role` (`name="Red Team"`, department `quality_assurance`) carried in `BUILTIN_ROLES`. The role is instantiated as a real `AgentIdentity` at boot via `build_red_team_agent_identity` and dispatched through `AgentEngine.run` like any other agent.
 - The gate's only agent-side side effect is one `submit_red_team_report` tool call carrying a frozen `RedTeamReport` (`execution_id`, `task_id`, `findings`, `summary`). The tool is registered ONCE on the engine's tool registry; `execution_id` / `task_id` flow through tool arguments, NOT through constructor-bound state, so the tool is a singleton.
 - The agent prompt wraps the deliverable in `<untrusted-artifact>` and the brief in `<task-data>` via `wrap_untrusted` (SEC-1). The system prompt explicitly forbids deference to seniority and authority cues in the deliverable, mitigating the authority-deference failure pattern (`docs/design/communication-coordination.md`).
 
@@ -806,7 +804,7 @@ human-facing receipt view.
 
 ## See Also
 
-- [Tools](tools.md): tool categories, sandboxing, progressive trust
+- [Tools](tools.md): tool categories, sandboxing, access levels
 - [Budget](budget.md): risk budget, shadow mode enforcement
 - [Verification & Quality](verification-quality.md): verification stage and review pipeline (the red-team gate is the LAST adversarial layer AFTER the review pipeline passes)
 - [Design Overview](index.md): full index

@@ -5,7 +5,7 @@ description: Agent identity system. Personality dimensions, structured skill mod
 
 # Agents
 
-Every agent is a composition of **immutable config** (identity, personality, skills, model, tool permissions, authority) and **mutable runtime state** (execution status, active task, cost accumulation). This page covers the identity layer. The HR lifecycle (seniority, hiring, firing, performance, evolution) lives on a dedicated [HR & Agent Lifecycle](hr-lifecycle.md) page.
+Every agent is a composition of **immutable config** (identity, personality, skills, model, tool permissions, authority) and **mutable runtime state** (execution status, active task, cost accumulation). This page covers the identity layer. The HR lifecycle (hiring, firing, performance, evolution) lives on a dedicated [HR & Agent Lifecycle](hr-lifecycle.md) page.
 
 ## Agent Identity Card
 
@@ -155,7 +155,6 @@ management wrapping `TaskEngine` (see [Async Delegation](communication-events.md
       name: "Sarah Chen"
       role: "Senior Backend Developer"
       department: "Engineering"
-      level: "Senior"
       personality:
         traits:
           - analytical
@@ -273,7 +272,7 @@ with `model_copy`:
 
 `AgentRegistryService` creates ``VersionSnapshot[AgentIdentity]`` records for
 ``register()`` and ``update_identity()`` (charter/config changes such as model
-swaps and level changes). ``update_status()`` (status transitions) is **not**
+swaps and role changes). ``update_status()`` (status transitions) is **not**
 versioned: status changes are transient runtime state, not charter mutations.
 This provides a full audit trail of charter changes and enables ``DecisionRecord``
 entries to cite the exact charter version that was active during execution.
@@ -380,8 +379,8 @@ Engineer, etc.) are role definitions only; instantiation as a real
 `AgentIdentity` happens when operators configure their company. One
 role is special:
 
-- **Red Team** (`name="Red Team"`, department: Quality Assurance,
-  seniority: Senior). The built-in adversarial skeptic. Instantiated
+- **Red Team** (`name="Red Team"`, department: Quality Assurance).
+  The built-in adversarial skeptic. Instantiated
   at boot when `CompanyConfig.security.red_team.enabled` is true; the
   framework runs it as the last gate before IN_REVIEW -> COMPLETED for
   deliverables whose `stakes` meet the configured
@@ -393,7 +392,7 @@ role is special:
 
 ## See Also
 
-- [HR & Agent Lifecycle](hr-lifecycle.md): seniority, hiring, firing, performance, evaluation, promotions, evolution, five-pillar framework, client agents
+- [HR & Agent Lifecycle](hr-lifecycle.md): role catalog, reporting-graph authority, hiring, firing, performance, evaluation, evolution, five-pillar framework, client agents
 - [Organisation](organization.md): company types, departments, templates
-- [Tools & Capabilities](tools.md): tool access levels, progressive trust
+- [Tools & Capabilities](tools.md): tool access levels, sandboxing
 - [Design Overview](index.md): full index

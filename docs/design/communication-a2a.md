@@ -71,8 +71,7 @@ of `AgentIdentity`; only fields relevant to external capability discovery are ex
 | `skills` (SkillSet) | `skills` (AgentSkill[]) | Yes | Lossless mapping via [Skill model](agents.md#skill-model) |
 | `department` | metadata | Optional | Organisational context |
 | `personality` | - | No | Internal behavioural tuning |
-| `level` (seniority) | - | No | Internal authority hierarchy |
-| `authority` | - | No | Internal delegation rules |
+| `authority` (`reports_to`) | - | No | Internal reporting-graph hierarchy |
 | `model` (ModelConfig) | - | No | Internal infrastructure |
 | `tools` | - | No | Security-sensitive capability list |
 | `budget_limit` | - | No | Internal financial data |

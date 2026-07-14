@@ -210,12 +210,12 @@ MCP tools are treated like any other tool in SynthOrg:
 - **Output scanning** applies to MCP tool results: secrets and PII are redacted according to the configured output scan policy
 - **Audit logging** records every MCP tool invocation when `security.audit_enabled` is `true`
 
-To restrict MCP tool access to specific agents, configure tool access levels and trust policies. See [Security & Trust Policies](security.md) for details.
+To restrict MCP tool access to specific agents, configure tool access levels. See [Security Policies](security.md) for details.
 
 ---
 
 ## See Also
 
 - [Company Configuration](company-config.md): full configuration reference
-- [Security & Trust Policies](security.md): tool access levels and security policies
+- [Security Policies](security.md): tool access levels and security policies
 - [Design: Tools](../design/tools.md): tool architecture in the design spec

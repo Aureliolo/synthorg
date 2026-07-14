@@ -7,6 +7,10 @@ date: 2026-04-07
 
 # SynthOrg as Agent Control Plane: API Surface Audit and Gap Analysis
 
+!!! note "Dated snapshot"
+
+    This audit is a point-in-time record. References to `TrustService` / the progressive-trust subsystem describe a design that has since been removed; authority now derives from the role reporting graph (see [HR & Agent Lifecycle](../design/hr-lifecycle.md)).
+
 ## Context
 
 The New Stack article "Agentic AI Control Plane: What It Needs in Production" argues that

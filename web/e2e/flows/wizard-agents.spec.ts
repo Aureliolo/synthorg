@@ -50,7 +50,6 @@ const AGENT: SetupAgentSummary = {
   name: 'Ada',
   role: 'Engineer',
   department: 'Engineering',
-  level: 'senior',
   model_provider: null,
   model_id: null,
   personality_preset: null,

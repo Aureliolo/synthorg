@@ -1,11 +1,11 @@
 ---
-title: Security & Trust Policies
-description: Configure trust strategies, autonomy levels, approval gates, and custom security policies.
+title: Security Policies
+description: Configure autonomy levels, approval gates, and custom security policies.
 ---
 
-# Security & Trust Policies
+# Security Policies
 
-Every tool invocation in SynthOrg passes through the SecOps security pipeline. This guide covers how to configure autonomy levels, trust strategies, approval workflows, custom policies, and output scanning. For the internal architecture of the security subsystem, see the [Security](../security.md) reference.
+Every tool invocation in SynthOrg passes through the SecOps security pipeline. This guide covers how to configure autonomy levels, approval workflows, custom policies, and output scanning. For the internal architecture of the security subsystem, see the [Security](../security.md) reference.
 
 ---
 
@@ -34,125 +34,9 @@ agents:
 
 ---
 
-## Trust Strategies
-
-Trust strategies control how agents earn (or lose) access to higher-privilege tool categories over time. Configure via the `trust` section:
-
-=== "Disabled"
-
-    All agents start and remain at `initial_level`. No automatic trust progression.
-
-    ```yaml
-    trust:
-      strategy: disabled
-      initial_level: standard
-    ```
-
-    **When to use:** Simple setups, fully autonomous orgs, or when you manage trust externally.
-
-=== "Weighted"
-
-    Trust score computed from weighted factors. Agents are promoted when their score exceeds a threshold.
-
-    ```yaml
-    trust:
-      strategy: weighted
-      initial_level: restricted
-      weights:
-        task_difficulty: 0.3
-        completion_rate: 0.25
-        error_rate: 0.25
-        human_feedback: 0.2
-      promotion_thresholds:
-        restricted_to_standard:
-          score: 0.7
-          requires_human_approval: false
-        standard_to_elevated:
-          score: 0.9
-          requires_human_approval: true  # REQUIRED (security invariant)
-    ```
-
-    Weights must sum to 1.0 (within 0.01 tolerance).
-
-    **When to use:** Gradual trust building based on agent performance metrics.
-
-=== "Per-Category"
-
-    Independent trust levels per action category. Each category can have its own promotion criteria.
-
-    ```yaml
-    trust:
-      strategy: per_category
-      initial_level: restricted
-      initial_category_levels:
-        code: restricted
-        vcs: sandboxed
-        deploy: sandboxed
-      category_criteria:
-        code:
-          restricted_to_standard:
-            tasks_completed: 10
-            quality_score_min: 7.0
-            requires_human_approval: false
-          standard_to_elevated:
-            tasks_completed: 50
-            quality_score_min: 8.5
-            requires_human_approval: true  # REQUIRED (security invariant)
-        vcs:
-          sandboxed_to_restricted:
-            tasks_completed: 5
-            quality_score_min: 7.0
-    ```
-
-    **When to use:** Fine-grained control where some action categories are more sensitive than others.
-
-    !!! note
-
-        Every category in `category_criteria` must have a matching entry in `initial_category_levels`. Categories with criteria but no initial level produce a validation error.
-
-=== "Milestone"
-
-    Gate-based trust with explicit criteria per transition.
-
-    ```yaml
-    trust:
-      strategy: milestone
-      initial_level: restricted
-      milestones:
-        restricted_to_standard:
-          tasks_completed: 20
-          quality_score_min: 7.5
-          time_active_days: 7
-          clean_history_days: 3
-          auto_promote: true
-          requires_human_approval: false
-        standard_to_elevated:
-          tasks_completed: 100
-          quality_score_min: 8.5
-          time_active_days: 30
-          clean_history_days: 14
-          auto_promote: false
-          requires_human_approval: true  # REQUIRED (security invariant)
-      re_verification:
-        enabled: true
-        interval_days: 90
-        decay_on_idle_days: 30
-        decay_on_error_rate: 0.15
-    ```
-
-    `auto_promote` and `requires_human_approval` are mutually exclusive per milestone.
-
-    **When to use:** Organisations that want time-based gates and periodic re-verification.
-
-!!! warning "Security invariant: standard_to_elevated"
-
-    The `standard_to_elevated` transition **always requires `requires_human_approval: true`**, regardless of trust strategy. This is enforced by validation and cannot be overridden. Attempting to set `requires_human_approval: false` on this transition produces a validation error.
-
----
-
 ## Tool Access Levels
 
-Trust levels map to tool access categories:
+Tool access categories map to the `ToolAccessLevel` an agent's identity carries:
 
 | Level | Value | Access |
 |-------|-------|--------|
@@ -163,19 +47,6 @@ Trust levels map to tool access categories:
 | Custom | `custom` | Explicit allow/deny lists (ignores the hierarchy) |
 
 Levels form a hierarchy where each includes all categories from lower levels.
-
----
-
-## Re-verification
-
-For the **milestone** strategy, re-verification periodically re-evaluates trust:
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `true` | Whether re-verification is active (secure default; inert unless the milestone strategy is active) |
-| `interval_days` | int | `90` | Days between re-verifications |
-| `decay_on_idle_days` | int | `30` | Demote one level after this many idle days |
-| `decay_on_error_rate` | float | `0.15` | Demote if error rate exceeds this threshold |
 
 ---
 
@@ -361,7 +232,7 @@ curl -X PATCH http://localhost:3001/api/v1/agents/${AGENT_NAME} \
   -d '{"autonomy_level": "semi"}'
 ```
 
-Valid values: `full`, `semi`, `supervised`, `locked`. Promotion to `full` is rejected for Juniors / Interns (see [Seniority levels](../design/hr-lifecycle.md#seniority-authority-levels)).
+Valid values: `full`, `semi`, `supervised`, `locked`.
 
 Automatic demotions happen on: sustained high error rate (one level down), budget exhausted (`supervised`), security incident (`locked`). Recovery from auto-downgrade is human-only.
 

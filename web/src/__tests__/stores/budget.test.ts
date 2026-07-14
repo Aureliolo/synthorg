@@ -110,7 +110,6 @@ const mockAgent = {
   name: 'Alpha',
   role: 'Developer',
   department: 'engineering',
-  level: 'mid',
   status: 'active',
   personality: {},
   model: {},

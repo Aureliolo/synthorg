@@ -13,7 +13,7 @@ For the architecture (identity versioning, evolution, five-pillar evaluation), s
 
 ## Hiring
 
-Agents are hired via `POST /api/v1/agents` with a `CreateAgentOrgRequest` body. The DTO accepts only: `name`, `role`, `department`, `level` (one of the `SeniorityLevel` values), and the `model_provider` / `model_id` pair (both together or both omitted; if omitted, the model matcher falls back to the provider catalog default).
+Agents are hired via `POST /api/v1/agents` with a `CreateAgentOrgRequest` body. The DTO accepts only: `name`, `role`, `department`, and the `model_provider` / `model_id` pair (both together or both omitted; if omitted, the model matcher falls back to the provider catalog default). Authority follows from the role's position in the reporting graph, not a per-agent level.
 
 ```bash
 curl -X POST http://localhost:3001/api/v1/agents \
@@ -23,7 +23,6 @@ curl -X POST http://localhost:3001/api/v1/agents \
     "name": "Sarah Chen",
     "role": "Senior Backend Developer",
     "department": "Engineering",
-    "level": "Senior",
     "model_provider": "example-provider",
     "model_id": "example-medium-001"
   }' | jq
@@ -57,7 +56,7 @@ curl -X PATCH http://localhost:3001/api/v1/agents/${AGENT_NAME} \
   -d '{"model_provider": "example-provider", "model_id": "example-large-001"}'
 ```
 
-`UpdateAgentOrgRequest` accepts only: `name`, `role`, `department`, `level`, `autonomy_level`, `model_provider`, `model_id`.
+`UpdateAgentOrgRequest` accepts only: `name`, `role`, `department`, `autonomy_level`, `model_provider`, `model_id`.
 
 Every update creates a new `AgentIdentity` version snapshot in `agent_identity_versions`. Query the history:
 
@@ -135,7 +134,7 @@ After the wizard completes, use `/api/v1/agents` for subsequent changes.
 
 ## See Also
 
-- [Agent Roles & Hierarchy](agents.md): role catalog, seniority levels
+- [Agent Roles & Hierarchy](agents.md): role catalog, reporting-graph authority
 - [Design: Agents](../design/agents.md): identity card, personality dimensions, identity versioning
 - [Design: HR & Agent Lifecycle](../design/hr-lifecycle.md): full lifecycle, performance tracking, evolution
-- [Security & Trust Policies](security.md): autonomy and tool permissions
+- [Security Policies](security.md): autonomy and tool permissions

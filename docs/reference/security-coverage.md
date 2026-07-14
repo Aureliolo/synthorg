@@ -15,7 +15,7 @@ This matrix maps SynthOrg security mechanisms to the [OWASP Top 10 for Agentic A
 |-----|------|----------|----------------|
 | ASI01 | Agent Goal Hijack | Partial | `security/rules/` (credential/path detectors), `engine/classification/` (semantic detectors), `HTMLParseGuard` (tool output sanitization), `SemanticDriftDetector` (middleware) |
 | ASI02 | Tool Misuse and Exploitation | Covered | `PolicyEngine` (Cedar pre-exec gate), `security/rules/` (preventive rule engine), `tools/sandbox/` (Docker/subprocess isolation), `ApprovalGate` |
-| ASI03 | Identity and Privilege Abuse | Covered | Progressive trust (`security/trust/`), 4 autonomy levels, `AuthorityDeferenceGuard`, `ApprovalGate`, delegation budget, `ToolPermissionChecker` |
+| ASI03 | Identity and Privilege Abuse | Covered | 4 autonomy levels, `AuthorityDeferenceGuard`, `ApprovalGate`, delegation budget, `ToolPermissionChecker` (granting ELEVATED tool access always requires human approval) |
 | ASI04 | Agentic Supply Chain Vulnerabilities | Partial | `ToolRegistryIntegrityCheck` (boot-time hash verification), pip-audit/npm-audit/Trivy in CI, cosign signatures, SLSA provenance. **Gap**: no runtime plugin integrity verification beyond boot-time hash. |
 | ASI05 | Unexpected Code Execution (RCE) | Covered | `tools/sandbox/` (Docker with ephemeral containers, subprocess with env filtering), gVisor runtime for high-risk categories (`code_execution`, `terminal`), `SandboxCredentialManager`, workspace boundary enforcement |
 | ASI06 | Memory and Context Poisoning | Partial | Procedural memory generation guards, MVCC `SharedKnowledgeStore`, `SemanticDriftDetector`. **Gap**: no automated RAG-store integrity verification. |

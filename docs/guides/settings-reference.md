@@ -221,6 +221,6 @@ Use `observability.custom_sinks` (JSON-typed) to add HTTP / syslog / OTLP shippi
 ## See Also
 
 - [Company Configuration](company-config.md): YAML bootstrap config reference
-- [Security & Trust Policies](security.md): autonomy, approvals, trust
+- [Security Policies](security.md): autonomy, approvals
 - [Centralised Logging](centralized-logging.md): log sink configuration
 - [Design: Observability](../design/observability.md): architecture and event taxonomy

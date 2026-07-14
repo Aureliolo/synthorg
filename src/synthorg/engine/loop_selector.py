@@ -91,8 +91,8 @@ DEFAULT_AUTO_LOOP_RULES: tuple[AutoLoopRule, ...] = (
     AutoLoopRule(complexity=Complexity.EPIC, loop_type="hybrid"),
 )
 
-# Import-time completeness guard (follows _SENIORITY_ORDER pattern in
-# hr/seniority.py): ensures every Complexity member has a default rule.
+# Import-time completeness guard: ensures every Complexity member has a
+# default rule.
 _covered = {r.complexity for r in DEFAULT_AUTO_LOOP_RULES}
 _all_complexities = set(Complexity)
 if _covered != _all_complexities:

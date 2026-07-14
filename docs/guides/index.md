@@ -35,7 +35,7 @@ Practical guides for configuring, operating, and extending your synthetic organi
 
     ---
 
-    Define agents, seniority levels, personality, departments, and reporting lines.
+    Define agents, roles, personality, departments, and reporting lines.
 
     [:octicons-arrow-right-24: Agents](agents.md)
 
@@ -47,11 +47,11 @@ Practical guides for configuring, operating, and extending your synthetic organi
 
     [:octicons-arrow-right-24: Budget](budget.md)
 
--   :material-shield-lock:{ .lg .middle } **Security & Trust Policies**
+-   :material-shield-lock:{ .lg .middle } **Security Policies**
 
     ---
 
-    Trust strategies, autonomy levels, approval gates, and custom security policies.
+    Autonomy levels, approval gates, and custom security policies.
 
     [:octicons-arrow-right-24: Security](security.md)
 

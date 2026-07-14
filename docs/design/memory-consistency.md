@@ -60,7 +60,7 @@ snapshot row:
   created_at
   retracted_at   -- null = active
   version        -- matches most recent operation_log.version
-  author info    -- agent_id, seniority, is_human, autonomy_level
+  author info    -- agent_id, role, is_human, autonomy_level
 ```
 
 Queries against the snapshot fetch active facts: `WHERE retracted_at IS NULL`. No log replay

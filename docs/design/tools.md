@@ -5,7 +5,7 @@ description: Tool categories, concurrent execution model, layered sandboxing, MC
 
 # Tools & Capabilities
 
-Agents act on the world through tools. SynthOrg defines a pluggable tool system with 15+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication, design, headless browser, governed external data access, virtual desktop), layered sandboxing (subprocess for low-risk, Docker for high-risk, Kubernetes for future multi-tenant), MCP server integration, and a progressive-disclosure model that limits the surface an agent sees to what its role, seniority, and autonomy tier permit.
+Agents act on the world through tools. SynthOrg defines a pluggable tool system with 15+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication, design, headless browser, governed external data access, virtual desktop), layered sandboxing (subprocess for low-risk, Docker for high-risk, Kubernetes for future multi-tenant), MCP server integration, and a progressive-disclosure model that limits the surface an agent sees to what its role and autonomy tier permit.
 
 ## Tool Categories
 
@@ -557,7 +557,7 @@ progressive disclosure is the local analogue for managing context cost.
 ## Action Type System
 
 Action types classify agent actions for use by autonomy presets (see [Security & Approval](security.md#autonomy-levels)),
-SecOps validation, tiered timeout policies, and progressive trust
+SecOps validation, and tiered timeout policies
 ([Decision Log](../architecture/decisions.md) D1).
 
 **Registry:** `StrEnum` for ~41 built-in action types (type safety, autocomplete, typos caught
@@ -625,7 +625,7 @@ triggered by engine-level operations. No LLM in the security classification path
           terminal: "restricted_commands"
 
         elevated:
-          description: "Full access for senior/trusted agents."
+          description: "Full access; granting it requires human approval."
           file_system: "full"
           code_execution: "containerized"
           network: "open"
@@ -644,122 +644,8 @@ code execution isolation, and approval requirements against each tool invocation
 overrides can customise all six dimensions via `ToolPermissions.sub_constraints`.  K8s sandbox
 backend integration is on the roadmap.
 
-## Progressive Trust
-
-Agents can earn higher tool access over time through configurable trust strategies. The trust
-system implements a `TrustStrategy` protocol, making it extensible. All four strategies are
-implemented.
-
-!!! warning "Security Invariant"
-
-    The `standard_to_elevated` promotion **always** requires human approval. No agent can
-    auto-gain production access regardless of trust strategy.
-
-=== "Disabled (Default)"
-
-    Trust is disabled. Agents receive their configured access level at hire time and it never
-    changes. Simplest option, useful when the human manages permissions manually.
-
-    ```yaml
-    trust:
-      strategy: "disabled"               # disabled, weighted, per_category, milestone
-      initial_level: "standard"          # fixed access level for all agents
-    ```
-
-=== "Weighted Score"
-
-    A single trust score computed from weighted factors: task difficulty completed, error rate,
-    time active, and human feedback. One global trust level per agent, applied to all tool
-    categories.
-
-    ```yaml
-    trust:
-      strategy: "weighted"
-      initial_level: "sandboxed"
-      weights:
-        task_difficulty: 0.3             # harder tasks completed = more trust
-        completion_rate: 0.25
-        error_rate: 0.25                 # inverse -- fewer errors = more trust
-        human_feedback: 0.2
-      promotion_thresholds:
-        sandboxed_to_restricted: 0.4
-        restricted_to_standard: 0.6
-        standard_to_elevated:
-          score: 0.8
-          requires_human_approval: true  # always human-gated
-    ```
-
-    Simple model, easy to understand. One number to track. However, too coarse; an agent
-    trusted for file edits should not auto-gain deployment access.
-
-=== "Per-Category"
-
-    Separate trust tracks per tool category (filesystem, git, deployment, database, network).
-    An agent can be "standard" for files but "sandboxed" for deployment. Promotion criteria
-    differ per category.
-
-    ```yaml
-    trust:
-      strategy: "per_category"
-      initial_levels:
-        file_system: "restricted"
-        git: "restricted"
-        code_execution: "sandboxed"
-        deployment: "sandboxed"
-        database: "sandboxed"
-        terminal: "sandboxed"
-      promotion_criteria:
-        file_system:
-          restricted_to_standard:
-            tasks_completed: 10
-            quality_score_min: 7.0
-        deployment:
-          sandboxed_to_restricted:
-            tasks_completed: 20
-            quality_score_min: 8.5
-            requires_human_approval: true  # always human-gated for deployment
-    ```
-
-    Granular. Matches real security models (IAM roles). Prevents gaming via easy tasks. Trust
-    state is a matrix per agent, not a scalar.
-
-=== "Milestone Gates"
-
-    Explicit capability milestones aligned with the Cloud Security Alliance Agentic Trust
-    Framework. Automated promotion for low-risk levels. Human approval gates for elevated
-    access. Trust is time-bound and subject to periodic re-verification.
-
-    ```yaml
-    trust:
-      strategy: "milestone"
-      initial_level: "sandboxed"
-      milestones:
-        sandboxed_to_restricted:
-          tasks_completed: 5
-          quality_score_min: 7.0
-          auto_promote: true             # no human needed
-        restricted_to_standard:
-          tasks_completed: 20
-          quality_score_min: 8.0
-          time_active_days: 7
-          auto_promote: true
-        standard_to_elevated:
-          requires_human_approval: true  # always human-gated
-          clean_history_days: 14         # no errors in last 14 days
-      re_verification:
-        enabled: true
-        interval_days: 90                # re-verify every 90 days
-        decay_on_idle_days: 30           # demote one level if idle 30+ days
-        decay_on_error_rate: 0.15        # demote if error rate exceeds 15%
-    ```
-
-    Industry-aligned. Re-verification prevents stale trust. Trust decay may need tuning
-    to avoid frustrating users.
-
----
-
 ## See Also
 
 - [Providers](providers.md): LLM abstraction and routing
-- [Security & Approval](security.md): autonomy tiers, approval gates, progressive trust
+- [Security & Approval](security.md): autonomy tiers, approval gates
 - [Design Overview](index.md): full index

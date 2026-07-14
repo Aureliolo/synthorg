@@ -148,13 +148,6 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `communication/meeting/enums.py::ConflictDetectorType`: discriminator.
 - `communication/meeting/factory.py::build_conflict_detector()`: `StrategyRegistry` dispatch.
 
-### Trust strategy (conditional instantiation)
-
-- `security/trust/protocol.py`: `TrustStrategy` Protocol.
-- `security/trust/{weighted,per_category,milestone}_strategy.py`: three real implementations.
-- `security/trust/config.py::TrustConfig.strategy` (`TrustStrategyType` with a `DISABLED` value): discriminator.
-- `security/trust/factory.py::build_trust_strategy()`: registry dispatch that returns `None` for `DISABLED` so callers skip `TrustService` construction entirely (instead of wiring a no-op strategy).
-
 ### Ontology versioning (inverted backend dependency)
 
 - `ontology/versioning.py`: pure `EntityDefinition` snapshot deserializers; carries no backend imports.
@@ -206,7 +199,7 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 
 - `providers/management/refresh_strategy.py`: `RefreshStrategy` `@runtime_checkable` Protocol (`reconcile(provider_name, provider) -> ProviderRefreshOutcome`).
 - `DetectOnlyStrategy` (probe the live catalogue and flag removed models stale; never persists new models or recommends) and `ReconcileRecommendStrategy` (additionally persists newly-discovered models and produces in-family upgrade recommendations).
-- `providers/management/refresh_strategy.py::build_refresh_strategy()`: keyed on the `RefreshMode` discriminator; returns `None` for `OFF` / `MANUAL_ONLY` so the scheduler skips construction entirely (the off-by-cadence safe default), matching the `build_trust_strategy()` precedent.
+- `providers/management/refresh_strategy.py::build_refresh_strategy()`: keyed on the `RefreshMode` discriminator; returns `None` for `OFF` / `MANUAL_ONLY` so the scheduler skips construction entirely (the off-by-cadence safe default).
 
 ## Services are a distinct pattern (not pluggable subsystems)
 

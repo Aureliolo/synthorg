@@ -1,26 +1,25 @@
 ---
 title: HR & Agent Lifecycle
-description: Seniority and authority levels, role catalog, dynamic roles, hiring (templates + LLM), pruning, dynamic scaling, firing, performance tracking, evaluation loop, promotions, agent evolution, and the five-pillar evaluation framework.
+description: Role catalog, reporting-graph authority, dynamic roles, hiring (templates + LLM), pruning, dynamic scaling, firing, performance tracking, evaluation loop, agent evolution, and the five-pillar evaluation framework.
 ---
 
 # HR & Agent Lifecycle
 
-This page covers the operational lifecycle of every agent in a synthetic organisation, from hiring through performance tracking, promotion, evolution, and offboarding. The HR subsystem is how SynthOrg simulates a workforce: closed-loop hiring when new skills are needed, performance-driven pruning when agents fail to deliver, and pluggable evolution for agents that need to adapt their identity.
+This page covers the operational lifecycle of every agent in a synthetic organisation, from hiring through performance tracking, evolution, and offboarding. The HR subsystem is how SynthOrg simulates a workforce: closed-loop hiring when new skills are needed, performance-driven pruning when agents fail to deliver, and pluggable evolution for agents that need to adapt their identity.
 
 See [Agents](agents.md) for the identity layer (personality, skills, tool namespaces, identity versioning).
 
-## Seniority & Authority Levels
+## Authority: role + reporting graph
 
-| Level | Authority | Typical Model | Cost Tier |
-|-------|----------|---------------|-----------|
-| Intern/Junior | Execute assigned tasks only | small / local | $ |
-| Mid | Execute + suggest improvements | medium / local | $$ |
-| Senior | Execute + design + review others | medium / large | $$$ |
-| Lead | All above + approve + delegate | large / medium | $$$ |
-| Principal/Staff | All above + architectural decisions | large | $$$$ |
-| Director | Strategic decisions + budget authority | large | $$$$ |
-| VP | Department-wide authority | large | $$$$ |
-| C-Suite (CEO/CTO/CFO) | Company-wide authority + final approvals | large | $$$$ |
+Authority is not a scalar rank. It derives from an agent's **role** and its position in the organisation's **reporting graph**. Each `Role` declares an optional `reports_to` (the role name of its supervisor); the CEO role sits at the root with `reports_to = None`.
+
+`core/authority.py` computes authority from that graph:
+
+- `role_depth(role)`: distance from the CEO root (CEO is 0, its reports 1, and so on).
+- `reporting_chain(role)`: the ordered chain of supervisors up to the root.
+- `outranks(a, b)` / `compare_authority(a, b)`: whether role `a` is a (transitive) superior of role `b`, and a sign-comparison by reporting depth.
+
+Consumers that need "who is more senior" (conflict resolution, owner selection, department-head detection) compare reporting depth via these helpers rather than reading a per-agent level. A role's model tier is a separate, independent axis driven by the work's capability demand (see [Providers](providers.md)), not by org position.
 
 ---
 
@@ -93,7 +92,7 @@ custom_roles:
     department: "Engineering"
     skills: ["solidity", "web3", "smart-contracts"]
     system_prompt_template: "blockchain_dev.md"
-    authority_level: "senior"
+    reports_to: "CTO"
     suggested_model: "large"
 ```
 
@@ -104,7 +103,7 @@ The HR system manages the agent workforce dynamically:
 1. HR agent (or human) identifies a skill gap or workload issue
 2. HR generates **candidate cards** based on team needs:
     - What skills are underrepresented?
-    - What seniority level is needed?
+    - What role (and where in the reporting graph) is needed?
     - What personality would complement the team?
     - What model/provider fits the budget?
 3. Candidate cards are presented for approval (to CEO or human)
@@ -417,39 +416,6 @@ agent_metrics:
 ## Evaluation Loop
 
 The closed-loop evaluation framework continuously measures agent performance and identifies improvement opportunities, built on top of the five-pillar evaluation, performance tracking, and trajectory scoring described elsewhere on this page. It captures traces, tags behaviour, enriches each turn with five-pillar evaluation, and proposes targeted fixes validated on the next run. The framework has its own design page: [Evaluation Loop](evaluation-loop.md).
-
----
-
-## Promotions & Demotions
-
-Agents can move between seniority levels based on performance:
-
-- **Promotion criteria:** Sustained high quality scores, task complexity handled, peer feedback
-- **Demotion criteria:** Repeated failures, quality drops, cost inefficiency
-- Promotions can unlock higher [tool access levels](tools.md#tool-access-levels)
-- Model upgrades/downgrades may accompany level changes (configurable, see [auto-downgrade](budget.md#cost-controls))
-
-!!! info "Design decisions ([Decision Log](../architecture/decisions.md) D13, D14, D15)"
-
-    Each decision below names the protocol that is currently implemented and the
-    concrete `Initial strategy` that the default factory wires. "Initial
-    strategy" is the shipped default; operators substitute via the
-    factory.
-
-    - **D13: Promotion Criteria.** Pluggable `PromotionCriteriaStrategy` protocol. Initial
-      strategy: configurable threshold gates. `ThresholdEvaluator` with
-      `min_criteria_met: int` (N of M) + `required_criteria: list[str]`. Setting `min=total`
-      gives AND; `min=1` gives OR. Default: junior-to-mid = 2 of 3 criteria,
-      mid-to-senior = all.
-    - **D14: Promotion Approval.** Pluggable `PromotionApprovalStrategy` protocol. Initial
-      strategy: senior+ requires human approval. Junior-to-mid auto-promotes (low cost
-      impact: small-to-medium ~4x). Demotions: auto-apply for cost-saving (model downgrade),
-      human approval for authority-reducing demotions.
-    - **D15: Model Mapping.** Pluggable `ModelMappingStrategy` protocol. Initial strategy:
-      default ON (`hr.promotions.model_follows_seniority: true`). Model changes at task
-      boundaries only (never mid-execution, consistent with
-      [auto-downgrade](budget.md#cost-controls)). Per-agent `preferred_model` overrides seniority
-      default. Smart routing still uses cheap models for simple tasks regardless of seniority.
 
 ---
 

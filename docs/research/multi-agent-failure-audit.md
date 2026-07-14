@@ -11,6 +11,10 @@ last_reviewed: 2026-05-05
 
 # Multi-Agent Failure Pattern Audit
 
+!!! note "Dated snapshot"
+
+    This audit is a point-in-time record. References to `TrustService` / progressive-trust promotion describe a design that has since been removed; authority now derives from the role reporting graph (see [HR & Agent Lifecycle](../design/hr-lifecycle.md)).
+
 ## Context
 
 Two independent sources converge on a warning relevant to SynthOrg's architecture:

@@ -5,7 +5,7 @@ search:
 
 # Security
 
-Security subsystem: rule engine, trust strategies, autonomy levels, output scanning, and timeout policies.
+Security subsystem: rule engine, autonomy levels, output scanning, and timeout policies.
 
 ## Protocol
 
@@ -44,16 +44,6 @@ Security subsystem: rule engine, trust strategies, autonomy levels, output scann
 ::: synthorg.security.rules.engine
 
 ::: synthorg.security.risk_map
-
-## Trust
-
-::: synthorg.security.trust.protocol
-
-::: synthorg.security.trust.config
-
-::: synthorg.security.trust.models
-
-::: synthorg.security.trust.service
 
 ## Autonomy
 

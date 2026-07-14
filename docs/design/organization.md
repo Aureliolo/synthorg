@@ -138,9 +138,10 @@ graph TD
     DevOpsLead --> SRE["SRE"]
 ```
 
-Each node in the hierarchy corresponds to an [agent](agents.md) with a defined
-[seniority level](hr-lifecycle.md#seniority-authority-levels) that determines their authority,
-delegation rights, and typical model tier.
+Each node in the hierarchy corresponds to an [agent](agents.md) whose authority and
+delegation rights derive from its role's position in the
+[reporting graph](hr-lifecycle.md) (`Role.reports_to`). A role's model tier is a
+separate axis driven by capability demand, not org position.
 
 ---
 
