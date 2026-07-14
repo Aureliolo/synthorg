@@ -6,7 +6,7 @@ describe('AgentEditDrawer', () => {
   const mockOnUpdate = vi.fn().mockResolvedValue(makeAgent('alice'))
   const mockOnDelete = vi.fn().mockResolvedValue(undefined)
   const mockOnClose = vi.fn()
-  const agent = makeAgent('alice', { role: 'Lead Developer', level: 'lead' })
+  const agent = makeAgent('alice', { role: 'Lead Developer' })
   const departments = [makeDepartment('engineering'), makeDepartment('product')]
 
   function renderDrawer(props?: { agent?: typeof agent | null; open?: boolean }) {
@@ -64,7 +64,6 @@ describe('AgentEditDrawer', () => {
         name: 'alice',
         role: 'Lead Developer',
         department: 'engineering',
-        level: 'lead',
       })
     })
   })

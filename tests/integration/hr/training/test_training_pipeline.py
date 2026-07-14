@@ -16,7 +16,6 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.curation.relevance import (
     RelevanceScoreCuration,
 )
@@ -53,14 +52,12 @@ def _make_identity(
     agent_id: str | None = None,
     role: str = "engineer",
     department: str = "engineering",
-    level: SeniorityLevel = SeniorityLevel.SENIOR,
 ) -> MagicMock:
     identity = MagicMock()
     identity.id = agent_id or str(uuid4())
     identity.name = f"agent-{identity.id}"
     identity.role = role
     identity.department = department
-    identity.level = level
     identity.status = AgentStatus.ACTIVE
     return identity
 
@@ -93,7 +90,6 @@ def _make_plan(
     return TrainingPlan(
         new_agent_id="new-agent-1",
         new_agent_role="engineer",
-        new_agent_level=SeniorityLevel.JUNIOR,
         require_review=require_review,
         override_sources=override_sources,
         skip_training=skip_training,
@@ -297,7 +293,6 @@ class TestFullTrainingPipeline:
         plan = TrainingPlan(
             new_agent_id="new-1",
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             status=TrainingPlanStatus.EXECUTED,
             executed_at=_now(),
             require_review=False,

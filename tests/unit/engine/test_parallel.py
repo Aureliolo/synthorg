@@ -23,7 +23,6 @@ from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.resource_lock import InMemoryResourceLock
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.shutdown import ShutdownManager
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.parallel import PARALLEL_AGENT_CANCELLED
 from tests._shared import as_uuid
 
@@ -35,7 +34,6 @@ def _make_identity(
         name=name,
         role="engineer",
         department="engineering",
-        level=SeniorityLevel.MID,
         hiring_date=date(2026, 1, 15),
         personality=PersonalityConfig(traits=("analytical",)),
         model=ModelConfig(

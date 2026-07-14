@@ -21,7 +21,6 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.plan_review.models import PlanReviewPanelConfig
 from synthorg.engine.plan_review.session import AgentSessionPlanReviewPanel
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import FakeClock, as_uuid, sid
 from tests._shared.scripted_provider import (
     ScriptedProvider,
@@ -78,9 +77,9 @@ def _plan() -> DecompositionResult:
     )
 
 
-def _agent(label: str, *, role: str, level: SeniorityLevel) -> AgentIdentity:
+def _agent(label: str, *, role: str) -> AgentIdentity:
     return make_e2e_identity(label=label).model_copy(
-        update={"role": role, "department": "Executive", "level": level}
+        update={"role": role, "department": "Executive"}
     )
 
 
@@ -109,7 +108,7 @@ class TestAgentSessionPlanReviewPanel:
             ]
         )
         panel = _panel(provider)
-        reviewer = _agent("cfo", role="CFO", level=SeniorityLevel.C_SUITE)
+        reviewer = _agent("cfo", role="CFO")
 
         review = await panel.review(
             task=_task(), plan=_plan(), agents=(reviewer,), owner=None
@@ -124,7 +123,7 @@ class TestAgentSessionPlanReviewPanel:
     async def test_no_panel_when_only_owner_available(self) -> None:
         provider = ScriptedProvider([])
         panel = _panel(provider)
-        owner = _agent("owner", role="CTO", level=SeniorityLevel.C_SUITE)
+        owner = _agent("owner", role="CTO")
 
         review = await panel.review(
             task=_task(), plan=_plan(), agents=(owner,), owner=owner
@@ -138,7 +137,7 @@ class TestAgentSessionPlanReviewPanel:
         # than fabricating a verdict.
         provider = ScriptedProvider([make_text_response("still thinking")])
         panel = _panel(provider)
-        reviewer = _agent("cto", role="CTO", level=SeniorityLevel.C_SUITE)
+        reviewer = _agent("cto", role="CTO")
 
         review = await panel.review(
             task=_task(), plan=_plan(), agents=(reviewer,), owner=None
@@ -151,7 +150,7 @@ class TestAgentSessionPlanReviewPanel:
         # the panel degrades to no review (a greenlight is never blocked on it).
         provider = ScriptedProvider(error=RuntimeError("provider down"))
         panel = _panel(provider)
-        reviewer = _agent("cto", role="CTO", level=SeniorityLevel.C_SUITE)
+        reviewer = _agent("cto", role="CTO")
 
         review = await panel.review(
             task=_task(), plan=_plan(), agents=(reviewer,), owner=None

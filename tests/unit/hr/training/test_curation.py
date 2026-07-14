@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.curation.relevance import (
     RelevanceScoreCuration,
 )
@@ -44,7 +43,6 @@ class TestRelevanceScoreCuration:
         result = await curation.curate(
             items,
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             content_type=ContentType.PROCEDURAL,
         )
         assert len(result) == 5
@@ -60,7 +58,6 @@ class TestRelevanceScoreCuration:
         result = await curation.curate(
             items,
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             content_type=ContentType.PROCEDURAL,
         )
         assert len(result) == 1
@@ -70,7 +67,6 @@ class TestRelevanceScoreCuration:
         result = await curation.curate(
             (),
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             content_type=ContentType.PROCEDURAL,
         )
         assert result == ()
@@ -81,7 +77,6 @@ class TestRelevanceScoreCuration:
         result = await curation.curate(
             items,
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             content_type=ContentType.PROCEDURAL,
         )
         assert len(result) == 50

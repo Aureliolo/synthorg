@@ -295,30 +295,25 @@ selectable via configuration:
 | Strategy | Behaviour |
 |----------|----------|
 | `manual` | Resolve an explicit model override; fails if not set |
-| `role_based` | Match agent seniority level to routing rules, then catalog default |
+| `role_based` | Match the agent's role to routing rules, then catalog default |
 | `cost_aware` | Match task-type rules, then pick cheapest model within budget |
 | `fastest` | Match task-type rules, then pick fastest model (by `estimated_latency_ms`) within budget; falls back to cheapest when no latency data is available |
-| `smart` | Priority cascade: override > task-type > role > seniority > cheapest > fallback chain |
+| `smart` | Priority cascade: override > task-type > role > cheapest > fallback chain |
 
 ```yaml
 routing:
   strategy: "smart"              # smart, fastest, role_based, cost_aware, manual
   rules:
-    - role_level: "c_suite"
+    - task_type: "architecture"
       preferred_model: "large"
       fallback: "medium"
-    - role_level: "senior"
+    - task_type: "development"
       preferred_model: "medium"
       fallback: "small"
-    - role_level: "junior"
-      preferred_model: "small"
-      fallback: "local-coder"
     - task_type: "code_review"
       preferred_model: "medium"
     - task_type: "documentation"
       preferred_model: "small"
-    - task_type: "architecture"
-      preferred_model: "large"
   fallback_chain:
     - "example-provider"
     - "openrouter"

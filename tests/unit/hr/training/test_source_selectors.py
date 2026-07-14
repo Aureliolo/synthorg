@@ -8,7 +8,6 @@ import pytest
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.source_selectors.composite import (
     CompositeSelector,
 )
@@ -27,7 +26,6 @@ def _make_identity(
     *,
     role: str = "engineer",
     department: str = "engineering",
-    level: SeniorityLevel = SeniorityLevel.SENIOR,
     status: AgentStatus = AgentStatus.ACTIVE,
 ) -> MagicMock:
     """Create a mock AgentIdentity."""
@@ -36,7 +34,6 @@ def _make_identity(
     identity.name = f"agent-{identity.id}"
     identity.role = role
     identity.department = department
-    identity.level = level
     identity.status = status
     return identity
 
@@ -88,7 +85,6 @@ class TestRoleTopPerformers:
         )
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert len(result) == 2
         # Top 2 by quality: agent[1] (0.9) and agent[2] (0.7)
@@ -117,7 +113,6 @@ class TestRoleTopPerformers:
         )
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert len(result) == 2
 
@@ -131,7 +126,6 @@ class TestRoleTopPerformers:
         )
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert result == ()
 
@@ -151,7 +145,6 @@ class TestRoleTopPerformers:
         )
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         # Agent with None score should still be included (scored as 0.0)
         assert len(result) == 1
@@ -172,7 +165,6 @@ class TestRoleTopPerformers:
         )
         result = await selector.select(
             new_agent_role="eng",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert len(result) == 3
 
@@ -220,7 +212,6 @@ class TestDepartmentDiversitySampling:
         )
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             new_agent_department="eng",
         )
         assert len(result) == 2
@@ -234,7 +225,6 @@ class TestDepartmentDiversitySampling:
         )
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert result == ()
         registry.list_by_department.assert_not_called()
@@ -249,7 +239,6 @@ class TestDepartmentDiversitySampling:
         )
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             new_agent_department="eng",
         )
         assert result == ()
@@ -279,7 +268,6 @@ class TestUserCuratedList:
         )
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert result == ("agent-1", "agent-2")
 
@@ -293,7 +281,6 @@ class TestUserCuratedList:
         )
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert result == ("agent-1",)
 
@@ -304,7 +291,6 @@ class TestUserCuratedList:
         )
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert result == ()
 
@@ -332,7 +318,6 @@ class TestCompositeSelector:
         )
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert len(result) == 3
         assert "agent-1" in result
@@ -343,6 +328,5 @@ class TestCompositeSelector:
         selector = CompositeSelector(selectors=(), weights=())
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert result == ()

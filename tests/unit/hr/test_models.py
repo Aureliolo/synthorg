@@ -17,7 +17,6 @@ from synthorg.hr.models import (
     OnboardingChecklist,
     OnboardingStepRecord,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid, sid
 from tests.unit.hr.conftest import (
     make_candidate_card,
@@ -37,7 +36,6 @@ class TestCandidateCard:
         assert card.name == "candidate-agent"
         assert card.role == "developer"
         assert card.department == "engineering"
-        assert card.level == SeniorityLevel.MID
         assert card.estimated_monthly_cost == 50.0
 
     def test_construction_with_skills(self) -> None:

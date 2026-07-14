@@ -416,7 +416,6 @@ describe('useCompanyStore', () => {
         name: 'dave',
         role: 'Designer',
         department: 'engineering',
-        level: 'mid',
       })
       expect(result).toEqual(newAgent)
       expect(useCompanyStore.getState().config!.agents).toHaveLength(1)
@@ -438,7 +437,7 @@ describe('useCompanyStore', () => {
 
       const result = await useCompanyStore
         .getState()
-        .updateAgent('agent-alice', { role: 'Senior Dev', autonomy_level: null, level: null })
+        .updateAgent('agent-alice', { role: 'Senior Dev', autonomy_level: null })
       expect(result).not.toBeNull()
       expect(result!.role).toBe('Senior Dev')
     })

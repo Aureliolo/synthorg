@@ -12,7 +12,6 @@ import pytest
 import structlog.testing
 
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingPlan,
@@ -43,7 +42,6 @@ def _plan(plan_id: str = "plan-1", new_agent_id: str = "agent-new") -> TrainingP
         id=as_uuid(plan_id),
         new_agent_id=NotBlankStr(new_agent_id),
         new_agent_role=NotBlankStr("engineer"),
-        new_agent_level=SeniorityLevel.MID,
         enabled_content_types=frozenset({ContentType.PROCEDURAL}),
         created_at=_NOW,
     )

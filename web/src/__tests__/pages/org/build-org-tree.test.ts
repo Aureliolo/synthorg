@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildOrgTree } from '@/pages/org/build-org-tree'
 import {
   findCeo,
-  findHighestSeniority,
+  findDeptHead,
   humanizeDepartmentName,
 } from '@/pages/org/build-org-tree-types'
 import type {
@@ -13,7 +13,7 @@ import type {
 import type { AgentConfig } from '@/api/types/agents'
 import type { DepartmentHealth } from '@/api/types/analytics'
 import type { DepartmentName } from '@/api/types/enums'
-import type { CompanyConfig } from '@/api/types/org'
+import type { CompanyConfig, DashboardDepartment } from '@/api/types/org'
 import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
 // Positional adapter over the args-object `buildOrgTree` signature so
@@ -34,7 +34,6 @@ function makeAgent(overrides: Partial<AgentConfig> & { name: string; id?: string
     id: overrides.id ?? overrides.name,
     role: 'Developer',
     department: 'engineering',
-    level: 'mid',
     status: 'active',
     personality: {
       traits: [],
@@ -70,6 +69,7 @@ function makeDept(
   name: string,
   displayName: string,
   teams: { name: string; lead: string; members: readonly string[] }[] = [],
+  head: string | null = null,
 ): CompanyConfig['departments'][number] {
   return {
     name,
@@ -77,7 +77,7 @@ function makeDept(
     autonomy_level: null,
     budget_percent: 0,
     ceremony_policy: null,
-    head: null,
+    head,
     head_id: null,
     policies: {
       approval_chains: [],
@@ -97,25 +97,10 @@ function makeConfig(agents: AgentConfig[], departments?: CompanyConfig['departme
   return {
     company_name: 'Test Corp',
     agents,
-    departments: departments ?? deptNames.map((name) => ({
+    departments: departments ?? deptNames.map((name) => makeDept(
       name,
-      display_name: name.charAt(0).toUpperCase() + name.slice(1),
-      autonomy_level: null,
-      budget_percent: 0,
-      ceremony_policy: null,
-      head: null,
-      head_id: null,
-      policies: {
-        approval_chains: [],
-        review_requirements: {
-          min_reviewers: 0,
-          required_reviewer_roles: [],
-          self_review_allowed: true,
-        },
-      },
-      reporting_lines: [],
-      teams: [],
-    })),
+      name.charAt(0).toUpperCase() + name.slice(1),
+    )),
   }
 }
 
@@ -164,10 +149,10 @@ describe('buildOrgTree', () => {
     expect(result.edges).toEqual([])
   })
 
-  it('marks the c_suite agent in the executive department as the company CEO', () => {
+  it('marks the CEO-role agent in the executive department as the company CEO', () => {
     const agents = [
-      makeAgent({ id: 'ceo-1', name: 'Alice', role: 'CEO', department: 'executive', level: 'c_suite' }),
-      makeAgent({ id: 'dev-1', name: 'Bob', department: 'engineering', level: 'senior' }),
+      makeAgent({ id: 'ceo-1', name: 'Alice', role: 'CEO', department: 'executive' }),
+      makeAgent({ id: 'dev-1', name: 'Bob', department: 'engineering' }),
     ]
     const result = buildTree(makeConfig(agents), {}, [])
 
@@ -177,10 +162,10 @@ describe('buildOrgTree', () => {
     expect(ceo!.parentId).toBe('dept-executive')
   })
 
-  it('falls back to a c_suite agent in a non-executive department as the company CEO', () => {
+  it('finds the CEO-role agent regardless of department', () => {
     const agents = [
-      makeAgent({ id: 'cto', name: 'CTO', department: 'engineering', level: 'c_suite' }),
-      makeAgent({ id: 'dev', name: 'Dev', department: 'engineering', level: 'mid' }),
+      makeAgent({ id: 'cto', name: 'CTO', role: 'CEO', department: 'engineering' }),
+      makeAgent({ id: 'dev', name: 'Dev', department: 'engineering' }),
     ]
     const result = buildTree(makeConfig(agents), {}, [])
 
@@ -190,10 +175,10 @@ describe('buildOrgTree', () => {
     expect(ceo!.parentId).toBe('dept-engineering')
   })
 
-  it('falls back to the highest-seniority agent when no c_suite exists', () => {
+  it('falls back to an executive-department agent when no CEO role exists', () => {
     const agents = [
-      makeAgent({ id: 'lead-1', name: 'Carol', department: 'engineering', level: 'lead' }),
-      makeAgent({ id: 'jr-1', name: 'Dave', department: 'engineering', level: 'junior' }),
+      makeAgent({ id: 'lead-1', name: 'Carol', role: 'Director', department: 'executive' }),
+      makeAgent({ id: 'jr-1', name: 'Dave', department: 'engineering' }),
     ]
     const result = buildTree(makeConfig(agents), {}, [])
 
@@ -204,8 +189,8 @@ describe('buildOrgTree', () => {
 
   it('marks the CEO\'s home department as the root department', () => {
     const agents = [
-      makeAgent({ id: 'ceo', name: 'CEO', department: 'executive', level: 'c_suite' }),
-      makeAgent({ id: 'cto', name: 'CTO', department: 'engineering', level: 'c_suite' }),
+      makeAgent({ id: 'ceo', name: 'CEO', role: 'CEO', department: 'executive' }),
+      makeAgent({ id: 'cto', name: 'CTO', role: 'CTO', department: 'engineering' }),
     ]
     const result = buildTree(makeConfig(agents), {}, [])
 
@@ -215,16 +200,15 @@ describe('buildOrgTree', () => {
 
     const engDept = result.nodes.find((n) => n.id === 'dept-engineering')
     expect(engDept).toBeDefined()
-    // Engineering is NOT the root even though its CTO is c_suite,
-    // because the executive-dept c_suite takes priority as CEO.
+    // Engineering is NOT the root: the CEO lives in executive.
     expect((engDept!.data as DepartmentGroupData).isRootDepartment).toBe(false)
   })
 
   it('groups agents by department via parentId', () => {
     const agents = [
-      makeAgent({ id: 'a1', name: 'A1', department: 'engineering', level: 'lead' }),
-      makeAgent({ id: 'a2', name: 'A2', department: 'engineering', level: 'mid' }),
-      makeAgent({ id: 'a3', name: 'A3', department: 'product', level: 'lead' }),
+      makeAgent({ id: 'a1', name: 'A1', department: 'engineering' }),
+      makeAgent({ id: 'a2', name: 'A2', department: 'engineering' }),
+      makeAgent({ id: 'a3', name: 'A3', department: 'product' }),
     ]
     const result = buildTree(makeConfig(agents), {}, [])
 
@@ -240,11 +224,16 @@ describe('buildOrgTree', () => {
 
   it('creates edges from the root department box to each other department box', () => {
     const agents = [
-      makeAgent({ id: 'ceo', name: 'CEO', department: 'executive', level: 'c_suite' }),
-      makeAgent({ id: 'cto', name: 'CTO', department: 'engineering', level: 'c_suite' }),
-      makeAgent({ id: 'cpo', name: 'CPO', department: 'product', level: 'c_suite' }),
+      makeAgent({ id: 'ceo', name: 'CEO', role: 'CEO', department: 'executive' }),
+      makeAgent({ id: 'cto', name: 'CTO', role: 'CTO', department: 'engineering' }),
+      makeAgent({ id: 'cpo', name: 'CPO', role: 'CPO', department: 'product' }),
     ]
-    const result = buildTree(makeConfig(agents), {}, [])
+    const depts = [
+      makeDept('executive', 'Executive', [], 'CEO'),
+      makeDept('engineering', 'Engineering', [], 'CTO'),
+      makeDept('product', 'Product', [], 'CPO'),
+    ]
+    const result = buildTree(makeConfig(agents, depts), {}, [])
 
     // Visible edges from the root dept box (dept-executive) to each
     // other dept box.  Non-visible (hidden) layout edges live
@@ -269,9 +258,10 @@ describe('buildOrgTree', () => {
 
   it('creates owner nodes and wires them to the root department', () => {
     const agents = [
-      makeAgent({ id: 'ceo', name: 'CEO', department: 'executive', level: 'c_suite' }),
+      makeAgent({ id: 'ceo', name: 'CEO', role: 'CEO', department: 'executive' }),
     ]
-    const result = buildTree(makeConfig(agents), {}, [], makeOwners())
+    const depts = [makeDept('executive', 'Executive', [], 'CEO')]
+    const result = buildTree(makeConfig(agents, depts), {}, [], makeOwners())
 
     const ownerNode = result.nodes.find((n) => n.type === 'owner')
     expect(ownerNode).toBeDefined()
@@ -284,21 +274,25 @@ describe('buildOrgTree', () => {
     expect(hiddenOwnerEdges.map((e) => e.target)).toEqual(['ceo'])
   })
 
-  it('breaks ties deterministically for same-level peers (first in array wins)', () => {
+  it('resolves the department head by role, first matching agent wins', () => {
     const agents = [
-      makeAgent({ id: 'ceo', name: 'CEO', department: 'executive', level: 'c_suite' }),
-      makeAgent({ id: 'vp-a', name: 'VP Alpha', department: 'engineering', level: 'vp' }),
-      makeAgent({ id: 'vp-b', name: 'VP Beta', department: 'engineering', level: 'vp' }),
-      makeAgent({ id: 'vp-c', name: 'VP Gamma', department: 'engineering', level: 'vp' }),
+      makeAgent({ id: 'ceo', name: 'CEO', role: 'CEO', department: 'executive' }),
+      makeAgent({ id: 'vp-a', name: 'VP Alpha', role: 'VP', department: 'engineering' }),
+      makeAgent({ id: 'vp-b', name: 'VP Beta', role: 'VP', department: 'engineering' }),
+      makeAgent({ id: 'vp-c', name: 'VP Gamma', role: 'VP', department: 'engineering' }),
     ]
-    const result = buildTree(makeConfig(agents), {}, [])
+    const depts = [
+      makeDept('executive', 'Executive', [], 'CEO'),
+      makeDept('engineering', 'Engineering', [], 'VP'),
+    ]
+    const result = buildTree(makeConfig(agents, depts), {}, [])
 
     // Visible edge: root dept box (executive) → engineering box
     const rootOut = result.edges.filter((e) => e.source === 'dept-executive' && !e.hidden)
     expect(rootOut.map((e) => e.target)).toEqual(['dept-engineering'])
 
-    // Hidden layout edge: CEO → vp-a (engineering's dept head,
-    // first VP in array order)
+    // Hidden layout edge: CEO → vp-a (engineering's dept head, the
+    // first agent whose role matches the department head role)
     const hiddenCeoEdges = result.edges.filter((e) => e.source === 'ceo' && e.hidden === true)
     expect(hiddenCeoEdges.map((e) => e.target)).toEqual(['vp-a'])
 
@@ -309,22 +303,23 @@ describe('buildOrgTree', () => {
 
   it('creates internal head→member edges within a department', () => {
     const agents = [
-      makeAgent({ id: 'lead', name: 'Lead', department: 'engineering', level: 'lead' }),
-      makeAgent({ id: 'dev1', name: 'Dev1', department: 'engineering', level: 'mid' }),
-      makeAgent({ id: 'dev2', name: 'Dev2', department: 'engineering', level: 'junior' }),
+      makeAgent({ id: 'lead', name: 'Lead', role: 'Lead', department: 'engineering' }),
+      makeAgent({ id: 'dev1', name: 'Dev1', department: 'engineering' }),
+      makeAgent({ id: 'dev2', name: 'Dev2', department: 'engineering' }),
     ]
-    const result = buildTree(makeConfig(agents), {}, [])
+    const depts = [makeDept('engineering', 'Engineering', [], 'Lead')]
+    const result = buildTree(makeConfig(agents, depts), {}, [])
 
-    // `lead` is the CEO (highest seniority) and also the head of
-    // engineering.  It emits edges to the other two members.
+    // `lead` is the head of engineering; it emits edges to the other
+    // two members.
     const leadEdges = result.edges.filter((e) => e.source === 'lead' && !e.hidden)
     expect(leadEdges.map((e) => e.target).sort()).toEqual(['dev1', 'dev2'])
   })
 
   it('excludes terminated agents from the chart', () => {
     const agents = [
-      makeAgent({ id: 'active-1', name: 'Active', department: 'engineering', level: 'lead', status: 'active' }),
-      makeAgent({ id: 'fired-1', name: 'Fired', department: 'engineering', level: 'mid', status: 'terminated' }),
+      makeAgent({ id: 'active-1', name: 'Active', department: 'engineering', status: 'active' }),
+      makeAgent({ id: 'fired-1', name: 'Fired', department: 'engineering', status: 'terminated' }),
     ]
     const result = buildTree(makeConfig(agents), {}, [])
 
@@ -335,7 +330,7 @@ describe('buildOrgTree', () => {
 
   it('creates department group nodes with health data', () => {
     const agents = [
-      makeAgent({ id: 'a1', name: 'Dev', department: 'engineering', level: 'mid' }),
+      makeAgent({ id: 'a1', name: 'Dev', department: 'engineering' }),
     ]
     const healthData = [makeHealth('engineering', 85)]
     const result = buildTree(makeConfig(agents), {}, healthData)
@@ -349,7 +344,7 @@ describe('buildOrgTree', () => {
 
   it('uses runtime status from the status map', () => {
     const agents = [
-      makeAgent({ id: 'a1', name: 'Dev', department: 'engineering', level: 'mid', status: 'active' }),
+      makeAgent({ id: 'a1', name: 'Dev', department: 'engineering', status: 'active' }),
     ]
     const result = buildTree(makeConfig(agents), { a1: 'error' }, [])
 
@@ -359,9 +354,9 @@ describe('buildOrgTree', () => {
 
   it('uses team structure to derive reporting hierarchy', () => {
     const agents = [
-      makeAgent({ id: 'lead', name: 'Lead', department: 'engineering', level: 'lead' }),
-      makeAgent({ id: 'sr', name: 'Senior', department: 'engineering', level: 'senior' }),
-      makeAgent({ id: 'jr', name: 'Junior', department: 'engineering', level: 'junior' }),
+      makeAgent({ id: 'lead', name: 'Lead', department: 'engineering' }),
+      makeAgent({ id: 'sr', name: 'Senior', department: 'engineering' }),
+      makeAgent({ id: 'jr', name: 'Junior', department: 'engineering' }),
     ]
     const config = makeConfig(agents, [
       makeDept('engineering', 'Engineering', [
@@ -378,7 +373,7 @@ describe('buildOrgTree', () => {
 
   it('renders empty departments with the isEmpty flag set', () => {
     const agents = [
-      makeAgent({ id: 'a1', name: 'Dev', department: 'engineering', level: 'mid' }),
+      makeAgent({ id: 'a1', name: 'Dev', department: 'engineering' }),
     ]
     const config: CompanyConfig = {
       company_name: 'Test',
@@ -404,8 +399,8 @@ describe('buildOrgTree', () => {
 
   it('assigns correct node types for a populated org', () => {
     const agents = [
-      makeAgent({ id: 'ceo', name: 'CEO', department: 'executive', level: 'c_suite' }),
-      makeAgent({ id: 'dev', name: 'Dev', department: 'engineering', level: 'mid' }),
+      makeAgent({ id: 'ceo', name: 'CEO', role: 'CEO', department: 'executive' }),
+      makeAgent({ id: 'dev', name: 'Dev', department: 'engineering' }),
     ]
     const result = buildTree(makeConfig(agents), {}, [], makeOwners())
 
@@ -416,7 +411,7 @@ describe('buildOrgTree', () => {
 
   it('returns null cost / currency when no health data provided', () => {
     const agents = [
-      makeAgent({ id: 'a1', name: 'Dev', department: 'engineering', level: 'mid' }),
+      makeAgent({ id: 'a1', name: 'Dev', department: 'engineering' }),
     ]
     const result = buildTree(makeConfig(agents), {}, [])
 
@@ -432,9 +427,9 @@ describe('buildOrgTree', () => {
 
   it('all edges have type "hierarchy"', () => {
     const agents = [
-      makeAgent({ id: 'ceo', name: 'CEO', department: 'executive', level: 'c_suite' }),
-      makeAgent({ id: 'cto', name: 'CTO', department: 'engineering', level: 'c_suite' }),
-      makeAgent({ id: 'dev', name: 'Dev', department: 'engineering', level: 'mid' }),
+      makeAgent({ id: 'ceo', name: 'CEO', role: 'CEO', department: 'executive' }),
+      makeAgent({ id: 'cto', name: 'CTO', role: 'CTO', department: 'engineering' }),
+      makeAgent({ id: 'dev', name: 'Dev', department: 'engineering' }),
     ]
     const result = buildTree(makeConfig(agents), {}, [])
 
@@ -449,13 +444,12 @@ describe('buildOrgTree', () => {
       id: 'a1',
       name: 'ActiveDefault',
       department: 'engineering',
-      level: 'mid',
     })
     void omitStatus
     const agents = [
-      makeAgent({ id: 'a0', name: 'Lead', department: 'engineering', level: 'lead' }),
+      makeAgent({ id: 'a0', name: 'Lead', department: 'engineering' }),
       activeDefault,
-      makeAgent({ id: 'a2', name: 'Terminated', department: 'engineering', level: 'mid', status: 'terminated' }),
+      makeAgent({ id: 'a2', name: 'Terminated', department: 'engineering', status: 'terminated' }),
     ]
     const result = buildTree(makeConfig(agents), {}, [])
 
@@ -472,8 +466,8 @@ describe('buildOrgTree', () => {
 describe('team group nodes', () => {
   it('emits team group nodes when department has teams', () => {
     const agents = [
-      makeAgent({ id: 'a1', name: 'Alice', department: 'engineering', level: 'lead' }),
-      makeAgent({ id: 'a2', name: 'Bob', department: 'engineering', level: 'mid' }),
+      makeAgent({ id: 'a1', name: 'Alice', department: 'engineering' }),
+      makeAgent({ id: 'a2', name: 'Bob', department: 'engineering' }),
     ]
     const depts = [
       makeDept('engineering', 'Engineering', [
@@ -489,8 +483,8 @@ describe('team group nodes', () => {
 
   it('parents team members to the team group node', () => {
     const agents = [
-      makeAgent({ id: 'a1', name: 'Alice', department: 'engineering', level: 'lead' }),
-      makeAgent({ id: 'a2', name: 'Bob', department: 'engineering', level: 'mid' }),
+      makeAgent({ id: 'a1', name: 'Alice', department: 'engineering' }),
+      makeAgent({ id: 'a2', name: 'Bob', department: 'engineering' }),
     ]
     const depts = [
       makeDept('engineering', 'Engineering', [
@@ -504,7 +498,7 @@ describe('team group nodes', () => {
 
   it('does not emit team nodes when department has no teams', () => {
     const agents = [
-      makeAgent({ id: 'a1', name: 'Alice', department: 'engineering', level: 'lead' }),
+      makeAgent({ id: 'a1', name: 'Alice', department: 'engineering' }),
     ]
     const result = buildTree(makeConfig(agents), {}, [])
     const teamNodes = result.nodes.filter((n) => n.type === 'team')
@@ -513,9 +507,9 @@ describe('team group nodes', () => {
 
   it('agents not in any team stay parented to dept group', () => {
     const agents = [
-      makeAgent({ id: 'a1', name: 'Alice', department: 'engineering', level: 'lead' }),
-      makeAgent({ id: 'a2', name: 'Bob', department: 'engineering', level: 'mid' }),
-      makeAgent({ id: 'a3', name: 'Carol', department: 'engineering', level: 'mid' }),
+      makeAgent({ id: 'a1', name: 'Alice', department: 'engineering' }),
+      makeAgent({ id: 'a2', name: 'Bob', department: 'engineering' }),
+      makeAgent({ id: 'a3', name: 'Carol', department: 'engineering' }),
     ]
     const depts = [
       makeDept('engineering', 'Engineering', [
@@ -547,27 +541,29 @@ describe('humanizeDepartmentName', () => {
   })
 })
 
-describe('findHighestSeniority', () => {
+describe('findDeptHead', () => {
+  const engineering: DashboardDepartment = makeDept('engineering', 'Engineering', [], 'Lead')
+
   it('returns null for an empty roster', () => {
-    expect(findHighestSeniority([])).toBeNull()
+    expect(findDeptHead(engineering, [])).toBeNull()
   })
 
-  it('returns the only agent in a single-member roster', () => {
-    const solo = makeAgent({ name: 'Solo', department: 'engineering', level: 'mid' })
-    expect(findHighestSeniority([solo])).toBe(solo)
+  it('returns the agent whose role matches the department head role', () => {
+    const lead = makeAgent({ name: 'Lead', role: 'Lead', department: 'engineering' })
+    const dev = makeAgent({ name: 'Dev', role: 'Developer', department: 'engineering' })
+    expect(findDeptHead(engineering, [dev, lead])).toBe(lead)
   })
 
-  it('picks the highest-ranked level regardless of array order', () => {
-    const junior = makeAgent({ name: 'Jr', department: 'engineering', level: 'junior' })
-    const director = makeAgent({ name: 'Dir', department: 'engineering', level: 'director' })
-    const senior = makeAgent({ name: 'Sr', department: 'engineering', level: 'senior' })
-    expect(findHighestSeniority([junior, director, senior])).toBe(director)
+  it('returns null when no member holds the department head role', () => {
+    const dev = makeAgent({ name: 'Dev', role: 'Developer', department: 'engineering' })
+    expect(findDeptHead(engineering, [dev])).toBeNull()
   })
 
-  it('keeps the first agent on a seniority tie', () => {
-    const first = makeAgent({ name: 'First', department: 'engineering', level: 'lead' })
-    const second = makeAgent({ name: 'Second', department: 'engineering', level: 'lead' })
-    expect(findHighestSeniority([first, second])).toBe(first)
+  it('prefers an explicit head_id over the head role', () => {
+    const byId: DashboardDepartment = { ...engineering, head_id: 'dev' }
+    const lead = makeAgent({ id: 'lead', name: 'Lead', role: 'Lead', department: 'engineering' })
+    const dev = makeAgent({ id: 'dev', name: 'Dev', role: 'Developer', department: 'engineering' })
+    expect(findDeptHead(byId, [lead, dev])).toBe(dev)
   })
 })
 
@@ -576,21 +572,20 @@ describe('findCeo', () => {
     expect(findCeo([])).toBeNull()
   })
 
-  it('prefers a c_suite agent in the executive department', () => {
-    const otherCSuite = makeAgent({ name: 'CTO', department: 'engineering', level: 'c_suite' })
-    const execCeo = makeAgent({ name: 'Exec', department: 'executive', level: 'c_suite' })
-    expect(findCeo([otherCSuite, execCeo])).toBe(execCeo)
+  it('prefers the agent whose role is CEO', () => {
+    const cto = makeAgent({ name: 'CTO', role: 'CTO', department: 'engineering' })
+    const ceo = makeAgent({ name: 'Chief', role: 'CEO', department: 'engineering' })
+    expect(findCeo([cto, ceo])).toBe(ceo)
   })
 
-  it('falls back to any c_suite agent when none sit in executive', () => {
-    const ic = makeAgent({ name: 'IC', department: 'engineering', level: 'senior' })
-    const cto = makeAgent({ name: 'CTO', department: 'engineering', level: 'c_suite' })
-    expect(findCeo([ic, cto])).toBe(cto)
+  it('falls back to the first executive-department agent when no CEO role exists', () => {
+    const dev = makeAgent({ name: 'Dev', role: 'Developer', department: 'engineering' })
+    const exec = makeAgent({ name: 'Exec', role: 'Director', department: 'executive' })
+    expect(findCeo([dev, exec])).toBe(exec)
   })
 
-  it('falls back to the highest-seniority agent when no c_suite exists', () => {
-    const mid = makeAgent({ name: 'Mid', department: 'engineering', level: 'mid' })
-    const vp = makeAgent({ name: 'VP', department: 'engineering', level: 'vp' })
-    expect(findCeo([mid, vp])).toBe(vp)
+  it('returns null when there is neither a CEO role nor an executive department', () => {
+    const dev = makeAgent({ name: 'Dev', role: 'Developer', department: 'engineering' })
+    expect(findCeo([dev])).toBeNull()
   })
 })

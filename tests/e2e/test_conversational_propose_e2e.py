@@ -49,7 +49,6 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     ConversationalProposal,
@@ -258,13 +257,12 @@ def _resume_service(
     )
 
 
-def _make_agent(name: str, skill: str, *, level: SeniorityLevel) -> AgentIdentity:
+def _make_agent(name: str, skill: str) -> AgentIdentity:
     return AgentIdentity(
         id=as_uuid(name),
         name=name,
         role="developer",
         department="engineering",
-        level=level,
         skills=SkillSet(primary=(Skill(id=skill, name=skill),)),
         authority=Authority(budget_limit=10.0),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
@@ -363,7 +361,7 @@ async def test_vague_request_clarifies_then_executes_on_approval(
     tmp_path: Path,
 ) -> None:
     await persistence.projects.create(_project("proj-conv"))
-    agent = _make_agent("solo-dev", _RESEARCH_SKILL, level=SeniorityLevel.MID)
+    agent = _make_agent("solo-dev", _RESEARCH_SKILL)
     pipeline, worker_service = await _build_pipeline(
         persistence=persistence,
         task_engine=task_engine,
@@ -466,7 +464,7 @@ async def test_rejected_proposal_never_touches_pipeline(
     tmp_path: Path,
 ) -> None:
     await persistence.projects.create(_project("proj-conv"))
-    agent = _make_agent("solo-dev", _RESEARCH_SKILL, level=SeniorityLevel.MID)
+    agent = _make_agent("solo-dev", _RESEARCH_SKILL)
     pipeline, _ = await _build_pipeline(
         persistence=persistence,
         task_engine=task_engine,

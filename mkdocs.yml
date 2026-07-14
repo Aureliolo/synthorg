@@ -124,7 +124,7 @@ nav:
       - Budget & Cost Control: guides/budget.md
       - Cost Attribution: guides/cost-attribution.md
       - Dynamic Scoring: guides/dynamic-scoring.md
-      - Security & Trust Policies: guides/security.md
+      - Security Policies: guides/security.md
       - Approval Workflow: guides/approval-workflow.md
       - Tool Integration (MCP): guides/mcp-tools.md
       - Custom MCP Server Development: guides/custom-mcp-server-dev.md

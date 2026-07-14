@@ -33,6 +33,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.authority import compare_authority
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.normalization import compare_ci, normalize_identifier
@@ -40,7 +41,6 @@ from synthorg.core.role_catalog import get_builtin_role
 from synthorg.core.types import NotBlankStr, flatten_label
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import compare_seniority
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
@@ -159,9 +159,9 @@ def _by_seniority_then_name(a: AgentIdentity, b: AgentIdentity) -> int:
         Negative when *a* sorts before *b*, positive when after, zero
         when identical on both keys.
     """
-    by_seniority = compare_seniority(b.level, a.level)
-    if by_seniority != 0:
-        return by_seniority
+    by_authority = compare_authority(b.role, a.role)
+    if by_authority != 0:
+        return by_authority
     return (a.name > b.name) - (a.name < b.name)
 
 

@@ -313,8 +313,6 @@ class TestEventConstants:
             "workflow_execution",
             "workflow_version",
             "workspace",
-            "trust",
-            "promotion",
             "checkpoint",
             "context_budget",
             "notification",

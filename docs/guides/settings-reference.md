@@ -49,7 +49,7 @@ Values marked `sensitive=True` (API keys, webhook URLs, passwords) are Fernet-en
 | `providers` | LLM provider CRUD, routing strategy, SSRF discovery allowlist |
 | `memory` | Memory backend, retention, embedding model, consolidation policy |
 | `budget` | Monthly budget, currency, alerts, auto-downgrade, risk budget, quota poller |
-| `security` | Autonomy levels, approval policies, output scanner, trust strategy, policy engine |
+| `security` | Autonomy levels, approval policies, output scanner, policy engine |
 | `coordination` | Coordination metrics, error taxonomy, orchestration ratio alerts |
 | `observability` | Log level, correlation tracking, sink overrides, custom sinks |
 | `appearance` | Dashboard theme axes (colour palette, density, typography, animation, sidebar mode) |
@@ -221,6 +221,6 @@ Use `observability.custom_sinks` (JSON-typed) to add HTTP / syslog / OTLP shippi
 ## See Also
 
 - [Company Configuration](company-config.md): YAML bootstrap config reference
-- [Security & Trust Policies](security.md): autonomy, approvals, trust
+- [Security Policies](security.md): autonomy, approvals
 - [Centralised Logging](centralized-logging.md): log sink configuration
 - [Design: Observability](../design/observability.md): architecture and event taxonomy

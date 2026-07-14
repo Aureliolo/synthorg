@@ -29,7 +29,6 @@ from synthorg.core.delegation_types import DelegationRequest
 from synthorg.core.role import Authority
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import coerce_id, sid
 
 
@@ -44,14 +43,12 @@ def _make_agent(
     name: str,
     role: str,
     *,
-    level: SeniorityLevel = SeniorityLevel.MID,
     can_delegate_to: tuple[str, ...] = (),
 ) -> AgentIdentity:
     return AgentIdentity(
         name=name,
         role=role,
         department="Engineering",
-        level=level,
         model=_model_config(),
         hiring_date=date(2026, 1, 1),
         authority=Authority(can_delegate_to=can_delegate_to),
@@ -121,9 +118,9 @@ def _build_three_level_service() -> tuple[
         guard=guard,
     )
     agents = {
-        "ceo": _make_agent("ceo", "CEO", level=SeniorityLevel.VP),
-        "cto": _make_agent("cto", "CTO", level=SeniorityLevel.DIRECTOR),
-        "dev": _make_agent("dev", "Developer", level=SeniorityLevel.MID),
+        "ceo": _make_agent("ceo", "CEO"),
+        "cto": _make_agent("cto", "CTO"),
+        "dev": _make_agent("dev", "Developer"),
     }
     return service, hierarchy, agents
 
@@ -291,8 +288,8 @@ class TestCircuitBreakerIntegration:
             authority_validator=authority_validator,
             guard=guard,
         )
-        ceo = _make_agent("ceo", "CEO", level=SeniorityLevel.VP)
-        cto = _make_agent("cto", "CTO", level=SeniorityLevel.DIRECTOR)
+        ceo = _make_agent("ceo", "CEO")
+        cto = _make_agent("cto", "CTO")
 
         # Perform 3 delegations (= bounce_threshold)
         for i in range(3):

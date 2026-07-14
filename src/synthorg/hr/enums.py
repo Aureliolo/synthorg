@@ -76,13 +76,6 @@ assert _lifecycle_values <= _activity_values, (  # noqa: S101
 )
 
 
-class PromotionDirection(StrEnum):
-    """Direction of a seniority level change."""
-
-    PROMOTION = "promotion"
-    DEMOTION = "demotion"
-
-
 class TrendDirection(StrEnum):
     """Direction of a performance metric trend."""
 
@@ -157,8 +150,8 @@ class CostTier(StrEnum):
 
     These are the default tiers shipped with the framework. Users can
     define additional tiers via configuration. Fields that accept cost
-    tiers (e.g. ``SeniorityInfo.cost_tier``) use ``str`` rather than
-    this enum, so custom tier IDs are also valid.
+    tiers use ``str`` rather than this enum, so custom tier IDs are
+    also valid.
     """
 
     LOW = "low"

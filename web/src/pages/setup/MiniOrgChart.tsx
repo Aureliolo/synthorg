@@ -12,27 +12,10 @@ interface Department {
   name: string
   label: string
   agents: SetupAgentSummary[]
-  rank: number
 }
 
-// Seniority rank per agent level; a department inherits the rank of its most
-// senior agent, used as the leadership tiebreak when no department is named
-// for leadership.
-const LEVEL_RANK: Record<string, number> = {
-  c_suite: 8,
-  vp: 7,
-  director: 6,
-  principal: 5,
-  lead: 4,
-  senior: 3,
-  mid: 2,
-  junior: 1,
-}
-
-// Department names that denote the leadership tier. Matched first (before the
-// level tiebreak) because a head-role exec is often materialised with a
-// generic ``mid`` level, which would otherwise let a department with a senior
-// IC outrank the executive box.
+// Department names that denote the leadership tier. Matched first; a
+// department holding the CEO role is the fallback when none is named.
 const LEADERSHIP_DEPTS = new Set([
   'executive',
   'leadership',
@@ -55,22 +38,20 @@ function buildDepartments(agents: readonly SetupAgentSummary[]): Department[] {
         name: agent.department,
         label: humanizeDept(agent.department),
         agents: [],
-        rank: 0,
       }
       byDept.set(agent.department, dept)
     }
     dept.agents.push(agent)
-    const rank = agent.level ? (LEVEL_RANK[agent.level] ?? 0) : 0
-    if (rank > dept.rank) dept.rank = rank
   }
   return [...byDept.values()]
 }
 
 /**
- * Split departments into the single leadership department (the one whose most
- * senior agent outranks every other department) and the rest that report to
- * it. Returns a null lead when no department clearly sits above the others, so
- * the caller falls back to a flat row instead of inventing a hierarchy.
+ * Split departments into the single leadership department and the rest that
+ * report to it. The leadership department is the one whose name denotes
+ * leadership, or failing that the one holding the CEO role. Returns a null
+ * lead when no department clearly leads, so the caller falls back to a flat
+ * row instead of inventing a hierarchy.
  */
 function splitLeadership(depts: Department[]): {
   lead: Department | null
@@ -81,10 +62,11 @@ function splitLeadership(depts: Department[]): {
   if (named) {
     return { lead: named, rest: depts.filter((d) => d !== named) }
   }
-  const sorted = [...depts].sort((a, b) => b.rank - a.rank)
-  const [top, second] = sorted
-  if (top && second && top.rank > second.rank) {
-    return { lead: top, rest: sorted.slice(1) }
+  const withCeo = depts.find((d) =>
+    d.agents.some((a) => a.role.toLowerCase() === 'ceo'),
+  )
+  if (withCeo) {
+    return { lead: withCeo, rest: depts.filter((d) => d !== withCeo) }
   }
   return { lead: null, rest: depts }
 }

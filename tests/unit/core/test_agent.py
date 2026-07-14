@@ -26,7 +26,6 @@ from synthorg.hr.enums import (
     DecisionMakingStyle,
     RiskTolerance,
 )
-from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import (
     AgentIdentityFactory,
@@ -368,6 +367,23 @@ class TestModelConfig:
         with pytest.raises(ValidationError, match="whitespace-only"):
             ModelConfig(provider="test", model_id="m", fallback_model="   ")
 
+    @pytest.mark.parametrize("tier", ["small", "medium", "large"])
+    def test_tier_literal_as_model_id_rejected(self, tier: str) -> None:
+        """Reject a bare capability-tier literal used as model_id."""
+        with pytest.raises(ValidationError, match="capability tier"):
+            ModelConfig(provider="test", model_id=tier)
+
+    @pytest.mark.parametrize("tier", ["small", "medium", "large"])
+    def test_tier_literal_as_fallback_model_rejected(self, tier: str) -> None:
+        """Reject a bare capability-tier literal used as fallback_model."""
+        with pytest.raises(ValidationError, match="capability tier"):
+            ModelConfig(provider="test", model_id="m", fallback_model=tier)
+
+    def test_model_id_containing_tier_substring_accepted(self) -> None:
+        """Accept a concrete model id that merely contains a tier word."""
+        m = ModelConfig(provider="test", model_id="test-model-medium-001")
+        assert m.model_id == "test-model-medium-001"
+
     def test_frozen(self, sample_model_config: ModelConfig) -> None:
         """Ensure ModelConfig is immutable."""
         with pytest.raises(ValidationError):
@@ -645,7 +661,6 @@ class TestAgentIdentity:
         assert sample_agent.name == "Sarah Chen"
         assert sample_agent.role == "Senior Backend Developer"
         assert sample_agent.department == "Engineering"
-        assert sample_agent.level is SeniorityLevel.SENIOR
         assert isinstance(sample_agent.id, UUID)
 
     def test_auto_generated_id(self, sample_model_config: ModelConfig) -> None:
@@ -660,7 +675,7 @@ class TestAgentIdentity:
         assert isinstance(agent.id, UUID)
 
     def test_defaults(self, sample_model_config: ModelConfig) -> None:
-        """Verify default level, status, and nested config objects."""
+        """Verify default status and nested config objects."""
         agent = AgentIdentity(
             name="Test",
             role="Dev",
@@ -668,7 +683,6 @@ class TestAgentIdentity:
             model=sample_model_config,
             hiring_date=date(2026, 1, 1),
         )
-        assert agent.level is SeniorityLevel.MID
         assert agent.status is AgentStatus.ACTIVE
         assert isinstance(agent.personality, PersonalityConfig)
         assert isinstance(agent.skills, SkillSet)
@@ -793,7 +807,6 @@ class TestAgentIdentity:
             name="Full Agent",
             role="Lead Dev",
             department="Engineering",
-            level=SeniorityLevel.LEAD,
             personality=PersonalityConfig(
                 traits=("analytical", "pragmatic"),
                 communication_style="direct",

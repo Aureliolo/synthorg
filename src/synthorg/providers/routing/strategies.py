@@ -7,15 +7,12 @@ singletons registered in a module-level mapping.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import NoReturn, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.config.agent_schema import RoutingConfig
-from synthorg.core.role_catalog import get_seniority_info
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.routing import (
     ROUTING_BUDGET_EXCEEDED,
-    ROUTING_FALLBACK_EXHAUSTED,
     ROUTING_NO_RULE_MATCHED,
 )
 
@@ -23,8 +20,6 @@ from ._smart_strategy import SmartStrategy
 from ._strategy_helpers import (
     _cheapest_within_budget,
     _fastest_within_budget,
-    _try_resolve_with_fallback,
-    _try_resolve_with_fallback_safe,
     _try_task_type_rules,
     _within_budget,
 )
@@ -32,10 +27,9 @@ from ._strategy_names import (
     STRATEGY_NAME_COST_AWARE,
     STRATEGY_NAME_FASTEST,
     STRATEGY_NAME_MANUAL,
-    STRATEGY_NAME_ROLE_BASED,
     STRATEGY_NAME_SMART,
 )
-from .errors import ModelResolutionError, NoAvailableModelError
+from .errors import ModelResolutionError
 from .models import RoutingDecision, RoutingRequest
 from .resolver import ModelResolver
 
@@ -49,12 +43,10 @@ __all__ = [
     "STRATEGY_NAME_COST_AWARE",
     "STRATEGY_NAME_FASTEST",
     "STRATEGY_NAME_MANUAL",
-    "STRATEGY_NAME_ROLE_BASED",
     "STRATEGY_NAME_SMART",
     "CostAwareStrategy",
     "FastestStrategy",
     "ManualStrategy",
-    "RoleBasedStrategy",
     "RoutingStrategy",
     "SmartStrategy",
 ]
@@ -142,178 +134,7 @@ class ManualStrategy:
         )
 
 
-# ── Strategy 2: Role-Based ───────────────────────────────────────
-
-
-class RoleBasedStrategy:
-    """Select model based on agent seniority level.
-
-    Matches the first routing rule where ``rule.role_level`` equals
-    ``request.agent_level``.  If no rule matches, uses the seniority
-    catalog's ``typical_model_tier`` as a fallback lookup.
-    """
-
-    @property
-    def name(self) -> str:
-        """Return strategy name."""
-        return STRATEGY_NAME_ROLE_BASED
-
-    def select(
-        self,
-        request: RoutingRequest,
-        config: RoutingConfig,
-        resolver: ModelResolver,
-    ) -> RoutingDecision:
-        """Select model based on role level.
-
-        Returns:
-            A ``RoutingDecision`` from role rules, the seniority catalog
-            default, or the fallback chain.
-
-        Raises:
-            ModelResolutionError: If no agent_level is set.
-            NoAvailableModelError: If all candidates are exhausted.
-        """
-        level = self._require_level(request)
-        return (
-            self._try_rule_match(level, config, resolver)
-            or self._try_seniority(level, config, resolver)
-            or self._raise_no_available(level, config)
-        )
-
-    def _require_level(
-        self,
-        request: RoutingRequest,
-    ) -> SeniorityLevel:
-        """Validate that agent_level is set.
-
-        Returns:
-            The ``SeniorityLevel`` from the request.
-
-        Raises:
-            ModelResolutionError: If ``request.agent_level`` is ``None``.
-        """
-        if request.agent_level is None:
-            logger.warning(
-                ROUTING_NO_RULE_MATCHED,
-                strategy=self.name,
-                reason="agent_level not set",
-            )
-            msg = "RoleBasedStrategy requires agent_level to be set"
-            raise ModelResolutionError(msg)
-        return request.agent_level
-
-    def _try_rule_match(
-        self,
-        level: SeniorityLevel,
-        config: RoutingConfig,
-        resolver: ModelResolver,
-    ) -> RoutingDecision | None:
-        """Match routing rules by role level.
-
-        Returns:
-            A ``RoutingDecision`` for the first matching role-level rule
-            that resolves, or ``None`` if none match or resolve.
-        """
-        for rule in config.rules:
-            if rule.role_level == level:
-                model, tried = _try_resolve_with_fallback(
-                    rule.preferred_model,
-                    rule,
-                    config,
-                    resolver,
-                )
-                return RoutingDecision(
-                    resolved_model=model,
-                    strategy_used=self.name,
-                    reason=(
-                        f"Role rule match: level={level.value}, model={model.model_id}"
-                    ),
-                    fallbacks_tried=tried,
-                )
-        logger.debug(
-            ROUTING_NO_RULE_MATCHED,
-            level=level.value,
-            strategy=self.name,
-        )
-        return None
-
-    def _try_seniority(
-        self,
-        level: SeniorityLevel,
-        config: RoutingConfig,
-        resolver: ModelResolver,
-    ) -> RoutingDecision | None:
-        """Fall back to seniority catalog default tier.
-
-        Returns:
-            A ``RoutingDecision`` from the seniority catalog's typical
-            tier if it resolves, or ``None`` otherwise.
-        """
-        try:
-            tier = get_seniority_info(level).typical_model_tier
-        except LookupError:
-            logger.warning(
-                ROUTING_NO_RULE_MATCHED,
-                level=level.value,
-                strategy=self.name,
-                reason="seniority level not in catalog",
-            )
-            return None
-        result = _try_resolve_with_fallback_safe(
-            tier,
-            None,
-            config,
-            resolver,
-        )
-        if result is None:
-            return None
-        model, tried = result
-        return RoutingDecision(
-            resolved_model=model,
-            strategy_used=self.name,
-            reason=f"Seniority default: level={level.value}, tier={tier}",
-            fallbacks_tried=tried,
-        )
-
-    def _raise_no_available(
-        self,
-        level: SeniorityLevel,
-        config: RoutingConfig,
-    ) -> NoReturn:
-        """Raise when all candidates are exhausted.
-
-        Raises:
-            NoAvailableModelError: Always; signals that no model could be
-                resolved for the request.
-        """
-        tier: str = "unknown"
-        try:
-            tier = get_seniority_info(level).typical_model_tier
-        except LookupError:
-            logger.debug(
-                ROUTING_NO_RULE_MATCHED,
-                level=level.value,
-                reason="seniority level not in catalog",
-            )
-        if config.fallback_chain:
-            chain_detail = f"fallback chain exhausted: {list(config.fallback_chain)}"
-        else:
-            chain_detail = "no fallback chain configured"
-        msg = (
-            f"No model available for level={level.value} "
-            f"(tier={tier}, no rules matched, {chain_detail})"
-        )
-        logger.warning(
-            ROUTING_FALLBACK_EXHAUSTED,
-            level=level.value,
-            tier=tier,
-            strategy=self.name,
-        )
-        raise NoAvailableModelError(msg)
-
-
-# ── Strategy 3: Cost-Aware ───────────────────────────────────────
+# ── Strategy 2: Cost-Aware ───────────────────────────────────────
 
 
 class CostAwareStrategy:
@@ -455,7 +276,6 @@ class FastestStrategy:
 # ── Strategy Registry ────────────────────────────────────────────
 
 _MANUAL = ManualStrategy()
-_ROLE_BASED = RoleBasedStrategy()
 _COST_AWARE = CostAwareStrategy()
 _FASTEST = FastestStrategy()
 _SMART = SmartStrategy()
@@ -463,7 +283,6 @@ _SMART = SmartStrategy()
 STRATEGY_MAP: Mapping[str, RoutingStrategy] = MappingProxyType(
     {
         STRATEGY_NAME_MANUAL: _MANUAL,
-        STRATEGY_NAME_ROLE_BASED: _ROLE_BASED,
         STRATEGY_NAME_COST_AWARE: _COST_AWARE,
         STRATEGY_NAME_FASTEST: _FASTEST,
         STRATEGY_NAME_SMART: _SMART,

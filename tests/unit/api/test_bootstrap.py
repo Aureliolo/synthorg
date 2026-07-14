@@ -10,7 +10,6 @@ from pydantic import JsonValue
 
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from tests._shared import FakeClock, make_app_state, mock_of
@@ -25,7 +24,6 @@ def _make_agent_config(
     name: str = "test-agent",
     role: str = "developer",
     department: str = "engineering",
-    level: SeniorityLevel = SeniorityLevel.MID,
     model: dict[str, JsonValue] | None = None,
 ) -> AgentConfig:
     """Build an AgentConfig with sensible defaults."""
@@ -37,7 +35,6 @@ def _make_agent_config(
         name=name,
         role=role,
         department=department,
-        level=level,
         model=model or default_model,
     )
 
@@ -181,24 +178,6 @@ class TestBootstrapAgents:
         agents = await registry.list_active()
         assert len(agents) == 1
         assert agents[0].hiring_date == date(2026, 3, 14)
-
-    async def test_preserves_agent_level(
-        self,
-        registry: AgentRegistryService,
-        make_config_resolver: ConfigResolverFactory,
-    ) -> None:
-        """Agent level from config is preserved in the identity."""
-        from synthorg.api.bootstrap import bootstrap_agents
-
-        config_resolver = make_config_resolver(
-            (_make_agent_config(name="senior-dev", level=SeniorityLevel.SENIOR),)
-        )
-
-        await bootstrap_agents(config_resolver, registry)
-
-        agents = await registry.list_active()
-        assert len(agents) == 1
-        assert agents[0].level == SeniorityLevel.SENIOR
 
     async def test_preserves_autonomy_level(
         self,

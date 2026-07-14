@@ -6,7 +6,6 @@ import aiosqlite
 import pytest
 
 from synthorg.core.persistence_errors import QueryError
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import ContentType, TrainingPlan, TrainingPlanStatus
 from synthorg.persistence.sqlite.training_plan_repo import (
     SQLiteTrainingPlanRepository,
@@ -20,7 +19,6 @@ def _make_plan(  # noqa: PLR0913
     plan_id: str = "plan-001",
     agent_id: str = "agent-new-001",
     agent_role: str = "engineer",
-    agent_level: SeniorityLevel = SeniorityLevel.JUNIOR,
     department: str | None = "engineering",
     status: TrainingPlanStatus = TrainingPlanStatus.PENDING,
     skip_training: bool = False,
@@ -31,7 +29,6 @@ def _make_plan(  # noqa: PLR0913
         id=as_uuid(plan_id),
         new_agent_id=agent_id,
         new_agent_role=agent_role,
-        new_agent_level=agent_level,
         new_agent_department=department,
         enabled_content_types=frozenset(ContentType),
         volume_caps=(
@@ -67,7 +64,6 @@ class TestSQLiteTrainingPlanRepository:
         assert fetched.id == as_uuid("plan-001")
         assert fetched.new_agent_id == "agent-new-001"
         assert fetched.new_agent_role == "engineer"
-        assert fetched.new_agent_level is SeniorityLevel.JUNIOR
         assert fetched.new_agent_department == "engineering"
         assert fetched.status is TrainingPlanStatus.PENDING
         assert fetched.skip_training is False

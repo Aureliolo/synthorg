@@ -105,7 +105,6 @@ export type AutonomyLevel = (typeof AUTONOMY_LEVEL_VALUES)[number]
 
 export const AUTONOMY_STRATEGY_TYPE_VALUES = [
     'human_only',
-    'performance_gated',
     'budget_aware',
     'escalation_chain',
 ] as const
@@ -704,12 +703,6 @@ export const PROJECT_STATUS_VALUES = [
 ] as const
 export type ProjectStatus = (typeof PROJECT_STATUS_VALUES)[number]
 
-export const PROMOTION_DIRECTION_VALUES = [
-    'promotion',
-    'demotion',
-] as const
-export type PromotionDirection = (typeof PROMOTION_DIRECTION_VALUES)[number]
-
 export const PROPOSAL_ALTITUDE_VALUES = [
     'config_tuning',
     'architecture',
@@ -875,18 +868,6 @@ export const RUN_OUTCOME_VALUES = [
     'failed',
 ] as const
 export type RunOutcome = (typeof RUN_OUTCOME_VALUES)[number]
-
-export const SENIORITY_LEVEL_VALUES = [
-    'junior',
-    'mid',
-    'senior',
-    'lead',
-    'principal',
-    'director',
-    'vp',
-    'c_suite',
-] as const
-export type SeniorityLevel = (typeof SENIORITY_LEVEL_VALUES)[number]
 
 export const SETTING_LEVEL_VALUES = [
     'basic',

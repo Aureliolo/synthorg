@@ -24,7 +24,6 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.meeting import (
     MEETING_AGENT_CALL_FAILED,
     MEETING_AGENT_CALLED,
@@ -50,7 +49,6 @@ def _identity(
         name=NotBlankStr(name),
         role=NotBlankStr(role),
         department=NotBlankStr(department),
-        level=SeniorityLevel.MID,
         personality=PersonalityConfig(
             traits=(NotBlankStr("analytical"), NotBlankStr("curious")),
             communication_style=NotBlankStr("concise"),
@@ -262,7 +260,6 @@ class TestBuildMeetingAgentCaller:
             name=identity.name,
             role=identity.role,
             department=identity.department,
-            level=identity.level,
             personality=PersonalityConfig(),
             model=identity.model,
             hiring_date=identity.hiring_date,

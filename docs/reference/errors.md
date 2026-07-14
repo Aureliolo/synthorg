@@ -144,8 +144,6 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4022 | `HIRING_APPROVAL_REQUIRED` | Hiring request needs approval before instantiation |
 | 4023 | `HIRING_REJECTED` | Hiring request was rejected |
 | 4024 | `AGENT_ALREADY_REGISTERED` | Agent is already registered in the registry |
-| 4025 | `PROMOTION_COOLDOWN_ACTIVE` | Promotion blocked by an active cooldown window |
-| 4026 | `PROMOTION_APPROVAL_REQUIRED` | Promotion needs human approval before proceeding |
 | 4027 | `PRUNING_UNRESTARTABLE` | Pruning service is unrestartable after a timed-out stop |
 | 4028 | `SCALING_COOLDOWN_ACTIVE` | Scaling action blocked by an active cooldown window |
 | 4029 | `ROLLBACK_MUTATION_DENIED` | Rollback mutator's underlying store refused the write |

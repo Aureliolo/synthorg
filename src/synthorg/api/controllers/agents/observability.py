@@ -22,7 +22,6 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId
 from synthorg.api.state import AppState
 from synthorg.budget.currency_resolver import resolve_currency
-from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.activity import (
     ActivityEvent,
@@ -46,7 +45,6 @@ from synthorg.observability.events.api import (
     API_AGENT_PERFORMANCE_QUERIED,
 )
 from synthorg.persistence.state import persistence_of
-from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -55,35 +53,6 @@ logger = get_logger(__name__)
 # allocation.  The paginate() helper already caps the returned page
 # to MAX_LIMIT, but the underlying fetch is uncapped without this.
 _MAX_LIFECYCLE_EVENTS: Final[int] = 10_000
-
-
-class TrustSummary(BaseModel):
-    """Trust state summary for the health endpoint."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    level: ToolAccessLevel
-    score: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-    )
-    last_evaluated_at: AwareDatetime | None = None
-
-    @model_validator(mode="after")
-    def _score_requires_evaluation_time(self) -> Self:
-        """Require ``last_evaluated_at`` whenever a ``score`` is set.
-
-        Returns:
-            The validated model instance.
-
-        Raises:
-            ValueError: If ``score`` is set but ``last_evaluated_at`` is None.
-        """
-        if self.score is not None and self.last_evaluated_at is None:
-            msg = "score requires last_evaluated_at to be set"
-            raise ValueError(msg)
-        return self
 
 
 class PerformanceSummary(BaseModel):
@@ -132,7 +101,6 @@ class AgentHealthResponse(BaseModel):
     agent_name: NotBlankStr
     lifecycle_status: AgentStatus
     last_active_at: AwareDatetime | None = None
-    trust: TrustSummary | None = None
     performance: PerformanceSummary | None = None
 
 
@@ -309,17 +277,6 @@ class AgentObservabilityController(Controller):
             trend=trend,
         )
 
-        trust: TrustSummary | None = None
-        trust_service = app_state.slice(SecurityStateSlice).trust_service
-        if trust_service is not None:
-            trust_state = trust_service.get_trust_state(agent_id)
-            if trust_state is not None:
-                trust = TrustSummary(
-                    level=trust_state.global_level,
-                    score=trust_state.trust_score,
-                    last_evaluated_at=trust_state.last_evaluated_at,
-                )
-
         # Derive last_active_at from most recent lifecycle event.
         last_active_at: AwareDatetime | None = None
         events = await persistence_of(app_state).lifecycle_events.list_events(
@@ -334,7 +291,6 @@ class AgentObservabilityController(Controller):
             agent_name=str(identity.name),
             lifecycle_status=identity.status,
             last_active_at=last_active_at,
-            trust=trust,
             performance=perf,
         )
         logger.info(

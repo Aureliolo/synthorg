@@ -32,7 +32,6 @@ from synthorg.core.delegation_types import DelegationRequest
 from synthorg.core.role import Authority
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import coerce_id, sid
 
 
@@ -53,7 +52,6 @@ def _make_agent(
         name=name,
         role=role,
         department="Engineering",
-        level=SeniorityLevel.MID,
         model=_model_config(),
         hiring_date=date(2026, 1, 1),
         authority=Authority(can_delegate_to=can_delegate_to),

@@ -12,7 +12,7 @@ The design specification has been split into focused documentation pages for bet
 |------|----------|-------------|
 | [Design Overview](design/index.md) | Vision, Core Concepts | What SynthOrg is, design principles, glossary |
 | [Agents](design/agents.md) | Agent Identity | Identity card, personality (OCEAN + behavioural enums), skill model, tool namespaces, identity versioning |
-| [HR & Agent Lifecycle](design/hr-lifecycle.md) | HR | Seniority, role catalog, hiring (templates + LLM), pruning, dynamic scaling, firing, performance, evaluation, promotions, evolution, five-pillar framework, client agents |
+| [HR & Agent Lifecycle](design/hr-lifecycle.md) | HR | Role catalog, reporting-graph authority, hiring (templates + LLM), pruning, dynamic scaling, firing, performance, evaluation, evolution, five-pillar framework, client agents |
 | [Evaluation Loop](design/evaluation-loop.md) | Closed-loop agent evaluation | Trace capture, behaviour tagging, five-pillar enrichment, targeted-fix proposals layered on performance tracking and trajectory scoring; pluggable external benchmarks including the model-pin-validation golden-snapshot drift gate |
 | [Organisation & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
 | [Communication](design/communication.md) | Communication Architecture | Message bus transport, patterns, message format, config and lifecycle |

@@ -19,7 +19,6 @@ from synthorg.communication.enums import (
 )
 from synthorg.core.company import Company, CompanyConfig
 from synthorg.core.company_departments import Department, Team
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid, sid
 
 _NOW = datetime(2026, 3, 8, 12, 0, tzinfo=UTC)
@@ -29,7 +28,7 @@ def make_position(  # noqa: PLR0913
     *,
     agent_id: str = "agent-a",
     department: str = "engineering",
-    level: SeniorityLevel = SeniorityLevel.SENIOR,
+    role: str = "Software Architect",
     position: str = "Use microservices",
     reasoning: str = "Better scalability",
     timestamp: datetime | None = None,
@@ -38,7 +37,7 @@ def make_position(  # noqa: PLR0913
     return ConflictPosition(
         agent_id=agent_id,
         agent_department=department,
-        agent_level=level,
+        agent_role=role,
         position=position,
         reasoning=reasoning,
         timestamp=timestamp or _NOW,
@@ -57,10 +56,10 @@ def make_conflict(  # noqa: PLR0913
     """Create a conflict with defaults."""
     if positions is None:
         positions = (
-            make_position(agent_id="agent-a", level=SeniorityLevel.SENIOR),
+            make_position(agent_id="agent-a", role="Software Architect"),
             make_position(
                 agent_id="agent-b",
-                level=SeniorityLevel.MID,
+                role="Backend Developer",
                 position="Use monolith",
                 reasoning="Simpler to start",
             ),

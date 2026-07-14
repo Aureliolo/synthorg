@@ -23,7 +23,6 @@ from tests._shared.json_types import AsgiDict, JsonDict
 from tests._shared.loop_async_client import LoopAsyncClient
 from tests._shared.mock_of import mock_of
 from tests._shared.settings_fake import FakeSettingsService
-from tests._shared.trust import NoOpTrustStrategy
 from tests._shared.work_pipeline import (
     StubWorkPipeline,
     make_pipeline_result,
@@ -40,7 +39,6 @@ __all__ = [
     "InMemorySecretBackend",
     "JsonDict",
     "LoopAsyncClient",
-    "NoOpTrustStrategy",
     "StubWorkPipeline",
     "as_pk",
     "as_uuid",

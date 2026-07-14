@@ -13,10 +13,10 @@ from collections.abc import Callable
 from functools import cmp_to_key
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.authority import compare_authority
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role_catalog import get_builtin_role
 from synthorg.engine.decomposition.models import DecompositionResult
-from synthorg.hr.seniority import compare_seniority
 from synthorg.observability import get_logger
 from synthorg.observability.events.plan_review import (
     PLAN_REVIEW_PANEL_EMPTY,
@@ -29,17 +29,17 @@ logger = get_logger(__name__)
 #: and the budget lens (CFO). Order is the seating priority.
 _STANDING_PANEL_ROLES: tuple[str, ...] = ("CTO", "CFO")
 
-_seniority_cmp = cmp_to_key(compare_seniority)
+_authority_cmp = cmp_to_key(compare_authority)
 
 
 def _seniority_key(agent: AgentIdentity) -> tuple[object, str]:
     """Sort key ranking an agent most-senior-first, ties broken on id.
 
     Returns:
-        A key usable with ``max``: higher seniority sorts first, a stable id
-        breaks ties.
+        A key usable with ``max``: higher reporting authority sorts first, a
+        stable id breaks ties.
     """
-    return (_seniority_cmp(agent.level), str(agent.id))
+    return (_authority_cmp(agent.role), str(agent.id))
 
 
 def _most_senior(
@@ -122,6 +122,41 @@ def _touched_departments(plan: DecompositionResult) -> tuple[str, ...]:
     return tuple(seen)
 
 
+def _seat_panel(
+    plan: DecompositionResult,
+    candidates: list[AgentIdentity],
+    limit: int,
+) -> list[AgentIdentity]:
+    """Seat the panel in priority order, de-duplicated by agent id.
+
+    Standing leads (CTO, CFO), then the most senior agent in each domain
+    department the plan touches, then the most senior remaining peers until
+    ``limit`` is reached.
+
+    Returns:
+        The seated agents (at most ``limit``), in seating-priority order.
+    """
+    picked: list[AgentIdentity] = []
+    picked_ids: set[str] = set()
+
+    def take(agent: AgentIdentity | None) -> None:
+        if agent is None or str(agent.id) in picked_ids or len(picked) >= limit:
+            return
+        picked.append(agent)
+        picked_ids.add(str(agent.id))
+
+    for role_name in _STANDING_PANEL_ROLES:
+        take(_most_senior(candidates, _role_predicate(role_name)))
+    for dept in _touched_departments(plan):
+        take(_most_senior(candidates, _department_predicate(dept, picked_ids)))
+    while len(picked) < limit:
+        peer = _most_senior(candidates, _not_picked_predicate(picked_ids))
+        if peer is None:
+            break
+        take(peer)
+    return picked
+
+
 def select_review_panel(
     plan: DecompositionResult,
     agents: tuple[AgentIdentity, ...],
@@ -156,26 +191,7 @@ def select_review_panel(
         )
         return ()
 
-    picked: list[AgentIdentity] = []
-    picked_ids: set[str] = set()
-
-    def take(agent: AgentIdentity | None) -> None:
-        if agent is None or str(agent.id) in picked_ids or len(picked) >= limit:
-            return
-        picked.append(agent)
-        picked_ids.add(str(agent.id))
-
-    for role_name in _STANDING_PANEL_ROLES:
-        take(_most_senior(candidates, _role_predicate(role_name)))
-    for dept in _touched_departments(plan):
-        take(_most_senior(candidates, _department_predicate(dept, picked_ids)))
-    while len(picked) < limit:
-        peer = _most_senior(candidates, _not_picked_predicate(picked_ids))
-        if peer is None:
-            break
-        take(peer)
-
-    panel = tuple(picked)
+    panel = tuple(_seat_panel(plan, candidates, limit))
     logger.info(
         PLAN_REVIEW_PANEL_SELECTED,
         panel_size=len(panel),

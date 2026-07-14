@@ -25,7 +25,7 @@ from synthorg.communication.delegation.hierarchy import (
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
 from synthorg.communication.errors import ConflictHierarchyError
-from synthorg.hr.seniority import compare_seniority
+from synthorg.core.authority import compare_authority
 from synthorg.observability import get_logger
 from synthorg.observability.events.conflict import (
     CONFLICT_AUTHORITY_DECIDED,
@@ -83,7 +83,7 @@ class AuthorityResolver:
             losers=[p.agent_id for p in non_winners],
         )
 
-        losers_desc = ", ".join(f"{p.agent_id} ({p.agent_level})" for p in non_winners)
+        losers_desc = ", ".join(f"{p.agent_id} ({p.agent_role})" for p in non_winners)
         return ConflictResolution(
             conflict_id=str(conflict.id),
             outcome=ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY,
@@ -92,7 +92,7 @@ class AuthorityResolver:
             decided_by=winner.agent_id,
             reasoning=(
                 f"Authority decision: {winner.agent_id} "
-                f"({winner.agent_level}) outranks {losers_desc}"
+                f"({winner.agent_role}) outranks {losers_desc}"
             ),
             resolved_at=datetime.now(UTC),
         )
@@ -147,7 +147,7 @@ class AuthorityResolver:
         """
         best = conflict.positions[0]
         for pos in conflict.positions[1:]:
-            cmp = compare_seniority(pos.agent_level, best.agent_level)
+            cmp = compare_authority(pos.agent_role, best.agent_role)
             if cmp > 0:
                 best = pos
             elif cmp == 0:

@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { Loader2, Trash2 } from 'lucide-react'
 import type { AgentConfig } from '@/api/types/agents'
-import { SENIORITY_LEVEL_VALUES, type SeniorityLevel } from '@/api/types/enums'
 import type { Department, UpdateAgentOrgRequest } from '@/api/types/org'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
@@ -11,7 +10,6 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { formatDateOnly } from '@/utils/format'
 import { toRuntimeStatus } from '@/utils/agents'
-import { makeEnumParser } from '@/utils/type-guards'
 import { useDrawerDelete } from './use-drawer-delete'
 
 export interface AgentEditDrawerProps {
@@ -28,11 +26,7 @@ interface AgentFormState {
   name: string
   role: string
   department: string
-  level: SeniorityLevel
 }
-
-const LEVEL_OPTIONS = SENIORITY_LEVEL_VALUES.map((l) => ({ value: l, label: l }))
-const parseSeniorityLevel = makeEnumParser<SeniorityLevel>(SENIORITY_LEVEL_VALUES)
 
 /** "provider / model_id" display string for an agent's model config. */
 function agentModelDisplay(agent: AgentConfig): string {
@@ -64,7 +58,6 @@ function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
     name: '',
     role: '',
     department: '',
-    level: 'mid',
   })
   const [submitError, setSubmitError] = useState<string | null>(null)
   const del = useDrawerDelete(agent?.id, onDelete, onClose)
@@ -75,7 +68,7 @@ function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
   if (agent !== prevAgentRef.current) {
     prevAgentRef.current = agent
     if (agent) {
-      setForm({ name: agent.name, role: agent.role, department: agent.department, level: agent.level })
+      setForm({ name: agent.name, role: agent.role, department: agent.department })
       setSubmitError(null)
     }
     del.setDeleteOpen(false)
@@ -104,7 +97,6 @@ function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
       name: trimmedName,
       ...(form.role.trim() ? { role: form.role.trim() } : {}),
       department: form.department,
-      level: form.level,
     })
     // Store owns the error toast; the drawer only decides whether to close.
     if (result !== null) onClose()
@@ -155,15 +147,6 @@ function AgentEditBody({ agent, saving, form, onClose }: AgentEditBodyProps) {
         options={form.deptOptions}
         value={form.form.department}
         onChange={(v) => form.setForm((prev) => ({ ...prev, department: v }))}
-      />
-      <SelectField
-        label="Level"
-        options={LEVEL_OPTIONS}
-        value={form.form.level}
-        onChange={(v) => {
-          const level = parseSeniorityLevel(v)
-          if (level) form.setForm((prev) => ({ ...prev, level }))
-        }}
       />
 
       <div className="border-t border-border pt-4 space-y-2">

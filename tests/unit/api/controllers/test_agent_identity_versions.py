@@ -8,7 +8,6 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import JsonDict, LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes_backend import FakePersistenceBackend
@@ -20,7 +19,6 @@ def _make_identity(name: str = "agent-ver") -> AgentIdentity:
         name=name,
         role="developer",
         department="engineering",
-        level=SeniorityLevel.MID,
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
     )
@@ -33,22 +31,22 @@ async def _seed_versions(
 ) -> AgentIdentity:
     """Register an agent and issue ``updates`` charter updates.
 
-    Each ``update_identity`` bumps ``level`` so that the content hash
+    Each ``update_identity`` bumps ``role`` so that the content hash
     actually changes (no-op snapshots are suppressed by the service).
     """
     identity = _make_identity()
     await registry.register(identity)
-    levels = (
-        SeniorityLevel.SENIOR,
-        SeniorityLevel.LEAD,
-        SeniorityLevel.PRINCIPAL,
+    roles = (
+        "Software Architect",
+        "QA Lead",
+        "CTO",
     )
-    # Cycle through the level menu so callers can request more updates
+    # Cycle through the role menu so callers can request more updates
     # than the tuple has entries without tripping an IndexError.
     for i in range(updates):
         await registry.update_identity(
             str(identity.id),
-            level=levels[i % len(levels)],
+            role=roles[i % len(roles)],
         )
     return identity
 
@@ -152,7 +150,7 @@ class TestDiff:
     """``GET /agents/{agent_id}/versions/diff``."""
 
     @pytest.mark.unit
-    async def test_computes_level_diff(
+    async def test_computes_role_diff(
         self,
         async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
@@ -171,7 +169,7 @@ class TestDiff:
         assert diff["from_version"] == 1
         assert diff["to_version"] == 2
         paths = {c["field_path"] for c in diff["field_changes"]}
-        assert "level" in paths
+        assert "role" in paths
 
     @pytest.mark.unit
     @pytest.mark.parametrize(
@@ -211,7 +209,7 @@ class TestRollback:
     """``POST /agents/{agent_id}/versions/rollback``."""
 
     @pytest.mark.unit
-    async def test_rolls_back_level(
+    async def test_rolls_back_role(
         self,
         async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
@@ -227,10 +225,10 @@ class TestRollback:
         )
         assert resp.status_code == 200
         data = resp.json()["data"]
-        assert data["level"] == "mid"
+        assert data["role"] == "developer"
         current = await agent_registry.get(str(identity.id))
         assert current is not None
-        assert current.level is SeniorityLevel.MID
+        assert current.role == "developer"
 
     @pytest.mark.unit
     async def test_rollback_creates_new_snapshot(

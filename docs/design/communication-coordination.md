@@ -454,7 +454,7 @@ action items. See #1115.
 
 All five conflict resolution strategies terminate with bounded resource use:
 
-- **AuthorityResolver**: Deterministic seniority comparison. Always terminates; no LLM calls.
+- **AuthorityResolver**: Deterministic reporting-depth comparison (`compare_authority`). Always terminates; no LLM calls.
 - **DebateResolver**: Single LLM judge call (one-shot, no retry loop). Falls back to
   Authority if no evaluator configured, or if the evaluator raises an exception (#1117).
 - **HumanEscalationResolver**: Persists the escalation to a pluggable queue

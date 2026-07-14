@@ -69,7 +69,6 @@ template:
   agents:
     - role: "Security Engineer"
       name: "Custom Agent"
-      level: "senior"
       model: "medium"
       department: "security"
 """

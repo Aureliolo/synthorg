@@ -1,7 +1,7 @@
 """Shared agent-persona system-prompt renderer.
 
 A single place that turns an :class:`AgentIdentity` into a compact
-``system`` prompt (role, department, seniority, personality) with the
+``system`` prompt (role, department, personality) with the
 canonical ``untrusted_content_directive`` appended. Used by the meeting
 agent caller, the concern-routed proposer responder, and the
 multi-agent group chat so every persona-driven LLM call fences
@@ -28,7 +28,7 @@ _DEFAULT_PERSONA_FENCES: tuple[str, ...] = (TAG_TASK_DATA, TAG_PEER_CONTRIBUTION
 def render_agent_persona_body(identity: AgentIdentity) -> str:
     """Render the identity preamble for *identity* without any directive.
 
-    The role + department + seniority + personality lines that put the
+    The role + department + personality lines that put the
     model in character, with no untrusted-content directive appended.
     Callers that already emit their own directive (the concern-routed
     proposer, whose prompt template appends one) inject this preamble as
@@ -52,7 +52,6 @@ def render_agent_persona_body(identity: AgentIdentity) -> str:
     department = flatten_label(identity.department)
     lines: list[str] = [
         f"You are {name}, a {role} in the {department} department.",
-        f"Seniority level: {identity.level.value}.",
     ]
     traits = tuple(flatten_label(t) for t in identity.personality.traits)
     if traits:
@@ -70,7 +69,7 @@ def render_agent_system_prompt(
 ) -> str:
     """Render a persona ``system`` prompt for *identity*.
 
-    Builds the role + department + seniority + personality preamble and
+    Builds the role + department + personality preamble and
     appends the ``untrusted_content_directive`` for *fences* so the
     model treats fenced content as data, not instructions. Protocols
     inject the full turn context (agenda, prior contributions, lens)

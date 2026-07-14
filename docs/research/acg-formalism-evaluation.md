@@ -8,6 +8,10 @@ related: [690]
 
 # ACG Formalism Evaluation for SynthOrg Engine Architecture
 
+!!! note "Dated snapshot"
+
+    This evaluation is a point-in-time record. References to progressive trust and seniority-based agent selection describe designs that have since been removed; authority now derives from the role reporting graph (see [HR & Agent Lifecycle](../design/hr-lifecycle.md)).
+
 ## Context
 
 The IBM/RPI survey "From Static Templates to Dynamic Runtime Graphs" (arXiv:2603.22386,

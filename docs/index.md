@@ -116,10 +116,10 @@ provider; real-provider acceptance and operator polish are in flight (see the
 
 - **Agent Orchestration**: agents with roles, models, and tools; task decomposition, routing, and collaboration through the multi-agent coordinator and work pipeline spine.
 - **Budget Enforcement**: per-agent cost limits, auto-downgrade to cheaper models, spending reports, and CFO-level cost optimisation.
-- **Security & Trust**: SecOps agent, fail-closed rule engine, progressive trust, autonomy levels, and audit logging.
+- **Security**: SecOps agent, fail-closed rule engine, autonomy levels, and audit logging.
 - **Memory**: per-agent and shared organisational memory with retrieval pipeline, consolidation, and archival.
 - **Communication**: message bus, delegation, conflict resolution, and meeting protocols.
-- **HR Engine**: hiring, firing, onboarding, offboarding, performance tracking, and promotion criteria.
+- **HR Engine**: hiring, firing, onboarding, offboarding, performance tracking, and human-approved autonomy changes.
 - **Tool Integration**: built-in tools (file system, git, sandbox, code runner) plus an MCP bridge for external tools.
 - **LLM Providers**: provider-agnostic via LiteLLM, with routing strategies, retry/rate-limiting, and capability matching.
 

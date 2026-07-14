@@ -159,9 +159,6 @@ from synthorg.persistence.postgres.project_cost_aggregate_repo import (
 from synthorg.persistence.postgres.project_cost_claim_seen_repo import (
     PostgresProjectCostClaimSeenRepository,
 )
-from synthorg.persistence.postgres.promotion_history_repo import (
-    PostgresPromotionHistoryRepository,
-)
 from synthorg.persistence.postgres.provider_audit_repo import (
     PostgresProviderAuditRepo,
 )
@@ -179,10 +176,6 @@ from synthorg.persistence.postgres.training_plan_repo import (
 )
 from synthorg.persistence.postgres.training_result_repo import (
     PostgresTrainingResultRepository,
-)
-from synthorg.persistence.postgres.trust_repo import (
-    PostgresTrustChangeHistoryRepository,
-    PostgresTrustStateRepository,
 )
 from synthorg.persistence.postgres.webhook_receipt_repo import (
     PostgresWebhookReceiptRepository,
@@ -206,9 +199,6 @@ from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.project_workspace_protocol import (
     ProjectWorkspaceRepository,
 )
-from synthorg.persistence.promotion_history_protocol import (
-    PromotionHistoryRepository,
-)
 from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
 from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
@@ -226,10 +216,6 @@ from synthorg.persistence.tracked_container_protocol import (
 from synthorg.persistence.training_protocol import (
     TrainingPlanRepository,
     TrainingResultRepository,
-)
-from synthorg.persistence.trust_state_protocol import (
-    TrustChangeHistoryRepository,
-    TrustStateRepository,
 )
 from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
@@ -323,9 +309,6 @@ class _PostgresBackendRepositoryAccessors:
     _connection_secrets: PostgresConnectionSecretRepository | None
     _oauth_states: PostgresOAuthStateRepository | None
     _webhook_receipts: PostgresWebhookReceiptRepository | None
-    _trust_states: PostgresTrustStateRepository | None
-    _trust_change_history: PostgresTrustChangeHistoryRepository | None
-    _promotion_history: PostgresPromotionHistoryRepository | None
     _hiring_requests: PostgresHiringRequestRepository | None
     _agent_contributions: PostgresAgentContributionRepository | None
     _audit_chain_entries: PostgresAuditChainRepository | None
@@ -802,30 +785,6 @@ class _PostgresBackendRepositoryAccessors:
         return self._require_connected(
             self._ontology_drift,
             "ontology_drift",
-        )
-
-    @property
-    def trust_states(self) -> TrustStateRepository:
-        """Repository for per-agent progressive trust state."""
-        return self._require_connected(
-            self._trust_states,
-            "trust_states",
-        )
-
-    @property
-    def trust_change_history(self) -> TrustChangeHistoryRepository:
-        """Repository for the trust-level change audit trail."""
-        return self._require_connected(
-            self._trust_change_history,
-            "trust_change_history",
-        )
-
-    @property
-    def promotion_history(self) -> PromotionHistoryRepository:
-        """Repository for the append-only promotion/demotion history."""
-        return self._require_connected(
-            self._promotion_history,
-            "promotion_history",
         )
 
     @property

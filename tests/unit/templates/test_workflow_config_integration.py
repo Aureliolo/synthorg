@@ -149,7 +149,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Test Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
 
@@ -178,7 +177,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Test Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
 
@@ -228,7 +226,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Test Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
 
@@ -306,7 +303,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
   workflow: "kanban"
@@ -342,7 +338,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
   workflow: "kanban"
@@ -384,7 +379,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
   workflow: "kanban"
@@ -685,12 +679,10 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Test Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
     - role: "Designer"
       name: "Test Designer"
-      level: "mid"
       model: "medium"
       department: "marketing"
 
@@ -768,7 +760,6 @@ template:
   agents:
     - role: "Dev"
       name: "Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
   departments:

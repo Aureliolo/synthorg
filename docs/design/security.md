@@ -7,9 +7,9 @@ description: Approval workflow, autonomy levels, security operations agent, outp
 
 !!! info "Runtime enforcement"
 
-    This page is the source of truth for the behaviour of this subsystem. Governance runs on the live agent runtime behind the provider-present switch: the approval producer parks blocked actions, the boot `ApprovalGate` resumes them on a decision, the progressive-trust strategy narrows tool access at the invoker, an agent can call SynthOrg's own MCP tools under its trust level with the admin guardrails fail-closed, and the autonomy controller routes changes through the configured `AutonomyChangeStrategy`.
+    This page is the source of truth for the behaviour of this subsystem. Governance runs on the live agent runtime behind the provider-present switch: the approval producer parks blocked actions, the boot `ApprovalGate` resumes them on a decision, an agent can call SynthOrg's own MCP tools scoped to its static tool-access level with the admin guardrails fail-closed, and the autonomy controller routes changes through the configured `AutonomyChangeStrategy`.
 
-SynthOrg enforces a fail-closed security model: every agent action is evaluated by a rule engine (with an optional LLM fallback) before execution, every output is scanned for leaked secrets, and every credential flows through an isolated **hands** plane that never enters the model context. Four configurable autonomy levels (`full`, `semi`, `supervised`, `locked`) control which actions require human approval, and a pluggable trust system lets agents earn higher tool access over time.
+SynthOrg enforces a fail-closed security model: every agent action is evaluated by a rule engine (with an optional LLM fallback) before execution, every output is scanned for leaked secrets, and every credential flows through an isolated **hands** plane that never enters the model context. Four configurable autonomy levels (`full`, `semi`, `supervised`, `locked`) control which actions require human approval, and each agent's tool access is a static `access_level` set per agent or department.
 
 ## Approval Workflow
 
@@ -67,8 +67,7 @@ Consultancy). See the
 [Company Types table](organization.md#company-types) for per-template defaults.
 
 **Autonomy scope** ([Decision Log](../architecture/decisions.md) D6): Three-level
-resolution chain: per-agent > per-department > company default. Seniority validation prevents
-Juniors/Interns from being set to `full`.
+resolution chain: per-agent > per-department > company default.
 
 **Runtime changes** ([Decision Log](../architecture/decisions.md) D7): Human-only
 promotion via REST API (no agent, including CEO, can escalate privileges). Automatic downgrade
@@ -89,7 +88,6 @@ override only the promotion decision.
 | `AutonomyStrategyType` | Implementation | Behaviour |
 |---|---|---|
 | `HUMAN_ONLY` | `HumanOnlyPromotionStrategy` | Promotions + recovery always require human approval. Byte-identical with the pre-plugin default. |
-| `PERFORMANCE_GATED` | `PerformanceGatedPromotionStrategy` | Auto-grants promotion when the agent's rolling success rate (injected `PerformanceSignalProvider`) is at/above `promotion_success_threshold`; `None` history defers. |
 | `BUDGET_AWARE` | `BudgetAwarePromotionStrategy` | Denies promotion while risk-budget headroom (injected `RiskBudgetSignalProvider`) is below `budget_warn_fraction`; otherwise delegates the decision to the base. |
 | `ESCALATION_CHAIN` | `EscalationChainPromotionStrategy` | Records the configured approver-role `escalation_chain` and returns pending (`False`); per-role approvals arrive out-of-band. |
 
@@ -102,19 +100,18 @@ strategy missing its required signal provider raises
 `AutonomyStrategyConfigError` at construction. The strategy is built
 at boot from `config.autonomy.change_strategy` and attached to
 application state; the autonomy controller consults it on every
-change request (the D6 seniority rule is enforced first, then the
-request is enqueued as an approval, the queue being the apply
-driver). With the `HUMAN_ONLY` default every promotion pends for
+change request (the request is enqueued as an approval, the queue
+being the apply driver). With the `HUMAN_ONLY` default every promotion pends for
 human review. The strategy verdict is enforced, not audit-only: a
 strategy that returns `True` from `request_promotion` produces an
 auto-decided approval item (`status=APPROVED`,
 `decided_by="strategy:<name>"`, `decided_at` set) and the registry
 applies the level change immediately, so the queue remains the apply
 driver and the audit trail stays intact while a non-`HUMAN_ONLY`
-strategy actually takes effect. The performance / risk-budget signal
-providers the `PERFORMANCE_GATED` and `BUDGET_AWARE` strategies
-require are not wired by the boot seam: selecting one of those kinds
-without supplying its provider fails fast at construction.
+strategy actually takes effect. The risk-budget signal provider the
+`BUDGET_AWARE` strategy requires is not wired by the boot seam:
+selecting that kind without supplying its provider fails fast at
+construction.
 
 ## Security Operations Agent
 
@@ -410,7 +407,7 @@ shutdown-time mechanism.
 
 The `RiskTierClassifier` protocol (`security/timeout/protocol.py`,
 `classify(action_type) -> ApprovalRiskLevel`) is a pluggable subsystem
-following the `security/trust/` pattern: a `StrEnum` discriminator +
+following the `security/autonomy/` pattern: a `StrEnum` discriminator +
 frozen config + safe default + `StrategyRegistry` factory.
 
 | `RiskClassifierType` | Implementation | Behaviour |
@@ -723,7 +720,7 @@ untrusted input and attacks it along four locked surfaces:
 
 ### Shape
 
-- The red team is a built-in `Role` (`name="Red Team"`, department `quality_assurance`, seniority `senior`) carried in `BUILTIN_ROLES`. The role is instantiated as a real `AgentIdentity` at boot via `build_red_team_agent_identity` and dispatched through `AgentEngine.run` like any other agent.
+- The red team is a built-in `Role` (`name="Red Team"`, department `quality_assurance`) carried in `BUILTIN_ROLES`. The role is instantiated as a real `AgentIdentity` at boot via `build_red_team_agent_identity` and dispatched through `AgentEngine.run` like any other agent.
 - The gate's only agent-side side effect is one `submit_red_team_report` tool call carrying a frozen `RedTeamReport` (`execution_id`, `task_id`, `findings`, `summary`). The tool is registered ONCE on the engine's tool registry; `execution_id` / `task_id` flow through tool arguments, NOT through constructor-bound state, so the tool is a singleton.
 - The agent prompt wraps the deliverable in `<untrusted-artifact>` and the brief in `<task-data>` via `wrap_untrusted` (SEC-1). The system prompt explicitly forbids deference to seniority and authority cues in the deliverable, mitigating the authority-deference failure pattern (`docs/design/communication-coordination.md`).
 
@@ -807,7 +804,7 @@ human-facing receipt view.
 
 ## See Also
 
-- [Tools](tools.md): tool categories, sandboxing, progressive trust
+- [Tools](tools.md): tool categories, sandboxing, access levels
 - [Budget](budget.md): risk budget, shadow mode enforcement
 - [Verification & Quality](verification-quality.md): verification stage and review pipeline (the red-team gate is the LAST adversarial layer AFTER the review pipeline passes)
 - [Design Overview](index.md): full index

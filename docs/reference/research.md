@@ -30,7 +30,6 @@ The following table compares major multi-agent frameworks that informed the desi
 | Configurable autonomy | No | No | Limited | **Yes: full spectrum** |
 | Local + cloud providers | Partial | Partial | Partial | **Yes: unified abstraction via LiteLLM** |
 | Cost tracking per agent | No | No | No | **Yes: full budget system** |
-| Progressive trust | No | No | No | **Yes** |
 | Performance metrics | No | No | No | **Yes** |
 | MCP tool integration | No | No | Partial | **Yes** |
 | A2A protocol support | No | No | No | **Planned** |
@@ -59,7 +58,7 @@ The following table compares major multi-agent frameworks that informed the desi
 
 **Decision: Build from scratch, leverage libraries.**
 
-No existing framework covers even 50% of SynthOrg's requirements. The core differentiators (HR, budget management, security ops, deep personalities, progressive trust) do not exist in any framework. Forking MetaGPT or CrewAI would mean fighting their architecture while adding these features.
+No existing framework covers even 50% of SynthOrg's requirements. The core differentiators (HR, budget management, security ops, deep personalities) do not exist in any framework. Forking MetaGPT or CrewAI would mean fighting their architecture while adding these features.
 
 The "company simulation" layer on top is the unique value and must be purpose-built.
 

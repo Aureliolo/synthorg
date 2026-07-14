@@ -133,11 +133,11 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `risk_classifier_config.py::RiskClassifierType` discriminator + frozen `RiskClassifierConfig` + `RiskClassifierDeps` (in-flight probe / `Clock` collaborators).
 - `risk_classifier_factory.py::build_risk_tier_classifier()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `RiskClassifierConfigError` surfaces a missing required dep. Wired at `timeout/factory.py::create_timeout_policy` (tiered seam); `SecOpsService` + approval-tool consumers stay on the default pending a `SecurityConfig.risk_classifier` field.
 
-### Autonomy change strategy (promotion/downgrade plugin, REWORK #9)
+### Autonomy change strategy (promotion/downgrade plugin)
 
 - `security/autonomy/protocol.py::AutonomyChangeStrategy` Protocol (`request_promotion` / `auto_downgrade` / `request_recovery`).
-- Impls: `change_strategy.py::HumanOnlyPromotionStrategy` (safe default + override store), `performance_gated.py`, `budget_aware.py`, `escalation_chain.py` (each wraps the base via `_base_delegate.py::BaseDelegatingStrategy`).
-- Signal Protocols: `signals.py::PerformanceSignalProvider`, `RiskBudgetSignalProvider` (injected, never concrete `hr/` / `budget/` imports).
+- Impls: `change_strategy.py::HumanOnlyPromotionStrategy` (safe default + override store), `budget_aware.py`, `escalation_chain.py` (each wraps the base via `_base_delegate.py::BaseDelegatingStrategy`).
+- Signal Protocols: `signals.py::RiskBudgetSignalProvider` (injected, never a concrete `budget/` import).
 - `change_strategy_config.py::AutonomyStrategyType` discriminator + frozen `AutonomyStrategyConfig` + `AutonomyStrategyDeps`.
 - `change_strategy_factory.py::build_autonomy_change_strategy()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `AutonomyStrategyConfigError` surfaces a missing required signal provider. No production seam wires a non-default strategy yet (surface-only, follow-up wires it end-to-end).
 
@@ -147,13 +147,6 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `communication/meeting/conflict_detection.py`: six concrete implementations (`KeywordConflictDetector`, `StructuredComparisonDetector`, `LlmJudgeDetector`, `EmbeddingSimilarityDetector`, `HybridDetector`, `AutoDetector`).
 - `communication/meeting/enums.py::ConflictDetectorType`: discriminator.
 - `communication/meeting/factory.py::build_conflict_detector()`: `StrategyRegistry` dispatch.
-
-### Trust strategy (conditional instantiation)
-
-- `security/trust/protocol.py`: `TrustStrategy` Protocol.
-- `security/trust/{weighted,per_category,milestone}_strategy.py`: three real implementations.
-- `security/trust/config.py::TrustConfig.strategy` (`TrustStrategyType` with a `DISABLED` value): discriminator.
-- `security/trust/factory.py::build_trust_strategy()`: registry dispatch that returns `None` for `DISABLED` so callers skip `TrustService` construction entirely (instead of wiring a no-op strategy).
 
 ### Ontology versioning (inverted backend dependency)
 
@@ -206,7 +199,7 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 
 - `providers/management/refresh_strategy.py`: `RefreshStrategy` `@runtime_checkable` Protocol (`reconcile(provider_name, provider) -> ProviderRefreshOutcome`).
 - `DetectOnlyStrategy` (probe the live catalogue and flag removed models stale; never persists new models or recommends) and `ReconcileRecommendStrategy` (additionally persists newly-discovered models and produces in-family upgrade recommendations).
-- `providers/management/refresh_strategy.py::build_refresh_strategy()`: keyed on the `RefreshMode` discriminator; returns `None` for `OFF` / `MANUAL_ONLY` so the scheduler skips construction entirely (the off-by-cadence safe default), matching the `build_trust_strategy()` precedent.
+- `providers/management/refresh_strategy.py::build_refresh_strategy()`: keyed on the `RefreshMode` discriminator; returns `None` for `OFF` / `MANUAL_ONLY` so the scheduler skips construction entirely (the off-by-cadence safe default).
 
 ## Services are a distinct pattern (not pluggable subsystems)
 

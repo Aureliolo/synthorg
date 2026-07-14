@@ -11,7 +11,6 @@ from synthorg.engine.assignment.pool_filters import IdentityPoolFilter
 from synthorg.engine.assignment.rankers import AuctionBidRanker
 from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.routing.scorer import AgentTaskScorer
-from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_assignment_agent, make_assignment_task
 
@@ -39,12 +38,10 @@ class TestAuctionAssignmentStrategy:
         agent_a = make_assignment_agent(
             "agent-a",
             primary_skills=("python", "api-design"),
-            level=SeniorityLevel.SENIOR,
         )
         agent_b = make_assignment_agent(
             "agent-b",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -82,12 +79,10 @@ class TestAuctionAssignmentStrategy:
         busy = make_assignment_agent(
             "busy-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
         idle = make_assignment_agent(
             "idle-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -122,13 +117,11 @@ class TestAuctionAssignmentStrategy:
             "expert",
             primary_skills=("python", "api-design", "databases"),
             role="Backend Developer",
-            level=SeniorityLevel.SENIOR,
         )
         # Novice with low score but idle
         novice = make_assignment_agent(
             "novice",
             primary_skills=("testing",),
-            level=SeniorityLevel.JUNIOR,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -163,12 +156,10 @@ class TestAuctionAssignmentStrategy:
         best = make_assignment_agent(
             "best-dev",
             primary_skills=("python", "api-design"),
-            level=SeniorityLevel.MID,
         )
         other = make_assignment_agent(
             "other-dev",
             primary_skills=("testing",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -191,7 +182,6 @@ class TestAuctionAssignmentStrategy:
         agent = make_assignment_agent(
             "qa",
             primary_skills=("testing",),
-            level=SeniorityLevel.JUNIOR,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.EPIC)
@@ -231,7 +221,6 @@ class TestAuctionAssignmentStrategy:
             make_assignment_agent(
                 f"dev-{i}",
                 primary_skills=("python",),
-                level=SeniorityLevel.MID,
             )
             for i in range(3)
         )

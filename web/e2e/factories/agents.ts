@@ -11,7 +11,6 @@ export interface MockAgent {
   role: string
   department: string
   status: 'active' | 'idle' | 'paused' | 'terminated'
-  level: 'junior' | 'mid' | 'senior' | 'principal'
   current_task_id: string | null
   /** Raw model config dict, mirroring the wire ``AgentConfig.model``. */
   model: Record<string, unknown>
@@ -30,7 +29,6 @@ export function makeAgent(overrides: Partial<MockAgent> = {}): MockAgent {
     role: 'engineer',
     department: 'engineering',
     status: 'active',
-    level: 'mid',
     current_task_id: null,
     model: { model_id: 'example-medium-001' },
     personality: { traits: ['pragmatic', 'thorough'] },

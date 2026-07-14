@@ -4,7 +4,10 @@ Builds the strategic analysis sections that are conditionally injected
 into agent system prompts when strategy configuration is active.
 """
 
+from typing import Final
+
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.authority import role_depth
 from synthorg.engine.prompt_safety import (
     TAG_CONFIG_VALUE,
     untrusted_content_directive,
@@ -19,7 +22,6 @@ from synthorg.engine.strategy.output import build_output_instructions
 from synthorg.engine.strategy.strategic_context_provider import (
     current_strategic_context,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.strategy import (
     STRATEGY_LENS_LOOKUP_FAILED,
@@ -28,14 +30,9 @@ from synthorg.observability.events.strategy import (
 
 logger = get_logger(__name__)
 
-# Seniority levels that receive strategic prompt injection by default.
-_STRATEGIC_LEVELS: frozenset[SeniorityLevel] = frozenset(
-    {
-        SeniorityLevel.C_SUITE,
-        SeniorityLevel.VP,
-        SeniorityLevel.DIRECTOR,
-    }
-)
+# Executive tier by reporting depth (CEO at depth 0, the C-suite at
+# depth 1) receives strategic prompt injection by default.
+_STRATEGIC_MAX_DEPTH: Final[int] = 1
 
 
 def should_inject_strategy(
@@ -45,8 +42,8 @@ def should_inject_strategy(
     """Determine whether strategic sections should be injected.
 
     Returns ``True`` if the agent has an explicit strategic output mode
-    set, or if the agent's seniority level qualifies for strategic
-    analysis.
+    set, or if the agent's role sits in the executive tier (shallow
+    reporting depth).
 
     Args:
         agent: Agent identity.
@@ -59,7 +56,7 @@ def should_inject_strategy(
         return False
     if agent.strategic_output_mode is not None:
         return True
-    return agent.level in _STRATEGIC_LEVELS
+    return role_depth(agent.role) <= _STRATEGIC_MAX_DEPTH
 
 
 def build_strategic_prompt_sections(

@@ -44,26 +44,10 @@ class TestAgentsCRUD:
 
 
 class TestTrainingStartSessionArgs:
-    def test_seniority_is_closed(self) -> None:
-        TrainingStartSessionArgs(
-            new_agent_id="a1",
-            new_agent_role="engineer",
-            new_agent_level="senior",
-        )
-        with pytest.raises(ValidationError):
-            TrainingStartSessionArgs.model_validate(
-                {
-                    "new_agent_id": "a1",
-                    "new_agent_role": "engineer",
-                    "new_agent_level": "principal",
-                },
-            )
-
     def test_content_types_are_closed(self) -> None:
         args = TrainingStartSessionArgs(
             new_agent_id="a1",
             new_agent_role="r",
-            new_agent_level="mid",
             enabled_content_types=("procedural", "semantic"),
         )
         assert "procedural" in args.enabled_content_types
@@ -79,7 +63,6 @@ class TestTrainingStartSessionArgs:
                 {
                     "new_agent_id": "a1",
                     "new_agent_role": "r",
-                    "new_agent_level": "mid",
                     "enabled_content_types": ("procedural", "unknown_type"),
                 },
             )

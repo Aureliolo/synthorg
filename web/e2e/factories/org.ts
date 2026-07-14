@@ -40,7 +40,6 @@ export interface MockOrgAgent {
   name: string
   role: string
   department: string
-  level: 'junior' | 'mid' | 'senior' | 'principal'
   status: 'active' | 'idle' | 'paused' | 'terminated'
   personality: Record<string, unknown>
   model: Record<string, unknown>
@@ -93,7 +92,6 @@ export function makeOrgAgent(overrides: Partial<MockOrgAgent> = {}): MockOrgAgen
     name: 'Alice',
     role: 'engineer',
     department: 'engineering',
-    level: 'mid',
     status: 'active',
     personality: {},
     model: {},

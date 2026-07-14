@@ -6,7 +6,6 @@ import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.errors import OrgMemoryQueryError
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
@@ -31,7 +30,7 @@ def _fact() -> OrgFact:
         tags=(NotBlankStr("deploy"), NotBlankStr("ops")),
         author=OrgFactAuthor(
             agent_id=NotBlankStr("agent-1"),
-            seniority=SeniorityLevel.SENIOR,
+            role="Software Architect",
             autonomy_level=AutonomyLevel.SEMI,
             is_human=False,
         ),
@@ -46,9 +45,7 @@ def _snapshot_row(fact: OrgFact, *, native_ts: bool = False) -> dict[str, object
         "category": fact.category.value,
         "tags": tags_to_json(fact.tags),
         "author_agent_id": fact.author.agent_id,
-        "author_seniority": (
-            fact.author.seniority.value if fact.author.seniority else None
-        ),
+        "author_role": fact.author.role,
         "author_is_human": int(fact.author.is_human),
         "author_autonomy_level": (
             fact.author.autonomy_level.value if fact.author.autonomy_level else None
@@ -119,7 +116,7 @@ class TestOperationLogMarshalling:
             "category": OrgFactCategory.ADR.value,
             "tags": tags_to_json((NotBlankStr("x"),)),
             "author_agent_id": "agent-1",
-            "author_seniority": SeniorityLevel.LEAD.value,
+            "author_role": "QA Lead",
             "author_is_human": 0,
             "author_autonomy_level": AutonomyLevel.FULL.value,
             "timestamp": _NOW.isoformat(),
@@ -172,7 +169,7 @@ class TestOperationLogMarshalling:
             "category": "not-a-category",
             "tags": tags_to_json((NotBlankStr("x"),)),
             "author_agent_id": "agent-1",
-            "author_seniority": SeniorityLevel.LEAD.value,
+            "author_role": "QA Lead",
             "author_is_human": 0,
             "author_autonomy_level": AutonomyLevel.FULL.value,
             "timestamp": _NOW.isoformat(),
@@ -190,7 +187,7 @@ class TestOperationLogMarshalling:
             "category": OrgFactCategory.ADR.value,
             "tags": tags_to_json((NotBlankStr("x"),)),
             "author_agent_id": "agent-1",
-            "author_seniority": SeniorityLevel.LEAD.value,
+            "author_role": "QA Lead",
             "author_is_human": 0,
             "author_autonomy_level": AutonomyLevel.FULL.value,
             "timestamp": _NOW.isoformat(),

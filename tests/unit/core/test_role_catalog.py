@@ -1,68 +1,42 @@
-"""Tests for the built-in role catalog and seniority mappings."""
-
-from unittest.mock import patch
+"""Tests for the built-in role catalog and reporting graph."""
 
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.role import Role, SeniorityInfo
+from synthorg.core.authority import reporting_chain, role_depth
+from synthorg.core.role import Role
 from synthorg.core.role_catalog import (
     BUILTIN_ROLES,
-    SENIORITY_INFO,
     get_builtin_role,
-    get_seniority_info,
 )
-from synthorg.hr.enums import CostTier
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import DepartmentName
 
-# ── Seniority Info ─────────────────────────────────────────────────
+# ── Reporting graph ────────────────────────────────────────────────
 
 
 @pytest.mark.unit
-class TestSeniorityInfo:
-    """Tests for the SENIORITY_INFO tuple coverage and integrity."""
+class TestReportingGraph:
+    """The reporting graph is rooted at the CEO and always terminates."""
 
-    def test_has_8_entries(self) -> None:
-        """Verify SENIORITY_INFO contains exactly 8 mappings."""
-        assert len(SENIORITY_INFO) == 8
+    def test_ceo_is_root(self) -> None:
+        """The CEO reports to no one (reporting depth 0)."""
+        assert role_depth("CEO") == 0
 
-    def test_covers_all_seniority_levels(self) -> None:
-        """Verify every SeniorityLevel enum value has a mapping."""
-        levels = {info.level for info in SENIORITY_INFO}
-        expected = set(SeniorityLevel)
-        assert levels == expected
+    def test_every_role_reaches_the_ceo(self) -> None:
+        """Every built-in role's reporting chain ends at the CEO."""
+        for role in BUILTIN_ROLES:
+            if role.name == "CEO":
+                continue
+            chain = reporting_chain(role.name)
+            assert chain, f"{role.name} has an empty reporting chain"
+            assert chain[-1] == "ceo", f"{role.name} does not report up to the CEO"
 
-    def test_no_duplicate_levels(self) -> None:
-        """Verify no two entries share the same seniority level."""
-        levels = [info.level for info in SENIORITY_INFO]
-        assert len(levels) == len(set(levels))
-
-    def test_all_entries_are_seniority_info(self) -> None:
-        """Verify every entry is a SeniorityInfo instance."""
-        for info in SENIORITY_INFO:
-            assert isinstance(info, SeniorityInfo)
-
-    def test_junior_is_low_cost(self) -> None:
-        """Verify JUNIOR maps to LOW cost tier."""
-        info = get_seniority_info(SeniorityLevel.JUNIOR)
-        assert info.cost_tier == CostTier.LOW
-
-    def test_c_suite_is_premium_cost(self) -> None:
-        """Verify C_SUITE maps to PREMIUM cost tier."""
-        info = get_seniority_info(SeniorityLevel.C_SUITE)
-        assert info.cost_tier == CostTier.PREMIUM
-
-    def test_senior_uses_medium_tier(self) -> None:
-        """Verify SENIOR maps to 'medium' model tier."""
-        info = get_seniority_info(SeniorityLevel.SENIOR)
-        assert info.typical_model_tier == "medium"
-
-    def test_all_entries_frozen(self) -> None:
-        """Verify all SeniorityInfo entries are immutable."""
-        for info in SENIORITY_INFO:
-            with pytest.raises(ValidationError):
-                info.level = SeniorityLevel.JUNIOR  # type: ignore[misc]
+    def test_c_suite_reports_to_ceo(self) -> None:
+        """Each non-CEO C-suite role reports directly to the CEO."""
+        for name in ("CTO", "CFO", "COO", "CPO"):
+            role = get_builtin_role(name)
+            assert role is not None
+            assert role.reports_to == "CEO"
 
 
 # ── Builtin Roles ─────────────────────────────────────────────────
@@ -98,10 +72,8 @@ class TestBuiltinRoles:
         assert departments == expected
 
     def test_c_suite_roles_present(self) -> None:
-        """Verify all expected C-suite roles exist."""
-        c_suite = [
-            r for r in BUILTIN_ROLES if r.authority_level is SeniorityLevel.C_SUITE
-        ]
+        """Verify all expected C-suite roles exist in the executive department."""
+        c_suite = [r for r in BUILTIN_ROLES if r.department is DepartmentName.EXECUTIVE]
         names = {r.name for r in c_suite}
         assert {"CEO", "CTO", "CFO", "COO", "CPO"}.issubset(names)
 
@@ -208,34 +180,6 @@ class TestGetBuiltinRole:
         role = get_builtin_role(name)
         assert role is not None, f"Role {name!r} not found in catalog"
         assert role.name == name
-
-
-@pytest.mark.unit
-class TestGetSeniorityInfo:
-    """Tests for the get_seniority_info lookup function."""
-
-    def test_found(self) -> None:
-        """Verify lookup returns matching SeniorityInfo."""
-        info = get_seniority_info(SeniorityLevel.SENIOR)
-        assert info.level is SeniorityLevel.SENIOR
-
-    @pytest.mark.parametrize("level", list(SeniorityLevel))
-    def test_all_levels_lookupable(self, level: SeniorityLevel) -> None:
-        """Verify every SeniorityLevel is lookupable."""
-        info = get_seniority_info(level)
-        assert info.level is level
-
-    def test_raises_lookup_error_for_missing_level(self) -> None:
-        """Verify LookupError when the internal map is empty."""
-        with (
-            patch.dict(
-                "synthorg.core.role_catalog._SENIORITY_INFO_BY_LEVEL",
-                {},
-                clear=True,
-            ),
-            pytest.raises(LookupError, match="catalog may be incomplete"),
-        ):
-            get_seniority_info(SeniorityLevel.JUNIOR)
 
 
 # ── Import-time Guard Tests ──────────────────────────────────────

@@ -13,7 +13,6 @@ from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task_enums import Complexity, TaskType
-from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.core.types import stable_agent_id
 from synthorg.hr.enums import LifecycleEventType, TrendDirection
 from synthorg.hr.models import AgentLifecycleEvent
@@ -533,20 +532,6 @@ class TestAgentHealth:
         assert data["lifecycle_status"] == "active"
         assert data["performance"] is not None
 
-    async def test_health_trust_none_when_not_tracked(
-        self,
-        async_test_client: LoopAsyncClient,
-        agent_registry: AgentRegistryService,
-    ) -> None:
-        """Trust is None when TrustService has no state for agent."""
-        await agent_registry.register(_make_identity())
-        resp = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_ID}/health",
-        )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["data"]["trust"] is None
-
     async def test_health_agent_not_found(
         self,
         async_test_client: LoopAsyncClient,
@@ -633,35 +618,6 @@ class TestExtractQualityTrend:
 
 @pytest.mark.unit
 class TestHealthModels:
-    def test_trust_summary_score_without_evaluated_at_rejected(
-        self,
-    ) -> None:
-        from synthorg.api.controllers.agents.observability import TrustSummary
-
-        with pytest.raises(ValidationError, match="score requires"):
-            TrustSummary(
-                level=ToolAccessLevel.STANDARD,
-                score=0.8,
-                last_evaluated_at=None,
-            )
-
-    def test_trust_summary_score_with_evaluated_at_accepted(self) -> None:
-        from synthorg.api.controllers.agents.observability import TrustSummary
-
-        ts = TrustSummary(
-            level=ToolAccessLevel.STANDARD,
-            score=0.8,
-            last_evaluated_at=datetime(2026, 4, 1, tzinfo=UTC),
-        )
-        assert ts.score == 0.8
-
-    def test_trust_summary_no_score_no_evaluated_at_accepted(self) -> None:
-        from synthorg.api.controllers.agents.observability import TrustSummary
-
-        ts = TrustSummary(level=ToolAccessLevel.STANDARD)
-        assert ts.score is None
-        assert ts.last_evaluated_at is None
-
     def test_performance_summary_rejects_nan(self) -> None:
         from synthorg.api.controllers.agents.observability import PerformanceSummary
 

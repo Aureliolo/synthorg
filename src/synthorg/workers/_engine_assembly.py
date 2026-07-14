@@ -574,7 +574,6 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         ),
         cost_forecast_repo=app_state.slice(BudgetStateSlice).cost_forecast_repo,
         approval_gate=app_state.slice(ApprovalStateSlice).gate,
-        trust_service=app_state.slice(SecurityStateSlice).trust_service,
         mcp_self_consumer=build_mcp_self_consumer(
             app_state.config.security.mcp_self_consumer,
             app_state,

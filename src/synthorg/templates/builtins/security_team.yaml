@@ -55,7 +55,6 @@ template:
 
   agents:
     - role: "Security Engineer"
-      level: "principal"
       model:
         priority: "quality"
         min_context: 100000
@@ -63,14 +62,12 @@ template:
       personality_preset: "security_sentinel"
       department: "security"
     - role: "Security Operations"
-      level: "senior"
       model:
         priority: "quality"
         requires_reasoning: true
       personality_preset: "devil_advocate"
       department: "security"
     - role: "Software Architect"
-      level: "principal"
       model:
         priority: "quality"
         min_context: 100000
@@ -78,7 +75,6 @@ template:
       personality_preset: "systems_thinker"
       department: "engineering"
     - role: "Backend Developer"
-      level: "senior"
       model:
         priority: "quality"
         requires_tools: true

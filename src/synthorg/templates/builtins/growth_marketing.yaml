@@ -57,34 +57,29 @@ template:
 
   agents:
     - role: "Brand Strategist"
-      level: "senior"
       model:
         priority: "balanced"
       personality_preset: "growth_hacker"
       department: "creative_marketing"
     - role: "Content Writer"
       merge_id: "writer-lead"
-      level: "mid"
       model:
         priority: "quality"
       personality_preset: "creative_innovator"
       department: "creative_marketing"
     - role: "Content Writer"
       merge_id: "writer-support"
-      level: "mid"
       model:
         priority: "cost"
       personality_preset: "technical_communicator"
       department: "creative_marketing"
     - role: "Data Analyst"
-      level: "mid"
       model:
         priority: "balanced"
         requires_tools: true
       personality_preset: "data_driven_optimizer"
       department: "operations"
     - role: "Project Manager"
-      level: "senior"
       model:
         priority: "speed"
       personality_preset: "process_optimizer"

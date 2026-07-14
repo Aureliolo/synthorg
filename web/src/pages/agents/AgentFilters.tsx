@@ -4,20 +4,16 @@ import { useAgentsStore } from '@/stores/agents'
 import { useCompanyStore } from '@/stores/company'
 import {
   AGENT_STATUS_VALUES,
-  SENIORITY_LEVEL_VALUES,
   type AgentStatus,
-  type SeniorityLevel,
 } from '@/api/types/enums'
 import { formatLabel } from '@/utils/format'
 import { cn } from '@/lib/utils'
 import type { AgentSortKey } from '@/utils/agents'
 
-const VALID_LEVELS = new Set<string>(SENIORITY_LEVEL_VALUES)
 const VALID_STATUSES = new Set<string>(AGENT_STATUS_VALUES)
 const VALID_SORT_KEYS = new Set<string>([
   'name',
   'department',
-  'level',
   'status',
   'hiring_date',
 ])
@@ -28,7 +24,6 @@ const SELECT_CLASSES =
 export function AgentFilters({ className }: { className?: string }) {
   const searchQuery = useAgentsStore((s) => s.searchQuery)
   const departmentFilter = useAgentsStore((s) => s.departmentFilter)
-  const levelFilter = useAgentsStore((s) => s.levelFilter)
   const statusFilter = useAgentsStore((s) => s.statusFilter)
   const sortBy = useAgentsStore((s) => s.sortBy)
 
@@ -53,7 +48,6 @@ export function AgentFilters({ className }: { className?: string }) {
 
   const setSearchQuery = useAgentsStore((s) => s.setSearchQuery)
   const setDepartmentFilter = useAgentsStore((s) => s.setDepartmentFilter)
-  const setLevelFilter = useAgentsStore((s) => s.setLevelFilter)
   const setStatusFilter = useAgentsStore((s) => s.setStatusFilter)
   const setSortBy = useAgentsStore((s) => s.setSortBy)
 
@@ -66,7 +60,6 @@ export function AgentFilters({ className }: { className?: string }) {
         validNames={validDepartmentNames}
         onValueChange={setDepartmentFilter}
       />
-      <LevelSelect value={levelFilter} onValueChange={setLevelFilter} />
       <StatusSelect value={statusFilter} onValueChange={setStatusFilter} />
       <SortSelect value={sortBy} onValueChange={setSortBy} />
     </div>
@@ -133,32 +126,6 @@ function DepartmentSelect({
   )
 }
 
-interface LevelSelectProps {
-  value: SeniorityLevel | null
-  onValueChange: (value: SeniorityLevel | null) => void
-}
-
-function LevelSelect({ value, onValueChange }: LevelSelectProps) {
-  return (
-    <select
-      value={value ?? ''}
-      onChange={(e) => {
-        const next = e.target.value
-        onValueChange(next && VALID_LEVELS.has(next) ? (next as SeniorityLevel) : null)
-      }}
-      className={SELECT_CLASSES}
-      aria-label="Filter by level"
-    >
-      <option value="">All levels</option>
-      {SENIORITY_LEVEL_VALUES.map((l) => (
-        <option key={l} value={l}>
-          {formatLabel(l)}
-        </option>
-      ))}
-    </select>
-  )
-}
-
 interface StatusSelectProps {
   value: AgentStatus | null
   onValueChange: (value: AgentStatus | null) => void
@@ -203,7 +170,6 @@ function SortSelect({ value, onValueChange }: SortSelectProps) {
     >
       <option value="name">Sort: Name</option>
       <option value="department">Sort: Department</option>
-      <option value="level">Sort: Level</option>
       <option value="status">Sort: Status</option>
       <option value="hiring_date">Sort: Hire date</option>
     </select>

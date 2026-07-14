@@ -7,7 +7,6 @@ from synthorg.hr.enums import (
     HiringRequestStatus,
     LifecycleEventType,
     OnboardingStep,
-    PromotionDirection,
     TrendDirection,
 )
 
@@ -69,18 +68,6 @@ class TestLifecycleEventType:
 
     def test_completeness(self) -> None:
         assert len(LifecycleEventType) == 7
-
-
-@pytest.mark.unit
-class TestPromotionDirection:
-    """PromotionDirection enum values."""
-
-    def test_values(self) -> None:
-        assert PromotionDirection.PROMOTION.value == "promotion"
-        assert PromotionDirection.DEMOTION.value == "demotion"
-
-    def test_completeness(self) -> None:
-        assert len(PromotionDirection) == 2
 
 
 @pytest.mark.unit

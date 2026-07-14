@@ -16,7 +16,6 @@ function agent(overrides: Partial<SetupAgentSummary> = {}): SetupAgentSummary {
     name: "Alice Smith",
     role: "Developer",
     department: "engineering",
-    level: "mid",
     model_provider: "cloud-x",
     model_id: "cloud-x-large",
     tier: "medium",

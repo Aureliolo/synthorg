@@ -51,7 +51,6 @@ from synthorg.engine.workspace.models import (
     Workspace,
 )
 from synthorg.hr.enums import AgentStatus, CreativityLevel, RiskTolerance
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import DepartmentName
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.models import (
@@ -80,7 +79,6 @@ def sample_agent_with_personality(sample_model_config: ModelConfig) -> AgentIden
         name="Ada Lovelace",
         role="Senior Backend Developer",
         department="Engineering",
-        level=SeniorityLevel.SENIOR,
         personality=PersonalityConfig(
             traits=("analytical", "methodical", "detail-oriented"),
             communication_style="concise and technical",
@@ -116,7 +114,7 @@ def sample_role_with_description() -> Role:
         name="Senior Backend Developer",
         department=DepartmentName.ENGINEERING,
         required_skills=("python", "apis"),
-        authority_level=SeniorityLevel.SENIOR,
+        reports_to="CTO",
         description="Designs and implements backend services and APIs.",
     )
 
@@ -397,10 +395,9 @@ def make_assignment_model_config() -> ModelConfig:
     )
 
 
-def make_assignment_agent(  # noqa: PLR0913
+def make_assignment_agent(
     name: str,
     *,
-    level: SeniorityLevel = SeniorityLevel.MID,
     primary_skills: tuple[str, ...] = (),
     secondary_skills: tuple[str, ...] = (),
     role: str = "Developer",
@@ -415,7 +412,6 @@ def make_assignment_agent(  # noqa: PLR0913
         name=name,
         role=role,
         department="Engineering",
-        level=level,
         model=make_assignment_model_config(),
         hiring_date=date(2026, 1, 1),
         skills=SkillSet(

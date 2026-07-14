@@ -36,7 +36,6 @@ from synthorg.engine.strategy.active_principle_provider import (
 from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.engine.workflow.service import WorkflowService
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.appliers._architecture_contract import AppliedArchitectureChange
 from synthorg.meta.models import ArchitectureChange, PromptChange, RollbackOperation
 from synthorg.observability import get_logger
@@ -503,18 +502,16 @@ class DurableArchitectureApplierContext:
                 reason="unknown_department",
             )
             raise MetaArchitectureApplyError(msg) from exc
-        authority_raw = payload.get("authority_level")
-        authority = (
-            SeniorityLevel(str(authority_raw))
-            if authority_raw is not None
-            else SeniorityLevel.MID
+        reports_to_raw = payload.get("reports_to")
+        reports_to = (
+            NotBlankStr(str(reports_to_raw)) if reports_to_raw is not None else None
         )
         now = self._clock.now()
         role = Role(
             name=NotBlankStr(change.target_name),
             department=department,
             required_skills=_str_tuple(payload.get("required_skills")),
-            authority_level=authority,
+            reports_to=reports_to,
             tool_access=_str_tuple(payload.get("tool_access")),
             description=str(payload.get("description", "")),
         )

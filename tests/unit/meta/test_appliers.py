@@ -1143,31 +1143,31 @@ class TestArchitectureApplier:
             pytest.param("x" * 200, "exceeds", id="too_long"),
         ],
     )
-    async def test_dry_run_authority_level_rejects(
+    async def test_dry_run_reports_to_rejects(
         self,
         value: object,
         expected: str,
     ) -> None:
-        """Non-string, blank, and oversized authority_level are rejected."""
+        """Non-string, blank, and oversized reports_to are rejected."""
         applier = ArchitectureApplier(context=_FakeArchContext())
         proposal = _proposal_architecture(
             _arch(
                 "create_role",
                 "r1",
-                payload={"description": "d", "authority_level": value},
+                payload={"description": "d", "reports_to": value},
             ),
         )
         result = await applier.dry_run(proposal)
         assert not result.success
         assert expected in (result.error_message or "")
 
-    async def test_dry_run_authority_level_valid_string_passes(self) -> None:
+    async def test_dry_run_reports_to_valid_string_passes(self) -> None:
         applier = ArchitectureApplier(context=_FakeArchContext())
         proposal = _proposal_architecture(
             _arch(
                 "create_role",
                 "r1",
-                payload={"description": "d", "authority_level": "senior"},
+                payload={"description": "d", "reports_to": "CTO"},
             ),
         )
         result = await applier.dry_run(proposal)

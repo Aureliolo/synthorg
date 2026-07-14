@@ -17,7 +17,6 @@ from synthorg.communication.delegation.hierarchy import (
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
 from synthorg.communication.errors import ConflictHierarchyError
-from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_conflict, make_position
 
@@ -69,10 +68,10 @@ class TestDebateResolverWithJudge:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),
@@ -94,10 +93,10 @@ class TestDebateResolverWithJudge:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),
@@ -123,12 +122,12 @@ class TestDebateResolverFallback:
             positions=(
                 make_position(
                     agent_id="sr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Approach A",
                 ),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Approach B",
                 ),
             ),
@@ -152,10 +151,10 @@ class TestDebateJudgeSelection:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),
@@ -177,10 +176,10 @@ class TestDebateJudgeSelection:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),
@@ -201,11 +200,11 @@ class TestDebateJudgeSelection:
             positions=(
                 make_position(
                     agent_id="cto",
-                    level=SeniorityLevel.C_SUITE,
+                    role="CTO",
                 ),
                 make_position(
                     agent_id="qa_head",
-                    level=SeniorityLevel.C_SUITE,
+                    role="CTO",
                     position="Other",
                     department="qa",
                 ),
@@ -229,10 +228,10 @@ class TestDebateResolverDissentRecord:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other approach",
                 ),
             ),
@@ -262,10 +261,10 @@ class TestDebateResolverAmbiguousWinner:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),
@@ -288,10 +287,10 @@ class TestDebateResolverAmbiguousWinner:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),
@@ -319,15 +318,15 @@ class TestDebateResolverThreeParty:
         # frontend_lead.  LCM of agents from different teams = cto.
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Approach B",
                 ),
                 make_position(
                     agent_id="ui_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Approach C",
                     reasoning="Frontend perspective",
                 ),
@@ -351,15 +350,15 @@ class TestDebateResolverThreeParty:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Approach B",
                 ),
                 make_position(
                     agent_id="backend_lead",
-                    level=SeniorityLevel.LEAD,
+                    role="QA Lead",
                     position="Approach C",
                     reasoning="Lead perspective",
                 ),
@@ -390,12 +389,12 @@ class TestDebateResolverCEORootAgent:
             positions=(
                 make_position(
                     agent_id="cto",
-                    level=SeniorityLevel.C_SUITE,
+                    role="CTO",
                     position="Approach A",
                 ),
                 make_position(
                     agent_id="backend_lead",
-                    level=SeniorityLevel.LEAD,
+                    role="QA Lead",
                     position="Approach B",
                 ),
             ),
@@ -420,10 +419,10 @@ class TestDebateResolverEvaluatorFailure:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other approach",
                 ),
             ),
@@ -451,10 +450,10 @@ class TestDebateResolverEvaluatorFailure:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),
@@ -483,10 +482,10 @@ class TestDebateResolverEvaluatorFailure:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),
@@ -518,10 +517,10 @@ class TestDebateResolverEvaluatorFailure:
         # Same seniority triggers tiebreak path in pick_highest_seniority
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="sr_dev_2",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Other approach",
                 ),
             ),

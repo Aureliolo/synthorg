@@ -13,7 +13,6 @@ from synthorg.api.controllers.setup_agents import (
 from synthorg.api.controllers.setup_models import SetupAgentRequest
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import ModelTier
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.templates.loader import load_template
 from synthorg.templates.model_matcher import ModelMatch
 from tests._shared import JsonDict
@@ -88,7 +87,6 @@ class TestBuildAgentConfigCustomPresets:
             name="Test Agent",
             role="Backend Developer",
             department="engineering",
-            level=SeniorityLevel.MID,
             personality_preset=preset,
             model_provider="test-provider",
             model_id="test-small-001",

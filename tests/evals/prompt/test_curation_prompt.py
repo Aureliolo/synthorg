@@ -15,9 +15,9 @@ class TestCurationPromptContract:
     """Guard rails for the LLM curated selector prompt surface."""
 
     # Fingerprint of the SYSTEM half assembled for a fixed (top_k, role,
-    # level, content_type) tuple. The role is fenced into the USER half, so
-    # the SYSTEM template is stable for these inputs.
-    PINNED_FP = "886af8c0548e28bb"
+    # content_type) tuple. The role is fenced into the USER half, so the
+    # SYSTEM template is stable for these inputs.
+    PINNED_FP = "54e23fc68c5cc4d3"
 
     def test_temperature_and_max_tokens_are_set(self) -> None:
         """Curation must source temperature from config and pin max_tokens."""
@@ -34,7 +34,6 @@ class TestCurationPromptContract:
 
     def test_prompt_fingerprint_is_pinned(self) -> None:
         """Detect silent drift of the assembled curation SYSTEM prompt."""
-        from synthorg.hr.seniority import SeniorityLevel
         from synthorg.hr.training.curation.llm_curated import LLMCurated
         from synthorg.hr.training.models import ContentType
 
@@ -43,7 +42,6 @@ class TestCurationPromptContract:
         system_prompt, _user_prompt = selector._build_prompt(
             (),
             "role",
-            SeniorityLevel.JUNIOR,
             ContentType.SEMANTIC,
         )
         fp = fingerprint_prompt(system_prompt)

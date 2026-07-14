@@ -14,7 +14,6 @@ import type {
   AgentPerformanceSummary,
   AgentStatus,
   CareerEvent,
-  SeniorityLevel,
   Task,
   WsEvent,
 } from '@/api/types'
@@ -35,7 +34,6 @@ export interface AgentsState {
   // union.
   searchQuery: string
   departmentFilter: string | null
-  levelFilter: SeniorityLevel | null
   statusFilter: AgentStatus | null
   sortBy: AgentSortKey
   sortDirection: 'asc' | 'desc'
@@ -67,11 +65,10 @@ export interface AgentsState {
   fetchMoreActivity: (name: string) => Promise<void>
   setSearchQuery: (q: string) => void
   setDepartmentFilter: (d: string | null) => void
-  setLevelFilter: (l: SeniorityLevel | null) => void
   setStatusFilter: (s: AgentStatus | null) => void
   setSortBy: (key: AgentSortKey) => void
   setSortDirection: (dir: 'asc' | 'desc') => void
-  /** Reset every list filter (search + department + level + status) to its default. */
+  /** Reset every list filter (search + department + status) to its default. */
   clearFilters: () => void
   clearDetail: () => void
   /**

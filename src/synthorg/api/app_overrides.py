@@ -44,7 +44,6 @@ if TYPE_CHECKING:
     from synthorg.providers.health import ProviderHealthTracker
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.audit import AuditLog
-    from synthorg.security.trust.service import TrustService
     from synthorg.settings.service import SettingsService
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
@@ -79,7 +78,6 @@ class AppOverrides:
     delegation_record_store: DelegationRecordStore | None = None
     artifact_storage: ArtifactStorageBackend | None = None
     audit_log: AuditLog | None = None
-    trust_service: TrustService | None = None
     coordination_metrics_store: CoordinationMetricsStore | None = None
     training_service: TrainingService | None = None
     event_stream_hub: EventStreamHub | None = None

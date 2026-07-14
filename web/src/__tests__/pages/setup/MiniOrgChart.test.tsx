@@ -7,7 +7,6 @@ function agent(overrides: Partial<SetupAgentSummary>): SetupAgentSummary {
     name: 'Alice Smith',
     role: 'Developer',
     department: 'engineering',
-    level: 'mid',
     model_provider: null,
     model_id: null,
     tier: 'medium',
@@ -89,13 +88,13 @@ describe('MiniOrgChart', () => {
     expect(labels).toContain('1')
   })
 
-  it('puts the department holding the most senior agent on top, others below', () => {
+  it('puts the leadership department on top, others below', () => {
     const { container } = render(
       <MiniOrgChart
         agents={[
-          agent({ name: 'Exec One', role: 'CEO', department: 'executive', level: 'c_suite' }),
-          agent({ name: 'Dev One', role: 'Engineer', department: 'engineering', level: 'mid' }),
-          agent({ name: 'Designer One', role: 'Designer', department: 'design', level: 'mid' }),
+          agent({ name: 'Exec One', role: 'CEO', department: 'executive' }),
+          agent({ name: 'Dev One', role: 'Engineer', department: 'engineering' }),
+          agent({ name: 'Designer One', role: 'Designer', department: 'design' }),
         ]}
       />,
     )
@@ -112,8 +111,8 @@ describe('MiniOrgChart', () => {
     const { container } = render(
       <MiniOrgChart
         agents={[
-          agent({ name: 'Dev One', department: 'engineering', level: 'mid' }),
-          agent({ name: 'Designer One', department: 'design', level: 'mid' }),
+          agent({ name: 'Dev One', department: 'engineering' }),
+          agent({ name: 'Designer One', department: 'design' }),
         ]}
       />,
     )

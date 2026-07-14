@@ -79,7 +79,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Dev One"
-      level: "mid"
       model: "medium"
       department: "engineering"
 
@@ -112,7 +111,6 @@ template:
   agents:
     - role: "CEO"
       name: "Boss"
-      level: "c_suite"
       model: "large"
       department: "executive"
 
@@ -149,7 +147,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
 """
@@ -185,7 +182,6 @@ template:
   agents:
     - role: "CEO"
       name: "Boss"
-      level: "c_suite"
       model: "large"
       department: "executive"
 

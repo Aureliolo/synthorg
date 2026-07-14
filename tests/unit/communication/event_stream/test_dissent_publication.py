@@ -18,7 +18,6 @@ from synthorg.communication.enums import (
 )
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import AgUiEventType
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid, sid
 
 
@@ -41,7 +40,7 @@ class TestDissentEventPublication:
             ConflictPosition(
                 agent_id="agent-001",
                 agent_department="engineering",
-                agent_level=SeniorityLevel.SENIOR,
+                agent_role="Software Architect",
                 position="Use microservices",
                 reasoning="Better scaling",
                 timestamp=ts,
@@ -49,7 +48,7 @@ class TestDissentEventPublication:
             ConflictPosition(
                 agent_id="agent-002",
                 agent_department="engineering",
-                agent_level=SeniorityLevel.MID,
+                agent_role="Backend Developer",
                 position="Use monolith",
                 reasoning="Simpler deployment",
                 timestamp=ts,

@@ -1,11 +1,11 @@
 ---
 title: Agent Roles & Hierarchy
-description: Define agents, seniority levels, personality, departments, and reporting lines.
+description: Define agents, roles, personality, departments, and reporting lines.
 ---
 
 # Agent Roles & Hierarchy
 
-Agents are the core building blocks of a synthetic organisation. Each agent has an identity (role, name, personality), a position in the hierarchy (department, seniority, reporting line), and capabilities (model, tools, authority). This guide covers how to configure all of these.
+Agents are the core building blocks of a synthetic organisation. Each agent has an identity (role, name, personality), a position in the hierarchy (department, reporting line), and capabilities (model, tools, authority). This guide covers how to configure all of these.
 
 ---
 
@@ -14,7 +14,7 @@ Agents are the core building blocks of a synthetic organisation. Each agent has 
 An agent's configuration is split into two layers:
 
 - **Config layer** (frozen): identity, personality, role, model, department. Set at creation time and never mutated.
-- **Runtime state** (mutable-via-copy): execution status, current task, trust level, cost spent. Evolves during operation using `model_copy(update=...)`.
+- **Runtime state** (mutable-via-copy): execution status, current task, cost spent. Evolves during operation using `model_copy(update=...)`.
 
 This separation means you configure *who an agent is* in YAML, and the engine manages *what the agent is doing* at runtime.
 
@@ -28,7 +28,6 @@ Agents are defined in the `agents` list of your company configuration:
 agents:
   - role: "Full-Stack Developer"
     name: "Alex"
-    level: senior
     department: "engineering"
     model:
       tier: "medium"
@@ -49,7 +48,6 @@ agents:
 | `name` | string | *(required)* | Display name |
 | `role` | string | *(required)* | Role from the built-in catalog or `custom_roles` |
 | `department` | string | *(required)* | Department this agent belongs to |
-| `level` | SeniorityLevel | `mid` | Seniority level (see table below) |
 | `personality` | dict | `{}` | Personality config injected into the system prompt (see [Personality](#personality-configuration)) |
 | `model` | dict | `{}` | Model assignment: structured config with tier, priority, min_context |
 | `memory` | dict | `{}` | Per-agent memory overrides |
@@ -67,22 +65,11 @@ agents:
 
 ---
 
-## Seniority Levels
+## Authority & Delegation
 
-Seniority determines an agent's authority scope, typical model tier, and position in the delegation hierarchy:
+Authority is not a per-agent level. It follows from the agent's **role** and where that role sits in the organisation's **reporting graph**. Each role declares an optional `reports_to` (its supervisor's role name); the CEO role is the root (`reports_to` unset).
 
-| Level | Value | Authority Scope | Typical Model Tier |
-|-------|-------|-----------------|-------------------|
-| Junior | `junior` | Execute assigned tasks | Small |
-| Mid | `mid` | Execute tasks, limited delegation | Small/Medium |
-| Senior | `senior` | Delegate to juniors, review work | Medium |
-| Lead | `lead` | Team-level decisions, delegation | Medium/Large |
-| Principal | `principal` | Cross-team technical decisions | Large |
-| Director | `director` | Department-level strategy | Large |
-| VP | `vp` | Multi-department oversight | Large |
-| C-Suite | `c_suite` | Organisation-wide authority | Large |
-
-Higher-seniority agents can delegate tasks to lower-seniority agents within their authority scope. The engine enforces that agents cannot assign work to peers or superiors.
+An agent can delegate work down its reporting chain to roles that (transitively) report to it, and cannot assign work to peers or superiors. The engine resolves "who outranks whom" from reporting depth (see [HR & Agent Lifecycle](../design/hr-lifecycle.md)), not from a seniority attribute. A role's model tier is a separate axis, driven by the work's capability demand rather than org position.
 
 ---
 
@@ -116,7 +103,7 @@ custom_roles:
     required_skills:
       - "regulatory_analysis"
       - "policy_review"
-    authority_level: "senior"
+    reports_to: "Chief Compliance Officer"
 ```
 
 ---
@@ -154,11 +141,11 @@ A typical startup hierarchy looks like this:
 
 ```mermaid
 graph TD
-    CEO["CEO<br/><small>c_suite</small>"]
-    CTO["CTO<br/><small>c_suite</small>"]
-    PM["Product Manager<br/><small>senior</small>"]
-    DEV1["Full-Stack Developer<br/><small>senior</small>"]
-    DEV2["Full-Stack Developer<br/><small>mid</small>"]
+    CEO["CEO<br/><small>executive</small>"]
+    CTO["CTO<br/><small>engineering</small>"]
+    PM["Product Manager<br/><small>product</small>"]
+    DEV1["Full-Stack Developer<br/><small>engineering</small>"]
+    DEV2["Full-Stack Developer<br/><small>engineering</small>"]
 
     CEO --> CTO
     CEO --> PM
@@ -272,7 +259,7 @@ Models can be assigned to agents in two ways:
           min_context: 100000
     ```
 
-When no model is specified, the routing strategy selects one based on the agent's seniority level and the task type.
+When no model is specified, the routing strategy selects one based on the agent's role and the task type.
 
 ---
 
@@ -336,6 +323,6 @@ The `priority_boost` field increases the priority of escalated tasks (0 = no cha
 
 - [Company Configuration](company-config.md): full configuration reference
 - [Budget & Cost Control](budget.md): per-agent budgets and cost tracking
-- [Security & Trust Policies](security.md): autonomy levels and trust strategies
+- [Security Policies](security.md): autonomy levels and tool permissions
 - [Design: Agents](../design/agents.md): full design specification for agents
 - [Design: Organisation](../design/organization.md): template system and hierarchy

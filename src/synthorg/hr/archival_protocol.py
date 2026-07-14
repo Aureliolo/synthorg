@@ -9,7 +9,6 @@ from typing import Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.consolidation.archival import ArchivalStore
 from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.memory.protocol import MemoryBackend
@@ -58,7 +57,7 @@ class MemoryArchivalStrategy(Protocol):
         memory_backend: MemoryBackend,
         archival_store: ArchivalStore,
         org_memory_backend: OrgMemoryBackend | None = None,
-        agent_seniority: SeniorityLevel | None = None,
+        agent_role: NotBlankStr | None = None,
     ) -> ArchivalResult:
         """Archive all memories for a departing agent.
 
@@ -67,8 +66,8 @@ class MemoryArchivalStrategy(Protocol):
             memory_backend: Hot memory store.
             archival_store: Cold archival storage.
             org_memory_backend: Optional org memory for promotion.
-            agent_seniority: Seniority level of the departing agent.
-                Required for org memory promotion (skipped if None).
+            agent_role: Role of the departing agent. Required for org
+                memory promotion (skipped if None).
 
         Returns:
             Result of the archival operation.

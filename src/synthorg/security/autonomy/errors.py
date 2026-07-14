@@ -11,6 +11,6 @@ class AutonomyStrategyConfigError(DomainError):
     """Raised when an autonomy change-strategy composition is misconfigured.
 
     The factory raises this when a non-``HUMAN_ONLY`` strategy is
-    selected but a signal provider it requires (e.g. the performance
-    signal for ``PERFORMANCE_GATED``) was not supplied.
+    selected but a signal provider it requires (e.g. the risk-budget
+    signal for ``BUDGET_AWARE``) was not supplied.
     """

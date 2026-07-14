@@ -8,7 +8,6 @@ from synthorg.core.role_catalog import (
     RED_TEAM_ROLE_NAME,
     get_builtin_role,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import DepartmentName
 from synthorg.security.redteam.agent import (
     RED_TEAM_AGENT_NAME,
@@ -64,9 +63,9 @@ class TestBuildRedTeamAgentIdentity:
         identity = build_red_team_agent_identity(model=model)
         assert identity.department == DepartmentName.QUALITY_ASSURANCE.value
 
-    def test_seniority_is_senior(self, model: ModelConfig) -> None:
+    def test_role_is_red_team(self, model: ModelConfig) -> None:
         identity = build_red_team_agent_identity(model=model)
-        assert identity.level is SeniorityLevel.SENIOR
+        assert identity.role == RED_TEAM_ROLE_NAME
 
     def test_primary_skills_set(self, model: ModelConfig) -> None:
         identity = build_red_team_agent_identity(model=model)

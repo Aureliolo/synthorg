@@ -26,7 +26,6 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     name: 'Alice Smith',
     role: 'Software Engineer',
     department: 'engineering',
-    level: 'senior',
     status: 'active',
     personality: {
       traits: ['analytical'],
@@ -148,10 +147,10 @@ describe('toRuntimeStatus', () => {
 
 describe('filterAgents', () => {
   const agents = [
-    makeAgent({ name: 'Alice Smith', department: 'engineering', level: 'senior', status: 'active', role: 'Backend Engineer' }),
-    makeAgent({ name: 'Bob Jones', department: 'design', level: 'mid', status: 'onboarding', role: 'UI Designer' }),
-    makeAgent({ name: 'Carol Xu', department: 'engineering', level: 'lead', status: 'active', role: 'Tech Lead' }),
-    makeAgent({ name: 'Dave Park', department: 'operations', level: 'junior', status: 'terminated', role: 'SRE' }),
+    makeAgent({ name: 'Alice Smith', department: 'engineering', status: 'active', role: 'Backend Engineer' }),
+    makeAgent({ name: 'Bob Jones', department: 'design', status: 'onboarding', role: 'UI Designer' }),
+    makeAgent({ name: 'Carol Xu', department: 'engineering', status: 'active', role: 'Tech Lead' }),
+    makeAgent({ name: 'Dave Park', department: 'operations', status: 'terminated', role: 'SRE' }),
   ]
 
   it('returns all agents with no filters', () => {
@@ -163,12 +162,6 @@ describe('filterAgents', () => {
     const result = filterAgents(agents, { department: 'engineering' })
     expect(result).toHaveLength(2)
     expect(result.map((a) => a.name)).toEqual(['Alice Smith', 'Carol Xu'])
-  })
-
-  it('filters by level', () => {
-    const result = filterAgents(agents, { level: 'mid' })
-    expect(result).toHaveLength(1)
-    expect(result[0]!.name).toBe('Bob Jones')
   })
 
   it('filters by status', () => {
@@ -221,9 +214,9 @@ describe('filterAgents', () => {
 
 describe('sortAgents', () => {
   const agents = [
-    makeAgent({ name: 'Carol Xu', department: 'engineering', level: 'lead', hiring_date: '2026-01-01T00:00:00Z' }),
-    makeAgent({ name: 'Alice Smith', department: 'design', level: 'senior', hiring_date: '2026-03-01T00:00:00Z' }),
-    makeAgent({ name: 'Bob Jones', department: 'operations', level: 'junior', hiring_date: '2026-02-01T00:00:00Z' }),
+    makeAgent({ name: 'Carol Xu', department: 'engineering', hiring_date: '2026-01-01T00:00:00Z' }),
+    makeAgent({ name: 'Alice Smith', department: 'design', hiring_date: '2026-03-01T00:00:00Z' }),
+    makeAgent({ name: 'Bob Jones', department: 'operations', hiring_date: '2026-02-01T00:00:00Z' }),
   ]
 
   it('treats agent with undefined status as active for sorting', () => {
@@ -277,10 +270,6 @@ describe('sortAgents', () => {
     expect(result.map((a) => a.name)).toEqual(['Alice Smith', 'Bob Jones', 'Carol Xu'])
   })
 
-  it('sorts by level semantically (junior < senior < lead)', () => {
-    const result = sortAgents(agents, 'level', 'asc')
-    expect(result.map((a) => a.level)).toEqual(['junior', 'senior', 'lead'])
-  })
 
   it('sorts by status', () => {
     const statusAgents = [

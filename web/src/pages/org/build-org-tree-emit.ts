@@ -9,7 +9,7 @@ import {
   type DeptAdminInfo,
   type OwnerInfo,
   findCeo,
-  findHighestSeniority,
+  findDeptHead,
   humanizeDepartmentName,
 } from './build-org-tree-types'
 
@@ -178,7 +178,7 @@ export function emitRootDept(ctx: BuildContext, rootDept: DashboardDepartment): 
   // to give dagre a rank constraint (dagre can't see the dept group
   // nodes, so without this edge it doesn't know where to place the
   // root's agents).
-  const rootHead = findHighestSeniority(ctx.deptAgents.get(rootDept.name) ?? [])
+  const rootHead = findDeptHead(rootDept, ctx.deptAgents.get(rootDept.name) ?? [])
   const rootHeadId = rootHead ? rootHead.id : null
   for (const ownerNodeId of ctx.ownerIds) {
     ctx.edges.push({
@@ -258,7 +258,7 @@ function wireDeptToRoot(
     target: groupId,
     type: 'hierarchy',
   })
-  const head = findHighestSeniority(ctx.deptAgents.get(dept.name) ?? [])
+  const head = findDeptHead(dept, ctx.deptAgents.get(dept.name) ?? [])
   const headId = head ? head.id : null
   if (headId && ctx.ceoId) {
     ctx.edges.push({

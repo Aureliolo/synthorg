@@ -19,7 +19,6 @@ API_APP_SHUTDOWN: Final[str] = "api.app.shutdown"
 # A security-critical durable subsystem silently degraded to in-memory-only
 # at boot (its persistence wiring failed). Distinct from the generic
 # startup event so operators can alert on durability loss specifically.
-API_TRUST_PERSISTENCE_DEGRADED: Final[str] = "api.app.trust_persistence_degraded"
 API_AUDIT_CHAIN_PERSISTENCE_DEGRADED: Final[str] = (
     "api.app.audit_chain_persistence_degraded"
 )

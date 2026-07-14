@@ -18,7 +18,6 @@ from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
-from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_conflict, make_position
 
@@ -53,10 +52,10 @@ class RaisingReviewEvaluator:
 def _two_positions() -> Conflict:
     return make_conflict(
         positions=(
-            make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+            make_position(agent_id="sr_dev", role="Software Architect"),
             make_position(
                 agent_id="jr_dev",
-                level=SeniorityLevel.JUNIOR,
+                role="Backend Developer",
                 position="Other",
             ),
         ),
@@ -115,10 +114,10 @@ class TestHybridResolverAutoResolve:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),
@@ -144,10 +143,10 @@ class TestHybridResolverAmbiguous:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),
@@ -168,10 +167,10 @@ class TestHybridResolverAmbiguous:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),
@@ -195,10 +194,10 @@ class TestHybridResolverNoEvaluator:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),
@@ -223,10 +222,10 @@ class TestHybridResolverDissentRecord:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other approach",
                 ),
             ),
@@ -249,10 +248,10 @@ class TestHybridResolverDissentRecord:
         )
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ),

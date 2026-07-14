@@ -18,7 +18,6 @@ const makeAgent = (
   name: "Agent",
   role: "Dev",
   department: "eng",
-  level: "mid",
   model_provider: "test-provider",
   model_id: "test-model",
   tier: "medium",

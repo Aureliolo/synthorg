@@ -16,13 +16,10 @@ from synthorg.config.schema import (
     ProviderModelConfig,
     RootConfig,
 )
-from synthorg.core.types import NotBlankStr, stable_agent_id
+from synthorg.core.types import stable_agent_id
 from synthorg.hr.performance.config import PerformanceConfig
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import CompanyType
 from synthorg.providers.enums import AuthType
-from synthorg.security.trust.config import MilestoneCriteria, TrustConfig
-from synthorg.security.trust.enums import TrustStrategyType
 
 from .conftest import (
     AgentConfigFactory,
@@ -174,31 +171,21 @@ class TestRoutingRuleConfig:
     def test_minimal_with_task_type(self) -> None:
         r = RoutingRuleConfig(preferred_model="medium", task_type="dev")
         assert r.preferred_model == "medium"
-        assert r.role_level is None
         assert r.task_type == "dev"
         assert r.fallback is None
 
-    def test_minimal_with_role_level(self) -> None:
-        r = RoutingRuleConfig(
-            preferred_model="medium",
-            role_level=SeniorityLevel.SENIOR,
-        )
-        assert r.role_level == SeniorityLevel.SENIOR
-        assert r.task_type is None
-
     def test_no_matcher_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="at least"):
+        with pytest.raises(ValidationError, match="task_type"):
             RoutingRuleConfig(preferred_model="medium")
 
     def test_full(self) -> None:
         r = RoutingRuleConfig(
-            role_level=SeniorityLevel.SENIOR,
             task_type="development",
             preferred_model="large",
             fallback="medium",
         )
-        assert r.role_level == SeniorityLevel.SENIOR
         assert r.task_type == "development"
+        assert r.fallback == "medium"
 
     def test_blank_preferred_model_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -266,7 +253,6 @@ class TestAgentConfig:
             department="Engineering",
         )
         assert a.name == "Alice"
-        assert a.level == SeniorityLevel.MID
         assert a.personality == {}
         assert a.model == {}
 
@@ -275,11 +261,9 @@ class TestAgentConfig:
             name="Alice",
             role="Backend Developer",
             department="Engineering",
-            level=SeniorityLevel.SENIOR,
             personality={"traits": ["analytical"]},
             model={"provider": "example-provider", "model_id": "test-model:8b"},
         )
-        assert a.level == SeniorityLevel.SENIOR
         assert a.personality == {"traits": ["analytical"]}
 
     def test_raw_dicts_deep_copied_from_source(self) -> None:
@@ -543,58 +527,6 @@ class TestRootConfig:
                 ),
             )
 
-    def test_milestone_clean_history_misaligned_with_windows_rejected(self) -> None:
-        """A clean_history_days matching no performance window is rejected."""
-        with pytest.raises(ValidationError, match="matches no performance window"):
-            RootConfig(
-                company_name="X",
-                trust=TrustConfig(
-                    strategy=TrustStrategyType.MILESTONE,
-                    milestones={
-                        "sandboxed_to_restricted": MilestoneCriteria(
-                            clean_history_days=14,
-                        ),
-                    },
-                ),
-            )
-
-    def test_milestone_clean_history_aligned_with_default_window_ok(self) -> None:
-        """A clean_history_days matching a default window (30d) validates."""
-        cfg = RootConfig(
-            company_name="X",
-            trust=TrustConfig(
-                strategy=TrustStrategyType.MILESTONE,
-                milestones={
-                    "sandboxed_to_restricted": MilestoneCriteria(
-                        clean_history_days=30,
-                    ),
-                },
-            ),
-        )
-        assert cfg.trust.milestones["sandboxed_to_restricted"].clean_history_days == 30
-
-    def test_milestone_clean_history_aligned_with_custom_window_ok(self) -> None:
-        """The check uses the EFFECTIVE windows, so a custom 14d window admits 14.
-
-        Proves the alignment validation tracks ``performance.windows`` rather
-        than a hardcoded default that could drift from the runtime windows.
-        """
-        cfg = RootConfig(
-            company_name="X",
-            performance=PerformanceConfig(
-                windows=(NotBlankStr("14d"), NotBlankStr("60d")),
-            ),
-            trust=TrustConfig(
-                strategy=TrustStrategyType.MILESTONE,
-                milestones={
-                    "sandboxed_to_restricted": MilestoneCriteria(
-                        clean_history_days=14,
-                    ),
-                },
-            ),
-        )
-        assert cfg.trust.milestones["sandboxed_to_restricted"].clean_history_days == 14
-
     def test_workflow_handoffs_accepted(self) -> None:
         cfg = RootConfig(
             company_name="X",
@@ -742,7 +674,6 @@ class TestRootConfig:
         assert cfg.performance.min_data_points == 5
 
     def test_performance_custom(self) -> None:
-        from synthorg.hr.performance.config import PerformanceConfig
 
         cfg = RootConfig(
             company_name="X",

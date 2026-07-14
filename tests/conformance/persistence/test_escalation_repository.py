@@ -24,7 +24,6 @@ from synthorg.communication.conflict_resolution.models import (
 from synthorg.communication.enums import ConflictType
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import as_pk, as_uuid, sid
 
@@ -42,7 +41,7 @@ def _conflict(conflict_id: str = "conflict-001") -> Conflict:
             ConflictPosition(
                 agent_id="agent-a",
                 agent_department="engineering",
-                agent_level=SeniorityLevel.SENIOR,
+                agent_role="Software Architect",
                 position="PostgreSQL",
                 reasoning="consistency",
                 timestamp=_NOW,
@@ -50,7 +49,7 @@ def _conflict(conflict_id: str = "conflict-001") -> Conflict:
             ConflictPosition(
                 agent_id="agent-b",
                 agent_department="engineering",
-                agent_level=SeniorityLevel.SENIOR,
+                agent_role="Software Architect",
                 position="SQLite",
                 reasoning="simplicity",
                 timestamp=_NOW,

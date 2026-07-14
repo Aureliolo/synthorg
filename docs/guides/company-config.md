@@ -50,8 +50,6 @@ The top-level configuration object. Only `company_name` is required; all other f
 | `sandboxing` | SandboxingConfig | *(defaults)* | Code execution sandbox |
 | `mcp` | MCPConfig | *(defaults)* | MCP tool bridge |
 | `security` | SecurityConfig | *(defaults)* | Security rule engine |
-| `trust` | TrustConfig | *(defaults)* | Progressive trust |
-| `promotion` | PromotionConfig | *(defaults)* | Career progression |
 | `task_engine` | TaskEngineConfig | *(defaults)* | Task engine settings |
 | `coordination` | CoordinationConfig | *(defaults)* | Multi-agent coordination |
 | `git_clone` | GitCloneConfig | *(defaults)* | Git workspace settings |
@@ -239,22 +237,22 @@ The `routing` section controls how models are selected for agent tasks.
 | Strategy | Description |
 |----------|-------------|
 | `manual` | Explicit model assignment per agent |
-| `role_based` | Match models to agent seniority |
+| `role_based` | Match models to the agent's role |
 | `cost_aware` | Balance quality vs. cost |
 | `fastest` | Always use the fastest model |
-| `smart` | Cascade: override > task-type > role > seniority > cheapest > fallback |
+| `smart` | Cascade: override > task-type > role > cheapest > fallback |
 
 ### Routing Rules
 
-Rules are evaluated in order. Each rule matches by `role_level` and / or `task_type`. **Validation: at least one of `role_level` or `task_type` MUST be set per rule.** A rule with both fields null is rejected at company-load time with a `ConfigValidationError`.
+Rules are evaluated in order. Each rule matches by `task_type`. **Validation: `task_type` MUST be set per rule.** A rule with no `task_type` is rejected at company-load time with a `ConfigValidationError`.
 
 ```yaml
 routing:
   strategy: cost_aware
   rules:
-    - role_level: c_suite
+    - task_type: architecture
       preferred_model: "large"
-    - role_level: senior
+    - task_type: development
       preferred_model: "medium"
       fallback: "small"
     - task_type: review
@@ -266,8 +264,7 @@ routing:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `role_level` | SeniorityLevel | `null` | Seniority filter |
-| `task_type` | string | `null` | Task type filter |
+| `task_type` | string | *(required)* | Task type filter (the rule's matcher) |
 | `preferred_model` | string | *(required)* | Preferred model alias or ID |
 | `fallback` | string | `null` | Fallback model |
 
@@ -282,7 +279,6 @@ Agent configuration is covered in detail in the [Agent Roles & Hierarchy](agents
 | `name` | string | *(required)* | Agent display name |
 | `role` | string | *(required)* | Role identifier |
 | `department` | string | *(required)* | Department name |
-| `level` | SeniorityLevel | `mid` | Seniority level |
 | `personality` | dict | `{}` | Personality configuration |
 | `model` | dict | `{}` | Model assignment (tier, priority, min_context) |
 | `memory` | dict | `{}` | Per-agent memory settings |
@@ -369,17 +365,15 @@ Full field reference and architectural rationale are in the
 
 ---
 
-## Security & Trust
+## Security
 
-Security configuration is covered in detail in the [Security & Trust Policies](security.md) guide. Key fields:
+Security configuration is covered in detail in the [Security Policies](security.md) guide. Key fields:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `security.enabled` | bool | `true` | Master security switch |
 | `security.audit_enabled` | bool | `true` | Audit logging |
 | `security.output_scan_policy_type` | string | `"autonomy_tiered"` | Output scan policy |
-| `trust.strategy` | string | `"disabled"` | Trust strategy type |
-| `trust.initial_level` | ToolAccessLevel | `"standard"` | Default trust level |
 
 ---
 
@@ -479,8 +473,7 @@ SynthOrg enforces the following cross-field validation rules at load time:
 | Disjoint deny/approve | `hard_deny_action_types` and `auto_approve_action_types` must not overlap |
 | Per-task limit | `per_task_limit <= total_monthly` (when budget > 0) |
 | Per-agent daily limit | `per_agent_daily_limit <= total_monthly` (when budget > 0) |
-| Routing rule filter | At least one of `role_level` or `task_type` must be set per routing rule |
-| Trust strategy fields | Active trust strategy must have its required config (e.g. `weighted` needs `promotion_thresholds`) |
+| Routing rule filter | `task_type` must be set per routing rule |
 
 ---
 
@@ -582,9 +575,9 @@ SynthOrg enforces the following cross-field validation rules at load time:
     routing:
       strategy: cost_aware
       rules:
-        - role_level: c_suite
+        - task_type: architecture
           preferred_model: "large"
-        - role_level: senior
+        - task_type: development
           preferred_model: "medium"
           fallback: "small"
       fallback_chain:
@@ -675,7 +668,7 @@ SynthOrg enforces the following cross-field validation rules at load time:
 
 - [Agent Roles & Hierarchy](agents.md): detailed agent configuration
 - [Budget & Cost Control](budget.md): budget enforcement and cost tracking
-- [Security & Trust Policies](security.md): trust strategies and security rules
+- [Security Policies](security.md): autonomy levels and security rules
 - [Memory Configuration](memory.md): memory backends and retrieval
 - [Tool Integration (MCP)](mcp-tools.md): external tool configuration
 - [Design Specification](../design/index.md): full architecture reference

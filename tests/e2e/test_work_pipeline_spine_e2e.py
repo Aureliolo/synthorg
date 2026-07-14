@@ -53,7 +53,6 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.models import (
     ChatMessage,
@@ -172,13 +171,12 @@ class _TaskCreatingIntakeStrategy:
         )
 
 
-def _make_agent(name: str, skill: str, *, level: SeniorityLevel) -> AgentIdentity:
+def _make_agent(name: str, skill: str) -> AgentIdentity:
     return AgentIdentity(
         id=uuid4(),
         name=name,
         role="developer",
         department="engineering",
-        level=level,
         skills=SkillSet(primary=(Skill(id=skill, name=skill),)),
         authority=Authority(budget_limit=10.0),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
@@ -268,7 +266,7 @@ async def test_work_item_flows_solo_via_spine(
     await persistence.projects.create(_project("proj-solo"))
     # MID agent aligns with MEDIUM complexity -> scorer awards the
     # seniority bonus (0.2 >= 0.1 min), so the solo pick is deterministic.
-    agent = _make_agent("solo-dev", _RESEARCH_SKILL, level=SeniorityLevel.MID)
+    agent = _make_agent("solo-dev", _RESEARCH_SKILL)
     pipeline = await _build_pipeline(
         persistence=persistence,
         task_engine=task_engine,
@@ -307,8 +305,8 @@ async def test_work_item_flows_team_and_records_metrics_via_spine(
     """Splittable work runs the coordinator and lands a metrics record."""
     await persistence.projects.create(_project("proj-team"))
     metrics_store = CoordinationMetricsStore()
-    alice = _make_agent("alice", _RESEARCH_SKILL, level=SeniorityLevel.MID)
-    bob = _make_agent("bob", _ANALYSIS_SKILL, level=SeniorityLevel.MID)
+    alice = _make_agent("alice", _RESEARCH_SKILL)
+    bob = _make_agent("bob", _ANALYSIS_SKILL)
     pipeline = await _build_pipeline(
         persistence=persistence,
         task_engine=task_engine,
@@ -386,8 +384,8 @@ async def test_team_work_without_criteria_routes_to_refinement(
     """
     await persistence.projects.create(_project("proj-refine"))
     metrics_store = CoordinationMetricsStore()
-    alice = _make_agent("alice", _RESEARCH_SKILL, level=SeniorityLevel.MID)
-    bob = _make_agent("bob", _ANALYSIS_SKILL, level=SeniorityLevel.MID)
+    alice = _make_agent("alice", _RESEARCH_SKILL)
+    bob = _make_agent("bob", _ANALYSIS_SKILL)
     pipeline = await _build_pipeline(
         persistence=persistence,
         task_engine=task_engine,

@@ -646,7 +646,6 @@
         "ActivityController",
         "PersonalityPresetController",
         "ScalingController",
-        "PromotionController",
         "TrainingController",
         "QualityController",
         "CollaborationController"
@@ -654,7 +653,6 @@
       "depends_on": [],
       "directory": "src/synthorg/hr",
       "ghost_wired_symbols": [
-        "build_promotion_service",
         "AgentHealthService",
         "PersonalityService",
         "ActivityFeedService",
@@ -703,8 +701,6 @@
         "agent_health_service",
         "scaling_service",
         "scaling_decision_service",
-        "promotion_service",
-        "promotion_cycle_scheduler",
         "pruning_service",
         "eval_loop_coordinator",
         "eval_loop_cycle_scheduler"
@@ -1204,7 +1200,6 @@
       "depends_on": [],
       "directory": "src/synthorg/security",
       "ghost_wired_symbols": [
-        "TrustService",
         "build_autonomy_change_strategy",
         "build_red_team_runtime",
         "RedTeamGateService",
@@ -1233,7 +1228,6 @@
       "settings_namespace": "security",
       "state_slice_fields": [
         "audit_log",
-        "trust_service",
         "autonomy_change_strategy",
         "red_team_reports",
         "policy_engine",
@@ -1382,6 +1376,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-13T17:35:06.885913Z",
+  "generated_at": "2026-07-14T10:35:57.416468Z",
   "schema_version": 1
 }

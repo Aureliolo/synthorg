@@ -35,7 +35,6 @@ export function useAgentsData(): UseAgentsDataReturn {
   const error = useAgentsStore((s) => s.listError)
   const searchQuery = useAgentsStore((s) => s.searchQuery)
   const departmentFilter = useAgentsStore((s) => s.departmentFilter)
-  const levelFilter = useAgentsStore((s) => s.levelFilter)
   const statusFilter = useAgentsStore((s) => s.statusFilter)
   const sortBy = useAgentsStore((s) => s.sortBy)
   const sortDirection = useAgentsStore((s) => s.sortDirection)
@@ -98,11 +97,10 @@ export function useAgentsData(): UseAgentsDataReturn {
     const filtered = filterAgents(agents, {
       search: searchQuery || undefined,
       department: departmentFilter ?? undefined,
-      level: levelFilter ?? undefined,
       status: statusFilter ?? undefined,
     })
     return sortAgents(filtered, sortBy, sortDirection)
-  }, [agents, searchQuery, departmentFilter, levelFilter, statusFilter, sortBy, sortDirection])
+  }, [agents, searchQuery, departmentFilter, statusFilter, sortBy, sortDirection])
 
   return {
     agents,

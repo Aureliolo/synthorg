@@ -11,7 +11,6 @@ const meta = {
       useAgentsStore.setState({
         searchQuery: '',
         departmentFilter: null,
-        levelFilter: null,
         statusFilter: null,
         sortBy: 'name',
       })

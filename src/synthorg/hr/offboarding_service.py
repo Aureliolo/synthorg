@@ -253,7 +253,7 @@ class OffboardingService:
 
         Args:
             agent_id: The departing agent's ID.
-            identity: The agent's identity (for seniority).
+            identity: The agent's identity (its role tags the archived memory).
 
         Returns:
             Archival result (default if archival was skipped/failed).
@@ -274,7 +274,7 @@ class OffboardingService:
                 memory_backend=self._memory_backend,
                 archival_store=self._archival_store,
                 org_memory_backend=self._org_memory_backend,
-                agent_seniority=identity.level,
+                agent_role=identity.role,
             )
         except (MemoryArchivalError, OSError, ValueError) as exc:
             logger.warning(

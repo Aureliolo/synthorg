@@ -37,7 +37,7 @@ _CREATE_ROLE_ALLOWED: Final[frozenset[str]] = frozenset(
         "description",
         "department",
         "required_skills",
-        "authority_level",
+        "reports_to",
         "tool_access",
     }
 )
@@ -57,10 +57,9 @@ _MAX_TOOLS_PER_ROLE: Final[int] = 100
 _MAX_POLICIES_PER_DEPT: Final[int] = 100
 _MAX_POLICY_CHARS: Final[int] = 500
 
-# Authority levels are free text for now (operators pick their own
-# taxonomy).  Cap length + require non-blank so the field at least
-# rejects obvious junk.
-_MAX_AUTHORITY_LEVEL_CHARS: Final[int] = 60
+# ``reports_to`` is a free-text role-name reference. Cap length +
+# require non-blank so the field at least rejects obvious junk.
+_MAX_REPORTS_TO_CHARS: Final[int] = 60
 
 
 class _PendingChanges:
@@ -229,7 +228,7 @@ def _validate_create_role(
             errors.append("create_role: 'required_skills' must be a list or tuple")
         else:
             errors.extend(_validate_skill_list(skills))
-    errors.extend(_validate_authority_level(change.payload.get("authority_level")))
+    errors.extend(_validate_reports_to(change.payload.get("reports_to")))
     errors.extend(_validate_tool_access(change.payload.get("tool_access")))
     if not errors:
         pending.new_roles.add(name)
@@ -322,8 +321,8 @@ def _validate_skill_list(skills: Sequence[object]) -> list[str]:
     return errors
 
 
-def _validate_authority_level(value: object) -> list[str]:
-    """Validate the optional ``authority_level`` free-text field.
+def _validate_reports_to(value: object) -> list[str]:
+    """Validate the optional ``reports_to`` role-name field.
 
     Returns:
         Validation error messages; empty when valid.
@@ -331,13 +330,13 @@ def _validate_authority_level(value: object) -> list[str]:
     if value is None:
         return []
     if not isinstance(value, str):
-        return ["create_role: 'authority_level' must be a string"]
+        return ["create_role: 'reports_to' must be a string"]
     if not value.strip():
-        return ["create_role: 'authority_level' must not be blank"]
-    if len(value) > _MAX_AUTHORITY_LEVEL_CHARS:
+        return ["create_role: 'reports_to' must not be blank"]
+    if len(value) > _MAX_REPORTS_TO_CHARS:
         return [
-            f"create_role: 'authority_level' exceeds "
-            f"{_MAX_AUTHORITY_LEVEL_CHARS} chars (got {len(value)})"
+            f"create_role: 'reports_to' exceeds "
+            f"{_MAX_REPORTS_TO_CHARS} chars (got {len(value)})"
         ]
     return []
 

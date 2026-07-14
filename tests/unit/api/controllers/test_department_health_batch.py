@@ -21,7 +21,6 @@ from synthorg.hr.enums import AgentStatus
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import make_app_state
 from tests.unit.hr.pruning.conftest import make_performance_snapshot
 
@@ -34,7 +33,6 @@ def _make_identity(*, agent_id: str, name: str) -> AgentIdentity:
         name=name,
         role="developer",
         department="eng",
-        level=SeniorityLevel.MID,
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
         status=AgentStatus.ACTIVE,

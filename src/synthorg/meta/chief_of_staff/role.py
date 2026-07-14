@@ -66,7 +66,7 @@ def get_role_definition() -> dict[str, object]:
         "department": ROLE_DEPARTMENT,
         "description": ROLE_DESCRIPTION,
         "required_skills": REQUIRED_SKILLS,
-        "authority_level": "vp",
+        "reports_to": "CEO",
         "tool_access": TOOL_ACCESS,
         "mcp_capabilities": MCP_CAPABILITIES,
         "system_prompt_template": None,  # Uses prompts.py templates.

@@ -30,7 +30,6 @@ from synthorg.hr.enums import (
     DecisionMakingStyle,
     RiskTolerance,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.prompt import PROMPT_PERSONALITY_TRIMMED
 
 
@@ -59,7 +58,6 @@ def _make_agent(
         name="Test Agent",
         role="Developer",
         department="Engineering",
-        level=SeniorityLevel.MID,
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
         personality=PersonalityConfig(

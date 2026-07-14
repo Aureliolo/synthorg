@@ -10,7 +10,6 @@ import structlog.testing
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.identity.version_service import AgentVersionService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.agent_identity_version import (
     AGENT_IDENTITY_INVALID_REQUEST,
 )
@@ -26,7 +25,6 @@ def _make_identity(name: str = "alice") -> AgentIdentity:
         id=uuid4(),
         name=NotBlankStr(name),
         role=NotBlankStr("engineer"),
-        level=SeniorityLevel.MID,
         department=NotBlankStr("engineering"),
         model=ModelConfig(
             provider=NotBlankStr("test-provider"),

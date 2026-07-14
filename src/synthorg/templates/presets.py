@@ -18,9 +18,9 @@ if TYPE_CHECKING:
 from pydantic import JsonValue, ValidationError
 
 from synthorg.core.agent import PersonalityConfig
+from synthorg.core.authority import role_depth
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
@@ -106,35 +106,28 @@ del _validate_presets
 
 # ── Strategic output mode defaults by seniority ────────────────
 
-# Scope intentionally includes VP and Director (not just C-suite).
-# VP defaults to advisor (same as C-suite); Director defaults to
-# context_dependent (resolves by seniority at runtime).
-# See docs/design/strategy.md "Strategic Output Modes" and prompt
-# injection scope (C-suite, VP, Director).
-STRATEGIC_OUTPUT_DEFAULTS: MappingProxyType[SeniorityLevel, StrategicOutputMode] = (
-    MappingProxyType(
-        {
-            SeniorityLevel.C_SUITE: StrategicOutputMode.ADVISOR,
-            SeniorityLevel.VP: StrategicOutputMode.ADVISOR,
-            SeniorityLevel.DIRECTOR: StrategicOutputMode.CONTEXT_DEPENDENT,
-        }
-    )
-)
+# Executive tier by reporting depth (CEO at depth 0, the C-suite at
+# depth 1) defaults to an advisory strategic-output posture. See
+# docs/design/strategy.md "Strategic Output Modes".
+_STRATEGIC_OUTPUT_MAX_DEPTH: Final[int] = 1
 
 
 def get_strategic_output_default(
-    level: SeniorityLevel,
+    role: str,
 ) -> StrategicOutputMode | None:
-    """Return the default strategic output mode for a seniority level.
+    """Return the default strategic output mode for a role.
 
     Args:
-        level: Agent seniority level.
+        role: Agent role name.
 
     Returns:
-        Default strategic output mode, or ``None`` if the level has
-        no strategic default (i.e. strategic output is not applicable).
+        ``ADVISOR`` for executive-tier roles (shallow reporting depth);
+        ``None`` for roles with no strategic default (strategic output
+        is not applicable).
     """
-    return STRATEGIC_OUTPUT_DEFAULTS.get(level)
+    if role_depth(role) <= _STRATEGIC_OUTPUT_MAX_DEPTH:
+        return StrategicOutputMode.ADVISOR
+    return None
 
 
 def validate_preset_references(

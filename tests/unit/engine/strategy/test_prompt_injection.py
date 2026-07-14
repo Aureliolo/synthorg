@@ -7,7 +7,6 @@ from synthorg.engine.strategy.prompt_injection import (
     build_strategic_prompt_sections,
     should_inject_strategy,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 
 from .conftest import make_agent
@@ -22,33 +21,33 @@ class TestShouldInjectStrategy:
         assert should_inject_strategy(agent, None) is False
 
     @pytest.mark.unit
-    def test_c_suite_returns_true(self) -> None:
-        agent = make_agent(level=SeniorityLevel.C_SUITE)
+    def test_ceo_returns_true(self) -> None:
+        agent = make_agent(role="CEO")
         config = StrategyConfig()
         assert should_inject_strategy(agent, config) is True
 
     @pytest.mark.unit
-    def test_vp_returns_true(self) -> None:
-        agent = make_agent(level=SeniorityLevel.VP)
+    def test_cto_returns_true(self) -> None:
+        agent = make_agent(role="CTO")
         config = StrategyConfig()
         assert should_inject_strategy(agent, config) is True
 
     @pytest.mark.unit
-    def test_director_returns_true(self) -> None:
-        agent = make_agent(level=SeniorityLevel.DIRECTOR)
+    def test_cfo_returns_true(self) -> None:
+        agent = make_agent(role="CFO")
         config = StrategyConfig()
         assert should_inject_strategy(agent, config) is True
 
     @pytest.mark.unit
-    def test_mid_returns_false(self) -> None:
-        agent = make_agent(level=SeniorityLevel.MID)
+    def test_ic_returns_false(self) -> None:
+        agent = make_agent(role="Backend Developer")
         config = StrategyConfig()
         assert should_inject_strategy(agent, config) is False
 
     @pytest.mark.unit
-    def test_explicit_mode_overrides_level(self) -> None:
+    def test_explicit_mode_overrides_role(self) -> None:
         agent = make_agent(
-            level=SeniorityLevel.MID,
+            role="Backend Developer",
             strategic_output_mode=StrategicOutputMode.ADVISOR,
         )
         config = StrategyConfig()

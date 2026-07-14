@@ -42,7 +42,6 @@ from synthorg.engine.pipeline.entry.intake_adapter import IntakeEntryAdapter
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.models import (
     ChatMessage,
@@ -95,7 +94,6 @@ def _make_agent() -> AgentIdentity:
         name="solo-dev",
         role="developer",
         department="engineering",
-        level=SeniorityLevel.MID,
         skills=SkillSet(primary=(Skill(id=_RESEARCH_SKILL, name=_RESEARCH_SKILL),)),
         authority=Authority(budget_limit=10.0),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),

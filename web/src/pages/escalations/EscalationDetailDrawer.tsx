@@ -51,7 +51,7 @@ function WinnerOptionRow({
         <span className="font-medium text-foreground">
           {position.agent_id}
           <span className="ml-2 text-xs text-text-secondary">
-            {position.agent_department} · {position.agent_level}
+            {position.agent_department} · {position.agent_role}
           </span>
         </span>
         <span className="text-text-secondary">{position.position}</span>

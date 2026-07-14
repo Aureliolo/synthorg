@@ -17,7 +17,6 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.hr import HR_REGISTRY_IDENTITY_UPDATED
 from tests.unit.hr.conftest import make_agent_identity
 
@@ -26,13 +25,12 @@ def _make_identity(
     *,
     name: str = "update-test",
     department: str = "engineering",
-    level: SeniorityLevel = SeniorityLevel.MID,
+    role: str = "test-role",
 ) -> AgentIdentity:
     return make_agent_identity(
         name=name,
-        role="test-role",
+        role=role,
         department=department,
-        level=level,
     )
 
 
@@ -40,18 +38,17 @@ class TestApplyIdentityUpdate:
     """apply_identity_update() permits broad MCP-driven mutations."""
 
     @pytest.mark.unit
-    async def test_update_role_and_level(self) -> None:
+    async def test_update_role(self) -> None:
         identity = _make_identity()
         registry = AgentRegistryService()
         await registry.register(identity)
 
         updated = await registry.apply_identity_update(
             str(identity.id),
-            {"role": "principal-engineer", "level": SeniorityLevel.SENIOR},
+            {"role": "principal-engineer"},
             saved_by="mcp",
         )
         assert updated.role == "principal-engineer"
-        assert updated.level == SeniorityLevel.SENIOR
         assert updated.id == identity.id
         assert updated.name == identity.name
 
@@ -146,7 +143,7 @@ class TestApplyIdentityUpdate:
         # Returned identity equals the registered one (frozen model_copy).
         assert updated.id == identity.id
         assert updated.role == identity.role
-        assert updated.level == identity.level
+        assert updated.department == identity.department
 
     @pytest.mark.unit
     async def test_returns_new_object_not_mutated(self) -> None:

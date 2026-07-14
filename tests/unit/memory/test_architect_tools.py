@@ -62,10 +62,10 @@ class TestKnowledgeArchitectRole:
         assert "memory.browse_wiki" in role.tool_access
 
     @pytest.mark.unit
-    def test_role_is_senior(self) -> None:
+    def test_reports_to_cto(self) -> None:
         role = get_builtin_role("Knowledge Architect")
         assert role is not None
-        assert role.authority_level.value == "senior"
+        assert role.reports_to == "CTO"
 
 
 class TestKnowledgeArchitectGuideTool:

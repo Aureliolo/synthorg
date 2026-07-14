@@ -82,16 +82,14 @@ class TestSetupDTOs:
         assert resp.embedder_failure_reason == ("no embedding-capable model available")
 
     @pytest.mark.parametrize(
-        ("level", "model_provider", "model_id"),
+        ("model_provider", "model_id"),
         [
-            (None, None, None),
-            ("junior", "test-provider", "test-model-001"),
-            ("senior", None, None),
+            (None, None),
+            ("test-provider", "test-model-001"),
         ],
     )
     def test_setup_agent_summary_nullable_fields(
         self,
-        level: str | None,
         model_provider: str | None,
         model_id: str | None,
     ) -> None:
@@ -102,18 +100,15 @@ class TestSetupDTOs:
             name="Alice",
             role="Developer",
             department="Engineering",
-            level=level,  # type: ignore[arg-type]
             model_provider=model_provider,
             model_id=model_id,
         )
-        assert summary.level == level
         assert summary.model_provider == model_provider
         assert summary.model_id == model_id
 
     @pytest.mark.parametrize(
         ("field", "value"),
         [
-            ("level", ""),
             ("model_provider", ""),
             ("model_id", ""),
             ("model_provider", "   "),

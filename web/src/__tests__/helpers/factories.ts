@@ -60,7 +60,6 @@ export function makeAgent(name: string, overrides?: Partial<DashboardAgentConfig
     name,
     role: 'Developer',
     department: 'engineering',
-    level: 'mid',
     status: 'active',
     personality: {
       traits: ['analytical'],
@@ -116,9 +115,9 @@ export function makeCompanyConfig(overrides?: Partial<CompanyConfig>): CompanyCo
   return {
     company_name: 'Test Corp',
     agents: [
-      makeAgent('alice', { department: 'engineering', role: 'Lead Developer', level: 'lead' }),
+      makeAgent('alice', { department: 'engineering', role: 'Lead Developer' }),
       makeAgent('bob', { department: 'engineering', role: 'Developer' }),
-      makeAgent('carol', { department: 'product', role: 'Product Manager', level: 'senior' }),
+      makeAgent('carol', { department: 'product', role: 'Product Manager' }),
     ],
     departments: [
       makeDepartment('engineering'),

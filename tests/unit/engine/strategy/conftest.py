@@ -12,7 +12,6 @@ from synthorg.engine.strategy.models import (
     StrategicContext,
     StrategyConfig,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 
 
@@ -58,17 +57,19 @@ def confidence_metadata() -> ConfidenceMetadata:
 
 def make_agent(
     *,
-    level: SeniorityLevel = SeniorityLevel.C_SUITE,
     strategic_output_mode: StrategicOutputMode | None = None,
     name: str = "Test Agent",
-    role: str = "Test Role",
+    role: str = "CEO",
 ) -> AgentIdentity:
-    """Create a minimal agent for testing."""
+    """Create a minimal agent for testing.
+
+    Defaults to the ``CEO`` role (executive tier, reporting depth 0) so
+    strategic/decision-maker paths gated on reporting depth fire.
+    """
     return AgentIdentity(
         name=name,
         role=role,
         department="executive",
-        level=level,
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
         hiring_date=date(2026, 1, 1),
         strategic_output_mode=strategic_output_mode,

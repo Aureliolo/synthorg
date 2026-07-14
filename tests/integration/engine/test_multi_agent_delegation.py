@@ -60,7 +60,6 @@ from synthorg.engine.parallel_models import (
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.models import (
     ChatMessage,
@@ -185,11 +184,10 @@ def _model_config() -> ModelConfig:
     )
 
 
-def _make_agent(  # noqa: PLR0913
+def _make_agent(
     name: str,
     role: str,
     *,
-    level: SeniorityLevel = SeniorityLevel.MID,
     primary_skills: tuple[str, ...] = (),
     secondary_skills: tuple[str, ...] = (),
     can_delegate_to: tuple[str, ...] = (),
@@ -198,7 +196,6 @@ def _make_agent(  # noqa: PLR0913
         name=name,
         role=role,
         department="Engineering",
-        level=level,
         model=_model_config(),
         hiring_date=date(2026, 1, 1),
         skills=SkillSet(
@@ -232,26 +229,22 @@ def _build_agent_pool() -> dict[str, AgentIdentity]:
         "ceo": _make_agent(
             "ceo",
             "CEO",
-            level=SeniorityLevel.VP,
             primary_skills=("strategy",),
         ),
         "lead": _make_agent(
             "lead",
             "Lead Developer",
-            level=SeniorityLevel.LEAD,
             primary_skills=("architecture", "python"),
         ),
         "backend": _make_agent(
             "backend",
             "Backend Developer",
-            level=SeniorityLevel.MID,
             primary_skills=("python", "api-design"),
             secondary_skills=("databases",),
         ),
         "frontend": _make_agent(
             "frontend",
             "Frontend Developer",
-            level=SeniorityLevel.MID,
             primary_skills=("typescript", "react"),
             secondary_skills=("css",),
         ),
@@ -764,7 +757,6 @@ class TestParallelExecutionConcurrency:
         qa_agent = _make_agent(
             "qa",
             "QA Engineer",
-            level=SeniorityLevel.MID,
             primary_skills=("testing", "python"),
         )
 

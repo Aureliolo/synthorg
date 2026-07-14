@@ -3,7 +3,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import ModelTier, NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 
 
 class ResolvedModel(BaseModel):
@@ -70,13 +69,11 @@ class RoutingRequest(BaseModel):
     Not all fields are used by every strategy:
 
     - **ManualStrategy** requires ``model_override``.
-    - **RoleBasedStrategy** requires ``agent_level``.
     - **CostAwareStrategy** uses ``task_type`` and ``remaining_budget``.
     - **FastestStrategy** uses ``task_type`` and ``remaining_budget``.
     - **SmartStrategy** uses all fields in priority order.
 
     Attributes:
-        agent_level: Seniority level of the requesting agent.
         task_type: Task type label (e.g. ``"development"``).
         model_override: Explicit model reference for manual routing.
         remaining_budget: Per-request cost ceiling.  Compared against
@@ -88,10 +85,6 @@ class RoutingRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    agent_level: SeniorityLevel | None = Field(
-        default=None,
-        description="Seniority level of the requesting agent",
-    )
     task_type: NotBlankStr | None = Field(
         default=None,
         description="Task type label",

@@ -24,7 +24,7 @@ Controls how strategic agents frame their recommendations. Set per-agent via `Ag
 | `option_expander` | Present ALL options with lens analysis, no ranking | - |
 | `advisor` | Recommend top 2-3 with reasoning and caveats | C-suite, VP |
 | `decision_maker` | Make final recommendation with full justification | - |
-| `context_dependent` | Resolves to advisor or decision_maker based on agent seniority | Director |
+| `context_dependent` | Resolves to decision_maker for the executive tier (role reporting depth <= 1), advisor otherwise | Director |
 
 Resolution: agent override > config default. `context_dependent` resolves to `decision_maker` for C-suite/VP, `advisor` otherwise.
 
@@ -96,7 +96,7 @@ Strategic agents must provide calibrated confidence with every recommendation:
 | Dimension | Default Weight | Source |
 |-----------|---------------|--------|
 | `budget_impact` | 0.20 | RiskCard / explicit |
-| `authority_level` | 0.15 | Agent seniority |
+| `authority_level` | 0.15 | Static default (0.5) |
 | `decision_type` | 0.15 | RiskCard |
 | `reversibility` | 0.20 | RiskCard |
 | `blast_radius` | 0.10 | RiskCard |
@@ -120,7 +120,7 @@ Resolution: `ProgressiveTierResolver` (score-based) or `FixedTierResolver` (conf
 Strategic sections are injected into the system prompt after autonomy instructions, before the task section. Injection occurs when:
 
 1. Agent has explicit `strategic_output_mode`, OR
-2. Agent seniority is C-suite, VP, or Director
+2. The agent's role sits in the executive tier: reporting depth <= 1 (the CEO and its direct reports), via `role_depth(agent.role)`
 
 ### Injected Sections
 

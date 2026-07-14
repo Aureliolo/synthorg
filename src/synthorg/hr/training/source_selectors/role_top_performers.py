@@ -14,7 +14,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,
@@ -70,14 +69,12 @@ class RoleTopPerformers:
         self,
         *,
         new_agent_role: NotBlankStr,
-        new_agent_level: SeniorityLevel,  # noqa: ARG002
         new_agent_department: NotBlankStr | None = None,  # noqa: ARG002
     ) -> tuple[NotBlankStr, ...]:
         """Select top N agents in the same role by quality score.
 
         Args:
             new_agent_role: Role of the new hire.
-            new_agent_level: Seniority level (unused, reserved).
             new_agent_department: Department of the new hire (unused).
 
         Returns:

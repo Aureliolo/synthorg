@@ -10,7 +10,6 @@ from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.park_service import ParkService
 from synthorg.execution.parked_context import ParkedContext
-from synthorg.hr.seniority import SeniorityLevel
 
 pytestmark = pytest.mark.unit
 
@@ -21,7 +20,6 @@ def _make_agent_context() -> AgentContext:
         name="test-agent",
         role="developer",
         department="engineering",
-        level=SeniorityLevel.MID,
         personality=PersonalityConfig(),
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),

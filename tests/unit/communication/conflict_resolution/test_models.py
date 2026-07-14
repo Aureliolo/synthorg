@@ -11,7 +11,6 @@ from synthorg.communication.enums import (
     ConflictResolutionStrategy,
     ConflictType,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid
 
 from .conftest import make_conflict, make_position, make_resolution
@@ -22,7 +21,7 @@ class TestConflictPosition:
     def test_valid_position(self) -> None:
         pos = make_position()
         assert pos.agent_id == "agent-a"
-        assert pos.agent_level == SeniorityLevel.SENIOR
+        assert pos.agent_role == "Software Architect"
 
     def test_frozen(self) -> None:
         pos = make_position()

@@ -10,11 +10,9 @@ from synthorg.hr.enums import (
     DecisionMakingStyle,
     RiskTolerance,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.templates.presets import (
     PERSONALITY_PRESETS,
-    STRATEGIC_OUTPUT_DEFAULTS,
     generate_auto_name,
     get_personality_preset,
     get_strategic_output_default,
@@ -227,40 +225,19 @@ class TestGetPersonalityPreset:
 
 @pytest.mark.unit
 class TestGetStrategicOutputDefault:
-    @pytest.mark.parametrize(
-        ("level", "expected"),
-        [
-            (SeniorityLevel.C_SUITE, StrategicOutputMode.ADVISOR),
-            (SeniorityLevel.VP, StrategicOutputMode.ADVISOR),
-            (SeniorityLevel.DIRECTOR, StrategicOutputMode.CONTEXT_DEPENDENT),
-        ],
-    )
-    def test_strategic_levels_map_to_defaults(
-        self, level: SeniorityLevel, expected: StrategicOutputMode
-    ) -> None:
-        assert get_strategic_output_default(level) == expected
+    @pytest.mark.parametrize("role", ["CEO", "CTO", "CFO", "COO", "CPO"])
+    def test_executive_roles_map_to_advisor(self, role: str) -> None:
+        assert get_strategic_output_default(role) == StrategicOutputMode.ADVISOR
 
     @pytest.mark.parametrize(
-        "level",
-        [
-            SeniorityLevel.JUNIOR,
-            SeniorityLevel.MID,
-            SeniorityLevel.SENIOR,
-            SeniorityLevel.LEAD,
-            SeniorityLevel.PRINCIPAL,
-        ],
+        "role",
+        ["Software Architect", "Backend Developer", "QA Lead", "Data Analyst"],
     )
-    def test_non_strategic_levels_return_none(self, level: SeniorityLevel) -> None:
-        assert get_strategic_output_default(level) is None
+    def test_non_executive_roles_return_none(self, role: str) -> None:
+        assert get_strategic_output_default(role) is None
 
-    def test_every_seniority_level_is_handled(self) -> None:
-        """Either a default mode or ``None`` is returned for every level."""
-        for level in SeniorityLevel:
-            result = get_strategic_output_default(level)
-            assert result is None or isinstance(result, StrategicOutputMode)
-
-    def test_defaults_keys_are_valid_seniority_levels(self) -> None:
-        assert set(STRATEGIC_OUTPUT_DEFAULTS).issubset(set(SeniorityLevel))
+    def test_unknown_role_returns_none(self) -> None:
+        assert get_strategic_output_default("Nonexistent Role") is None
 
 
 @pytest.mark.unit

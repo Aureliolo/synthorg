@@ -48,7 +48,6 @@ const baseData: AgentNodeData = {
   name: 'Kenji Matsuda',
   role: 'Full-Stack Developer',
   department: 'engineering',
-  level: 'senior',
   runtimeStatus: 'idle',
 }
 

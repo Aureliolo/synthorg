@@ -9,7 +9,6 @@ import hashlib
 from typing import Final
 
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
@@ -53,7 +52,6 @@ class RelevanceScoreCuration:
         items: tuple[TrainingItem, ...],
         *,
         new_agent_role: NotBlankStr,  # noqa: ARG002
-        new_agent_level: SeniorityLevel,  # noqa: ARG002
         content_type: ContentType,
     ) -> tuple[TrainingItem, ...]:
         """Score and rank items, returning top K.
@@ -61,7 +59,6 @@ class RelevanceScoreCuration:
         Args:
             items: Candidate items.
             new_agent_role: Role of new hire.
-            new_agent_level: Seniority level.
             content_type: Content type being curated.
 
         Returns:

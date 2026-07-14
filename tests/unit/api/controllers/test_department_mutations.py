@@ -162,7 +162,6 @@ class TestDeleteDepartment:
                 "name": "alice",
                 "role": "developer",
                 "department": "eng",
-                "level": "mid",
             },
         )
         resp = await async_test_client.delete("/api/v1/departments/eng")
@@ -185,7 +184,6 @@ class TestReorderAgents:
                 "name": "alice",
                 "role": "dev",
                 "department": "eng",
-                "level": "mid",
             },
         )
         await async_test_client.post(
@@ -194,7 +192,6 @@ class TestReorderAgents:
                 "name": "bob",
                 "role": "dev",
                 "department": "eng",
-                "level": "mid",
             },
         )
         resp = await async_test_client.post(

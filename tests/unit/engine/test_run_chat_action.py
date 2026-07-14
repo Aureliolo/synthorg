@@ -36,7 +36,6 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.park_service import ParkService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ZERO_TOKEN_USAGE,
@@ -59,7 +58,6 @@ def _acting_identity() -> AgentIdentity:
         name="Acting Agent",
         role="Operations Lead",
         department="Operations",
-        level=SeniorityLevel.SENIOR,
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
         hiring_date=date(2026, 1, 1),
         tools=ToolPermissions(

@@ -2,8 +2,8 @@
 
 The tool reads ``project_id`` from the agent execution context (passed
 to ``execute()`` via the optional ``context`` kwarg the invoker
-forwards). Cross-project authority is checked by callers via the
-:class:`TrustService` seam, not by the tool itself.
+forwards). Cross-project authority is checked by callers, not by the tool
+itself.
 """
 
 from typing import ClassVar, override

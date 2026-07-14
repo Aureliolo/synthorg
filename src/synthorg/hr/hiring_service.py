@@ -32,7 +32,6 @@ from synthorg.hr.errors import (
 from synthorg.hr.models import CandidateCard, HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HIRING_REQUEST_STATUS_TRANSITIONED,
@@ -43,7 +42,6 @@ from synthorg.observability.events.hr import (
     HR_HIRING_INSTANTIATION_FAILED,
     HR_HIRING_PERSIST_FAILED,
     HR_HIRING_REQUEST_CREATED,
-    HR_HIRING_REQUEST_INVALID,
     HR_HIRING_REQUEST_NOT_FOUND,
     HR_HIRING_REQUESTS_HYDRATED,
 )
@@ -203,7 +201,6 @@ class HiringService:
         requested_by: NotBlankStr,
         department: NotBlankStr,
         role: NotBlankStr,
-        level: str,
         required_skills: tuple[NotBlankStr, ...] = (),
         reason: NotBlankStr,
         agent_delegate: NotBlankStr | None = None,
@@ -216,7 +213,6 @@ class HiringService:
             requested_by: Request initiator.
             department: Target department.
             role: Desired role.
-            level: Desired seniority level.
             required_skills: Required skills.
             reason: Business justification.
             agent_delegate: Existing agent assigned to absorb queued work
@@ -234,7 +230,6 @@ class HiringService:
             requested_by=requested_by,
             department=department,
             role=role,
-            level=self._parse_level(level),
             required_skills=required_skills,
             reason=reason,
             agent_delegate=agent_delegate,
@@ -252,32 +247,13 @@ class HiringService:
         )
         return request
 
-    def _parse_level(self, level: str) -> SeniorityLevel:
-        """Parse a seniority-level string into the enum.
-
-        Args:
-            level: Raw seniority level value.
-
-        Returns:
-            The parsed ``SeniorityLevel``.
-
-        Raises:
-            HiringError: If *level* is not a valid seniority level.
-        """
-        try:
-            return SeniorityLevel(level)
-        except ValueError as exc:
-            msg = f"Invalid seniority level {level!r} for hiring request"
-            logger.warning(HR_HIRING_REQUEST_INVALID, error=msg, level=level)
-            raise HiringError(msg) from exc
-
     async def generate_candidate(
         self,
         request: HiringRequest,
     ) -> HiringRequest:
         """Generate a candidate card for a hiring request.
 
-        Builds a ``CandidateCard`` from role/level defaults. In the
+        Builds a ``CandidateCard`` from role defaults. In the
         future, this can be extended with template presets and LLM
         customization.
 
@@ -303,7 +279,7 @@ class HiringService:
         return updated
 
     def _build_candidate(self, request: HiringRequest) -> CandidateCard:
-        """Build a candidate card from a hiring request's role/level defaults.
+        """Build a candidate card from a hiring request's role defaults.
 
         Args:
             request: The hiring request to generate a candidate for.
@@ -315,7 +291,6 @@ class HiringService:
             name=NotBlankStr(f"{request.role}-{request.department}-agent"),
             role=request.role,
             department=request.department,
-            level=request.level,
             skills=tuple(Skill(id=s, name=s) for s in request.required_skills),
             rationale=NotBlankStr(
                 f"Generated for: {request.reason}",
@@ -627,7 +602,6 @@ class HiringService:
                 name=candidate.name,
                 role=candidate.role,
                 department=candidate.department,
-                level=candidate.level,
                 skills=SkillSet(primary=candidate.skills),
                 model=model,
                 status=status,

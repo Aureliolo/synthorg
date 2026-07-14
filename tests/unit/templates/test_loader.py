@@ -73,15 +73,12 @@ template:
 
   agents:
     - role: "Backend Developer"
-      level: "mid"
       model: "medium"
       department: "engineering"
     - role: "Frontend Developer"
-      level: "mid"
       model: "medium"
       department: "engineering"
     - role: "QA Engineer"
-      level: "mid"
       model: "small"
       department: "engineering"
 """
@@ -268,7 +265,6 @@ template:
     - "not_a_real_pattern"
   agents:
     - role: "Dev"
-      level: "mid"
       model: "medium"
 """
         path = tmp_template_file(yaml_content)

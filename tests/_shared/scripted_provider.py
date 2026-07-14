@@ -31,7 +31,6 @@ from synthorg.core.agent import (
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.scripted import (
     ScriptedResponseStrategy,
@@ -264,7 +263,6 @@ def make_e2e_identity(
         name="E2E Agent",
         role="Developer",
         department="Engineering",
-        level=SeniorityLevel.MID,
         hiring_date=date(2026, 1, 15),
         personality=PersonalityConfig(traits=("analytical",)),
         model=ModelConfig(provider=_TEST_PROVIDER, model_id=_TEST_MODEL),

@@ -180,7 +180,7 @@ class MeetingConflictEscalationBridge:
                 ConflictPosition(
                     agent_id=agent_id,
                     agent_department=identity.department,
-                    agent_level=identity.level,
+                    agent_role=identity.role,
                     position=_summarise(contribution.content),
                     reasoning=_cap_reasoning(contribution.content),
                     timestamp=contribution.timestamp,

@@ -1,11 +1,12 @@
-"""Default system prompt template and seniority-based autonomy instructions.
+"""Default system prompt template and autonomy-mode instructions.
 
 Provides the Jinja2 template used by
 :func:`~synthorg.engine.prompt.build_system_prompt`
 to render agent system prompts.  The template uses conditional sections that
 are omitted when the corresponding context is absent.  Autonomy instructions
-are provided at three verbosity tiers (full, summary, minimal) to support
-prompt profile adaptation for different model capabilities.
+are keyed by the resolved autonomy mode (how much independence the agent
+holds) and provided at three verbosity tiers (full, summary, minimal) to
+support prompt profile adaptation for different model capabilities.
 
 **Non-inferable principle (D22):** The default template omits the
 ``Available Tools`` section because tool definitions are already passed to
@@ -18,120 +19,83 @@ reference ``{{ tools }}`` when explicitly needed.
 from types import MappingProxyType
 from typing import Final
 
-from synthorg.hr.seniority import SeniorityLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 
 # Version tracks incompatible template changes.  Bump when the template
 # structure changes in ways that affect caching, snapshots, or migrations.
 PROMPT_TEMPLATE_VERSION: Final[str] = "1.1.0"
 
-# ── Autonomy instructions by seniority level ─────────────────────
+# ── Autonomy instructions by autonomy mode ───────────────────────
 
-AUTONOMY_INSTRUCTIONS: Final[MappingProxyType[SeniorityLevel, str]] = MappingProxyType(
+AUTONOMY_INSTRUCTIONS: Final[MappingProxyType[AutonomyLevel, str]] = MappingProxyType(
     {
-        SeniorityLevel.JUNIOR: (
-            "Follow instructions carefully and precisely. "
-            "Ask clarifying questions when requirements are ambiguous. "
-            "Seek approval before making decisions outside your assigned scope. "
-            "Break tasks into small, verifiable steps and report progress frequently."
+        AutonomyLevel.FULL: (
+            "Act autonomously across your domain. Make and carry out decisions "
+            "without seeking approval, using your own judgment. "
+            "Escalate only genuine blockers or irreversible, high-risk actions. "
+            "Report progress at meaningful milestones."
         ),
-        SeniorityLevel.MID: (
+        AutonomyLevel.SEMI: (
             "Work independently on well-defined tasks. "
-            "Suggest improvements when you identify better approaches. "
+            "Seek approval before consequential or irreversible actions. "
             "Escalate blockers promptly and propose potential solutions. "
             "Use your judgment for routine decisions within your domain."
         ),
-        SeniorityLevel.SENIOR: (
-            "Take ownership of your domain and drive tasks to completion. "
-            "Mentor junior team members and review their work. "
-            "Make design decisions within your area of expertise. "
-            "Proactively identify risks and propose mitigations."
+        AutonomyLevel.SUPERVISED: (
+            "Propose a plan and await approval before acting. "
+            "Break work into small, reviewable steps and report progress "
+            "frequently. Do not take consequential actions without explicit "
+            "sign-off."
         ),
-        SeniorityLevel.LEAD: (
-            "Approve and delegate tasks within your team. "
-            "Coordinate team efforts and resolve cross-functional blockers. "
-            "Set technical direction for your team's domain. "
-            "Balance quality with delivery timelines."
-        ),
-        SeniorityLevel.PRINCIPAL: (
-            "Make architectural decisions that affect multiple teams. "
-            "Define technical standards and best practices for the organization. "
-            "Guide organization-wide patterns and technology choices. "
-            "Evaluate long-term technical strategy and trade-offs."
-        ),
-        SeniorityLevel.DIRECTOR: (
-            "Make strategic decisions with budget authority. "
-            "Coordinate across teams and departments to align priorities. "
-            "Allocate resources based on organizational goals. "
-            "Balance technical excellence with business objectives."
-        ),
-        SeniorityLevel.VP: (
-            "Exercise department-wide authority over strategy and resources. "
-            "Drive strategic planning and long-term roadmaps. "
-            "Allocate budget and personnel across teams. "
-            "Represent your department in executive decisions."
-        ),
-        SeniorityLevel.C_SUITE: (
-            "Exercise company-wide authority and provide final approvals. "
-            "Set vision and strategic direction for the organization. "
-            "Make high-impact decisions on budget, hiring, and partnerships. "
-            "Coordinate across all departments to achieve company objectives."
+        AutonomyLevel.LOCKED: (
+            "Take no autonomous action. Await explicit human instruction for "
+            "each step. Surface findings, risks, and recommendations, but do "
+            "not act on them until directed."
         ),
     }
 )
 
-_missing_levels = set(SeniorityLevel) - set(AUTONOMY_INSTRUCTIONS)
+_missing_levels = set(AutonomyLevel) - set(AUTONOMY_INSTRUCTIONS)
 if _missing_levels:
     _names = sorted(lv.value for lv in _missing_levels)
     _msg = f"Missing autonomy instructions for: {_names}"
     raise ValueError(_msg)
 
-# ── Condensed autonomy (one sentence per level) ─────────────────
+# ── Condensed autonomy (one sentence per mode) ──────────────────
 
-AUTONOMY_SUMMARY: Final[MappingProxyType[SeniorityLevel, str]] = MappingProxyType(
+AUTONOMY_SUMMARY: Final[MappingProxyType[AutonomyLevel, str]] = MappingProxyType(
     {
-        SeniorityLevel.JUNIOR: "Follow instructions carefully and ask when uncertain.",
-        SeniorityLevel.MID: (
-            "Work independently on defined tasks and escalate blockers."
+        AutonomyLevel.FULL: (
+            "Act autonomously; escalate only blockers or high-risk actions."
         ),
-        SeniorityLevel.SENIOR: (
-            "Take ownership of your domain and drive tasks to completion."
+        AutonomyLevel.SEMI: (
+            "Work independently and seek approval before consequential actions."
         ),
-        SeniorityLevel.LEAD: "Approve and delegate tasks within your team.",
-        SeniorityLevel.PRINCIPAL: (
-            "Make architectural decisions that affect multiple teams."
-        ),
-        SeniorityLevel.DIRECTOR: "Make strategic decisions with budget authority.",
-        SeniorityLevel.VP: (
-            "Exercise department-wide authority over strategy and resources."
-        ),
-        SeniorityLevel.C_SUITE: (
-            "Exercise company-wide authority and provide final approvals."
+        AutonomyLevel.SUPERVISED: ("Propose a plan and await approval before acting."),
+        AutonomyLevel.LOCKED: (
+            "Take no autonomous action; await explicit instruction."
         ),
     }
 )
 
-_missing_summary = set(SeniorityLevel) - set(AUTONOMY_SUMMARY)
+_missing_summary = set(AutonomyLevel) - set(AUTONOMY_SUMMARY)
 if _missing_summary:
     _names_s = sorted(lv.value for lv in _missing_summary)
     _msg_s = f"Missing autonomy summary for: {_names_s}"
     raise ValueError(_msg_s)
 
-# ── Minimal autonomy (single phrase per level) ──────────────────
+# ── Minimal autonomy (single phrase per mode) ───────────────────
 
-AUTONOMY_MINIMAL: Final[MappingProxyType[SeniorityLevel, str]] = MappingProxyType(
+AUTONOMY_MINIMAL: Final[MappingProxyType[AutonomyLevel, str]] = MappingProxyType(
     {
-        SeniorityLevel.JUNIOR: "Execute assigned tasks precisely.",
-        SeniorityLevel.MID: "Work independently within scope.",
-        SeniorityLevel.SENIOR: "Own your domain.",
-        SeniorityLevel.LEAD: "Lead and delegate.",
-        SeniorityLevel.PRINCIPAL: "Set architecture direction.",
-        SeniorityLevel.DIRECTOR: "Direct strategy and resources.",
-        SeniorityLevel.VP: "Drive department strategy.",
-        SeniorityLevel.C_SUITE: "Set company direction.",
+        AutonomyLevel.FULL: "Act autonomously.",
+        AutonomyLevel.SEMI: "Work independently; approve consequential actions.",
+        AutonomyLevel.SUPERVISED: "Plan first; act on approval.",
+        AutonomyLevel.LOCKED: "Await explicit instruction.",
     }
 )
 
-_missing_minimal = set(SeniorityLevel) - set(AUTONOMY_MINIMAL)
+_missing_minimal = set(AutonomyLevel) - set(AUTONOMY_MINIMAL)
 if _missing_minimal:
     _names_m = sorted(lv.value for lv in _missing_minimal)
     _msg_m = f"Missing autonomy minimal for: {_names_m}"
@@ -142,7 +106,7 @@ if _missing_minimal:
 DEFAULT_TEMPLATE: Final[str] = """\
 ## Identity
 
-You are **{{ agent_name }}**, a {{ agent_level }} {{ agent_role }} \
+You are **{{ agent_name }}**, a {{ agent_role }} \
 in the {{ agent_department }} department.
 {% if role_description %}
 **Role**: {{ role_description }}

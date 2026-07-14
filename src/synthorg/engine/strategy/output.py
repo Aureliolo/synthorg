@@ -6,15 +6,21 @@ strategic agents frame their recommendations.
 
 import copy
 from types import MappingProxyType
+from typing import Final
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.authority import role_depth
 from synthorg.engine.strategy.lenses import LensDefinition
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.strategy import STRATEGY_OUTPUT_HANDLED
 
 logger = get_logger(__name__)
+
+# Executive tier by reporting depth: the CEO (depth 0) and the C-suite
+# reporting directly to it (depth 1) act as decision makers; everyone
+# deeper defaults to an advisory posture.
+_DECISION_MAKER_MAX_DEPTH: Final[int] = 1
 
 
 def build_output_instructions(
@@ -62,16 +68,13 @@ def _resolve_mode(
 
     Returns:
         ``mode`` unchanged when it is already concrete; otherwise
-        ``DECISION_MAKER`` for C-suite and VP agents and ``ADVISOR`` for
-        everyone else.
+        ``DECISION_MAKER`` for executive-tier agents (shallow reporting
+        depth) and ``ADVISOR`` for everyone else.
     """
     if mode != StrategicOutputMode.CONTEXT_DEPENDENT:
         return mode
 
-    if agent is not None and agent.level in (
-        SeniorityLevel.C_SUITE,
-        SeniorityLevel.VP,
-    ):
+    if agent is not None and role_depth(agent.role) <= _DECISION_MAKER_MAX_DEPTH:
         return StrategicOutputMode.DECISION_MAKER
 
     return StrategicOutputMode.ADVISOR

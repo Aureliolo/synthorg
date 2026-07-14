@@ -32,7 +32,6 @@ from synthorg.hr.enums import (
     DecisionMakingStyle,
     RiskTolerance,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.prompt import (
     PROMPT_BUILD_START,
     PROMPT_BUILD_SUCCESS,
@@ -418,68 +417,62 @@ class TestUntrustedContentDirectiveInjection:
 
 
 @pytest.mark.unit
-class TestSeniorityAutonomy:
-    """Tests for seniority-based autonomy instructions."""
+class TestAutonomyModeInstructions:
+    """Tests for operator-set autonomy-mode instructions."""
 
     @staticmethod
-    def _make_agent(
-        name: str,
-        role: str,
-        department: str,
-        level: SeniorityLevel,
-    ) -> AgentIdentity:
-        """Create a minimal agent identity at the given seniority level."""
+    def _make_agent() -> AgentIdentity:
+        """Create a minimal agent identity."""
         return AgentIdentity(
-            name=name,
-            role=role,
-            department=department,
-            level=level,
+            name="Test Dev",
+            role="Developer",
+            department="Engineering",
             model=ModelConfig(provider="test", model_id="test-001"),
             hiring_date=date(2026, 1, 1),
         )
 
-    def test_junior_gets_guidance_instructions(self) -> None:
-        """Junior agents get step-by-step guidance language."""
-        agent = self._make_agent(
-            "Junior Dev",
-            "Developer",
-            "Engineering",
-            SeniorityLevel.JUNIOR,
+    @staticmethod
+    def _autonomy(level: AutonomyLevel) -> EffectiveAutonomy:
+        return EffectiveAutonomy(
+            level=level,
+            auto_approve_actions=frozenset(),
+            human_approval_actions=frozenset(),
+            security_agent=False,
         )
-        result = build_system_prompt(agent=agent)
 
-        assert "Follow instructions carefully" in result.content
-        assert "seek approval" in result.content.lower()
-
-    def test_senior_gets_ownership_instructions(self) -> None:
-        """Senior agents get ownership-focused language."""
-        agent = self._make_agent(
-            "Senior Dev",
-            "Developer",
-            "Engineering",
-            SeniorityLevel.SENIOR,
+    def test_locked_gets_await_instruction_language(self) -> None:
+        """LOCKED mode instructs the agent to await explicit instruction."""
+        result = build_system_prompt(
+            agent=self._make_agent(),
+            effective_autonomy=self._autonomy(AutonomyLevel.LOCKED),
         )
-        result = build_system_prompt(agent=agent)
+        assert "Take no autonomous action" in result.content
 
-        assert "Take ownership" in result.content
-
-    def test_c_suite_gets_strategic_scope(self) -> None:
-        """C-suite agents get strategic language."""
-        agent = self._make_agent(
-            "CEO",
-            "Chief Executive",
-            "Executive",
-            SeniorityLevel.C_SUITE,
+    def test_full_gets_autonomous_language(self) -> None:
+        """FULL mode instructs the agent to act autonomously."""
+        result = build_system_prompt(
+            agent=self._make_agent(),
+            effective_autonomy=self._autonomy(AutonomyLevel.FULL),
         )
-        result = build_system_prompt(agent=agent)
+        assert "Act autonomously across your domain" in result.content
 
-        assert "company-wide authority" in result.content.lower()
-        assert "vision" in result.content.lower()
+    def test_supervised_gets_plan_first_language(self) -> None:
+        """SUPERVISED mode instructs the agent to propose a plan first."""
+        result = build_system_prompt(
+            agent=self._make_agent(),
+            effective_autonomy=self._autonomy(AutonomyLevel.SUPERVISED),
+        )
+        assert "Propose a plan and await approval" in result.content
 
-    def test_all_levels_produce_unique_instructions(self) -> None:
-        """Each seniority level maps to distinct autonomy text."""
+    def test_default_mode_is_semi(self) -> None:
+        """With no effective autonomy the prompt falls back to SEMI text."""
+        result = build_system_prompt(agent=self._make_agent())
+        assert "Work independently on well-defined tasks" in result.content
+
+    def test_all_modes_produce_unique_instructions(self) -> None:
+        """Each autonomy mode maps to distinct autonomy text."""
         instructions = set(AUTONOMY_INSTRUCTIONS.values())
-        assert len(instructions) == len(SeniorityLevel)
+        assert len(instructions) == len(AutonomyLevel)
 
 
 # ── TestTokenEstimation ──────────────────────────────────────────
@@ -691,7 +684,6 @@ class TestSystemPromptModel:
             "name": agent.name,
             "role": agent.role,
             "department": agent.department,
-            "level": agent.level.value,
             "profile_tier": "large",
         }
 
@@ -1286,14 +1278,14 @@ class TestPromptProfileIntegration:
         self,
         sample_agent_with_personality: AgentIdentity,
         tier: str,
-        autonomy_map: Mapping[SeniorityLevel, str],
+        autonomy_map: Mapping[AutonomyLevel, str],
     ) -> None:
         """Each tier renders the matching autonomy instruction text."""
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             model_tier=tier,  # type: ignore[arg-type]
         )
-        expected = autonomy_map[sample_agent_with_personality.level]
+        expected = autonomy_map[AutonomyLevel.SEMI]
 
         assert expected in result.content
 

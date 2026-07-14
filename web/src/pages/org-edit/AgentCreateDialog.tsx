@@ -6,9 +6,7 @@ import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import type { AgentConfig } from '@/api/types/agents'
-import { SENIORITY_LEVEL_VALUES, type SeniorityLevel } from '@/api/types/enums'
 import type { CreateAgentOrgRequest, Department } from '@/api/types/org'
-import { makeEnumParser } from '@/utils/type-guards'
 
 export interface AgentCreateDialogProps {
   open: boolean
@@ -21,15 +19,12 @@ interface FormState {
   name: string
   role: string
   department: string
-  level: SeniorityLevel
 }
 
 type FormErrors = Partial<Record<keyof FormState, string>>
 type UpdateFieldFn = <K extends keyof FormState>(key: K, value: FormState[K]) => void
 
-const INITIAL_FORM: FormState = { name: '', role: '', department: '', level: 'mid' }
-const LEVEL_OPTIONS = SENIORITY_LEVEL_VALUES.map((l) => ({ value: l, label: l }))
-const parseSeniorityLevel = makeEnumParser<SeniorityLevel>(SENIORITY_LEVEL_VALUES)
+const INITIAL_FORM: FormState = { name: '', role: '', department: '' }
 
 function validateAgentForm(form: FormState): FormErrors {
   const next: FormErrors = {}
@@ -97,15 +92,6 @@ function AgentCreateBody({ form, errors, updateField, deptOptions, submitting, o
           required
           placeholder="Select department..."
         />
-        <SelectField
-          label="Level"
-          options={LEVEL_OPTIONS}
-          value={form.level}
-          onChange={(value) => {
-            const level = parseSeniorityLevel(value)
-            if (level) updateField('level', level)
-          }}
-        />
 
         <div className="flex justify-end gap-3 pt-2">
           <Dialog.Close render={<Button variant="outline" disabled={submitting}>Cancel</Button>} />
@@ -147,7 +133,6 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
         name: form.name.trim(),
         role: form.role.trim(),
         department: form.department,
-        level: form.level,
       })
       // Store owns the toast UX; the dialog stays open on failure so the
       // user can amend their input.

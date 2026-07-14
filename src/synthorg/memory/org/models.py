@@ -14,7 +14,6 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.observability import get_logger
 from synthorg.observability.events.org_memory import ORG_MEMORY_MODEL_INVALID
@@ -27,13 +26,13 @@ class OrgFactAuthor(BaseModel):
     """Author of an organizational fact.
 
     If ``is_human`` is ``True``, ``agent_id`` must be ``None``.
-    If ``is_human`` is ``False``, ``agent_id`` and ``seniority``
+    If ``is_human`` is ``False``, ``agent_id`` and ``role``
     are required; ``autonomy_level`` is optional (captures the
     instance-specific value at write time).
 
     Attributes:
         agent_id: Agent identifier (``None`` for human authors).
-        seniority: Agent seniority level (``None`` for human authors).
+        role: Agent role name (``None`` for human authors).
         is_human: Whether the author is a human operator.
     """
 
@@ -43,9 +42,9 @@ class OrgFactAuthor(BaseModel):
         default=None,
         description="Agent identifier (None for human authors)",
     )
-    seniority: SeniorityLevel | None = Field(
+    role: NotBlankStr | None = Field(
         default=None,
-        description="Agent seniority level (None for human authors)",
+        description="Agent role name (None for human authors)",
     )
     autonomy_level: AutonomyLevel | None = Field(
         default=None,
@@ -76,12 +75,12 @@ class OrgFactAuthor(BaseModel):
                     reason=msg,
                 )
                 raise ValueError(msg)
-            if self.seniority is not None:
-                msg = "Human authors must not have a seniority level"
+            if self.role is not None:
+                msg = "Human authors must not have a role"
                 logger.warning(
                     ORG_MEMORY_MODEL_INVALID,
                     model="OrgFactAuthor",
-                    field="seniority",
+                    field="role",
                     reason=msg,
                 )
                 raise ValueError(msg)
@@ -104,12 +103,12 @@ class OrgFactAuthor(BaseModel):
                     reason=msg,
                 )
                 raise ValueError(msg)
-            if self.seniority is None:
-                msg = "Non-human authors must have a seniority level"
+            if self.role is None:
+                msg = "Non-human authors must have a role"
                 logger.warning(
                     ORG_MEMORY_MODEL_INVALID,
                     model="OrgFactAuthor",
-                    field="seniority",
+                    field="role",
                     reason=msg,
                 )
                 raise ValueError(msg)
@@ -206,7 +205,7 @@ class OperationLogEntry(BaseModel):
         tags: Metadata tags at time of operation.
         author_agent_id: Agent that performed the operation
             (``None`` for human authors).
-        author_seniority: Agent seniority level at write time.
+        author_role: Agent role name at write time.
         author_is_human: Whether the author is a human operator.
         author_autonomy_level: Agent autonomy level at write time.
         timestamp: UTC timestamp of the operation.
@@ -239,9 +238,9 @@ class OperationLogEntry(BaseModel):
         default=None,
         description="Agent that performed the operation",
     )
-    author_seniority: SeniorityLevel | None = Field(
+    author_role: NotBlankStr | None = Field(
         default=None,
-        description="Agent seniority level at write time",
+        description="Agent role name at write time",
     )
     author_is_human: bool = Field(
         default=False,

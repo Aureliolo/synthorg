@@ -11,7 +11,6 @@ from synthorg.engine.assignment.pool_filters import HierarchicalPoolFilter
 from synthorg.engine.assignment.rankers import ScoreDescendingRanker
 from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.routing.scorer import AgentTaskScorer
-from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_assignment_agent, make_assignment_task
 
@@ -66,7 +65,6 @@ class TestHierarchicalAssignmentStrategy:
         dev1 = make_assignment_agent(
             "dev-1",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(
@@ -97,12 +95,10 @@ class TestHierarchicalAssignmentStrategy:
         dev1 = make_assignment_agent(
             "dev-1",
             primary_skills=("python", "api-design"),
-            level=SeniorityLevel.MID,
         )
         dev2 = make_assignment_agent(
             "dev-2",
             primary_skills=("testing",),
-            level=SeniorityLevel.JUNIOR,
         )
 
         task = make_assignment_task(
@@ -132,7 +128,6 @@ class TestHierarchicalAssignmentStrategy:
         dev1 = make_assignment_agent(
             "dev-1",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(
@@ -161,7 +156,6 @@ class TestHierarchicalAssignmentStrategy:
         dev1 = make_assignment_agent(
             "dev-1",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         # created_by is "manager" but delegation_chain[-1] is "lead"
@@ -192,7 +186,6 @@ class TestHierarchicalAssignmentStrategy:
         dev1 = make_assignment_agent(
             "dev-1",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(
@@ -223,7 +216,6 @@ class TestHierarchicalAssignmentStrategy:
         other = make_assignment_agent(
             "outsider",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(
@@ -251,7 +243,6 @@ class TestHierarchicalAssignmentStrategy:
         dev1 = make_assignment_agent(
             "dev-1",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(
@@ -281,7 +272,6 @@ class TestHierarchicalAssignmentStrategy:
         outsider = make_assignment_agent(
             "outsider",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(
@@ -311,7 +301,6 @@ class TestHierarchicalAssignmentStrategy:
         dev1 = make_assignment_agent(
             "dev-1",
             primary_skills=("testing",),
-            level=SeniorityLevel.JUNIOR,
         )
 
         task = make_assignment_task(

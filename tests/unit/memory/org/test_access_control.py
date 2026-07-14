@@ -2,7 +2,6 @@
 
 import pytest
 
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.access_control import (
     CategoryWriteRule,
@@ -14,19 +13,9 @@ from synthorg.memory.org.errors import OrgMemoryAccessDeniedError
 from synthorg.memory.org.models import OrgFactAuthor
 
 _HUMAN = OrgFactAuthor(is_human=True)
-_SENIOR_AGENT = OrgFactAuthor(
-    agent_id="agent-senior",
-    seniority=SeniorityLevel.SENIOR,
-    is_human=False,
-)
-_JUNIOR_AGENT = OrgFactAuthor(
-    agent_id="agent-junior",
-    seniority=SeniorityLevel.JUNIOR,
-    is_human=False,
-)
-_LEAD_AGENT = OrgFactAuthor(
-    agent_id="agent-lead",
-    seniority=SeniorityLevel.LEAD,
+_AGENT = OrgFactAuthor(
+    agent_id="agent-1",
+    role="Knowledge Architect",
     is_human=False,
 )
 
@@ -41,24 +30,15 @@ class TestCheckWriteAccess:
 
     def test_agent_cannot_write_core_policy(self) -> None:
         config = WriteAccessConfig()
-        assert (
-            check_write_access(config, OrgFactCategory.CORE_POLICY, _SENIOR_AGENT)
-            is False
-        )
+        assert check_write_access(config, OrgFactCategory.CORE_POLICY, _AGENT) is False
 
-    def test_senior_can_write_adr(self) -> None:
+    def test_agent_can_write_adr(self) -> None:
         config = WriteAccessConfig()
-        assert check_write_access(config, OrgFactCategory.ADR, _SENIOR_AGENT) is True
+        assert check_write_access(config, OrgFactCategory.ADR, _AGENT) is True
 
-    def test_junior_cannot_write_adr(self) -> None:
+    def test_agent_can_write_procedure(self) -> None:
         config = WriteAccessConfig()
-        assert check_write_access(config, OrgFactCategory.ADR, _JUNIOR_AGENT) is False
-
-    def test_lead_can_write_procedure(self) -> None:
-        config = WriteAccessConfig()
-        assert (
-            check_write_access(config, OrgFactCategory.PROCEDURE, _LEAD_AGENT) is True
-        )
+        assert check_write_access(config, OrgFactCategory.PROCEDURE, _AGENT) is True
 
     def test_human_can_write_convention(self) -> None:
         config = WriteAccessConfig()
@@ -68,7 +48,7 @@ class TestCheckWriteAccess:
         config = WriteAccessConfig(
             rules={
                 OrgFactCategory.CONVENTION: CategoryWriteRule(
-                    allowed_seniority=SeniorityLevel.SENIOR,
+                    agent_allowed=True,
                     human_allowed=False,
                 ),
             },
@@ -79,10 +59,7 @@ class TestCheckWriteAccess:
         """Fail-closed: missing category rule denies everyone."""
         config = WriteAccessConfig(rules={})
         assert check_write_access(config, OrgFactCategory.CORE_POLICY, _HUMAN) is False
-        assert (
-            check_write_access(config, OrgFactCategory.CORE_POLICY, _SENIOR_AGENT)
-            is False
-        )
+        assert check_write_access(config, OrgFactCategory.CORE_POLICY, _AGENT) is False
 
 
 @pytest.mark.unit
@@ -91,7 +68,7 @@ class TestRequireWriteAccess:
 
     def test_allowed_does_not_raise(self) -> None:
         config = WriteAccessConfig()
-        require_write_access(config, OrgFactCategory.ADR, _SENIOR_AGENT)
+        require_write_access(config, OrgFactCategory.ADR, _AGENT)
 
     def test_denied_raises(self) -> None:
         config = WriteAccessConfig()
@@ -99,7 +76,7 @@ class TestRequireWriteAccess:
             require_write_access(
                 config,
                 OrgFactCategory.CORE_POLICY,
-                _JUNIOR_AGENT,
+                _AGENT,
             )
 
 

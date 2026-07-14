@@ -30,7 +30,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Test Backend Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
 """
@@ -64,7 +63,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "{{ company_name }} Dev"
-      level: "senior"
       model: "medium"
       department: "engineering"
 """
@@ -86,7 +84,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "{{ team_lead }}"
-      level: "mid"
       model: "medium"
       department: "engineering"
 """
@@ -117,7 +114,6 @@ template:
   agents:
     - role: "QA Engineer"
       name: "Ava Testington"
-      level: "mid"
       model: "small"
       personality_preset: "quality_guardian"
       department: "engineering"
@@ -139,7 +135,6 @@ template:
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       name: "Override Dev Lead"
-      level: "lead"
       model: "large"
       personality_preset: "visionary_leader"
       department: "engineering"
@@ -164,7 +159,6 @@ template:
       _remove: true
     - role: "Backend Developer"
       name: "Liam Codsworth"
-      level: "senior"
       model: "medium"
       personality_preset: "pragmatic_builder"
       department: "engineering"
@@ -185,7 +179,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Circular Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
 """
@@ -203,7 +196,6 @@ def _make_template_dict(**overrides: object) -> dict[str, object]:
         "agents": (
             {
                 "role": "Backend Developer",
-                "level": "mid",
                 "model": "medium",
             },
         ),
@@ -285,7 +277,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Test Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
 """

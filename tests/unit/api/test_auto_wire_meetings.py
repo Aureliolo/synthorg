@@ -430,7 +430,6 @@ class TestAutoWireMeetings:
         from synthorg.core.completion_enums import FinishReason
         from synthorg.core.types import NotBlankStr
         from synthorg.hr.enums import AgentStatus
-        from synthorg.hr.seniority import SeniorityLevel
         from synthorg.providers.models import CompletionResponse, TokenUsage
 
         identity = AgentIdentity(
@@ -438,7 +437,6 @@ class TestAutoWireMeetings:
             name=NotBlankStr("Sarah Chen"),
             role=NotBlankStr("engineer"),
             department=NotBlankStr("engineering"),
-            level=SeniorityLevel.MID,
             personality=PersonalityConfig(
                 communication_style=NotBlankStr("concise"),
             ),

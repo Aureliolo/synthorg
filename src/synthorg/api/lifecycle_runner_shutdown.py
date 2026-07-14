@@ -485,22 +485,6 @@ async def _run_shutdown(  # noqa: PLR0913
         )
 
     hr_slice = app_state.slice(HrStateSlice)
-    if hr_slice.promotion_cycle_scheduler is not None:
-        await _try_stop(
-            hr_slice.promotion_cycle_scheduler.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop promotion cycle scheduler",
-            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
-            service="promotion_cycle_scheduler",
-        )
-        # Clear service + scheduler so wire_promotion re-wires on the next
-        # lifespan entry (its idempotency guard checks ``promotion_service``).
-        app_state.wire(
-            HrStateSlice,
-            promotion_service=None,
-            promotion_cycle_scheduler=None,
-        )
-
     if hr_slice.eval_loop_cycle_scheduler is not None:
         await _try_stop(
             hr_slice.eval_loop_cycle_scheduler.stop(),

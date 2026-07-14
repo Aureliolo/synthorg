@@ -24,7 +24,6 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import LoopAsyncClient, as_uuid
 from tests._shared import build_test_app as create_app
 from tests.unit.api.conftest import (
@@ -56,7 +55,6 @@ def _make_test_agent(
         name=name,
         role="developer",
         department="engineering",
-        level=SeniorityLevel.MID,
         skills=SkillSet(primary=tuple(Skill(id=s, name=s) for s in skills)),
         authority=Authority(budget_limit=10.0),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),

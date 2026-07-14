@@ -180,11 +180,6 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "string",
                 "description": "Role of the new hire",
             },
-            "new_agent_level": {
-                "type": "string",
-                "description": "Seniority level of the new hire",
-                "enum": ["junior", "mid", "senior"],
-            },
             "new_agent_department": {
                 "type": "string",
                 "description": "Department of the new hire (optional)",
@@ -201,7 +196,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
                 },
             },
         },
-        required=("new_agent_id", "new_agent_role", "new_agent_level"),
+        required=("new_agent_id", "new_agent_role"),
         args_model=TrainingStartSessionArgs,
     ),
     # --- Autonomy ---

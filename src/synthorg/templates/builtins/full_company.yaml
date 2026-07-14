@@ -150,7 +150,6 @@ template:
   agents:
     # C-Suite (5)
     - role: "CEO"
-      level: "c_suite"
       model:
         priority: "quality"
         min_context: 100000
@@ -159,7 +158,6 @@ template:
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "CTO"
-      level: "c_suite"
       model:
         priority: "quality"
         min_context: 100000
@@ -168,7 +166,6 @@ template:
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "CFO"
-      level: "c_suite"
       model:
         priority: "quality"
         min_context: 100000
@@ -177,7 +174,6 @@ template:
       department: "executive"
       strategic_output_mode: "advisor"
     - role: "COO"
-      level: "c_suite"
       model:
         priority: "quality"
         min_context: 100000
@@ -186,7 +182,6 @@ template:
       department: "operations"
       strategic_output_mode: "advisor"
     - role: "CPO"
-      level: "c_suite"
       model:
         priority: "quality"
         min_context: 100000
@@ -196,26 +191,22 @@ template:
       strategic_output_mode: "advisor"
     # Product (2)
     - role: "Product Manager"
-      level: "senior"
       model:
         priority: "speed"
       personality_preset: "strategic_planner"
       department: "product"
     - role: "Technical Writer"
-      level: "mid"
       model:
         priority: "balanced"
       personality_preset: "technical_communicator"
       department: "product"
     # Design (2)
     - role: "UX Designer"
-      level: "mid"
       model:
         priority: "balanced"
       personality_preset: "user_advocate"
       department: "design"
     - role: "UX Researcher"
-      level: "mid"
       model:
         priority: "quality"
         requires_reasoning: true
@@ -223,7 +214,6 @@ template:
       department: "design"
     # Engineering -- static (3)
     - role: "Software Architect"
-      level: "principal"
       model:
         priority: "quality"
         min_context: 100000
@@ -231,14 +221,12 @@ template:
       personality_preset: "systems_thinker"
       department: "engineering"
     - role: "DevOps/SRE Engineer"
-      level: "mid"
       model:
         priority: "balanced"
         requires_tools: true
       personality_preset: "disciplined_executor"
       department: "engineering"
     - role: "Database Engineer"
-      level: "mid"
       model:
         priority: "balanced"
         requires_tools: true
@@ -249,13 +237,11 @@ template:
     - role: "Backend Developer"
       merge_id: "backend-{{ i }}"
 {% if i == 0 %}
-      level: "senior"
       model:
         priority: "balanced"
         requires_tools: true
       personality_preset: "pragmatic_builder"
 {% else %}
-      level: "mid"
       model:
         priority: "balanced"
         requires_tools: true
@@ -268,13 +254,11 @@ template:
     - role: "Frontend Developer"
       merge_id: "frontend-{{ i }}"
 {% if i == 0 %}
-      level: "senior"
       model:
         priority: "balanced"
         requires_tools: true
       personality_preset: "creative_innovator"
 {% else %}
-      level: "mid"
       model:
         priority: "balanced"
         requires_tools: true
@@ -284,21 +268,18 @@ template:
 {% endfor %}
     # Quality Assurance (3)
     - role: "QA Lead"
-      level: "lead"
       model:
         priority: "quality"
         requires_tools: true
       personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "QA Engineer"
-      level: "mid"
       model:
         priority: "cost"
         requires_tools: true
       personality_preset: "methodical_analyst"
       department: "quality_assurance"
     - role: "Automation Engineer"
-      level: "mid"
       model:
         priority: "cost"
         requires_tools: true
@@ -306,14 +287,12 @@ template:
       department: "quality_assurance"
     # Data & Analytics (2)
     - role: "Data Analyst"
-      level: "mid"
       model:
         priority: "quality"
         requires_tools: true
       personality_preset: "data_driven_optimizer"
       department: "data_analytics"
     - role: "Data Engineer"
-      level: "mid"
       model:
         priority: "balanced"
         requires_tools: true
@@ -321,27 +300,23 @@ template:
       department: "data_analytics"
     # Operations (2)
     - role: "Project Manager"
-      level: "senior"
       model:
         priority: "speed"
       personality_preset: "communication_bridge"
       department: "operations"
     - role: "Scrum Master"
-      level: "senior"
       model:
         priority: "speed"
       personality_preset: "empathetic_mentor"
       department: "operations"
     # Security (2)
     - role: "Security Engineer"
-      level: "senior"
       model:
         priority: "quality"
         requires_reasoning: true
       personality_preset: "security_sentinel"
       department: "security"
     - role: "Security Operations"
-      level: "senior"
       model:
         priority: "quality"
         requires_reasoning: true
@@ -349,13 +324,11 @@ template:
       department: "security"
     # Creative & Marketing (2)
     - role: "Content Writer"
-      level: "mid"
       model:
         priority: "quality"
       personality_preset: "creative_innovator"
       department: "creative_marketing"
     - role: "Brand Strategist"
-      level: "senior"
       model:
         priority: "balanced"
       personality_preset: "growth_hacker"

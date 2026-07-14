@@ -9,7 +9,6 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.engine.identity.store.append_only import AppendOnlyIdentityStore
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.versioning.models import VersionSnapshot
 from synthorg.versioning.service import VersioningService
 
@@ -18,7 +17,7 @@ def _make_identity(
     *,
     agent_id: str | None = None,
     name: str = "test-agent",
-    level: SeniorityLevel = SeniorityLevel.MID,
+    role: str = "mid-role",
 ) -> AgentIdentity:
     """Build a minimal valid AgentIdentity for testing."""
     from uuid import UUID
@@ -26,9 +25,8 @@ def _make_identity(
     return AgentIdentity(
         id=UUID(agent_id) if agent_id else uuid4(),
         name=name,
-        role="test-role",
+        role=role,
         department="engineering",
-        level=level,
         model=ModelConfig(
             provider="test-provider",
             model_id="test-small-001",
@@ -74,7 +72,7 @@ class TestAppendOnlyPut:
         )
 
         evolved = identity.model_copy(
-            update={"level": SeniorityLevel.SENIOR},
+            update={"role": "senior-role"},
         )
         result = await store.put(
             str(identity.id),
@@ -86,7 +84,7 @@ class TestAppendOnlyPut:
         # Registry should have the evolved identity.
         current = await registry.get(str(identity.id))
         assert current is not None
-        assert current.level == SeniorityLevel.SENIOR
+        assert current.role == "senior-role"
 
 
 class TestAppendOnlyGetCurrent:
@@ -154,9 +152,9 @@ class TestAppendOnlySetCurrent:
 
     @pytest.mark.unit
     async def test_rollback_restores_identity(self) -> None:
-        identity_v1 = _make_identity(level=SeniorityLevel.JUNIOR)
+        identity_v1 = _make_identity(role="junior-role")
         identity_v2 = identity_v1.model_copy(
-            update={"level": SeniorityLevel.SENIOR},
+            update={"role": "senior-role"},
         )
 
         snap_v1 = _make_snapshot(identity_v1, version=1)
@@ -174,12 +172,12 @@ class TestAppendOnlySetCurrent:
         store = AppendOnlyIdentityStore(registry=registry, versioning=versioning)
 
         restored = await store.set_current(str(identity_v1.id), 1)
-        assert restored.level == SeniorityLevel.JUNIOR
+        assert restored.role == "junior-role"
 
         # Registry should reflect the rollback.
         current = await registry.get(str(identity_v1.id))
         assert current is not None
-        assert current.level == SeniorityLevel.JUNIOR
+        assert current.role == "junior-role"
 
     @pytest.mark.unit
     async def test_rollback_nonexistent_version_raises(self) -> None:

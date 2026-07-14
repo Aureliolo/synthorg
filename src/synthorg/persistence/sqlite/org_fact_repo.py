@@ -17,7 +17,6 @@ import aiosqlite
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.errors import (
     OrgMemoryQueryError,
@@ -90,7 +89,7 @@ class SQLiteOrgFactRepository:
         category: OrgFactCategory | None,
         tags: tuple[NotBlankStr, ...],
         author_agent_id: str | None,
-        author_seniority: SeniorityLevel | None,
+        author_role: NotBlankStr | None,
         author_is_human: bool,
         author_autonomy_level: AutonomyLevel | None,
     ) -> tuple[int, datetime]:
@@ -112,7 +111,7 @@ class SQLiteOrgFactRepository:
         await db.execute(
             "INSERT INTO org_facts_operation_log "
             "(operation_id, fact_id, operation_type, content, "
-            "tags, author_agent_id, author_seniority, "
+            "tags, author_agent_id, author_role, "
             "author_is_human, author_autonomy_level, category, "
             "timestamp, version) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -123,7 +122,7 @@ class SQLiteOrgFactRepository:
                 content,
                 tags_to_json(tags),
                 author_agent_id,
-                (author_seniority.value if author_seniority else None),
+                author_role,
                 int(author_is_human),
                 (author_autonomy_level.value if author_autonomy_level else None),
                 (category.value if category else None),
@@ -160,14 +159,14 @@ class SQLiteOrgFactRepository:
                     category=fact.category,
                     tags=fact.tags,
                     author_agent_id=fact.author.agent_id,
-                    author_seniority=fact.author.seniority,
+                    author_role=fact.author.role,
                     author_is_human=fact.author.is_human,
                     author_autonomy_level=fact.author.autonomy_level,
                 )
                 await db.execute(
                     "INSERT INTO org_facts_snapshot "
                     "(fact_id, content, category, tags, "
-                    "author_agent_id, author_seniority, "
+                    "author_agent_id, author_role, "
                     "author_is_human, "
                     "author_autonomy_level, created_at, "
                     "retracted_at, version) "
@@ -177,7 +176,7 @@ class SQLiteOrgFactRepository:
                     "category=excluded.category, "
                     "tags=excluded.tags, "
                     "author_agent_id=excluded.author_agent_id, "
-                    "author_seniority=excluded.author_seniority, "
+                    "author_role=excluded.author_role, "
                     "author_is_human=excluded.author_is_human, "
                     "author_autonomy_level="
                     "excluded.author_autonomy_level, "
@@ -189,11 +188,7 @@ class SQLiteOrgFactRepository:
                         fact.category.value,
                         tags_json,
                         fact.author.agent_id,
-                        (
-                            fact.author.seniority.value
-                            if fact.author.seniority
-                            else None
-                        ),
+                        fact.author.role,
                         int(fact.author.is_human),
                         (
                             fact.author.autonomy_level.value
@@ -262,7 +257,7 @@ class SQLiteOrgFactRepository:
                     ),
                     tags=tags_from_json(row["tags"]),
                     author_agent_id=author.agent_id,
-                    author_seniority=author.seniority,
+                    author_role=author.role,
                     author_is_human=author.is_human,
                     author_autonomy_level=author.autonomy_level,
                 )

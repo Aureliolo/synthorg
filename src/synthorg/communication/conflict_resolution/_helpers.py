@@ -11,7 +11,7 @@ from synthorg.communication.delegation.hierarchy import (
 from synthorg.communication.errors import (
     ConflictStrategyError,
 )
-from synthorg.hr.seniority import compare_seniority
+from synthorg.core.authority import compare_authority
 from synthorg.observability import get_logger
 from synthorg.observability.events.conflict import CONFLICT_STRATEGY_ERROR
 
@@ -155,7 +155,7 @@ def pick_highest_seniority(
     """
     best = conflict.positions[0]
     for pos in conflict.positions[1:]:
-        cmp = compare_seniority(pos.agent_level, best.agent_level)
+        cmp = compare_authority(pos.agent_role, best.agent_role)
         if cmp > 0:
             best = pos
         elif cmp == 0 and hierarchy is not None:

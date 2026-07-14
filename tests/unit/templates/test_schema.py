@@ -3,7 +3,6 @@
 import pytest
 from pydantic import JsonValue, ValidationError
 
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import CompanyType
 from synthorg.templates.enums import SkillPattern
 from synthorg.templates.schema import (
@@ -73,7 +72,6 @@ class TestTemplateAgentConfig:
         assert a.role == "Backend Developer"
         assert a.name is None
         assert a.merge_id is None
-        assert a.level == SeniorityLevel.MID
         assert a.model == {"priority": "balanced"}
         assert a.personality_preset is None
         assert a.department is None
@@ -82,12 +80,10 @@ class TestTemplateAgentConfig:
         a = TemplateAgentConfig(
             role="CEO",
             name="{{ company_name }} CEO",
-            level=SeniorityLevel.C_SUITE,
             model={"priority": "quality", "requires_reasoning": True},
             personality_preset="visionary_leader",
             department="executive",
         )
-        assert a.level == SeniorityLevel.C_SUITE
         assert a.personality_preset == "visionary_leader"
 
     def test_blank_role_rejected(self) -> None:
@@ -414,7 +410,7 @@ class TestCompanyTemplate:
                         "company_type": "custom",
                         "min_agents": 3,
                     },
-                    agents=({"role": "Dev", "level": "mid"},),
+                    agents=({"role": "Dev"},),
                 )
             )
 
@@ -422,7 +418,7 @@ class TestCompanyTemplate:
         self,
         make_template_dict: TemplateDictFactory,
     ) -> None:
-        agents = tuple({"role": f"Dev{i}", "level": "mid"} for i in range(5))
+        agents = tuple({"role": f"Dev{i}"} for i in range(5))
         with pytest.raises(ValidationError, match="maximum"):
             CompanyTemplate.model_validate(
                 make_template_dict(

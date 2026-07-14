@@ -30,7 +30,6 @@ type PersonalityOption = { value: string; label: string }
 const W = {
   agent: 'min-w-[13ch] flex-[1.2]',
   role: 'min-w-[12ch] flex-1',
-  level: 'w-[7ch] shrink-0',
   personality: 'min-w-[15ch] flex-[1.3]',
   model: 'min-w-[20ch] flex-[2]',
 }
@@ -45,15 +44,6 @@ function personalityPlaceholder(loading: boolean, count: number): string {
 
 function humanizeDept(dept: string): string {
   return dept.replaceAll('_', ' ')
-}
-
-function LevelBadge({ level }: { level: string | null | undefined }) {
-  if (!level) return <span className="text-xs text-text-muted">--</span>
-  return (
-    <span className="inline-flex w-fit rounded-full border border-border bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-text-muted">
-      {level}
-    </span>
-  )
 }
 
 interface RowProps {
@@ -116,9 +106,6 @@ function SetupAgentRow({
       </div>
       <span className={cn(W.role, 'truncate text-xs text-text-secondary')} title={agent.role}>
         {agent.role}
-      </span>
-      <span className={W.level}>
-        <LevelBadge level={agent.level} />
       </span>
       <div className={W.personality}>
         <SelectField
@@ -245,7 +232,6 @@ export function SetupAgentsTable({
         <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
           <span className={cn(W.agent, HEADER_CLASS)}>Agent</span>
           <span className={cn(W.role, HEADER_CLASS)}>Role</span>
-          <span className={cn(W.level, HEADER_CLASS)}>Level</span>
           <span className={cn(W.personality, HEADER_CLASS)}>Personality</span>
           <span className={cn(W.model, HEADER_CLASS)}>Model</span>
         </div>

@@ -20,7 +20,6 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
 )
 from synthorg.hr.enums import AgentStatus
-from synthorg.hr.seniority import SeniorityLevel
 
 pytestmark = pytest.mark.unit
 
@@ -38,7 +37,6 @@ def _identity(
         name=NotBlankStr("Casey"),
         role=NotBlankStr("CFO"),
         department=NotBlankStr("executive"),
-        level=SeniorityLevel.C_SUITE,
         personality=PersonalityConfig(
             traits=traits,
             communication_style=communication_style,
@@ -58,7 +56,6 @@ class TestRenderAgentSystemPrompt:
     def test_includes_identity_preamble(self) -> None:
         prompt = render_agent_system_prompt(_identity())
         assert "You are Casey, a CFO in the executive department." in prompt
-        assert "Seniority level: c_suite." in prompt
         assert "Personality traits: analytical." in prompt
         assert "Communication style: concise." in prompt
 

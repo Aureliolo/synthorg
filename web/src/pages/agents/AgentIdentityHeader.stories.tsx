@@ -12,7 +12,6 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     name: 'Alice Smith',
     role: 'Senior Backend Engineer',
     department: 'engineering',
-    level: 'senior',
     status: 'active',
     personality: {
       traits: ['analytical'], communication_style: 'direct', risk_tolerance: 'medium',
@@ -48,7 +47,7 @@ export const Active: Story = { args: { agent: makeAgent() } }
 export const OnLeave: Story = { args: { agent: makeAgent({ status: 'on_leave' }) } }
 export const Terminated: Story = { args: { agent: makeAgent({ status: 'terminated' }) } }
 export const NoAutonomy: Story = { args: { agent: makeAgent({ autonomy_level: null }) } }
-export const CSuite: Story = { args: { agent: makeAgent({ level: 'c_suite', role: 'Chief Technology Officer', autonomy_level: 'full' }) } }
+export const CSuite: Story = { args: { agent: makeAgent({ role: 'Chief Technology Officer', autonomy_level: 'full' }) } }
 
 // Snapshot the providers catalogue, seed the downgraded test model, and
 // restore the prior state on unmount so this story does not leak

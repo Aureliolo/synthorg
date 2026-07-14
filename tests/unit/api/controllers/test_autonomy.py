@@ -14,7 +14,6 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
@@ -30,14 +29,12 @@ def _url(agent_id: str = "agent-001") -> str:
 def _make_identity(
     *,
     agent_id: UUID,
-    level: SeniorityLevel = SeniorityLevel.MID,
 ) -> AgentIdentity:
     return AgentIdentity(
         id=agent_id,
         name=f"agent-{agent_id.hex[:8]}",
         role="developer",
         department="eng",
-        level=level,
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
     )
@@ -75,7 +72,7 @@ class TestUpdateAutonomy:
     ) -> None:
         agent_id = uuid4()
         await agent_registry.register(
-            _make_identity(agent_id=agent_id, level=SeniorityLevel.SENIOR),
+            _make_identity(agent_id=agent_id),
         )
 
         resp = await async_test_client.post(
@@ -100,24 +97,6 @@ class TestUpdateAutonomy:
         assert len(promote) == 1
         assert promote[0].metadata["agent_id"] == str(agent_id)
         assert promote[0].requested_by != "system"
-
-    async def test_seniority_violation_forbidden(
-        self,
-        async_test_client: LoopAsyncClient,
-        agent_registry: AgentRegistryService,
-    ) -> None:
-        agent_id = uuid4()
-        await agent_registry.register(
-            _make_identity(agent_id=agent_id, level=SeniorityLevel.JUNIOR),
-        )
-
-        resp = await async_test_client.post(
-            _url(str(agent_id)),
-            json={"level": "full", "reason": "wants full autonomy"},
-            headers=_WRITE_HEADERS,
-        )
-
-        assert resp.status_code == 403
 
     async def test_unknown_agent_not_found(
         self, async_test_client: LoopAsyncClient

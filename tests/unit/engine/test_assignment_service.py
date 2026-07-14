@@ -18,7 +18,6 @@ from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrat
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.errors import TaskAssignmentError
 from synthorg.engine.routing.scorer import AgentTaskScorer
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
@@ -31,14 +30,12 @@ def _model_config() -> ModelConfig:
 def _make_agent(
     name: str,
     *,
-    level: SeniorityLevel = SeniorityLevel.MID,
     primary_skills: tuple[str, ...] = (),
 ) -> AgentIdentity:
     return AgentIdentity(
         name=name,
         role="Developer",
         department="Engineering",
-        level=level,
         model=_model_config(),
         hiring_date=date(2026, 1, 1),
         skills=SkillSet(
@@ -81,7 +78,6 @@ class TestTaskAssignmentService:
         agent = _make_agent(
             "dev-1",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
         task = _make_task(estimated_complexity=Complexity.MEDIUM)
 

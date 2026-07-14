@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Literal
 
-from synthorg.core.agent import AgentIdentity, ToolPermissions
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock
 from synthorg.core.task import Task
 from synthorg.engine._security_factory import (
@@ -23,14 +23,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_UNAVAILABLE,
     EXECUTION_LOOP_STATIC_SELECTED,
 )
-from synthorg.observability.events.trust import (
-    TRUST_AGENT_AUTO_INITIALIZED,
-    TRUST_TOOLS_NARROWED,
-)
 from synthorg.security.protocol import SecurityInterceptionStrategy
-from synthorg.security.trust.enforcement import (
-    resolve_effective_tool_permissions,
-)
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
 
@@ -69,7 +62,6 @@ if TYPE_CHECKING:
     from synthorg.security.audit import AuditLog
     from synthorg.security.config import SecurityConfig
     from synthorg.security.policy_engine.protocol import PolicyEngine
-    from synthorg.security.trust.service import TrustService
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
     from synthorg.tools.registry import ToolRegistry
@@ -95,7 +87,6 @@ class AgentEngineFactoriesMixin:
     _interrupt_store: InterruptStore | None
     _injected_approval_gate: ApprovalGate | None
     _approval_gate: ApprovalGate | None
-    _trust_service: TrustService | None
     _policy_engine: PolicyEngine | None
     _policy_evaluation_mode: Literal["enforce", "log_only"]
     _mcp_self_consumer: MCPSelfConsumerProvider | None
@@ -305,45 +296,6 @@ class AgentEngineFactoriesMixin:
             cost_tracker=self._cost_tracker,
         )
 
-    def _trust_narrowed_tools(self, identity: AgentIdentity) -> ToolPermissions:
-        """Return the agent's tool permissions narrowed by earned trust.
-
-        No-op when no ``TrustService`` is wired (trust strategy
-        ``DISABLED``). Otherwise the agent's trust state is read
-        (auto-initialised at the configured initial level on first
-        sight so trust enforces from the first run rather than only
-        after an out-of-band seed), and the effective permissions are
-        the more restrictive of the identity level and the earned
-        trust level. A trust-strategy switch therefore changes which
-        tools the permission checker admits for the same agent.
-        """
-        if self._trust_service is None:
-            return identity.tools
-        agent_key = str(identity.id)
-        had_state = self._trust_service.get_trust_state(agent_key) is not None
-        # Atomic get-or-create: a concurrent first run for the same
-        # agent cannot double-initialise it (TOCTOU on the previous
-        # get-then-initialize pair).
-        state = self._trust_service.get_or_initialize_agent(agent_key)
-        if not had_state:
-            logger.info(
-                TRUST_AGENT_AUTO_INITIALIZED,
-                agent_id=agent_key,
-                trust_level=state.global_level.value,
-            )
-        effective, narrowed = resolve_effective_tool_permissions(
-            identity.tools,
-            state.global_level,
-        )
-        if narrowed:
-            logger.info(
-                TRUST_TOOLS_NARROWED,
-                agent_id=agent_key,
-                identity_level=identity.tools.access_level.value,
-                trust_level=state.global_level.value,
-            )
-        return effective
-
     def _make_tool_invoker(
         self,
         identity: AgentIdentity,
@@ -536,18 +488,18 @@ class AgentEngineFactoriesMixin:
         existing = list(registry.all_tools())
         registry = _ToolRegistry2([*existing, *discovery])
 
-        narrowed = self._trust_narrowed_tools(identity)
+        agent_tools = identity.tools
         if self._mcp_self_consumer is not None:
             mcp_tools = self._mcp_self_consumer(
                 identity,
-                narrowed.access_level,
+                agent_tools.access_level,
             )
             if mcp_tools:
                 registry = _ToolRegistry2(
                     [*registry.all_tools(), *mcp_tools],
                 )
 
-        checker = ToolPermissionChecker.from_permissions(narrowed)
+        checker = ToolPermissionChecker.from_permissions(agent_tools)
         interceptor = self._make_security_interceptor(effective_autonomy)
         invoker = ToolInvoker(
             registry,

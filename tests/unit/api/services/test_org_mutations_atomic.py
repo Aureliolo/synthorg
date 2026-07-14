@@ -24,7 +24,6 @@ from synthorg.api.dto_org import (
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.settings_protocol import SettingRow
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
@@ -387,7 +386,6 @@ async def _seed_agent(
             name=name,
             role="Developer",
             department=department,
-            level=SeniorityLevel.MID,
         ),
     )
 
@@ -440,7 +438,6 @@ class TestCASRetryCoverage:
                     name="bob-dev",
                     role="Developer",
                     department="Engineering",
-                    level=SeniorityLevel.MID,
                 ),
             )
 

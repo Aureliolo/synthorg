@@ -60,7 +60,6 @@ from synthorg.core.agent import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared.ids import as_uuid
 from tests.unit.communication.meeting.conftest import make_mock_agent_caller
 
@@ -90,14 +89,12 @@ async def _register(
     label: str,
     *,
     department: str,
-    level: SeniorityLevel,
 ) -> str:
     identity = AgentIdentity(
         id=as_uuid(label),
         name=label,
         role="Developer",
         department=department,
-        level=level,
         hiring_date=date(2026, 1, 15),
         personality=PersonalityConfig(traits=("analytical",)),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
@@ -141,12 +138,8 @@ async def test_meeting_conflict_reaches_human_escalation_queue() -> None:
         resolvers={ConflictResolutionStrategy.HUMAN: human_resolver},
     )
     registry = AgentRegistryService()
-    alice = await _register(
-        registry, "alice", department="Engineering", level=SeniorityLevel.SENIOR
-    )
-    bob = await _register(
-        registry, "bob", department="Platform", level=SeniorityLevel.MID
-    )
+    alice = await _register(registry, "alice", department="Engineering")
+    bob = await _register(registry, "bob", department="Platform")
     bridge = MeetingConflictEscalationBridge(
         conflict_service=service,
         agent_registry=registry,
@@ -185,12 +178,8 @@ async def test_hybrid_clear_winner_auto_resolves_without_escalation() -> None:
 
     store = InMemoryEscalationStore()
     registry = AgentRegistryService()
-    alice = await _register(
-        registry, "alice", department="Engineering", level=SeniorityLevel.SENIOR
-    )
-    bob = await _register(
-        registry, "bob", department="Platform", level=SeniorityLevel.MID
-    )
+    alice = await _register(registry, "alice", department="Engineering")
+    bob = await _register(registry, "bob", department="Platform")
     service = build_conflict_resolution_service(
         config=ConflictResolutionConfig(strategy=ConflictResolutionStrategy.HYBRID),
         company=make_company(),
@@ -223,12 +212,8 @@ async def test_debate_strategy_uses_the_shared_judge_through_factory() -> None:
 
     store = InMemoryEscalationStore()
     registry = AgentRegistryService()
-    alice = await _register(
-        registry, "alice", department="Engineering", level=SeniorityLevel.SENIOR
-    )
-    bob = await _register(
-        registry, "bob", department="Platform", level=SeniorityLevel.MID
-    )
+    alice = await _register(registry, "alice", department="Engineering")
+    bob = await _register(registry, "bob", department="Platform")
     service = build_conflict_resolution_service(
         # A named judge sidesteps shared-manager lookup for cross-dept agents;
         # the point here is that the shared evaluator reaches the debate arm.

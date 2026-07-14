@@ -128,9 +128,6 @@ from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.project_workspace_protocol import (
     ProjectWorkspaceRepository,
 )
-from synthorg.persistence.promotion_history_protocol import (
-    PromotionHistoryRepository,
-)
 from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
 from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
@@ -150,10 +147,6 @@ from synthorg.persistence.tracked_container_protocol import (
 from synthorg.persistence.training_protocol import (
     TrainingPlanRepository,
     TrainingResultRepository,
-)
-from synthorg.persistence.trust_state_protocol import (
-    TrustChangeHistoryRepository,
-    TrustStateRepository,
 )
 from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
@@ -249,9 +242,6 @@ class _BackendRepositoryAccessors:
     _org_facts: OrgFactRepository | None
     _ontology_entities: OntologyEntityRepository | None
     _ontology_drift: OntologyDriftReportRepository | None
-    _trust_states: TrustStateRepository | None
-    _trust_change_history: TrustChangeHistoryRepository | None
-    _promotion_history: PromotionHistoryRepository | None
     _hiring_requests: HiringRequestRepository | None
     _agent_contributions: AgentContributionRepository | None
     _audit_chain_entries: AuditChainRepository | None
@@ -771,30 +761,6 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._ontology_drift,
             "ontology_drift",
-        )
-
-    @property
-    def trust_states(self) -> TrustStateRepository:
-        """Repository for per-agent progressive trust state."""
-        return self._require_connected(
-            self._trust_states,
-            "trust_states",
-        )
-
-    @property
-    def trust_change_history(self) -> TrustChangeHistoryRepository:
-        """Repository for the trust-level change audit trail."""
-        return self._require_connected(
-            self._trust_change_history,
-            "trust_change_history",
-        )
-
-    @property
-    def promotion_history(self) -> PromotionHistoryRepository:
-        """Repository for the append-only promotion/demotion history."""
-        return self._require_connected(
-            self._promotion_history,
-            "promotion_history",
         )
 
     @property

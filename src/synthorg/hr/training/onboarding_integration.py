@@ -95,7 +95,6 @@ class TrainingOnboardingBridge:
         plan = TrainingPlan.build(
             new_agent_id=str(identity.id),
             new_agent_role=str(identity.role),
-            new_agent_level=identity.level,
             new_agent_department=department,
             override_sources=override_sources,
             skip_training=skip_training,

@@ -21,7 +21,6 @@ from synthorg.core.normalization import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.enums import WorkflowType
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.memory.config import EmbedderOverrideConfig
 from synthorg.observability import get_logger
@@ -176,7 +175,6 @@ class TemplateAgentConfig(BaseModel):
         role: Built-in role name (case-insensitive match to role catalog).
         name: Agent name (may contain Jinja2 placeholders).  ``None``
             triggers auto-generation during rendering.
-        level: Seniority level override.
         model: A model reference: either an explicit configured model
             id/alias string, or a structured ``ModelRequirement`` dict with
             ``priority`` / ``min_context`` / ``requires_*`` capability flags
@@ -205,10 +203,6 @@ class TemplateAgentConfig(BaseModel):
     name: NotBlankStr | None = Field(
         default=None,
         description="Agent name (may have Jinja2 vars); None triggers auto-generation",
-    )
-    level: SeniorityLevel = Field(
-        default=SeniorityLevel.MID,
-        description="Seniority level",
     )
     model: NotBlankStr | dict[str, JsonValue] = Field(
         default_factory=_default_model,

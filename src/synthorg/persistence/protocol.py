@@ -148,9 +148,6 @@ from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.project_workspace_protocol import (
     ProjectWorkspaceRepository,
 )
-from synthorg.persistence.promotion_history_protocol import (
-    PromotionHistoryRepository,
-)
 from synthorg.persistence.provider_audit_protocol import (
     ProviderAuditRepo,
 )
@@ -180,10 +177,6 @@ from synthorg.persistence.tracked_container_protocol import (
 from synthorg.persistence.training_protocol import (
     TrainingPlanRepository,
     TrainingResultRepository,
-)
-from synthorg.persistence.trust_state_protocol import (
-    TrustChangeHistoryRepository,
-    TrustStateRepository,
 )
 from synthorg.persistence.user_protocol import (
     ApiKeyRepository,
@@ -745,21 +738,6 @@ class PersistenceBackend(Protocol):
     @property
     def ontology_drift(self) -> OntologyDriftReportRepository:
         """Repository for ontology drift reports."""
-        ...
-
-    @property
-    def trust_states(self) -> TrustStateRepository:
-        """Repository for per-agent progressive trust state."""
-        ...
-
-    @property
-    def trust_change_history(self) -> TrustChangeHistoryRepository:
-        """Repository for the trust-level change audit trail."""
-        ...
-
-    @property
-    def promotion_history(self) -> PromotionHistoryRepository:
-        """Repository for the append-only promotion/demotion history."""
         ...
 
     @property

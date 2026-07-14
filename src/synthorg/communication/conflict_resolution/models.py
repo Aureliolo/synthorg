@@ -22,7 +22,6 @@ from synthorg.communication.enums import (
     ConflictType,
 )
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 
 _MIN_POSITIONS: Final[int] = 2
 
@@ -59,7 +58,7 @@ class ConflictPosition(BaseModel):
     Attributes:
         agent_id: Identifier of the agent taking the position.
         agent_department: Department the agent belongs to.
-        agent_level: Seniority level of the agent.
+        agent_role: Role name of the agent.
         position: Summary of the agent's stance.
         reasoning: Detailed justification for the position.
         timestamp: When the position was stated.
@@ -69,7 +68,7 @@ class ConflictPosition(BaseModel):
 
     agent_id: NotBlankStr = Field(description="Agent taking the position")
     agent_department: NotBlankStr = Field(description="Agent's department")
-    agent_level: SeniorityLevel = Field(description="Agent seniority level")
+    agent_role: NotBlankStr = Field(description="Agent role name")
     position: NotBlankStr = Field(description="Summary of the stance")
     reasoning: NotBlankStr = Field(description="Justification for the position")
     timestamp: AwareDatetime = Field(description="When position was stated")

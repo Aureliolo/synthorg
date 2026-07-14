@@ -9,7 +9,6 @@ const mockAgents: AgentConfig[] = [
     name: 'alice',
     role: 'Lead Developer',
     department: 'engineering',
-    level: 'lead',
     status: 'active',
     personality: {
       traits: ['analytical'], communication_style: 'direct',
@@ -34,7 +33,6 @@ const mockAgents: AgentConfig[] = [
     name: 'bob',
     role: 'QA Engineer',
     department: 'engineering',
-    level: 'mid',
     status: 'active',
     personality: {
       traits: ['methodical'], communication_style: 'formal',
@@ -59,7 +57,6 @@ const mockAgents: AgentConfig[] = [
     name: 'carol',
     role: 'Product Manager',
     department: 'product',
-    level: 'senior',
     status: 'onboarding',
     personality: {
       traits: ['creative'], communication_style: 'friendly',

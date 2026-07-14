@@ -155,7 +155,7 @@ REST (read-only, web dashboard):
 
 Agent tools (in-process; per-task binding):
 
-- `WriteLivingDocTool` (`docs:write` action type, admin via TrustService)
+- `WriteLivingDocTool` (`docs:write` action type, admin-gated via `require_admin_guardrails`)
 - `SearchLivingDocsTool` (`memory:read` action type)
 
 MCP handlers (operator-driven, via `synthorg.meta.mcp.domains.docs`):

@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.curation.llm_curated import LLMCurated
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.providers.errors import ProviderError
@@ -43,7 +42,6 @@ class TestLLMCurated:
         result = await curation.curate(
             items,
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             content_type=ContentType.PROCEDURAL,
         )
         # Should use fallback (RelevanceScoreCuration)
@@ -55,7 +53,6 @@ class TestLLMCurated:
         result = await curation.curate(
             (),
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             content_type=ContentType.PROCEDURAL,
         )
         assert result == ()
@@ -71,7 +68,6 @@ class TestLLMCurated:
         result = await curation.curate(
             items,
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             content_type=ContentType.PROCEDURAL,
         )
         # Should select indices 0 and 2
@@ -89,7 +85,6 @@ class TestLLMCurated:
         result = await curation.curate(
             items,
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             content_type=ContentType.PROCEDURAL,
         )
         # Should fall back to RelevanceScoreCuration
@@ -106,7 +101,6 @@ class TestLLMCurated:
         result = await curation.curate(
             items,
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             content_type=ContentType.PROCEDURAL,
         )
         # No valid indices parsed, should fall back

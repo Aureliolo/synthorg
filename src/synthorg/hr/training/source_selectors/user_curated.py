@@ -8,7 +8,6 @@ import asyncio
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_AGENT_NOT_FOUND,
@@ -47,14 +46,12 @@ class UserCuratedList:
         self,
         *,
         new_agent_role: NotBlankStr,  # noqa: ARG002
-        new_agent_level: SeniorityLevel,  # noqa: ARG002
         new_agent_department: NotBlankStr | None = None,  # noqa: ARG002
     ) -> tuple[NotBlankStr, ...]:
         """Return the user-provided agent IDs, filtering invalid ones.
 
         Args:
             new_agent_role: Role of the new hire (unused).
-            new_agent_level: Seniority level (unused).
             new_agent_department: Department of the new hire (unused).
 
         Returns:

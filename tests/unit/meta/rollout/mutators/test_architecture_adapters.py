@@ -11,7 +11,6 @@ from synthorg.core.role import Role
 from synthorg.core.role_record import RoleRecord
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.service import WorkflowService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.errors import RollbackMutationDeniedError
 from synthorg.meta.rollout.mutators import build_architecture_adapters
 from synthorg.meta.rollout.mutators.architecture_mutator import ArchitectureAdapter
@@ -31,7 +30,7 @@ def _role_record(name: str) -> RoleRecord:
         name=NotBlankStr(name),
         department=DepartmentName.ENGINEERING,
         required_skills=(NotBlankStr("python"),),
-        authority_level=SeniorityLevel.SENIOR,
+        reports_to=NotBlankStr("Software Architect"),
         tool_access=(NotBlankStr("git"),),
         description=f"Role {name}.",
     )

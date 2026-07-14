@@ -16,7 +16,6 @@ from pydantic import (
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.templates.enums import PostureName, SkillPattern
 from synthorg.templates.model_requirements import ModelTier
 
@@ -223,7 +222,6 @@ class SetupAgentSummary(BaseModel):
         name: Agent display name.
         role: Agent role.
         department: Assigned department.
-        level: Seniority level (``None`` if not specified).
         model_provider: LLM provider name (``None`` if unassigned).
         model_id: Model identifier (``None`` if unassigned).
         tier: Original tier requirement from the template.
@@ -235,7 +233,6 @@ class SetupAgentSummary(BaseModel):
     name: NotBlankStr
     role: NotBlankStr
     department: NotBlankStr
-    level: SeniorityLevel | None = None
     model_provider: NotBlankStr | None = None
     model_id: NotBlankStr | None = None
     tier: ModelTier = "medium"
@@ -337,7 +334,6 @@ class SetupAgentRequest(BaseModel):
     Attributes:
         name: Agent display name.
         role: Agent role name.
-        level: Seniority level.
         personality_preset: Personality preset name.
         model_provider: Provider name for the agent's model.
         model_id: Model identifier from that provider.
@@ -349,7 +345,6 @@ class SetupAgentRequest(BaseModel):
 
     name: NotBlankStr = Field(max_length=200, examples=["Alice Lin", "Bob Chen"])
     role: NotBlankStr = Field(max_length=100, examples=["CEO", "Engineer", "Designer"])
-    level: SeniorityLevel = Field(default=SeniorityLevel.MID)
     personality_preset: NotBlankStr = Field(
         default="pragmatic_builder",
         max_length=100,

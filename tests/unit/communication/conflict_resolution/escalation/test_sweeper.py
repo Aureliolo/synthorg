@@ -21,7 +21,6 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictPosition,
 )
 from synthorg.communication.enums import ConflictType
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_pk, as_uuid, sid
 
 pytestmark = pytest.mark.unit
@@ -41,7 +40,7 @@ def _make_escalation(
             ConflictPosition(
                 agent_id="agent-a",
                 agent_department="engineering",
-                agent_level=SeniorityLevel.SENIOR,
+                agent_role="Software Architect",
                 position="PostgreSQL",
                 reasoning="Strong consistency",
                 timestamp=datetime.now(UTC),
@@ -49,7 +48,7 @@ def _make_escalation(
             ConflictPosition(
                 agent_id="agent-b",
                 agent_department="engineering",
-                agent_level=SeniorityLevel.SENIOR,
+                agent_role="Software Architect",
                 position="SQLite",
                 reasoning="Simpler ops",
                 timestamp=datetime.now(UTC),

@@ -1957,13 +1957,6 @@ class TestDomainErrorFamilyClassVarHttpMapping:
             ),
             (
                 "synthorg.hr.errors",
-                "PromotionCooldownError",
-                409,
-                ErrorCode.PROMOTION_COOLDOWN_ACTIVE,
-                ErrorCategory.CONFLICT,
-            ),
-            (
-                "synthorg.hr.errors",
                 "HRError",
                 500,
                 ErrorCode.INTERNAL_ERROR,
@@ -1979,13 +1972,6 @@ class TestDomainErrorFamilyClassVarHttpMapping:
             (
                 "synthorg.hr.scaling.errors",
                 "ScalingError",
-                500,
-                ErrorCode.INTERNAL_ERROR,
-                ErrorCategory.INTERNAL,
-            ),
-            (
-                "synthorg.security.trust.errors",
-                "TrustError",
                 500,
                 ErrorCode.INTERNAL_ERROR,
                 ErrorCategory.INTERNAL,

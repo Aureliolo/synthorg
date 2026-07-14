@@ -71,7 +71,6 @@ template:
       _remove: true
     # Override Backend Developer: different model and personality
     - role: "Backend Developer"
-      level: "mid"
       model:
         priority: "balanced"
         requires_tools: true
@@ -79,7 +78,6 @@ template:
       department: "engineering"
     # Add Technical Writer in engineering (different dept from parent's product)
     - role: "Technical Writer"
-      level: "mid"
       model:
         priority: "balanced"
       personality_preset: "technical_communicator"

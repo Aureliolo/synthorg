@@ -13,10 +13,10 @@ from enum import StrEnum
 from functools import cmp_to_key
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.authority import compare_authority
 from synthorg.core.task import Task
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.routing.scorer import AgentTaskScorer
-from synthorg.hr.seniority import compare_seniority
 from synthorg.observability import get_logger
 from synthorg.observability.events.pipeline import PIPELINE_PROJECT_OWNER_SELECTED
 
@@ -30,31 +30,18 @@ class OwnerSelectionMethod(StrEnum):
     SENIORITY_FALLBACK = "seniority_fallback"
 
 
-def select_project_owner(
+def _pick_owner(
     task: Task,
     agents: tuple[AgentIdentity, ...],
-    *,
     scorer: AgentTaskScorer,
-) -> AgentIdentity | None:
-    """Pick the accountable owner for a planned initiative.
-
-    Scores every candidate against the objective (via the same
-    :class:`AgentTaskScorer` the router uses) and returns the top-scoring
-    one. When none clears the routing threshold, the most senior agent is
-    chosen so a non-empty roster still yields an owner. Ties break on a stable
-    lexicographic id so the pick is deterministic.
-
-    Args:
-        task: The objective task the initiative delivers.
-        agents: The active roster to staff the owner from.
-        scorer: Shared agent-task scorer (also used by the router).
+) -> tuple[AgentIdentity, OwnerSelectionMethod, float]:
+    """Choose the owner and record how the choice was made.
 
     Returns:
-        The owning :class:`AgentIdentity`, or ``None`` when ``agents`` is
-        empty (an unstaffed roster leaves the initiative unowned).
+        ``(owner, method, score)`` -- the top-scoring viable candidate, or the
+        most senior agent when none clears the routing threshold. Ties break on
+        a stable lexicographic id so the pick is deterministic.
     """
-    if not agents:
-        return None
     proxy = SubtaskDefinition(
         id=str(task.id),
         title=task.title,
@@ -68,12 +55,37 @@ def select_project_owner(
     ]
     if viable:
         best = max(viable, key=lambda c: (c.score, str(c.agent_identity.id)))
-        owner = best.agent_identity
-        selection, score = OwnerSelectionMethod.SCORED, best.score
-    else:
-        seniority_key = cmp_to_key(compare_seniority)
-        owner = max(agents, key=lambda a: (seniority_key(a.level), str(a.id)))
-        selection, score = OwnerSelectionMethod.SENIORITY_FALLBACK, 0.0
+        return best.agent_identity, OwnerSelectionMethod.SCORED, best.score
+    authority_key = cmp_to_key(compare_authority)
+    owner = max(agents, key=lambda a: (authority_key(a.role), str(a.id)))
+    return owner, OwnerSelectionMethod.SENIORITY_FALLBACK, 0.0
+
+
+def select_project_owner(
+    task: Task,
+    agents: tuple[AgentIdentity, ...],
+    *,
+    scorer: AgentTaskScorer,
+) -> AgentIdentity | None:
+    """Pick the accountable owner for a planned initiative.
+
+    Scores every candidate against the objective (via the same
+    :class:`AgentTaskScorer` the router uses) and returns the top-scoring
+    one. When none clears the routing threshold, the most senior agent is
+    chosen so a non-empty roster still yields an owner.
+
+    Args:
+        task: The objective task the initiative delivers.
+        agents: The active roster to staff the owner from.
+        scorer: Shared agent-task scorer (also used by the router).
+
+    Returns:
+        The owning :class:`AgentIdentity`, or ``None`` when ``agents`` is
+        empty (an unstaffed roster leaves the initiative unowned).
+    """
+    if not agents:
+        return None
+    owner, selection, score = _pick_owner(task, agents, scorer)
     logger.info(
         PIPELINE_PROJECT_OWNER_SELECTED,
         task_id=str(task.id),

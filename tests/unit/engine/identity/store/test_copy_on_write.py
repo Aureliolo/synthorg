@@ -9,21 +9,19 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.engine.identity.store.copy_on_write import CopyOnWriteIdentityStore
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.versioning.models import VersionSnapshot
 from synthorg.versioning.service import VersioningService
 
 
 def _make_identity(
     *,
-    level: SeniorityLevel = SeniorityLevel.MID,
+    role: str = "mid-role",
 ) -> AgentIdentity:
     return AgentIdentity(
         id=uuid4(),
         name="cow-agent",
-        role="test-role",
+        role=role,
         department="engineering",
-        level=level,
         model=ModelConfig(
             provider="test-provider",
             model_id="test-small-001",
@@ -64,7 +62,7 @@ class TestCopyOnWritePut:
         store = CopyOnWriteIdentityStore(registry=registry, versioning=versioning)
 
         evolved = identity.model_copy(
-            update={"level": SeniorityLevel.SENIOR},
+            update={"role": "senior-role"},
         )
         result = await store.put(
             str(identity.id),
@@ -80,9 +78,9 @@ class TestCopyOnWriteGetCurrent:
 
     @pytest.mark.unit
     async def test_uses_pointer_when_set(self) -> None:
-        identity_v1 = _make_identity(level=SeniorityLevel.JUNIOR)
+        identity_v1 = _make_identity(role="junior-role")
         identity_v2 = identity_v1.model_copy(
-            update={"level": SeniorityLevel.SENIOR},
+            update={"role": "senior-role"},
         )
         snap_v1 = _make_snapshot(identity_v1, version=1)
 
@@ -98,7 +96,7 @@ class TestCopyOnWriteGetCurrent:
 
         result = await store.get_current(str(identity_v1.id))
         assert result is not None
-        assert result.level == SeniorityLevel.JUNIOR
+        assert result.role == "junior-role"
 
     @pytest.mark.unit
     async def test_falls_back_to_registry(self) -> None:
@@ -120,9 +118,9 @@ class TestCopyOnWriteSetCurrent:
 
     @pytest.mark.unit
     async def test_rollback_updates_pointer(self) -> None:
-        identity_v1 = _make_identity(level=SeniorityLevel.JUNIOR)
+        identity_v1 = _make_identity(role="junior-role")
         identity_v2 = identity_v1.model_copy(
-            update={"level": SeniorityLevel.SENIOR},
+            update={"role": "senior-role"},
         )
         snap_v1 = _make_snapshot(identity_v1, version=1)
 
@@ -137,7 +135,7 @@ class TestCopyOnWriteSetCurrent:
         store._current_version[str(identity_v1.id)] = 2
 
         restored = await store.set_current(str(identity_v1.id), 1)
-        assert restored.level == SeniorityLevel.JUNIOR
+        assert restored.role == "junior-role"
         assert store._current_version[str(identity_v1.id)] == 1
 
         # Repo.save_version should NOT have been called (no append).

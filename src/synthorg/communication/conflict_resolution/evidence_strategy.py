@@ -24,8 +24,8 @@ from synthorg.communication.conflict_resolution.models import (
     DissentRecord,
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
+from synthorg.core.authority import compare_authority
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import compare_seniority
 from synthorg.observability import get_logger
 from synthorg.observability.events.conflict import CONFLICT_EVIDENCE_DECIDED
 
@@ -119,7 +119,7 @@ class EvidenceWeightedResolver:
             pos_score = score_position(pos)
             if pos_score > best_score or (
                 pos_score == best_score
-                and compare_seniority(pos.agent_level, best.agent_level) > 0
+                and compare_authority(pos.agent_role, best.agent_role) > 0
             ):
                 best = pos
                 best_score = pos_score

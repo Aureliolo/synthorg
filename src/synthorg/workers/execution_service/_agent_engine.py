@@ -648,7 +648,6 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         try:
             return self._autonomy_resolver.resolve(
                 agent_level=identity.autonomy_level,
-                seniority=identity.level,
             )
         except ValueError as exc:
             logger.warning(

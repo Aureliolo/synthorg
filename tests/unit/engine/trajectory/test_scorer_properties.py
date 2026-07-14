@@ -23,7 +23,6 @@ from synthorg.engine.loop_protocol import (
 from synthorg.engine.trajectory.models import CandidateResult
 from synthorg.engine.trajectory.scorer import TrajectoryScorer
 from synthorg.execution.turn import TurnRecord
-from synthorg.hr.seniority import SeniorityLevel
 
 
 def _make_context() -> AgentContext:
@@ -32,7 +31,6 @@ def _make_context() -> AgentContext:
         name="test-agent",
         role="Developer",
         department="Engineering",
-        level=SeniorityLevel.JUNIOR,
         personality=PersonalityConfig(),
         skills=SkillSet(),
         authority=Authority(),

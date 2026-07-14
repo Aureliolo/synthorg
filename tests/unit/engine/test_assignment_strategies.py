@@ -18,7 +18,6 @@ from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrat
 from synthorg.engine.errors import NoEligibleAgentError, TaskAssignmentError
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.hr.enums import AgentStatus
-from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_assignment_agent, make_assignment_task
 
@@ -148,13 +147,11 @@ class TestRoleBasedAssignmentStrategy:
         backend = make_assignment_agent(
             "backend",
             primary_skills=("python", "api-design"),
-            level=SeniorityLevel.MID,
         )
         # Frontend dev has non-matching skills
         frontend = make_assignment_agent(
             "frontend",
             primary_skills=("typescript", "react"),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -178,12 +175,10 @@ class TestRoleBasedAssignmentStrategy:
         agent1 = make_assignment_agent(
             "dev-1",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
         agent2 = make_assignment_agent(
             "dev-2",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -207,7 +202,6 @@ class TestRoleBasedAssignmentStrategy:
         agent = make_assignment_agent(
             "qa",
             primary_skills=("testing",),
-            level=SeniorityLevel.JUNIOR,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.EPIC)
@@ -224,21 +218,22 @@ class TestRoleBasedAssignmentStrategy:
         assert result.selected is None
         assert "threshold" in result.reason
 
-    def test_no_required_skills_seniority_only_fallback(self) -> None:
-        """Without required_skills, scoring falls back to seniority."""
+    def test_no_required_skills_role_match_fallback(self) -> None:
+        """Without required_skills, a role match alone still scores a fit."""
         scorer = AgentTaskScorer()
         strategy = _role_based_strategy(scorer)
 
-        agent = make_assignment_agent("dev-1", level=SeniorityLevel.MID)
+        agent = make_assignment_agent("dev-1")
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
         request = AssignmentRequest(
             task=task,
             available_agents=(agent,),
+            required_role="Developer",
         )
 
         result = strategy.assign(request)
 
-        # Should still produce a result based on seniority alignment
+        # Role match alone lifts the score above the eligibility floor.
         assert result.selected is not None
         assert result.selected.score > 0.0
 
@@ -259,12 +254,10 @@ class TestLoadBalancedAssignmentStrategy:
         busy = make_assignment_agent(
             "busy-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
         idle = make_assignment_agent(
             "idle-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -299,12 +292,10 @@ class TestLoadBalancedAssignmentStrategy:
             "better-dev",
             primary_skills=("python", "api-design"),
             role="Backend Developer",
-            level=SeniorityLevel.MID,
         )
         other_dev = make_assignment_agent(
             "other-dev",
             primary_skills=("testing",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -338,12 +329,10 @@ class TestLoadBalancedAssignmentStrategy:
         best = make_assignment_agent(
             "best-dev",
             primary_skills=("python", "api-design"),
-            level=SeniorityLevel.MID,
         )
         other = make_assignment_agent(
             "other-dev",
             primary_skills=("testing",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -382,7 +371,6 @@ class TestLoadBalancedAssignmentStrategy:
             make_assignment_agent(
                 f"dev-{i}",
                 primary_skills=("python",),
-                level=SeniorityLevel.MID,
             )
             for i in range(3)
         )
@@ -414,7 +402,6 @@ class TestLoadBalancedAssignmentStrategy:
         agent = make_assignment_agent(
             "qa",
             primary_skills=("testing",),
-            level=SeniorityLevel.JUNIOR,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.EPIC)
@@ -430,6 +417,30 @@ class TestLoadBalancedAssignmentStrategy:
 
         assert result.selected is None
 
+    def test_unconstrained_subtask_assigns_best_available(self) -> None:
+        """A subtask with no requirement never deadlocks on a staffed pool.
+
+        With neither a required role nor required skills every agent scores
+        zero; rather than return no-eligible, the best available agent is
+        assigned and flagged low-confidence.
+        """
+        scorer = AgentTaskScorer()
+        strategy = _load_balanced_strategy(scorer)
+
+        agent = make_assignment_agent("qa", primary_skills=("testing",))
+        task = make_assignment_task(estimated_complexity=Complexity.EPIC)
+        request = AssignmentRequest(
+            task=task,
+            available_agents=(agent,),
+            min_score=0.5,
+        )
+
+        result = strategy.assign(request)
+
+        assert result.selected is not None
+        assert result.selected.agent_identity.name == "qa"
+        assert result.low_confidence is True
+
     def test_partial_workload_data_falls_back(self) -> None:
         """Incomplete workload data falls back to score-based ranking."""
         scorer = AgentTaskScorer()
@@ -438,12 +449,10 @@ class TestLoadBalancedAssignmentStrategy:
         known = make_assignment_agent(
             "known-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
         unknown = make_assignment_agent(
             "unknown-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -483,12 +492,10 @@ class TestScorerBasedStrategies:
         active = make_assignment_agent(
             "active-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
         on_leave = make_assignment_agent(
             "leave-dev",
             primary_skills=("python", "api-design"),
-            level=SeniorityLevel.SENIOR,
             status=AgentStatus.ON_LEAVE,
         )
 
@@ -518,12 +525,10 @@ class TestMaxConcurrentTasksEnforcement:
             "busy-dev",
             primary_skills=("python", "api-design"),
             role="Backend Developer",
-            level=SeniorityLevel.SENIOR,
         )
         available = make_assignment_agent(
             "free-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -560,12 +565,10 @@ class TestMaxConcurrentTasksEnforcement:
             "busy-dev",
             primary_skills=("python", "api-design"),
             role="Backend Developer",
-            level=SeniorityLevel.SENIOR,
         )
         other = make_assignment_agent(
             "other-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -602,12 +605,10 @@ class TestMaxConcurrentTasksEnforcement:
         dev1 = make_assignment_agent(
             "dev-1",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
         dev2 = make_assignment_agent(
             "dev-2",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -642,7 +643,6 @@ class TestMaxConcurrentTasksEnforcement:
         dev = make_assignment_agent(
             "solo-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)

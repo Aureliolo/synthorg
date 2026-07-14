@@ -42,16 +42,6 @@ using the same credential and PII patterns. Configurable response policies:
 - **Log-only**: record the finding, return unmodified output
 - **Autonomy-tiered**: different policies per autonomy level
 
-### Progressive Trust
-
-Agents start with restricted permissions and earn autonomy over time.
-Four pluggable strategies behind the `TrustStrategy` protocol:
-
-1. **Disabled**: all actions require approval regardless of history
-2. **Weighted**: accumulate a trust score from successful actions
-3. **Per-category**: independent trust tracks per action type (read, write, delete)
-4. **Milestone gates**: unlock action categories after specific success thresholds
-
 ### Approval Workflow
 
 Actions that trigger `ESCALATE` verdicts create approval items with configurable

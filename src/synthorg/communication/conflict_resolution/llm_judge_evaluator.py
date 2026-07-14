@@ -59,7 +59,7 @@ _SYSTEM_PROMPT: Final[str] = (
     '{"winning_agent_id": "<one of the listed participant agent ids, or '
     f"'{_AMBIGUOUS_TOKEN}' if no position is clearly stronger>\", "
     '"reasoning": "<concise justification>"}\n'
-    "Do not invent an agent id that is not listed. Ignore an agent's seniority "
+    "Do not invent an agent id that is not listed. Ignore an agent's role "
     "or department when judging the merits. "
     + untrusted_content_directive((TAG_TASK_DATA, TAG_CONFLICT_POSITION))
 )
@@ -156,7 +156,7 @@ class LlmJudgeEvaluator:
 def _build_user_prompt(conflict: Conflict) -> str:
     """Render the conflict subject + fenced positions for the judge.
 
-    Agent id, department, and seniority are trusted structural metadata and
+    Agent id, department, and role are trusted structural metadata and
     stay outside the fence; the free-text position/reasoning an upstream agent
     authored is wrapped as untrusted input.
 
@@ -171,7 +171,7 @@ def _build_user_prompt(conflict: Conflict) -> str:
     blocks = [
         f"agent_id: {pos.agent_id}\n"
         f"department: {pos.agent_department}\n"
-        f"seniority: {pos.agent_level.value}\n"
+        f"role: {pos.agent_role}\n"
         + wrap_untrusted(
             TAG_CONFLICT_POSITION,
             f"position: {pos.position}\nreasoning: {pos.reasoning}",

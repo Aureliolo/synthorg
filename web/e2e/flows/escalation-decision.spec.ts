@@ -40,7 +40,7 @@ const ESCALATION = {
         {
           agent_id: 'agent-a',
           agent_department: 'Engineering',
-          agent_level: 'senior',
+          agent_role: 'Senior Engineer',
           position: 'Prioritise the payments migration',
           reasoning: 'Revenue risk is highest there.',
           timestamp: '2026-04-19T00:00:00Z',
@@ -48,7 +48,7 @@ const ESCALATION = {
         {
           agent_id: 'agent-b',
           agent_department: 'Engineering',
-          agent_level: 'lead',
+          agent_role: 'Lead Engineer',
           position: 'Prioritise the onboarding rewrite',
           reasoning: 'Churn is climbing this quarter.',
           timestamp: '2026-04-19T00:00:00Z',

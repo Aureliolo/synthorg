@@ -1,7 +1,7 @@
 """SmartStrategy -- priority-based signal merging for model routing.
 
-Merges override / task-type / role / seniority / cheapest / global-chain
-signals in priority order.
+Merges override / task-type / cheapest / global-chain signals in
+priority order.
 """
 
 from typing import NoReturn
@@ -15,8 +15,6 @@ from synthorg.observability.events.routing import (
 
 from ._strategy_helpers import (
     _cheapest_within_budget,
-    _try_role_rules,
-    _try_seniority_default,
     _try_task_type_rules,
     _walk_fallback_chain,
 )
@@ -31,9 +29,8 @@ logger = get_logger(__name__)
 class SmartStrategy:
     """Combined strategy with priority-based signal merging.
 
-    Priority order: model_override > task_type rules > role_level
-    rules > seniority default > cheapest available (budget-aware) >
-    global fallback_chain > exhausted.
+    Priority order: model_override > task_type rules > cheapest
+    available (budget-aware) > global fallback_chain > exhausted.
     """
 
     @property
@@ -51,8 +48,8 @@ class SmartStrategy:
 
         Returns:
             A ``RoutingDecision`` from the highest-priority signal that
-            resolves (override > task_type > role > seniority > cheapest
-            > global fallback chain).
+            resolves (override > task_type > cheapest > global fallback
+            chain).
 
         Raises:
             NoAvailableModelError: If all candidates are exhausted.
@@ -62,17 +59,6 @@ class SmartStrategy:
             or _try_task_type_rules(
                 request,
                 config,
-                resolver,
-                self.name,
-            )
-            or _try_role_rules(
-                request,
-                config,
-                resolver,
-                self.name,
-            )
-            or _try_seniority_default(
-                request,
                 resolver,
                 self.name,
             )

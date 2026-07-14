@@ -33,12 +33,10 @@ from synthorg.engine.stagnation.models import StagnationDetectionConfig
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.performance.config import PerformanceConfig
-from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.persistence.config import PersistenceConfig
 from synthorg.security.config import SecurityConfig
-from synthorg.security.trust.config import TrustConfig
 from synthorg.tools.disclosure_config import ToolDisclosureConfig
 from synthorg.tools.mcp.config import MCPConfig
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
@@ -117,8 +115,6 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     sandboxing = SandboxingConfig()
     mcp = MCPConfig()
     security = SecurityConfig()
-    trust = TrustConfig()
-    promotion = PromotionConfig()
     performance = PerformanceConfig()
     # Pinned to the valid default: polyfactory would otherwise synthesise an
     # EvolutionConfig whose nested ShadowEvaluationConfig fails its cross-field
@@ -169,7 +165,6 @@ agents:
   - name: Alice
     role: Backend Developer
     department: Engineering
-    level: senior
 budget:
   total_monthly: 500.0
   alerts:

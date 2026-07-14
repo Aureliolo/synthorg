@@ -8,7 +8,6 @@ import { ROUTES } from '@/router/routes'
 import { useScalingData } from '@/hooks/useScalingData'
 
 import { DecisionHistory } from './scaling/DecisionHistory'
-import { PromotionCycleSection } from './scaling/PromotionCycleSection'
 import { ScalingMetrics } from './scaling/ScalingMetrics'
 import { ScalingSkeleton } from './scaling/ScalingSkeleton'
 import { SignalGauges } from './scaling/SignalGauges'
@@ -71,11 +70,6 @@ export default function ScalingPage() {
         signals={signals}
         error={error}
       />
-
-      {/* Cluster-wide promotion cycle */}
-      <ErrorBoundary level="section">
-        <PromotionCycleSection />
-      </ErrorBoundary>
     </div>
   )
 }

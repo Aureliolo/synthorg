@@ -20,7 +20,6 @@ from synthorg.engine.errors import TaskAssignmentError
 from synthorg.engine.pipeline._solo_selection import select_solo_agent
 from synthorg.engine.pipeline.errors import WorkRoutingUndecidableError
 from synthorg.engine.routing.scorer import AgentTaskScorer
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
@@ -33,7 +32,6 @@ def _agent(name: str) -> AgentIdentity:
         name=name,
         role="Developer",
         department="Engineering",
-        level=SeniorityLevel.MID,
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
         skills=SkillSet(),

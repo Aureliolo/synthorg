@@ -88,14 +88,23 @@ def score_and_filter_candidates(
         subtask: The subtask definition for scoring.
 
     Returns:
-        Sorted list of candidates whose score meets or exceeds
-        ``request.min_score``, ordered by score descending.
+        Sorted list of candidates ordered by score descending. Normally
+        only agents whose score meets or exceeds ``request.min_score``.
+        A subtask with an unmet hard requirement (a ``required_role`` or
+        ``required_skills`` no agent satisfies) keeps that strict floor and
+        may return empty, so an unstaffable-requirement task surfaces as
+        no-eligible rather than drawing an unqualified agent. But a subtask
+        carrying *no* requirement at all scores zero for every agent, so
+        rather than deadlock the full scored pool is returned and the caller
+        assigns the best available agent (flagged low-confidence): an
+        unconstrained task is staffable by anyone.
     """
     workload_map: dict[str, int] | None = None
     if request.max_concurrent_tasks is not None and request.workloads:
         workload_map = {w.agent_id: w.active_task_count for w in request.workloads}
 
-    candidates: list[AssignmentCandidate] = []
+    scored: list[AssignmentCandidate] = []
+    above_min: list[AssignmentCandidate] = []
     for agent in request.available_agents:
         if agent.status != AgentStatus.ACTIVE:
             continue
@@ -130,14 +139,16 @@ def score_and_filter_candidates(
             score=routing_candidate.score,
         )
 
+        candidate = AssignmentCandidate(
+            agent_identity=routing_candidate.agent_identity,
+            score=routing_candidate.score,
+            matched_skills=routing_candidate.matched_skills,
+            reason=routing_candidate.reason,
+        )
+        scored.append(candidate)
         if routing_candidate.score >= request.min_score:
-            candidates.append(
-                AssignmentCandidate(
-                    agent_identity=routing_candidate.agent_identity,
-                    score=routing_candidate.score,
-                    matched_skills=routing_candidate.matched_skills,
-                    reason=routing_candidate.reason,
-                ),
-            )
+            above_min.append(candidate)
 
-    return sorted(candidates, key=lambda c: c.score, reverse=True)
+    unconstrained = not subtask.required_role and not subtask.required_skills
+    ranked = scored if (unconstrained and not above_min) else above_min
+    return sorted(ranked, key=lambda c: c.score, reverse=True)

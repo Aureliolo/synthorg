@@ -21,7 +21,6 @@ const makeAgent = (
   name: "Test Agent",
   role: "Developer",
   department: "engineering",
-  level: "mid",
   model_provider: "test-provider",
   model_id: "test-model-001",
   tier: "medium",

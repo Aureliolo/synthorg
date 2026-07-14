@@ -1,4 +1,4 @@
-"""Tests for the autonomy change-strategy plugin surface (REWORK #9)."""
+"""Tests for the autonomy change-strategy plugin surface."""
 
 from typing import cast
 
@@ -27,14 +27,6 @@ pytestmark = pytest.mark.unit
 _AGENT = "agent-1"
 
 
-class _FixedPerf:
-    def __init__(self, rate: float | None) -> None:
-        self._rate = rate
-
-    def success_rate(self, agent_id: str) -> float | None:
-        return self._rate
-
-
 class _FixedBudget:
     def __init__(self, headroom: float) -> None:
         self._headroom = headroom
@@ -53,60 +45,6 @@ class TestHumanOnlyDefault:
         assert isinstance(strategy, AutonomyChangeStrategy)
         assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
         assert strategy.request_recovery(_AGENT) is False
-
-
-class TestPerformanceGated:
-    def test_grants_above_threshold(self) -> None:
-        strategy = build_autonomy_change_strategy(
-            AutonomyStrategyConfig(
-                kind=AutonomyStrategyType.PERFORMANCE_GATED,
-                promotion_success_threshold=0.8,
-            ),
-            AutonomyStrategyDeps(performance_signal=_FixedPerf(0.95)),
-        )
-        assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is True
-
-    def test_defers_below_threshold(self) -> None:
-        strategy = build_autonomy_change_strategy(
-            AutonomyStrategyConfig(
-                kind=AutonomyStrategyType.PERFORMANCE_GATED,
-                promotion_success_threshold=0.8,
-            ),
-            AutonomyStrategyDeps(performance_signal=_FixedPerf(0.5)),
-        )
-        assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
-
-    def test_none_history_defers(self) -> None:
-        strategy = build_autonomy_change_strategy(
-            AutonomyStrategyConfig(
-                kind=AutonomyStrategyType.PERFORMANCE_GATED,
-            ),
-            AutonomyStrategyDeps(performance_signal=_FixedPerf(None)),
-        )
-        assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
-
-    def test_missing_signal_raises(self) -> None:
-        with pytest.raises(AutonomyStrategyConfigError, match="performance_signal"):
-            build_autonomy_change_strategy(
-                AutonomyStrategyConfig(
-                    kind=AutonomyStrategyType.PERFORMANCE_GATED,
-                ),
-                AutonomyStrategyDeps(),
-            )
-
-    def test_downgrade_delegates_to_base(self) -> None:
-        strategy = build_autonomy_change_strategy(
-            AutonomyStrategyConfig(
-                kind=AutonomyStrategyType.PERFORMANCE_GATED,
-            ),
-            AutonomyStrategyDeps(performance_signal=_FixedPerf(0.99)),
-        )
-        level = strategy.auto_downgrade(
-            _AGENT,
-            DowngradeReason.SECURITY_INCIDENT,
-            AutonomyLevel.FULL,
-        )
-        assert level is AutonomyLevel.LOCKED
 
 
 class TestBudgetAware:

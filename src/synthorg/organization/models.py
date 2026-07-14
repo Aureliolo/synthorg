@@ -21,7 +21,6 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.company_departments import Team
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
-from synthorg.hr.seniority import SeniorityLevel
 
 
 class UpdateCompanyRequest(BaseModel):
@@ -152,7 +151,6 @@ class CreateAgentOrgRequest(BaseModel):
     name: NotBlankStr = Field(max_length=128)
     role: NotBlankStr = Field(max_length=128)
     department: NotBlankStr = Field(max_length=128)
-    level: SeniorityLevel = SeniorityLevel.MID
     model_provider: NotBlankStr | None = None
     model_id: NotBlankStr | None = None
 
@@ -181,7 +179,6 @@ class UpdateAgentOrgRequest(BaseModel):
     name: NotBlankStr | None = Field(default=None, max_length=128)
     role: NotBlankStr | None = Field(default=None, max_length=128)
     department: NotBlankStr | None = Field(default=None, max_length=128)
-    level: SeniorityLevel | None = None
     autonomy_level: AutonomyLevel | None = None
     model_provider: NotBlankStr | None = None
     model_id: NotBlankStr | None = None

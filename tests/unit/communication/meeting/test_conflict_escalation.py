@@ -38,7 +38,6 @@ from synthorg.core.agent import (
     ToolPermissions,
 )
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from tests._shared import mock_of
@@ -49,13 +48,12 @@ pytestmark = pytest.mark.unit
 _NOW = datetime(2026, 5, 22, tzinfo=UTC)
 
 
-def _identity(label: str, *, department: str, level: SeniorityLevel) -> AgentIdentity:
+def _identity(label: str, *, department: str) -> AgentIdentity:
     return AgentIdentity(
         id=as_uuid(label),
         name=label,
         role="Developer",
         department=department,
-        level=level,
         hiring_date=date(2026, 1, 15),
         personality=PersonalityConfig(traits=("analytical",)),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
@@ -113,7 +111,7 @@ def _conflict() -> Conflict:
         ConflictPosition(
             agent_id="alice",
             agent_department="Engineering",
-            agent_level=SeniorityLevel.SENIOR,
+            agent_role="Software Architect",
             position="REST",
             reasoning="REST is simpler",
             timestamp=_NOW,
@@ -121,7 +119,7 @@ def _conflict() -> Conflict:
         ConflictPosition(
             agent_id="bob",
             agent_department="Platform",
-            agent_level=SeniorityLevel.MID,
+            agent_role="Backend Developer",
             position="gRPC",
             reasoning="gRPC is faster",
             timestamp=_NOW,
@@ -151,10 +149,8 @@ def _registry(identities: dict[str, AgentIdentity]) -> Any:  # type: ignore[expl
 
 def _both_identities() -> dict[str, AgentIdentity]:
     return {
-        "alice": _identity(
-            "alice", department="Engineering", level=SeniorityLevel.SENIOR
-        ),
-        "bob": _identity("bob", department="Platform", level=SeniorityLevel.MID),
+        "alice": _identity("alice", department="Engineering"),
+        "bob": _identity("bob", department="Platform"),
     }
 
 
@@ -187,7 +183,7 @@ async def test_builds_conflict_from_discussion_contributions() -> None:
     assert {p.agent_id for p in positions} == {"alice", "bob"}
     alice = next(p for p in positions if p.agent_id == "alice")
     assert alice.agent_department == "Engineering"
-    assert alice.agent_level is SeniorityLevel.SENIOR
+    assert alice.agent_role == "Developer"
     # Full text is the reasoning; the position is the capped first line.
     assert alice.reasoning == "REST is simpler.\nIt is well understood."
     assert alice.position == "REST is simpler."
@@ -295,9 +291,7 @@ async def test_critical_exception_propagates() -> None:
 async def test_skips_when_fewer_than_two_resolvable_agents() -> None:
     service = _service()
     # Only alice resolves in the registry; bob is missing.
-    registry = _registry(
-        {"alice": _identity("alice", department="Eng", level=SeniorityLevel.SENIOR)}
-    )
+    registry = _registry({"alice": _identity("alice", department="Eng")})
     bridge = MeetingConflictEscalationBridge(
         conflict_service=service,
         agent_registry=registry,

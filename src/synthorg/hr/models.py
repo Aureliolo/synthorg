@@ -25,7 +25,6 @@ from synthorg.hr.enums import (
     LifecycleEventType,
     OnboardingStep,
 )
-from synthorg.hr.seniority import SeniorityLevel
 
 
 class CandidateCard(BaseModel):
@@ -36,7 +35,6 @@ class CandidateCard(BaseModel):
         name: Proposed agent name.
         role: Proposed role.
         department: Target department.
-        level: Proposed seniority level.
         skills: Agent skills.
         rationale: Why this candidate was generated.
         estimated_monthly_cost: Estimated monthly cost in the configured currency.
@@ -52,7 +50,6 @@ class CandidateCard(BaseModel):
     name: PersonaLabelStr = Field(description="Proposed agent name")
     role: PersonaLabelStr = Field(description="Proposed role")
     department: PersonaLabelStr = Field(description="Target department")
-    level: SeniorityLevel = Field(description="Proposed seniority level")
     skills: tuple[Skill, ...] = Field(
         default=(),
         description="Agent skills",
@@ -76,7 +73,6 @@ class HiringRequest(BaseModel):
         requested_by: Agent or human who initiated the request.
         department: Target department.
         role: Desired role.
-        level: Desired seniority level.
         required_skills: Skills the candidate must have.
         reason: Business justification.
         agent_delegate: Existing agent assigned to absorb queued work
@@ -101,7 +97,6 @@ class HiringRequest(BaseModel):
     requested_by: NotBlankStr = Field(description="Request initiator")
     department: PersonaLabelStr = Field(description="Target department")
     role: PersonaLabelStr = Field(description="Desired role")
-    level: SeniorityLevel = Field(description="Desired seniority level")
     required_skills: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Required skills",

@@ -11,7 +11,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
 from synthorg.persistence.protocol import PersistenceBackend
@@ -27,7 +26,7 @@ def _human_author() -> OrgFactAuthor:
 def _agent_author(agent_id: str = "agent_1") -> OrgFactAuthor:
     return OrgFactAuthor(
         agent_id=NotBlankStr(agent_id),
-        seniority=SeniorityLevel.MID,
+        role="Knowledge Architect",
         is_human=False,
     )
 

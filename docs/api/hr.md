@@ -5,7 +5,7 @@ search:
 
 # HR
 
-Agent lifecycle management: hiring, firing, onboarding, offboarding, performance tracking, and promotion/demotion.
+Agent lifecycle management: hiring, firing, onboarding, offboarding, and performance tracking.
 
 ## Models
 
@@ -31,10 +31,6 @@ Agent lifecycle management: hiring, firing, onboarding, offboarding, performance
 
 ::: synthorg.hr.enums
 
-## Seniority
-
-::: synthorg.hr.seniority
-
 ## Strategy Mode
 
 ::: synthorg.hr.strategy_mode
@@ -56,20 +52,6 @@ Agent lifecycle management: hiring, firing, onboarding, offboarding, performance
 ::: synthorg.hr.performance.collaboration_protocol
 
 ::: synthorg.hr.performance.trend_protocol
-
-## Promotion
-
-::: synthorg.hr.promotion.config
-
-::: synthorg.hr.promotion.models
-
-::: synthorg.hr.promotion.service
-
-::: synthorg.hr.promotion.model_mapping_protocol
-
-::: synthorg.hr.promotion.criteria_protocol
-
-::: synthorg.hr.promotion.approval_protocol
 
 ## Pruning
 

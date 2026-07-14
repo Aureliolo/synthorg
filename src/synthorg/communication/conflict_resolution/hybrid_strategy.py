@@ -268,8 +268,8 @@ class HybridResolver:
             decided_by=best.agent_id,
             reasoning=(
                 f"Hybrid fallback: authority-based -- "
-                f"{best.agent_id} ({best.agent_level}) has highest "
-                f"seniority"
+                f"{best.agent_id} ({best.agent_role}) has highest "
+                f"authority"
             ),
             resolved_at=datetime.now(UTC),
         )

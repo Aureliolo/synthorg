@@ -89,7 +89,6 @@ class PersonalitiesGetArgs(_ArgsBase):
 # ── Training ────────────────────────────────────────────────────────
 
 
-SeniorityLevel = Literal["junior", "mid", "senior"]
 TrainingContentType = Literal["procedural", "semantic", "tool_patterns"]
 
 
@@ -108,9 +107,6 @@ class TrainingStartSessionArgs(_ArgsBase):
 
     new_agent_id: NotBlankStr = Field(description="ID of the agent being trained")
     new_agent_role: NotBlankStr = Field(description="Role of the new hire")
-    new_agent_level: SeniorityLevel = Field(
-        description="Seniority level of the new hire"
-    )
     new_agent_department: NotBlankStr | None = Field(
         default=None,
         description="Department of the new hire (optional)",
@@ -182,7 +178,6 @@ __all__ = [
     "CollaborationGetScoreArgs",
     "PersonalitiesGetArgs",
     "PersonalitiesListArgs",
-    "SeniorityLevel",
     "TrainingContentType",
     "TrainingGetSessionArgs",
     "TrainingListSessionsArgs",

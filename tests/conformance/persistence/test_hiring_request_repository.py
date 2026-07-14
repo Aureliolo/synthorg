@@ -7,7 +7,6 @@ import pytest
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import HiringRequestStatus
 from synthorg.hr.models import CandidateCard, HiringRequest
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.hiring_request_protocol import (
     HiringRequestFilterSpec,
 )
@@ -24,7 +23,6 @@ def _candidate(*, department: str, role: str) -> CandidateCard:
         name="Casey Candidate",
         role=NotBlankStr(role),
         department=NotBlankStr(department),
-        level=SeniorityLevel.MID,
         rationale="strong fit",
         estimated_monthly_cost=1000.0,
     )
@@ -54,7 +52,6 @@ def _request(
         requested_by=NotBlankStr(requested_by),
         department=NotBlankStr(department),
         role=NotBlankStr(role),
-        level=SeniorityLevel.MID,
         required_skills=(NotBlankStr("python"), NotBlankStr("postgres")),
         reason=NotBlankStr("scale the platform team"),
         status=status,

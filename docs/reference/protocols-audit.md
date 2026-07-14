@@ -378,6 +378,8 @@ All 45 persistence protocols are listed; every one is a plug-in `Repository` / `
 
 The dated per-issue cleanup trail (the #1864 / #1865 deletions and re-flagged keeps, the #1891 pluggable-subsystem decisions, the follow-up cleanup issues, and the collaborator protocols added by #2315 / #2316) lives in the companion [Protocols Audit Cleanup Log](protocols-audit-log.md). This page keeps the evergreen per-area classification; the log keeps the history of how it got there.
 
+The `hr/` promotion protocols (`PromotionApprovalStrategy`, `PromotionCriteriaStrategy`, `ModelMappingStrategy`) and the `security/trust/` `TrustStrategy` rows above are retained as the 2026-05-10 snapshot record: those modules were deleted when the agent seniority/promotion/trust model was replaced by operator-set org modes, so authority now derives from the role reporting graph (`core/authority.py`) rather than a promotion ladder or an earned-trust tier.
+
 ## Out of scope
 
 - Actually deleting any `Protocol` class (cleanup PRs).

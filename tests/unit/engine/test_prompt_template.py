@@ -2,13 +2,13 @@
 
 import pytest
 
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
     AUTONOMY_MINIMAL,
     AUTONOMY_SUMMARY,
     DEFAULT_TEMPLATE,
 )
-from synthorg.hr.seniority import SeniorityLevel
 
 
 @pytest.mark.unit
@@ -32,8 +32,8 @@ class TestAutonomyMaps:
     """Tests for all three autonomy instruction maps (full/summary/minimal)."""
 
     @pytest.mark.parametrize("label", ["full", "summary", "minimal"])
-    def test_all_seniority_levels_covered(self, label: str) -> None:
-        assert set(SeniorityLevel) == set(_AUTONOMY_MAPS[label])
+    def test_all_autonomy_levels_covered(self, label: str) -> None:
+        assert set(AutonomyLevel) == set(_AUTONOMY_MAPS[label])
 
     @pytest.mark.parametrize("label", ["full", "summary", "minimal"])
     def test_all_values_are_non_empty_strings(self, label: str) -> None:
@@ -48,14 +48,14 @@ class TestAutonomyMaps:
 
     def test_summary_shorter_than_full(self) -> None:
         """Summary instructions are shorter than full instructions."""
-        for level in SeniorityLevel:
+        for level in AutonomyLevel:
             assert len(AUTONOMY_SUMMARY[level]) <= len(
                 AUTONOMY_INSTRUCTIONS[level],
             )
 
     def test_minimal_shorter_than_summary(self) -> None:
         """Minimal instructions are shorter than summary instructions."""
-        for level in SeniorityLevel:
+        for level in AutonomyLevel:
             assert len(AUTONOMY_MINIMAL[level]) <= len(
                 AUTONOMY_SUMMARY[level],
             )
@@ -77,5 +77,5 @@ class TestAutonomyInstructionsGuard:
         removed_key = next(iter(incomplete))
         del incomplete[removed_key]
 
-        missing = set(SeniorityLevel) - set(incomplete)
+        missing = set(AutonomyLevel) - set(incomplete)
         assert removed_key in missing

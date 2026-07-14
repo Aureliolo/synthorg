@@ -5,7 +5,6 @@ deduplicates agent IDs while preserving order.
 """
 
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.protocol import SourceSelector
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
@@ -60,14 +59,12 @@ class CompositeSelector:
         self,
         *,
         new_agent_role: NotBlankStr,
-        new_agent_level: SeniorityLevel,
         new_agent_department: NotBlankStr | None = None,
     ) -> tuple[NotBlankStr, ...]:
         """Run all child selectors and merge results.
 
         Args:
             new_agent_role: Role of the new hire.
-            new_agent_level: Seniority level.
             new_agent_department: Department of the new hire.
 
         Returns:
@@ -82,7 +79,6 @@ class CompositeSelector:
         for selector in self._selectors:
             ids = await selector.select(
                 new_agent_role=new_agent_role,
-                new_agent_level=new_agent_level,
                 new_agent_department=new_agent_department,
             )
             for agent_id in ids:

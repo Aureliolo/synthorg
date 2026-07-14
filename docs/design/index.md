@@ -178,8 +178,8 @@ Queue: Hiring Queue
     ---
 
     Agent identity (personality, skills, identity versioning) plus the full
-    HR lifecycle: seniority, role catalog, hiring, firing, performance tracking,
-    evaluation, promotions, and evolution.
+    HR lifecycle: role catalog, reporting-graph authority, hiring, firing,
+    performance tracking, evaluation, and evolution.
 
 -   [**Organisation & Templates**](organization.md)
 
@@ -240,7 +240,7 @@ Queue: Hiring Queue
 
     ---
 
-    LLM provider abstraction, budget enforcement, tool sandboxing, progressive trust, autonomy levels, and approval workflows.
+    LLM provider abstraction, budget enforcement, tool sandboxing, autonomy levels, and approval workflows.
 
 -   [**Observability**](observability.md) / [**Notifications**](notifications.md) / [**Backup**](backup.md) / [**Deployment**](deployment.md)
 

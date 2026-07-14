@@ -29,7 +29,6 @@ template:
 
   agents:
     - role: "Security Engineer"
-      level: "senior"
       model:
         priority: "quality"
         min_context: 100000
@@ -37,7 +36,6 @@ template:
       personality_preset: "quality_guardian"
       department: "security"
     - role: "Security Operations"
-      level: "mid"
       model:
         priority: "quality"
         requires_reasoning: true

@@ -25,7 +25,6 @@ const stubAgent: AgentConfig = {
   name: 'stub',
   role: 'Developer',
   department: 'engineering',
-  level: 'mid',
   status: 'active',
   personality: {
     traits: [], communication_style: 'direct',

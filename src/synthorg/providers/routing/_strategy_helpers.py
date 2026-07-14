@@ -9,7 +9,6 @@ from collections.abc import Sequence
 from pydantic import JsonValue
 
 from synthorg.config.agent_schema import RoutingConfig, RoutingRuleConfig
-from synthorg.core.role_catalog import get_seniority_info
 from synthorg.observability import get_logger
 from synthorg.observability.events.routing import (
     ROUTING_BUDGET_EXCEEDED,
@@ -314,90 +313,5 @@ def _try_task_type_rules(
         task_type=request.task_type,
         strategy=strategy_name,
         source="task_type_rules",
-    )
-    return None
-
-
-def _try_role_rules(
-    request: RoutingRequest,
-    config: RoutingConfig,
-    resolver: ModelResolver,
-    strategy_name: str,
-) -> RoutingDecision | None:
-    """Match role_level rules; return decision or None.
-
-    Returns:
-        A ``RoutingDecision`` for the first role_level rule that resolves
-        a model, or ``None`` if no rule matches or resolves.
-    """
-    if request.agent_level is None:
-        return None
-    for rule in config.rules:
-        if rule.role_level == request.agent_level:
-            result = _try_resolve_with_fallback_safe(
-                rule.preferred_model,
-                rule,
-                config,
-                resolver,
-            )
-            if result is not None:
-                model, tried = result
-                return RoutingDecision(
-                    resolved_model=model,
-                    strategy_used=strategy_name,
-                    reason=(
-                        f"Role rule: "
-                        f"level={request.agent_level.value}"
-                        f", model={model.model_id}"
-                    ),
-                    fallbacks_tried=tried,
-                )
-    logger.debug(
-        ROUTING_NO_RULE_MATCHED,
-        agent_level=request.agent_level.value,
-        strategy=strategy_name,
-        source="role_rules",
-    )
-    return None
-
-
-def _try_seniority_default(
-    request: RoutingRequest,
-    resolver: ModelResolver,
-    strategy_name: str,
-) -> RoutingDecision | None:
-    """Try seniority catalog tier; return decision or None.
-
-    Returns:
-        A ``RoutingDecision`` using the seniority catalog's
-        ``typical_model_tier`` if it resolves, or ``None`` otherwise.
-    """
-    if request.agent_level is None:
-        return None
-    try:
-        tier = get_seniority_info(request.agent_level).typical_model_tier
-    except LookupError:
-        logger.warning(
-            ROUTING_NO_RULE_MATCHED,
-            level=request.agent_level.value,
-            strategy=strategy_name,
-            reason="seniority level not in catalog",
-        )
-        return None
-    model = resolver.resolve_safe(tier)
-    if model is not None:
-        return RoutingDecision(
-            resolved_model=model,
-            strategy_used=strategy_name,
-            reason=(
-                f"Seniority default: level={request.agent_level.value}, tier={tier}"
-            ),
-        )
-    logger.info(
-        ROUTING_NO_RULE_MATCHED,
-        level=request.agent_level.value,
-        tier=tier,
-        strategy=strategy_name,
-        reason="seniority tier not registered",
     )
     return None

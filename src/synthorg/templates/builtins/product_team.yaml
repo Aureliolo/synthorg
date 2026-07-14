@@ -95,14 +95,12 @@ template:
   agents:
     # Executive leadership: strategic, reasoning-heavy work -> top-tier models.
     - role: "CEO"
-      level: "c_suite"
       department: "executive"
       model:
         priority: "quality"
         requires_reasoning: true
       personality_preset: "strategic_planner"
     - role: "CTO"
-      level: "c_suite"
       department: "executive"
       model:
         priority: "quality"
@@ -110,7 +108,6 @@ template:
       personality_preset: "pragmatic_builder"
     # Override first Full-Stack Developer (matched by role+department): change personality
     - role: "Full-Stack Developer"
-      level: "senior"
       model:
         priority: "balanced"
         requires_tools: true
@@ -124,7 +121,6 @@ template:
     # New agents
     - role: "Backend Developer"
       merge_id: "backend-senior"
-      level: "senior"
       model:
         priority: "balanced"
         requires_tools: true
@@ -132,48 +128,41 @@ template:
       department: "engineering"
     - role: "Backend Developer"
       merge_id: "backend-mid"
-      level: "mid"
       model:
         priority: "balanced"
         requires_tools: true
       personality_preset: "team_diplomat"
       department: "engineering"
     - role: "Frontend Developer"
-      level: "mid"
       model:
         priority: "balanced"
         requires_tools: true
       personality_preset: "creative_innovator"
       department: "engineering"
     - role: "UX Designer"
-      level: "mid"
       model:
         priority: "balanced"
       personality_preset: "user_advocate"
       department: "design"
     - role: "UX Researcher"
-      level: "mid"
       model:
         priority: "quality"
         requires_reasoning: true
       personality_preset: "methodical_analyst"
       department: "design"
     - role: "QA Engineer"
-      level: "mid"
       model:
         priority: "cost"
         requires_tools: true
       personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "Automation Engineer"
-      level: "mid"
       model:
         priority: "cost"
         requires_tools: true
       personality_preset: "disciplined_executor"
       department: "quality_assurance"
     - role: "Data Analyst"
-      level: "mid"
       model:
         priority: "quality"
         requires_tools: true

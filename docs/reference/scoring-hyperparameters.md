@@ -17,7 +17,7 @@ that lifted these values from bare numeric literals into settings.
 
 The agent-task routing scorer assigns a 0-1 fitness score to every
 candidate agent for a given subtask. Sum of weights + bonuses is
-1.1 with the tag bonus; the caller caps at 1.0.
+0.9; the caller caps the final score at 1.0.
 
 | Setting | Default | Controls |
 |---|---:|---|
@@ -25,16 +25,14 @@ candidate agent for a given subtask. Sum of weights + bonuses is
 | `engine.routing.weight_secondary_skill` | 0.2 | Weight on secondary-skill overlap (excluding primary matches). |
 | `engine.routing.weight_tag_match_bonus` | 0.1 | Bonus when every required tag is covered by matched skills. |
 | `engine.routing.weight_role_match_bonus` | 0.2 | Bonus on role-name match (case-insensitive). |
-| `engine.routing.weight_seniority_alignment_bonus` | 0.2 | Bonus on seniority/complexity alignment. |
 | `engine.routing.min_score` | 0.1 | Minimum viable candidate score; below filters out before ranking. |
 
 **Rationale.** Audit-set placeholders calibrated so primary-skill
-overlap dominates (0.4) while role and seniority each independently
-push fit by 0.2. The tag bonus at 0.1 keeps tag-match a tiebreaker
-rather than a primary axis. `min_score=0.1` filters out candidates
-that score on seniority alone (matches the seniority bonus). No
-empirical derivation; revisit when routing-decision telemetry is in
-place.
+overlap dominates (0.4) while a role-name match pushes fit by 0.2.
+The tag bonus at 0.1 keeps tag-match a tiebreaker rather than a
+primary axis. `min_score=0.1` filters out candidates with no matching
+signal. No empirical derivation; revisit when routing-decision
+telemetry is in place.
 
 ## Model matcher (`match_model`)
 

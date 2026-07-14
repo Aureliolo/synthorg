@@ -838,9 +838,6 @@ class FakePersistenceBackend(PersistenceBackend):
         self._idempotency_keys_stub: AsyncMock | None = None
         self._seen_claims_stub: AsyncMock | None = None
         self._principle_overrides_stub: AsyncMock | None = None
-        self._trust_states_stub: AsyncMock | None = None
-        self._trust_change_history_stub: AsyncMock | None = None
-        self._promotion_history_stub: AsyncMock | None = None
         self._hiring_requests_stub: AsyncMock | None = None
         self._agent_contributions_stub: AsyncMock | None = None
         self._audit_chain_entries_stub: AsyncMock | None = None
@@ -1447,47 +1444,6 @@ class FakePersistenceBackend(PersistenceBackend):
             stub.list_items.return_value = ()
             self._principle_overrides_stub = stub
         return self._principle_overrides_stub
-
-    @override
-    @property
-    def trust_states(self) -> AsyncMock:
-        """Cached fake trust-state repository (durability hardening)."""
-        from synthorg.persistence.trust_state_protocol import TrustStateRepository
-
-        if self._trust_states_stub is None:
-            stub = AsyncMock(spec=TrustStateRepository)
-            stub.get.return_value = None
-            stub.list_items.return_value = ()
-            self._trust_states_stub = stub
-        return self._trust_states_stub
-
-    @override
-    @property
-    def trust_change_history(self) -> AsyncMock:
-        """Cached fake trust-change-history repository."""
-        from synthorg.persistence.trust_state_protocol import (
-            TrustChangeHistoryRepository,
-        )
-
-        if self._trust_change_history_stub is None:
-            stub = AsyncMock(spec=TrustChangeHistoryRepository)
-            stub.query.return_value = ()
-            self._trust_change_history_stub = stub
-        return self._trust_change_history_stub
-
-    @override
-    @property
-    def promotion_history(self) -> AsyncMock:
-        """Cached fake promotion-history repository."""
-        from synthorg.persistence.promotion_history_protocol import (
-            PromotionHistoryRepository,
-        )
-
-        if self._promotion_history_stub is None:
-            stub = AsyncMock(spec=PromotionHistoryRepository)
-            stub.query.return_value = ()
-            self._promotion_history_stub = stub
-        return self._promotion_history_stub
 
     @override
     @property

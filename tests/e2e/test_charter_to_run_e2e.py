@@ -46,7 +46,6 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.dispatch import PROJECT_NAMESPACE, CharterDispatcher
 from synthorg.meta.charter.enums import CharterStatus
@@ -378,13 +377,12 @@ class _FakeForecastRepo:
         return len(await self.query(filter_spec, limit=len(self.items) or 1))
 
 
-def _make_agent(name: str, skill: str, *, level: SeniorityLevel) -> AgentIdentity:
+def _make_agent(name: str, skill: str) -> AgentIdentity:
     return AgentIdentity(
         id=as_uuid(name),
         name=name,
         role="developer",
         department="engineering",
-        level=level,
         skills=SkillSet(primary=(Skill(id=skill, name=skill),)),
         authority=Authority(budget_limit=10.0),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
@@ -465,8 +463,8 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
     task_engine: TaskEngine,
     tmp_path: Path,
 ) -> None:
-    researcher = _make_agent("alice", _RESEARCH_SKILL, level=SeniorityLevel.MID)
-    analyst = _make_agent("bob", _ANALYSIS_SKILL, level=SeniorityLevel.MID)
+    researcher = _make_agent("alice", _RESEARCH_SKILL)
+    analyst = _make_agent("bob", _ANALYSIS_SKILL)
     metrics_store = CoordinationMetricsStore()
     pipeline = await _build_pipeline(
         persistence=persistence,

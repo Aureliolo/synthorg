@@ -248,7 +248,6 @@ class TrainingController(Controller):
         plan_kwargs: dict[str, object] = {
             "new_agent_id": str(identity.id),
             "new_agent_role": str(identity.role),
-            "new_agent_level": identity.level,
             "new_agent_department": str(identity.department),
             "override_sources": override_sources,
             "enabled_content_types": enabled_types,

@@ -29,13 +29,11 @@ template:
 
   agents:
     - role: "UX Designer"
-      level: "mid"
       model:
         priority: "balanced"
       personality_preset: "rapid_prototyper"
       department: "design"
     - role: "UX Researcher"
-      level: "mid"
       model:
         priority: "quality"
         requires_reasoning: true

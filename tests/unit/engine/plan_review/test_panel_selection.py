@@ -19,7 +19,6 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.plan_review._panel_selection import select_review_panel
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid, sid
 from tests._shared.scripted_provider import make_e2e_identity
 
@@ -31,10 +30,9 @@ def _agent(
     *,
     role: str = "Backend Developer",
     department: str = "Engineering",
-    level: SeniorityLevel = SeniorityLevel.MID,
 ) -> AgentIdentity:
     return make_e2e_identity(label=label).model_copy(
-        update={"role": role, "department": department, "level": level}
+        update={"role": role, "department": department}
     )
 
 
@@ -98,8 +96,8 @@ class TestSelectReviewPanel:
     def test_seats_a_domain_lead_for_a_touched_department(self) -> None:
         # A plan owned by an engineering role should seat the most senior
         # engineering agent (a domain lead) even without a CTO/CFO present.
-        junior = _agent("eng-junior", level=SeniorityLevel.JUNIOR)
-        lead = _agent("eng-lead", role="QA Lead", level=SeniorityLevel.LEAD)
+        junior = _agent("eng-junior")
+        lead = _agent("eng-lead", role="QA Lead")
         panel = select_review_panel(
             _plan("Backend Developer"), (junior, lead), owner=None, limit=1
         )

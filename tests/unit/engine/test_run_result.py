@@ -20,7 +20,6 @@ from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.quality.models import StepQuality, StepQualitySignal
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.execution.turn import TurnRecord
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, TokenUsage, ToolCall
 from tests._shared import as_uuid
@@ -33,7 +32,6 @@ def _test_identity() -> AgentIdentity:
         name="Test Agent",
         role="Developer",
         department="Engineering",
-        level=SeniorityLevel.MID,
         hiring_date=date(2026, 1, 15),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
     )

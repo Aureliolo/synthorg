@@ -19,7 +19,6 @@ from synthorg.communication.conflict_resolution.models import (
 )
 from synthorg.communication.enums import ConflictType
 from synthorg.core.persistence_errors import MalformedRowError
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.persistence.sqlite.escalation_repo import SQLiteEscalationRepository
@@ -39,7 +38,7 @@ def _make_conflict(conflict_id: str = "conflict-sql-0001") -> Conflict:
             ConflictPosition(
                 agent_id="agent-a",
                 agent_department="engineering",
-                agent_level=SeniorityLevel.SENIOR,
+                agent_role="Software Architect",
                 position="PostgreSQL",
                 reasoning="Strong consistency",
                 timestamp=datetime.now(UTC),
@@ -47,7 +46,7 @@ def _make_conflict(conflict_id: str = "conflict-sql-0001") -> Conflict:
             ConflictPosition(
                 agent_id="agent-b",
                 agent_department="engineering",
-                agent_level=SeniorityLevel.SENIOR,
+                agent_role="Software Architect",
                 position="SQLite",
                 reasoning="Simpler ops",
                 timestamp=datetime.now(UTC),

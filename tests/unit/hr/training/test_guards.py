@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.guards.review_gate import ReviewGateGuard
 from synthorg.hr.training.guards.sanitization import SanitizationGuard
 from synthorg.hr.training.guards.volume_cap import VolumeCapGuard
@@ -42,7 +41,6 @@ def _make_plan(
     return TrainingPlan(
         new_agent_id="new-1",
         new_agent_role="engineer",
-        new_agent_level=SeniorityLevel.JUNIOR,
         require_review=require_review,
         volume_caps=volume_caps
         or (

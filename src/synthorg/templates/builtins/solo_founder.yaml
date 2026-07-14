@@ -42,7 +42,6 @@ template:
 
   agents:
     - role: "CEO"
-      level: "c_suite"
       model:
         priority: "quality"
         min_context: 100000
@@ -52,7 +51,6 @@ template:
       strategic_output_mode: "advisor"
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
-      level: "senior"
       model:
         priority: "balanced"
         requires_tools: true

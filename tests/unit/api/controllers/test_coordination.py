@@ -21,7 +21,6 @@ from synthorg.engine.errors import CoordinationPhaseError
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.state import HrStateSlice
 from synthorg.workers.state import RuntimeStateSlice
 from tests._shared import (
@@ -65,7 +64,6 @@ def _make_agent(name: str = "test-agent") -> AgentIdentity:
         name=name,
         role="developer",
         department="engineering",
-        level=SeniorityLevel.MID,
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
         hiring_date=date(2026, 1, 1),
         status=AgentStatus.ACTIVE,

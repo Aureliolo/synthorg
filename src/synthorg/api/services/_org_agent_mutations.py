@@ -23,7 +23,6 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.normalization import compare_ci, normalize_identifier
 from synthorg.core.types import stable_agent_id
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AGENT_CREATED,
@@ -173,7 +172,7 @@ class OrgAgentMutationsMixin(ABC):
             API_AGENT_CREATED,
             agent=agent.name,
             department=agent.department,
-            level=agent.level.value,
+            role=agent.role,
         )
         return agent
 
@@ -211,7 +210,6 @@ class OrgAgentMutationsMixin(ABC):
             name=data.name,
             role=data.role,
             department=data.department,
-            level=data.level,
             model=model_dict,
         )
         captured["agent"] = agent
@@ -262,8 +260,6 @@ class OrgAgentMutationsMixin(ABC):
         if "department" in fields_set and data.department is not None:
             await self._require_department(str(data.department))
             updates["department"] = data.department
-        if "level" in fields_set and data.level is not None:
-            updates["level"] = data.level
         if "autonomy_level" in fields_set:
             updates["autonomy_level"] = data.autonomy_level
         # The model lives in the nested ``model`` dict (keyed ``provider`` /
@@ -437,15 +433,12 @@ class OrgAgentMutationsMixin(ABC):
             logger.warning(API_RESOURCE_NOT_FOUND, reason=msg, agent=name)
             raise NotFoundError(msg)
 
-        if existing.level == SeniorityLevel.C_SUITE and compare_ci(
-            existing.role, "ceo"
-        ):
-            msg = f"Cannot delete CEO agent {name!r} -- reassign or demote first"
+        if compare_ci(existing.role, "ceo"):
+            msg = f"Cannot delete CEO agent {name!r} -- reassign first"
             logger.warning(
                 API_RESOURCE_CONFLICT,
                 reason=msg,
                 agent=existing.name,
-                level=existing.level.value,
                 role=existing.role,
             )
             raise ConflictError(msg)

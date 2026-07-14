@@ -10,7 +10,6 @@ from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.engine.compaction.summarizer import _build_summary, force_compaction
 from synthorg.engine.context import AgentContext
 from synthorg.engine.token_estimation import DefaultTokenEstimator
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 
@@ -265,7 +264,6 @@ def _make_identity(name: str = "test-agent") -> AgentIdentity:
         name=name,
         role="engineer",
         department="engineering",
-        level=SeniorityLevel.MID,
         hiring_date=date(2026, 1, 15),
         personality=PersonalityConfig(traits=("analytical",)),
         model=ModelConfig(

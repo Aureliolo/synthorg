@@ -18,7 +18,6 @@ from synthorg.core.agent import (
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     ProposeArgs,
@@ -46,13 +45,8 @@ def make_identity(  # noqa: PLR0913 -- test identity builder: many independent k
     provider: str = "test-provider",
     model_id: str = "test-model-001",
     status: AgentStatus = AgentStatus.ACTIVE,
-    level: SeniorityLevel = SeniorityLevel.C_SUITE,
 ) -> AgentIdentity:
     """Build an ``AgentIdentity`` for the proposer test suites.
-
-    The ``level`` parameter sets the seniority (defaulting to
-    ``SeniorityLevel.C_SUITE``) so callers can build non-C-suite
-    identities for the concern-routing tests.
 
     Returns:
         A registered-shaped identity with the given role and provider.
@@ -62,7 +56,6 @@ def make_identity(  # noqa: PLR0913 -- test identity builder: many independent k
         name=NotBlankStr(name),
         role=NotBlankStr(role),
         department=NotBlankStr(department),
-        level=level,
         personality=PersonalityConfig(
             traits=(NotBlankStr("analytical"),),
             communication_style=NotBlankStr("concise"),

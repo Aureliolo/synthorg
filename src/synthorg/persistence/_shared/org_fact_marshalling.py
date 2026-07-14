@@ -18,7 +18,6 @@ from pydantic import ValidationError
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.errors import OrgMemoryQueryError
 from synthorg.memory.org.models import (
@@ -86,11 +85,11 @@ def _row_to_author(row: RowLike) -> OrgFactAuthor:
     Returns:
         Result of type ``OrgFactAuthor``.
     """
-    seniority = row["author_seniority"]
+    role = row["author_role"]
     autonomy = row["author_autonomy_level"]
     return OrgFactAuthor(
         agent_id=_opt_str(row["author_agent_id"]),
-        seniority=SeniorityLevel(str(seniority)) if seniority else None,
+        role=NotBlankStr(str(role)) if role else None,
         autonomy_level=AutonomyLevel(str(autonomy)) if autonomy else None,
         is_human=bool(row["author_is_human"]),
     )
@@ -135,7 +134,7 @@ def row_to_operation_log_entry(row: RowLike) -> OperationLogEntry:
     """
     try:
         category = row["category"]
-        seniority = row["author_seniority"]
+        role = row["author_role"]
         autonomy = row["author_autonomy_level"]
         return OperationLogEntry(
             operation_id=UUID(str(row["operation_id"])),
@@ -145,7 +144,7 @@ def row_to_operation_log_entry(row: RowLike) -> OperationLogEntry:
             category=OrgFactCategory(str(category)) if category else None,
             tags=tags_from_json(row["tags"]),
             author_agent_id=_opt_str(row["author_agent_id"]),
-            author_seniority=SeniorityLevel(str(seniority)) if seniority else None,
+            author_role=NotBlankStr(str(role)) if role else None,
             author_is_human=bool(row["author_is_human"]),
             author_autonomy_level=AutonomyLevel(str(autonomy)) if autonomy else None,
             timestamp=coerce_row_timestamp(row["timestamp"]),

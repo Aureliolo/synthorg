@@ -204,7 +204,6 @@ template:
   agents:
     - role: "CEO"
       name: "Test CEO"
-      level: "c_suite"
       model:
         priority: "quality"
         min_context: 100000
@@ -240,7 +239,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Test Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
 """
@@ -267,14 +265,12 @@ template:
   agents:
     - role: "CEO"
       name: "Test CEO"
-      level: "c_suite"
       model:
         priority: "quality"
         requires_reasoning: true
       department: "executive"
     - role: "Backend Developer"
       name: "Test Dev"
-      level: "mid"
       model: "example-small-001"
       department: "engineering"
 """
@@ -328,7 +324,6 @@ template:
   agents:
     - role: "Dev"
       name: "{{ undefined_func() | bad_filter }}"
-      level: "mid"
       model: "medium"
       department: "engineering"
 """
@@ -852,26 +847,14 @@ class TestStrategicModelDefault:
         assert req["priority"] == "quality"
         assert req["requires_reasoning"] is True
 
-    def test_ceo_with_mid_level_still_strategic(self) -> None:
-        """A CEO mislabelled ``mid`` is still recognised by title."""
+    def test_ceo_is_strategic_by_title(self) -> None:
+        """A CEO is recognised as strategic by title."""
         from synthorg.templates._agent_expansion import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "CEO",
-            "level": "mid",
             "department": "executive",
         }
-        result = _expand_single_agent(agent, 0, set(), has_extends=False)
-        req = result["model_requirement"]
-        assert isinstance(req, dict)
-        assert req["priority"] == "quality"
-        assert req["requires_reasoning"] is True
-
-    def test_explicit_c_suite_level_without_role_match(self) -> None:
-        """An explicit c_suite level marks a role strategic even off-title."""
-        from synthorg.templates._agent_expansion import _expand_single_agent
-
-        agent: dict[str, object] = {"role": "Head Coach", "level": "c_suite"}
         result = _expand_single_agent(agent, 0, set(), has_extends=False)
         req = result["model_requirement"]
         assert isinstance(req, dict)
@@ -898,7 +881,6 @@ class TestStrategicModelDefault:
             "department": "sales",
         }
         result = _expand_single_agent(agent, 0, set(), has_extends=False)
-        assert result["level"] == "vp"
         req = result["model_requirement"]
         assert isinstance(req, dict)
         assert not (req["priority"] == "quality" and req["requires_reasoning"] is True)

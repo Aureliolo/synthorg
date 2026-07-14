@@ -27,10 +27,9 @@ from synthorg.core.company_departments import (
 from synthorg.core.company_handoffs import EscalationPath, WorkflowHandoff
 from synthorg.core.memory_enums import MemoryLevel
 from synthorg.core.project import Project
-from synthorg.core.role import Authority, CustomRole, Role, SeniorityInfo, Skill
+from synthorg.core.role import Authority, CustomRole, Role, Skill
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import DepartmentName
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.timeout.config import WaitForeverConfig
@@ -45,10 +44,6 @@ class SkillFactory(ModelFactory[Skill]):
 
 class AuthorityFactory(ModelFactory[Authority]):
     __model__ = Authority
-
-
-class SeniorityInfoFactory(ModelFactory[SeniorityInfo]):
-    __model__ = SeniorityInfo
 
 
 class RoleFactory(ModelFactory[Role]):
@@ -91,7 +86,6 @@ class ToolPermissionsFactory(ModelFactory[ToolPermissions]):
 
 class AgentIdentityFactory(ModelFactory[AgentIdentity]):
     __model__ = AgentIdentity
-    level = SeniorityLevel.MID  # avoid JUNIOR+FULL autonomy validation conflict
     memory = MemoryConfigFactory
     tools = ToolPermissionsFactory
     # ``SkillSetFactory`` zeroes ``primary`` / ``secondary`` so the
@@ -223,7 +217,7 @@ def sample_role() -> Role:
         name="Backend Developer",
         department=DepartmentName.ENGINEERING,
         required_skills=("python", "apis", "databases"),
-        authority_level=SeniorityLevel.MID,
+        reports_to="Software Architect",
         description="APIs, business logic, databases",
     )
 
@@ -246,7 +240,6 @@ def sample_agent(sample_model_config: ModelConfig) -> AgentIdentity:
         name="Sarah Chen",
         role="Senior Backend Developer",
         department="Engineering",
-        level=SeniorityLevel.SENIOR,
         model=sample_model_config,
         hiring_date=date(2026, 2, 27),
     )

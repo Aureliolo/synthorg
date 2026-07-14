@@ -12,7 +12,6 @@ import aiosqlite
 import pytest
 
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingGuardDecision,
@@ -67,7 +66,6 @@ class TestTrainingPersistencePipeline:
         plan = TrainingPlan(
             new_agent_id="new-hire-001",
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             new_agent_department="engineering",
             enabled_content_types=frozenset({ContentType.PROCEDURAL}),
             volume_caps=((ContentType.PROCEDURAL, 50),),

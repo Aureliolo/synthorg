@@ -19,7 +19,6 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.role import Role
 from synthorg.core.role_record import RoleRecord
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.role import ROLE_REGISTRY_PERSISTENCE_FAILED
 from synthorg.organization.enums import DepartmentName
@@ -33,7 +32,7 @@ from synthorg.persistence._shared import (
 logger = get_logger(__name__)
 
 _SELECT_COLS = (
-    "name, department, required_skills, authority_level, tool_access, "
+    "name, department, required_skills, reports_to, tool_access, "
     "system_prompt_template, description, is_builtin, created_at, updated_at"
 )
 
@@ -71,11 +70,14 @@ def _row_to_record(row: DictRow) -> RoleRecord:
     """
     try:
         template = row["system_prompt_template"]
+        reports_to = row["reports_to"]
         role = Role(
             name=NotBlankStr(str(row["name"])),
             department=DepartmentName(str(row["department"])),
             required_skills=_str_tuple(row["required_skills"]),
-            authority_level=SeniorityLevel(str(row["authority_level"])),
+            reports_to=(
+                NotBlankStr(str(reports_to)) if reports_to is not None else None
+            ),
             tool_access=_str_tuple(row["tool_access"]),
             system_prompt_template=(
                 NotBlankStr(str(template)) if template is not None else None
@@ -117,7 +119,7 @@ class PostgresRoleRegistryRepository:
         """
         sql = """
             INSERT INTO roles (
-                name, department, required_skills, authority_level,
+                name, department, required_skills, reports_to,
                 tool_access, system_prompt_template, description, is_builtin,
                 created_at, updated_at
             )
@@ -125,7 +127,7 @@ class PostgresRoleRegistryRepository:
             ON CONFLICT (name) DO UPDATE SET
                 department = EXCLUDED.department,
                 required_skills = EXCLUDED.required_skills,
-                authority_level = EXCLUDED.authority_level,
+                reports_to = EXCLUDED.reports_to,
                 tool_access = EXCLUDED.tool_access,
                 system_prompt_template = EXCLUDED.system_prompt_template,
                 description = EXCLUDED.description,
@@ -137,7 +139,7 @@ class PostgresRoleRegistryRepository:
             role.name,
             role.department.value,
             Jsonb(list(role.required_skills)),
-            role.authority_level.value,
+            role.reports_to,
             Jsonb(list(role.tool_access)),
             role.system_prompt_template,
             role.description,

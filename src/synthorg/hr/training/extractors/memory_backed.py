@@ -13,7 +13,6 @@ from typing import Final
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.protocol import MemoryBackend
@@ -63,14 +62,12 @@ class MemoryBackedExtractor:
         *,
         source_agent_ids: tuple[NotBlankStr, ...],
         new_agent_role: NotBlankStr,  # noqa: ARG002
-        new_agent_level: SeniorityLevel,  # noqa: ARG002
     ) -> tuple[TrainingItem, ...]:
         """Extract memories of the bound category from source agents in parallel.
 
         Args:
             source_agent_ids: Senior agents to extract from.
             new_agent_role: Role of the new hire (unused).
-            new_agent_level: Seniority level (unused).
 
         Returns:
             Unranked training items of the bound content type.

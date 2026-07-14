@@ -11,7 +11,6 @@ from synthorg.engine.assignment.pool_filters import IdentityPoolFilter
 from synthorg.engine.assignment.rankers import CostDescendingRanker
 from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.routing.scorer import AgentTaskScorer
-from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_assignment_agent, make_assignment_task
 
@@ -41,12 +40,10 @@ class TestCostOptimizedAssignmentStrategy:
         expensive = make_assignment_agent(
             "expensive-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
         cheap = make_assignment_agent(
             "cheap-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -84,12 +81,10 @@ class TestCostOptimizedAssignmentStrategy:
             "better-dev",
             primary_skills=("python", "api-design"),
             role="Backend Developer",
-            level=SeniorityLevel.MID,
         )
         other = make_assignment_agent(
             "other-dev",
             primary_skills=("testing",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -125,12 +120,10 @@ class TestCostOptimizedAssignmentStrategy:
         best = make_assignment_agent(
             "best-dev",
             primary_skills=("python", "api-design"),
-            level=SeniorityLevel.MID,
         )
         other = make_assignment_agent(
             "other-dev",
             primary_skills=("testing",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -154,7 +147,6 @@ class TestCostOptimizedAssignmentStrategy:
         agent = make_assignment_agent(
             "qa",
             primary_skills=("testing",),
-            level=SeniorityLevel.JUNIOR,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.EPIC)
@@ -178,12 +170,10 @@ class TestCostOptimizedAssignmentStrategy:
         known = make_assignment_agent(
             "known-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
         unknown = make_assignment_agent(
             "unknown-dev",
             primary_skills=("python",),
-            level=SeniorityLevel.MID,
         )
 
         task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
@@ -231,7 +221,6 @@ class TestCostOptimizedAssignmentStrategy:
             make_assignment_agent(
                 f"dev-{i}",
                 primary_skills=("python",),
-                level=SeniorityLevel.MID,
             )
             for i in range(3)
         )

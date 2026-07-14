@@ -29,8 +29,8 @@ class ActionType(StrEnum):
     """Two-level action type taxonomy for security classification.
 
     Used by autonomy presets (see Operations design page), SecOps
-    validation, tiered timeout policies, and progressive trust.
-    Values follow a ``category:action`` naming convention.
+    validation, and tiered timeout policies. Values follow a
+    ``category:action`` naming convention.
 
     Custom action type strings are also accepted by models that use
     ``str`` for ``action_type`` fields -- these enum members are

@@ -31,7 +31,6 @@ from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.role import Skill
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import make_app_state
@@ -256,7 +255,6 @@ def _make_identity(
         name=name,
         role=role,
         department=department,
-        level=SeniorityLevel.MID,
         model=ModelConfig(
             provider="test-provider",
             model_id="test-medium-001",

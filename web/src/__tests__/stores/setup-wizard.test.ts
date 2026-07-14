@@ -4,7 +4,6 @@ import { apiError, apiSuccess, buildLocalPreset, buildCloudPreset } from '@/mock
 import { server } from '@/test-setup'
 import { CURRENCY_OPTIONS, DEFAULT_CURRENCY } from '@/utils/currencies'
 import { ErrorCategory, ErrorCode } from '@/api/types/errors'
-import type { SeniorityLevel } from '@/api/types/enums'
 
 const _NON_DEFAULT = CURRENCY_OPTIONS.find((c) => c.value !== DEFAULT_CURRENCY)
 if (!_NON_DEFAULT) {
@@ -104,7 +103,6 @@ describe('setup wizard store', () => {
         name: 'X',
         role: '',
         department: '',
-        level: 'mid',
         model_provider: 'missing-provider',
         model_id: 'm',
         personality_preset: 'pragmatist',
@@ -121,7 +119,6 @@ describe('setup wizard store', () => {
         name: 'X',
         role: '',
         department: '',
-        level: 'mid',
         model_provider: 'missing-provider',
         model_id: 'm',
         personality_preset: 'pragmatist',
@@ -269,7 +266,6 @@ describe('setup wizard store', () => {
         name: 'Agent',
         role: 'engineer',
         department: 'engineering',
-        level: 'mid',
         model_provider: 'provider-default',
         model_id: 'model-default',
         tier: 'medium',
@@ -497,7 +493,6 @@ describe('setup wizard store', () => {
                   name: 'CEO',
                   role: 'CEO',
                   department: 'executive',
-                  level: 'c_suite',
                   model_provider: 'test-provider',
                   model_id: 'test-model',
                   tier: 'large',
@@ -692,7 +687,6 @@ describe('setup wizard store', () => {
         name: 'New Name',
         role: 'CEO',
         department: 'executive',
-        level: 'c_suite' as SeniorityLevel,
         model_provider: 'p',
         model_id: 'm',
         tier: 'large',
@@ -710,7 +704,6 @@ describe('setup wizard store', () => {
             name: 'Old Name',
             role: 'CEO',
             department: 'executive',
-            level: 'c_suite',
             model_provider: 'p',
             model_id: 'm',
             tier: 'large',

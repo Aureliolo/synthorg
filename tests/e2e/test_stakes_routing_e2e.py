@@ -52,7 +52,6 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.models import (
     ChatMessage,
@@ -234,7 +233,6 @@ def _large_tier_agent(name: str, skill: str) -> AgentIdentity:
         name=name,
         role="developer",
         department="engineering",
-        level=SeniorityLevel.MID,
         skills=SkillSet(primary=(Skill(id=skill, name=skill),)),
         authority=Authority(budget_limit=100.0),
         model=ModelConfig(

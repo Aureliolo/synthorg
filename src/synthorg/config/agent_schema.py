@@ -14,7 +14,6 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr, stable_agent_id
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -32,11 +31,9 @@ logger = get_logger(__name__)
 class RoutingRuleConfig(BaseModel):
     """A single model routing rule.
 
-    At least one of ``role_level`` or ``task_type`` must be set so the
-    rule can match incoming requests.
+    ``task_type`` must be set so the rule can match incoming requests.
 
     Attributes:
-        role_level: Seniority level this rule applies to.
         task_type: Task type this rule applies to.
         preferred_model: Preferred model alias or ID.
         fallback: Fallback model alias or ID.
@@ -44,10 +41,6 @@ class RoutingRuleConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    role_level: SeniorityLevel | None = Field(
-        default=None,
-        description="Seniority level filter",
-    )
     task_type: NotBlankStr | None = Field(
         default=None,
         description="Task type filter",
@@ -61,14 +54,13 @@ class RoutingRuleConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _at_least_one_matcher(self) -> Self:
-        if self.role_level is None and self.task_type is None:
-            msg = "Routing rule must specify at least role_level or task_type"
+    def _require_matcher(self) -> Self:
+        if self.task_type is None:
+            msg = "Routing rule must specify task_type"
             logger.warning(
                 CONFIG_VALIDATION_FAILED,
                 model="RoutingRuleConfig",
                 error=msg,
-                role_level=self.role_level,
                 task_type=self.task_type,
                 preferred_model=self.preferred_model,
                 fallback=self.fallback,
@@ -128,7 +120,6 @@ class AgentConfig(BaseModel):
         name: Agent display name.
         role: Role name.
         department: Department name.
-        level: Seniority level.
         personality: Raw personality config dict.
         model: Raw model config dict.
         memory: Raw memory config dict.
@@ -154,10 +145,6 @@ class AgentConfig(BaseModel):
     name: NotBlankStr = Field(description="Agent display name")
     role: NotBlankStr = Field(description="Role name")
     department: NotBlankStr = Field(description="Department name")
-    level: SeniorityLevel = Field(
-        default=SeniorityLevel.MID,
-        description="Seniority level",
-    )
     personality_preset: NotBlankStr | None = Field(
         default=None,
         description="Named personality preset; round-trips from template setup.",

@@ -1,7 +1,6 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { DashboardAgentConfig } from '@/api/types/agents'
 import type { DepartmentHealth } from '@/api/types/analytics'
-import type { SeniorityLevel } from '@/api/types/enums'
 import type { CompanyConfig, DashboardDepartment } from '@/api/types/org'
 import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
@@ -47,19 +46,16 @@ export interface AgentNodeData {
   // Opaque wire identifier; the chart never uses it as a typed lookup key,
   // so it stays a plain string rather than a brand that needs casting.
   department: string
-  level: SeniorityLevel
   runtimeStatus: AgentRuntimeStatus
   /**
-   * True for the highest-seniority member of this agent's
-   * department -- rendered with a LEAD badge so the derived dept
-   * head is visually obvious.
+   * True for the agent holding this department's head role --
+   * rendered with a LEAD badge so the dept head is visually obvious.
    */
   isDeptLead?: boolean
   /**
-   * True when this agent is also the CEO of the company (the
-   * highest-seniority c-suite member, usually in the executive
-   * department).  Rendered with a subtle crown/accent so the top of
-   * the company is visible even though there is no separate CEO
+   * True when this agent is the company CEO (the root of the
+   * reporting graph).  Rendered with a subtle crown/accent so the top
+   * of the company is visible even though there is no separate CEO
    * node anymore.
    */
   isCompanyCeo?: boolean
@@ -106,23 +102,6 @@ export interface TeamGroupData {
 // ── Dept admin node dimensions ──────────────────────────────
 
 export const DEPT_ADMIN_WIDTH = 200
-
-// ── Seniority ordering ──────────────────────────────────────
-
-const SENIORITY_RANK: Record<SeniorityLevel, number> = {
-  c_suite: 7,
-  vp: 6,
-  director: 5,
-  principal: 4,
-  lead: 3,
-  senior: 2,
-  mid: 1,
-  junior: 0,
-}
-
-function seniorityOf(level: SeniorityLevel): number {
-  return SENIORITY_RANK[level]
-}
 
 // ── Owner / admin input ─────────────────────────────────────
 
@@ -189,27 +168,45 @@ export interface BuildContext {
   ownerIds: string[]
 }
 
-// ── Pure seniority helpers ──────────────────────────────────
+// ── Pure org-position helpers ───────────────────────────────
 
-export function findHighestSeniority(
-  agents: readonly DashboardAgentConfig[],
+/**
+ * Resolve a department's head agent from its declared head role.
+ *
+ * Authority follows the reporting graph, so a department's head is the
+ * agent holding its ``head`` role (case-insensitive), preferring an
+ * explicit ``head_id`` match. A department with no declared head has no
+ * head node -- returns ``null`` rather than inventing one.
+ */
+export function findDeptHead(
+  dept: DashboardDepartment,
+  members: readonly DashboardAgentConfig[],
 ): DashboardAgentConfig | null {
-  if (agents.length === 0) return null
-  return agents.reduce((best, curr) =>
-    seniorityOf(curr.level) > seniorityOf(best.level) ? curr : best,
-  )
+  if (members.length === 0) return null
+  if (dept.head_id) {
+    const byId = members.find((a) => a.id === dept.head_id)
+    if (byId) return byId
+  }
+  if (dept.head) {
+    const headRole = dept.head.toLowerCase()
+    const byRole = members.find((a) => a.role.toLowerCase() === headRole)
+    if (byRole) return byRole
+  }
+  return null
 }
 
+/**
+ * Resolve the company CEO -- the root of the reporting graph. The CEO
+ * is the agent whose role is ``CEO`` (case-insensitive); absent that, the
+ * first agent in the executive department. Returns ``null`` when neither
+ * is present.
+ */
 export function findCeo(
   agents: readonly DashboardAgentConfig[],
 ): DashboardAgentConfig | null {
-  const [execCeo] = agents.filter(
-    (a) => a.department === 'executive' && a.level === 'c_suite',
-  )
-  if (execCeo) return execCeo
+  const [byRole] = agents.filter((a) => a.role.toLowerCase() === 'ceo')
+  if (byRole) return byRole
 
-  const [anyCSuite] = agents.filter((a) => a.level === 'c_suite')
-  if (anyCSuite) return anyCSuite
-
-  return findHighestSeniority(agents)
+  const [exec] = agents.filter((a) => a.department === 'executive')
+  return exec ?? null
 }

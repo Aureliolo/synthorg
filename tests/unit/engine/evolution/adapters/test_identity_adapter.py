@@ -15,7 +15,6 @@ from synthorg.engine.evolution.models import (
 )
 from synthorg.engine.identity.store.protocol import IdentityVersionStore
 from synthorg.hr.enums import AgentStatus
-from synthorg.hr.seniority import SeniorityLevel
 
 
 @pytest.mark.unit
@@ -39,7 +38,6 @@ class TestIdentityAdapter:
                 provider="example-provider",
                 model_id="example-medium-001",
             ),
-            level=SeniorityLevel.MID,
             status=AgentStatus.ACTIVE,
         )
 

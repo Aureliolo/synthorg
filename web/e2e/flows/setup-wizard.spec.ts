@@ -81,7 +81,6 @@ const COMPANY: SetupCompanyResponse = {
       name: 'Ada',
       role: 'Engineer',
       department: 'engineering',
-      level: 'senior',
       model_provider: null,
       model_id: null,
       personality_preset: null,

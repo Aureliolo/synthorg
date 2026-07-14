@@ -1,10 +1,8 @@
 """Security feature state slice.
 
-Holds the audit log, the optional trust service (``None`` when the trust
-strategy is ``DISABLED``), the autonomy-change strategy, and the optional
+Holds the audit log, the autonomy-change strategy, and the optional
 process-local red-team report store. The audit log and autonomy strategy are
-always wired; controllers raise 503 on a ``None`` field, and the
-trust-dependent surface guards on the optional service. The red-team report
+always wired; controllers raise 503 on a ``None`` field. The red-team report
 store is published here at runtime wiring so the deliverable-receipt builder
 can snapshot a run's red-team findings into its receipt.
 """
@@ -20,7 +18,6 @@ from synthorg.security.autonomy.protocol import (
 from synthorg.security.policy_engine.protocol import PolicyEngine
 from synthorg.security.redteam.protocol import RedTeamReportRepository
 from synthorg.security.rules.risk_override_service import RiskOverrideService
-from synthorg.security.trust.service import TrustService
 
 
 class SecurityStateSlice(BaseFeatureStateSlice):
@@ -29,7 +26,6 @@ class SecurityStateSlice(BaseFeatureStateSlice):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     audit_log: AuditLog | None = None
-    trust_service: TrustService | None = None
     autonomy_change_strategy: AutonomyChangeStrategy | None = None
     red_team_reports: RedTeamReportRepository | None = None
     policy_engine: PolicyEngine | None = None
@@ -43,17 +39,6 @@ def audit_log_of(app_state: AppStateSliceMixin) -> AuditLog:
         The wired audit log.
     """
     return require_service(app_state.slice(SecurityStateSlice).audit_log, "Audit Log")
-
-
-def trust_service_of(app_state: AppStateSliceMixin) -> TrustService:
-    """Resolve the trust service from its slice, or raise 503.
-
-    Returns:
-        The wired trust service.
-    """
-    return require_service(
-        app_state.slice(SecurityStateSlice).trust_service, "Trust Service"
-    )
 
 
 def risk_override_service_of(app_state: AppStateSliceMixin) -> RiskOverrideService:

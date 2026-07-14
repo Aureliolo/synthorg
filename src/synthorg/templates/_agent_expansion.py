@@ -37,9 +37,9 @@ _DEFAULT_MODEL_ALIAS: Final[str] = "medium"
 # Default department when not specified in template agent config.
 _DEFAULT_DEPARTMENT = DEFAULT_MERGE_DEPARTMENT
 
-# Seniority a role title implies, used only to default the DISPLAYED level when
-# a template omits it -- so an exec never silently renders as "mid". This does
-# NOT drive model selection (the matcher tiers by capability demand, not rank).
+# Role titles that imply the c-suite, used only to detect a strategic role so a
+# spec-less exec earns the reasoning-heavy model demand. This does NOT drive
+# model selection directly (the matcher tiers by capability demand, not rank).
 _ROLE_LEVEL_DEFAULTS: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
     # VP must precede the c-suite ``president`` rule: a bare ``president`` match
     # would otherwise classify "Vice President" as c_suite (and force the
@@ -58,19 +58,19 @@ _DEFAULT_LEVEL: Final[str] = "mid"
 logger = get_logger(__name__)
 
 
-def _default_level(role: str) -> str:
-    """Infer a sensible level from a role title when none is declared.
+def _implied_tier(role: str) -> str:
+    """Infer the tier a role title implies for strategic-role detection.
 
     Returns:
-        The role-implied seniority, or ``"mid"`` when nothing matches.
+        The role-implied tier, or ``"mid"`` when nothing matches.
     """
-    for pattern, level in _ROLE_LEVEL_DEFAULTS:
+    for pattern, tier in _ROLE_LEVEL_DEFAULTS:
         if pattern.search(role):
-            return level
+            return tier
     return _DEFAULT_LEVEL
 
 
-# Level marking a strategic role whose work (strategy, delegation, trade-offs)
+# Tier marking a strategic role whose work (strategy, delegation, trade-offs)
 # is genuinely reasoning-heavy -- so a spec-less one earns the top demand.
 _STRATEGIC_LEVEL: Final[str] = "c_suite"
 
@@ -78,20 +78,15 @@ _STRATEGIC_LEVEL: Final[str] = "c_suite"
 def _is_strategic(agent: dict[str, object]) -> bool:
     """Return whether an agent occupies a strategic (c-suite) role.
 
-    Strategic by an explicit ``c_suite`` level OR by a role title that implies
-    the c-suite (CEO / CxO / Chief / Founder). Title takes precedence over the
-    level field because a ``head_role`` exec is frequently materialised with a
-    generic ``mid`` level -- keying on the level alone would miss it and the
-    CEO would silently inherit a mid-tier model.
+    Strategic by a role title that implies the c-suite (CEO / CxO / Chief /
+    Founder), so a ``head_role`` exec earns the reasoning-heavy model demand
+    rather than silently inheriting a mid-tier model.
 
     Returns:
-        True when the agent's level or role title marks it strategic.
+        True when the agent's role title marks it strategic.
     """
-    level = agent.get("level")
-    if isinstance(level, str) and level == _STRATEGIC_LEVEL:
-        return True
     role = agent.get("role")
-    return isinstance(role, str) and _default_level(role) == _STRATEGIC_LEVEL
+    return isinstance(role, str) and _implied_tier(role) == _STRATEGIC_LEVEL
 
 
 def _expand_agents(
@@ -186,7 +181,6 @@ def _expand_single_agent(  # noqa: PLR0913
         "name": name,
         "role": role,
         "department": agent.get("department", _DEFAULT_DEPARTMENT),
-        "level": agent.get("level") or _default_level(role),
     }
 
     personality = resolve_agent_personality(

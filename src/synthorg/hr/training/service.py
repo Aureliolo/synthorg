@@ -532,7 +532,6 @@ class TrainingService:
             return plan.override_sources
         return await self._selector.select(
             new_agent_role=plan.new_agent_role,
-            new_agent_level=plan.new_agent_level,
             new_agent_department=plan.new_agent_department,
         )
 
@@ -616,7 +615,6 @@ class TrainingService:
             items = await extractor.extract(
                 source_agent_ids=source_ids,
                 new_agent_role=plan.new_agent_role,
-                new_agent_level=plan.new_agent_level,
             )
         except Exception as exc:
             # See comment at the top of ``_execute_locked``.
@@ -639,7 +637,6 @@ class TrainingService:
             curated = await self._curation.curate(
                 items,
                 new_agent_role=plan.new_agent_role,
-                new_agent_level=plan.new_agent_level,
                 content_type=ct,
             )
         except Exception as exc:

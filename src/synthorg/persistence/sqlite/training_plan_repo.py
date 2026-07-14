@@ -14,7 +14,6 @@ from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import MalformedRowError, QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingPlan,
@@ -37,16 +36,15 @@ logger = get_logger(__name__)
 
 _UPSERT_SQL = """\
 INSERT INTO training_plans (
-    id, new_agent_id, new_agent_role, new_agent_level,
+    id, new_agent_id, new_agent_role,
     new_agent_department, source_selector_type,
     enabled_content_types, curation_strategy_type,
     volume_caps, override_sources, skip_training,
     require_review, status, created_at, executed_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     new_agent_id=excluded.new_agent_id,
     new_agent_role=excluded.new_agent_role,
-    new_agent_level=excluded.new_agent_level,
     new_agent_department=excluded.new_agent_department,
     source_selector_type=excluded.source_selector_type,
     enabled_content_types=excluded.enabled_content_types,
@@ -102,7 +100,6 @@ def _plan_to_params(plan: TrainingPlan) -> tuple[object, ...]:
         str(plan.id),
         str(plan.new_agent_id),
         str(plan.new_agent_role),
-        plan.new_agent_level.value,
         str(plan.new_agent_department)
         if plan.new_agent_department is not None
         else None,
@@ -134,7 +131,6 @@ def _row_to_plan(row: aiosqlite.Row) -> TrainingPlan:
     data = dict(row)
     try:
         data["id"] = UUID(str(data["id"]))
-        data["new_agent_level"] = SeniorityLevel(data["new_agent_level"])
         data["enabled_content_types"] = frozenset(
             ContentType(ct) for ct in json.loads(data["enabled_content_types"])
         )

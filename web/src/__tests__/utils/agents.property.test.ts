@@ -19,21 +19,17 @@ import { CAREER_EVENT_TYPE_VALUES } from '@/api/types/agents'
 import {
   AGENT_STATUS_VALUES,
   DEPARTMENT_NAME_VALUES,
-  SENIORITY_LEVEL_VALUES,
   type AgentStatus,
   type DepartmentName,
-  type SeniorityLevel,
 } from '@/api/types/enums'
 
 const DEPARTMENTS = [...DEPARTMENT_NAME_VALUES]
-const LEVELS = [...SENIORITY_LEVEL_VALUES]
 const STATUSES = [...AGENT_STATUS_VALUES]
 const CAREER_TYPES = [...CAREER_EVENT_TYPE_VALUES]
 
 // ── Arbitraries ────────────────────────────────────────────
 
 const arbDepartment: fc.Arbitrary<DepartmentName> = fc.constantFrom(...DEPARTMENTS)
-const arbLevel: fc.Arbitrary<SeniorityLevel> = fc.constantFrom(...LEVELS)
 const arbStatus: fc.Arbitrary<AgentStatus> = fc.constantFrom(...STATUSES)
 
 const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
@@ -44,7 +40,6 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   ).map(([f, l]) => `${f} ${l}`),
   role: fc.constantFrom('Engineer', 'Designer', 'Analyst', 'Manager', 'SRE'),
   department: arbDepartment,
-  level: arbLevel,
   status: arbStatus,
   personality: fc.constant({
     traits: ['analytical'],
@@ -86,7 +81,7 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   // as active, without emitting an explicit ``undefined`` (rejected under
   // exactOptionalPropertyTypes).
   requiredKeys: [
-    'id', 'name', 'role', 'department', 'level', 'personality', 'model',
+    'id', 'name', 'role', 'department', 'personality', 'model',
     'memory', 'tools', 'authority', 'autonomy_level', 'strategic_output_mode',
     'personality_preset', 'tier', 'model_requirement', 'hiring_date',
   ],
@@ -156,7 +151,6 @@ describe('filterAgents properties', () => {
         fc.record({
           search: fc.option(fc.string({ maxLength: 20 }), { nil: undefined }),
           department: fc.option(arbDepartment, { nil: undefined }),
-          level: fc.option(arbLevel, { nil: undefined }),
           status: fc.option(arbStatus, { nil: undefined }),
         }),
         (agents, filters) => {
@@ -190,7 +184,7 @@ describe('sortAgents properties', () => {
     fc.assert(
       fc.property(
         fc.array(arbAgent, { minLength: 0, maxLength: 20 }),
-        fc.constantFrom('name' as const, 'department' as const, 'level' as const, 'status' as const, 'hiring_date' as const),
+        fc.constantFrom('name' as const, 'department' as const, 'status' as const, 'hiring_date' as const),
         (agents, sortBy) => {
           const result = sortAgents(agents, sortBy)
           expect(result).toHaveLength(agents.length)

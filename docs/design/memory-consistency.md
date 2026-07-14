@@ -60,7 +60,7 @@ snapshot row:
   created_at
   retracted_at   -- null = active
   version        -- matches most recent operation_log.version
-  author info    -- agent_id, seniority, is_human, autonomy_level
+  author info    -- agent_id, role, is_human, autonomy_level
 ```
 
 Queries against the snapshot fetch active facts: `WHERE retracted_at IS NULL`. No log replay
@@ -88,8 +88,8 @@ application's responsibility:
 
 - At write time, the caller can check for contradicting facts before publishing.
 - A `"superseded_by: <fact_id>"` metadata convention marks deprecated facts for human review.
-- Core policy facts (tagged `"core-policy"`) should have write access restricted to
-  human-only or senior+ agents (enforced via `OrgMemoryBackend.write` authorization check,
+- Core policy facts (tagged `"core-policy"`) have write access restricted to
+  human-only (enforced via `OrgMemoryBackend.write` authorization check,
   not the consistency layer).
 
 ---

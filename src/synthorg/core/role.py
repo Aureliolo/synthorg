@@ -3,11 +3,9 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import (
-    ModelTier,
     NotBlankStr,
     validate_unique_strings,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.ontology.decorator import ontology_entity
 from synthorg.organization.enums import DepartmentName
 
@@ -115,30 +113,6 @@ class Authority(BaseModel):
     )
 
 
-class SeniorityInfo(BaseModel):
-    """Mapping from seniority level to authority and model configuration.
-
-    Attributes:
-        level: The seniority level.
-        authority_scope: Description of authority at this level.
-        typical_model_tier: Recommended model tier (e.g. ``"large"``).
-        cost_tier: Cost tier identifier (built-in ``CostTier`` or user-defined string).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    level: SeniorityLevel = Field(description="Seniority level")
-    authority_scope: NotBlankStr = Field(
-        description="Description of authority at this level",
-    )
-    typical_model_tier: ModelTier = Field(
-        description="Recommended model tier",
-    )
-    cost_tier: NotBlankStr = Field(
-        description="Cost tier identifier (built-in or user-defined)",
-    )
-
-
 @ontology_entity
 class Role(BaseModel):
     """A job definition within the organization.
@@ -147,7 +121,9 @@ class Role(BaseModel):
         name: Role name (e.g. ``"Backend Developer"``).
         department: Department this role belongs to.
         required_skills: Skills required for this role.
-        authority_level: Default seniority level.
+        reports_to: Name of the role this position reports to, or
+            ``None`` for a root (the CEO). Authority derives from this
+            reporting graph, not a scalar rank.
         tool_access: Tools available to this role.
         system_prompt_template: Template file for system prompt.
         description: Human-readable description.
@@ -163,9 +139,9 @@ class Role(BaseModel):
         default=(),
         description="Skills required for this role",
     )
-    authority_level: SeniorityLevel = Field(
-        default=SeniorityLevel.MID,
-        description="Default seniority level for this role",
+    reports_to: NotBlankStr | None = Field(
+        default=None,
+        description="Name of the role this position reports to (None for a root)",
     )
     tool_access: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -193,7 +169,8 @@ class CustomRole(BaseModel):
         department: Department (standard or custom name).
         required_skills: Required skills for this role.
         system_prompt_template: Template file for system prompt.
-        authority_level: Default seniority level.
+        reports_to: Name of the role this position reports to, or
+            ``None`` for a root.
         suggested_model: Suggested model tier.
     """
 
@@ -211,9 +188,9 @@ class CustomRole(BaseModel):
         default=None,
         description="Template file for system prompt",
     )
-    authority_level: SeniorityLevel = Field(
-        default=SeniorityLevel.MID,
-        description="Default seniority level",
+    reports_to: NotBlankStr | None = Field(
+        default=None,
+        description="Name of the role this position reports to (None for a root)",
     )
     suggested_model: NotBlankStr | None = Field(
         default=None,
