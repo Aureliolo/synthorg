@@ -59,7 +59,6 @@ def _identity_from_config(config: AgentConfig, *, clock: Clock) -> AgentIdentity
         name=config.name,
         role=config.role,
         department=config.department,
-        level=config.level,
         model=_build_model_config(config),
         personality=(
             PersonalityConfig.model_validate(config.personality)

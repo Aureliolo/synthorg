@@ -24,7 +24,6 @@ from synthorg.engine.parallel_models import (
 )
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.run_result import AgentRunResult
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
@@ -35,7 +34,6 @@ def _make_identity(name: str) -> AgentIdentity:
         name=name,
         role="engineer",
         department="engineering",
-        level=SeniorityLevel.MID,
         hiring_date=date(2026, 1, 15),
         personality=PersonalityConfig(traits=("analytical",)),
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),

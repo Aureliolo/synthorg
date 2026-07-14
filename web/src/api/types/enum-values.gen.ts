@@ -869,18 +869,6 @@ export const RUN_OUTCOME_VALUES = [
 ] as const
 export type RunOutcome = (typeof RUN_OUTCOME_VALUES)[number]
 
-export const SENIORITY_LEVEL_VALUES = [
-    'junior',
-    'mid',
-    'senior',
-    'lead',
-    'principal',
-    'director',
-    'vp',
-    'c_suite',
-] as const
-export type SeniorityLevel = (typeof SENIORITY_LEVEL_VALUES)[number]
-
 export const SETTING_LEVEL_VALUES = [
     'basic',
     'advanced',

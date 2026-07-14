@@ -1,9 +1,8 @@
-"""Tests for AutonomyResolver -- resolution chain, expansion, seniority."""
+"""Tests for AutonomyResolver -- resolution chain and expansion."""
 
 import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.security.autonomy.models import (
@@ -103,32 +102,6 @@ class TestCategoryExpansion:
         result = resolver.resolve()
         # "code" category expansion should include custom code:lint.
         assert "code:lint" in result.auto_approve_actions
-
-
-class TestSeniorityValidation:
-    """Seniority constraint: JUNIOR + FULL is rejected."""
-
-    @pytest.mark.unit
-    def test_junior_full_rejected(self) -> None:
-        resolver = _make_resolver()
-        with pytest.raises(ValueError, match="FULL autonomy"):
-            resolver.validate_seniority(SeniorityLevel.JUNIOR, AutonomyLevel.FULL)
-
-    @pytest.mark.unit
-    def test_junior_semi_allowed(self) -> None:
-        resolver = _make_resolver()
-        resolver.validate_seniority(SeniorityLevel.JUNIOR, AutonomyLevel.SEMI)
-
-    @pytest.mark.unit
-    def test_mid_full_allowed(self) -> None:
-        resolver = _make_resolver()
-        resolver.validate_seniority(SeniorityLevel.MID, AutonomyLevel.FULL)
-
-    @pytest.mark.unit
-    @pytest.mark.parametrize("level", list(SeniorityLevel))
-    def test_locked_always_allowed(self, level: SeniorityLevel) -> None:
-        resolver = _make_resolver()
-        resolver.validate_seniority(level, AutonomyLevel.LOCKED)
 
 
 class TestMissingPreset:

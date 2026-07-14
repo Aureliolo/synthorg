@@ -59,7 +59,6 @@ from synthorg.engine.workspace.git_backend.config import GitBackendConfig
 from synthorg.engine.workspace.project_workspace_service import ProjectWorkspaceService
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.models import (
@@ -173,7 +172,6 @@ def _agent() -> AgentIdentity:
         name="analyst",
         role="developer",
         department="engineering",
-        level=SeniorityLevel.MID,
         skills=SkillSet(primary=(Skill(id="analysis", name="analysis"),)),
         authority=Authority(budget_limit=10.0),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),

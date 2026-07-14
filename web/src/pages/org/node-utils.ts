@@ -34,7 +34,6 @@ const isAgentNodeData = makeStringFieldGuard<AgentNodeData>([
   'name',
   'role',
   'department',
-  'level',
   'runtimeStatus',
 ])
 

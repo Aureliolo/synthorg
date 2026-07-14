@@ -27,7 +27,6 @@ from synthorg.engine.strategy.strategic_context_provider import (
     current_strategic_context,
     set_strategic_context_provider,
 )
-from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_agent
 
@@ -195,6 +194,6 @@ class TestCachedStrategicContextProvider:
         provider = CachedStrategicContextProvider(resolver=_resolve)  # type: ignore[arg-type]
         await provider.refresh()
         set_strategic_context_provider(provider)
-        agent = make_agent(level=SeniorityLevel.C_SUITE)
+        agent = make_agent(role="CEO")
         sections = build_strategic_prompt_sections(config=StrategyConfig(), agent=agent)
         assert "aligned challenger" in str(sections["strategic_context_text"])

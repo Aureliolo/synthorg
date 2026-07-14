@@ -29,7 +29,6 @@ class TestHiringServiceCreateRequest:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Need more devs",
         )
         assert req.status == HiringRequestStatus.PENDING
@@ -45,7 +44,6 @@ class TestHiringServiceCreateRequest:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="senior",
             required_skills=("python", "rust"),
             reason="Need senior devs",
         )
@@ -59,25 +57,10 @@ class TestHiringServiceCreateRequest:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Budget-constrained hire",
             budget_limit_monthly=100.0,
         )
         assert req.budget_limit_monthly == 100.0
-
-    async def test_create_request_invalid_seniority_raises(
-        self,
-        hiring_service: HiringService,
-    ) -> None:
-        """Invalid seniority level string raises HiringError."""
-        with pytest.raises(HiringError, match="Invalid seniority level"):
-            await hiring_service.create_request(
-                requested_by="cto",
-                department="engineering",
-                role="developer",
-                level="invalid_level",
-                reason="Invalid level test",
-            )
 
 
 @pytest.mark.unit
@@ -92,7 +75,6 @@ class TestHiringServiceGenerateCandidate:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Expand team",
         )
         updated = await hiring_service.generate_candidate(req)
@@ -109,7 +91,6 @@ class TestHiringServiceGenerateCandidate:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Expand team",
         )
         updated = await hiring_service.generate_candidate(req)
@@ -129,7 +110,6 @@ class TestHiringServiceSubmitForApproval:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Auto-approve test",
         )
         updated = await hiring_service.generate_candidate(req)
@@ -148,7 +128,6 @@ class TestHiringServiceSubmitForApproval:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Approval required test",
         )
         updated = await service.generate_candidate(req)
@@ -170,7 +149,6 @@ class TestHiringServiceSubmitForApproval:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Bad candidate test",
         )
         updated = await hiring_service.generate_candidate(req)
@@ -191,7 +169,6 @@ class TestHiringServiceInstantiateAgent:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Instantiate test",
         )
         updated = await hiring_service.generate_candidate(req)
@@ -269,7 +246,6 @@ class TestHiringServiceInstantiateAgent:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Re-instantiation guard test",
         )
         updated = await hiring_service.generate_candidate(req)
@@ -296,7 +272,6 @@ class TestHiringServiceInstantiateAgent:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Onboarding trigger test",
         )
         updated = await service.generate_candidate(req)
@@ -327,7 +302,6 @@ class TestHiringRequestStatusTransitionedLogs:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Auto-approve transition test",
         )
         updated = await hiring_service.generate_candidate(req)
@@ -366,7 +340,6 @@ class TestHiringRequestStatusTransitionedLogs:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Manual-approval transition test",
         )
         updated = await service.generate_candidate(req)
@@ -397,7 +370,6 @@ class TestHiringRequestStatusTransitionedLogs:
             requested_by="cto",
             department="engineering",
             role="developer",
-            level="mid",
             reason="Instantiate transition test",
         )
         updated = await hiring_service.generate_candidate(req)

@@ -59,33 +59,28 @@ template:
 
   agents:
     - role: "Project Manager"
-      level: "senior"
       model:
         priority: "speed"
       personality_preset: "client_advisor"
       department: "support"
     - role: "Product Manager"
-      level: "mid"
       model:
         priority: "balanced"
       personality_preset: "user_advocate"
       department: "support"
     - role: "Technical Writer"
-      level: "mid"
       model:
         priority: "quality"
       personality_preset: "technical_communicator"
       department: "support"
     - role: "Backend Developer"
       merge_id: "support-eng"
-      level: "senior"
       model:
         priority: "balanced"
         requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "QA Engineer"
-      level: "mid"
       model:
         priority: "cost"
         requires_tools: true

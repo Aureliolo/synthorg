@@ -2,20 +2,15 @@
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.effective_autonomy import EffectiveAutonomy
-from synthorg.hr.seniority import SeniorityLevel, compare_seniority
 from synthorg.observability import get_logger
 from synthorg.observability.events.autonomy import (
     AUTONOMY_PRESET_EXPANDED,
     AUTONOMY_RESOLVED,
-    AUTONOMY_SENIORITY_VIOLATION,
 )
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.models import AutonomyConfig
 
 logger = get_logger(__name__)
-
-# Seniority threshold: JUNIOR agents cannot have FULL autonomy.
-_JUNIOR_MAX_AUTONOMY = AutonomyLevel.SEMI
 
 
 class AutonomyResolver:
@@ -50,29 +45,20 @@ class AutonomyResolver:
         self,
         agent_level: AutonomyLevel | None = None,
         department_level: AutonomyLevel | None = None,
-        seniority: SeniorityLevel | None = None,
     ) -> EffectiveAutonomy:
         """Resolve effective autonomy from the three-level chain.
-
-        When ``seniority`` is provided, the JUNIOR/FULL constraint
-        (D6) is enforced automatically.
 
         Args:
             agent_level: Per-agent override (highest priority).
             department_level: Per-department override.
-            seniority: Agent seniority level for constraint checks.
 
         Returns:
             Fully expanded :class:`EffectiveAutonomy`.
 
         Raises:
-            ValueError: If the resolved level has no matching preset
-                or seniority constraints are violated.
+            ValueError: If the resolved level has no matching preset.
         """
         level = agent_level or department_level or self._config.level
-
-        if seniority is not None:
-            self.validate_seniority(seniority, level)
 
         preset = self._config.presets.get(level)
         if preset is None:
@@ -106,35 +92,6 @@ class AutonomyResolver:
             human_approval_count=len(human_approval),
         )
         return result
-
-    def validate_seniority(
-        self,
-        seniority: SeniorityLevel,
-        autonomy: AutonomyLevel,
-    ) -> None:
-        """Reject JUNIOR agents with FULL autonomy (D6).
-
-        Args:
-            seniority: The agent's seniority level.
-            autonomy: The requested autonomy level.
-
-        Raises:
-            ValueError: If a JUNIOR agent requests FULL autonomy.
-        """
-        if (
-            compare_seniority(seniority, SeniorityLevel.JUNIOR) <= 0
-            and autonomy == AutonomyLevel.FULL
-        ):
-            logger.warning(
-                AUTONOMY_SENIORITY_VIOLATION,
-                seniority=seniority.value,
-                autonomy=autonomy.value,
-            )
-            msg = (
-                f"Seniority level {seniority.value!r} cannot have "
-                f"FULL autonomy -- maximum is {_JUNIOR_MAX_AUTONOMY.value!r}"
-            )
-            raise ValueError(msg)
 
     def _expand_patterns(
         self,

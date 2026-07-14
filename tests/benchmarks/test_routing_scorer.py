@@ -17,7 +17,6 @@ from synthorg.core.task_enums import Complexity
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.hr.enums import AgentStatus
-from synthorg.hr.seniority import SeniorityLevel
 
 
 def _make_skill(idx: int) -> Skill:
@@ -37,7 +36,6 @@ def test_agent_task_scorer_single(benchmark: BenchmarkFixture) -> None:
         name="Test Agent",
         role="backend developer",
         department="engineering",
-        level=SeniorityLevel.SENIOR,
         status=AgentStatus.ACTIVE,
         skills=SkillSet(primary=skills[:3], secondary=skills[3:]),
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),
@@ -62,7 +60,6 @@ def test_agent_task_scorer_single(benchmark: BenchmarkFixture) -> None:
 @pytest.mark.benchmark
 def test_agent_task_scorer_batch_10(benchmark: BenchmarkFixture) -> None:
     """Score 10 agents against a subtask (batch routing)."""
-    levels = list(SeniorityLevel)
     agents = []
     for a in range(10):
         skill_count = a % 4 + 2
@@ -80,7 +77,6 @@ def test_agent_task_scorer_batch_10(benchmark: BenchmarkFixture) -> None:
                 name=f"Test Agent {a}",
                 role="backend developer" if a % 3 == 0 else "frontend developer",
                 department="engineering",
-                level=levels[a % len(levels)],
                 status=AgentStatus.ACTIVE,
                 skills=SkillSet(
                     primary=skills[: skill_count // 2],

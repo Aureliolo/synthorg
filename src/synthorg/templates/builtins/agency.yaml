@@ -91,44 +91,37 @@ template:
 
   agents:
     - role: "Project Manager"
-      level: "senior"
       model:
         priority: "speed"
       personality_preset: "process_optimizer"
       department: "operations"
     - role: "Product Manager"
-      level: "mid"
       model:
         priority: "speed"
       personality_preset: "communication_bridge"
       department: "operations"
     - role: "Scrum Master"
-      level: "senior"
       model:
         priority: "speed"
       personality_preset: "team_diplomat"
       department: "operations"
     - role: "UX Designer"
-      level: "mid"
       model:
         priority: "balanced"
       personality_preset: "user_advocate"
       department: "design"
     - role: "UI Designer"
-      level: "mid"
       model:
         priority: "balanced"
       personality_preset: "creative_innovator"
       department: "design"
     - role: "Frontend Developer"
-      level: "mid"
       model:
         priority: "balanced"
         requires_tools: true
       personality_preset: "rapid_prototyper"
       department: "engineering"
     - role: "Backend Developer"
-      level: "senior"
       model:
         priority: "balanced"
         requires_tools: true
@@ -136,34 +129,29 @@ template:
       department: "engineering"
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
-      level: "senior"
       model:
         priority: "balanced"
         requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "QA Engineer"
-      level: "mid"
       model:
         priority: "cost"
         requires_tools: true
       personality_preset: "process_optimizer"
       department: "quality_assurance"
     - role: "Content Writer"
-      level: "mid"
       model:
         priority: "quality"
       personality_preset: "creative_innovator"
       department: "creative_marketing"
     - role: "Brand Strategist"
-      level: "senior"
       model:
         priority: "balanced"
       personality_preset: "growth_hacker"
       department: "creative_marketing"
     - role: "Full-Stack Developer"
       merge_id: "fullstack-mid"
-      level: "mid"
       model:
         priority: "balanced"
         requires_tools: true

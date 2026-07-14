@@ -165,7 +165,6 @@ agents:
   - name: Alice
     role: Backend Developer
     department: Engineering
-    level: senior
 budget:
   total_monthly: 500.0
   alerts:

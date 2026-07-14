@@ -17,7 +17,6 @@ from synthorg.communication.conflict_resolution.models import (
 from synthorg.communication.enums import ConflictType
 from synthorg.communication.errors import ConflictStrategyError
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.providers.cost_recording import (
     CostRecordingContext,
@@ -39,13 +38,11 @@ _NOW = datetime(2026, 5, 22, tzinfo=UTC)
 _JUDGE = NotBlankStr("conflict_reviewer")
 
 
-def _position(
-    agent_id: str, *, position: str, level: SeniorityLevel
-) -> ConflictPosition:
+def _position(agent_id: str, *, position: str, role: str) -> ConflictPosition:
     return ConflictPosition(
         agent_id=agent_id,
         agent_department="Engineering",
-        agent_level=level,
+        agent_role=role,
         position=position,
         reasoning=f"{agent_id} argues: {position}",
         timestamp=_NOW,
@@ -58,8 +55,8 @@ def _conflict() -> Conflict:
         type=ConflictType.OTHER,
         subject="Adopt REST or gRPC for the internal API",
         positions=(
-            _position("alice", position="REST is simpler", level=SeniorityLevel.SENIOR),
-            _position("bob", position="gRPC is faster", level=SeniorityLevel.MID),
+            _position("alice", position="REST is simpler", role="Software Architect"),
+            _position("bob", position="gRPC is faster", role="Backend Developer"),
         ),
         detected_at=_NOW,
     )
@@ -134,7 +131,7 @@ async def test_evaluate_fences_positions_and_lists_directive() -> None:
     # The untrusted-content directive enumerates both fences in the system prompt.
     assert "<conflict-position>" in system.content
     # Trusted structural metadata stays outside the fence.
-    assert "seniority: senior" in user.content
+    assert "role: Software Architect" in user.content
 
 
 async def test_evaluate_raises_conflict_strategy_error_on_malformed_json() -> None:

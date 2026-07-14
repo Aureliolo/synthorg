@@ -13,10 +13,10 @@ from enum import StrEnum
 from functools import cmp_to_key
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.authority import compare_authority
 from synthorg.core.task import Task
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.routing.scorer import AgentTaskScorer
-from synthorg.hr.seniority import compare_seniority
 from synthorg.observability import get_logger
 from synthorg.observability.events.pipeline import PIPELINE_PROJECT_OWNER_SELECTED
 
@@ -71,8 +71,8 @@ def select_project_owner(
         owner = best.agent_identity
         selection, score = OwnerSelectionMethod.SCORED, best.score
     else:
-        seniority_key = cmp_to_key(compare_seniority)
-        owner = max(agents, key=lambda a: (seniority_key(a.level), str(a.id)))
+        authority_key = cmp_to_key(compare_authority)
+        owner = max(agents, key=lambda a: (authority_key(a.role), str(a.id)))
         selection, score = OwnerSelectionMethod.SENIORITY_FALLBACK, 0.0
     logger.info(
         PIPELINE_PROJECT_OWNER_SELECTED,

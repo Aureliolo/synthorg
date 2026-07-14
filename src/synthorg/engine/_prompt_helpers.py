@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Final, Self, cast, get_args
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.role import Role
 from synthorg.core.task import Task
 from synthorg.core.types import AutonomyDetailLevel, PersonalityMode
@@ -22,7 +23,6 @@ from synthorg.engine.prompt_template import (
     AUTONOMY_SUMMARY,
 )
 from synthorg.engine.token_estimation import DefaultTokenEstimator, PromptTokenEstimator
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.prompt import PROMPT_PERSONALITY_TRIMMED
 from synthorg.providers.models import ToolDefinition
@@ -87,9 +87,14 @@ class PersonalityTrimInfo(BaseModel):
         return self.after_tokens <= self.max_tokens
 
 
+# Fallback autonomy mode when no effective autonomy was resolved for the
+# run: SEMI keeps the agent working independently while still deferring
+# consequential actions, matching the pre-mode default posture.
+_DEFAULT_AUTONOMY_MODE: Final[AutonomyLevel] = AutonomyLevel.SEMI
+
 _AUTONOMY_LOOKUP: MappingProxyType[
     AutonomyDetailLevel,
-    MappingProxyType[SeniorityLevel, str],
+    MappingProxyType[AutonomyLevel, str],
 ] = MappingProxyType(
     {
         "full": AUTONOMY_INSTRUCTIONS,
@@ -394,12 +399,16 @@ def build_core_context(  # noqa: PLR0913
         _resolve_profile_flags(profile)
     )
     autonomy_map = _AUTONOMY_LOOKUP[autonomy_detail]
+    autonomy_mode = (
+        effective_autonomy.level
+        if effective_autonomy is not None
+        else _DEFAULT_AUTONOMY_MODE
+    )
 
     ctx: dict[str, object] = {
         "agent_name": agent.name,
         "agent_role": agent.role,
         "agent_department": agent.department,
-        "agent_level": agent.level.value,
         "role_description": role.description if role else "",
         "personality_description": personality.description,
         "communication_style": personality.communication_style,
@@ -416,7 +425,7 @@ def build_core_context(  # noqa: PLR0913
         "reports_to": authority.reports_to or "",
         "can_delegate_to": authority.can_delegate_to,
         "budget_limit": authority.budget_limit,
-        "autonomy_instructions": autonomy_map[agent.level],
+        "autonomy_instructions": autonomy_map[autonomy_mode],
         # Profile-driven template flags.
         "personality_mode": personality_mode,
         "include_org_policies": include_org_policies,
@@ -470,14 +479,13 @@ def build_metadata(agent: AgentIdentity) -> dict[str, str]:
         agent: The agent identity.
 
     Returns:
-        Dict with agent_id, name, role, department, and level.
+        Dict with agent_id, name, role, and department.
     """
     return {
         "agent_id": str(agent.id),
         "name": agent.name,
         "role": agent.role,
         "department": agent.department,
-        "level": agent.level.value,
     }
 
 

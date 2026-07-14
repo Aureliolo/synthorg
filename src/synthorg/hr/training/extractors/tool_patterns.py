@@ -11,7 +11,6 @@ from typing import Final
 
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
@@ -67,14 +66,12 @@ class ToolPatternExtractor:
         *,
         source_agent_ids: tuple[NotBlankStr, ...],
         new_agent_role: NotBlankStr,  # noqa: ARG002
-        new_agent_level: SeniorityLevel,  # noqa: ARG002
     ) -> tuple[TrainingItem, ...]:
         """Extract tool usage patterns from source agents in parallel.
 
         Args:
             source_agent_ids: Senior agents to extract from.
             new_agent_role: Role of the new hire (unused).
-            new_agent_level: Seniority level (unused).
 
         Returns:
             Aggregated tool pattern training items.

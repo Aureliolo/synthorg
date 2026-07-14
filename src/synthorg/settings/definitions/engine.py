@@ -474,23 +474,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
-        key="routing_weight_seniority_alignment_bonus",
-        type=SettingType.FLOAT,
-        default="0.2",
-        description=(
-            "Routing scorer: bonus added when the agent's seniority"
-            " level is within the complexity band the subtask declares."
-        ),
-        group="Task Routing",
-        level=SettingLevel.ADVANCED,
-        min_value=0.0,
-        max_value=1.0,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.ENGINE,
         key="routing_min_score",
         type=SettingType.FLOAT,
         default="0.1",

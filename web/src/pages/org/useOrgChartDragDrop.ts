@@ -72,7 +72,6 @@ function reassignAgent(args: ReassignArgs): void {
     .updateAgent(args.agentId, {
       department: args.newDeptName,
       autonomy_level: existingAgent?.autonomy_level ?? null,
-      level: existingAgent?.level ?? null,
     })
     .then((result) => onReassignSettled(result, args, rollback))
 }

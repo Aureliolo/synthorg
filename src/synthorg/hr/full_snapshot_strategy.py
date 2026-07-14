@@ -12,7 +12,6 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.archival_protocol import ArchivalResult
 from synthorg.hr.errors import MemoryArchivalError
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.consolidation.archival import ArchivalStore
 from synthorg.memory.consolidation.models import ArchivalEntry, ArchivalMode
 from synthorg.memory.enums import OrgFactCategory
@@ -75,7 +74,7 @@ class FullSnapshotStrategy:
         memory_backend: MemoryBackend,
         archival_store: ArchivalStore,
         org_memory_backend: OrgMemoryBackend | None = None,
-        agent_seniority: SeniorityLevel | None = None,
+        agent_role: NotBlankStr | None = None,
     ) -> ArchivalResult:
         """Archive all memories for a departing agent.
 
@@ -84,8 +83,8 @@ class FullSnapshotStrategy:
             memory_backend: Hot memory store.
             archival_store: Cold archival storage.
             org_memory_backend: Optional org memory for promotion.
-            agent_seniority: Seniority level of the departing agent.
-                Required for org memory promotion (skipped if None).
+            agent_role: Role of the departing agent. Required for org
+                memory promotion (skipped if None).
 
         Returns:
             Result of the archival operation.
@@ -116,7 +115,7 @@ class FullSnapshotStrategy:
         )
 
         promoted_count = await self._promote_to_org(
-            entries, org_memory_backend, agent_id, agent_seniority
+            entries, org_memory_backend, agent_id, agent_role
         )
 
         hot_store_cleaned = await self._clean_hot_store(
@@ -194,22 +193,22 @@ class FullSnapshotStrategy:
         entries: tuple[MemoryEntry, ...],
         org_memory_backend: OrgMemoryBackend | None,
         agent_id: NotBlankStr,
-        agent_seniority: SeniorityLevel | None,
+        agent_role: NotBlankStr | None,
     ) -> int:
         """Promote eligible memories to org memory.
 
-        Skipped entirely if no org backend or seniority is provided.
+        Skipped entirely if no org backend or role is provided.
 
         Args:
             entries: Memory entries to consider for promotion.
             org_memory_backend: Org memory backend.
             agent_id: The departing agent's ID.
-            agent_seniority: Agent seniority for authorship.
+            agent_role: Agent role for authorship.
 
         Returns:
             Number of entries promoted.
         """
-        if org_memory_backend is None or agent_seniority is None:
+        if org_memory_backend is None or agent_role is None:
             return 0
 
         promoted_count = 0
@@ -220,7 +219,7 @@ class FullSnapshotStrategy:
                 org_category = _CATEGORY_MAP[entry.category]
                 author = OrgFactAuthor(
                     agent_id=agent_id,
-                    seniority=agent_seniority,
+                    role=agent_role,
                 )
                 write_req = OrgFactWriteRequest(
                     content=NotBlankStr(entry.content),

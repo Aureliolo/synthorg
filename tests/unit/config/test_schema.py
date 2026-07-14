@@ -18,7 +18,6 @@ from synthorg.config.schema import (
 )
 from synthorg.core.types import stable_agent_id
 from synthorg.hr.performance.config import PerformanceConfig
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import CompanyType
 from synthorg.providers.enums import AuthType
 
@@ -172,31 +171,21 @@ class TestRoutingRuleConfig:
     def test_minimal_with_task_type(self) -> None:
         r = RoutingRuleConfig(preferred_model="medium", task_type="dev")
         assert r.preferred_model == "medium"
-        assert r.role_level is None
         assert r.task_type == "dev"
         assert r.fallback is None
 
-    def test_minimal_with_role_level(self) -> None:
-        r = RoutingRuleConfig(
-            preferred_model="medium",
-            role_level=SeniorityLevel.SENIOR,
-        )
-        assert r.role_level == SeniorityLevel.SENIOR
-        assert r.task_type is None
-
     def test_no_matcher_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="at least"):
+        with pytest.raises(ValidationError, match="task_type"):
             RoutingRuleConfig(preferred_model="medium")
 
     def test_full(self) -> None:
         r = RoutingRuleConfig(
-            role_level=SeniorityLevel.SENIOR,
             task_type="development",
             preferred_model="large",
             fallback="medium",
         )
-        assert r.role_level == SeniorityLevel.SENIOR
         assert r.task_type == "development"
+        assert r.fallback == "medium"
 
     def test_blank_preferred_model_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -264,7 +253,6 @@ class TestAgentConfig:
             department="Engineering",
         )
         assert a.name == "Alice"
-        assert a.level == SeniorityLevel.MID
         assert a.personality == {}
         assert a.model == {}
 
@@ -273,11 +261,9 @@ class TestAgentConfig:
             name="Alice",
             role="Backend Developer",
             department="Engineering",
-            level=SeniorityLevel.SENIOR,
             personality={"traits": ["analytical"]},
             model={"provider": "example-provider", "model_id": "test-model:8b"},
         )
-        assert a.level == SeniorityLevel.SENIOR
         assert a.personality == {"traits": ["analytical"]}
 
     def test_raw_dicts_deep_copied_from_source(self) -> None:

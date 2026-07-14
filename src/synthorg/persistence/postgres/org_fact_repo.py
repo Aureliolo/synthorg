@@ -18,7 +18,6 @@ from psycopg_pool import AsyncConnectionPool
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.errors import (
     OrgMemoryQueryError,
@@ -80,7 +79,7 @@ class PostgresOrgFactRepository:
         category: OrgFactCategory | None,
         tags: tuple[NotBlankStr, ...],
         author_agent_id: str | None,
-        author_seniority: SeniorityLevel | None,
+        author_role: NotBlankStr | None,
         author_is_human: bool,
         author_autonomy_level: AutonomyLevel | None,
     ) -> tuple[int, datetime]:
@@ -103,7 +102,7 @@ class PostgresOrgFactRepository:
             await cur.execute(
                 "INSERT INTO org_facts_operation_log "
                 "(operation_id, fact_id, operation_type, content, "
-                "tags, author_agent_id, author_seniority, "
+                "tags, author_agent_id, author_role, "
                 "author_is_human, author_autonomy_level, category, "
                 "timestamp, version) "
                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
@@ -114,7 +113,7 @@ class PostgresOrgFactRepository:
                     content,
                     tags_to_json(tags),
                     author_agent_id,
-                    (author_seniority.value if author_seniority else None),
+                    author_role,
                     author_is_human,
                     (author_autonomy_level.value if author_autonomy_level else None),
                     (category.value if category else None),
@@ -140,7 +139,7 @@ class PostgresOrgFactRepository:
                     category=fact.category,
                     tags=fact.tags,
                     author_agent_id=fact.author.agent_id,
-                    author_seniority=fact.author.seniority,
+                    author_role=fact.author.role,
                     author_is_human=fact.author.is_human,
                     author_autonomy_level=fact.author.autonomy_level,
                 )
@@ -148,7 +147,7 @@ class PostgresOrgFactRepository:
                     await cur.execute(
                         "INSERT INTO org_facts_snapshot "
                         "(fact_id, content, category, tags, "
-                        "author_agent_id, author_seniority, "
+                        "author_agent_id, author_role, "
                         "author_is_human, "
                         "author_autonomy_level, created_at, "
                         "retracted_at, version) "
@@ -158,7 +157,7 @@ class PostgresOrgFactRepository:
                         "category=EXCLUDED.category, "
                         "tags=EXCLUDED.tags, "
                         "author_agent_id=EXCLUDED.author_agent_id, "
-                        "author_seniority=EXCLUDED.author_seniority, "
+                        "author_role=EXCLUDED.author_role, "
                         "author_is_human=EXCLUDED.author_is_human, "
                         "author_autonomy_level="
                         "EXCLUDED.author_autonomy_level, "
@@ -170,11 +169,7 @@ class PostgresOrgFactRepository:
                             fact.category.value,
                             tags_to_json(fact.tags),
                             fact.author.agent_id,
-                            (
-                                fact.author.seniority.value
-                                if fact.author.seniority
-                                else None
-                            ),
+                            fact.author.role,
                             fact.author.is_human,
                             (
                                 fact.author.autonomy_level.value
@@ -239,7 +234,7 @@ class PostgresOrgFactRepository:
                     ),
                     tags=tags_from_json(row["tags"]),
                     author_agent_id=author.agent_id,
-                    author_seniority=author.seniority,
+                    author_role=author.role,
                     author_is_human=author.is_human,
                     author_autonomy_level=author.autonomy_level,
                 )

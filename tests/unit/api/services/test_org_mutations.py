@@ -18,7 +18,6 @@ from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.config.schema import RootConfig
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests.unit.api.fakes import FakePersistenceBackend
@@ -183,7 +182,6 @@ class TestDeleteDepartment:
                 name="alice",
                 role="developer",
                 department="engineering",
-                level=SeniorityLevel.MID,
             ),
         )
         with pytest.raises(ConflictError, match="agents attached"):
@@ -253,13 +251,11 @@ class TestCreateAgent:
             name="alice",
             role="developer",
             department="eng",
-            level=SeniorityLevel.SENIOR,
         )
         agent = await service.create_agent(req)
         assert agent.name == "alice"
         assert agent.role == "developer"
         assert agent.department == "eng"
-        assert agent.level == SeniorityLevel.SENIOR
 
     async def test_create_agent_nonexistent_department_422(
         self,
@@ -269,7 +265,6 @@ class TestCreateAgent:
             name="alice",
             role="developer",
             department="nonexistent",
-            level=SeniorityLevel.MID,
         )
         with pytest.raises(ValidationError, match="does not exist"):
             await service.create_agent(req)
@@ -285,7 +280,6 @@ class TestCreateAgent:
             name="alice",
             role="developer",
             department="eng",
-            level=SeniorityLevel.MID,
         )
         await service.create_agent(req)
         with pytest.raises(ConflictError, match="already exists"):
@@ -306,14 +300,13 @@ class TestUpdateAgent:
                 name="alice",
                 role="developer",
                 department="eng",
-                level=SeniorityLevel.MID,
             ),
         )
         updated = await service.update_agent(
             "alice",
-            UpdateAgentOrgRequest(level=SeniorityLevel.SENIOR),
+            UpdateAgentOrgRequest(role="senior developer"),
         )
-        assert updated.level == SeniorityLevel.SENIOR
+        assert updated.role == "senior developer"
 
     async def test_update_agent_not_found_404(
         self,
@@ -322,7 +315,7 @@ class TestUpdateAgent:
         with pytest.raises(NotFoundError):
             await service.update_agent(
                 "nonexistent",
-                UpdateAgentOrgRequest(level=SeniorityLevel.SENIOR),
+                UpdateAgentOrgRequest(role="senior developer"),
             )
 
     async def test_update_agent_move_to_nonexistent_dept_422(
@@ -337,7 +330,6 @@ class TestUpdateAgent:
                 name="alice",
                 role="developer",
                 department="eng",
-                level=SeniorityLevel.MID,
             ),
         )
         with pytest.raises(ValidationError, match="does not exist"):
@@ -361,14 +353,13 @@ class TestDeleteAgent:
                 name="alice",
                 role="developer",
                 department="eng",
-                level=SeniorityLevel.MID,
             ),
         )
         await service.delete_agent("alice")
         with pytest.raises(NotFoundError):
             await service.update_agent(
                 "alice",
-                UpdateAgentOrgRequest(level=SeniorityLevel.SENIOR),
+                UpdateAgentOrgRequest(role="senior developer"),
             )
 
     async def test_delete_agent_not_found_404(
@@ -390,7 +381,6 @@ class TestDeleteAgent:
                 name="chief",
                 role="ceo",
                 department="exec",
-                level=SeniorityLevel.C_SUITE,
             ),
         )
         with pytest.raises(ConflictError, match="CEO"):
@@ -411,7 +401,6 @@ class TestReorderAgents:
                 name="alice",
                 role="dev",
                 department="eng",
-                level=SeniorityLevel.MID,
             ),
         )
         await service.create_agent(
@@ -419,7 +408,6 @@ class TestReorderAgents:
                 name="bob",
                 role="dev",
                 department="eng",
-                level=SeniorityLevel.MID,
             ),
         )
         reordered = await service.reorder_agents(
@@ -450,7 +438,6 @@ class TestReorderAgents:
                 name="alice",
                 role="dev",
                 department="eng",
-                level=SeniorityLevel.MID,
             ),
         )
         await service.create_agent(
@@ -458,7 +445,6 @@ class TestReorderAgents:
                 name="bob",
                 role="dev",
                 department="eng",
-                level=SeniorityLevel.MID,
             ),
         )
         with pytest.raises(ValidationError, match="exact permutation"):

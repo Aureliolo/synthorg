@@ -62,7 +62,6 @@ export function AgentIdentityHeader({ agent, className }: AgentIdentityHeaderPro
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <StatPill label="DEPT" value={formatLabel(agent.department)} />
-          <StatPill label="LEVEL" value={formatLabel(agent.level)} />
           {agent.autonomy_level && (
             <StatPill label="AUTONOMY" value={formatLabel(agent.autonomy_level)} />
           )}

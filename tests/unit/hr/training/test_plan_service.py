@@ -26,7 +26,6 @@ import pytest
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingPlan,
@@ -49,7 +48,6 @@ def _plan(plan_id: str = "plan-1", agent_id: str = "agent-1") -> TrainingPlan:
         id=as_uuid(plan_id),
         new_agent_id=NotBlankStr(agent_id),
         new_agent_role=NotBlankStr("developer"),
-        new_agent_level=SeniorityLevel.SENIOR,
         new_agent_department=NotBlankStr("eng"),
         override_sources=(),
         enabled_content_types=frozenset({ContentType.PROCEDURAL}),

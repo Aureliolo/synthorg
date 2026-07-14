@@ -127,13 +127,11 @@ class TestAgentDictToSummary:
             "name": "Alice",
             "role": "Developer",
             "department": "Engineering",
-            "level": "",
             "tier": "medium",
             "personality_preset": None,
             "model": {"provider": "", "model_id": ""},
         }
         summary = agent_dict_to_summary(agent)
-        assert summary.level is None
         assert summary.model_provider is None
         assert summary.model_id is None
 
@@ -146,13 +144,11 @@ class TestAgentDictToSummary:
             "name": "Bob",
             "role": "QA",
             "department": "Engineering",
-            "level": "   ",
             "tier": "small",
             "personality_preset": None,
             "model": {"provider": "  ", "model_id": "  "},
         }
         summary = agent_dict_to_summary(agent)
-        assert summary.level is None
         assert summary.model_provider is None
         assert summary.model_id is None
 
@@ -165,13 +161,11 @@ class TestAgentDictToSummary:
             "name": "Carol",
             "role": "PM",
             "department": "Product",
-            "level": "senior",
             "tier": "large",
             "personality_preset": "visionary_leader",
             "model": {"provider": "test-provider", "model_id": "test-model-001"},
         }
         summary = agent_dict_to_summary(agent)
-        assert summary.level == "senior"
         assert summary.model_provider == "test-provider"
         assert summary.model_id == "test-model-001"
 

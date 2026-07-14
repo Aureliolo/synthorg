@@ -18,17 +18,15 @@ from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
 from synthorg.hr.enums import AgentStatus
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid, sid
 
 
-def _make_agent(  # noqa: PLR0913
+def _make_agent(
     name: str,
     *,
     primary: tuple[str, ...] = (),
     secondary: tuple[str, ...] = (),
     role: str = "developer",
-    level: SeniorityLevel = SeniorityLevel.MID,
     status: AgentStatus = AgentStatus.ACTIVE,
 ) -> AgentIdentity:
     """Helper to create a named agent."""
@@ -37,7 +35,6 @@ def _make_agent(  # noqa: PLR0913
         name=name,
         role=role,
         department="Engineering",
-        level=level,
         skills=SkillSet(
             primary=tuple(Skill(id=s, name=s) for s in primary),
             secondary=tuple(Skill(id=s, name=s) for s in secondary),
@@ -125,13 +122,11 @@ class TestTaskRoutingService:
             "Backend Dev",
             primary=("python", "sql"),
             role="developer",
-            level=SeniorityLevel.MID,
         )
         frontend_dev = _make_agent(
             "Frontend Dev",
             primary=("javascript", "react"),
             role="frontend-developer",
-            level=SeniorityLevel.MID,
         )
 
         task = _make_task()
@@ -170,7 +165,6 @@ class TestTaskRoutingService:
             "Unrelated Agent",
             primary=("cooking",),
             role="chef",
-            level=SeniorityLevel.JUNIOR,
         )
 
         task = _make_task()
@@ -193,14 +187,12 @@ class TestTaskRoutingService:
             "Senior Dev",
             primary=("python", "sql"),
             role="developer",
-            level=SeniorityLevel.SENIOR,
         )
         agent2 = _make_agent(
             "Mid Dev",
             primary=("python",),
             secondary=("sql",),
             role="developer",
-            level=SeniorityLevel.MID,
         )
 
         plan = DecompositionPlan(
@@ -239,7 +231,6 @@ class TestTaskRoutingService:
             "Dev",
             primary=("python", "sql"),
             role="developer",
-            level=SeniorityLevel.MID,
         )
 
         task = _make_task()

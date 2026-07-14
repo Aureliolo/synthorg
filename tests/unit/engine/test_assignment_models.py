@@ -15,7 +15,6 @@ from synthorg.engine.assignment.models import (
     AssignmentRequest,
     AssignmentResult,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
@@ -28,14 +27,12 @@ def _model_config() -> ModelConfig:
 def _make_agent(
     name: str,
     *,
-    level: SeniorityLevel = SeniorityLevel.MID,
     primary_skills: tuple[str, ...] = (),
 ) -> AgentIdentity:
     return AgentIdentity(
         name=name,
         role="Developer",
         department="Engineering",
-        level=level,
         model=_model_config(),
         hiring_date=date(2026, 1, 1),
         skills=SkillSet(

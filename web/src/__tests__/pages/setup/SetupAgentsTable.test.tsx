@@ -8,7 +8,6 @@ function agent(overrides: Partial<SetupAgentSummary> = {}): SetupAgentSummary {
     name: 'Agent',
     role: 'Engineer',
     department: 'engineering',
-    level: null,
     model_provider: 'prov',
     model_id: 'm-1',
     tier: 'medium',

@@ -52,7 +52,6 @@ def render_agent_persona_body(identity: AgentIdentity) -> str:
     department = flatten_label(identity.department)
     lines: list[str] = [
         f"You are {name}, a {role} in the {department} department.",
-        f"Seniority level: {identity.level.value}.",
     ]
     traits = tuple(flatten_label(t) for t in identity.personality.traits)
     if traits:

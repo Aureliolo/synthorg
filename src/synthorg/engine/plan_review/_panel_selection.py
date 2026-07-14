@@ -13,10 +13,10 @@ from collections.abc import Callable
 from functools import cmp_to_key
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.authority import compare_authority
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role_catalog import get_builtin_role
 from synthorg.engine.decomposition.models import DecompositionResult
-from synthorg.hr.seniority import compare_seniority
 from synthorg.observability import get_logger
 from synthorg.observability.events.plan_review import (
     PLAN_REVIEW_PANEL_EMPTY,
@@ -29,17 +29,17 @@ logger = get_logger(__name__)
 #: and the budget lens (CFO). Order is the seating priority.
 _STANDING_PANEL_ROLES: tuple[str, ...] = ("CTO", "CFO")
 
-_seniority_cmp = cmp_to_key(compare_seniority)
+_authority_cmp = cmp_to_key(compare_authority)
 
 
 def _seniority_key(agent: AgentIdentity) -> tuple[object, str]:
     """Sort key ranking an agent most-senior-first, ties broken on id.
 
     Returns:
-        A key usable with ``max``: higher seniority sorts first, a stable id
-        breaks ties.
+        A key usable with ``max``: higher reporting authority sorts first, a
+        stable id breaks ties.
     """
-    return (_seniority_cmp(agent.level), str(agent.id))
+    return (_authority_cmp(agent.role), str(agent.id))
 
 
 def _most_senior(

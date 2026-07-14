@@ -26,7 +26,6 @@ from synthorg.hr.enums import (
     DecisionMakingStyle,
     RiskTolerance,
 )
-from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import (
     AgentIdentityFactory,
@@ -645,7 +644,6 @@ class TestAgentIdentity:
         assert sample_agent.name == "Sarah Chen"
         assert sample_agent.role == "Senior Backend Developer"
         assert sample_agent.department == "Engineering"
-        assert sample_agent.level is SeniorityLevel.SENIOR
         assert isinstance(sample_agent.id, UUID)
 
     def test_auto_generated_id(self, sample_model_config: ModelConfig) -> None:
@@ -660,7 +658,7 @@ class TestAgentIdentity:
         assert isinstance(agent.id, UUID)
 
     def test_defaults(self, sample_model_config: ModelConfig) -> None:
-        """Verify default level, status, and nested config objects."""
+        """Verify default status and nested config objects."""
         agent = AgentIdentity(
             name="Test",
             role="Dev",
@@ -668,7 +666,6 @@ class TestAgentIdentity:
             model=sample_model_config,
             hiring_date=date(2026, 1, 1),
         )
-        assert agent.level is SeniorityLevel.MID
         assert agent.status is AgentStatus.ACTIVE
         assert isinstance(agent.personality, PersonalityConfig)
         assert isinstance(agent.skills, SkillSet)
@@ -793,7 +790,6 @@ class TestAgentIdentity:
             name="Full Agent",
             role="Lead Dev",
             department="Engineering",
-            level=SeniorityLevel.LEAD,
             personality=PersonalityConfig(
                 traits=("analytical", "pragmatic"),
                 communication_style="direct",

@@ -12,25 +12,21 @@ export interface AgentHealthCardProps {
 }
 
 /**
- * Compact health summary for the agent detail page: lifecycle status,
- * trust level, and last-active timestamp sourced from
- * ``GET /agents/{id}/health``. Renders nothing until health has loaded.
+ * Compact health summary for the agent detail page: lifecycle status
+ * and last-active timestamp sourced from ``GET /agents/{id}/health``.
+ * Renders nothing until health has loaded.
  */
 export function AgentHealthCard({ health }: AgentHealthCardProps) {
   if (!health) return null
-  const trustLevel = health.trust ? health.trust.level : '--'
   const lastActiveAt = health.last_active_at
   return (
     <SectionCard title="Health" icon={HeartPulse}>
-      <dl className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-1">
+      <dl className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
         <HealthField label="Lifecycle">
           <StatusBadge
             status={toRuntimeStatus(health.lifecycle_status)}
             label
           />
-        </HealthField>
-        <HealthField label="Trust level">
-          <span className="text-sm text-foreground">{trustLevel}</span>
         </HealthField>
         <HealthField label="Last active">
           {lastActiveAt !== null ? (

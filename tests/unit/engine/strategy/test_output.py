@@ -4,7 +4,6 @@ import pytest
 
 from synthorg.engine.strategy.lenses import DEFAULT_LENSES, LENS_DEFINITIONS
 from synthorg.engine.strategy.output import build_output_instructions
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 
 from .conftest import make_agent
@@ -42,26 +41,26 @@ class TestBuildOutputInstructions:
         assert "state your decision clearly" in result.lower()
 
     @pytest.mark.unit
-    def test_context_dependent_resolves_for_c_suite(self) -> None:
-        agent = make_agent(level=SeniorityLevel.C_SUITE)
+    def test_context_dependent_resolves_for_executive(self) -> None:
+        agent = make_agent(role="CEO")
         result = build_output_instructions(
             mode=StrategicOutputMode.CONTEXT_DEPENDENT,
             lenses=(),
             agent=agent,
         )
-        # Should resolve to decision_maker for C-suite.
+        # Should resolve to decision_maker for the executive tier.
         assert "state your decision clearly" in result.lower()
         assert "advice, not a decision" not in result.lower()
 
     @pytest.mark.unit
-    def test_context_dependent_resolves_for_mid(self) -> None:
-        agent = make_agent(level=SeniorityLevel.MID, name="Mid")
+    def test_context_dependent_resolves_for_ic(self) -> None:
+        agent = make_agent(role="Backend Developer", name="Mid")
         result = build_output_instructions(
             mode=StrategicOutputMode.CONTEXT_DEPENDENT,
             lenses=(),
             agent=agent,
         )
-        # Should resolve to advisor for non-C-suite.
+        # Should resolve to advisor for a non-executive role.
         assert "advice, not a decision" in result.lower()
         assert "state your decision clearly" not in result.lower()
 

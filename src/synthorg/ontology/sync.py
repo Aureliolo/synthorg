@@ -7,8 +7,8 @@ to OrgMemory), idempotent via SHA-256 content hashing.
 
 import hashlib
 
+from synthorg.core.role_catalog import KNOWLEDGE_ARCHITECT_ROLE_NAME
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.observability import get_logger
@@ -40,8 +40,8 @@ class OntologyOrgMemorySync:
     """Sync entity definitions to organizational memory.
 
     Publishes entity definitions as OrgFacts, using content hashing
-    to skip unchanged definitions.  Authored at ``SeniorityLevel.SENIOR``
-    so definition writes carry senior write authority.
+    to skip unchanged definitions.  Authored under the Knowledge
+    Architect role (the org's memory-curation authority).
 
     Args:
         ontology: Ontology backend for entity retrieval.
@@ -97,7 +97,7 @@ class OntologyOrgMemorySync:
         )
         author = OrgFactAuthor(
             agent_id=NotBlankStr("system-ontology-sync"),
-            seniority=SeniorityLevel.SENIOR,
+            role=NotBlankStr(KNOWLEDGE_ARCHITECT_ROLE_NAME),
         )
         await self._org_memory.write(request, author=author)
         self._hashes[entity.name] = new_hash

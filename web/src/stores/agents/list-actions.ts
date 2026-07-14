@@ -1,7 +1,7 @@
 import { listAgents } from '@/api/endpoints/agents'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
-import type { AgentStatus, SeniorityLevel } from '@/api/types/enums'
+import type { AgentStatus } from '@/api/types/enums'
 import type { AgentSortKey } from '@/utils/agents'
 import type { AgentsSet } from './types'
 
@@ -27,7 +27,6 @@ export function createListActions(set: AgentsSet) {
     fetchAgents: () => fetchAgentsImpl(set),
     setSearchQuery: (q: string) => set({ searchQuery: q }),
     setDepartmentFilter: (d: string | null) => set({ departmentFilter: d }),
-    setLevelFilter: (l: SeniorityLevel | null) => set({ levelFilter: l }),
     setStatusFilter: (s: AgentStatus | null) => set({ statusFilter: s }),
     setSortBy: (key: AgentSortKey) => set({ sortBy: key }),
     setSortDirection: (dir: 'asc' | 'desc') => set({ sortDirection: dir }),
@@ -35,7 +34,6 @@ export function createListActions(set: AgentsSet) {
       set({
         searchQuery: '',
         departmentFilter: null,
-        levelFilter: null,
         statusFilter: null,
       }),
   }

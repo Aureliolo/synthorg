@@ -12,7 +12,6 @@ from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
 from synthorg.communication.errors import ConflictStrategyError
-from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_conflict, make_position, make_resolution
 
@@ -29,15 +28,15 @@ class TestFindLosers:
     def test_three_party_returns_two_losers(self) -> None:
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="a1", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="a1", role="Software Architect"),
                 make_position(
                     agent_id="a2",
-                    level=SeniorityLevel.MID,
+                    role="Backend Developer",
                     position="B",
                 ),
                 make_position(
                     agent_id="a3",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="C",
                 ),
             ),
@@ -89,10 +88,10 @@ class TestPickHighestSeniority:
     def test_picks_senior_over_junior(self) -> None:
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="jr", level=SeniorityLevel.JUNIOR),
+                make_position(agent_id="jr", role="Backend Developer"),
                 make_position(
                     agent_id="sr",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Other",
                 ),
             ),
@@ -103,10 +102,10 @@ class TestPickHighestSeniority:
     def test_picks_c_suite_over_lead(self) -> None:
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="lead", level=SeniorityLevel.LEAD),
+                make_position(agent_id="lead", role="QA Lead"),
                 make_position(
                     agent_id="cto",
-                    level=SeniorityLevel.C_SUITE,
+                    role="CTO",
                     position="Other",
                 ),
             ),
@@ -117,10 +116,10 @@ class TestPickHighestSeniority:
     def test_equal_seniority_first_wins(self) -> None:
         conflict = make_conflict(
             positions=(
-                make_position(agent_id="first", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="first", role="Software Architect"),
                 make_position(
                     agent_id="second",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Other",
                 ),
             ),
@@ -137,12 +136,12 @@ class TestPickHighestSeniority:
             positions=(
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Deep agent",
                 ),
                 make_position(
                     agent_id="backend_lead",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Shallow agent",
                 ),
             ),
@@ -160,12 +159,12 @@ class TestPickHighestSeniority:
             positions=(
                 make_position(
                     agent_id="sr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="First",
                 ),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Second",
                 ),
             ),

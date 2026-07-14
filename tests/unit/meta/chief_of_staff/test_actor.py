@@ -22,7 +22,6 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult, ExecutedToolCall
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.actor import (
     ActProgress,
     ConversationalActArgs,
@@ -44,7 +43,6 @@ def _identity() -> AgentIdentity:
         name="Casey",
         role="CFO",
         department="Finance",
-        level=SeniorityLevel.SENIOR,
         autonomy_level=AutonomyLevel.SUPERVISED,
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
         hiring_date=date(2026, 1, 1),
@@ -158,7 +156,6 @@ class TestConversationalActor:
 
         resolver.resolve.assert_called_once_with(
             agent_level=identity.autonomy_level,
-            seniority=identity.level,
         )
         passed = engine.run_chat_action.await_args.kwargs["effective_autonomy"]
         assert passed is sentinel

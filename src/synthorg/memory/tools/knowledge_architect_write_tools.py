@@ -14,8 +14,8 @@ from pydantic import BaseModel
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.role_catalog import KNOWLEDGE_ARCHITECT_ROLE_NAME
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.models import (
     OrgFactAuthor,
@@ -174,7 +174,7 @@ class KnowledgeArchitectWriteTool(BaseTool):
             )
             author = OrgFactAuthor(
                 agent_id=self._agent_id,
-                seniority=SeniorityLevel.SENIOR,
+                role=KNOWLEDGE_ARCHITECT_ROLE_NAME,
                 is_human=False,
                 autonomy_level=self._autonomy_level,
             )
@@ -273,7 +273,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
             entry_id = args.entry_id
             author = OrgFactAuthor(
                 agent_id=self._agent_id,
-                seniority=SeniorityLevel.SENIOR,
+                role=KNOWLEDGE_ARCHITECT_ROLE_NAME,
                 is_human=False,
             )
             deleted = await self._fact_store.delete(

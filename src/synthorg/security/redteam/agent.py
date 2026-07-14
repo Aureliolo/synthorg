@@ -74,9 +74,8 @@ def build_red_team_agent_identity(
     """Construct the built-in red-team :class:`AgentIdentity`.
 
     The factory looks the catalogued ``Red Team`` :class:`Role` up by
-    name and copies its ``department`` and ``authority_level`` onto the
-    agent identity, so a future Role edit propagates without changing
-    this module.
+    name and copies its ``department`` onto the agent identity, so a
+    future Role edit propagates without changing this module.
 
     Args:
         model: Caller-supplied :class:`ModelConfig` (provider +
@@ -121,7 +120,6 @@ def build_red_team_agent_identity(
         name=name,
         role=role.name,
         department=role.department.value,
-        level=role.authority_level,
         skills=SkillSet(primary=_build_primary_skills()),
         model=model,
         hiring_date=hiring_dt.date(),

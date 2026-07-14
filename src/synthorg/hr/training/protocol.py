@@ -8,7 +8,6 @@ All protocols are ``@runtime_checkable`` for duck-typing support.
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingGuardDecision,
@@ -35,14 +34,12 @@ class ContentExtractor(Protocol):
         *,
         source_agent_ids: tuple[NotBlankStr, ...],
         new_agent_role: NotBlankStr,
-        new_agent_level: SeniorityLevel,
     ) -> tuple[TrainingItem, ...]:
         """Extract candidate items from source agents.
 
         Args:
             source_agent_ids: Senior agents to extract from.
             new_agent_role: Role of the new hire (for relevance).
-            new_agent_level: Seniority level of the new hire.
 
         Returns:
             Unranked candidate training items.
@@ -63,14 +60,12 @@ class SourceSelector(Protocol):
         self,
         *,
         new_agent_role: NotBlankStr,
-        new_agent_level: SeniorityLevel,
         new_agent_department: NotBlankStr | None = None,
     ) -> tuple[NotBlankStr, ...]:
         """Select source agent IDs for training.
 
         Args:
             new_agent_role: Role of the new hire.
-            new_agent_level: Seniority level of the new hire.
             new_agent_department: Department of the new hire. Required
                 for department-scoped selectors; optional otherwise.
 
@@ -98,7 +93,6 @@ class CurationStrategy(Protocol):
         items: tuple[TrainingItem, ...],
         *,
         new_agent_role: NotBlankStr,
-        new_agent_level: SeniorityLevel,
         content_type: ContentType,
     ) -> tuple[TrainingItem, ...]:
         """Curate candidate items for a content type.
@@ -106,7 +100,6 @@ class CurationStrategy(Protocol):
         Args:
             items: Unranked candidate items.
             new_agent_role: Role of the new hire.
-            new_agent_level: Seniority level of the new hire.
             content_type: The content type being curated.
 
         Returns:

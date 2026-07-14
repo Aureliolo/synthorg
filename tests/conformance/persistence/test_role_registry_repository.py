@@ -16,7 +16,6 @@ import pytest
 from synthorg.core.role import Role
 from synthorg.core.role_record import RoleRecord
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import DepartmentName
 from synthorg.persistence.postgres.role_registry_repo import (
     PostgresRoleRegistryRepository,
@@ -58,7 +57,7 @@ def _record(
         name=NotBlankStr(name),
         department=department,
         required_skills=(NotBlankStr("python"), NotBlankStr("sql")),
-        authority_level=SeniorityLevel.SENIOR,
+        reports_to=NotBlankStr("Software Architect"),
         tool_access=(NotBlankStr("git"),),
         description=f"Role {name}.",
     )
@@ -76,7 +75,7 @@ class TestRoleRegistryCrud:
         assert fetched is not None
         assert fetched.is_builtin is True
         assert fetched.role.department is DepartmentName.ENGINEERING
-        assert fetched.role.authority_level is SeniorityLevel.SENIOR
+        assert fetched.role.reports_to == "Software Architect"
         assert fetched.role.required_skills == ("python", "sql")
         assert fetched.role.tool_access == ("git",)
 

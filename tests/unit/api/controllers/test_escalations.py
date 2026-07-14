@@ -14,7 +14,6 @@ from synthorg.communication.conflict_resolution.models import (
 )
 from synthorg.communication.enums import ConflictType
 from synthorg.communication.state import CommunicationStateSlice
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import LoopAsyncClient, as_pk, as_uuid, sid
 from tests.unit.api.conftest import make_auth_headers
 
@@ -45,7 +44,7 @@ def _make_escalation(
             ConflictPosition(
                 agent_id="agent-a",
                 agent_department="engineering",
-                agent_level=SeniorityLevel.SENIOR,
+                agent_role="Software Architect",
                 position="use Framework A",
                 reasoning="Framework A is more mature",
                 timestamp=datetime.now(UTC),
@@ -53,7 +52,7 @@ def _make_escalation(
             ConflictPosition(
                 agent_id="agent-b",
                 agent_department="engineering",
-                agent_level=SeniorityLevel.SENIOR,
+                agent_role="Software Architect",
                 position="use Framework B",
                 reasoning="Framework B has better performance",
                 timestamp=datetime.now(UTC),

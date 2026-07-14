@@ -13,7 +13,6 @@ from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
@@ -32,7 +31,6 @@ def _make_agent() -> AgentIdentity:
         name="Test Agent",
         role="Developer",
         department="Engineering",
-        level=SeniorityLevel.MID,
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
         skills=SkillSet(primary=(Skill(id="python", name="python"),)),

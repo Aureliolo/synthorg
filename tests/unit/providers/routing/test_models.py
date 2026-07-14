@@ -3,7 +3,6 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.routing.models import (
     ResolvedModel,
     RoutingDecision,
@@ -139,12 +138,10 @@ class TestResolvedModel:
 class TestRoutingRequest:
     def test_build_from_factory(self) -> None:
         request = RoutingRequestFactory.build()
-        assert request.agent_level is None
         assert request.task_type is None
 
     def test_all_fields_optional(self) -> None:
         request = RoutingRequest()
-        assert request.agent_level is None
         assert request.task_type is None
         assert request.model_override is None
         assert request.remaining_budget is None
@@ -182,12 +179,10 @@ class TestRoutingRequest:
 
     def test_with_all_fields(self) -> None:
         request = RoutingRequest(
-            agent_level=SeniorityLevel.SENIOR,
             task_type="development",
             model_override="medium",
             remaining_budget=10.0,
         )
-        assert request.agent_level == SeniorityLevel.SENIOR
         assert request.task_type == "development"
         assert request.model_override == "medium"
         assert request.remaining_budget == 10.0

@@ -22,7 +22,6 @@ from synthorg.hr.enums import (
     DecisionMakingStyle,
     RiskTolerance,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -486,7 +485,6 @@ class AgentIdentity(BaseModel):
         name: Agent display name.
         role: Role name (string reference to :class:`~synthorg.core.role.Role`).
         department: Department name (string reference).
-        level: Seniority level.
         personality: Personality configuration.
         skills: Primary and secondary skill set.
         model: LLM model configuration.
@@ -507,10 +505,6 @@ class AgentIdentity(BaseModel):
     name: NotBlankStr = Field(description="Agent display name")
     role: NotBlankStr = Field(description="Role name")
     department: NotBlankStr = Field(description="Department name")
-    level: SeniorityLevel = Field(
-        default=SeniorityLevel.MID,
-        description="Seniority level",
-    )
     personality: PersonalityConfig = Field(
         default_factory=PersonalityConfig,
         description="Personality configuration",
@@ -548,31 +542,3 @@ class AgentIdentity(BaseModel):
         default=AgentStatus.ACTIVE,
         description="Current lifecycle status",
     )
-
-    @model_validator(mode="after")
-    def _validate_seniority_autonomy(self) -> Self:
-        """Reject JUNIOR agents with FULL autonomy (D6).
-
-        Returns:
-            The validated instance (Pydantic ``model_validator`` contract).
-
-        Raises:
-            ValueError: If a JUNIOR-level agent is configured with FULL
-                autonomy (the spec caps JUNIOR at SEMI).
-        """
-        if (
-            self.autonomy_level == AutonomyLevel.FULL
-            and self.level == SeniorityLevel.JUNIOR
-        ):
-            msg = (
-                "JUNIOR agents cannot have FULL autonomy -- "
-                "maximum is SEMI (DESIGN_SPEC D6)"
-            )
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                model="AgentIdentity",
-                field="autonomy_level/level",
-                reason=msg,
-            )
-            raise ValueError(msg)
-        return self

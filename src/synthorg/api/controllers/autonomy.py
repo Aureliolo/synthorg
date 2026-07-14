@@ -15,7 +15,7 @@ from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.domain_errors import ForbiddenError, NotFoundError
+from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
@@ -23,9 +23,7 @@ from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_PROMOTION_DENIED,
     SECURITY_AUTONOMY_PROMOTION_REQUESTED,
 )
-from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.models import AutonomyUpdate
-from synthorg.security.autonomy.resolver import AutonomyResolver
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.state import config_resolver_of
 
@@ -144,9 +142,9 @@ class AutonomyController(Controller):
     ) -> ApiResponse[AutonomyLevelResponse]:
         """Request an autonomy level change for an agent.
 
-        Enforces the D6 seniority constraint, consults the configured
-        :class:`AutonomyChangeStrategy` (wired at boot; default
-        ``HUMAN_ONLY``), and enqueues a real approval item -- the
+        Consults the configured :class:`AutonomyChangeStrategy` (wired
+        at boot; default ``HUMAN_ONLY``), and enqueues a real approval
+        item -- the
         approval queue is the apply driver per the Security design
         spec. With ``HUMAN_ONLY`` every request pends for human
         review; the strategy's verdict is carried for audit so an
@@ -162,8 +160,6 @@ class AutonomyController(Controller):
 
         Raises:
             NotFoundError: The agent is not registered (404).
-            ForbiddenError: The agent's seniority cannot hold the
-                requested autonomy level (D6) (403).
         """
         app_state: AppState = state.app_state
         agent_key = NotBlankStr(str(agent_id))
@@ -182,21 +178,6 @@ class AutonomyController(Controller):
             )
             msg = "Agent not found"
             raise NotFoundError(msg)
-
-        resolver = AutonomyResolver(
-            registry=ActionTypeRegistry(),
-            config=app_state.config.config.autonomy,
-        )
-        try:
-            resolver.validate_seniority(identity.level, requested_level)
-        except ValueError as exc:
-            # Detail already logged by the resolver
-            # (AUTONOMY_SENIORITY_VIOLATION); return a generic 403 so
-            # the seniority policy is not leaked verbatim.
-            forbidden_msg = (
-                "Agent seniority does not permit the requested autonomy level"
-            )
-            raise ForbiddenError(forbidden_msg) from exc
 
         # Consult the boot-wired strategy. HUMAN_ONLY always returns
         # False (pending); an opt-in auto-grant strategy returns True.

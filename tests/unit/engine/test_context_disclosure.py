@@ -7,7 +7,6 @@ from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.engine.context import AgentContext
-from synthorg.hr.seniority import SeniorityLevel
 
 
 def _make_context(**overrides: object) -> AgentContext:
@@ -16,7 +15,6 @@ def _make_context(**overrides: object) -> AgentContext:
         name="test-agent",
         role="developer",
         department="engineering",
-        level=SeniorityLevel.MID,
         personality=PersonalityConfig(),
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),

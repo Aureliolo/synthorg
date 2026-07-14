@@ -34,7 +34,7 @@ class ModelRouter:
                 providers=root_config.providers,
             )
             decision = router.route(
-                RoutingRequest(agent_level=SeniorityLevel.SENIOR),
+                RoutingRequest(task_type="development"),
             )
     """
 
@@ -125,11 +125,6 @@ class ModelRouter:
                 strategy=self._strategy.name,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
-                agent_level=(
-                    request.agent_level.value
-                    if request.agent_level is not None
-                    else None
-                ),
                 task_type=request.task_type,
                 model_override=request.model_override,
             )

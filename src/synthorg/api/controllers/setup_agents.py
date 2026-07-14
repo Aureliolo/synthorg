@@ -94,7 +94,7 @@ def _agent_config_to_dict(agent: AgentConfig) -> dict[str, object]:
     """Project a rendered ``AgentConfig`` into a wizard agent dict.
 
     Returns:
-        A dict with name/role/department/level/personality and the
+        A dict with name/role/department/personality and the
         ``model_requirement`` the matcher reads; ``model`` is a blank
         placeholder ``match_and_assign_models`` overwrites.
     """
@@ -102,7 +102,6 @@ def _agent_config_to_dict(agent: AgentConfig) -> dict[str, object]:
         "name": agent.name,
         "role": agent.role,
         "department": agent.department,
-        "level": agent.level.value,
         "personality": agent.personality,
         "personality_preset": agent.personality_preset,
         "model_requirement": agent.model_requirement,
@@ -219,7 +218,6 @@ def build_agent_config(
         "name": data.name,
         "role": data.role,
         "department": data.department,
-        "level": data.level.value,
         "personality": personality_dict,
         "personality_preset": data.personality_preset,
         "model": {
@@ -455,14 +453,13 @@ def agent_dict_to_summary(
         )
     model = agent.get("model")
     model_dict = model if isinstance(model, dict) else {}
-    # model_validate coerces the persisted string ``level`` / ``tier``
-    # values against SetupAgentSummary's enum / Literal fields.
+    # model_validate coerces the persisted string ``tier`` value against
+    # SetupAgentSummary's Literal field.
     return SetupAgentSummary.model_validate(
         {
             "name": name,
             "role": role,
             "department": department,
-            "level": _agent_opt_str(agent.get("level")),
             "model_provider": _agent_opt_str(model_dict.get("provider")),
             "model_id": _agent_opt_str(model_dict.get("model_id")),
             "tier": _agent_str(agent, "tier") or "medium",

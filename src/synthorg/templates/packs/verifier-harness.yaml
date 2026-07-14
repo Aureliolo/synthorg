@@ -30,7 +30,6 @@ template:
 
   agents:
     - role: "Planner"
-      level: "senior"
       model:
         priority: "quality"
         min_context: 100000
@@ -38,7 +37,6 @@ template:
       personality_preset: "strategic_planner"
       department: "engineering"
     - role: "Generator"
-      level: "mid"
       model:
         priority: "balanced"
         min_context: 50000
@@ -46,7 +44,6 @@ template:
       personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "Evaluator"
-      level: "senior"
       model:
         priority: "quality"
         min_context: 50000

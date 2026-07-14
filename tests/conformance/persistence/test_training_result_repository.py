@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingPlan,
@@ -31,7 +30,6 @@ async def _seed_plan(
             id=as_uuid(plan_id),
             new_agent_id=NotBlankStr(agent_id),
             new_agent_role=NotBlankStr("engineer"),
-            new_agent_level=SeniorityLevel.JUNIOR,
             created_at=_START,
         ),
     )

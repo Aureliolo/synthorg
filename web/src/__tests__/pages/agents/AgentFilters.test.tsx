@@ -7,7 +7,6 @@ import { makeCompanyConfig } from '../../helpers/factories'
 
 const mockSetSearchQuery = vi.fn()
 const mockSetDepartmentFilter = vi.fn()
-const mockSetLevelFilter = vi.fn()
 const mockSetStatusFilter = vi.fn()
 const mockSetSortBy = vi.fn()
 
@@ -15,13 +14,11 @@ function resetStore() {
   useAgentsStore.setState({
     searchQuery: '',
     departmentFilter: null,
-    levelFilter: null,
     statusFilter: null,
     sortBy: 'name',
     sortDirection: 'asc',
     setSearchQuery: mockSetSearchQuery,
     setDepartmentFilter: mockSetDepartmentFilter,
-    setLevelFilter: mockSetLevelFilter,
     setStatusFilter: mockSetStatusFilter,
     setSortBy: mockSetSortBy,
   })
@@ -47,7 +44,6 @@ describe('AgentFilters', () => {
   it('renders filter dropdowns', () => {
     render(<AgentFilters />)
     expect(screen.getByLabelText('Filter by department')).toBeInTheDocument()
-    expect(screen.getByLabelText('Filter by level')).toBeInTheDocument()
     expect(screen.getByLabelText('Filter by status')).toBeInTheDocument()
     expect(screen.getByLabelText('Sort agents by')).toBeInTheDocument()
   })

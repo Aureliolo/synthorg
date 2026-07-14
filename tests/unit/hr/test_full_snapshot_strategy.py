@@ -11,7 +11,6 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import MemoryArchivalError
 from synthorg.hr.full_snapshot_strategy import FullSnapshotStrategy
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.consolidation.models import ArchivalEntry, ArchivalMode
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 from synthorg.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
@@ -171,11 +170,10 @@ class TestFullSnapshotStrategy:
         archival_store = FakeArchivalStore()
         org_backend = FakeOrgMemoryBackend()
 
-        # Patch OrgFactAuthor to bypass seniority validation so
-        # the promotion path is exercised end-to-end.
+        # Patch OrgFactAuthor so the promotion path is exercised end-to-end.
         stub_author = OrgFactAuthor(
             agent_id=NotBlankStr("agent-001"),
-            seniority=SeniorityLevel.MID,
+            role="Knowledge Architect",
         )
         strategy = FullSnapshotStrategy()
         with patch(
@@ -187,7 +185,7 @@ class TestFullSnapshotStrategy:
                 memory_backend=memory_backend,  # type: ignore[arg-type]
                 archival_store=archival_store,  # type: ignore[arg-type]
                 org_memory_backend=org_backend,  # type: ignore[arg-type]
-                agent_seniority=SeniorityLevel.MID,
+                agent_role="Knowledge Architect",
             )
 
         assert result.total_archived == 3

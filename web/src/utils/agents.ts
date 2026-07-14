@@ -21,7 +21,7 @@ import type {
   CareerEventType,
   DashboardAgentConfig,
 } from '@/api/types/agents'
-import type { AgentStatus, SeniorityLevel } from '@/api/types/enums'
+import type { AgentStatus } from '@/api/types/enums'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import type { AgentRuntimeStatus, SemanticColor } from '@/utils/agent-status'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
@@ -35,11 +35,10 @@ export interface AgentFilters {
   // departments created via the setup wizard are accepted -- the static
   // enum only covers the built-in set.
   department?: string | undefined
-  level?: SeniorityLevel | undefined
   status?: AgentStatus | undefined
 }
 
-export type AgentSortKey = 'name' | 'department' | 'level' | 'status' | 'hiring_date'
+export type AgentSortKey = 'name' | 'department' | 'status' | 'hiring_date'
 
 // ── Status mapping ─────────────────────────────────────────
 
@@ -92,7 +91,7 @@ export function agentCapabilities(agent: DashboardAgentConfig): readonly string[
 
 // ── Filtering ──────────────────────────────────────────────
 
-/** Client-side filter agents by search, department, level, and status. */
+/** Client-side filter agents by search, department, and status. */
 export function filterAgents(
   agents: readonly DashboardAgentConfig[],
   filters: AgentFilters,
@@ -101,9 +100,6 @@ export function filterAgents(
 
   if (filters.department) {
     result = result.filter((a) => a.department === filters.department)
-  }
-  if (filters.level) {
-    result = result.filter((a) => a.level === filters.level)
   }
   if (filters.status) {
     result = result.filter((a) => (a.status ?? 'active') === filters.status)
@@ -122,25 +118,16 @@ export function filterAgents(
 
 // ── Sorting ────────────────────────────────────────────────
 
-/**
- * Single source of truth for seniority ordering across the dashboard.
- * Higher value = more senior.
- */
-const SENIORITY_RANK: Readonly<Record<SeniorityLevel, number>> = {
-  junior: 0, mid: 1, senior: 2, lead: 3, principal: 4, director: 5, vp: 6, c_suite: 7,
-}
-
 const STATUS_RANK: Record<AgentStatus, number> = {
   active: 0, onboarding: 1, on_leave: 2, terminated: 3,
 }
 
 /**
- * Pull the comparison key for one agent given a sort field. Ordinal
- * fields (`level`, `status`) are resolved through their semantic rank
- * tables so the sort respects the documented order rather than alpha.
+ * Pull the comparison key for one agent given a sort field. The ordinal
+ * `status` field is resolved through its semantic rank table so the sort
+ * respects the documented order rather than alpha.
  */
 function _sortValue(agent: DashboardAgentConfig, sortBy: AgentSortKey): string | number {
-  if (sortBy === 'level') return SENIORITY_RANK[agent.level]
   if (sortBy === 'status') return STATUS_RANK[agent.status ?? 'active']
   return agent[sortBy] ?? ''
 }

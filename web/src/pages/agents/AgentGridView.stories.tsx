@@ -9,7 +9,6 @@ function makeAgent(overrides: Partial<AgentConfig>): AgentConfig {
     name: 'Alice Smith',
     role: 'Software Engineer',
     department: 'engineering',
-    level: 'senior',
     status: 'active',
     personality: {
       traits: ['analytical'],
@@ -42,12 +41,12 @@ function makeAgent(overrides: Partial<AgentConfig>): AgentConfig {
 }
 
 const agents: AgentConfig[] = [
-  makeAgent({ id: '1', name: 'Alice Smith', role: 'Backend Engineer', department: 'engineering', level: 'senior', status: 'active' }),
-  makeAgent({ id: '2', name: 'Bob Jones', role: 'UI Designer', department: 'design', level: 'mid', status: 'active' }),
-  makeAgent({ id: '3', name: 'Carol Xu', role: 'Tech Lead', department: 'engineering', level: 'lead', status: 'active' }),
-  makeAgent({ id: '4', name: 'Dave Park', role: 'SRE', department: 'operations', level: 'junior', status: 'onboarding' }),
-  makeAgent({ id: '5', name: 'Eve Garcia', role: 'Security Analyst', department: 'security', level: 'senior', status: 'on_leave' }),
-  makeAgent({ id: '6', name: 'Frank Lee', role: 'Data Scientist', department: 'data_analytics', level: 'mid', status: 'terminated' }),
+  makeAgent({ id: '1', name: 'Alice Smith', role: 'Backend Engineer', department: 'engineering', status: 'active' }),
+  makeAgent({ id: '2', name: 'Bob Jones', role: 'UI Designer', department: 'design', status: 'active' }),
+  makeAgent({ id: '3', name: 'Carol Xu', role: 'Tech Lead', department: 'engineering', status: 'active' }),
+  makeAgent({ id: '4', name: 'Dave Park', role: 'SRE', department: 'operations', status: 'onboarding' }),
+  makeAgent({ id: '5', name: 'Eve Garcia', role: 'Security Analyst', department: 'security', status: 'on_leave' }),
+  makeAgent({ id: '6', name: 'Frank Lee', role: 'Data Scientist', department: 'data_analytics', status: 'terminated' }),
 ]
 
 const meta = {

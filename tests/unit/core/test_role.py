@@ -3,15 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.role import Authority, CustomRole, Role, SeniorityInfo, Skill
-from synthorg.hr.seniority import SeniorityLevel
+from synthorg.core.role import Authority, CustomRole, Role, Skill
 from synthorg.organization.enums import DepartmentName
 
 from .conftest import (
     AuthorityFactory,
     CustomRoleFactory,
     RoleFactory,
-    SeniorityInfoFactory,
     SkillFactory,
 )
 
@@ -164,99 +162,6 @@ class TestAuthority:
         assert auth.budget_limit >= 0.0
 
 
-# ── SeniorityInfo ─────────────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestSeniorityInfo:
-    def test_valid_seniority_info(self) -> None:
-        info = SeniorityInfo(
-            level=SeniorityLevel.SENIOR,
-            authority_scope="Execute, design, and review",
-            typical_model_tier="medium",
-            cost_tier="high",
-        )
-        assert info.level is SeniorityLevel.SENIOR
-        assert info.cost_tier == "high"
-
-    def test_empty_authority_scope_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            SeniorityInfo(
-                level=SeniorityLevel.JUNIOR,
-                authority_scope="",
-                typical_model_tier="small",
-                cost_tier="low",
-            )
-
-    def test_empty_model_tier_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            SeniorityInfo(
-                level=SeniorityLevel.JUNIOR,
-                authority_scope="tasks",
-                typical_model_tier="",  # type: ignore[arg-type]
-                cost_tier="low",
-            )
-
-    def test_empty_cost_tier_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            SeniorityInfo(
-                level=SeniorityLevel.JUNIOR,
-                authority_scope="tasks",
-                typical_model_tier="small",
-                cost_tier="",
-            )
-
-    def test_whitespace_authority_scope_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            SeniorityInfo(
-                level=SeniorityLevel.JUNIOR,
-                authority_scope="   ",
-                typical_model_tier="small",
-                cost_tier="low",
-            )
-
-    @pytest.mark.parametrize(
-        "bad_tier",
-        ["   ", "extra-large"],
-        ids=["whitespace", "invalid-value"],
-    )
-    def test_invalid_model_tier_rejected(self, bad_tier: str) -> None:
-        """Non-Literal tier values are rejected by Pydantic."""
-        with pytest.raises(
-            ValidationError,
-            match="Input should be 'large', 'medium' or 'small'",
-        ):
-            SeniorityInfo(
-                level=SeniorityLevel.JUNIOR,
-                authority_scope="tasks",
-                typical_model_tier=bad_tier,  # type: ignore[arg-type]
-                cost_tier="low",
-            )
-
-    def test_whitespace_cost_tier_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            SeniorityInfo(
-                level=SeniorityLevel.JUNIOR,
-                authority_scope="tasks",
-                typical_model_tier="small",
-                cost_tier="   ",
-            )
-
-    def test_frozen(self) -> None:
-        info = SeniorityInfo(
-            level=SeniorityLevel.MID,
-            authority_scope="execute",
-            typical_model_tier="medium",
-            cost_tier="medium",
-        )
-        with pytest.raises(ValidationError):
-            info.level = SeniorityLevel.SENIOR  # type: ignore[misc]
-
-    def test_factory_creates_valid_seniority_info(self) -> None:
-        info = SeniorityInfoFactory.build()
-        assert isinstance(info, SeniorityInfo)
-
-
 # ── Role ───────────────────────────────────────────────────────────
 
 
@@ -270,7 +175,7 @@ class TestRole:
     def test_defaults(self) -> None:
         role = Role(name="Test Role", department=DepartmentName.ENGINEERING)
         assert role.required_skills == ()
-        assert role.authority_level is SeniorityLevel.MID
+        assert role.reports_to is None
         assert role.tool_access == ()
         assert role.system_prompt_template is None
         assert role.description == ""
@@ -350,7 +255,7 @@ class TestCustomRole:
     def test_defaults(self) -> None:
         role = CustomRole(name="Test", department="custom")
         assert role.required_skills == ()
-        assert role.authority_level is SeniorityLevel.MID
+        assert role.reports_to is None
         assert role.suggested_model is None
 
     def test_empty_name_rejected(self) -> None:
@@ -411,7 +316,7 @@ class TestCustomRole:
             name="Custom Dev",
             department="blockchain",
             required_skills=("solidity",),
-            authority_level=SeniorityLevel.SENIOR,
+            reports_to="CTO",
         )
         json_str = role.model_dump_json()
         restored = CustomRole.model_validate_json(json_str)

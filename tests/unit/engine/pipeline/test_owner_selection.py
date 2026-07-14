@@ -13,7 +13,6 @@ from synthorg.engine.pipeline._owner_selection import (
 )
 from synthorg.engine.routing.models import RoutingCandidate
 from synthorg.engine.routing.scorer import AgentTaskScorer
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid, mock_of
 from tests._shared.scripted_provider import make_e2e_identity
 
@@ -62,12 +61,12 @@ class TestSelectProjectOwner:
         assert owner.id == agent.id
 
     def test_falls_back_to_most_senior_below_threshold(self) -> None:
-        mid = make_e2e_identity(label="mid")  # SeniorityLevel.MID
-        senior = make_e2e_identity(label="senior").model_copy(
-            update={"level": SeniorityLevel.SENIOR}
+        mid = make_e2e_identity(label="mid").model_copy(
+            update={"role": "Backend Developer"}
         )
+        senior = make_e2e_identity(label="senior").model_copy(update={"role": "CTO"})
         # Every candidate scores below the threshold, so selection falls back
-        # to seniority and the senior agent is staffed.
+        # to reporting-graph authority and the senior agent is staffed.
         scorer = _scorer(
             candidate=RoutingCandidate(agent_identity=mid, score=0.0, reason="weak")
         )

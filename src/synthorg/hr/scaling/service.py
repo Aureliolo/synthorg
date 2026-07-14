@@ -434,7 +434,6 @@ class ScalingService:
                 requested_by=NotBlankStr("scaling_service"),
                 department=decision.target_department or NotBlankStr("engineering"),
                 role=decision.target_role or NotBlankStr("general"),
-                level=self._config.default_hire_level,
                 required_skills=decision.target_skills,
                 reason=decision.rationale,
                 agent_delegate=decision.agent_delegate,

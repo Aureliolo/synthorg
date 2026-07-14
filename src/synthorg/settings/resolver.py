@@ -1039,7 +1039,6 @@ class ConfigResolver:
                 ("routing_weight_secondary_skill", "float"),
                 ("routing_weight_tag_match_bonus", "float"),
                 ("routing_weight_role_match_bonus", "float"),
-                ("routing_weight_seniority_alignment_bonus", "float"),
                 ("routing_min_score", "float"),
                 ("matcher_base_score", "float"),
                 ("matcher_capability_fit_weight", "float"),

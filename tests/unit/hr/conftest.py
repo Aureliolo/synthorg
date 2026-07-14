@@ -16,7 +16,6 @@ from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.models import CandidateCard, FiringRequest, HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid
 
 # ── Model Config Helper ────────────────────────────────────────
@@ -39,7 +38,6 @@ def make_agent_identity(  # noqa: PLR0913
     name: str = "test-agent",
     role: str = "developer",
     department: str = "engineering",
-    level: SeniorityLevel = SeniorityLevel.MID,
     status: AgentStatus = AgentStatus.ACTIVE,
     hiring_date: date | None = None,
     autonomy_level: AutonomyLevel | None = None,
@@ -56,7 +54,6 @@ def make_agent_identity(  # noqa: PLR0913
         name=name,
         role=role,
         department=department,
-        level=level,
         model=_default_model_config(),
         status=status,
         hiring_date=hiring_date or date(2026, 1, 15),
@@ -75,7 +72,6 @@ def make_candidate_card(  # noqa: PLR0913
     name: str = "candidate-agent",
     role: str = "developer",
     department: str = "engineering",
-    level: SeniorityLevel = SeniorityLevel.MID,
     skills: tuple[str, ...] = (),
     rationale: str = "Needed for team expansion",
     estimated_monthly_cost: float = 50.0,
@@ -87,7 +83,6 @@ def make_candidate_card(  # noqa: PLR0913
         "name": name,
         "role": role,
         "department": department,
-        "level": level,
         "skills": tuple(Skill(id=s, name=s) for s in skills),
         "rationale": rationale,
         "estimated_monthly_cost": estimated_monthly_cost,
@@ -103,7 +98,6 @@ def make_hiring_request(  # noqa: PLR0913
     requested_by: str = "cto",
     department: str = "engineering",
     role: str = "developer",
-    level: SeniorityLevel = SeniorityLevel.MID,
     required_skills: tuple[str, ...] = (),
     reason: str = "Team needs more capacity",
     budget_limit_monthly: float | None = None,
@@ -118,7 +112,6 @@ def make_hiring_request(  # noqa: PLR0913
         "requested_by": requested_by,
         "department": department,
         "role": role,
-        "level": level,
         "required_skills": tuple(NotBlankStr(s) for s in required_skills),
         "reason": reason,
         "budget_limit_monthly": budget_limit_monthly,

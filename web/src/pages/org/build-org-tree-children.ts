@@ -5,7 +5,7 @@ import {
   type AgentNodeData,
   type BuildContext,
   type TeamGroupData,
-  findHighestSeniority,
+  findDeptHead,
 } from './build-org-tree-types'
 
 interface DeptEmitState {
@@ -24,7 +24,7 @@ interface DeptEmitState {
  */
 export function emitDeptChildren(dept: DashboardDepartment, ctx: BuildContext): void {
   const deptMembers = ctx.deptAgents.get(dept.name) ?? []
-  const head = findHighestSeniority(deptMembers)
+  const head = findDeptHead(dept, deptMembers)
   const state: DeptEmitState = {
     dept,
     deptMembers,
@@ -39,13 +39,12 @@ export function emitDeptChildren(dept: DashboardDepartment, ctx: BuildContext): 
 
 function resolveTeamLead(
   team: DashboardDepartment['teams'][number],
-  teamMembers: readonly DashboardAgentConfig[],
   deptMembers: readonly DashboardAgentConfig[],
 ): DashboardAgentConfig | null {
   if (team.lead) {
-    return deptMembers.find((a) => a.name === team.lead) ?? findHighestSeniority(teamMembers)
+    return deptMembers.find((a) => a.name === team.lead) ?? null
   }
-  return findHighestSeniority(teamMembers)
+  return null
 }
 
 function emitTeamGroups(ctx: BuildContext, state: DeptEmitState): void {
@@ -53,7 +52,7 @@ function emitTeamGroups(ctx: BuildContext, state: DeptEmitState): void {
   for (const team of dept.teams) {
     const teamGroupId = `team-${dept.name}-${team.name}`
     const teamMembers = deptMembers.filter((a) => team.members.includes(a.name))
-    const teamLead = resolveTeamLead(team, teamMembers, deptMembers)
+    const teamLead = resolveTeamLead(team, deptMembers)
     const teamLeadId = teamLead ? teamLead.id : undefined
 
     ctx.nodes.push({
@@ -114,7 +113,6 @@ function emitDeptAgents(ctx: BuildContext, state: DeptEmitState): void {
       name: agent.name,
       role: agent.role,
       department: agent.department,
-      level: agent.level,
       runtimeStatus,
       isDeptLead: headId != null && agentId === headId,
       isCompanyCeo: ctx.ceoId != null && agentId === ctx.ceoId,

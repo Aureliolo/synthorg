@@ -29,7 +29,6 @@ from synthorg.engine.routing.models import (
     RoutingResult,
 )
 from synthorg.engine.run_result import AgentRunResult
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import coerce_id
 
 
@@ -37,7 +36,6 @@ def _make_identity(name: str = "test-agent", **kwargs: object) -> AgentIdentity:
     defaults: dict[str, object] = {
         "role": "engineer",
         "department": "engineering",
-        "level": SeniorityLevel.MID,
         "hiring_date": date(2026, 1, 15),
         "personality": PersonalityConfig(traits=("analytical",)),
         "model": ModelConfig(

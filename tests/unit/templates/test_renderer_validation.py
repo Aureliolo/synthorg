@@ -187,7 +187,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Test Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
       personality_preset: "my_custom"
@@ -228,7 +227,6 @@ template:
   agents:
     - role: "Backend Developer"
       name: "Test Dev"
-      level: "mid"
       model: "medium"
       department: "engineering"
       personality_preset: "totally_unknown"

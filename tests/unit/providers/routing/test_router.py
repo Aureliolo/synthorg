@@ -5,7 +5,6 @@ import structlog
 
 from synthorg.config.agent_schema import RoutingConfig
 from synthorg.config.schema import ProviderConfig
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.routing import (
     ROUTING_DECISION_MADE,
     ROUTING_ROUTER_BUILT,
@@ -84,7 +83,7 @@ class TestModelRouterRoute:
 
         assert decision.resolved_model.model_id == "test-large-001"
 
-    def test_routes_role_based(
+    def test_routes_task_type_rule(
         self,
         three_model_provider: dict[str, ProviderConfig],
         standard_routing_config: RoutingConfig,
@@ -92,7 +91,7 @@ class TestModelRouterRoute:
         router = ModelRouter(standard_routing_config, three_model_provider)
 
         decision = router.route(
-            RoutingRequest(agent_level=SeniorityLevel.SENIOR),
+            RoutingRequest(task_type="development"),
         )
 
         assert decision.resolved_model.alias == "medium"
@@ -104,11 +103,12 @@ class TestModelRouterRoute:
         config = RoutingConfig(strategy="smart")
         router = ModelRouter(config, three_model_provider)
 
+        # No rules match -> smart falls through to the cheapest model.
         decision = router.route(
-            RoutingRequest(agent_level=SeniorityLevel.C_SUITE),
+            RoutingRequest(task_type="architecture"),
         )
 
-        assert decision.resolved_model.alias == "large"
+        assert decision.resolved_model.alias == "small"
 
     def test_routes_fastest(
         self,

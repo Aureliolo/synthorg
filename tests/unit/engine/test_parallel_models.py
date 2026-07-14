@@ -22,7 +22,6 @@ from synthorg.engine.parallel_models import (
 )
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.run_result import AgentRunResult
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 from tests._shared import coerce_id
@@ -35,7 +34,6 @@ def _make_identity(
     defaults: dict[str, object] = {
         "role": "engineer",
         "department": "engineering",
-        "level": SeniorityLevel.MID,
         "hiring_date": date(2026, 1, 15),
         "personality": PersonalityConfig(traits=("analytical",)),
         "model": ModelConfig(

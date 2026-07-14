@@ -25,7 +25,6 @@ from synthorg.engine.evolution.protocols import (
 )
 from synthorg.engine.evolution.service import EvolutionService
 from synthorg.hr.performance.tracker import PerformanceTracker
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid, mock_of, sid
 
 pytestmark = pytest.mark.unit
@@ -39,7 +38,6 @@ def _make_identity() -> AgentIdentity:
         name="test-agent",
         role="test-role",
         department="engineering",
-        level=SeniorityLevel.MID,
         model=ModelConfig(
             provider="test-provider",
             model_id="test-small-001",

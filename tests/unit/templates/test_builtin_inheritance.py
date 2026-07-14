@@ -62,18 +62,20 @@ class TestStartupExtendsSoloFounder:
         """CEO is inherited unchanged from solo_founder."""
         config = _render("startup")
         ceo = next(a for a in config.agents if a.role == "CEO")
-        assert ceo.level.value == "c_suite"
+        assert ceo.department == "executive"
 
     def test_fullstack_senior_overridden(self) -> None:
-        """Full-Stack Developer (senior) has pragmatic_builder traits."""
+        """The overridden Full-Stack Developer has pragmatic_builder traits."""
         config = _render("startup")
         fs_agents = [a for a in config.agents if a.role == "Full-Stack Developer"]
-        senior = next(a for a in fs_agents if a.level.value == "senior")
-        assert senior.personality
-        # pragmatic_builder has "practical" in traits
-        traits = senior.personality.get("traits", ())
-        assert isinstance(traits, (list, tuple))
-        assert "practical" in traits
+        # The pragmatic_builder override seats "practical" on one full-stack
+        # agent; the reporting graph, not seniority, now carries authority.
+        all_traits: list[object] = []
+        for agent in fs_agents:
+            traits = agent.personality.get("traits", ()) if agent.personality else ()
+            if isinstance(traits, (list, tuple)):
+                all_traits.extend(traits)
+        assert "practical" in all_traits
 
     def test_departments(self) -> None:
         config = _render("startup")
@@ -172,7 +174,7 @@ class TestProductTeamExtendsStartup:
         """Product Manager is inherited from startup chain."""
         config = _render("product_team")
         pm = next(a for a in config.agents if a.role == "Product Manager")
-        assert pm.level.value == "senior"
+        assert pm.department == "product"
 
     def test_has_executive_leadership(self) -> None:
         """A product studio carries CEO + CTO declared quality+reasoning."""

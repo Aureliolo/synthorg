@@ -7,7 +7,6 @@ from synthorg.config.schema import (
     ProviderConfig,
     ProviderModelConfig,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.routing.errors import (
     ModelResolutionError,
     NoAvailableModelError,
@@ -19,7 +18,6 @@ from synthorg.providers.routing.strategies import (
     CostAwareStrategy,
     FastestStrategy,
     ManualStrategy,
-    RoleBasedStrategy,
     RoutingStrategy,
     SmartStrategy,
 )
@@ -33,7 +31,6 @@ class TestRoutingStrategyProtocol:
         "cls",
         [
             ManualStrategy,
-            RoleBasedStrategy,
             CostAwareStrategy,
             FastestStrategy,
             SmartStrategy,
@@ -45,7 +42,6 @@ class TestRoutingStrategyProtocol:
     def test_strategy_map_has_all_names(self) -> None:
         expected = {
             "manual",
-            "role_based",
             "cost_aware",
             "fastest",
             "smart",
@@ -103,106 +99,15 @@ class TestManualStrategy:
             strategy.select(request, RoutingConfig(), resolver)
 
 
-# ── RoleBasedStrategy ────────────────────────────────────────────
+# ── Task-type rule fallback ──────────────────────────────────────
 
 
-class TestRoleBasedStrategy:
-    def test_matches_role_rule(
-        self,
-        resolver: ModelResolver,
-        standard_routing_config: RoutingConfig,
-    ) -> None:
-        strategy = RoleBasedStrategy()
-        request = RoutingRequest(agent_level=SeniorityLevel.JUNIOR)
-
-        decision = strategy.select(request, standard_routing_config, resolver)
-
-        assert decision.resolved_model.alias == "small"
-        assert decision.strategy_used == "role_based"
-
-    def test_matches_senior_rule(
-        self,
-        resolver: ModelResolver,
-        standard_routing_config: RoutingConfig,
-    ) -> None:
-        strategy = RoleBasedStrategy()
-        request = RoutingRequest(agent_level=SeniorityLevel.SENIOR)
-
-        decision = strategy.select(request, standard_routing_config, resolver)
-
-        assert decision.resolved_model.alias == "medium"
-
-    def test_matches_csuite_rule(
-        self,
-        resolver: ModelResolver,
-        standard_routing_config: RoutingConfig,
-    ) -> None:
-        strategy = RoleBasedStrategy()
-        request = RoutingRequest(agent_level=SeniorityLevel.C_SUITE)
-
-        decision = strategy.select(request, standard_routing_config, resolver)
-
-        assert decision.resolved_model.alias == "large"
-
-    def test_falls_back_to_seniority_default(
-        self,
-        resolver: ModelResolver,
-    ) -> None:
-        """MID has no rule -> uses seniority catalog (medium tier)."""
-        strategy = RoleBasedStrategy()
-        config = RoutingConfig(strategy="role_based")
-        request = RoutingRequest(agent_level=SeniorityLevel.MID)
-
-        decision = strategy.select(request, config, resolver)
-
-        assert decision.resolved_model.alias == "medium"
-        assert "seniority" in decision.reason.lower()
-
-    def test_falls_back_to_global_chain(
-        self,
-        three_model_provider: dict[str, ProviderConfig],
-    ) -> None:
-        """LEAD has tier=large; if large not registered, use fallback chain."""
-        provider = ProviderConfig(
-            connection_name="conn-test",
-            models=(
-                three_model_provider["test-provider"].models[0],  # small only
-            ),
-        )
-        resolver = ModelResolver.from_config({"test-provider": provider})
-        config = RoutingConfig(
-            strategy="role_based",
-            fallback_chain=("small",),
-        )
-        request = RoutingRequest(agent_level=SeniorityLevel.LEAD)
-
-        decision = RoleBasedStrategy().select(request, config, resolver)
-
-        assert decision.resolved_model.alias == "small"
-
-    def test_raises_without_agent_level(
-        self,
-        resolver: ModelResolver,
-    ) -> None:
-        strategy = RoleBasedStrategy()
-        request = RoutingRequest()
-
-        with pytest.raises(ModelResolutionError, match="agent_level"):
-            strategy.select(request, RoutingConfig(), resolver)
-
-    def test_raises_when_no_models_available(self) -> None:
-        resolver = ModelResolver.from_config({})
-        config = RoutingConfig(strategy="role_based")
-        request = RoutingRequest(agent_level=SeniorityLevel.MID)
-
-        with pytest.raises(NoAvailableModelError):
-            RoleBasedStrategy().select(request, config, resolver)
-
+class TestTaskTypeRuleFallback:
     def test_rule_fallback_used(
         self,
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
-        """When preferred not found, rule's fallback is tried."""
+        """When a rule's preferred model is not found, its fallback is tried."""
         provider = ProviderConfig(
             connection_name="conn-test",
             models=(
@@ -211,18 +116,18 @@ class TestRoleBasedStrategy:
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
         config = RoutingConfig(
-            strategy="role_based",
+            strategy="smart",
             rules=(
                 RoutingRuleConfig(
-                    role_level=SeniorityLevel.SENIOR,
+                    task_type="development",
                     preferred_model="medium",  # not available
                     fallback="small",
                 ),
             ),
         )
-        request = RoutingRequest(agent_level=SeniorityLevel.SENIOR)
+        request = RoutingRequest(task_type="development")
 
-        decision = RoleBasedStrategy().select(request, config, resolver)
+        decision = SmartStrategy().select(request, config, resolver)
 
         assert decision.resolved_model.alias == "small"
         assert "medium" in decision.fallbacks_tried
@@ -565,7 +470,6 @@ class TestSmartStrategy:
         strategy = SmartStrategy()
         request = RoutingRequest(
             model_override="large",
-            agent_level=SeniorityLevel.JUNIOR,
             task_type="review",
         )
 
@@ -574,50 +478,21 @@ class TestSmartStrategy:
         assert decision.resolved_model.alias == "large"
         assert "override" in decision.reason.lower()
 
-    def test_task_type_before_role(
+    def test_task_type_rule_matches(
         self,
         resolver: ModelResolver,
         standard_routing_config: RoutingConfig,
     ) -> None:
         strategy = SmartStrategy()
-        request = RoutingRequest(
-            agent_level=SeniorityLevel.JUNIOR,
-            task_type="review",
-        )
+        request = RoutingRequest(task_type="review")
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        # review rule -> large; junior role rule -> small; task wins
+        # review rule -> large
         assert decision.resolved_model.alias == "large"
         assert "task-type" in decision.reason.lower()
 
-    def test_role_rule_when_no_task_match(
-        self,
-        resolver: ModelResolver,
-        standard_routing_config: RoutingConfig,
-    ) -> None:
-        strategy = SmartStrategy()
-        request = RoutingRequest(agent_level=SeniorityLevel.JUNIOR)
-
-        decision = strategy.select(request, standard_routing_config, resolver)
-
-        assert decision.resolved_model.alias == "small"
-
-    def test_seniority_default_when_no_rules(
-        self,
-        resolver: ModelResolver,
-    ) -> None:
-        """No rules -> uses seniority catalog."""
-        strategy = SmartStrategy()
-        config = RoutingConfig()
-        request = RoutingRequest(agent_level=SeniorityLevel.MID)
-
-        decision = strategy.select(request, config, resolver)
-
-        assert decision.resolved_model.alias == "medium"
-        assert "seniority" in decision.reason.lower()
-
-    def test_cheapest_when_no_level(self, resolver: ModelResolver) -> None:
+    def test_cheapest_when_no_rule_matches(self, resolver: ModelResolver) -> None:
         strategy = SmartStrategy()
         request = RoutingRequest()
 
@@ -671,10 +546,7 @@ class TestSmartStrategy:
     ) -> None:
         """Unresolvable override in SmartStrategy falls through (not raise)."""
         strategy = SmartStrategy()
-        request = RoutingRequest(
-            model_override="nonexistent",
-            agent_level=SeniorityLevel.JUNIOR,
-        )
+        request = RoutingRequest(model_override="nonexistent")
 
         decision = strategy.select(
             request,
@@ -684,39 +556,8 @@ class TestSmartStrategy:
 
         # Should NOT have used the override signal
         assert "override" not in decision.reason.lower()
-        # Should have fallen through to a role rule or seniority default
+        # Should have fallen through to cheapest / fallback chain
         assert decision.resolved_model is not None
-
-    def test_full_three_stage_fallback(
-        self,
-        three_model_provider: dict[str, ProviderConfig],
-    ) -> None:
-        """Primary miss -> rule fallback miss -> global chain hit."""
-        provider = ProviderConfig(
-            connection_name="conn-test",
-            models=(
-                three_model_provider["test-provider"].models[0],  # small only
-            ),
-        )
-        resolver = ModelResolver.from_config({"test-provider": provider})
-        config = RoutingConfig(
-            strategy="role_based",
-            rules=(
-                RoutingRuleConfig(
-                    role_level=SeniorityLevel.SENIOR,
-                    preferred_model="nonexistent",
-                    fallback="also-nonexistent",
-                ),
-            ),
-            fallback_chain=("small",),
-        )
-        request = RoutingRequest(agent_level=SeniorityLevel.SENIOR)
-
-        decision = RoleBasedStrategy().select(request, config, resolver)
-
-        assert decision.resolved_model.alias == "small"
-        assert "nonexistent" in decision.fallbacks_tried
-        assert "also-nonexistent" in decision.fallbacks_tried
 
 
 class TestGlobalFallbackChain:
@@ -740,24 +581,17 @@ class TestGlobalFallbackChain:
 
         assert decision.resolved_model.alias == "small"
 
-    def test_role_based_exhausted_non_empty_chain(
-        self,
-        three_model_provider: dict[str, ProviderConfig],
-    ) -> None:
-        """RoleBasedStrategy raises when all fallback_chain refs are invalid."""
-        provider = ProviderConfig(
-            connection_name="conn-test",
-            models=(three_model_provider["test-provider"].models[0],),  # small only
-        )
-        resolver = ModelResolver.from_config({"test-provider": provider})
+    def test_smart_exhausted_empty_resolver(self) -> None:
+        """SmartStrategy raises when no models and all chain refs are invalid."""
+        resolver = ModelResolver.from_config({})
         config = RoutingConfig(
-            strategy="role_based",
+            strategy="smart",
             fallback_chain=("nonexistent-x", "nonexistent-y"),
         )
-        request = RoutingRequest(agent_level=SeniorityLevel.C_SUITE)
+        request = RoutingRequest()
 
         with pytest.raises(NoAvailableModelError):
-            RoleBasedStrategy().select(request, config, resolver)
+            SmartStrategy().select(request, config, resolver)
 
 
 class TestRuleFallbackDedup:
@@ -765,26 +599,26 @@ class TestRuleFallbackDedup:
         self,
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
-        """When rule fallback equals preferred, it should not retry."""
+        """When a rule's fallback equals its preferred, it should not retry."""
         provider = ProviderConfig(
             connection_name="conn-test",
             models=(three_model_provider["test-provider"].models[0],),  # small only
         )
         resolver = ModelResolver.from_config({"test-provider": provider})
         config = RoutingConfig(
-            strategy="role_based",
+            strategy="smart",
             rules=(
                 RoutingRuleConfig(
-                    role_level=SeniorityLevel.SENIOR,
+                    task_type="development",
                     preferred_model="nonexistent",
                     fallback="nonexistent",  # same as preferred
                 ),
             ),
             fallback_chain=("small",),
         )
-        request = RoutingRequest(agent_level=SeniorityLevel.SENIOR)
+        request = RoutingRequest(task_type="development")
 
-        decision = RoleBasedStrategy().select(request, config, resolver)
+        decision = SmartStrategy().select(request, config, resolver)
 
         assert decision.resolved_model.alias == "small"
         # "nonexistent" should appear only once in tried (deduped)

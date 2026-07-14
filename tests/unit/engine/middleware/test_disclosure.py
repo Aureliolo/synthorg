@@ -10,7 +10,6 @@ from synthorg.core.task_enums import Priority, TaskType
 from synthorg.engine.context import AgentContext
 from synthorg.engine.middleware.disclosure import DisclosureMiddleware
 from synthorg.engine.middleware.models import AgentMiddlewareContext, ToolCallResult
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.tools.disclosure_config import ToolDisclosureConfig
 from tests._shared import as_uuid
 
@@ -40,7 +39,6 @@ def _make_context(
         name="test-agent",
         role="developer",
         department="engineering",
-        level=SeniorityLevel.MID,
         personality=PersonalityConfig(),
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),

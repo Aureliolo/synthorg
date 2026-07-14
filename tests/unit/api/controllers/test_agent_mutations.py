@@ -31,7 +31,6 @@ class TestCreateAgent:
                 "name": "alice",
                 "role": "developer",
                 "department": "eng",
-                "level": "senior",
             },
         )
         assert resp.status_code == 201
@@ -39,7 +38,6 @@ class TestCreateAgent:
         assert data["name"] == "alice"
         assert data["role"] == "developer"
         assert data["department"] == "eng"
-        assert data["level"] == "senior"
 
     async def test_create_agent_nonexistent_dept_422(
         self,
@@ -51,7 +49,6 @@ class TestCreateAgent:
                 "name": "alice",
                 "role": "developer",
                 "department": "nonexistent",
-                "level": "mid",
             },
         )
         assert resp.status_code == 422
@@ -70,7 +67,6 @@ class TestCreateAgent:
                 "name": "alice",
                 "role": "dev",
                 "department": "eng",
-                "level": "mid",
             },
         )
         resp = await async_test_client.post(
@@ -79,7 +75,6 @@ class TestCreateAgent:
                 "name": "alice",
                 "role": "tester",
                 "department": "eng",
-                "level": "mid",
             },
         )
         assert resp.status_code == 409
@@ -95,7 +90,6 @@ class TestCreateAgent:
                 "name": "alice",
                 "role": "dev",
                 "department": "eng",
-                "level": "mid",
             },
         )
         assert resp.status_code == 403
@@ -117,15 +111,14 @@ class TestUpdateAgent:
                 "name": "alice",
                 "role": "dev",
                 "department": "eng",
-                "level": "mid",
             },
         )
         resp = await async_test_client.patch(
             f"/api/v1/agents/{stable_agent_id('alice')}",
-            json={"level": "senior"},
+            json={"role": "senior-developer"},
         )
         assert resp.status_code == 200
-        assert resp.json()["data"]["level"] == "senior"
+        assert resp.json()["data"]["role"] == "senior-developer"
 
     async def test_rename_restamps_stable_id(
         self,
@@ -144,7 +137,6 @@ class TestUpdateAgent:
                 "name": "alice",
                 "role": "dev",
                 "department": "eng",
-                "level": "mid",
             },
         )
         resp = await async_test_client.patch(
@@ -172,7 +164,7 @@ class TestUpdateAgent:
     ) -> None:
         resp = await async_test_client.patch(
             "/api/v1/agents/nonexistent",
-            json={"level": "senior"},
+            json={"role": "senior-developer"},
         )
         assert resp.status_code == 404
 
@@ -193,13 +185,12 @@ class TestUpdateAgent:
                 "name": "alice",
                 "role": "dev",
                 "department": "eng",
-                "level": "mid",
             },
         )
         with structlog.testing.capture_logs() as events:
             resp = await async_test_client.patch(
                 f"/api/v1/agents/{stable_agent_id('alice')}",
-                json={"level": "senior"},
+                json={"role": "senior-developer"},
             )
         assert resp.status_code == 200
         identity_events = [
@@ -208,7 +199,7 @@ class TestUpdateAgent:
         assert len(identity_events) == 1
         entry = identity_events[0]
         assert entry["agent_name"] == "alice"
-        assert "level" in entry["fields_changed"]
+        assert "role" in entry["fields_changed"]
         assert entry["actor"] == _CEO_ACTOR
 
 
@@ -228,7 +219,6 @@ class TestDeleteAgent:
                 "name": "alice",
                 "role": "dev",
                 "department": "eng",
-                "level": "mid",
             },
         )
         resp = await async_test_client.delete(
@@ -263,7 +253,6 @@ class TestDeleteAgent:
                 "name": "alice",
                 "role": "dev",
                 "department": "eng",
-                "level": "mid",
             },
         )
         with structlog.testing.capture_logs() as events:
@@ -306,7 +295,6 @@ class TestDeleteAgent:
                 "name": "chief",
                 "role": "ceo",
                 "department": "exec",
-                "level": "c_suite",
             },
         )
         resp = await async_test_client.delete(
@@ -331,13 +319,12 @@ class TestUpdateAgentETag:
                 "name": "alice",
                 "role": "dev",
                 "department": "eng",
-                "level": "mid",
             },
         )
         # Send a stale ETag
         resp = await async_test_client.patch(
             f"/api/v1/agents/{stable_agent_id('alice')}",
-            json={"level": "senior"},
+            json={"role": "senior-developer"},
             headers={"If-Match": '"stale-etag-value000"'},
         )
         assert resp.status_code == 409
@@ -357,13 +344,12 @@ class TestUpdateAgentETag:
                 "name": "bob",
                 "role": "dev",
                 "department": "eng",
-                "level": "mid",
             },
         )
         # First update to get an ETag in the response
         resp1 = await async_test_client.patch(
             f"/api/v1/agents/{stable_agent_id('bob')}",
-            json={"level": "senior"},
+            json={"role": "senior-developer"},
         )
         assert resp1.status_code == 200
         etag = resp1.headers.get("etag")
@@ -372,7 +358,7 @@ class TestUpdateAgentETag:
         # Use the returned ETag for a second update
         resp2 = await async_test_client.patch(
             f"/api/v1/agents/{stable_agent_id('bob')}",
-            json={"level": "lead"},
+            json={"role": "lead-developer"},
             headers={"If-Match": etag},
         )
         assert resp2.status_code == 200
@@ -391,12 +377,11 @@ class TestUpdateAgentETag:
                 "name": "carol",
                 "role": "dev",
                 "department": "eng",
-                "level": "mid",
             },
         )
         # No If-Match header -- should succeed
         resp = await async_test_client.patch(
             f"/api/v1/agents/{stable_agent_id('carol')}",
-            json={"level": "senior"},
+            json={"role": "senior-developer"},
         )
         assert resp.status_code == 200

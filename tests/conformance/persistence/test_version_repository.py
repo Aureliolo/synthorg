@@ -18,7 +18,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition, WorkflowNode
 from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
 from synthorg.hr.evaluation.config import EvaluationConfig
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.organization.enums import DepartmentName
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.versioning.hashing import compute_content_hash
@@ -272,7 +271,7 @@ class TestVersionRepositoryTypedAccessors:
             name=NotBlankStr("Backend Developer"),
             department=DepartmentName.ENGINEERING,
             required_skills=(NotBlankStr("python"),),
-            authority_level=SeniorityLevel.SENIOR,
+            reports_to=NotBlankStr("Software Architect"),
             tool_access=(NotBlankStr("git"),),
             description="Backend role.",
         )

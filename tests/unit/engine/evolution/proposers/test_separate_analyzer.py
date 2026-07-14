@@ -56,7 +56,6 @@ class TestSeparateAnalyzerProposer:
         """Create a mock agent identity."""
         identity = MagicMock(spec=AgentIdentity)
         identity.name = NotBlankStr("test-agent")
-        identity.level = "junior"
         identity.role = "test_role"
         identity.autonomy_level = None
         return identity
@@ -348,7 +347,6 @@ class TestBuildUserMessageContentSummaries:
     def _identity(self) -> AgentIdentity:
         identity = MagicMock(spec=AgentIdentity)
         identity.name = NotBlankStr("agent-summary")
-        identity.level = "mid"
         identity.role = "reviewer"
         identity.autonomy_level = None
         return identity

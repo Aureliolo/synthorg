@@ -7,7 +7,6 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.errors import AgentAlreadyRegisteredError, AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from tests.unit.hr.conftest import make_agent_identity
 
 
@@ -483,15 +482,15 @@ class TestAgentRegistryService:
         await registry.register(identity)
         updated = await registry.update_identity(
             str(identity.id),
-            level=SeniorityLevel.SENIOR,
+            role="senior-role",
         )
-        assert updated.level == SeniorityLevel.SENIOR
+        assert updated.role == "senior-role"
         # Original identity is not mutated
-        assert identity.level == SeniorityLevel.MID
+        assert identity.role == "developer"
         # Stored value is updated
         fetched = await registry.get(str(identity.id))
         assert fetched is not None
-        assert fetched.level == SeniorityLevel.SENIOR
+        assert fetched.role == "senior-role"
 
     async def test_update_identity_not_found_raises(
         self,
@@ -500,7 +499,7 @@ class TestAgentRegistryService:
         with pytest.raises(AgentNotFoundError, match="not found"):
             await registry.update_identity(
                 "nonexistent",
-                level=SeniorityLevel.SENIOR,
+                role="senior-role",
             )
 
     async def test_update_identity_disallowed_field_raises(

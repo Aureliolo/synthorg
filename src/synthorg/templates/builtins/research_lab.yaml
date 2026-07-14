@@ -63,7 +63,6 @@ template:
 
   agents:
     - role: "Software Architect"
-      level: "principal"
       model:
         priority: "quality"
         min_context: 100000
@@ -71,14 +70,12 @@ template:
       personality_preset: "systems_thinker"
       department: "engineering"
     - role: "Backend Developer"
-      level: "mid"
       model:
         priority: "quality"
         requires_reasoning: true
       personality_preset: "independent_researcher"
       department: "engineering"
     - role: "Data Engineer"
-      level: "senior"
       model:
         priority: "balanced"
         requires_tools: true
@@ -86,14 +83,12 @@ template:
       department: "data_analytics"
     - role: "Data Analyst"
       merge_id: "analyst-primary"
-      level: "mid"
       model:
         priority: "quality"
         requires_tools: true
       personality_preset: "data_driven_optimizer"
       department: "data_analytics"
     - role: "ML Engineer"
-      level: "senior"
       model:
         priority: "quality"
         requires_tools: true
@@ -101,14 +96,12 @@ template:
       department: "data_analytics"
     - role: "Data Analyst"
       merge_id: "analyst-secondary"
-      level: "mid"
       model:
         priority: "balanced"
         requires_reasoning: true
       personality_preset: "methodical_analyst"
       department: "data_analytics"
     - role: "Technical Writer"
-      level: "mid"
       model:
         priority: "balanced"
       personality_preset: "technical_communicator"

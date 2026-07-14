@@ -55,7 +55,6 @@ template:
 
   agents:
     - role: "Software Architect"
-      level: "principal"
       model:
         priority: "quality"
         min_context: 100000
@@ -64,7 +63,6 @@ template:
       department: "consulting"
     - role: "Backend Developer"
       merge_id: "advisor-1"
-      level: "senior"
       model:
         priority: "quality"
         requires_reasoning: true
@@ -72,20 +70,17 @@ template:
       department: "consulting"
     - role: "Backend Developer"
       merge_id: "advisor-2"
-      level: "senior"
       model:
         priority: "quality"
         requires_tools: true
       personality_preset: "code_craftsman"
       department: "consulting"
     - role: "Project Manager"
-      level: "senior"
       model:
         priority: "speed"
       personality_preset: "client_advisor"
       department: "operations"
     - role: "Technical Writer"
-      level: "mid"
       model:
         priority: "quality"
       personality_preset: "technical_communicator"

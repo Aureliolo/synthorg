@@ -31,7 +31,6 @@ from synthorg.communication.enums import (
 )
 from synthorg.communication.errors import ConflictResolutionError
 from synthorg.communication.event_stream.stream import EventStreamHub
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import mock_of
 
 from .conftest import make_position
@@ -172,11 +171,11 @@ class TestResolve:
             positions=[
                 make_position(
                     agent_id="sr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                 ),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ],
@@ -270,10 +269,10 @@ class TestAuditTrail:
             conflict_type=ConflictType.ARCHITECTURE,
             subject="Design",
             positions=[
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ],
@@ -294,11 +293,11 @@ class TestAuditTrail:
                 positions=[
                     make_position(
                         agent_id=f"agent-{i}a",
-                        level=SeniorityLevel.SENIOR,
+                        role="Software Architect",
                     ),
                     make_position(
                         agent_id=f"agent-{i}b",
-                        level=SeniorityLevel.JUNIOR,
+                        role="Backend Developer",
                         position="Other",
                     ),
                 ],
@@ -315,10 +314,10 @@ class TestAuditTrail:
             conflict_type=ConflictType.ARCHITECTURE,
             subject="Design",
             positions=[
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ],
@@ -340,11 +339,11 @@ class TestAuditTrail:
                 positions=[
                     make_position(
                         agent_id=f"a-{ct}",
-                        level=SeniorityLevel.SENIOR,
+                        role="Software Architect",
                     ),
                     make_position(
                         agent_id=f"b-{ct}",
-                        level=SeniorityLevel.JUNIOR,
+                        role="Backend Developer",
                         position="Other",
                     ),
                 ],
@@ -364,10 +363,10 @@ class TestAuditTrail:
             conflict_type=ConflictType.ARCHITECTURE,
             subject="Design",
             positions=[
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ],
@@ -387,10 +386,10 @@ class TestAuditTrail:
             conflict_type=ConflictType.ARCHITECTURE,
             subject="Design",
             positions=[
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ],
@@ -411,11 +410,11 @@ class TestAuditTrail:
             positions=[
                 make_position(
                     agent_id="sr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                 ),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ],
@@ -427,10 +426,10 @@ class TestAuditTrail:
             conflict_type=ConflictType.PROCESS,
             subject="Process dispute",
             positions=[
-                make_position(agent_id="a-h", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="a-h", role="Software Architect"),
                 make_position(
                     agent_id="b-h",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ],
@@ -456,11 +455,11 @@ class TestAuditTrail:
                 positions=[
                     make_position(
                         agent_id=f"a-{ct}",
-                        level=SeniorityLevel.SENIOR,
+                        role="Software Architect",
                     ),
                     make_position(
                         agent_id=f"b-{ct}",
-                        level=SeniorityLevel.JUNIOR,
+                        role="Backend Developer",
                         position="Other",
                     ),
                 ],
@@ -495,10 +494,10 @@ class TestAuditTrail:
             conflict_type=ConflictType.ARCHITECTURE,
             subject="Design",
             positions=[
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ],
@@ -548,10 +547,10 @@ class TestDissentPublishErrorPaths:
             conflict_type=ConflictType.ARCHITECTURE,
             subject="Design",
             positions=[
-                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(agent_id="sr_dev", role="Software Architect"),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other",
                 ),
             ],

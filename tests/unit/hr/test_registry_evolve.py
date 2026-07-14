@@ -8,7 +8,6 @@ import pytest
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 
 
 def _make_identity(
@@ -16,16 +15,15 @@ def _make_identity(
     agent_id: str | None = None,
     name: str = "evolve-test",
     department: str = "engineering",
-    level: SeniorityLevel = SeniorityLevel.MID,
+    role: str = "test-role",
 ) -> AgentIdentity:
     from uuid import UUID
 
     return AgentIdentity(
         id=UUID(agent_id) if agent_id else uuid4(),
         name=name,
-        role="test-role",
+        role=role,
         department=department,
-        level=level,
         model=ModelConfig(
             provider="test-provider",
             model_id="test-small-001",
@@ -44,19 +42,19 @@ class TestEvolveIdentity:
         await registry.register(identity)
 
         evolved = identity.model_copy(
-            update={"level": SeniorityLevel.SENIOR},
+            update={"role": "senior-role"},
         )
         result = await registry.evolve_identity(
             str(identity.id),
             evolved,
             evolution_rationale="test evolution",
         )
-        assert result.level == SeniorityLevel.SENIOR
+        assert result.role == "senior-role"
 
         # Registry should reflect the change.
         current = await registry.get(str(identity.id))
         assert current is not None
-        assert current.level == SeniorityLevel.SENIOR
+        assert current.role == "senior-role"
 
     @pytest.mark.unit
     async def test_not_found_raises(self) -> None:

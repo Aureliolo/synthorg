@@ -539,7 +539,7 @@ class TestResolveInheritance:
         assert len(config.agents) == 2
         fs_agents = [a for a in config.agents if a.role == "Full-Stack Developer"]
         assert len(fs_agents) == 1
-        assert fs_agents[0].level.value == "lead"
+        assert fs_agents[0].name == "Override Dev Lead"
 
     def test_remove_agent_via_extends(
         self,
@@ -599,7 +599,6 @@ template:
   agents:
     - role: "Data Analyst"
       name: "Kai Analytics"
-      level: "mid"
       model: "medium"
       personality_preset: "data_driven_optimizer"
       department: "engineering"
@@ -662,7 +661,6 @@ template:
 
   agents:
     - role: "Backend Developer"
-      level: "mid"
       model: "medium"
       department: "engineering"
 """
@@ -680,7 +678,6 @@ template:
 
   agents:
     - role: "Backend Developer"
-      level: "mid"
       model: "medium"
       department: "engineering"
 """
@@ -721,7 +718,6 @@ template:
 
   agents:
     - role: "Backend Developer"
-      level: "mid"
       model: "medium"
       department: "engineering"
 """

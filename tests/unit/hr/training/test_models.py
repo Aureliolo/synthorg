@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingGuardDecision,
@@ -56,7 +55,6 @@ def _make_plan(  # noqa: PLR0913
     return TrainingPlan(
         new_agent_id=new_agent_id,
         new_agent_role="engineer",
-        new_agent_level=SeniorityLevel.JUNIOR,
         skip_training=skip_training,
         status=status,
         executed_at=executed_at,
@@ -323,7 +321,6 @@ class TestTrainingPlan:
         plan = TrainingPlan(
             new_agent_id="new-1",
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             override_sources=("senior-a", "senior-b"),
             created_at=_now(),
         )

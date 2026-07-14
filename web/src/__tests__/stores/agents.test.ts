@@ -17,7 +17,6 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     name: 'Alice Smith',
     role: 'Software Engineer',
     department: 'engineering',
-    level: 'senior',
     status: 'active',
     personality: {
       traits: ['analytical'],
@@ -178,7 +177,6 @@ beforeEach(() => {
     listError: null,
     searchQuery: '',
     departmentFilter: null,
-    levelFilter: null,
     statusFilter: null,
     sortBy: 'name',
     sortDirection: 'asc',
@@ -529,11 +527,6 @@ describe('filter setters', () => {
   it('sets department filter', () => {
     useAgentsStore.getState().setDepartmentFilter('engineering')
     expect(useAgentsStore.getState().departmentFilter).toBe('engineering')
-  })
-
-  it('sets level filter', () => {
-    useAgentsStore.getState().setLevelFilter('senior')
-    expect(useAgentsStore.getState().levelFilter).toBe('senior')
   })
 
   it('sets status filter', () => {

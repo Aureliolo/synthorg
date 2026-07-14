@@ -45,7 +45,7 @@ class TestChiefOfStaffRole:
         defn = get_role_definition()
         assert defn["name"] == ROLE_NAME
         assert defn["department"] == ROLE_DEPARTMENT
-        assert defn["authority_level"] == "vp"
+        assert defn["reports_to"] == "CEO"
         assert defn["tool_access"] == TOOL_ACCESS
 
 

@@ -34,7 +34,6 @@ function resetStore() {
     listError: null,
     searchQuery: '',
     departmentFilter: null,
-    levelFilter: null,
     statusFilter: null,
     sortBy: 'name',
     sortDirection: 'asc',

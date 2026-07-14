@@ -274,7 +274,7 @@ class OffboardingService:
                 memory_backend=self._memory_backend,
                 archival_store=self._archival_store,
                 org_memory_backend=self._org_memory_backend,
-                agent_seniority=identity.level,
+                agent_role=identity.role,
             )
         except (MemoryArchivalError, OSError, ValueError) as exc:
             logger.warning(

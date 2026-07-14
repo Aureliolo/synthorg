@@ -410,10 +410,10 @@ class AgentRegistryService:
         return updated
 
     # Allowlist of fields that may be updated via update_identity.
-    # Only fields listed here are accepted; all others (authority,
-    # status, tools.access_level, etc.) are rejected to prevent
-    # mass assignment of security-sensitive fields.
-    _UPDATABLE_FIELDS: frozenset[str] = frozenset({"level", "model"})
+    # Only fields listed here are accepted; all others (status,
+    # tools.access_level, etc.) are rejected to prevent mass
+    # assignment of security-sensitive fields.
+    _UPDATABLE_FIELDS: frozenset[str] = frozenset({"role", "model"})
 
     async def update_identity(
         self,

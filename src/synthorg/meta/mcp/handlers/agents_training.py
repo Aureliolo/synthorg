@@ -18,7 +18,6 @@ from synthorg.hr.errors import (
     PersonalityNotFoundError,
     TrainingSessionNotFoundError,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.state import (
     HrStateSlice,
     personality_service_of,
@@ -236,8 +235,8 @@ def _build_training_plan(args: TrainingStartSessionArgs) -> TrainingPlan:
     The MCP tool only surfaces the fields a caller needs to launch a
     fresh training session; richer fields (volume caps, custom
     selectors) stay at their :class:`TrainingPlan` defaults. The
-    closed-enum ``new_agent_level`` / ``enabled_content_types`` Literals
-    are mapped onto their domain enums.
+    closed-enum ``enabled_content_types`` Literals are mapped onto
+    their domain enums.
 
     Returns:
         ``TrainingPlan`` instance.
@@ -255,7 +254,6 @@ def _build_training_plan(args: TrainingStartSessionArgs) -> TrainingPlan:
         return TrainingPlan(
             new_agent_id=args.new_agent_id,
             new_agent_role=args.new_agent_role,
-            new_agent_level=SeniorityLevel(args.new_agent_level),
             new_agent_department=args.new_agent_department,
             enabled_content_types=enabled,
             created_at=datetime.now(UTC),

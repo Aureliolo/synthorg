@@ -74,7 +74,6 @@ export function buildAgent(
     name: 'default-agent',
     role: 'engineer',
     department: 'engineering',
-    level: 'mid',
     status: 'active',
     personality: {},
     model: {},
@@ -100,7 +99,6 @@ function buildAgentIdentity(
     name: 'default-agent',
     role: 'engineer',
     department: 'engineering',
-    level: 'mid',
     status: 'active',
     autonomy_level: 'supervised',
     strategic_output_mode: null,
@@ -159,7 +157,6 @@ function buildHealth(agentId: string): AgentHealthResponse {
     last_active_at: null,
     lifecycle_status: 'active',
     performance: null,
-    trust: null,
   }
 }
 

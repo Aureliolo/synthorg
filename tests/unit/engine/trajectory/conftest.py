@@ -13,7 +13,6 @@ from synthorg.core.agent import (
 )
 from synthorg.core.role import Authority
 from synthorg.engine.context import AgentContext
-from synthorg.hr.seniority import SeniorityLevel
 
 
 @pytest.fixture
@@ -24,7 +23,6 @@ def minimal_context() -> AgentContext:
         name="test-agent",
         role="Developer",
         department="Engineering",
-        level=SeniorityLevel.JUNIOR,
         personality=PersonalityConfig(),
         skills=SkillSet(),
         authority=Authority(),

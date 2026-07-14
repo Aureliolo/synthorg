@@ -8,20 +8,18 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.engine.prompt import build_system_prompt
 from synthorg.engine.prompt_template import PROMPT_TEMPLATE_VERSION
 from synthorg.engine.strategy.models import StrategyConfig
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 
 
 def _make_agent(
     *,
-    level: SeniorityLevel = SeniorityLevel.C_SUITE,
+    role: str = "CEO",
     strategic_output_mode: StrategicOutputMode | None = None,
 ) -> AgentIdentity:
     return AgentIdentity(
-        name="Test CEO",
-        role="CEO",
+        name="Test Agent",
+        role=role,
         department="executive",
-        level=level,
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
         hiring_date=date(2026, 1, 1),
         strategic_output_mode=strategic_output_mode,
@@ -39,25 +37,25 @@ class TestPromptStrategyIntegration:
         assert "strategy" not in prompt.sections
 
     @pytest.mark.unit
-    def test_strategy_config_adds_sections_for_c_suite(self) -> None:
-        agent = _make_agent(level=SeniorityLevel.C_SUITE)
+    def test_strategy_config_adds_sections_for_executive(self) -> None:
+        agent = _make_agent(role="CEO")
         config = StrategyConfig()
         prompt = build_system_prompt(agent=agent, strategy_config=config)
         assert "Strategic Analysis Framework" in prompt.content
         assert "strategy" in prompt.sections
 
     @pytest.mark.unit
-    def test_strategy_config_no_sections_for_mid_level(self) -> None:
-        agent = _make_agent(level=SeniorityLevel.MID)
+    def test_strategy_config_no_sections_for_ic(self) -> None:
+        agent = _make_agent(role="Backend Developer")
         config = StrategyConfig()
         prompt = build_system_prompt(agent=agent, strategy_config=config)
         assert "Strategic Analysis Framework" not in prompt.content
         assert "strategy" not in prompt.sections
 
     @pytest.mark.unit
-    def test_explicit_mode_overrides_level(self) -> None:
+    def test_explicit_mode_overrides_role(self) -> None:
         agent = _make_agent(
-            level=SeniorityLevel.MID,
+            role="Backend Developer",
             strategic_output_mode=StrategicOutputMode.ADVISOR,
         )
         config = StrategyConfig()

@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingGuardDecision,
@@ -39,7 +38,6 @@ class _StubExtractor:
         *,
         source_agent_ids: tuple[NotBlankStr, ...],
         new_agent_role: NotBlankStr,
-        new_agent_level: SeniorityLevel,
     ) -> tuple[TrainingItem, ...]:
         return ()
 
@@ -55,7 +53,6 @@ class _StubSelector:
         self,
         *,
         new_agent_role: NotBlankStr,
-        new_agent_level: SeniorityLevel,
         new_agent_department: NotBlankStr | None = None,
     ) -> tuple[NotBlankStr, ...]:
         return ()
@@ -73,7 +70,6 @@ class _StubCuration:
         items: tuple[TrainingItem, ...],
         *,
         new_agent_role: NotBlankStr,
-        new_agent_level: SeniorityLevel,
         content_type: ContentType,
     ) -> tuple[TrainingItem, ...]:
         return items
@@ -115,7 +111,6 @@ class TestContentExtractorProtocol:
         result = await extractor.extract(
             source_agent_ids=("agent-1",),
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert result == ()
 
@@ -134,7 +129,6 @@ class TestSourceSelectorProtocol:
         selector = _StubSelector()
         result = await selector.select(
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert result == ()
 
@@ -160,7 +154,6 @@ class TestCurationStrategyProtocol:
         result = await curation.curate(
             (item,),
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             content_type=ContentType.PROCEDURAL,
         )
         assert result == (item,)
@@ -187,7 +180,6 @@ class TestTrainingGuardProtocol:
         plan = TrainingPlan(
             new_agent_id="new-1",
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             created_at=_now(),
         )
         decision = await guard.evaluate(

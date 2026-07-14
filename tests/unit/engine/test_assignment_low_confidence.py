@@ -14,7 +14,6 @@ from synthorg.engine.assignment.rankers import ScoreDescendingRanker
 from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.hr.enums import AgentStatus
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
@@ -26,7 +25,6 @@ def _agent(name: str, *, primary: tuple[str, ...] = ()) -> AgentIdentity:
         name=name,
         role="developer",
         department="engineering",
-        level=SeniorityLevel.MID,
         skills=SkillSet(
             primary=tuple(Skill(id=s, name=s) for s in primary),
         ),
@@ -64,13 +62,14 @@ def _request(
     *,
     required_skills: tuple[str, ...] = (),
 ) -> AssignmentRequest:
-    # A MID agent on a SIMPLE task with no matching skills scores 0.2 (the
-    # seniority-alignment bonus only): above min_score 0.1 but below the 0.35
+    # An agent whose role matches but carries no matching skills scores 0.2
+    # (the role-match bonus only): above min_score 0.1 but below the 0.35
     # low-confidence band.
     return AssignmentRequest(
         task=_task(stakes),
         available_agents=(_agent("weak"),),
         required_skills=required_skills,
+        required_role="developer",
         stakes=stakes,
     )
 
@@ -93,8 +92,8 @@ async def test_high_critical_marginal_fit_proceeds_flagged(stakes: Stakes) -> No
 
 
 async def test_confident_fit_is_not_flagged_at_any_stakes() -> None:
-    # A primary-skill match lifts the score to 0.4 + 0.2 seniority = 0.6, above
-    # the band, so high-stakes work proceeds with a confident fit.
+    # A full primary-skill match scores 0.4, above the 0.35 band, so
+    # high-stakes work proceeds with a confident fit.
     request = AssignmentRequest(
         task=_task(Stakes.HIGH),
         available_agents=(_agent("strong", primary=("python",)),),

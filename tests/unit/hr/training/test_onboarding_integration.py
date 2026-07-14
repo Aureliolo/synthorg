@@ -8,7 +8,6 @@ import pytest
 from synthorg.hr.enums import OnboardingStep
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import TrainingResult
 from synthorg.hr.training.onboarding_integration import (
     TrainingOnboardingBridge,
@@ -25,12 +24,10 @@ def _make_identity(
     *,
     agent_id: str = "new-1",
     role: str = "engineer",
-    level: SeniorityLevel = SeniorityLevel.JUNIOR,
 ) -> MagicMock:
     identity = MagicMock()
     identity.id = agent_id
     identity.role = role
-    identity.level = level
     identity.department = "engineering"
     return identity
 

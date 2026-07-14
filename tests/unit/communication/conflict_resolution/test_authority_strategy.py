@@ -15,7 +15,6 @@ from synthorg.communication.delegation.hierarchy import (
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
 from synthorg.communication.errors import ConflictHierarchyError
-from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_conflict, make_position
 
@@ -31,12 +30,12 @@ class TestAuthorityResolverSeniority:
             positions=(
                 make_position(
                     agent_id="sr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Use microservices",
                 ),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Use monolith",
                 ),
             ),
@@ -54,12 +53,12 @@ class TestAuthorityResolverSeniority:
             positions=(
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Quick fix",
                 ),
                 make_position(
                     agent_id="sr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Proper refactor",
                 ),
             ),
@@ -76,12 +75,12 @@ class TestAuthorityResolverSeniority:
             positions=(
                 make_position(
                     agent_id="cto",
-                    level=SeniorityLevel.C_SUITE,
+                    role="CTO",
                     position="New architecture",
                 ),
                 make_position(
                     agent_id="backend_lead",
-                    level=SeniorityLevel.LEAD,
+                    role="QA Lead",
                     position="Keep current",
                 ),
             ),
@@ -103,12 +102,12 @@ class TestAuthorityResolverHierarchy:
             positions=(
                 make_position(
                     agent_id="backend_lead",
-                    level=SeniorityLevel.LEAD,
+                    role="QA Lead",
                     position="Use REST",
                 ),
                 make_position(
                     agent_id="frontend_lead",
-                    level=SeniorityLevel.LEAD,
+                    role="QA Lead",
                     position="Use GraphQL",
                 ),
             ),
@@ -127,12 +126,12 @@ class TestAuthorityResolverHierarchy:
             positions=(
                 make_position(
                     agent_id="cto",
-                    level=SeniorityLevel.C_SUITE,
+                    role="CTO",
                     position="Ship fast",
                 ),
                 make_position(
                     agent_id="qa_head",
-                    level=SeniorityLevel.C_SUITE,
+                    role="CTO",
                     position="More testing",
                     department="qa",
                 ),
@@ -151,12 +150,12 @@ class TestAuthorityResolverHierarchy:
             positions=(
                 make_position(
                     agent_id="backend_lead",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Approach A",
                 ),
                 make_position(
                     agent_id="sr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Approach B",
                 ),
             ),
@@ -178,17 +177,17 @@ class TestAuthorityResolverThreeParticipants:
             positions=(
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Quick hack",
                 ),
                 make_position(
                     agent_id="sr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Proper refactor",
                 ),
                 make_position(
                     agent_id="backend_lead",
-                    level=SeniorityLevel.LEAD,
+                    role="QA Lead",
                     position="Full redesign",
                 ),
             ),
@@ -207,17 +206,17 @@ class TestAuthorityResolverThreeParticipants:
             positions=(
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Approach A",
                 ),
                 make_position(
                     agent_id="sr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Approach B",
                 ),
                 make_position(
                     agent_id="backend_lead",
-                    level=SeniorityLevel.LEAD,
+                    role="QA Lead",
                     position="Approach C",
                 ),
             ),
@@ -242,12 +241,12 @@ class TestAuthorityResolverDissentRecord:
             positions=(
                 make_position(
                     agent_id="sr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="My approach",
                 ),
                 make_position(
                     agent_id="jr_dev",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="Other approach",
                 ),
             ),
@@ -280,12 +279,12 @@ class TestAuthorityResolverDissentRecord:
             positions=(
                 make_position(
                     agent_id="sr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Approach A",
                 ),
                 make_position(
                     agent_id="ghost_agent",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Approach B",
                 ),
             ),
@@ -304,12 +303,12 @@ class TestAuthorityResolverDissentRecord:
             positions=(
                 make_position(
                     agent_id="sr_dev",
-                    level=SeniorityLevel.SENIOR,
+                    role="Software Architect",
                     position="Eng approach",
                 ),
                 make_position(
                     agent_id="qa_eng",
-                    level=SeniorityLevel.JUNIOR,
+                    role="Backend Developer",
                     position="QA approach",
                     department="qa",
                 ),

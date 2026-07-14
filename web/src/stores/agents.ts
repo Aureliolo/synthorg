@@ -16,7 +16,6 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
   // Filter defaults
   searchQuery: '',
   departmentFilter: null,
-  levelFilter: null,
   statusFilter: null,
   sortBy: 'name',
   sortDirection: 'asc',

@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingGuardDecision,
@@ -47,7 +46,6 @@ def _make_plan(
     return TrainingPlan(
         new_agent_id="new-1",
         new_agent_role="engineer",
-        new_agent_level=SeniorityLevel.JUNIOR,
         skip_training=skip_training,
         require_review=require_review,
         status=status,
@@ -161,7 +159,6 @@ class TestTrainingServiceExecute:
         plan = TrainingPlan(
             new_agent_id="new-1",
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
             override_sources=("override-1", "override-2"),
             require_review=False,
             created_at=_now(),

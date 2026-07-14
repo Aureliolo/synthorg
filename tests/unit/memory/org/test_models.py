@@ -6,7 +6,6 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.models import (
     OperationLogEntry,
@@ -29,23 +28,23 @@ class TestOrgFactAuthor:
         author = OrgFactAuthor(is_human=True)
         assert author.is_human is True
         assert author.agent_id is None
-        assert author.seniority is None
+        assert author.role is None
         assert author.autonomy_level is None
 
     def test_agent_author(self) -> None:
         author = OrgFactAuthor(
             agent_id="agent-1",
-            seniority=SeniorityLevel.SENIOR,
+            role="Knowledge Architect",
             is_human=False,
         )
         assert author.agent_id == "agent-1"
-        assert author.seniority == SeniorityLevel.SENIOR
+        assert author.role == "Knowledge Architect"
         assert author.autonomy_level is None
 
     def test_agent_author_with_autonomy(self) -> None:
         author = OrgFactAuthor(
             agent_id="agent-1",
-            seniority=SeniorityLevel.SENIOR,
+            role="Knowledge Architect",
             autonomy_level=AutonomyLevel.SEMI,
             is_human=False,
         )
@@ -72,15 +71,15 @@ class TestOrgFactAuthor:
         ):
             OrgFactAuthor(is_human=False)
 
-    def test_agent_without_seniority_rejected(self) -> None:
+    def test_agent_without_role_rejected(self) -> None:
         with pytest.raises(
             ValidationError,
-            match="Non-human authors must have a seniority",
+            match="Non-human authors must have a role",
         ):
             OrgFactAuthor(
                 is_human=False,
                 agent_id="agent-1",
-                seniority=None,
+                role=None,
             )
 
     def test_frozen(self) -> None:

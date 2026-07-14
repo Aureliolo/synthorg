@@ -343,5 +343,5 @@ def _seniority_reasoning(best: ConflictPosition, *, no_hierarchy: bool) -> str:
     qualifier = " (no hierarchy)" if no_hierarchy else ""
     return (
         f"Debate fallback: authority-based judging{qualifier} -- "
-        f"{best.agent_id} ({best.agent_level}) has highest seniority"
+        f"{best.agent_id} ({best.agent_role}) has highest authority"
     )

@@ -14,7 +14,6 @@ from synthorg.engine.assignment.rankers import ScoreDescendingRanker
 from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.routing.scorer import AgentTaskScorer
-from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
@@ -26,14 +25,11 @@ def _model_config() -> ModelConfig:
 
 def _make_agent(
     name: str,
-    *,
-    level: SeniorityLevel = SeniorityLevel.MID,
 ) -> AgentIdentity:
     return AgentIdentity(
         name=name,
         role="Developer",
         department="Engineering",
-        level=level,
         model=_model_config(),
         hiring_date=date(2026, 1, 1),
         skills=SkillSet(primary=(Skill(id="python", name="python"),)),
@@ -51,6 +47,21 @@ def _make_task(**overrides: object) -> Task:
     }
     defaults.update(overrides)
     return Task(**defaults)  # type: ignore[arg-type]
+
+
+def _team_request(**overrides: object) -> AssignmentRequest:
+    """Build an AssignmentRequest whose role matches the ``_make_agent`` role.
+
+    The agents carry role ``Developer`` but no task-required skills, so a
+    ``required_role`` match is what lifts them above the eligibility floor
+    (the project-team filter, not scoring, is what these tests exercise).
+    """
+    defaults: dict[str, object] = {
+        "task": _make_task(),
+        "required_role": "Developer",
+    }
+    defaults.update(overrides)
+    return AssignmentRequest(**defaults)  # type: ignore[arg-type]
 
 
 def _make_service() -> TaskAssignmentService:
@@ -73,8 +84,7 @@ class TestProjectTeamFiltering:
         agent_b = _make_agent("Bob")
         service = _make_service()
 
-        request = AssignmentRequest(
-            task=_make_task(),
+        request = _team_request(
             available_agents=(agent_a, agent_b),
             project_team=(),
         )
@@ -88,8 +98,7 @@ class TestProjectTeamFiltering:
         bob = _make_agent("Bob")
         service = _make_service()
 
-        request = AssignmentRequest(
-            task=_make_task(),
+        request = _team_request(
             available_agents=(alice, bob),
             project_team=(str(alice.id),),
         )
@@ -117,8 +126,7 @@ class TestProjectTeamFiltering:
         carol = _make_agent("Carol")
         service = _make_service()
 
-        request = AssignmentRequest(
-            task=_make_task(),
+        request = _team_request(
             available_agents=(alice, bob, carol),
             project_team=(str(bob.id), str(carol.id)),
         )

@@ -22,7 +22,6 @@ from synthorg.hr.errors import (
 from synthorg.hr.models import OffboardingRecord
 from synthorg.hr.offboarding_service import OffboardingService
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.consolidation.archival import ArchivalStore
 from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.memory.protocol import MemoryBackend
@@ -128,7 +127,7 @@ class FakeArchivalStrategy:
         memory_backend: MemoryBackend,
         archival_store: ArchivalStore,
         org_memory_backend: OrgMemoryBackend | None = None,
-        agent_seniority: SeniorityLevel | None = None,
+        agent_role: NotBlankStr | None = None,
     ) -> ArchivalResult:
         return ArchivalResult(
             agent_id=agent_id,
@@ -458,7 +457,7 @@ class TestOffboardingServiceFullPipeline:
                 memory_backend: MemoryBackend,
                 archival_store: ArchivalStore,
                 org_memory_backend: OrgMemoryBackend | None = None,
-                agent_seniority: SeniorityLevel | None = None,
+                agent_role: NotBlankStr | None = None,
             ) -> ArchivalResult:
                 msg = "archival boom"
                 raise MemoryArchivalError(msg)

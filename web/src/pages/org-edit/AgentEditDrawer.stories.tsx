@@ -8,7 +8,6 @@ const mockAgent: AgentConfig = {
   name: 'alice',
   role: 'Lead Developer',
   department: 'engineering',
-  level: 'lead',
   status: 'active',
   personality: {
     traits: ['analytical'], communication_style: 'direct',

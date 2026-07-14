@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.core.memory_enums import MemoryCategory
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.extractors.memory_backed import (
     MemoryBackedExtractor,
 )
@@ -88,7 +87,6 @@ class TestProceduralMemoryExtractor:
         items = await extractor.extract(
             source_agent_ids=("senior-1",),
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert len(items) == 2
         assert items[0].content_type == ContentType.PROCEDURAL
@@ -110,7 +108,6 @@ class TestProceduralMemoryExtractor:
         items = await extractor.extract(
             source_agent_ids=("s1", "s2"),
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert len(items) == 2
 
@@ -123,7 +120,6 @@ class TestProceduralMemoryExtractor:
         items = await extractor.extract(
             source_agent_ids=(),
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert items == ()
 
@@ -139,7 +135,6 @@ class TestProceduralMemoryExtractor:
         items = await extractor.extract(
             source_agent_ids=("senior-1",),
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert items == ()
 
@@ -178,7 +173,6 @@ class TestSemanticMemoryExtractor:
         items = await extractor.extract(
             source_agent_ids=("senior-1",),
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert len(items) == 1
         assert items[0].content_type == ContentType.SEMANTIC
@@ -210,7 +204,6 @@ class TestToolPatternExtractor:
         items = await extractor.extract(
             source_agent_ids=("senior-1",),
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         # Should produce 2 patterns: api_tool and db_tool
         assert len(items) == 2
@@ -229,7 +222,6 @@ class TestToolPatternExtractor:
         items = await extractor.extract(
             source_agent_ids=("senior-1",),
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert len(items) == 1
         # Content should mention 66% or 67% success rate
@@ -243,6 +235,5 @@ class TestToolPatternExtractor:
         items = await extractor.extract(
             source_agent_ids=("senior-1",),
             new_agent_role="engineer",
-            new_agent_level=SeniorityLevel.JUNIOR,
         )
         assert items == ()

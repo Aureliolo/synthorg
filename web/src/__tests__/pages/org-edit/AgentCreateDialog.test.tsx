@@ -25,7 +25,6 @@ describe('AgentCreateDialog', () => {
     expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/role/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/department/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/level/i)).toBeInTheDocument()
   })
 
   it('renders Create Agent button as enabled', () => {
@@ -45,8 +44,6 @@ describe('AgentCreateDialog', () => {
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: '  Alice  ' } })
     fireEvent.change(screen.getByLabelText(/role/i), { target: { value: '  Backend Dev  ' } })
     fireEvent.change(screen.getByLabelText(/department/i), { target: { value: 'engineering' } })
-    // Level defaults to 'mid', leave as-is
-
     fireEvent.click(screen.getByRole('button', { name: /create agent/i }))
 
     await waitFor(() => {
@@ -55,7 +52,6 @@ describe('AgentCreateDialog', () => {
         name: 'Alice',
         role: 'Backend Dev',
         department: 'engineering',
-        level: 'mid',
       })
     })
   })

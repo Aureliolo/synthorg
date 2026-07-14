@@ -30,7 +30,6 @@ function buildAgentSummary(
     name: 'setup-agent-default',
     role: 'engineer',
     department: 'engineering',
-    level: 'mid',
     model_provider: 'provider-default',
     model_id: 'model-default',
     tier: 'medium',

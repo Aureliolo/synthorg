@@ -8,7 +8,6 @@ from synthorg.config.schema import (
     ProviderConfig,
     ProviderModelConfig,
 )
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.routing.models import (
     ResolvedModel,
     RoutingDecision,
@@ -138,21 +137,21 @@ def resolver(
 
 @pytest.fixture
 def standard_routing_config() -> RoutingConfig:
-    """Routing config with role-based rules and fallback chain."""
+    """Routing config with task-type rules and fallback chain."""
     return RoutingConfig(
-        strategy="role_based",
+        strategy="smart",
         rules=(
             RoutingRuleConfig(
-                role_level=SeniorityLevel.JUNIOR,
+                task_type="triage",
                 preferred_model="small",
             ),
             RoutingRuleConfig(
-                role_level=SeniorityLevel.SENIOR,
+                task_type="development",
                 preferred_model="medium",
                 fallback="small",
             ),
             RoutingRuleConfig(
-                role_level=SeniorityLevel.C_SUITE,
+                task_type="architecture",
                 preferred_model="large",
                 fallback="medium",
             ),

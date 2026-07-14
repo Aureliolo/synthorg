@@ -6,7 +6,6 @@ import aiosqlite
 import pytest
 
 from synthorg.core.persistence_errors import QueryError
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingApprovalHandle,
@@ -32,7 +31,6 @@ def _make_plan(
         id=as_uuid(plan_id),
         new_agent_id=agent_id,
         new_agent_role="engineer",
-        new_agent_level=SeniorityLevel.JUNIOR,
         new_agent_department="engineering",
         enabled_content_types=frozenset(ContentType),
         skip_training=False,

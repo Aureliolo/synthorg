@@ -39,7 +39,7 @@ def build_escalation_notification(
     summary_lines = [f"Conflict subject: {conflict.subject}"]
     summary_lines.extend(
         f"- {position.agent_id} ({position.agent_department}, "
-        f"{position.agent_level}): {position.position}"
+        f"{position.agent_role}): {position.position}"
         for position in conflict.positions
     )
     body = "\n".join(summary_lines)

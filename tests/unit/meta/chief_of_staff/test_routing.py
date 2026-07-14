@@ -10,7 +10,6 @@ import pytest
 from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig, KeywordRoleRule
 from synthorg.meta.chief_of_staff.enums import RoutingReason
 from synthorg.meta.chief_of_staff.models import ConversationTurn
@@ -294,27 +293,13 @@ class TestKeywordRoleRouter:
         assert decision is not None
         assert decision.responder.role == "CEO"
 
-    async def test_role_tie_resolves_to_most_senior(self) -> None:
-        # Two CFOs: the most senior wins over the alphabetically-first.
-        alpha_senior = _identity(name="Aaron", role="CFO", level=SeniorityLevel.SENIOR)
-        omega_csuite = _identity(name="Zoe", role="CFO", level=SeniorityLevel.C_SUITE)
-        registry = await _registry(alpha_senior, omega_csuite)
-        router = KeywordRoleRouter(
-            agent_registry=registry, default_role=NotBlankStr("CEO")
-        )
-
-        decision = (await router.route(_user_turn("What is our budget?"))).decision
-
-        assert decision is not None
-        assert decision.responder.agent_id == str(omega_csuite.id)
-
-    async def test_equal_seniority_resolves_alphabetically(self) -> None:
-        # Two equally-senior CFOs registered out of alphabetical order:
-        # the name tiebreak (not registration order) must pick the
-        # alphabetically-first, the documented cross-backend determinism
-        # guarantee.
-        zoe = _identity(name="Zoe", role="CFO", level=SeniorityLevel.SENIOR)
-        aaron = _identity(name="Aaron", role="CFO", level=SeniorityLevel.SENIOR)
+    async def test_same_role_tie_resolves_alphabetically(self) -> None:
+        # Two CFOs registered out of alphabetical order: same role means
+        # equal reporting authority, so the name tiebreak (not registration
+        # order) must pick the alphabetically-first, the documented
+        # cross-backend determinism guarantee.
+        zoe = _identity(name="Zoe", role="CFO")
+        aaron = _identity(name="Aaron", role="CFO")
         registry = await _registry(zoe, aaron)
         router = KeywordRoleRouter(
             agent_registry=registry, default_role=NotBlankStr("CEO")

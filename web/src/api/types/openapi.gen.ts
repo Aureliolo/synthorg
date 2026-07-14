@@ -6155,7 +6155,6 @@ export type components = {
              * @description Stable agent id, derived deterministically from the name.
              */
             readonly id: string;
-            readonly level: components["schemas"]["SeniorityLevel"];
             /** @description Raw memory config */
             readonly memory: {
                 readonly [key: string]: readonly unknown[] | {
@@ -6252,7 +6251,6 @@ export type components = {
              * @description Unique agent identifier
              */
             readonly id: string;
-            readonly level: components["schemas"]["SeniorityLevel"];
             readonly memory: components["schemas"]["MemoryConfig"];
             readonly model: components["schemas"]["ModelConfig"];
             /** @description Agent display name */
@@ -9267,7 +9265,8 @@ export type components = {
             readonly agent_department: string;
             /** @description Agent taking the position */
             readonly agent_id: string;
-            readonly agent_level: components["schemas"]["SeniorityLevel"];
+            /** @description Agent role name */
+            readonly agent_role: string;
             /** @description Summary of the stance */
             readonly position: string;
             /** @description Justification for the position */
@@ -9614,7 +9613,6 @@ export type components = {
         /** CreateAgentOrgRequest */
         readonly CreateAgentOrgRequest: {
             readonly department: string;
-            readonly level?: components["schemas"]["SeniorityLevel"];
             readonly model_id?: string | null;
             readonly model_provider?: string | null;
             readonly name: string;
@@ -15692,7 +15690,6 @@ export type components = {
          * @description Full frozen entity model at this version
          */
         readonly Role: {
-            readonly authority_level: components["schemas"]["SeniorityLevel"];
             readonly department: components["schemas"]["DepartmentName"];
             /**
              * @description Human-readable description
@@ -15701,6 +15698,8 @@ export type components = {
             readonly description: string;
             /** @description Role name */
             readonly name: string;
+            /** @description Name of the role this position reports to (None for a root) */
+            readonly reports_to: string | null;
             /**
              * @description Skills required for this role
              * @default []
@@ -15970,16 +15969,6 @@ export type components = {
             /** @default  */
             readonly reason: string;
         };
-        /**
-         * SeniorityLevel
-         * @description Seniority levels for agents within the organisation.
-         *
-         *     Each level corresponds to an authority scope, typical model tier, and
-         *     cost tier defined in ``synthorg.core.role_catalog.SENIORITY_INFO``.
-         * @default mid
-         * @enum {string}
-         */
-        readonly SeniorityLevel: "junior" | "mid" | "senior" | "lead" | "principal" | "director" | "vp" | "c_suite";
         /** SessionResponse */
         readonly SessionResponse: {
             /**
@@ -16130,7 +16119,6 @@ export type components = {
              * @example operations
              */
             readonly department: string;
-            readonly level?: components["schemas"]["SeniorityLevel"];
             /**
              * @example example-medium-001
              * @example example-large-001
@@ -16167,8 +16155,6 @@ export type components = {
         /** SetupAgentSummary */
         readonly SetupAgentSummary: {
             readonly department: string;
-            /** @enum {string|null} */
-            readonly level: "junior" | "mid" | "senior" | "lead" | "principal" | "director" | "vp" | "c_suite" | null;
             readonly model_id: string | null;
             readonly model_provider: string | null;
             readonly name: string;
@@ -17631,8 +17617,6 @@ export type components = {
             /** @enum {string|null} */
             readonly autonomy_level?: "full" | "semi" | "supervised" | "locked" | null;
             readonly department?: string | null;
-            /** @enum {string|null} */
-            readonly level?: "junior" | "mid" | "senior" | "lead" | "principal" | "director" | "vp" | "c_suite" | null;
             readonly model_id?: string | null;
             readonly model_provider?: string | null;
             readonly name?: string | null;

@@ -20,7 +20,6 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -164,7 +163,6 @@ class TrainingPlan(BaseModel):
         id: Unique identifier (UUID), also the idempotency key.
         new_agent_id: Target agent being trained.
         new_agent_role: Role of the new hire.
-        new_agent_level: Seniority level of the new hire.
         new_agent_department: Department of the new hire (optional).
         source_selector_type: Source selector strategy name.
         enabled_content_types: Which extractors to run.
@@ -189,9 +187,6 @@ class TrainingPlan(BaseModel):
     )
     new_agent_role: NotBlankStr = Field(
         description="Role of the new hire",
-    )
-    new_agent_level: SeniorityLevel = Field(
-        description="Seniority level of the new hire",
     )
     new_agent_department: NotBlankStr | None = Field(
         default=None,
@@ -310,7 +305,6 @@ class TrainingPlan(BaseModel):
         *,
         new_agent_id: str,
         new_agent_role: str,
-        new_agent_level: SeniorityLevel,
         created_at: datetime,
         new_agent_department: str | None = None,
         override_sources: tuple[NotBlankStr, ...] = (),
@@ -328,7 +322,6 @@ class TrainingPlan(BaseModel):
         Args:
             new_agent_id: Target agent being trained.
             new_agent_role: Role of the new hire.
-            new_agent_level: Seniority level of the new hire.
             created_at: Plan creation timestamp.
             new_agent_department: Department of the new hire, or ``None``.
             override_sources: Explicit source agent IDs (bypasses selector).
@@ -347,7 +340,6 @@ class TrainingPlan(BaseModel):
         data: dict[str, object] = {
             "new_agent_id": new_agent_id,
             "new_agent_role": new_agent_role,
-            "new_agent_level": new_agent_level,
             "new_agent_department": new_agent_department,
             "override_sources": override_sources,
             "skip_training": skip_training,
