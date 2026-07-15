@@ -25,13 +25,46 @@ def _make_resolver(
 
 
 class TestResolutionChain:
-    """Three-level resolution chain: agent → department → company."""
+    """Four-level chain: agent → initiative → department → company."""
 
     @pytest.mark.unit
     def test_company_default(self) -> None:
         resolver = _make_resolver(level=AutonomyLevel.SEMI)
         result = resolver.resolve()
         assert result.level == AutonomyLevel.SEMI
+
+    @pytest.mark.unit
+    def test_project_overrides_department(self) -> None:
+        resolver = _make_resolver(level=AutonomyLevel.SEMI)
+        result = resolver.resolve(
+            project_level=AutonomyLevel.LOCKED,
+            department_level=AutonomyLevel.SUPERVISED,
+        )
+        assert result.level == AutonomyLevel.LOCKED
+
+    @pytest.mark.unit
+    def test_project_overrides_company(self) -> None:
+        resolver = _make_resolver(level=AutonomyLevel.SEMI)
+        result = resolver.resolve(project_level=AutonomyLevel.SUPERVISED)
+        assert result.level == AutonomyLevel.SUPERVISED
+
+    @pytest.mark.unit
+    def test_agent_overrides_project(self) -> None:
+        resolver = _make_resolver(level=AutonomyLevel.SEMI)
+        result = resolver.resolve(
+            agent_level=AutonomyLevel.FULL,
+            project_level=AutonomyLevel.LOCKED,
+        )
+        assert result.level == AutonomyLevel.FULL
+
+    @pytest.mark.unit
+    def test_project_none_falls_through_to_department(self) -> None:
+        resolver = _make_resolver(level=AutonomyLevel.SEMI)
+        result = resolver.resolve(
+            project_level=None,
+            department_level=AutonomyLevel.SUPERVISED,
+        )
+        assert result.level == AutonomyLevel.SUPERVISED
 
     @pytest.mark.unit
     def test_department_override(self) -> None:
@@ -53,6 +86,55 @@ class TestResolutionChain:
         resolver = _make_resolver(level=AutonomyLevel.LOCKED)
         result = resolver.resolve(agent_level=AutonomyLevel.FULL)
         assert result.level == AutonomyLevel.FULL
+
+    @pytest.mark.unit
+    def test_full_four_level_precedence_agent_wins(self) -> None:
+        # All four tiers set to distinct values in ONE call: the agent tier
+        # must win the whole chain (agent > project > department > company),
+        # not merely pairwise.
+        resolver = _make_resolver(level=AutonomyLevel.SEMI)
+        result = resolver.resolve(
+            agent_level=AutonomyLevel.FULL,
+            project_level=AutonomyLevel.LOCKED,
+            department_level=AutonomyLevel.SUPERVISED,
+        )
+        assert result.level == AutonomyLevel.FULL
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("agent", "project", "department", "expected"),
+        [
+            (
+                AutonomyLevel.FULL,
+                AutonomyLevel.LOCKED,
+                AutonomyLevel.SUPERVISED,
+                AutonomyLevel.FULL,
+            ),
+            (
+                None,
+                AutonomyLevel.LOCKED,
+                AutonomyLevel.SUPERVISED,
+                AutonomyLevel.LOCKED,
+            ),
+            (None, None, AutonomyLevel.SUPERVISED, AutonomyLevel.SUPERVISED),
+            (None, None, None, AutonomyLevel.SEMI),
+        ],
+        ids=["agent-wins", "project-wins", "department-wins", "company-default"],
+    )
+    def test_precedence_matrix(
+        self,
+        agent: AutonomyLevel | None,
+        project: AutonomyLevel | None,
+        department: AutonomyLevel | None,
+        expected: AutonomyLevel,
+    ) -> None:
+        resolver = _make_resolver(level=AutonomyLevel.SEMI)
+        result = resolver.resolve(
+            agent_level=agent,
+            project_level=project,
+            department_level=department,
+        )
+        assert result.level == expected
 
 
 class TestCategoryExpansion:

@@ -53,6 +53,7 @@ describe('useProjectsStore', () => {
       projectTasks: [],
       detailLoading: false,
       detailError: null,
+      autonomyModeSaving: false,
     })
   })
 
@@ -340,6 +341,278 @@ describe('useProjectsStore', () => {
       expect(result.failedReasons[0]).toContain('boom')
       const state = useProjectsStore.getState()
       expect(state.projects.map((p) => p.id)).toEqual(['proj-002'])
+    })
+  })
+
+  describe('setAutonomyMode', () => {
+    function echoModeHandler(capture?: (body: unknown) => void) {
+      return http.patch(
+        '/api/v1/projects/:id/autonomy-mode',
+        async ({ params, request }) => {
+          const body = (await request.json()) as { mode: string | null }
+          capture?.(body)
+          return HttpResponse.json(
+            apiSuccess(
+              makeProject(String(params['id']), {
+                autonomy_mode: body.mode as Project['autonomy_mode'],
+              }),
+            ),
+          )
+        },
+      )
+    }
+
+    it('updates the list + selectedProject and clears the saving flag on success', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001'), makeProject('proj-002')],
+        selectedProject: makeProject('proj-001'),
+      })
+      let capturedBody: unknown = null
+      server.use(echoModeHandler((b) => (capturedBody = b)))
+
+      const result = await useProjectsStore
+        .getState()
+        .setAutonomyMode('proj-001', 'locked')
+
+      expect(result?.autonomy_mode).toBe('locked')
+      // confirm defaults to false for a non-full transition; the displayed
+      // project version rides along as the optimistic-concurrency guard.
+      expect(capturedBody).toEqual({
+        mode: 'locked',
+        confirm: false,
+        expected_version: 1,
+      })
+      const state = useProjectsStore.getState()
+      expect(state.projects.find((p) => p.id === 'proj-001')?.autonomy_mode).toBe('locked')
+      expect(state.projects.find((p) => p.id === 'proj-002')?.autonomy_mode).toBeNull()
+      expect(state.selectedProject?.autonomy_mode).toBe('locked')
+      expect(state.autonomyModeSaving).toBe(false)
+    })
+
+    it('forwards confirm=true for the deliberate full opt-in', async () => {
+      useProjectsStore.setState({ projects: [makeProject('proj-001')] })
+      let capturedBody: unknown = null
+      server.use(echoModeHandler((b) => (capturedBody = b)))
+
+      await useProjectsStore.getState().setAutonomyMode('proj-001', 'full', true)
+
+      expect(capturedBody).toEqual({
+        mode: 'full',
+        confirm: true,
+        expected_version: 1,
+      })
+    })
+
+    it('omits expected_version when the project is absent from local state', async () => {
+      useProjectsStore.setState({ projects: [], selectedProject: null })
+      let capturedBody: unknown = null
+      server.use(echoModeHandler((b) => (capturedBody = b)))
+
+      await useProjectsStore.getState().setAutonomyMode('proj-001', 'locked')
+
+      // No local row to source the version from: fall back to
+      // last-write-wins rather than blocking the write.
+      expect(capturedBody).toEqual({ mode: 'locked', confirm: false })
+    })
+
+    it('scopes the latest-wins guard per project so A is not invalidated by B', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-A'), makeProject('proj-B')],
+      })
+      server.use(echoModeHandler())
+
+      // Two concurrent updates for DIFFERENT projects: a module-wide token
+      // would treat the earlier project's response as stale once the later
+      // one bumped the counter, dropping its returned state.
+      const [resA, resB] = await Promise.all([
+        useProjectsStore.getState().setAutonomyMode('proj-A', 'locked'),
+        useProjectsStore.getState().setAutonomyMode('proj-B', 'semi'),
+      ])
+
+      expect(resA?.autonomy_mode).toBe('locked')
+      expect(resB?.autonomy_mode).toBe('semi')
+      const state = useProjectsStore.getState()
+      expect(state.projects.find((p) => p.id === 'proj-A')?.autonomy_mode).toBe('locked')
+      expect(state.projects.find((p) => p.id === 'proj-B')?.autonomy_mode).toBe('semi')
+    })
+
+    it('clears the mode back to inherit when passed null', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001', { autonomy_mode: 'full' })],
+      })
+      server.use(echoModeHandler())
+
+      const result = await useProjectsStore
+        .getState()
+        .setAutonomyMode('proj-001', null)
+
+      expect(result?.autonomy_mode).toBeNull()
+      expect(useProjectsStore.getState().projects[0]?.autonomy_mode).toBeNull()
+    })
+
+    it('returns null sentinel and leaves state untouched on failure', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001', { autonomy_mode: 'semi' })],
+        selectedProject: makeProject('proj-001', { autonomy_mode: 'semi' }),
+      })
+      server.use(
+        http.patch('/api/v1/projects/:id/autonomy-mode', () =>
+          HttpResponse.json(apiError('boom'), { status: 500 }),
+        ),
+      )
+
+      const result = await useProjectsStore
+        .getState()
+        .setAutonomyMode('proj-001', 'locked')
+
+      expect(result).toBeNull()
+      const state = useProjectsStore.getState()
+      // Neither the list row nor the open detail is clobbered on failure.
+      expect(state.projects[0]?.autonomy_mode).toBe('semi')
+      expect(state.selectedProject?.autonomy_mode).toBe('semi')
+      expect(state.autonomyModeSaving).toBe(false)
+    })
+  })
+
+  describe('updateFromWsEvent autonomy_mode_changed', () => {
+    it('applies the new mode to the list row and selectedProject', () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001'), makeProject('proj-002')],
+        selectedProject: makeProject('proj-001'),
+      })
+
+      useProjectsStore.getState().updateFromWsEvent({
+        event_type: 'project.autonomy_mode_changed',
+        channel: 'projects',
+        version: 1,
+        timestamp: '2026-07-15T00:00:00Z',
+        payload: { project_id: 'proj-001', new_mode: 'locked', new_version: 4 },
+      } satisfies WsEvent)
+
+      const state = useProjectsStore.getState()
+      const updated = state.projects.find((p) => p.id === 'proj-001')
+      expect(updated?.autonomy_mode).toBe('locked')
+      // The server version rides along so a later guarded edit does not 409.
+      expect(updated?.version).toBe(4)
+      expect(state.projects.find((p) => p.id === 'proj-002')?.autonomy_mode).toBeNull()
+      expect(state.selectedProject?.autonomy_mode).toBe('locked')
+      expect(state.selectedProject?.version).toBe(4)
+    })
+
+    it('applies a raw null as a legitimate override clear', () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001', { autonomy_mode: 'locked' })],
+        selectedProject: makeProject('proj-001', { autonomy_mode: 'locked' }),
+      })
+
+      useProjectsStore.getState().updateFromWsEvent({
+        event_type: 'project.autonomy_mode_changed',
+        channel: 'projects',
+        version: 1,
+        timestamp: '2026-07-15T00:00:00Z',
+        payload: { project_id: 'proj-001', new_mode: null, new_version: 5 },
+      } satisfies WsEvent)
+
+      const state = useProjectsStore.getState()
+      expect(state.projects[0]?.autonomy_mode).toBeNull()
+      expect(state.projects[0]?.version).toBe(5)
+      expect(state.selectedProject?.autonomy_mode).toBeNull()
+      expect(state.selectedProject?.version).toBe(5)
+    })
+
+    it('drops a malformed non-null mode instead of clearing the override', () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001', { autonomy_mode: 'locked' })],
+        selectedProject: makeProject('proj-001', { autonomy_mode: 'locked' }),
+      })
+
+      // A wire payload carrying an unknown mode is untrusted and must not
+      // wrongly clear the displayed override; the periodic refetch reconciles.
+      useProjectsStore.getState().updateFromWsEvent({
+        event_type: 'project.autonomy_mode_changed',
+        channel: 'projects',
+        version: 1,
+        timestamp: '2026-07-15T00:00:00Z',
+        payload: { project_id: 'proj-001', new_mode: 'omniscient', new_version: 9 },
+      } as unknown as WsEvent)
+
+      const state = useProjectsStore.getState()
+      // The whole event is dropped: neither mode nor version is applied.
+      expect(state.projects[0]?.autonomy_mode).toBe('locked')
+      expect(state.projects[0]?.version).toBe(1)
+      expect(state.selectedProject?.autonomy_mode).toBe('locked')
+    })
+
+    it('drops the event when new_version is missing', () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001', { autonomy_mode: 'supervised' })],
+        selectedProject: makeProject('proj-001', { autonomy_mode: 'supervised' }),
+      })
+
+      // A valid mode but no usable version must not apply: updating the mode
+      // alone would leave the local version stale and 409 the next edit.
+      useProjectsStore.getState().updateFromWsEvent({
+        event_type: 'project.autonomy_mode_changed',
+        channel: 'projects',
+        version: 1,
+        timestamp: '2026-07-15T00:00:00Z',
+        payload: { project_id: 'proj-001', new_mode: 'locked' },
+      } as unknown as WsEvent)
+
+      const state = useProjectsStore.getState()
+      expect(state.projects[0]?.autonomy_mode).toBe('supervised')
+      expect(state.projects[0]?.version).toBe(1)
+      expect(state.selectedProject?.autonomy_mode).toBe('supervised')
+    })
+
+    it('drops the event when new_version is a non-integer value', () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001', { autonomy_mode: 'supervised' })],
+        selectedProject: makeProject('proj-001', { autonomy_mode: 'supervised' }),
+      })
+
+      // A malformed typed version (string here) fails sanitisation and drops
+      // the whole event rather than applying the mode with a bogus version.
+      useProjectsStore.getState().updateFromWsEvent({
+        event_type: 'project.autonomy_mode_changed',
+        channel: 'projects',
+        version: 1,
+        timestamp: '2026-07-15T00:00:00Z',
+        payload: { project_id: 'proj-001', new_mode: 'locked', new_version: '7' },
+      } as unknown as WsEvent)
+
+      const state = useProjectsStore.getState()
+      expect(state.projects[0]?.autonomy_mode).toBe('supervised')
+      expect(state.projects[0]?.version).toBe(1)
+      expect(state.selectedProject?.version).toBe(1)
+    })
+
+    it('ignores an event whose version is not newer than the local row', () => {
+      useProjectsStore.setState({
+        projects: [
+          makeProject('proj-001', { autonomy_mode: 'supervised', version: 5 }),
+        ],
+        selectedProject: makeProject('proj-001', {
+          autonomy_mode: 'supervised',
+          version: 5,
+        }),
+      })
+
+      // An out-of-order / duplicate delivery carrying an older version must
+      // not regress the newer local state.
+      useProjectsStore.getState().updateFromWsEvent({
+        event_type: 'project.autonomy_mode_changed',
+        channel: 'projects',
+        version: 1,
+        timestamp: '2026-07-15T00:00:00Z',
+        payload: { project_id: 'proj-001', new_mode: 'locked', new_version: 3 },
+      } satisfies WsEvent)
+
+      const state = useProjectsStore.getState()
+      expect(state.projects[0]?.autonomy_mode).toBe('supervised')
+      expect(state.projects[0]?.version).toBe(5)
+      expect(state.selectedProject?.autonomy_mode).toBe('supervised')
+      expect(state.selectedProject?.version).toBe(5)
     })
   })
 

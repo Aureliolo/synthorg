@@ -3,19 +3,26 @@
 import uuid
 from typing import Annotated, Final
 
-from litestar import Controller, Request, Response, delete, get, post
+from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.channels import CHANNEL_PROJECTS, publish_ws_event
+from synthorg.api.controllers._project_autonomy import (
+    AutonomyModeTransition,
+    ProjectAutonomyModeRequest,
+    audit_autonomy_mode_change,
+    guard_full_autonomy_optin,
+)
+from synthorg.api.controllers._project_cascade import cascade_supersede_children
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.dto import (
     ApiResponse,
     CreateProjectRequest,
     PaginatedResponse,
 )
-from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.guards import require_read_access, require_write_access, role_of
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
@@ -25,148 +32,28 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
-from synthorg.api.services.plan_service import PlanService
 from synthorg.api.services.project_service import ProjectService
-from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
-from synthorg.core.domain_errors import NotFoundError, ValidationError
-from synthorg.core.pagination import DEFAULT_PAGE_SIZE
-from synthorg.core.plan_enums import REWORKABLE_STATUSES, PlanStatus
+from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.domain_errors import (
+    NotFoundError,
+    ValidationError,
+    VersionConflictError,
+)
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
-from synthorg.core.task import Task
-from synthorg.core.task_enums import TaskStatus
-from synthorg.core.task_transitions import VALID_TRANSITIONS
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.state import task_engine_of
-from synthorg.engine.task_engine import TaskEngine
-from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
 )
-from synthorg.persistence.plan_protocol import PlanFilterSpec
 from synthorg.persistence.state import persistence_of
-from synthorg.persistence.task_protocol import TaskFilterSpec
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
-_CASCADE_REASON: Final[str] = "project deleted"
-
-
-async def _cascade_supersede_children(
-    app_state: AppState,
-    project_id: NotBlankStr,
-    *,
-    requested_by: str,
-) -> None:
-    """Supersede a project's live plans and cancel its open tasks before delete.
-
-    A project delete must never orphan its children: every non-terminal plan is
-    superseded (a review decision that will now never come) and every
-    non-terminal task is cancelled, each through its audited lifecycle
-    transition, so no row is left pointing at a deleted project.
-
-    The cascade and the subsequent delete run as separate audited operations,
-    not one database transaction: the task-engine transitions emit domain
-    events that cannot be rolled back, and no unit-of-work seam spans the plan
-    service, the task engine, and the project repository. Consistency comes from
-    idempotent forward-recovery instead: the cascade only acts on non-terminal
-    children (already-terminal ones are skipped) and the delete runs only after
-    it fully succeeds, so a mid-cascade failure or a failed delete leaves a
-    retriable, never-orphaning state: re-issuing the delete re-runs the cascade
-    as a no-op over the already-resolved children and removes the project. The
-    teardown assumes no concurrent child creation for the project being deleted
-    (child creation requires a live project; a delete is an exclusive operator
-    action), so paginating the existing children is sufficient.
-
-    Args:
-        app_state: Application state (carries persistence, clock, task engine).
-        project_id: The project whose children are being resolved.
-        requested_by: Identity recorded on each task cancellation.
-    """
-    persistence = persistence_of(app_state)
-    plan_service = PlanService(repo=persistence.plans, clock=app_state.clock)
-    offset = 0
-    # lint-allow: long-running-loop-kill-switch -- bounded child pagination
-    while True:
-        plans = await persistence.plans.query(
-            PlanFilterSpec(project=project_id),
-            limit=DEFAULT_PAGE_SIZE,
-            offset=offset,
-        )
-        for plan in plans:
-            if plan.status in REWORKABLE_STATUSES:
-                await plan_service.sync_status(
-                    plan,
-                    PlanStatus.SUPERSEDED,
-                    requested_by=requested_by,
-                    reason=_CASCADE_REASON,
-                )
-        if len(plans) < DEFAULT_PAGE_SIZE:
-            break
-        offset += DEFAULT_PAGE_SIZE
-
-    task_engine = task_engine_of(app_state)
-    offset = 0
-    # lint-allow: long-running-loop-kill-switch -- bounded child pagination
-    while True:
-        tasks = await persistence.tasks.query(
-            TaskFilterSpec(project=project_id),
-            limit=DEFAULT_PAGE_SIZE,
-            offset=offset,
-        )
-        for task in tasks:
-            if task.status not in TRULY_TERMINAL_STATUSES:
-                await _terminate_project_task(
-                    task_engine, task, requested_by=requested_by
-                )
-        if len(tasks) < DEFAULT_PAGE_SIZE:
-            break
-        offset += DEFAULT_PAGE_SIZE
-
-
-async def _terminate_project_task(
-    task_engine: TaskEngine,
-    task: Task,
-    *,
-    requested_by: str,
-) -> None:
-    """Move a non-terminal task to a terminal state on project delete.
-
-    The task lifecycle forbids ``CREATED -> CANCELLED`` (a created task is
-    rejected, not cancelled) and lets the stuck states (blocked / failed /
-    interrupted / suspended) reach a terminal only via ``ASSIGNED``. This
-    routes each task to the correct terminal so no live work dangles against
-    the deleted project, and every task keeps its audit row.
-
-    Args:
-        task_engine: Engine driving the audited status transitions.
-        task: The non-terminal task to terminate.
-        requested_by: Identity recorded on each transition.
-    """
-    target = (
-        TaskStatus.REJECTED
-        if task.status is TaskStatus.CREATED
-        else TaskStatus.CANCELLED
-    )
-    if target not in VALID_TRANSITIONS[task.status]:
-        # A stuck state can only reach a terminal through ASSIGNED; hop there
-        # first (the task keeps its assignee), then cancel.
-        await task_engine.transition_task(
-            str(task.id),
-            TaskStatus.ASSIGNED,
-            requested_by=requested_by,
-            reason=_CASCADE_REASON,
-        )
-        target = TaskStatus.CANCELLED
-    await task_engine.transition_task(
-        str(task.id),
-        target,
-        requested_by=requested_by,
-        reason=_CASCADE_REASON,
-    )
 
 
 def _service(state: State) -> ProjectService:
@@ -286,6 +173,112 @@ class ProjectController(Controller):
             status_code=200,
         )
 
+    @patch(
+        "/{project_id:str}/autonomy-mode",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("projects.update", key="user"),
+        ],
+    )
+    async def set_autonomy_mode(
+        self,
+        request: Request[object, object, State],
+        state: State,
+        project_id: PathId,
+        data: ProjectAutonomyModeRequest,
+    ) -> Response[ApiResponse[Project]]:
+        """Set (or clear) an initiative's operator-set autonomy mode.
+
+        The mode becomes the initiative-level autonomy the SecOps gate
+        resolves against, below a per-agent override and above the
+        department/company default. A ``null`` mode clears the override.
+
+        Transitioning INTO ``full`` (gate-off pass-through) disables the
+        gate for the initiative's agents: it is a deliberate, CEO-only
+        action requiring ``confirm=true`` and is audited at WARNING. The
+        write is version-guarded, so a concurrent edit surfaces a 409
+        rather than silently clobbering.
+
+        Args:
+            request: The incoming request (carries the acting role + user).
+            state: Application state.
+            project_id: Project identifier.
+            data: Autonomy-mode payload.
+
+        Returns:
+            The updated project, or 404 if not found.
+
+        Raises:
+            ForbiddenError: A non-CEO attempted the transition to full.
+            ValidationError: The transition to full lacked confirmation.
+            VersionConflictError: A concurrent write moved the version.
+        """
+        service = _service(state)
+        project = require_resource_or_404(
+            await service.get(project_id),
+            resource_type="Project",
+            identifier=project_id,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="update",
+        )
+        previous_mode = project.autonomy_mode
+        # Clearing an override (mode=None) inherits the company default, which
+        # can itself be full (gate-off). Guard and audit the EFFECTIVE resolved
+        # mode so a clear-into-inherited-full can neither bypass the CEO opt-in
+        # nor be mislabelled as gate-on. Department overrides are not yet a
+        # resolution input, so the effective fallback is the company default.
+        company_default = await config_resolver_of(state.app_state).get_enum(
+            "company", "autonomy_level", AutonomyLevel
+        )
+        transition = AutonomyModeTransition(
+            previous=previous_mode,
+            new=data.mode,
+            effective_previous=(
+                previous_mode if previous_mode is not None else company_default
+            ),
+            effective_new=data.mode if data.mode is not None else company_default,
+        )
+        guard_full_autonomy_optin(
+            role=role_of(request),
+            transition=transition,
+            confirm=data.confirm,
+        )
+        updated = project.model_copy(
+            update={"autonomy_mode": data.mode, "version": project.version + 1},
+        )
+        expected = (
+            data.expected_version
+            if data.expected_version is not None
+            else project.version
+        )
+        try:
+            await service.update(updated, expected_version=expected)
+        except PersistenceVersionConflictError as exc:
+            msg = f"Project {project_id!r} was modified concurrently"
+            raise VersionConflictError(msg) from exc
+        audit_autonomy_mode_change(
+            project_id=project_id,
+            transition=transition,
+            requested_by=extract_requester(state),
+        )
+        publish_ws_event(
+            request,
+            WsEventType.PROJECT_AUTONOMY_MODE_CHANGED,
+            CHANNEL_PROJECTS,
+            {
+                "project_id": project_id,
+                "new_mode": data.mode.value if data.mode is not None else None,
+                "previous_mode": (
+                    previous_mode.value if previous_mode is not None else None
+                ),
+                "new_version": updated.version,
+            },
+        )
+        return Response(
+            content=ApiResponse[Project](data=updated),
+            status_code=200,
+        )
+
     @delete(
         "/{project_id:str}",
         guards=[
@@ -323,7 +316,7 @@ class ProjectController(Controller):
             operation="delete",
             extra_log_kwargs={"project_id": project_id},
         )
-        await _cascade_supersede_children(
+        await cascade_supersede_children(
             state.app_state,
             project_id,
             requested_by=extract_requester(state),

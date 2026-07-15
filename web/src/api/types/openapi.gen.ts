@@ -3577,6 +3577,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/projects/{project_id}/autonomy-mode": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /** SetAutonomyMode */
+        readonly patch: operations["ApiV1ProjectsProjectIdAutonomyModeSetAutonomyMode"];
+        readonly trace?: never;
+    };
     readonly "/api/v1/projects/{project_id}/brain": {
         readonly parameters: {
             readonly query?: never;
@@ -14503,6 +14520,11 @@ export type components = {
         /** Project */
         readonly Project: {
             /**
+             * @description Operator-set oversight mode for this initiative (None inherits the department or company default)
+             * @enum {string|null}
+             */
+            readonly autonomy_mode: "full" | "semi" | "supervised" | "locked" | null;
+            /**
              * @description Total budget in base currency (configurable, defaults to EUR)
              * @default 0
              */
@@ -14547,6 +14569,21 @@ export type components = {
             readonly source_kind: components["schemas"]["CitationKind"];
             /** @description Identifier of the cited source */
             readonly source_ref: string;
+        };
+        /** ProjectAutonomyModeRequest */
+        readonly ProjectAutonomyModeRequest: {
+            /**
+             * @description Deliberate opt-in required to set an initiative to full
+             * @default false
+             */
+            readonly confirm: boolean;
+            /** @description Optimistic-concurrency guard; write lands only if version matches */
+            readonly expected_version?: number | null;
+            /**
+             * @description Operator-set oversight mode (null inherits the default)
+             * @enum {string|null}
+             */
+            readonly mode: "full" | "semi" | "supervised" | "locked" | null;
         };
         /** ProjectCharter */
         readonly ProjectCharter: {
@@ -26563,6 +26600,41 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdAutonomyModeSetAutonomyMode: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ProjectAutonomyModeRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Project_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

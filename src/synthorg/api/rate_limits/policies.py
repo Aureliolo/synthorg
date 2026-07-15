@@ -216,6 +216,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "plans.comment": (60, 60),
     # projects
     "projects.create": (10, 60),
+    "projects.update": (30, 60),
     "projects.delete": (5, 60),
     # providers
     "providers.add_model": (20, 60),

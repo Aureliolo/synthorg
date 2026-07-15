@@ -105,6 +105,7 @@ class WsEventType(StrEnum):
 
     PROJECT_CREATED = "project.created"
     PROJECT_DELETED = "project.deleted"
+    PROJECT_AUTONOMY_MODE_CHANGED = "project.autonomy_mode_changed"
     # Reserved for future status-update endpoint (not yet published).
     PROJECT_STATUS_CHANGED = "project.status_changed"
 

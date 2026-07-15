@@ -3,8 +3,9 @@ import type {
   createProject,
   getProject,
   listProjects,
+  setProjectAutonomyMode,
 } from '@/api/endpoints/projects'
-import type { Project } from '@/api/types/projects'
+import type { Project, ProjectAutonomyModeRequest } from '@/api/types/projects'
 import {
   apiError,
   emptyPage,
@@ -24,6 +25,7 @@ function buildProject(overrides: Partial<Project> = {}): Project {
     deadline: null,
     budget: 0,
     status: 'planning',
+    autonomy_mode: null,
     version: 1,
     ...overrides,
   }
@@ -59,6 +61,17 @@ export const projectsHandlers = [
         }),
       ),
       { status: 201 },
+    )
+  }),
+  http.patch('/api/v1/projects/:id/autonomy-mode', async ({ params, request }) => {
+    const body = (await request.json()) as ProjectAutonomyModeRequest
+    return HttpResponse.json(
+      successFor<typeof setProjectAutonomyMode>(
+        buildProject({
+          id: String(params['id']),
+          autonomy_mode: body.mode ?? null,
+        }),
+      ),
     )
   }),
   http.delete('/api/v1/projects/:id', () => HttpResponse.json(voidSuccess())),

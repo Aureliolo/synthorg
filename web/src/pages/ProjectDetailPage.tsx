@@ -16,6 +16,7 @@ import { useProjectsStore } from '@/stores/projects'
 import { ProjectDetailSkeleton } from './projects/ProjectDetailSkeleton'
 import { ProjectHeader } from './projects/ProjectHeader'
 import { ProjectTeamSection } from './projects/ProjectTeamSection'
+import { ProjectOversightSection } from './projects/ProjectOversightSection'
 import { ProjectTaskList } from './projects/ProjectTaskList'
 import { BrownfieldImportDialog } from './projects/BrownfieldImportDialog'
 
@@ -95,6 +96,10 @@ export default function ProjectDetailPage() {
       <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
         <ErrorBoundary level="section">
           <ProjectTeamSection project={project} />
+        </ErrorBoundary>
+
+        <ErrorBoundary level="section">
+          <ProjectOversightSection project={project} />
         </ErrorBoundary>
 
         <ErrorBoundary level="section">

@@ -219,7 +219,7 @@ security:
 
 ## Autonomy & Permissions (Runtime Operations)
 
-This section covers runtime operations on the autonomy and tool-permission surface: promoting an agent, setting a department-level override, granting (or revoking) tool categories per-agent, and querying the audit trail.
+This section covers runtime operations on the autonomy and tool-permission surface: promoting an agent, setting a department-level or per-initiative override, granting (or revoking) tool categories per-agent, and querying the audit trail.
 
 ### Promote or demote an agent's autonomy
 
@@ -238,7 +238,7 @@ Automatic demotions happen on: sustained high error rate (one level down), budge
 
 ### Set a department-level override
 
-Resolution chain: per-agent > per-department > company default. To set a department-wide override:
+Resolution chain: per-agent > per-initiative > per-department > company default. To set a department-wide override:
 
 ```bash
 curl -X PATCH http://localhost:3001/api/v1/departments/${DEPT_NAME} \
@@ -247,7 +247,20 @@ curl -X PATCH http://localhost:3001/api/v1/departments/${DEPT_NAME} \
   -d '{"autonomy_level": "supervised"}'
 ```
 
-Clear with `{"autonomy_level": null}` to fall back to the company default.
+Clear with `{"autonomy_level": null}` to remove the department override. Resolution then falls to the company default, unless a more-specific per-initiative or per-agent override still applies.
+
+### Set a project's autonomy mode
+
+Scopes an oversight mode to one initiative, resolved below a per-agent override and above the department/company default:
+
+```bash
+curl -X PATCH http://localhost:3001/api/v1/projects/${PROJECT_ID}/autonomy-mode \
+  -H "Content-Type: application/json" \
+  -H "Cookie: ${SESSION}" \
+  -d '{"mode": "supervised"}'
+```
+
+Clear with `{"mode": null}` to inherit the department/company default. Setting `full` (gate-off pass-through) disables the per-action gate for the initiative's agents and is a CEO-only deliberate opt-in, so it requires `{"mode": "full", "confirm": true}` and is audited at WARNING. The write is version-guarded; pass `expected_version` to have a concurrent edit surface a 409 instead of clobbering.
 
 ### Tool permission management
 

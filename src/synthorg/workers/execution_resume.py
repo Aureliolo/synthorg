@@ -70,11 +70,12 @@ class ResumeDispatchMixin:
     # shared with ``execute_once``). Declared here as abstract stubs so
     # this mixin type-checks in isolation and the host's definitions are
     # recognised as overrides.
-    def _resolve_autonomy(
+    async def _resolve_autonomy(
         self,
         identity: AgentIdentity,
         *,
         task_id: str,
+        project_id: NotBlankStr | None = None,
     ) -> EffectiveAutonomy | None:
         """Resolve effective autonomy (provided by the host service)."""
 
@@ -206,9 +207,10 @@ class ResumeDispatchMixin:
         )
         task_id = str(ctx.task_execution.task.id) if ctx.task_execution else ""
         project_id = ctx.task_execution.task.project if ctx.task_execution else None
-        effective_autonomy = self._resolve_autonomy(
+        effective_autonomy = await self._resolve_autonomy(
             ctx.identity,
             task_id=task_id,
+            project_id=project_id,
         )
 
         if ctx.task_execution is None:

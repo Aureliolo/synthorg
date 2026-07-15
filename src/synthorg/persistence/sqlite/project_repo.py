@@ -97,6 +97,7 @@ class SQLiteProjectRepository:
             project.deadline,
             project.budget,
             project.status.value,
+            project.autonomy_mode.value if project.autonomy_mode is not None else None,
             project.version,
         )
 
@@ -115,8 +116,8 @@ class SQLiteProjectRepository:
                 await self._db.execute(
                     """\
 INSERT INTO projects (id, name, description, team, lead,
-                      task_ids, deadline, budget, status, version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      task_ids, deadline, budget, status, autonomy_mode, version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     self._row_params(project),
                 )
                 await self._db.commit()
@@ -200,6 +201,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             project.deadline,
             project.budget,
             project.status.value,
+            project.autonomy_mode.value if project.autonomy_mode is not None else None,
             project.version,
             str(project.id),
         ]
@@ -209,7 +211,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             params.append(expected_version)
         query = (
             "UPDATE projects SET name=?, description=?, team=?, lead=?, "  # noqa: S608
-            "task_ids=?, deadline=?, budget=?, status=?, version=? "
+            "task_ids=?, deadline=?, budget=?, status=?, autonomy_mode=?, version=? "
             f"WHERE id=?{guard}"
         )
         async with self._write_context():
@@ -273,8 +275,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 await self._db.execute(
                     """\
 INSERT INTO projects (id, name, description, team, lead,
-                      task_ids, deadline, budget, status, version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      task_ids, deadline, budget, status, autonomy_mode, version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name,
     description=excluded.description,
@@ -284,6 +286,7 @@ ON CONFLICT(id) DO UPDATE SET
     deadline=excluded.deadline,
     budget=excluded.budget,
     status=excluded.status,
+    autonomy_mode=excluded.autonomy_mode,
     version=excluded.version""",
                     self._row_params(project),
                 )

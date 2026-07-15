@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, override
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
@@ -39,6 +40,7 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
 )
 from synthorg.observability.events.workspace import ENVIRONMENT_PROVISION_SKIPPED
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.tools.sandbox.active_environment import (
     ActiveSandboxEnvironment,
     active_sandbox_environment,
@@ -51,6 +53,7 @@ from synthorg.tools.sandbox.lifecycle.config import (
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.workers.environment_runner import SandboxEnvironmentRunner
 from synthorg.workers.execution_resume import ResumeDispatchMixin
+from synthorg.workers.execution_service._autonomy import read_project_autonomy_mode
 
 if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
@@ -96,6 +99,7 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         "_health_enabled",
         "_health_pipeline",
         "_lifecycle_strategy_kind",
+        "_project_repo",
         "_project_workspace_service",
         "_resume_tasks",
         "_sandbox_backend",
@@ -109,6 +113,7 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         task_engine: TaskEngine,
         agent_registry: AgentRegistryService,
         autonomy_resolver: AutonomyResolver | None = None,
+        project_repo: ProjectRepository | None = None,
         sandbox_backend: SandboxBackend | None = None,
         lifecycle_strategy_kind: str = STRATEGY_PER_CALL,
         project_workspace_service: ProjectWorkspaceService | None = None,
@@ -121,6 +126,10 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         self._task_engine = task_engine
         self._agent_registry = agent_registry
         self._autonomy_resolver = autonomy_resolver
+        # Reads the initiative's operator-set autonomy mode so the SecOps
+        # gate resolves against it. ``None`` for persistence-less deployments;
+        # the resolver then falls back to department/company autonomy.
+        self._project_repo = project_repo
         # Two-layer agent-health monitoring runs after each engine run when
         # wired and the ``engine.health_monitoring_enabled`` flag (re-read per
         # run via ``health_enabled``) is set. Best-effort: a missing pipeline
@@ -354,7 +363,9 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
             raise NotFoundError(msg)
 
         identity = await self._resolve_identity(task.assigned_to, task_id=task_id)
-        effective_autonomy = self._resolve_autonomy(identity, task_id=task_id)
+        effective_autonomy = await self._resolve_autonomy(
+            identity, task_id=task_id, project_id=task.project
+        )
 
         # Provisioning (workspace + reproducible environment) runs before the
         # engine's own ASSIGNED -> IN_PROGRESS transition, so a failure here
@@ -626,13 +637,18 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         )
 
     @override
-    def _resolve_autonomy(
+    async def _resolve_autonomy(
         self,
         identity: AgentIdentity,
         *,
         task_id: str,
+        project_id: NotBlankStr | None = None,
     ) -> EffectiveAutonomy | None:
         """Resolve effective autonomy; degrade to ``None`` on misconfig.
+
+        The initiative's operator-set mode (``Project.autonomy_mode``, when
+        ``project_id`` is set and a project repo is wired) is resolved below a
+        per-agent override but above the department/company default.
 
         ``None`` still leaves the SecOps rule engine governing every
         tool action (credential / destructive / path-traversal
@@ -645,9 +661,11 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         """
         if self._autonomy_resolver is None:
             return None
+        project_mode = await self._resolve_project_autonomy_mode(project_id)
         try:
             return self._autonomy_resolver.resolve(
                 agent_level=identity.autonomy_level,
+                project_level=project_mode,
             )
         except ValueError as exc:
             logger.warning(
@@ -658,3 +676,18 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
                 error=safe_error_description(exc),
             )
             return None
+
+    async def _resolve_project_autonomy_mode(
+        self,
+        project_id: NotBlankStr | None,
+    ) -> AutonomyLevel | None:
+        """Read the initiative's operator-set autonomy mode (fail-closed).
+
+        Delegates to :func:`read_project_autonomy_mode`; kept as a method so
+        the resolver seam addresses it through the service instance.
+
+        Returns:
+            The project's ``autonomy_mode``; ``None`` when no override
+            applies; ``AutonomyLevel.LOCKED`` when the lookup failed.
+        """
+        return await read_project_autonomy_mode(self._project_repo, project_id)

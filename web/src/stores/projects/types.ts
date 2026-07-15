@@ -1,4 +1,5 @@
 import type { StoreApi } from 'zustand'
+import type { AutonomyLevel } from '@/api/types/enums'
 import type {
   CreateProjectRequest,
   Project,
@@ -33,6 +34,8 @@ export interface ProjectsState {
   projectTasks: readonly Task[]
   detailLoading: boolean
   detailError: string | null
+  /** True while an autonomy-mode PATCH is in flight (disables the control). */
+  autonomyModeSaving: boolean
 
   // Actions. Mutations follow the canonical store error contract:
   // log + error toast + return sentinel (`null`) on failure.
@@ -40,6 +43,11 @@ export interface ProjectsState {
   fetchMoreProjects: () => Promise<void>
   fetchProjectDetail: (id: string) => Promise<void>
   createProject: (data: CreateProjectRequest) => Promise<Project | null>
+  setAutonomyMode: (
+    id: string,
+    mode: AutonomyLevel | null,
+    confirm?: boolean,
+  ) => Promise<Project | null>
   deleteProject: (id: string) => Promise<boolean>
   batchDeleteProjects: (
     ids: readonly string[],

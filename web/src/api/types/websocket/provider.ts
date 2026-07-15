@@ -1,5 +1,6 @@
 /** Artifact, project, memory.fine_tune, and client WebSocket payload interfaces. */
 
+import type { AutonomyLevel } from '../enums'
 import type { PlanStatus, WorkflowExecutionStatus } from '../enum-values.gen'
 
 export interface WsArtifactCreatedPayload {
@@ -30,6 +31,13 @@ export interface WsProjectCreatedPayload {
 export interface WsProjectDeletedPayload {
   project_id: string
   name: string
+}
+
+export interface WsProjectAutonomyModeChangedPayload {
+  project_id: string
+  new_mode?: AutonomyLevel | null
+  previous_mode?: AutonomyLevel | null
+  new_version: number
 }
 
 export interface WsProjectStatusChangedPayload {

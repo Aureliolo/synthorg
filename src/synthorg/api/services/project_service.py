@@ -154,7 +154,9 @@ class ProjectService:
         )
         return project
 
-    async def update(self, project: Project) -> Project:
+    async def update(
+        self, project: Project, *, expected_version: int | None = None
+    ) -> Project:
         """Update an existing project in place and audit the update.
 
         Routes through the atomic :meth:`ProjectRepository.update`
@@ -165,18 +167,25 @@ class ProjectService:
         Args:
             project: Project to update.  ``project.id`` must already
                 exist in persistence.
+            expected_version: When set, the write is version-guarded and
+                only lands if the stored version still matches, so a
+                concurrent write cannot be silently clobbered (optimistic
+                concurrency). ``None`` skips the guard.
 
         Returns:
             The same project (identity preserved for caller chaining).
 
         Raises:
+            PersistenceVersionConflictError: ``expected_version`` was
+                supplied and the stored version has moved (logged at
+                WARNING before propagating).
             RecordNotFoundError: No project with this id exists
                 (logged at WARNING before propagating).
             QueryError: Repository write failure (logged at WARNING
                 before propagating).
         """
         try:
-            await self._repo.update(project)
+            await self._repo.update(project, expected_version=expected_version)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

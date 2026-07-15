@@ -14,6 +14,7 @@ from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
@@ -104,6 +105,28 @@ def red_team_reports_of(
     """
     backend = app_state.slice(PersistenceStateSlice).backend
     return backend.red_team_reports if backend is not None else None
+
+
+def project_repository_of(
+    app_state: AppStateSliceMixin,
+) -> ProjectRepository | None:
+    """Return the project repository, or ``None`` if unwired.
+
+    Companion to :func:`persistence_of` for the optional autonomy-mode
+    lookup: the execution service reads a project's operator-set mode to
+    seed the autonomy resolver, but a dev / empty-company run with no
+    backend must still build its runtime. Returning ``None`` lets the
+    autonomy read fall through to the department / company default
+    rather than 503-ing the whole runtime.
+
+    Args:
+        app_state: The application state (any slice-reader).
+
+    Returns:
+        The project repository, or ``None`` when no backend is wired.
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    return backend.projects if backend is not None else None
 
 
 def persistence_backend_label(app_state: AppStateSliceMixin) -> str:

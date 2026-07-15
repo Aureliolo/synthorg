@@ -68,6 +68,19 @@ def _get_role(
     return None
 
 
+def role_of(connection: GuardConnection) -> HumanRole | None:
+    """Return the authenticated human role, or ``None`` when absent.
+
+    Public accessor for handlers that must branch on the caller's role
+    mid-request (e.g. a transition only the CEO may perform), complementing
+    the route-level ``require_*`` guards.
+
+    Returns:
+        The ``HumanRole`` value when present, ``None`` otherwise.
+    """
+    return _get_role(connection)
+
+
 def has_write_role(role: HumanRole) -> bool:
     """Return True if the role grants write access.
 
