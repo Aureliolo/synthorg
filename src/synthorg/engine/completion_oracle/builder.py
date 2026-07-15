@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, NamedTuple
 from synthorg.core.agent import ModelConfig
 from synthorg.core.clock import Clock
 from synthorg.core.task_enums import Stakes
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.completion_oracle.config import CompletionOracleConfig
 from synthorg.engine.completion_oracle.errors import (
@@ -99,7 +100,7 @@ class CompletionOracleRuntime(NamedTuple):
     gate: CompletionOracleGateService
     report_repo: CompletionOracleReportRepository
     runner: ReviewerAgentEngineRunner
-    reviewer_agent_id: str
+    reviewer_agent_id: NotBlankStr
     shadow_mode: bool
     min_stakes: Stakes
 

@@ -1,12 +1,13 @@
 # module-kind: code
 """Completion-gate chain for the review gate.
 
-Houses the adversarial-gate chain (red-team then vision) the review
-gate runs before an IN_REVIEW -> COMPLETED transition, plus the
-pipeline-verdict mapping. Both completion entry points share it: the
-pipeline-driven ``run_pipeline`` and the human-driven ``complete_review``
-call :func:`run_completion_gates`, so a configured gate fires on every
-path to COMPLETED rather than only the pipeline one.
+Orchestrates the full gate chain the review gate runs before an
+IN_REVIEW -> COMPLETED transition, in order: the completion oracle
+(build/test then agent-session peer review), then the adversarial red-team
+and vision gates, plus the pipeline-verdict mapping. Both completion entry
+points share it: the pipeline-driven ``run_pipeline`` and the human-driven
+``complete_review`` call :func:`run_completion_gates`, so a configured gate
+fires on every path to COMPLETED rather than only the pipeline one.
 
 Separating the gate chain from the service lets the gate-application
 logic be unit-tested without constructing the full ``ReviewGateService``.
@@ -68,7 +69,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
     completion_oracle_min_stakes: Stakes = Stakes.LOW,
     red_team_gate: RedTeamGate | None,
     vision_gate: VisionVerifierGate | None,
-    red_team_input_builder: DeliverableReviewInputBuilder | None,
+    deliverable_input_builder: DeliverableReviewInputBuilder | None,
     on_missing_deliverable: Literal["block", "skip"],
     task: Task,
     target: TaskStatus,
@@ -123,12 +124,12 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
     )
     red_team_active = (
         red_team_gate is not None
-        and red_team_input_builder is not None
+        and deliverable_input_builder is not None
         and compare_stakes(task.stakes, red_team_min_stakes) >= 0
     )
     deliverable_input = (
-        await red_team_input_builder.build(task)
-        if red_team_input_builder is not None and (oracle_active or red_team_active)
+        await deliverable_input_builder.build(task)
+        if deliverable_input_builder is not None and (oracle_active or red_team_active)
         else None
     )
 
@@ -160,7 +161,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
             if not approved:
                 return target, transition_reason, event, approved
 
-    if red_team_gate is not None and red_team_input_builder is not None:
+    if red_team_gate is not None and deliverable_input_builder is not None:
         if compare_stakes(task.stakes, red_team_min_stakes) < 0:
             logger.info(
                 RED_TEAM_GATE_SKIPPED,

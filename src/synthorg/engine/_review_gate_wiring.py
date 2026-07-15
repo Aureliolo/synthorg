@@ -32,7 +32,7 @@ class ReviewGateWiringMixin:
     _receipt_service: DeliverableReceiptSeam | None
     _vision_gate: VisionVerifierGate | None
     _red_team_gate: RedTeamGate | None
-    _red_team_input_builder: DeliverableReviewInputBuilder | None
+    _deliverable_input_builder: DeliverableReviewInputBuilder | None
     _background_tasks: BackgroundTaskRegistry | None
     _red_team_on_missing_deliverable: Literal["block", "skip"]
     _red_team_min_stakes: Stakes
@@ -66,21 +66,25 @@ class ReviewGateWiringMixin:
         and ``run_pipeline``); the review input is built from the
         completing task's recorded deliverable by the
         :class:`DeliverableReviewInputBuilder` attached via
-        :meth:`set_red_team_input_builder`.
+        :meth:`set_deliverable_input_builder`.
         """
         self._red_team_gate = red_team_gate
 
-    def set_red_team_input_builder(
+    def set_deliverable_input_builder(
         self, builder: DeliverableReviewInputBuilder
     ) -> None:
-        """Attach the red-team review-input builder (boot wiring seam).
+        """Attach the shared deliverable review-input builder (boot wiring seam).
 
-        Wired alongside :meth:`set_red_team_gate` once the flight-recorder
-        frame store is connected. The builder sources the deliverable text
-        and execution id the gate evaluates; without it a configured gate
-        falls under the ``on_missing_deliverable`` posture for every task.
+        Wired once the flight-recorder frame store is connected, independently
+        of whether the red-team gate is enabled: BOTH the completion-oracle
+        peer-review gate and the red-team gate source their deliverable text +
+        execution id from this one builder. Because the peer-review gate is on
+        by default while red-team is opt-in, coupling this to the red-team
+        subsystem would leave the oracle's reviewer with no deliverable and
+        silently pass every task. Without a builder a configured gate falls
+        under the ``on_missing_deliverable`` posture for every task.
         """
-        self._red_team_input_builder = builder
+        self._deliverable_input_builder = builder
 
     def set_background_tasks(self, registry: BackgroundTaskRegistry) -> None:
         """Attach the background-task registry for gated completions.

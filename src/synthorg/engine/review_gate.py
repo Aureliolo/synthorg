@@ -90,7 +90,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         task_engine: TaskEngine,
         persistence: PersistenceBackend | None = None,
         red_team_gate: RedTeamGate | None = None,
-        red_team_input_builder: DeliverableReviewInputBuilder | None = None,
+        deliverable_input_builder: DeliverableReviewInputBuilder | None = None,
         red_team_on_missing_deliverable: Literal["block", "skip"] = "block",
         red_team_min_stakes: Stakes = Stakes.HIGH,
         vision_gate: VisionVerifierGate | None = None,
@@ -100,7 +100,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         self._task_engine = task_engine
         self._persistence = persistence
         self._red_team_gate = red_team_gate
-        self._red_team_input_builder = red_team_input_builder
+        self._deliverable_input_builder = deliverable_input_builder
         self._red_team_on_missing_deliverable: Literal["block", "skip"] = (
             red_team_on_missing_deliverable
         )
@@ -275,7 +275,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             completion_oracle_min_stakes=self._completion_oracle_min_stakes,
             red_team_gate=self._red_team_gate,
             vision_gate=self._vision_gate,
-            red_team_input_builder=self._red_team_input_builder,
+            deliverable_input_builder=self._deliverable_input_builder,
             on_missing_deliverable=self._red_team_on_missing_deliverable,
             task=task,
             target=target,
@@ -451,7 +451,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             completion_oracle_min_stakes=self._completion_oracle_min_stakes,
             red_team_gate=self._red_team_gate,
             vision_gate=self._vision_gate,
-            red_team_input_builder=self._red_team_input_builder,
+            deliverable_input_builder=self._deliverable_input_builder,
             on_missing_deliverable=self._red_team_on_missing_deliverable,
             task=task,
             target=target,

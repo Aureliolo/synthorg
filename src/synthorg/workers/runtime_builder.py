@@ -226,6 +226,10 @@ class RuntimeServices(NamedTuple):
     ``None`` when no intake runtime is wired (no work entry path).
     ``red_team_runtime`` is ``None`` when the adversarial gate is
     disabled (default) OR when no provider is configured.
+    ``completion_oracle_runtime`` is ``None`` only when
+    ``engine.completion_oracle_enabled`` is off (it defaults ON) or no
+    provider is configured; the build/test gate still attaches whenever the
+    oracle is enabled, since it needs no provider.
     """
 
     worker_execution_service: WorkerExecutionService

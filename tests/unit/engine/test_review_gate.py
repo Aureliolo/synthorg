@@ -501,7 +501,7 @@ class TestReviewGateServiceDecisionRecording:
             red_team_gate=mock_of[RedTeamGate](
                 evaluate=AsyncMock(return_value=block_result),
             ),
-            red_team_input_builder=mock_of[DeliverableReviewInputBuilder](
+            deliverable_input_builder=mock_of[DeliverableReviewInputBuilder](
                 build=AsyncMock(return_value=review_input),
             ),
         )

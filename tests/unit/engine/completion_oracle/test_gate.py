@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.engine.completion_oracle.errors import CompletionOracleDispatchError
 from synthorg.engine.completion_oracle.gate import CompletionOracleGateService
 from synthorg.engine.completion_oracle.report_repo import (
@@ -67,29 +68,82 @@ class _ScriptedRunner:
             )
 
 
+class _RaisingArchive:
+    """Durable archive that always fails its append (fail-open probe)."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def append(self, record: object, /) -> None:
+        self.calls += 1
+        msg = "archive backend down"
+        raise QueryError(msg)
+
+    async def query(
+        self, filter_spec: object, *, limit: int = 100, offset: int = 0
+    ) -> tuple[object, ...]:
+        return ()
+
+    async def purge_before(self, threshold: object, /) -> int:
+        return 0
+
+
 def _gate(
-    runner: _ScriptedRunner, repo: InMemoryCompletionOracleReportRepository
+    runner: _ScriptedRunner,
+    repo: InMemoryCompletionOracleReportRepository,
+    *,
+    report_archive: object | None = None,
 ) -> CompletionOracleGateService:
     return CompletionOracleGateService(
         agent_runner=runner,
         report_repo=repo,
         reviewer_agent_id=_REVIEWER,
+        report_archive=report_archive,  # type: ignore[arg-type]
         clock=FakeClock(),
     )
 
 
 class TestCompletionOracleGate:
-    async def test_approve_verdict_passes(self) -> None:
+    @pytest.mark.parametrize(
+        "verdict",
+        [CompletionOracleVerdict.APPROVE, CompletionOracleVerdict.REJECT],
+    )
+    async def test_verdict_returned_and_reviewer_dispatched_once(
+        self, verdict: CompletionOracleVerdict
+    ) -> None:
         repo = InMemoryCompletionOracleReportRepository()
-        runner = _ScriptedRunner(repo, report=_report(CompletionOracleVerdict.APPROVE))
+        runner = _ScriptedRunner(repo, report=_report(verdict))
         result = await _gate(runner, repo).evaluate(_input())
-        assert result.verdict is CompletionOracleVerdict.APPROVE
+        assert result.verdict is verdict
+        # The reviewer agent was genuinely dispatched exactly once (a lazier
+        # test would pass even if the report appeared without a reviewer run).
+        assert runner.calls == 1
 
-    async def test_reject_verdict_returned(self) -> None:
+    async def test_stale_verdict_mismatch_escalates(self) -> None:
+        # A report left under the queried key from another run (its embedded
+        # execution_id differs) must be discarded, not passed through.
+        repo = InMemoryCompletionOracleReportRepository()
+        stale = CompletionOracleReport(
+            execution_id="other-exec",
+            task_id="other-task",
+            reviewer_agent_id=_REVIEWER,
+            executor_agent_id=_EXECUTOR,
+            verdict=CompletionOracleVerdict.APPROVE,
+            summary="stale report from another run",
+        )
+        runner = _ScriptedRunner(repo, report=stale)
+        result = await _gate(runner, repo).evaluate(_input())
+        assert result.verdict is CompletionOracleVerdict.ESCALATE
+
+    async def test_archive_failure_does_not_alter_verdict(self) -> None:
+        # The durable archive is fail-OPEN: a write failure is swallowed and the
+        # decided verdict still stands (the one fail-open path in the gate).
         repo = InMemoryCompletionOracleReportRepository()
         runner = _ScriptedRunner(repo, report=_report(CompletionOracleVerdict.REJECT))
-        result = await _gate(runner, repo).evaluate(_input())
+        archive = _RaisingArchive()
+        result = await _gate(runner, repo, report_archive=archive).evaluate(_input())
         assert result.verdict is CompletionOracleVerdict.REJECT
+        assert archive.calls == 1
 
     async def test_missing_verdict_escalates(self) -> None:
         # Runner returns without filing a verdict: fail-CLOSED to ESCALATE.

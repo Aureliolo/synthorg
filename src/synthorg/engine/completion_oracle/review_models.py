@@ -184,6 +184,13 @@ class CompletionOracleReport(BaseModel):
                 f"the maximum is {MAX_ORACLE_FINDINGS_PER_REPORT}."
             )
             raise ValueError(msg)
+        if self.test_command is not None and not self.ran_tests:
+            msg = (
+                "CompletionOracleReport carries a test_command "
+                f"{self.test_command!r} but ran_tests is False; a report cannot "
+                "name a test command it did not run."
+            )
+            raise ValueError(msg)
         return self
 
 
@@ -202,6 +209,30 @@ class CompletionOracleGateResult(BaseModel):
     verdict: CompletionOracleVerdict
     report: CompletionOracleReport
     elapsed_seconds: float = Field(ge=0.0)
+
+    @model_validator(mode="after")
+    def _verdict_matches_report(self) -> Self:
+        """Reject a result whose top-level verdict disagrees with the report.
+
+        The redundant top-level ``verdict`` is a convenience for callers that
+        read the result without unpacking the report; guarding the agreement
+        (the twin of ``CompletionOracleReportRecord._keys_match_report``) means
+        one caller reading ``result.verdict`` and another reading
+        ``result.report.verdict`` can never disagree on whether review passed.
+
+        Returns:
+            The validated result.
+
+        Raises:
+            ValueError: If ``verdict`` and ``report.verdict`` differ.
+        """
+        if self.verdict is not self.report.verdict:
+            msg = (
+                f"CompletionOracleGateResult.verdict {self.verdict.value!r} does "
+                f"not match report.verdict {self.report.verdict.value!r}."
+            )
+            raise ValueError(msg)
+        return self
 
 
 class CompletionOracleReportRecord(BaseModel):

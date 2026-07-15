@@ -33,6 +33,29 @@ COMPLETION_ORACLE_GATE_STARTED: Final[str] = "completion_oracle.review.gate_star
 COMPLETION_ORACLE_GATE_SKIPPED: Final[str] = "completion_oracle.review.gate_skipped"
 """Peer-review gate skipped (feature off, below stakes threshold, or shadow-only)."""
 
+COMPLETION_ORACLE_CONFIG_RESOLVE_FAILED: Final[str] = (
+    "completion_oracle.runtime.config_resolve_failed"
+)
+"""Settings resolution failed; the oracle falls back to its on-by-default config
+(the gate stays ENABLED -- distinct from a deliberate skip)."""
+
+COMPLETION_ORACLE_REVIEWER_TIER_FALLBACK: Final[str] = (
+    "completion_oracle.runtime.reviewer_tier_fallback"
+)
+"""Reviewer model tier could not be resolved (read failure or unrecognised
+value); the runtime falls back to the default tier rather than a silent
+downgrade."""
+
+COMPLETION_ORACLE_GATES_WIRED: Final[str] = "completion_oracle.runtime.gates_wired"
+"""Oracle gates attached to (or, when disabled, detached from) the review gate,
+at boot or on a hot-reload."""
+
+COMPLETION_ORACLE_VERDICT_DUPLICATE: Final[str] = (
+    "completion_oracle.review.verdict_duplicate"
+)
+"""A second verdict was submitted for an execution that already has one; the
+duplicate is rejected."""
+
 COMPLETION_ORACLE_GATE_BUILD_FAILED: Final[str] = (
     "completion_oracle.review.gate_build_failed"
 )

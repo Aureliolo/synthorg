@@ -187,7 +187,7 @@ def _build_review_gate(  # type: ignore[explicit-any]  # task-engine mock elemen
     service = ReviewGateService(
         task_engine=task_engine,
         red_team_gate=red_team_gate,
-        red_team_input_builder=builder,
+        deliverable_input_builder=builder,
         red_team_on_missing_deliverable=on_missing_deliverable,  # type: ignore[arg-type]
         background_tasks=background_tasks,
     )

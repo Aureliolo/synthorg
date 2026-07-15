@@ -8,6 +8,7 @@ graph queries built on top of this catalog.
 
 from collections.abc import Mapping
 from types import MappingProxyType
+from typing import Final
 
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role import Role
@@ -286,7 +287,7 @@ _RED_TEAM = Role(
     ),
 )
 
-RED_TEAM_ROLE_NAME: str = _RED_TEAM.name
+RED_TEAM_ROLE_NAME: Final[str] = _RED_TEAM.name
 """Canonical name of the built-in Red Team role.
 
 Exposed so other modules (the red-team subsystem, tests) reference a
@@ -309,7 +310,7 @@ _COMPLETION_REVIEWER = Role(
     ),
 )
 
-COMPLETION_REVIEWER_ROLE_NAME: str = _COMPLETION_REVIEWER.name
+COMPLETION_REVIEWER_ROLE_NAME: Final[str] = _COMPLETION_REVIEWER.name
 """Canonical name of the built-in Completion Reviewer role.
 
 Exposed so the completion-oracle subsystem references a single string

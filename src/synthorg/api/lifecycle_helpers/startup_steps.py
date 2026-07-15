@@ -368,11 +368,16 @@ async def install_runtime_services(
         completion_oracle_runtime=services.completion_oracle_runtime,
         review_gate_service=review_gate_service,
     )
-    # Completion-path extras that make the attached gate fire on every path
-    # to COMPLETED: the input builder sources the deliverable from the
-    # flight-recorder frame store, the posture forwards on_missing_deliverable,
-    # and the background registry keeps the inline gate latency off the
-    # approve/reject response. Only when the subsystem is enabled.
+    # Wire the shared deliverable-input builder so the completion-oracle
+    # peer-review gate (on by default) and the red-team gate (opt-in) both have
+    # a deliverable to review. This is independent of the red-team subsystem:
+    # coupling it there left the on-by-default oracle reviewer with a ``None``
+    # input, silently passing every task. No-op without persistence.
+    if review_gate_service is not None:
+        _wire_deliverable_input_builder(app_state, review_gate_service)
+    # Red-team-specific completion extras: the on_missing_deliverable posture
+    # and the background registry that keeps the inline red-team AgentEngine
+    # latency off the approve/reject response. Only when the subsystem is on.
     if services.red_team_runtime is not None and review_gate_service is not None:
         _wire_red_team_completion(
             app_state,
@@ -399,24 +404,66 @@ async def install_runtime_services(
     await wire_real_task_board_entry(app_state)
 
 
+def _wire_deliverable_input_builder(
+    app_state: AppState,
+    review_gate_service: ReviewGateService,
+) -> None:
+    """Attach the shared deliverable-input builder (both completion gates).
+
+    The completion-oracle peer-review gate (on by default) and the red-team
+    gate (opt-in) both source the completing task's deliverable text +
+    execution id from this one builder, which reads the flight-recorder frame
+    store. Wired whenever persistence is connected, independently of either
+    gate being enabled, so the on-by-default oracle reviewer always has a
+    deliverable rather than a ``None`` input that silently passes the task.
+
+    No-op when persistence is not connected: without a backend the
+    flight-recorder deliverable source is unavailable, so a configured gate
+    stays inert this boot (see ``run_completion_gates``) rather than crashing.
+    """
+    from synthorg.engine.review_gate_inputs import (  # noqa: PLC0415
+        DeliverableReviewInputBuilder,
+    )
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+        persistence_of,
+    )
+
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="deliverable_input_builder",
+            note=(
+                "Deliverable-input builder wiring skipped: persistence is not "
+                "connected, so the flight-recorder deliverable source is "
+                "unavailable; the completion gates stay inert this boot."
+            ),
+        )
+        return
+    review_gate_service.set_deliverable_input_builder(
+        DeliverableReviewInputBuilder(
+            frame_repository=persistence_of(app_state).flight_recorder_frames,
+            autonomy_provider=_company_autonomy_provider(app_state),
+        ),
+    )
+
+
 def _wire_red_team_completion(
     app_state: AppState,
     review_gate_service: ReviewGateService,
     runtime: RedTeamRuntime,
 ) -> None:
-    """Attach the red-team input builder + posture + background registry.
+    """Attach the red-team posture + background registry.
 
-    Makes the gate (already attached by ``_publish_red_team_runtime``) fire
-    on the real completion path: the builder sources the deliverable from
-    the flight-recorder frame store, the posture forwards
-    ``on_missing_deliverable``, and the background registry keeps the inline
-    AgentEngine evaluation off the operator's approve/reject response.
+    The shared deliverable-input builder is wired separately by
+    ``_wire_deliverable_input_builder``; this attaches only the red-team
+    specifics: the ``on_missing_deliverable`` posture, the routing-shared
+    stakes threshold, and the background registry that keeps the inline
+    red-team AgentEngine evaluation off the operator's approve/reject response.
 
-    No-op when persistence is not connected: the builder's deliverable
-    source is the flight-recorder frame store, so without a backend there
-    is nothing to wire. The gate stays attached but inert (see
-    ``run_completion_gates``), rather than crashing boot on the missing
-    frame repository.
+    No-op when persistence is not connected: without a backend the deliverable
+    source is unavailable, so the gate stays inert this boot rather than
+    crashing on the missing frame repository.
     """
     # Share the routing layer's stakes threshold so the gate fires on exactly
     # the work the router marks red_team_required. Set before the persistence
@@ -424,15 +471,11 @@ def _wire_red_team_completion(
     review_gate_service.set_red_team_min_stakes(
         app_state.config.stakes_routing.red_team_min_stakes,
     )
-    from synthorg.engine.review_gate_inputs import (  # noqa: PLC0415
-        DeliverableReviewInputBuilder,
-    )
     from synthorg.observability.background_tasks import (  # noqa: PLC0415
         BackgroundTaskRegistry,
     )
     from synthorg.persistence.state import (  # noqa: PLC0415
         PersistenceStateSlice,
-        persistence_of,
     )
 
     if app_state.slice(PersistenceStateSlice).backend is None:
@@ -448,12 +491,6 @@ def _wire_red_team_completion(
         return
     review_gate_service.set_red_team_on_missing_deliverable(
         runtime.on_missing_deliverable,
-    )
-    review_gate_service.set_red_team_input_builder(
-        DeliverableReviewInputBuilder(
-            frame_repository=persistence_of(app_state).flight_recorder_frames,
-            autonomy_provider=_company_autonomy_provider(app_state),
-        ),
     )
     review_gate_service.set_background_tasks(
         BackgroundTaskRegistry(owner="review_gate.completion"),

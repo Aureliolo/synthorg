@@ -376,17 +376,26 @@ extension point.
 `BUILTIN_ROLES` in `src/synthorg/core/role_catalog.py` carries the
 shipped role catalog. Most entries (CEO, Backend Developer, QA
 Engineer, etc.) are role definitions only; instantiation as a real
-`AgentIdentity` happens when operators configure their company. One
-role is special:
+`AgentIdentity` happens when operators configure their company. Two
+roles are special (both boot-instantiated, non-human-assignable, in
+Quality Assurance):
 
 - **Red Team** (`name="Red Team"`, department: Quality Assurance).
   The built-in adversarial skeptic. Instantiated
   at boot when `CompanyConfig.security.red_team.enabled` is true; the
-  framework runs it as the last gate before IN_REVIEW -> COMPLETED for
+  framework runs it as a gate before IN_REVIEW -> COMPLETED for
   deliverables whose `stakes` meet the configured
   `stakes_routing.red_team_min_stakes` threshold (default `HIGH`).
   See [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate)
   for the full design.
+- **Completion Reviewer** (`name="Completion Reviewer"`, department:
+  Quality Assurance). The built-in independent peer reviewer of the
+  completion oracle. Instantiated at boot when
+  `engine.completion_oracle_enabled` is true (on by default); it reviews
+  every completing deliverable's acceptance criteria and build/test
+  evidence, and is distinct-by-construction from any executor (enforced
+  at the model validator, the gate, and a DB CHECK). See
+  [Verification & Quality: Completion Oracle Gate](verification-quality.md#completion-oracle-gate).
 
 ---
 

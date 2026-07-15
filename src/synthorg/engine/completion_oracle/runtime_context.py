@@ -16,11 +16,12 @@ the trust boundary inside the host process.
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Final
+from typing import Final, Self
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.completion_oracle.review_models import _forbid_self_review
 
 
 class CompletionOracleRuntimeContext(BaseModel):
@@ -38,6 +39,25 @@ class CompletionOracleRuntimeContext(BaseModel):
     task_id: NotBlankStr
     reviewer_agent_id: NotBlankStr
     executor_agent_id: NotBlankStr
+
+    @model_validator(mode="after")
+    def _forbid_self_review(self) -> Self:
+        """Fail fast if the seeded reviewer equals the executor.
+
+        This is the trust-boundary type, so it enforces distinctness before the
+        reviewer agent is ever dispatched (at the gate's ``ctx`` construction),
+        rather than only catching a self-review after a full reviewer turn has
+        run. Shares the check with :class:`CompletionOracleReport` + the DB
+        CHECK for one invariant across all three layers.
+
+        Returns:
+            The validated context.
+
+        Raises:
+            ValueError: If the reviewer and executor identities are equal.
+        """
+        _forbid_self_review(self.reviewer_agent_id, self.executor_agent_id)
+        return self
 
 
 _RUNTIME_CONTEXT: Final[ContextVar[CompletionOracleRuntimeContext | None]] = ContextVar(

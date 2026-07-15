@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
+from synthorg.core.task_enums import Stakes, compare_stakes
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
     SETTINGS_SECURITY_GOVERNANCE_CONFIRMED,
@@ -31,6 +32,7 @@ from synthorg.settings.models import SettingDefinition, SettingValue
 logger = get_logger(__name__)
 
 _SECURITY_NS: Final[str] = SettingNamespace.SECURITY.value
+_ENGINE_NS: Final[str] = SettingNamespace.ENGINE.value
 
 # Boolean security toggles whose ``true -> false`` transition weakens posture.
 _WEAKENING_BOOL_KEYS: Final[frozenset[str]] = frozenset(
@@ -39,6 +41,47 @@ _WEAKENING_BOOL_KEYS: Final[frozenset[str]] = frozenset(
 # The permissive output-scan policy: switching TO it weakens posture.
 _OUTPUT_SCAN_POLICY_KEY: Final[str] = "output_scan_policy_type"
 _PERMISSIVE_OUTPUT_SCAN_POLICY: Final[str] = "log_only"
+
+# Completion-oracle keys in the ``engine`` namespace that relax independent
+# verification. Disabling the oracle, switching it to shadow mode (every REJECT
+# becomes a logged no-op), or raising the stakes floor so fewer tasks are
+# reviewed each drop the running verification posture, so they route through
+# the same deliberate confirm+reason+actor guardrail as the security toggles.
+_ENGINE_ORACLE_DISABLE_KEY: Final[str] = "completion_oracle_enabled"
+_ENGINE_ORACLE_SHADOW_KEY: Final[str] = "completion_oracle_shadow_mode"
+_ENGINE_ORACLE_MIN_STAKES_KEY: Final[str] = "completion_oracle_min_stakes"
+_ENGINE_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        _ENGINE_ORACLE_DISABLE_KEY,
+        _ENGINE_ORACLE_SHADOW_KEY,
+        _ENGINE_ORACLE_MIN_STAKES_KEY,
+    }
+)
+# Registered default for the enable toggle, consulted when the key is unset so
+# a first explicit weakening write (no stored current) is still guarded.
+_ENGINE_ORACLE_ENABLED_DEFAULT: Final[str] = "true"
+
+
+def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
+    """Return whether an ``engine.*`` oracle change relaxes verification."""
+    if key == _ENGINE_ORACLE_DISABLE_KEY:
+        currently_on = current is None or compare_ci(
+            current, _ENGINE_ORACLE_ENABLED_DEFAULT
+        )
+        return currently_on and not compare_ci(new, "true")
+    if key == _ENGINE_ORACLE_SHADOW_KEY:
+        currently_off = current is None or not compare_ci(current, "true")
+        return currently_off and compare_ci(new, "true")
+    if key == _ENGINE_ORACLE_MIN_STAKES_KEY:
+        current_stakes = Stakes(current) if current is not None else Stakes.LOW
+        try:
+            new_stakes = Stakes(new)
+        except ValueError:
+            # A malformed value is rejected downstream by the type validator;
+            # do not treat an unparseable stakes as a weakening transition.
+            return False
+        return compare_stakes(new_stakes, current_stakes) > 0
+    return False
 
 
 class SettingsWriteGovernance(BaseModel):
@@ -61,8 +104,19 @@ class SettingsWriteGovernance(BaseModel):
         return self.confirm and bool(self.reason.strip()) and bool(self.actor.strip())
 
 
-def _is_weakening(key: str, *, current: str | None, new: str) -> bool:
-    """Return whether ``current -> new`` weakens the security posture for *key*."""
+def _is_guarded(namespace: str, key: str) -> bool:
+    """Return whether ``(namespace, key)`` is a governed weakening candidate."""
+    if namespace == _SECURITY_NS:
+        return key in _WEAKENING_BOOL_KEYS or key == _OUTPUT_SCAN_POLICY_KEY
+    if namespace == _ENGINE_NS:
+        return key in _ENGINE_GUARDED_KEYS
+    return False
+
+
+def _is_weakening(namespace: str, key: str, *, current: str | None, new: str) -> bool:
+    """Return whether ``current -> new`` weakens the posture for *namespace.key*."""
+    if namespace == _ENGINE_NS:
+        return _is_engine_weakening(key, current=current, new=new)
     if key in _WEAKENING_BOOL_KEYS:
         # Weakening only when turning a currently-enabled toggle off. A
         # missing current value (first write) is treated as the registered
@@ -96,12 +150,10 @@ async def enforce_security_write_governance(
             is not authorised by a satisfied *governance*.
     """
     for namespace, key, value in items:
-        if namespace != _SECURITY_NS:
-            continue
-        if key not in _WEAKENING_BOOL_KEYS and key != _OUTPUT_SCAN_POLICY_KEY:
+        if not _is_guarded(namespace, key):
             continue
         current = await get_current(namespace, key)
-        if not _is_weakening(key, current=current, new=value):
+        if not _is_weakening(namespace, key, current=current, new=value):
             continue
         if governance is not None and governance.is_satisfied:
             logger.info(
@@ -120,10 +172,10 @@ async def enforce_security_write_governance(
             note="security-weakening transition rejected (no confirm+reason)",
         )
         msg = (
-            f"Weakening security setting {namespace}.{key} requires the"
-            " deliberate security-configuration path that carries an explicit"
-            " confirm + reason + actor (the security settings import surface);"
-            " a generic settings write cannot disable or relax security."
+            f"Weakening setting {namespace}.{key} relaxes the running"
+            " security / verification posture and requires the deliberate"
+            " path carrying an explicit confirm + reason + actor; a generic"
+            " settings write cannot disable or relax it."
         )
         raise SecurityToggleConfirmationRequiredError(msg)
 

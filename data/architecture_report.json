@@ -152,8 +152,8 @@
     },
     "src/synthorg/api/controllers/settings/core.py": {
       "cap": 400,
-      "loc": 369,
-      "ratio": 0.922,
+      "loc": 389,
+      "ratio": 0.973,
       "tier": "controller"
     },
     "src/synthorg/api/controllers/setup/company.py": {
@@ -218,8 +218,8 @@
     },
     "src/synthorg/api/lifecycle_helpers/startup_steps.py": {
       "cap": 500,
-      "loc": 485,
-      "ratio": 0.97,
+      "loc": 499,
+      "ratio": 0.998,
       "tier": "code"
     },
     "src/synthorg/api/lifecycle_runner_shutdown.py": {
@@ -236,8 +236,8 @@
     },
     "src/synthorg/api/lifecycle_runner_support.py": {
       "cap": 500,
-      "loc": 450,
-      "ratio": 0.9,
+      "loc": 461,
+      "ratio": 0.922,
       "tier": "code"
     },
     "src/synthorg/api/services/_org_agent_mutations.py": {
@@ -482,8 +482,8 @@
     },
     "src/synthorg/engine/feature.py": {
       "cap": 100,
-      "loc": 98,
-      "ratio": 0.98,
+      "loc": 107,
+      "ratio": 1.07,
       "tier": "feature"
     },
     "src/synthorg/engine/hybrid/replan_helpers.py": {
@@ -1508,8 +1508,8 @@
     },
     "src/synthorg/workers/runtime_builder.py": {
       "cap": 600,
-      "loc": 579,
-      "ratio": 0.965,
+      "loc": 588,
+      "ratio": 0.98,
       "tier": "orchestrator"
     },
     "src/synthorg/workers/worker.py": {
@@ -1536,7 +1536,7 @@
     "synthorg.api.ws_models": 23,
     "synthorg.approval.enums": 80,
     "synthorg.approval.protocol": 51,
-    "synthorg.approval.state": 31,
+    "synthorg.approval.state": 32,
     "synthorg.budget.call_category": 53,
     "synthorg.budget.config": 30,
     "synthorg.budget.coordination_config": 24,
@@ -1574,9 +1574,9 @@
     "synthorg.core.project_enums": 31,
     "synthorg.core.registry": 28,
     "synthorg.core.role": 22,
-    "synthorg.core.task": 130,
+    "synthorg.core.task": 131,
     "synthorg.core.task_enums": 120,
-    "synthorg.core.types": 1260,
+    "synthorg.core.types": 1261,
     "synthorg.engine.context": 44,
     "synthorg.engine.decomposition.models": 38,
     "synthorg.engine.errors": 95,
@@ -1836,7 +1836,7 @@
     },
     "synthorg.persistence.sqlite._repository_wiring:_SQLiteRepositoryWiring": {
       "lcom4": 1,
-      "loc": 412
+      "loc": 410
     },
     "synthorg.persistence.sqlite.approval_repo:SQLiteApprovalRepository": {
       "lcom4": 1,

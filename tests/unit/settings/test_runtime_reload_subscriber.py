@@ -73,6 +73,11 @@ class TestReload:
             ("coordination", "decomposition_model"),
             ("design", "image_generation_enabled"),
             ("design", "image_model"),
+            ("engine", "auto_review_on_completion"),
+            ("engine", "completion_oracle_enabled"),
+            ("engine", "completion_oracle_shadow_mode"),
+            ("engine", "completion_oracle_min_stakes"),
+            ("engine", "completion_oracle_reviewer_model_tier"),
         ],
     )
     async def test_watched_change_triggers_reload(

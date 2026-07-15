@@ -117,6 +117,7 @@ async def _settings_update(
             key=key,
             value=update_args.value,
             actor_id=actor_id,
+            reason=reason,
         )
         logger.info(
             MCP_ADMIN_OP_EXECUTED,

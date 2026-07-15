@@ -150,6 +150,62 @@ async def test_batch_short_circuits_on_first_weakening() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("key", "current", "new"),
+    [
+        ("completion_oracle_enabled", "true", "false"),
+        ("completion_oracle_shadow_mode", "false", "true"),
+        ("completion_oracle_min_stakes", "low", "high"),
+    ],
+)
+async def test_engine_oracle_weakening_without_confirmation_rejected(
+    key: str, current: str, new: str
+) -> None:
+    """Disabling / shadowing / narrowing the oracle is a guarded weakening."""
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await enforce_security_write_governance(
+            [("engine", key, new)],
+            governance=None,
+            get_current=_current_factory({("engine", key): current}),
+        )
+
+
+@pytest.mark.parametrize(
+    ("key", "current", "new"),
+    [
+        ("completion_oracle_enabled", "true", "false"),
+        ("completion_oracle_min_stakes", "low", "critical"),
+    ],
+)
+async def test_engine_oracle_weakening_with_confirmation_allowed(
+    key: str, current: str, new: str
+) -> None:
+    await enforce_security_write_governance(
+        [("engine", key, new)],
+        governance=_SATISFIED,
+        get_current=_current_factory({("engine", key): current}),
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "current", "new"),
+    [
+        ("completion_oracle_enabled", "false", "true"),  # re-enable = strengthen
+        ("completion_oracle_shadow_mode", "true", "false"),  # enforce = strengthen
+        ("completion_oracle_min_stakes", "high", "low"),  # more review = strengthen
+        ("auto_review_on_completion", "true", "false"),  # not a guarded oracle key
+    ],
+)
+async def test_engine_oracle_strengthening_or_unguarded_key_is_unguarded(
+    key: str, current: str, new: str
+) -> None:
+    await enforce_security_write_governance(
+        [("engine", key, new)],
+        governance=None,
+        get_current=_current_factory({("engine", key): current}),
+    )
+
+
 def _entry_factory(
     values: dict[tuple[str, str], str],
 ) -> Callable[[str, str], Awaitable[SettingValue]]:

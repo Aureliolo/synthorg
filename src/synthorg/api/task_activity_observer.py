@@ -73,6 +73,10 @@ type MetricRecorder = Callable[[TaskMetricRecord], Awaitable[object]]
 #: Injected so the observer can name the assignee without a registry import;
 #: best-effort, so a fault or unknown id simply yields an unnamed row.
 type AgentRefResolver = Callable[[str], Awaitable[ActivityAgentRef | None]]
+#: Return whether the build/test oracle blocks a task's completion, so the feed
+#: shows a truthful FAILED outcome for a code task whose tests failed / never
+#: ran. Injected + best-effort: a fault yields ``False`` (no block shown).
+type OracleBlockResolver = Callable[[Task], Awaitable[bool]]
 #: Publish a serialised ``WsEvent`` to the named channels. Matches the
 #: positional ``ChannelsPlugin.wait_published(data, channels)`` surface: the
 #: boot wiring passes that bound method (NOT ``publish``) so delivery goes
@@ -99,11 +103,13 @@ class TaskActivityObserver:
         list_artifacts: ArtifactLister,
         record_metric: MetricRecorder,
         resolve_agent: AgentRefResolver | None = None,
+        oracle_block_for: OracleBlockResolver | None = None,
     ) -> None:
         self._publish_fn = publish
         self._list_artifacts = list_artifacts
         self._record_metric = record_metric
         self._resolve_agent = resolve_agent
+        self._oracle_block_for = oracle_block_for
 
     async def __call__(self, event: TaskStateChanged) -> None:
         """Handle one task state change (WS publish + terminal metric record)."""
@@ -149,9 +155,40 @@ class TaskActivityObserver:
                 error=safe_error_description(exc),
             )
             return None
+        oracle_blocked = await self._resolve_oracle_block(task)
         return derive_run_outcome(
-            status=new_status, produced_artifact_count=len(produced)
+            status=new_status,
+            produced_artifact_count=len(produced),
+            oracle_blocked=oracle_blocked,
         )
+
+    async def _resolve_oracle_block(self, task: Task) -> bool:
+        """Best-effort build/test-oracle block check for the outcome.
+
+        Mirrors the approvals read surface so the live feed and the approvals
+        queue agree on an oracle-blocked run. A missing resolver or a fault
+        yields ``False`` (no block shown), never a fabricated success.
+
+        Returns:
+            ``True`` when the oracle blocks the task's completion.
+        """
+        if self._oracle_block_for is None:
+            return False
+        try:
+            return await self._oracle_block_for(task)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort feed enrichment; a block
+            # check fault must not suppress the outcome (the authoritative gate
+            # already ran on the completion path).
+            reraise_critical(exc)
+            logger.warning(
+                TASK_ACTIVITY_OUTCOME_RESOLVE_FAILED,
+                task_id=str(task.id),
+                stage="oracle",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False
 
     async def _publish(
         self,

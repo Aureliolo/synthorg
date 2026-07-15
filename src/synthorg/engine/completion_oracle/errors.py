@@ -113,7 +113,7 @@ class CompletionOracleRoleMissingError(CompletionOracleError):
 class CompletionOracleRuntimeSeedIncompleteError(CompletionOracleError):
     """Raised when the runtime builder is invoked without a complete seed.
 
-    ``build_completion_oracle_runtime`` requires the verdict repository and
+    ``build_completion_oracle_runtime`` requires the report repository and
     the submit tool to be pre-built so the tool is registered on the agent
     engine's shared tool registry. A ``None`` here is a wiring fault.
     """
@@ -124,6 +124,5 @@ class CompletionOracleRuntimeSeedIncompleteError(CompletionOracleError):
     )
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     default_message: ClassVar[str] = (
-        "Completion-oracle runtime seed is incomplete (verdict_repo / submit_tool "
-        "unset)"
+        "Completion-oracle runtime seed is incomplete (report_repo / submit_tool unset)"
     )

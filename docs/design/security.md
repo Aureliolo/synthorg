@@ -708,9 +708,12 @@ Long-lived authenticated streams (WebSocket and SSE) re-load the user record on 
 
 ## Adversarial Red-Team Gate
 
-The red-team gate is an opt-in adversarial check that fires as the
-LAST step before a deliverable transitions IN_REVIEW -> COMPLETED,
-after the normal `ReviewPipeline` has returned PASS. It is also
+The red-team gate is an opt-in adversarial check in the completion gate
+chain before a deliverable transitions IN_REVIEW -> COMPLETED, after the
+normal `ReviewPipeline` has returned PASS and after the completion oracle
+(build/test then peer review) has passed. It is followed by the vision
+gate; see the [Order of Operations](verification-quality.md#order-of-operations)
+table in Verification & Quality for the canonical gate sequence. It is also
 **stakes-gated**: it runs only when the task's `stakes` are at or above
 the configured `red_team_min_stakes` threshold (default `HIGH`), so the
 adversarial pass is reserved for consequential work and a low-stakes

@@ -41,6 +41,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_VALUE_DELETED,
     SETTINGS_VALUE_SET,
 )
+from synthorg.settings.write_governance import SettingsWriteGovernance
 
 if TYPE_CHECKING:
     # Owner-service types stay import-free at runtime so the facades can
@@ -86,12 +87,22 @@ class SettingsReadService:
         key: NotBlankStr,
         value: object,
         actor_id: NotBlankStr,
+        reason: NotBlankStr,
     ) -> None:
         """Write ``namespace.key``/``value`` and emit the audit event.
 
         ``key`` is the compound form ``<namespace>.<key>`` used on the
         MCP wire; the underlying :class:`SettingsService.set` signature
         takes ``namespace`` and ``key`` as separate positional args.
+
+        The admin op that reaches here already carries the mandatory
+        ``confirm`` + ``reason`` + ``actor`` (``require_admin_guardrails``), so
+        that deliberate context is threaded as a satisfied
+        :class:`SettingsWriteGovernance`. This authorises (and dedicated-audits)
+        a security-weakening transition -- e.g. disabling the completion oracle
+        -- through the write-governance guard, rather than a governance-less
+        write being rejected. A non-admin / automated path that lacks the
+        guardrails supplies no governance and is fail-closed by the guard.
         """
         namespace, leaf_key = _split_setting_key(key)
         fn = _require_callable(
@@ -106,7 +117,10 @@ class SettingsReadService:
         # see the canonical form (``"true"``, ``"[1,2]"``) rather than
         # Python-repr (``"True"``, ``"[1, 2]"``).
         encoded = value if isinstance(value, str) else json.dumps(value)
-        await fn(namespace, leaf_key, encoded)
+        governance = SettingsWriteGovernance(
+            confirm=True, reason=reason, actor=actor_id
+        )
+        await fn(namespace, leaf_key, encoded, governance=governance)
         logger.info(SETTINGS_VALUE_SET, key=key, actor_id=actor_id)
 
     async def delete_setting(

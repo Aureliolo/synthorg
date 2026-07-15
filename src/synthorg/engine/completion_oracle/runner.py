@@ -10,6 +10,7 @@ runtime context and the tool arguments.
 """
 
 import asyncio
+from typing import Final
 from uuid import uuid4
 
 from synthorg.core.agent import AgentIdentity
@@ -30,17 +31,17 @@ from synthorg.observability.events.completion_oracle import (
 
 logger = get_logger(__name__)
 
-_REVIEWER_TASK_TYPE: TaskType = TaskType.REVIEW
+_REVIEWER_TASK_TYPE: Final[TaskType] = TaskType.REVIEW
 """The transient task is a REVIEW work item: it gates completion on a
 structured independent assessment."""
 
-_REVIEWER_TASK_PRIORITY: Priority = Priority.HIGH
+_REVIEWER_TASK_PRIORITY: Final[Priority] = Priority.HIGH
 """HIGH priority: peer review runs at the completion edge."""
 
-_REVIEWER_PROJECT: NotBlankStr = "synthorg-completion-oracle"
+_REVIEWER_PROJECT: Final[NotBlankStr] = "synthorg-completion-oracle"
 """Project scope for the transient review task."""
 
-_REVIEWER_TITLE: NotBlankStr = "Independent completion review"
+_REVIEWER_TITLE: Final[NotBlankStr] = "Independent completion review"
 
 
 class ReviewerAgentEngineRunner:

@@ -253,6 +253,9 @@ class CompletionOracleGateService:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- a failed verdict read fails CLOSED: the
+            # handler returns an ESCALATE report so an unreadable verdict parks
+            # the task for a human, never a silent pass.
             reraise_critical(exc)
             logger.warning(
                 COMPLETION_ORACLE_VERDICT_MISSING,
@@ -329,6 +332,10 @@ class CompletionOracleGateService:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- the durable archive is a best-effort
+            # audit side channel; the verdict is already decided and returned,
+            # so an archive-write failure is logged and swallowed rather than
+            # altering or blocking the completion decision (fail-OPEN by design).
             reraise_critical(exc)
             logger.warning(
                 COMPLETION_ORACLE_REPORT_ARCHIVE_FAILED,

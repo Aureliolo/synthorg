@@ -34,6 +34,7 @@ from synthorg.engine.completion_oracle.tools._args import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.completion_oracle import (
+    COMPLETION_ORACLE_VERDICT_DUPLICATE,
     COMPLETION_ORACLE_VERDICT_RECEIVED,
     COMPLETION_ORACLE_VERDICT_VALIDATION_FAILED,
 )
@@ -114,10 +115,9 @@ class SubmitCompletionOracleVerdictTool(BaseTool):
             await self._report_repo.put(execution_id=args.execution_id, report=report)
         except CompletionOracleVerdictAlreadyExistsError as exc:
             logger.warning(
-                COMPLETION_ORACLE_VERDICT_RECEIVED,
+                COMPLETION_ORACLE_VERDICT_DUPLICATE,
                 execution_id=args.execution_id,
                 task_id=args.task_id,
-                duplicate=True,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

@@ -7,6 +7,7 @@ from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
+from synthorg.api.auth.controller_helpers import require_authenticated_user
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.cursor import decode_keyset_cursor
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
@@ -41,6 +42,7 @@ from synthorg.settings.errors import (
 )
 from synthorg.settings.models import SettingDefinition, SettingEntry
 from synthorg.settings.state import SettingsStateSlice
+from synthorg.settings.write_governance import SettingsWriteGovernance
 
 logger = get_logger(__name__)
 
@@ -52,11 +54,22 @@ class UpdateSettingRequest(BaseModel):
 
     Attributes:
         value: New value as a string (all types serialised).
+        confirm: Deliberate-action flag; required (with ``reason``) only for a
+            security-weakening transition (e.g. disabling the completion oracle
+            or relaxing its stakes floor). Ignored for a strengthening / neutral
+            write.
+        reason: Non-blank rationale accompanying a confirmed weakening write.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     value: str = Field(max_length=65536, description="New value as string")
+    confirm: bool = Field(
+        default=False, description="Confirm a security-weakening transition"
+    )
+    reason: str | None = Field(
+        default=None, description="Rationale for a confirmed weakening write"
+    )
 
 
 def _validate_namespace(namespace: str) -> None:
@@ -332,6 +345,17 @@ class SettingsCoreController(Controller):
             key,
         )
 
+        # Thread the requester's deliberate-action context so a security-
+        # weakening transition (disabling the completion oracle, relaxing its
+        # stakes floor) is authorised + audited when confirmed, and fail-closed
+        # by the write-governance guard when not. A strengthening / neutral
+        # write ignores this object.
+        actor = require_authenticated_user(request)
+        governance = SettingsWriteGovernance(
+            confirm=data.confirm,
+            reason=data.reason or "",
+            actor=str(actor.user_id),
+        )
         try:
             entry = await require_service(
                 app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
@@ -341,6 +365,7 @@ class SettingsCoreController(Controller):
                 data.value,
                 expected_updated_at=expected_updated_at,
                 import_source=SettingsImportSource.API_BODY,
+                governance=governance,
             )
         except SettingNotFoundError as exc:
             logger.warning(

@@ -135,7 +135,7 @@ Key design decisions:
   pipeline runs automatically and applies its verdict so a verified task
   self-completes without a human; off, a human opens the review and decides. It is
   on by default because the completion oracle can only fire in the autonomous flow
-  when the pipeline auto-runs (an unreviewed task otherwise parks in `IN_REVIEW`
+  when the pipeline auto-runs (the task otherwise parks in `IN_REVIEW`
   awaiting a human). The oracle gate (see below) enforces on both the auto-review
   and human-approve paths.
 
@@ -251,8 +251,10 @@ The reviewer-is-distinct invariant is enforced at three layers: a
 `CompletionOracleReport` model validator, the gate's structural resolution,
 and a row-level `CHECK (executor_agent_id != reviewer_agent_id)` on the
 `completion_oracle_reports` archive table (the twin of the `decision_records`
-CHECK). Every verdict is archived in that append-only, dual-backend table so
-an operator can answer "why was this deliverable sent back?" long after the run.
+CHECK). Each verdict is archived (best-effort) in that append-only, dual-backend
+table so an operator can answer "why was this deliverable sent back?" long after
+the run; an archive-write failure is logged but never blocks or alters the
+verdict (fail-OPEN, the one fail-open path in an otherwise fail-closed gate).
 
 ### Fail-CLOSED posture and mapping
 

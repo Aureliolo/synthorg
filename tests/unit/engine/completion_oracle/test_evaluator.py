@@ -85,30 +85,26 @@ class _FakeRecords:
 
 
 class TestClassifier:
-    def test_code_artifact_is_required(self) -> None:
-        assert (
-            classify_grounding_requirement(_task(ArtifactType.CODE))
-            is GroundingRequirement.REQUIRED
-        )
+    @pytest.mark.parametrize(
+        ("declared", "expected"),
+        [
+            (ArtifactType.CODE, GroundingRequirement.REQUIRED),
+            (ArtifactType.TESTS, GroundingRequirement.REQUIRED),
+            (ArtifactType.DOCUMENTATION, GroundingRequirement.NOT_APPLICABLE),
+        ],
+    )
+    def test_classification_by_declared_artifact(
+        self, declared: ArtifactType, expected: GroundingRequirement
+    ) -> None:
+        assert classify_grounding_requirement(_task(declared)) is expected
 
-    def test_tests_artifact_is_required(self) -> None:
+    def test_no_declared_artifact_is_not_applicable(self) -> None:
+        # A task that declares no CODE / TESTS artifact anchors on the same
+        # ``artifacts_expected`` signal the gate acts on, so the gate verdict
+        # and read-layer re-source agree it is NOT_APPLICABLE.
         assert (
-            classify_grounding_requirement(_task(ArtifactType.TESTS))
-            is GroundingRequirement.REQUIRED
-        )
-
-    def test_docs_only_is_not_applicable(self) -> None:
-        assert (
-            classify_grounding_requirement(_task(ArtifactType.DOCUMENTATION))
+            classify_grounding_requirement(_task())
             is GroundingRequirement.NOT_APPLICABLE
-        )
-
-    def test_produced_code_promotes_undeclared_task(self) -> None:
-        assert (
-            classify_grounding_requirement(
-                _task(), produced_artifact_types=(ArtifactType.CODE,)
-            )
-            is GroundingRequirement.REQUIRED
         )
 
 

@@ -493,6 +493,10 @@ async def resolve_approval_context(
     # The build/test oracle reads the task's persisted test-execution records
     # so the queue shows a truthful FAILED outcome for a code task whose tests
     # failed or never ran, even before the completion gate reworks it.
+    # Sanctioned read-model exception: this enrichment module is a best-effort
+    # batched dashboard read (the same direct-repo posture as `backend.artifacts`
+    # above); code-execution records have no service-layer read seam, so the
+    # oracle reads the repo directly here as it does for the deliverable receipts.
     records_repo = backend.code_execution_records
     build_test_oracle = BuildTestOracle()
 

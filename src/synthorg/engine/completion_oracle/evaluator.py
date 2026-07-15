@@ -145,6 +145,11 @@ class BuildTestOracle:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- a checker fault degrades to a fail-CLOSED
+            # UNVERIFIED for a REQUIRED task (the None return is mapped by
+            # _checker_fault_result), never a silent pass; surfacing it as a
+            # raise would wedge the whole completion on a transient records-store
+            # blip.
             reraise_critical(exc)
             logger.warning(
                 BUILD_TEST_CHECKER_FAULT,

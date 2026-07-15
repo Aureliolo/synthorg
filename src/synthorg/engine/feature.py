@@ -12,8 +12,8 @@ unconditionally; their work-entry adapters wire during startup (after
 route assembly), so a predicate read at mount time would always be False
 and they would never mount on a standard boot. Their handlers resolve
 the adapter via ``require_service`` and return 503 until it is wired.
-The nested ``engine/cockpit`` and ``engine/workspace`` packages declare
-their own manifests.
+The nested ``engine/cockpit``, ``engine/workspace`` and
+``engine/completion_oracle`` packages declare their own manifests.
 """
 
 from synthorg._core.features import (

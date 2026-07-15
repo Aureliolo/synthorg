@@ -328,6 +328,7 @@ class TestEventConstants:
             "reporting",
             "review_pipeline",
             "red_team",
+            "completion_oracle",
             "risk_budget",
             "quality",
             "health",

@@ -17821,6 +17821,13 @@ export type components = {
         };
         /** UpdateSettingRequest */
         readonly UpdateSettingRequest: {
+            /**
+             * @description Confirm a security-weakening transition
+             * @default false
+             */
+            readonly confirm: boolean;
+            /** @description Rationale for a confirmed weakening write */
+            readonly reason?: string | null;
             /** @description New value as string */
             readonly value: string;
         };
