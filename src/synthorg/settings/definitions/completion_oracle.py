@@ -4,9 +4,10 @@
 The build/test/review completion oracle makes "done" mean *compiles + tests
 pass + an independent reviewer approves*. These knobs live in the ``engine``
 namespace alongside ``auto_review_on_completion`` because the oracle is one
-more gate in the same completion pipeline family. All are boot-wired (the
-gates attach during on-startup / reinit), so they carry the restart-required
-justification marker.
+more gate in the same completion pipeline family. All are hot-reloadable: a
+change rebuilds the runtime services and re-attaches the oracle gates to the
+review-gate service on the next task (see ``RuntimeReloadSettingsSubscriber``),
+so no process restart is needed.
 """
 
 from synthorg.core.task_enums import Stakes
@@ -18,9 +19,6 @@ from synthorg.settings.registry import get_registry
 _r = get_registry()
 
 _r.register(
-    # lint-allow: restart-required -- the completion-oracle gates attach to the
-    # review-gate service during on-startup / reinit wiring; a change applies on
-    # the next runtime-services rebuild, not per request.
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
         key="completion_oracle_enabled",
@@ -34,12 +32,10 @@ _r.register(
             " work complete without independent verification."
         ),
         group="Completion Oracle",
-        restart_required=True,
     )
 )
 
 _r.register(
-    # lint-allow: restart-required -- boot-wired gate; applies on runtime rebuild.
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
         key="completion_oracle_shadow_mode",
@@ -53,12 +49,10 @@ _r.register(
         ),
         group="Completion Oracle",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 
 _r.register(
-    # lint-allow: restart-required -- boot-wired gate; applies on runtime rebuild.
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
         key="completion_oracle_min_stakes",
@@ -74,12 +68,10 @@ _r.register(
         group="Completion Oracle",
         level=SettingLevel.ADVANCED,
         enum_values=tuple(stakes.value for stakes in Stakes),
-        restart_required=True,
     )
 )
 
 _r.register(
-    # lint-allow: restart-required -- boot-wired gate; applies on runtime rebuild.
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
         key="completion_oracle_reviewer_model_tier",
@@ -94,6 +86,5 @@ _r.register(
         group="Completion Oracle",
         level=SettingLevel.ADVANCED,
         enum_values=tuple(MODEL_TIER_LADDER),
-        restart_required=True,
     )
 )

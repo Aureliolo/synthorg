@@ -130,13 +130,14 @@ Key design decisions:
   `IN_PROGRESS` for rework with the stage name and reason in metadata.
 - **Default fallback**: when no pipeline is configured, the existing
   `ReviewGateService` single-stage behaviour runs.
-- **Automatic vs human-gated**: `engine.auto_review_on_completion` (default off)
-  controls who acts on a task reaching `IN_REVIEW`. Off, a human opens the review
-  and decides; on, the staged pipeline runs automatically at boot-wiring time and
-  applies its verdict without waiting for a human. The completion oracle gate
-  (see below) enforces on both paths, so it is not gated by this setting: an
-  operator approving a task still runs it through the build/test and peer-review
-  gates.
+- **Automatic vs human-gated**: `engine.auto_review_on_completion` (default **on**,
+  hot-reloadable) controls who acts on a task reaching `IN_REVIEW`. On, the staged
+  pipeline runs automatically and applies its verdict so a verified task
+  self-completes without a human; off, a human opens the review and decides. It is
+  on by default because the completion oracle can only fire in the autonomous flow
+  when the pipeline auto-runs (an unreviewed task otherwise parks in `IN_REVIEW`
+  awaiting a human). The oracle gate (see below) enforces on both the auto-review
+  and human-approve paths.
 
 Beyond the review pipeline, the lifecycle exposes additional human gates that all
 route through the same `signal_resume_intent` approvals-resume path, each off by
@@ -200,8 +201,13 @@ artifacts". It is **on by default** (opt-out via
 the completion chain, before the red-team and vision gates, on every path to
 COMPLETED (both the auto-review `run_pipeline` and the human-driven
 `complete_review`), because they live on `ReviewGateService`, not on the
-auto-review trigger. So the oracle enforces even when auto-review is off: a
-human approving a task still runs it through the gates.
+auto-review trigger. Its natural home is the autonomous flow: with
+`engine.auto_review_on_completion` on by default a verified task self-completes
+and the oracle gates that completion; a human opening a review is gated by the
+same two gates. All the oracle settings (`completion_oracle_enabled`,
+`_shadow_mode`, `_min_stakes`, `_reviewer_model_tier`) are hot-reloadable: an
+edit rebuilds the runtime and re-attaches the gates to the persistent review
+service on the next task, no restart.
 
 ### Layer 1: execution-grounded build/test gate
 

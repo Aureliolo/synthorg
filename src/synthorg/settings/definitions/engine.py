@@ -72,25 +72,22 @@ _r.register(
 # ── Automatic review ────────────────────────────────────────────
 
 _r.register(
-    # lint-allow: restart-required -- the review pipeline is wired into the
-    # agent runtime at boot; a change applies on the next runtime-services
-    # rebuild, not per request.
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
         key="auto_review_on_completion",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
             "Automatically run the staged review pipeline when an agent"
             " completes a task (reaching IN_REVIEW), applying its verdict"
-            " without waiting for a human to open the review. Off by default"
-            " (a human decides at the review gate); when on, the pipeline is"
-            " wired into the agent runtime at boot, so a change applies on the"
-            " next runtime-services rebuild (provider re-init)."
+            " without waiting for a human to open the review. On by default so"
+            " a verified task self-completes autonomously and the completion"
+            " oracle gates every autonomous completion; turn it off to require"
+            " a human to open each review. Hot-reloadable: a change rebuilds the"
+            " runtime pipeline on the next task, no restart."
         ),
         group="Review",
         level=SettingLevel.ADVANCED,
-        restart_required=True,
     )
 )
 

@@ -24,7 +24,6 @@ from synthorg.api.state import AppState
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.error_taxonomy import set_error_docs_base_url
-from synthorg.core.task_enums import Stakes
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.completion_oracle.builder import CompletionOracleRuntime
 from synthorg.engine.review_gate import ReviewGateService
@@ -101,41 +100,27 @@ def _publish_completion_oracle_runtime(
 ) -> None:
     """Attach (or clear) the build/test and peer-review completion-oracle gates.
 
-    Both gates attach together: the deterministic build/test gate (reads the
-    completing task's persisted test records) and the agent-session peer-review
-    gate. A reinit that turns the oracle off (``completion_oracle_runtime`` is
-    ``None``) detaches both so the review pipeline does not keep firing a stale
-    gate.
+    Delegates to the shared ``attach_completion_oracle_gates`` seam (also called
+    by the hot-reload path) so boot and reload cannot diverge on how the gates
+    attach. A reinit that turns the oracle off (``completion_oracle_runtime`` is
+    ``None``) detaches both gates so the review pipeline does not keep firing a
+    stale one.
 
     Args:
         app_state: Application state, for the code-execution record store.
         completion_oracle_runtime: The built peer-review bundle, or ``None``
             when the oracle is disabled.
-        review_gate_service: The review-gate service to attach to, or ``None``.
+        review_gate_service: The review-gate service; a ``None`` here short-
+            circuits (the shared seam re-resolves it from app state anyway).
     """
     if review_gate_service is None:
         return
-    from synthorg.engine.completion_oracle.evaluator import (  # noqa: PLC0415
-        BuildTestOracle,
-    )
-    from synthorg.persistence.state import (  # noqa: PLC0415
-        code_execution_records_of,
+    from synthorg.workers._completion_oracle_runtime import (  # noqa: PLC0415
+        attach_completion_oracle_gates,
     )
 
-    if completion_oracle_runtime is None:
-        review_gate_service.set_build_test_gate(None, records=None)
-        review_gate_service.set_completion_oracle_gate(
-            None, shadow_mode=False, min_stakes=Stakes.LOW
-        )
-        return
-    review_gate_service.set_build_test_gate(
-        BuildTestOracle(),
-        records=code_execution_records_of(app_state),
-    )
-    review_gate_service.set_completion_oracle_gate(
-        completion_oracle_runtime.gate,
-        shadow_mode=completion_oracle_runtime.shadow_mode,
-        min_stakes=completion_oracle_runtime.min_stakes,
+    attach_completion_oracle_gates(
+        app_state, completion_oracle_runtime=completion_oracle_runtime
     )
 
 
@@ -376,8 +361,8 @@ async def install_runtime_services(
     # The completion oracle: the build/test gate (blocks a failing / unverified
     # code task) and the agent-session peer-review gate, attached together and
     # gated on completion_oracle_enabled. They fire on every path to COMPLETED
-    # (human approve + auto-review), so the oracle enforces even with
-    # auto-review off. ``None`` clears both on the disabled-reinit path.
+    # (auto-review -- on by default -- and human approve). ``None`` clears both
+    # on the disabled-reinit path.
     _publish_completion_oracle_runtime(
         app_state,
         completion_oracle_runtime=services.completion_oracle_runtime,

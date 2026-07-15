@@ -90,6 +90,7 @@ from synthorg.workers._agent_engine_collaborators import (
     build_boot_flight_recorder_sink,
 )
 from synthorg.workers._completion_oracle_runtime import (
+    attach_completion_oracle_gates,
     build_completion_oracle_runtime_or_none,
     resolve_completion_oracle_config,
 )
@@ -668,6 +669,16 @@ async def reload_runtime_services(app_state: AppState) -> None:
             await wire_real_intake_entry(app_state, hot_swap=True)
             await wire_real_objective_entry(app_state, hot_swap=True)
             await wire_real_task_board_entry(app_state, hot_swap=True)
+            # Re-attach the completion-oracle gates to the persistent review
+            # gate: ``build_runtime_services`` rebuilds the oracle runtime from
+            # the live settings, but the gates live on the review-gate service
+            # (not the swapped worker service), so a rebuild alone would leave
+            # the stale gate attached. This makes the oracle settings
+            # hot-reloadable (enable / shadow / min-stakes / reviewer tier).
+            attach_completion_oracle_gates(
+                app_state,
+                completion_oracle_runtime=services.completion_oracle_runtime,
+            )
         except Exception as exc:
             reraise_critical(exc)
             # Roll back the eagerly-committed simulation state while no new

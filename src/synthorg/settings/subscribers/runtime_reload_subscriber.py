@@ -42,6 +42,15 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("coordination", "decomposition_model"),
         ("design", "image_generation_enabled"),
         ("design", "image_model"),
+        # Auto-review + the completion oracle are wired into the runtime on a
+        # rebuild: the pipeline is (re)built by ``build_runtime_services`` and
+        # the oracle gates are re-attached to the review-gate service, so an
+        # edit to any of these applies on the next task without a restart.
+        ("engine", "auto_review_on_completion"),
+        ("engine", "completion_oracle_enabled"),
+        ("engine", "completion_oracle_shadow_mode"),
+        ("engine", "completion_oracle_min_stakes"),
+        ("engine", "completion_oracle_reviewer_model_tier"),
     }
 )
 

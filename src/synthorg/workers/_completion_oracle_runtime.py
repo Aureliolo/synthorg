@@ -9,6 +9,7 @@ persistence backend.
 
 from typing import TYPE_CHECKING, Final
 
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.task_enums import Stakes
 from synthorg.core.types import ModelTier
 from synthorg.engine.agent_engine import AgentEngine
@@ -18,11 +19,15 @@ from synthorg.engine.completion_oracle.builder import (
     build_completion_oracle_runtime,
 )
 from synthorg.engine.completion_oracle.config import CompletionOracleConfig
+from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.completion_oracle import (
     COMPLETION_ORACLE_GATE_SKIPPED,
 )
-from synthorg.persistence.state import completion_oracle_reports_of
+from synthorg.persistence.state import (
+    code_execution_records_of,
+    completion_oracle_reports_of,
+)
 from synthorg.settings.errors import SettingsError
 from synthorg.settings.state import config_resolver_of
 
@@ -131,3 +136,41 @@ async def _resolve_reviewer_tier(app_state: AppState) -> ModelTier:
     if raw in _TIER_MODEL_IDS:
         return raw
     return _DEFAULT_REVIEWER_TIER
+
+
+def attach_completion_oracle_gates(
+    app_state: AppState,
+    *,
+    completion_oracle_runtime: CompletionOracleRuntime | None,
+) -> None:
+    """Attach (or clear) the build/test and peer-review gates on the review gate.
+
+    The single seam both the startup wiring and the hot-reload path call, so a
+    settings edit that rebuilds ``completion_oracle_runtime`` re-attaches the
+    gates to the persistent review-gate service on the next task (no restart).
+    A ``None`` runtime detaches both gates so a disabled oracle stops firing a
+    stale gate. A no-op when no review gate is wired (persistence-less boot).
+
+    Args:
+        app_state: Application state holding the review gate + record store.
+        completion_oracle_runtime: The rebuilt oracle bundle, or ``None`` when
+            the oracle is disabled.
+    """
+    review_gate_service = app_state.slice(ApprovalStateSlice).review_gate
+    if review_gate_service is None:
+        return
+    if completion_oracle_runtime is None:
+        review_gate_service.set_build_test_gate(None, records=None)
+        review_gate_service.set_completion_oracle_gate(
+            None, shadow_mode=False, min_stakes=Stakes.LOW
+        )
+        return
+    review_gate_service.set_build_test_gate(
+        BuildTestOracle(),
+        records=code_execution_records_of(app_state),
+    )
+    review_gate_service.set_completion_oracle_gate(
+        completion_oracle_runtime.gate,
+        shadow_mode=completion_oracle_runtime.shadow_mode,
+        min_stakes=completion_oracle_runtime.min_stakes,
+    )

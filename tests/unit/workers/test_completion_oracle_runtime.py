@@ -1,0 +1,109 @@
+"""Unit tests for the completion-oracle worker boot helpers.
+
+Covers the config resolver's fail-safe fallback and the ``attach_completion_
+oracle_gates`` seam that both the startup wiring and the hot-reload path call:
+a rebuilt oracle runtime must (re-)attach its gates to the persistent review
+gate so the oracle settings are genuinely hot-reloadable, a disabled runtime
+must detach them, and a persistence-less boot (no review gate) is a no-op.
+"""
+
+from types import SimpleNamespace
+from unittest.mock import create_autospec
+
+import pytest
+
+from synthorg.approval.state import ApprovalStateSlice
+from synthorg.core.task_enums import Stakes
+from synthorg.engine.completion_oracle.builder import CompletionOracleRuntime
+from synthorg.engine.completion_oracle.gate import CompletionOracleGateService
+from synthorg.engine.completion_oracle.protocol import (
+    CompletionOracleReportRepository,
+)
+from synthorg.engine.completion_oracle.runner import ReviewerAgentEngineRunner
+from synthorg.engine.completion_oracle.tools.submit_verdict import (
+    SubmitCompletionOracleVerdictTool,
+)
+from synthorg.engine.review_gate import ReviewGateService
+from synthorg.workers import _completion_oracle_runtime
+from synthorg.workers._completion_oracle_runtime import (
+    attach_completion_oracle_gates,
+)
+from tests._shared.mock_of import mock_of
+
+pytestmark = pytest.mark.unit
+
+
+class _FakeAppState:
+    """Duck-typed ``AppState`` exposing only the review-gate slice lookup."""
+
+    def __init__(self, review_gate: object) -> None:
+        self._slices: dict[type, SimpleNamespace] = {
+            ApprovalStateSlice: SimpleNamespace(review_gate=review_gate)
+        }
+
+    def slice(self, slice_type: type) -> SimpleNamespace:
+        return self._slices[slice_type]
+
+
+def _runtime(*, shadow_mode: bool, min_stakes: Stakes) -> CompletionOracleRuntime:
+    """A real runtime tuple; only ``gate``/``shadow_mode``/``min_stakes`` matter."""
+    return CompletionOracleRuntime(
+        submit_tool=mock_of[SubmitCompletionOracleVerdictTool](),
+        gate=mock_of[CompletionOracleGateService](),
+        report_repo=mock_of[CompletionOracleReportRepository](),
+        runner=mock_of[ReviewerAgentEngineRunner](),
+        reviewer_agent_id="completion-reviewer",
+        shadow_mode=shadow_mode,
+        min_stakes=min_stakes,
+    )
+
+
+def test_attach_no_op_when_no_review_gate() -> None:
+    # Persistence-less boot: no review gate wired -> the seam returns cleanly
+    # without touching a records repo (which would need a backend).
+    app_state = _FakeAppState(review_gate=None)
+    attach_completion_oracle_gates(
+        app_state,  # type: ignore[arg-type]
+        completion_oracle_runtime=_runtime(shadow_mode=False, min_stakes=Stakes.LOW),
+    )
+
+
+def test_attach_clears_both_gates_when_runtime_disabled() -> None:
+    gate_service = create_autospec(ReviewGateService, instance=True)
+    app_state = _FakeAppState(review_gate=gate_service)
+
+    attach_completion_oracle_gates(
+        app_state,  # type: ignore[arg-type]
+        completion_oracle_runtime=None,
+    )
+
+    gate_service.set_build_test_gate.assert_called_once_with(None, records=None)
+    gate_service.set_completion_oracle_gate.assert_called_once_with(
+        None, shadow_mode=False, min_stakes=Stakes.LOW
+    )
+
+
+def test_attach_wires_both_gates_when_runtime_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records = object()
+    monkeypatch.setattr(
+        _completion_oracle_runtime,
+        "code_execution_records_of",
+        lambda _app_state: records,
+    )
+    gate_service = create_autospec(ReviewGateService, instance=True)
+    app_state = _FakeAppState(review_gate=gate_service)
+    runtime = _runtime(shadow_mode=True, min_stakes=Stakes.HIGH)
+
+    attach_completion_oracle_gates(
+        app_state,  # type: ignore[arg-type]
+        completion_oracle_runtime=runtime,
+    )
+
+    # The build/test gate is a fresh BuildTestOracle bound to the live records.
+    _, kwargs = gate_service.set_build_test_gate.call_args
+    assert kwargs["records"] is records
+    gate_service.set_completion_oracle_gate.assert_called_once_with(
+        runtime.gate, shadow_mode=True, min_stakes=Stakes.HIGH
+    )
