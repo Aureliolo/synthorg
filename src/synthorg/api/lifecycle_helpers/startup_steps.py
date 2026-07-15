@@ -25,7 +25,6 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.completion_oracle.builder import CompletionOracleRuntime
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.review_gate_inputs import AutonomyProvider
 from synthorg.integrations.connections.catalog import ConnectionCatalog
@@ -90,44 +89,6 @@ def _publish_red_team_runtime(
         review_gate_service.set_red_team_gate(
             red_team_runtime.gate if red_team_runtime is not None else None
         )
-
-
-def _publish_completion_oracle_runtime(
-    app_state: AppState,
-    *,
-    enabled: bool,
-    completion_oracle_runtime: CompletionOracleRuntime | None,
-    review_gate_service: ReviewGateService | None,
-) -> None:
-    """Attach (or clear) the build/test and peer-review completion-oracle gates.
-
-    Delegates to the shared ``attach_completion_oracle_gates`` seam (also called
-    by the hot-reload path) so boot and reload cannot diverge on how the gates
-    attach. The deterministic build/test gate attaches whenever the oracle is
-    ``enabled`` (it needs no provider); the peer-review gate attaches only when
-    ``completion_oracle_runtime`` is present, so a provider-less boot still fails
-    closed on unverified code tasks.
-
-    Args:
-        app_state: Application state, for the code-execution record store.
-        enabled: Whether the completion oracle is enabled (drives the
-            deterministic build/test gate).
-        completion_oracle_runtime: The built peer-review bundle, or ``None``
-            when the oracle is disabled or no provider is configured.
-        review_gate_service: The review-gate service; a ``None`` here short-
-            circuits (the shared seam re-resolves it from app state anyway).
-    """
-    if review_gate_service is None:
-        return
-    from synthorg.workers._completion_oracle_runtime import (  # noqa: PLC0415
-        attach_completion_oracle_gates,
-    )
-
-    attach_completion_oracle_gates(
-        app_state,
-        enabled=enabled,
-        completion_oracle_runtime=completion_oracle_runtime,
-    )
 
 
 def _try_wire_ssrf_violation_recorder(app_state: AppState) -> None:
@@ -364,16 +325,20 @@ async def install_runtime_services(
         red_team_runtime=services.red_team_runtime,
         review_gate_service=review_gate_service,
     )
-    # The completion oracle: the build/test gate (blocks a failing / unverified
-    # code task) and the agent-session peer-review gate, attached together and
-    # gated on completion_oracle_enabled. They fire on every path to COMPLETED
-    # (auto-review -- on by default -- and human approve). ``None`` clears both
-    # on the disabled-reinit path.
-    _publish_completion_oracle_runtime(
+    # The completion oracle: the deterministic build/test gate (blocks a failing
+    # / unverified code task, attached whenever enabled since it needs no
+    # provider) and the provider-backed peer-review gate. They fire on every path
+    # to COMPLETED (auto-review -- on by default -- and human approve). The shared
+    # seam re-resolves the review gate and clears each gate on the disabled /
+    # no-provider path, so boot and hot-reload cannot diverge.
+    from synthorg.workers._completion_oracle_runtime import (  # noqa: PLC0415
+        attach_completion_oracle_gates,
+    )
+
+    attach_completion_oracle_gates(
         app_state,
         enabled=services.completion_oracle_enabled,
         completion_oracle_runtime=services.completion_oracle_runtime,
-        review_gate_service=review_gate_service,
     )
     # Wire the shared deliverable-input builder so the completion-oracle
     # peer-review gate (on by default) and the red-team gate (opt-in) both have

@@ -223,7 +223,7 @@ class BuildTestOracle:
                 requirement=requirement,
                 # The reason is logged and surfaced as the task transition
                 # reason, so it must carry only safe status metadata: a command
-                # line can embed credentials or other secret arguments (SEC-1).
+                # line can embed credentials or other secret arguments.
                 reason=(
                     f"Latest test run failed (exit {latest.returncode}"
                     f"{', timed out' if latest.timed_out else ''})."
