@@ -43,6 +43,10 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceError
+from synthorg.engine.completion_oracle.builder import (
+    CompletionOracleRuntime,
+    build_completion_oracle_tool_seed,
+)
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.health import (
@@ -84,6 +88,10 @@ from synthorg.settings.state import config_resolver_of
 from synthorg.tools.sandbox.factory import resolve_sandbox_for_category
 from synthorg.workers._agent_engine_collaborators import (
     build_boot_flight_recorder_sink,
+)
+from synthorg.workers._completion_oracle_runtime import (
+    build_completion_oracle_runtime_or_none,
+    resolve_completion_oracle_config,
 )
 from synthorg.workers._coordinator_assembly import (
     _build_runtime_coordinator,
@@ -223,6 +231,7 @@ class RuntimeServices(NamedTuple):
     coordinator: MultiAgentCoordinator | None
     work_pipeline: WorkPipeline | None
     red_team_runtime: RedTeamRuntime | None = None
+    completion_oracle_runtime: CompletionOracleRuntime | None = None
     vision_gate: VisionVerifierGate | None = None
 
 
@@ -389,11 +398,19 @@ async def build_runtime_services(
     red_team_seed = build_red_team_tool_seed(
         config=app_state.config.security.red_team,
     )
+    completion_oracle_config = await resolve_completion_oracle_config(app_state)
+    completion_oracle_seed = build_completion_oracle_tool_seed(
+        config=completion_oracle_config,
+    )
     mcp_bridge_tools = await _build_mcp_bridge_tools(app_state)
     tool_registry, tool_count, sandbox_backends = await _build_tool_registry(
         app_state,
         workspace_root,
-        extra_tools=(*red_team_seed.extra_tools, *mcp_bridge_tools),
+        extra_tools=(
+            *red_team_seed.extra_tools,
+            *completion_oracle_seed.extra_tools,
+            *mcp_bridge_tools,
+        ),
     )
     coordination_metrics_collector = _construct_coordination_collector(app_state)
     external_api_runtime = await _build_external_api_runtime(app_state)
@@ -509,6 +526,13 @@ async def build_runtime_services(
         provider_name=names[0],
         seed=red_team_seed,
     )
+    completion_oracle_runtime = await build_completion_oracle_runtime_or_none(
+        app_state=app_state,
+        engine=engine,
+        provider_name=names[0],
+        seed=completion_oracle_seed,
+        config=completion_oracle_config,
+    )
     vision_gate = _build_vision_gate_or_none(
         app_state=app_state,
         workspace_root=workspace_root,
@@ -521,6 +545,7 @@ async def build_runtime_services(
         coordinator_wired=coordinator is not None,
         work_pipeline_wired=work_pipeline is not None,
         red_team_wired=red_team_runtime is not None,
+        completion_oracle_wired=completion_oracle_runtime is not None,
         vision_gate_wired=vision_gate is not None,
         security_enabled=security.enabled,
         security_enforcement_mode=security.enforcement_mode.value,
@@ -530,6 +555,7 @@ async def build_runtime_services(
         coordinator=coordinator,
         work_pipeline=work_pipeline,
         red_team_runtime=red_team_runtime,
+        completion_oracle_runtime=completion_oracle_runtime,
         vision_gate=vision_gate,
     )
 

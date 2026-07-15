@@ -20,6 +20,9 @@ from datetime import datetime
 from synthorg.meta.models import RuleSeverity
 from synthorg.persistence.alert_protocol import AlertFilterSpec
 from synthorg.persistence.code_execution_protocol import CodeExecutionFilterSpec
+from synthorg.persistence.completion_oracle_report_protocol import (
+    CompletionOracleReportFilterSpec,
+)
 from synthorg.persistence.conversation_invite_protocol import (
     ConversationInviteFilterSpec,
 )
@@ -336,6 +339,36 @@ def build_red_team_report_filter_clauses(
 
     Args:
         filter_spec: The red-team-report filter to translate.
+        placeholder: Backend bound-parameter token (``"?"`` / ``"%s"``).
+        empty: Clause emitted when no predicate applies (``"1=1"`` / ``"TRUE"``).
+
+    Returns:
+        The joined ``WHERE`` body and its positional parameters.
+    """
+    clauses: list[str] = []
+    params: list[object] = []
+    if filter_spec.execution_id is not None:
+        clauses.append(f"execution_id = {placeholder}")
+        params.append(filter_spec.execution_id)
+    if filter_spec.task_id is not None:
+        clauses.append(f"task_id = {placeholder}")
+        params.append(filter_spec.task_id)
+    if filter_spec.verdict is not None:
+        clauses.append(f"verdict = {placeholder}")
+        params.append(filter_spec.verdict.value)
+    return _join(clauses, empty), params
+
+
+def build_completion_oracle_report_filter_clauses(
+    filter_spec: CompletionOracleReportFilterSpec,
+    *,
+    placeholder: str,
+    empty: str,
+) -> tuple[str, list[object]]:
+    """Build the WHERE body and params for a completion-oracle-report filter.
+
+    Args:
+        filter_spec: The completion-oracle-report filter to translate.
         placeholder: Backend bound-parameter token (``"?"`` / ``"%s"``).
         empty: Clause emitted when no predicate applies (``"1=1"`` / ``"TRUE"``).
 

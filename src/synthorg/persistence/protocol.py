@@ -63,6 +63,9 @@ from synthorg.persistence.code_execution_protocol import (
 from synthorg.persistence.codebase_structure_map_protocol import (
     CodebaseStructureMapRepository,
 )
+from synthorg.persistence.completion_oracle_report_protocol import (
+    CompletionOracleReportArchiveRepository,
+)
 from synthorg.persistence.connection_protocol import (
     ConnectionRepository,
     ConnectionSecretRepository,
@@ -474,6 +477,11 @@ class PersistenceBackend(Protocol):
     @property
     def red_team_reports(self) -> RedTeamReportArchiveRepository:
         """Repository for the durable red-team report archive."""
+        ...
+
+    @property
+    def completion_oracle_reports(self) -> CompletionOracleReportArchiveRepository:
+        """Repository for the durable completion-oracle verdict archive."""
         ...
 
     @property

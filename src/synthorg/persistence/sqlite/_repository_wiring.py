@@ -64,6 +64,9 @@ from synthorg.persistence.sqlite.code_execution_repo import (
 from synthorg.persistence.sqlite.codebase_structure_map_repo import (
     SQLiteCodebaseStructureMapRepository,
 )
+from synthorg.persistence.sqlite.completion_oracle_report_repo import (
+    SQLiteCompletionOracleReportArchiveRepository,
+)
 from synthorg.persistence.sqlite.connection_repo import SQLiteConnectionRepository
 from synthorg.persistence.sqlite.connection_secret_repo import (
     SQLiteConnectionSecretRepository,
@@ -283,6 +286,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._checkpoints = None
         self._flight_recorder_frames = None
         self._red_team_reports = None
+        self._completion_oracle_reports = None
         self._deliverable_receipts = None
         self._knowledge_usage_records = None
         self._code_execution_records = None
@@ -440,6 +444,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._red_team_reports = SQLiteRedTeamReportArchiveRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._completion_oracle_reports = SQLiteCompletionOracleReportArchiveRepository(
             self._db,
             write_context=self.write_context,
         )

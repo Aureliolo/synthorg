@@ -14,6 +14,9 @@ from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
+from synthorg.persistence.completion_oracle_report_protocol import (
+    CompletionOracleReportArchiveRepository,
+)
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.red_team_report_protocol import (
@@ -105,6 +108,28 @@ def red_team_reports_of(
     """
     backend = app_state.slice(PersistenceStateSlice).backend
     return backend.red_team_reports if backend is not None else None
+
+
+def completion_oracle_reports_of(
+    app_state: AppStateSliceMixin,
+) -> CompletionOracleReportArchiveRepository | None:
+    """Return the durable completion-oracle verdict archive, or ``None``.
+
+    Companion to :func:`persistence_of` for the optional audit-trail path:
+    the peer-review gate persists each evaluation's verdict into this
+    append-only archive, but a dev / empty-company run with no backend must
+    still build its runtime. Returning ``None`` lets the gate skip archival
+    (its write is fail-OPEN) rather than 503-ing the whole runtime.
+
+    Args:
+        app_state: The application state (any slice-reader).
+
+    Returns:
+        The append-only completion-oracle verdict archive, or ``None`` when
+        no backend is wired.
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    return backend.completion_oracle_reports if backend is not None else None
 
 
 def project_repository_of(

@@ -58,6 +58,9 @@ from synthorg.persistence.code_execution_protocol import (
 from synthorg.persistence.codebase_structure_map_protocol import (
     CodebaseStructureMapRepository,
 )
+from synthorg.persistence.completion_oracle_report_protocol import (
+    CompletionOracleReportArchiveRepository,
+)
 from synthorg.persistence.connection_protocol import (
     ConnectionRepository,
     ConnectionSecretRepository,
@@ -268,6 +271,7 @@ class _PostgresBackendRepositoryAccessors:
     _checkpoints: CheckpointRepository | None
     _flight_recorder_frames: FlightRecorderFrameRepository | None
     _red_team_reports: RedTeamReportArchiveRepository | None
+    _completion_oracle_reports: CompletionOracleReportArchiveRepository | None
     _deliverable_receipts: DeliverableReceiptRepository | None
     _knowledge_usage_records: KnowledgeUsageRecordRepository | None
     _code_execution_records: CodeExecutionRecordRepository | None
@@ -435,6 +439,14 @@ class _PostgresBackendRepositoryAccessors:
         return self._require_connected(
             self._red_team_reports,
             "red_team_reports",
+        )
+
+    @property
+    def completion_oracle_reports(self) -> CompletionOracleReportArchiveRepository:
+        """Repository for the durable completion-oracle verdict archive."""
+        return self._require_connected(
+            self._completion_oracle_reports,
+            "completion_oracle_reports",
         )
 
     @property

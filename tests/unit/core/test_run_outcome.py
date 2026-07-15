@@ -43,6 +43,28 @@ class TestDeriveRunOutcome:
             == RunOutcome.SUCCEEDED
         )
 
+    def test_oracle_blocked_is_failed_even_with_artifacts(self) -> None:
+        # The completion oracle is the source of truth: a code task that
+        # produced files but does not build/test is FAILED, not SUCCEEDED.
+        assert (
+            derive_run_outcome(
+                status=TaskStatus.IN_REVIEW,
+                produced_artifact_count=5,
+                oracle_blocked=True,
+            )
+            == RunOutcome.FAILED
+        )
+
+    def test_oracle_not_blocked_preserves_prior_behaviour(self) -> None:
+        assert (
+            derive_run_outcome(
+                status=TaskStatus.COMPLETED,
+                produced_artifact_count=2,
+                oracle_blocked=False,
+            )
+            == RunOutcome.SUCCEEDED
+        )
+
 
 @pytest.mark.unit
 class TestRiskFromTaskOutcome:

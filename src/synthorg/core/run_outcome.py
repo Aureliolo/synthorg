@@ -40,19 +40,37 @@ class RunOutcome(StrEnum):
 
 
 def derive_run_outcome(
-    *, status: TaskStatus, produced_artifact_count: int
+    *,
+    status: TaskStatus,
+    produced_artifact_count: int,
+    oracle_blocked: bool = False,
 ) -> RunOutcome:
-    """Classify a task's run outcome from its status and produced artifacts.
+    """Classify a task's run outcome from its status, artifacts, and oracle.
+
+    The build/test completion oracle is the source of truth for a code
+    task's success: a run whose oracle blocked (a REQUIRED code task whose
+    tests failed or never ran) is ``FAILED`` even if it produced artifacts,
+    so "succeeded" cannot mean "produced files that do not build". The
+    caller computes ``oracle_blocked`` from the ``OracleEvaluation``'s
+    ``blocks_completion`` property (kept out of this ``core`` leaf so it
+    stays dependency-free).
 
     Args:
         status: Current task status.
         produced_artifact_count: Number of artifacts the run produced.
+        oracle_blocked: Whether the build/test oracle blocked the run
+            (a REQUIRED code task that is not verified). ``False`` when
+            the oracle abstained, passed, or was not evaluated, which
+            preserves the pre-oracle behaviour for every existing caller.
 
     Returns:
-        ``FAILED`` for a failed task; ``EMPTY`` for a review/completed run
-        that produced nothing; ``SUCCEEDED`` otherwise.
+        ``FAILED`` for a failed task or an oracle-blocked run; ``EMPTY``
+        for a review/completed run that produced nothing; ``SUCCEEDED``
+        otherwise.
     """
     if status == TaskStatus.FAILED:
+        return RunOutcome.FAILED
+    if oracle_blocked:
         return RunOutcome.FAILED
     if (
         status in (TaskStatus.IN_REVIEW, TaskStatus.COMPLETED)
