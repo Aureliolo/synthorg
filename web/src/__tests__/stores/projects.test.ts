@@ -53,6 +53,7 @@ describe('useProjectsStore', () => {
       projectTasks: [],
       detailLoading: false,
       detailError: null,
+      autonomyModeSaving: false,
     })
   })
 
@@ -340,6 +341,116 @@ describe('useProjectsStore', () => {
       expect(result.failedReasons[0]).toContain('boom')
       const state = useProjectsStore.getState()
       expect(state.projects.map((p) => p.id)).toEqual(['proj-002'])
+    })
+  })
+
+  describe('setAutonomyMode', () => {
+    function echoModeHandler(capture?: (body: unknown) => void) {
+      return http.patch(
+        '/api/v1/projects/:id/autonomy-mode',
+        async ({ params, request }) => {
+          const body = (await request.json()) as { mode: string | null }
+          capture?.(body)
+          return HttpResponse.json(
+            apiSuccess(
+              makeProject(String(params['id']), {
+                autonomy_mode: body.mode as Project['autonomy_mode'],
+              }),
+            ),
+          )
+        },
+      )
+    }
+
+    it('updates the list + selectedProject and clears the saving flag on success', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001'), makeProject('proj-002')],
+        selectedProject: makeProject('proj-001'),
+      })
+      let capturedBody: unknown = null
+      server.use(echoModeHandler((b) => (capturedBody = b)))
+
+      const result = await useProjectsStore
+        .getState()
+        .setAutonomyMode('proj-001', 'locked')
+
+      expect(result?.autonomy_mode).toBe('locked')
+      // confirm defaults to false for a non-full transition.
+      expect(capturedBody).toEqual({ mode: 'locked', confirm: false })
+      const state = useProjectsStore.getState()
+      expect(state.projects.find((p) => p.id === 'proj-001')?.autonomy_mode).toBe('locked')
+      expect(state.projects.find((p) => p.id === 'proj-002')?.autonomy_mode).toBeNull()
+      expect(state.selectedProject?.autonomy_mode).toBe('locked')
+      expect(state.autonomyModeSaving).toBe(false)
+    })
+
+    it('forwards confirm=true for the deliberate full opt-in', async () => {
+      useProjectsStore.setState({ projects: [makeProject('proj-001')] })
+      let capturedBody: unknown = null
+      server.use(echoModeHandler((b) => (capturedBody = b)))
+
+      await useProjectsStore.getState().setAutonomyMode('proj-001', 'full', true)
+
+      expect(capturedBody).toEqual({ mode: 'full', confirm: true })
+    })
+
+    it('clears the mode back to inherit when passed null', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001', { autonomy_mode: 'full' })],
+      })
+      server.use(echoModeHandler())
+
+      const result = await useProjectsStore
+        .getState()
+        .setAutonomyMode('proj-001', null)
+
+      expect(result?.autonomy_mode).toBeNull()
+      expect(useProjectsStore.getState().projects[0]?.autonomy_mode).toBeNull()
+    })
+
+    it('returns null sentinel and leaves state untouched on failure', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001', { autonomy_mode: 'semi' })],
+        selectedProject: makeProject('proj-001', { autonomy_mode: 'semi' }),
+      })
+      server.use(
+        http.patch('/api/v1/projects/:id/autonomy-mode', () =>
+          HttpResponse.json(apiError('boom'), { status: 500 }),
+        ),
+      )
+
+      const result = await useProjectsStore
+        .getState()
+        .setAutonomyMode('proj-001', 'locked')
+
+      expect(result).toBeNull()
+      const state = useProjectsStore.getState()
+      // Neither the list row nor the open detail is clobbered on failure.
+      expect(state.projects[0]?.autonomy_mode).toBe('semi')
+      expect(state.selectedProject?.autonomy_mode).toBe('semi')
+      expect(state.autonomyModeSaving).toBe(false)
+    })
+  })
+
+  describe('updateFromWsEvent autonomy_mode_changed', () => {
+    it('applies the new mode to the list row and selectedProject', () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001'), makeProject('proj-002')],
+        selectedProject: makeProject('proj-001'),
+      })
+
+      useProjectsStore.getState().updateFromWsEvent({
+        event_type: 'project.autonomy_mode_changed',
+        channel: 'projects',
+        version: 1,
+        timestamp: '2026-07-15T00:00:00Z',
+        payload: { project_id: 'proj-001', new_mode: 'locked' },
+      } satisfies WsEvent)
+
+      const state = useProjectsStore.getState()
+      expect(state.projects.find((p) => p.id === 'proj-001')?.autonomy_mode).toBe('locked')
+      expect(state.projects.find((p) => p.id === 'proj-002')?.autonomy_mode).toBeNull()
+      expect(state.selectedProject?.autonomy_mode).toBe('locked')
     })
   })
 

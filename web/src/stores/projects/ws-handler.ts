@@ -1,10 +1,28 @@
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import { sanitizeWsString } from '@/utils/ws-sanitize'
+import { sanitizeWsEnumOrNull, sanitizeWsString } from '@/utils/ws-sanitize'
+import { AUTONOMY_LEVEL_VALUES } from '@/api/types/enum-values.gen'
+import type { AutonomyLevel } from '@/api/types/enums'
 import type { WsEvent } from '@/api/types'
 import type { ProjectsGet, ProjectsSet } from './types'
 
 const log = createLogger('projects')
+
+function applyAutonomyModeChanged(
+  set: ProjectsSet,
+  projectId: string,
+  newMode: AutonomyLevel | null,
+): void {
+  set((state) => ({
+    projects: state.projects.map((p) =>
+      p.id === projectId ? { ...p, autonomy_mode: newMode } : p,
+    ),
+    selectedProject:
+      state.selectedProject?.id === projectId
+        ? { ...state.selectedProject, autonomy_mode: newMode }
+        : state.selectedProject,
+  }))
+}
 
 function applyProjectDeleted(
   set: ProjectsSet,
@@ -41,6 +59,20 @@ function updateFromWsEventImpl(
     // strings never land in local state or the UI.
     const deletedId = sanitizeWsString(payload.project_id) ?? null
     if (deletedId) applyProjectDeleted(set, deletedId)
+    return
+  }
+  if (event.event_type === 'project.autonomy_mode_changed') {
+    const payload = event.payload as { project_id?: unknown; new_mode?: unknown }
+    const projectId = sanitizeWsString(payload.project_id) ?? null
+    if (!projectId) return
+    // ``null`` covers both a cleared override and an unknown value; the
+    // periodic refetch reconciles the rare invalid-payload case.
+    const newMode = sanitizeWsEnumOrNull<AutonomyLevel>(
+      payload.new_mode,
+      AUTONOMY_LEVEL_VALUES,
+      { field: 'new_mode' },
+    )
+    applyAutonomyModeChanged(set, projectId, newMode)
     return
   }
   get().fetchProjects().catch((err: unknown) => {

@@ -1,4 +1,4 @@
-"""Autonomy resolver -- three-level chain and category expansion."""
+"""Autonomy resolver -- four-level chain and category expansion."""
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.effective_autonomy import EffectiveAutonomy
@@ -14,12 +14,13 @@ logger = get_logger(__name__)
 
 
 class AutonomyResolver:
-    """Resolves effective autonomy via a three-level chain.
+    """Resolves effective autonomy via a four-level chain.
 
     Resolution order (most specific wins):
     1. Agent-level override
-    2. Department-level override
-    3. Company-level default
+    2. Initiative (project) operator-set mode
+    3. Department-level override
+    4. Company-level default
 
     After resolution, category shortcuts (e.g. ``"code"``) are expanded
     into concrete action types via the ``ActionTypeRegistry``, and the
@@ -45,12 +46,16 @@ class AutonomyResolver:
         self,
         agent_level: AutonomyLevel | None = None,
         department_level: AutonomyLevel | None = None,
+        *,
+        project_level: AutonomyLevel | None = None,
     ) -> EffectiveAutonomy:
-        """Resolve effective autonomy from the three-level chain.
+        """Resolve effective autonomy from the four-level chain.
 
         Args:
             agent_level: Per-agent override (highest priority).
             department_level: Per-department override.
+            project_level: Per-initiative operator-set mode, resolved
+                below a per-agent override but above a department default.
 
         Returns:
             Fully expanded :class:`EffectiveAutonomy`.
@@ -58,7 +63,7 @@ class AutonomyResolver:
         Raises:
             ValueError: If the resolved level has no matching preset.
         """
-        level = agent_level or department_level or self._config.level
+        level = agent_level or project_level or department_level or self._config.level
         preset = self._resolve_preset(level)
 
         auto_approve = self._expand_patterns(preset.auto_approve)
@@ -75,6 +80,7 @@ class AutonomyResolver:
             AUTONOMY_RESOLVED,
             resolved_level=level.value,
             agent_override=agent_level.value if agent_level else None,
+            project_override=project_level.value if project_level else None,
             department_override=department_level.value if department_level else None,
             auto_approve_count=len(auto_approve),
             human_approval_count=len(human_approval),

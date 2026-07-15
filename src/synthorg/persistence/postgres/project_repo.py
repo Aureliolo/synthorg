@@ -74,6 +74,7 @@ class PostgresProjectRepository:
             project.deadline,
             project.budget,
             project.status.value,
+            project.autonomy_mode.value if project.autonomy_mode is not None else None,
             project.version,
         )
 
@@ -90,8 +91,8 @@ class PostgresProjectRepository:
                     """
                     INSERT INTO projects (id, name, description, team, lead,
                                           task_ids, deadline, budget, status,
-                                          version)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                          autonomy_mode, version)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     self._row_params(project),
                 )
@@ -140,6 +141,7 @@ class PostgresProjectRepository:
             project.deadline,
             project.budget,
             project.status.value,
+            project.autonomy_mode.value if project.autonomy_mode is not None else None,
             project.version,
             str(project.id),
         ]
@@ -150,7 +152,8 @@ class PostgresProjectRepository:
         # Fixed columns + guard literal; values fully parameterized.
         query = (
             "UPDATE projects SET name=%s, description=%s, team=%s, lead=%s, "  # noqa: S608
-            "task_ids=%s, deadline=%s, budget=%s, status=%s, version=%s "
+            "task_ids=%s, deadline=%s, budget=%s, status=%s, autonomy_mode=%s, "
+            "version=%s "
             f"WHERE id=%s{guard}"
         )
         try:
@@ -211,8 +214,8 @@ class PostgresProjectRepository:
                     """
                     INSERT INTO projects (id, name, description, team, lead,
                                           task_ids, deadline, budget, status,
-                                          version)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                          autonomy_mode, version)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT(id) DO UPDATE SET
                         name=EXCLUDED.name,
                         description=EXCLUDED.description,
@@ -222,6 +225,7 @@ class PostgresProjectRepository:
                         deadline=EXCLUDED.deadline,
                         budget=EXCLUDED.budget,
                         status=EXCLUDED.status,
+                        autonomy_mode=EXCLUDED.autonomy_mode,
                         version=EXCLUDED.version
                     """,
                     self._row_params(project),

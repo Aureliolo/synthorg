@@ -43,6 +43,7 @@ export const WS_EVENT_TYPE_VALUES = [
   "artifact.content_uploaded",
   "project.created",
   "project.deleted",
+  "project.autonomy_mode_changed",
   "project.status_changed",
   "plan.updated",
   "plan.changes_requested",

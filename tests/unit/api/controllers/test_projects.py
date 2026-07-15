@@ -58,6 +58,153 @@ class TestProjectController:
         assert get_resp.status_code == 200
         assert get_resp.json()["data"]["id"] == project_id
 
+    async def test_set_and_clear_autonomy_mode(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Gated Initiative"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+        assert create_resp.json()["data"]["autonomy_mode"] is None
+
+        set_resp = await async_test_client.patch(
+            f"/api/v1/projects/{project_id}/autonomy-mode",
+            json={"mode": "supervised"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert set_resp.status_code == 200
+        assert set_resp.json()["data"]["autonomy_mode"] == "supervised"
+
+        get_resp = await async_test_client.get(f"/api/v1/projects/{project_id}")
+        assert get_resp.json()["data"]["autonomy_mode"] == "supervised"
+
+        clear_resp = await async_test_client.patch(
+            f"/api/v1/projects/{project_id}/autonomy-mode",
+            json={"mode": None},
+            headers=make_auth_headers("ceo"),
+        )
+        assert clear_resp.status_code == 200
+        assert clear_resp.json()["data"]["autonomy_mode"] is None
+
+    async def test_set_autonomy_mode_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.patch(
+            "/api/v1/projects/ghost/autonomy-mode",
+            json={"mode": "locked"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["success"] is False
+        assert "ghost" in body["error"]
+
+    async def test_set_autonomy_mode_rejects_unknown_value(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Bad Mode"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+        resp = await async_test_client.patch(
+            f"/api/v1/projects/{project_id}/autonomy-mode",
+            json={"mode": "omniscient"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
+        assert resp.json()["success"] is False
+
+    async def test_set_full_mode_ceo_confirmed_audits_gate_off(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Sandbox"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+
+        with structlog.testing.capture_logs() as logs:
+            resp = await async_test_client.patch(
+                f"/api/v1/projects/{project_id}/autonomy-mode",
+                json={"mode": "full", "confirm": True},
+                headers=make_auth_headers("ceo"),
+            )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["autonomy_mode"] == "full"
+
+        get_resp = await async_test_client.get(f"/api/v1/projects/{project_id}")
+        assert get_resp.json()["data"]["autonomy_mode"] == "full"
+
+        audit = [
+            log for log in logs if log["event"] == "api.project.autonomy_mode_changed"
+        ]
+        assert len(audit) == 1
+        # The gate-off transition captures actor + from/to and is flagged.
+        assert audit[0]["new_mode"] == "full"
+        assert audit[0]["previous_mode"] is None
+        assert audit[0]["gate_disabled"] is True
+        assert audit[0]["log_level"] == "warning"
+
+    async def test_set_full_mode_requires_confirm(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Unconfirmed"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+        resp = await async_test_client.patch(
+            f"/api/v1/projects/{project_id}/autonomy-mode",
+            json={"mode": "full"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 422
+        assert resp.json()["success"] is False
+
+    async def test_set_full_mode_forbidden_for_non_ceo(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Manager Attempt"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+        # A manager holds write access but may not disable the gate.
+        resp = await async_test_client.patch(
+            f"/api/v1/projects/{project_id}/autonomy-mode",
+            json={"mode": "full", "confirm": True},
+            headers=make_auth_headers("manager"),
+        )
+        assert resp.status_code == 403
+        # The row keeps its prior (unset) mode.
+        get_resp = await async_test_client.get(f"/api/v1/projects/{project_id}")
+        assert get_resp.json()["data"]["autonomy_mode"] is None
+
+    async def test_set_autonomy_mode_version_conflict(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Raced"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+        # A stale expected_version simulates a concurrent write having won.
+        resp = await async_test_client.patch(
+            f"/api/v1/projects/{project_id}/autonomy-mode",
+            json={"mode": "locked", "expected_version": 999},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+        assert resp.json()["success"] is False
+
     async def test_list_projects_after_create(
         self, async_test_client: LoopAsyncClient
     ) -> None:

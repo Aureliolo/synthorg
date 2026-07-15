@@ -14,6 +14,9 @@ vi.mock('@/pages/projects/ProjectHeader', () => ({
 vi.mock('@/pages/projects/ProjectTeamSection', () => ({
   ProjectTeamSection: () => <div data-testid="project-team-section" />,
 }))
+vi.mock('@/pages/projects/ProjectOversightSection', () => ({
+  ProjectOversightSection: () => <div data-testid="project-oversight-section" />,
+}))
 vi.mock('@/pages/projects/ProjectTaskList', () => ({
   ProjectTaskList: () => <div data-testid="project-task-list" />,
 }))
@@ -71,10 +74,11 @@ describe('ProjectDetailPage', () => {
     expect(screen.getByText('Project not found')).toBeInTheDocument()
   })
 
-  it('renders header, team section, and task list when project loaded', () => {
+  it('renders header, team section, oversight section, and task list when project loaded', () => {
     renderPage()
     expect(screen.getByTestId('project-header')).toBeInTheDocument()
     expect(screen.getByTestId('project-team-section')).toBeInTheDocument()
+    expect(screen.getByTestId('project-oversight-section')).toBeInTheDocument()
     expect(screen.getByTestId('project-task-list')).toBeInTheDocument()
   })
 

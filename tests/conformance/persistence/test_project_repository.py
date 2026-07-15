@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
@@ -46,6 +47,49 @@ class TestProjectRepository:
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         assert await backend.projects.get(NotBlankStr("ghost")) is None
+
+    async def test_autonomy_mode_default_is_none(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.projects.save(_project(project_id="proj-inherit"))
+        inherited = await backend.projects.get(NotBlankStr(sid("proj-inherit")))
+        assert inherited is not None
+        assert inherited.autonomy_mode is None
+
+    @pytest.mark.parametrize(
+        "mode",
+        [AutonomyLevel.LOCKED, AutonomyLevel.SUPERVISED, AutonomyLevel.FULL],
+        ids=["locked", "supervised", "full"],
+    )
+    async def test_autonomy_mode_set_round_trips(
+        self, backend: PersistenceBackend, mode: AutonomyLevel
+    ) -> None:
+        # Every operator-set tier round-trips as its enum value, including
+        # the gate-off ``full`` value.
+        project = _project(project_id="proj-mode").model_copy(
+            update={"autonomy_mode": mode},
+        )
+        await backend.projects.save(project)
+        fetched = await backend.projects.get(NotBlankStr(sid("proj-mode")))
+        assert fetched is not None
+        assert fetched.autonomy_mode is mode
+
+    async def test_autonomy_mode_clear_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        project = _project(project_id="proj-clear").model_copy(
+            update={"autonomy_mode": AutonomyLevel.FULL},
+        )
+        await backend.projects.save(project)
+        fetched = await backend.projects.get(NotBlankStr(sid("proj-clear")))
+        assert fetched is not None
+        cleared = fetched.model_copy(
+            update={"autonomy_mode": None, "version": fetched.version + 1},
+        )
+        await backend.projects.update(cleared)
+        after = await backend.projects.get(NotBlankStr(sid("proj-clear")))
+        assert after is not None
+        assert after.autonomy_mode is None
 
     async def test_save_upsert(self, backend: PersistenceBackend) -> None:
         p = _project()

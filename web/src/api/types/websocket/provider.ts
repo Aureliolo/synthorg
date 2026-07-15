@@ -32,6 +32,12 @@ export interface WsProjectDeletedPayload {
   name: string
 }
 
+export interface WsProjectAutonomyModeChangedPayload {
+  project_id: string
+  new_mode?: string | null
+  previous_mode?: string | null
+}
+
 export interface WsProjectStatusChangedPayload {
   project_id: string
   status: string

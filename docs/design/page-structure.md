@@ -104,7 +104,7 @@ Agent profiles as card grid. Each card shows name, role, department, status dot,
 
 Project list with card grid, search, and status filter. "Create Project" button opens a slide-in drawer with name, description, team (tag input), lead, deadline, and budget fields. Each card shows status badge, description, task count, budget, team size, and deadline.
 
-Detail page (`/projects/{projectId}`) shows project header with status badge and key metrics, team section with avatar grid and lead badge, and a linked task list with status indicators.
+Detail page (`/projects/{projectId}`) shows project header with status badge and key metrics, team section with avatar grid and lead badge, an oversight-mode control (sets the initiative's operator-set autonomy tier), and a linked task list with status indicators.
 
 Living-documentation page (`/projects/{projectId}/docs`, optional `/{slug}`) is the per-project wiki: a two-column layout with a doc-list sidebar (type-filter chips for status report / deliverable / knowledge note /
 codebase analysis / run narrative) and a `DocViewer` that renders a `LivingDocument`'s typed blocks one renderer per block kind. Docs are written by agents (tools + MCP), git-versioned on the `synthorg/docs` branch, and chunked into the `PROJECT_DOC` memory namespace for retrieval. See [Living Documentation](living-documentation.md).
@@ -116,10 +116,11 @@ codebase analysis / run narrative) and a `DocViewer` that renders a `LivingDocum
 - **Status filter**: dropdown filtering by project status (planning, active, on_hold, completed, cancelled)
 - **Create drawer**: 6-field form with validation, optimistic state update
 - **Team section**: avatar grid with links to agent detail pages, lead badge
+- **Oversight mode**: sets the initiative's operator-set autonomy tier the SecOps gate resolves against; the gate-off `full` option is CEO-only and confirmed
 - **Task list**: linked tasks with status indicators and assignee display
 
-**API endpoints**: `GET /projects`, `GET /projects/{id}`, `POST /projects`, `DELETE /projects/{id}`, `GET /projects/{id}/docs`, `GET /projects/{id}/docs/{slug}`, `GET /projects/{id}/docs/{slug}/history`, `GET /projects/{id}/docs/search`
-**WS channels**: `projects` (emits `project.created`, `project.deleted`), `tasks`
+**API endpoints**: `GET /projects`, `GET /projects/{id}`, `POST /projects`, `PATCH /projects/{id}/autonomy-mode`, `DELETE /projects/{id}`, `GET /projects/{id}/docs`, `GET /projects/{id}/docs/{slug}`, `GET /projects/{id}/docs/{slug}/history`, `GET /projects/{id}/docs/search`
+**WS channels**: `projects` (emits `project.created`, `project.deleted`, `project.autonomy_mode_changed`), `tasks`
 
 #### Artifacts (`/artifacts`)
 

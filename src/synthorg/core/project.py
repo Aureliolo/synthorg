@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.core.validation import validate_iso8601_deadline
@@ -30,6 +31,11 @@ class Project(BaseModel):
         deadline: Optional deadline (ISO 8601 string or ``None``).
         budget: Total budget in base currency (configurable, defaults to EUR).
         status: Current project status.
+        autonomy_mode: Operator-set oversight mode for this initiative. When
+            set, it becomes the initiative-level autonomy override the gate
+            resolves against (more specific than a department default, less
+            than a per-agent override); ``None`` inherits the department or
+            company default.
         version: Optimistic-concurrency revision, bumped on each persisted
             edit so a version-guarded write cannot silently clobber a
             concurrent update (e.g. two workers staffing the same lead).
@@ -67,6 +73,11 @@ class Project(BaseModel):
     status: ProjectStatus = Field(
         default=ProjectStatus.PLANNING,
         description="Current project status",
+    )
+    autonomy_mode: AutonomyLevel | None = Field(
+        default=None,
+        description="Operator-set oversight mode for this initiative "
+        "(None inherits the department or company default)",
     )
     version: int = Field(
         default=1,

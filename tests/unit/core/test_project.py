@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from tests._shared import as_uuid, sid
@@ -61,6 +62,24 @@ class TestProjectConstruction:
         assert project.deadline is None
         assert project.budget == 0.0
         assert project.status is ProjectStatus.PLANNING
+        assert project.autonomy_mode is None
+
+    @pytest.mark.parametrize("mode", list(AutonomyLevel))
+    def test_autonomy_mode_accepts_every_level(self, mode: AutonomyLevel) -> None:
+        project = Project(
+            id=as_uuid("proj-mode"),
+            name="Gated",
+            autonomy_mode=mode,
+        )
+        assert project.autonomy_mode is mode
+
+    def test_autonomy_mode_rejects_unknown(self) -> None:
+        with pytest.raises(ValidationError):
+            Project(
+                id=as_uuid("proj-bad"),
+                name="Gated",
+                autonomy_mode="omniscient",  # type: ignore[arg-type]
+            )
 
 
 # ── String Validation ────────────────────────────────────────────

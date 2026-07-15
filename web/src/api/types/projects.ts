@@ -2,7 +2,11 @@
 
 import type { ProjectStatus } from './enums'
 
-export type { CreateProjectRequest, Project } from './dtos.gen'
+export type {
+  CreateProjectRequest,
+  Project,
+  ProjectAutonomyModeRequest,
+} from './dtos.gen'
 
 /** Frontend-only query filter (not a Pydantic DTO). */
 export interface ProjectFilters {

@@ -32,6 +32,7 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.state import persistence_of
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.bridge_configs import EngineBridgeConfig
@@ -375,6 +376,9 @@ class TestProviderPresentSwitch:
         worker = result.worker_execution_service
         coordinator = result.coordinator
         assert isinstance(worker, AgentEngineExecutionService)
+        # The worker reads the initiative autonomy mode from the boot-wired
+        # projects repo, so a per-initiative override reaches the gate.
+        assert worker._project_repo is persistence_of(app_state).projects
         assert coordinator is not None
         # The coordinator's parallel executor must run sub-agents on the
         # exact same boot AgentEngine as the worker execute seam. The

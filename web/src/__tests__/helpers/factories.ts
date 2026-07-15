@@ -320,6 +320,7 @@ export function makeProject(id: string, overrides?: Partial<Project>): Project {
     deadline: '2026-06-01T00:00:00Z',
     budget: 500,
     status: 'active',
+    autonomy_mode: null,
     version: 1,
     ...overrides,
   }

@@ -1,6 +1,7 @@
 import {
   createProject as createProjectApi,
   deleteProject as deleteProjectApi,
+  setProjectAutonomyMode as setProjectAutonomyModeApi,
 } from '@/api/endpoints/projects'
 import { useToastStore } from '@/stores/toast'
 import {
@@ -10,10 +11,15 @@ import {
 } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
+import type { AutonomyLevel } from '@/api/types/enums'
 import type {
   CreateProjectRequest,
   Project,
 } from '@/api/types/projects'
+import {
+  isStaleAutonomyModeRequest,
+  nextAutonomyModeRequestToken,
+} from './_state'
 import type {
   BatchDeleteOutcome,
   ProjectsGet,
@@ -250,10 +256,52 @@ async function batchDeleteProjectsImpl(
   }
 }
 
+async function setAutonomyModeImpl(
+  set: ProjectsSet,
+  id: string,
+  mode: AutonomyLevel | null,
+  confirm: boolean,
+): Promise<Project | null> {
+  // Latest-wins guard: two quick changes race, and only the newest
+  // response is allowed to write state (or clear the saving flag), so a
+  // slower earlier PATCH cannot clobber a newer selection.
+  const token = nextAutonomyModeRequestToken()
+  set({ autonomyModeSaving: true })
+  try {
+    const project = await setProjectAutonomyModeApi(id, { mode, confirm })
+    if (isStaleAutonomyModeRequest(token)) return project
+    set((state) => ({
+      projects: state.projects.map((p) => (p.id === project.id ? project : p)),
+      selectedProject:
+        state.selectedProject?.id === project.id
+          ? project
+          : state.selectedProject,
+      autonomyModeSaving: false,
+    }))
+    useToastStore.getState().add({
+      variant: 'success',
+      title: `Oversight mode updated for ${project.name}`,
+    })
+    return project
+  } catch (err) {
+    log.error('Set project autonomy mode failed:', sanitizeForLog(err))
+    if (isStaleAutonomyModeRequest(token)) return null
+    set({ autonomyModeSaving: false })
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to update oversight mode'),
+      description: getErrorMessage(err),
+    })
+    return null
+  }
+}
+
 export function createCrudActions(set: ProjectsSet, get: ProjectsGet) {
   return {
     createProject: (data: CreateProjectRequest) =>
       createProjectImpl(set, data),
+    setAutonomyMode: (id: string, mode: AutonomyLevel | null, confirm = false) =>
+      setAutonomyModeImpl(set, id, mode, confirm),
     deleteProject: (id: string) => deleteProjectImpl(set, get, id),
     batchDeleteProjects: (ids: readonly string[]) =>
       batchDeleteProjectsImpl(set, ids),

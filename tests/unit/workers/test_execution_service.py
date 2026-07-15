@@ -1,16 +1,20 @@
 # module-kind: tests
 """Unit tests for the agent-runtime worker execution services."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from structlog.testing import capture_logs
 
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
     ConflictError,
     NotFoundError,
 )
+from synthorg.core.effective_autonomy import EffectiveAutonomy
+from synthorg.core.persistence_errors import QueryError
+from synthorg.core.project import Project
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
@@ -31,9 +35,11 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_FAILED,
 )
 from synthorg.observability.events.workers import (
+    WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED,
     WORKERS_EXECUTION_SERVICE_FAILED,
     WORKERS_EXECUTION_SERVICE_HEALTH_PIPELINE_FAILED,
 )
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.autonomy.resolver import AutonomyResolver
@@ -59,6 +65,94 @@ def _run_result() -> object:
         termination_reason=TerminationReason.COMPLETED,
         total_turns=1,
     )
+
+
+class TestProjectAutonomyModeResolution:
+    """The per-initiative mode read + its fail-closed degrade + resolver glue."""
+
+    def _service(
+        self,
+        *,
+        project_repo: ProjectRepository | None,
+        autonomy_resolver: AutonomyResolver | None = None,
+    ) -> AgentEngineExecutionService:
+        return AgentEngineExecutionService(
+            engine=mock_of[AgentEngine](run=AsyncMock()),
+            task_engine=mock_of[TaskEngine](),
+            agent_registry=AgentRegistryService(),
+            autonomy_resolver=autonomy_resolver
+            or AutonomyResolver(registry=ActionTypeRegistry(), config=AutonomyConfig()),
+            project_repo=project_repo,
+        )
+
+    async def test_returns_the_projects_configured_mode(self) -> None:
+        service = self._service(
+            project_repo=mock_of[ProjectRepository](
+                get=AsyncMock(
+                    return_value=Project(
+                        name="Init", autonomy_mode=AutonomyLevel.LOCKED
+                    )
+                )
+            )
+        )
+        resolved = await service._resolve_project_autonomy_mode(NotBlankStr("p1"))
+        assert resolved == AutonomyLevel.LOCKED
+
+    async def test_no_override_configured_returns_none(self) -> None:
+        service = self._service(
+            project_repo=mock_of[ProjectRepository](
+                get=AsyncMock(return_value=Project(name="Init", autonomy_mode=None))
+            )
+        )
+        assert await service._resolve_project_autonomy_mode(NotBlankStr("p1")) is None
+
+    async def test_absent_project_returns_none(self) -> None:
+        service = self._service(
+            project_repo=mock_of[ProjectRepository](get=AsyncMock(return_value=None))
+        )
+        assert await service._resolve_project_autonomy_mode(NotBlankStr("p1")) is None
+
+    async def test_no_repo_wired_returns_none(self) -> None:
+        service = self._service(project_repo=None)
+        assert await service._resolve_project_autonomy_mode(NotBlankStr("p1")) is None
+
+    async def test_lookup_failure_fails_closed_to_locked(self) -> None:
+        service = self._service(
+            project_repo=mock_of[ProjectRepository](
+                get=AsyncMock(side_effect=QueryError("db down"))
+            )
+        )
+        with capture_logs() as logs:
+            resolved = await service._resolve_project_autonomy_mode(NotBlankStr("p1"))
+        # Fail CLOSED: a lookup miss must never silently loosen oversight.
+        assert resolved == AutonomyLevel.LOCKED
+        degraded = [
+            log
+            for log in logs
+            if log["event"] == WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED
+        ]
+        assert len(degraded) == 1
+        assert degraded[0]["fail_closed_to"] == "locked"
+
+    async def test_resolve_autonomy_threads_project_level_into_resolver(self) -> None:
+        resolver = mock_of[AutonomyResolver](
+            resolve=Mock(return_value=mock_of[EffectiveAutonomy]())
+        )
+        service = self._service(
+            project_repo=mock_of[ProjectRepository](
+                get=AsyncMock(
+                    return_value=Project(
+                        name="Init", autonomy_mode=AutonomyLevel.SUPERVISED
+                    )
+                )
+            ),
+            autonomy_resolver=resolver,
+        )
+        await service._resolve_autonomy(
+            make_e2e_identity(), task_id="t1", project_id=NotBlankStr("p1")
+        )
+        _, kwargs = resolver.resolve.call_args
+        assert kwargs["project_level"] == AutonomyLevel.SUPERVISED
 
 
 class TestNoProviderExecutionService:

@@ -66,13 +66,21 @@ Solo Builder, Research Lab, and Data Team, `supervised` for Agency, Enterprise O
 Consultancy). See the
 [Company Types table](organization.md#company-types) for per-template defaults.
 
-**Autonomy scope** ([Decision Log](../architecture/decisions.md) D6): Three-level
-resolution chain: per-agent > per-department > company default.
+**Autonomy scope** ([Decision Log](../architecture/decisions.md) D6): Four-level
+resolution chain: per-agent > per-initiative (operator-set `Project.autonomy_mode`)
+> per-department > company default. The per-initiative mode lets an operator set an
+oversight tier for one initiative (`PATCH /projects/{id}/autonomy-mode`); a
+transition to `full` (gate-off pass-through) is a CEO-only deliberate opt-in
+(`confirm=true`) audited at WARNING, and a project-lookup failure fails closed to
+`locked` so a transient fault never silently loosens an operator's override.
 
 **Runtime changes** ([Decision Log](../architecture/decisions.md) D7): Human-only
-promotion via REST API (no agent, including CEO, can escalate privileges). Automatic downgrade
-on: high error rate (one level down), budget exhausted (supervised), security incident (locked).
-Recovery from auto-downgrade is human-only.
+promotion via REST API (no agent, including CEO, can escalate privileges). The
+agent-level change flows through the `AutonomyChangeStrategy` / approval queue; the
+per-initiative mode is a direct, version-guarded write on the project row (409 on a
+concurrent-write conflict). Automatic downgrade on: high error rate (one level down),
+budget exhausted (supervised), security incident (locked). Recovery from
+auto-downgrade is human-only.
 
 ### Autonomy change strategy plugin surface
 

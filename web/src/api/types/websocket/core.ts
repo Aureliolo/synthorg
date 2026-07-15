@@ -41,6 +41,7 @@ import type {
   WsPlanChangesRequestedPayload,
   WsPlanCommentAddedPayload,
   WsPlanUpdatedPayload,
+  WsProjectAutonomyModeChangedPayload,
   WsProjectCreatedPayload,
   WsProjectDeletedPayload,
   WsProjectStatusChangedPayload,
@@ -182,6 +183,7 @@ export interface WsEventPayloadMap {
   'artifact.content_uploaded': WsArtifactContentUploadedPayload
   'project.created': WsProjectCreatedPayload
   'project.deleted': WsProjectDeletedPayload
+  'project.autonomy_mode_changed': WsProjectAutonomyModeChangedPayload
   'project.status_changed': WsProjectStatusChangedPayload
   'plan.updated': WsPlanUpdatedPayload
   'plan.changes_requested': WsPlanChangesRequestedPayload

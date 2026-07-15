@@ -515,6 +515,7 @@ CREATE TABLE projects (
     deadline TIMESTAMPTZ,
     budget DOUBLE PRECISION NOT NULL DEFAULT 0.0 CHECK (budget >= 0.0),
     status TEXT NOT NULL DEFAULT 'planning',
+    autonomy_mode TEXT CHECK (autonomy_mode IN ('full', 'semi', 'supervised', 'locked')),
     version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1)
 );
 

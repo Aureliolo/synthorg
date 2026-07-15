@@ -64,6 +64,7 @@ from synthorg.observability.events.workers import (
     WORKERS_RUNTIME_HOT_SWAP_FAILED,
     WORKERS_RUNTIME_RELOADED,
 )
+from synthorg.persistence.state import persistence_of
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import has_active_provider, provider_registry_of
@@ -481,6 +482,7 @@ async def build_runtime_services(
         task_engine=task_engine_of(app_state),
         agent_registry=agent_registry_of(app_state),
         autonomy_resolver=autonomy_resolver,
+        project_repo=persistence_of(app_state).projects,
         health_pipeline=health_pipeline,
         health_enabled=health_enabled,
         # Release the lifecycle owner on the SAME backend the code-execution

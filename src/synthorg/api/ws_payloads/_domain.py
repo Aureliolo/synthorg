@@ -94,6 +94,26 @@ class WsProjectDeletedPayload(BaseModel):
     name: NotBlankStr
 
 
+class WsProjectAutonomyModeChangedPayload(BaseModel):
+    """Payload for ``project.autonomy_mode_changed``.
+
+    Emitted by ``api/controllers/projects.py`` ``set_autonomy_mode`` so
+    other dashboards reflect an initiative's operator-set oversight mode
+    live. ``previous_mode`` / ``new_mode`` are ``None`` when the override
+    is (respectively, was) cleared to inherit the department/company
+    default.
+    """
+
+    model_config = PAYLOAD_CONFIG
+
+    event_type: Literal[WsEventType.PROJECT_AUTONOMY_MODE_CHANGED] = (
+        WsEventType.PROJECT_AUTONOMY_MODE_CHANGED
+    )
+    project_id: NotBlankStr
+    new_mode: NotBlankStr | None = None
+    previous_mode: NotBlankStr | None = None
+
+
 class WsProjectStatusChangedPayload(BaseModel):
     """Payload for ``project.status_changed``.
 
