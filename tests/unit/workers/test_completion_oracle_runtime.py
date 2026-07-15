@@ -8,13 +8,13 @@ must detach them, and a persistence-less boot (no review gate) is a no-op.
 """
 
 from types import SimpleNamespace
-from unittest.mock import create_autospec
 
 import pytest
 
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.task_enums import Stakes
 from synthorg.engine.completion_oracle.builder import CompletionOracleRuntime
+from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.gate import CompletionOracleGateService
 from synthorg.engine.completion_oracle.protocol import (
     CompletionOracleReportRepository,
@@ -64,20 +64,53 @@ def test_attach_no_op_when_no_review_gate() -> None:
     app_state = _FakeAppState(review_gate=None)
     attach_completion_oracle_gates(
         app_state,  # type: ignore[arg-type]
+        enabled=True,
         completion_oracle_runtime=_runtime(shadow_mode=False, min_stakes=Stakes.LOW),
     )
 
 
-def test_attach_clears_both_gates_when_runtime_disabled() -> None:
-    gate_service = create_autospec(ReviewGateService, instance=True)
+def test_attach_disabled_clears_both_gates() -> None:
+    # Explicit disablement (enabled=False, no runtime): both gates cleared.
+    gate_service = mock_of[ReviewGateService]()
     app_state = _FakeAppState(review_gate=gate_service)
 
     attach_completion_oracle_gates(
         app_state,  # type: ignore[arg-type]
+        enabled=False,
         completion_oracle_runtime=None,
     )
 
     gate_service.set_build_test_gate.assert_called_once_with(None, records=None)
+    gate_service.set_completion_oracle_gate.assert_called_once_with(
+        None, shadow_mode=False, min_stakes=Stakes.LOW
+    )
+
+
+def test_attach_enabled_without_provider_keeps_build_test_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The deterministic build/test gate needs no provider: an enabled oracle
+    # with no peer runtime (provider-less / degraded boot) must still attach
+    # build/test and only clear the peer-review gate, so a required code task
+    # cannot bypass verification.
+    records = object()
+    monkeypatch.setattr(
+        _completion_oracle_runtime,
+        "code_execution_records_of",
+        lambda _app_state: records,
+    )
+    gate_service = mock_of[ReviewGateService]()
+    app_state = _FakeAppState(review_gate=gate_service)
+
+    attach_completion_oracle_gates(
+        app_state,  # type: ignore[arg-type]
+        enabled=True,
+        completion_oracle_runtime=None,
+    )
+
+    args, kwargs = gate_service.set_build_test_gate.call_args
+    assert isinstance(args[0], BuildTestOracle)
+    assert kwargs["records"] is records
     gate_service.set_completion_oracle_gate.assert_called_once_with(
         None, shadow_mode=False, min_stakes=Stakes.LOW
     )
@@ -92,17 +125,19 @@ def test_attach_wires_both_gates_when_runtime_present(
         "code_execution_records_of",
         lambda _app_state: records,
     )
-    gate_service = create_autospec(ReviewGateService, instance=True)
+    gate_service = mock_of[ReviewGateService]()
     app_state = _FakeAppState(review_gate=gate_service)
     runtime = _runtime(shadow_mode=True, min_stakes=Stakes.HIGH)
 
     attach_completion_oracle_gates(
         app_state,  # type: ignore[arg-type]
+        enabled=True,
         completion_oracle_runtime=runtime,
     )
 
     # The build/test gate is a fresh BuildTestOracle bound to the live records.
-    _, kwargs = gate_service.set_build_test_gate.call_args
+    args, kwargs = gate_service.set_build_test_gate.call_args
+    assert isinstance(args[0], BuildTestOracle)
     assert kwargs["records"] is records
     gate_service.set_completion_oracle_gate.assert_called_once_with(
         runtime.gate, shadow_mode=True, min_stakes=Stakes.HIGH

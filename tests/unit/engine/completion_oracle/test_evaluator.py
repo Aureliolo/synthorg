@@ -1,6 +1,6 @@
 """Unit tests for the Layer 1 build/test oracle (classifier + evaluator)."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 import pytest
 
@@ -18,8 +18,11 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionPurpose,
     CodeExecutionRecord,
 )
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
+
+_CLOCK = FakeClock()
 
 
 def _task(
@@ -49,7 +52,7 @@ def _record(*, passed: bool, task_id: str) -> CodeExecutionRecord:
         returncode=0 if passed else 1,
         passed=passed,
         timed_out=False,
-        executed_at=datetime.now(UTC),
+        executed_at=_CLOCK.now(),
     )
 
 
@@ -96,14 +99,28 @@ class TestClassifier:
     def test_classification_by_declared_artifact(
         self, declared: ArtifactType, expected: GroundingRequirement
     ) -> None:
-        assert classify_grounding_requirement(_task(declared)) is expected
+        # A non-code task type isolates the declared-artifact signal: a CODE /
+        # TESTS artifact grounds even a design task, a doc artifact does not.
+        task = _task(declared, task_type=TaskType.DESIGN)
+        assert classify_grounding_requirement(task) is expected
 
-    def test_no_declared_artifact_is_not_applicable(self) -> None:
-        # A task that declares no CODE / TESTS artifact anchors on the same
-        # ``artifacts_expected`` signal the gate acts on, so the gate verdict
-        # and read-layer re-source agree it is NOT_APPLICABLE.
+    def test_development_type_without_artifacts_fails_closed(self) -> None:
+        # A DEVELOPMENT task is a code task on its type alone; it must be
+        # REQUIRED even with no declared CODE / TESTS artifact, so an agent
+        # cannot dodge the build/test oracle by omitting the declaration.
         assert (
-            classify_grounding_requirement(_task())
+            classify_grounding_requirement(_task(task_type=TaskType.DEVELOPMENT))
+            is GroundingRequirement.REQUIRED
+        )
+
+    @pytest.mark.parametrize("task_type", [TaskType.DESIGN, TaskType.RESEARCH])
+    def test_non_code_type_without_artifacts_is_not_applicable(
+        self, task_type: TaskType
+    ) -> None:
+        # A non-code task type declaring no code artifact stays NOT_APPLICABLE,
+        # so the oracle never blocks a doc / research task.
+        assert (
+            classify_grounding_requirement(_task(task_type=task_type))
             is GroundingRequirement.NOT_APPLICABLE
         )
 
@@ -153,7 +170,8 @@ class TestBuildTestOracle:
 
     async def test_docs_task_passes_through(self) -> None:
         result = await BuildTestOracle().evaluate(
-            _task(ArtifactType.DOCUMENTATION), records=_FakeRecords()
+            _task(ArtifactType.DOCUMENTATION, task_type=TaskType.DESIGN),
+            records=_FakeRecords(),
         )
         assert result.verdict is OracleVerdict.NOT_APPLICABLE
         assert not result.blocks_completion
@@ -167,7 +185,8 @@ class TestBuildTestOracle:
 
     async def test_docs_query_fault_passes_through(self) -> None:
         result = await BuildTestOracle().evaluate(
-            _task(ArtifactType.DOCUMENTATION), records=_FakeRecords(raises=True)
+            _task(ArtifactType.DOCUMENTATION, task_type=TaskType.DESIGN),
+            records=_FakeRecords(raises=True),
         )
         assert result.verdict is OracleVerdict.NOT_APPLICABLE
         assert not result.blocks_completion

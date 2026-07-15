@@ -134,10 +134,11 @@ Key design decisions:
   hot-reloadable) controls who acts on a task reaching `IN_REVIEW`. On, the staged
   pipeline runs automatically and applies its verdict so a verified task
   self-completes without a human; off, a human opens the review and decides. It is
-  on by default because the completion oracle can only fire in the autonomous flow
-  when the pipeline auto-runs (the task otherwise parks in `IN_REVIEW`
-  awaiting a human). The oracle gate (see below) enforces on both the auto-review
-  and human-approve paths.
+  on by default so the review pipeline (the completion oracle included) runs
+  automatically rather than parking every task in `IN_REVIEW` for a human. The
+  setting only decides whether the pipeline runs *automatically*: the oracle gate
+  (see below) enforces on both paths, since a human approval still invokes the same
+  gate through `complete_review`.
 
 Beyond the review pipeline, the lifecycle exposes additional human gates that all
 route through the same `signal_resume_intent` approvals-resume path, each off by

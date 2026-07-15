@@ -1,5 +1,7 @@
 """Unit tests for the Layer 2 peer-review gate (fail-CLOSED orchestration)."""
 
+from datetime import datetime
+
 import pytest
 
 from synthorg.core.persistence_errors import QueryError
@@ -11,7 +13,12 @@ from synthorg.engine.completion_oracle.report_repo import (
 from synthorg.engine.completion_oracle.review_input import CompletionOracleReviewInput
 from synthorg.engine.completion_oracle.review_models import (
     CompletionOracleReport,
+    CompletionOracleReportRecord,
     CompletionOracleVerdict,
+)
+from synthorg.persistence.completion_oracle_report_protocol import (
+    CompletionOracleReportArchiveRepository,
+    CompletionOracleReportFilterSpec,
 )
 from tests._shared import FakeClock
 
@@ -69,22 +76,30 @@ class _ScriptedRunner:
 
 
 class _RaisingArchive:
-    """Durable archive that always fails its append (fail-open probe)."""
+    """Durable archive that always fails its append (fail-open probe).
+
+    Implements :class:`CompletionOracleReportArchiveRepository` so the gate
+    helper types it to the protocol rather than ``object`` + a type-ignore.
+    """
 
     def __init__(self) -> None:
         self.calls = 0
 
-    async def append(self, record: object, /) -> None:
+    async def append(self, record: CompletionOracleReportRecord, /) -> None:
         self.calls += 1
         msg = "archive backend down"
         raise QueryError(msg)
 
     async def query(
-        self, filter_spec: object, *, limit: int = 100, offset: int = 0
-    ) -> tuple[object, ...]:
+        self,
+        filter_spec: CompletionOracleReportFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[CompletionOracleReportRecord, ...]:
         return ()
 
-    async def purge_before(self, threshold: object, /) -> int:
+    async def purge_before(self, threshold: datetime, /) -> int:
         return 0
 
 
@@ -92,13 +107,13 @@ def _gate(
     runner: _ScriptedRunner,
     repo: InMemoryCompletionOracleReportRepository,
     *,
-    report_archive: object | None = None,
+    report_archive: CompletionOracleReportArchiveRepository | None = None,
 ) -> CompletionOracleGateService:
     return CompletionOracleGateService(
         agent_runner=runner,
         report_repo=repo,
         reviewer_agent_id=_REVIEWER,
-        report_archive=report_archive,  # type: ignore[arg-type]
+        report_archive=report_archive,
         clock=FakeClock(),
     )
 
@@ -132,6 +147,24 @@ class TestCompletionOracleGate:
             summary="stale report from another run",
         )
         runner = _ScriptedRunner(repo, report=stale)
+        result = await _gate(runner, repo).evaluate(_input())
+        assert result.verdict is CompletionOracleVerdict.ESCALATE
+
+    async def test_forged_reviewer_or_executor_id_escalates(self) -> None:
+        # A filed report whose reviewer / executor ids differ from the trusted
+        # context (its execution/task ids match) must be discarded: forged
+        # identities could otherwise satisfy the self-review guard while the
+        # real executor reviewed its own work.
+        repo = InMemoryCompletionOracleReportRepository()
+        forged = CompletionOracleReport(
+            execution_id="exec-1",
+            task_id="task-1",
+            reviewer_agent_id="impostor-reviewer",
+            executor_agent_id="impostor-executor",
+            verdict=CompletionOracleVerdict.APPROVE,
+            summary="forged identities",
+        )
+        runner = _ScriptedRunner(repo, report=forged)
         result = await _gate(runner, repo).evaluate(_input())
         assert result.verdict is CompletionOracleVerdict.ESCALATE
 

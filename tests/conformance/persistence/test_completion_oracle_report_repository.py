@@ -85,10 +85,18 @@ class TestCompletionOracleReportArchiveRepository:
         await backend.completion_oracle_reports.append(
             _record(execution_id="new", recorded_at=base),
         )
+        # Two records sharing a timestamp exercise the execution_id DESC
+        # tie-breaker required by the ORDER BY contract.
+        await backend.completion_oracle_reports.append(
+            _record(execution_id="tie-a", recorded_at=base + timedelta(hours=1)),
+        )
+        await backend.completion_oracle_reports.append(
+            _record(execution_id="tie-b", recorded_at=base + timedelta(hours=1)),
+        )
         page = await backend.completion_oracle_reports.query(
             CompletionOracleReportFilterSpec()
         )
-        assert [r.execution_id for r in page] == ["new", "old"]
+        assert [r.execution_id for r in page] == ["tie-b", "tie-a", "new", "old"]
 
     async def test_query_filters_by_task_and_verdict(
         self, backend: PersistenceBackend

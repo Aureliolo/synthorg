@@ -33,6 +33,9 @@ from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_REVIEW_COMPLETED,
 )
+from synthorg.observability.events.completion_oracle import (
+    COMPLETION_ORACLE_ESCALATION_ROUTED,
+)
 from synthorg.security.redteam.models import RedTeamVerdict
 from synthorg.security.redteam.protocol import RedTeamGate
 from tests._shared import as_uuid, mock_of
@@ -294,6 +297,74 @@ async def test_completion_oracle_shadow_mode_does_not_enforce() -> None:
 
     assert (target, approved) == (TaskStatus.COMPLETED, True)
     oracle_gate.evaluate.assert_awaited_once()
+
+
+async def test_completion_oracle_escalate_parks_for_human() -> None:
+    """A peer-review ESCALATE parks the task at BLOCKED for a human decision.
+
+    Distinct from a REJECT's agent rework (IN_PROGRESS): an ESCALATE is not
+    something the agent can fix by redoing the work, so it routes to the
+    human-decision transition instead.
+    """
+    oracle_gate = mock_of[CompletionOracleGate](
+        evaluate=AsyncMock(
+            return_value=_oracle_result(CompletionOracleVerdict.ESCALATE)
+        ),
+    )
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=_deliverable()),
+    )
+
+    target, _reason, event, approved = await run_completion_gates(
+        completion_oracle_gate=oracle_gate,
+        completion_oracle_min_stakes=Stakes.LOW,
+        red_team_gate=None,
+        vision_gate=None,
+        deliverable_input_builder=builder,
+        on_missing_deliverable="block",
+        task=_task(),
+        target=TaskStatus.COMPLETED,
+        transition_reason="approved",
+        event=APPROVAL_GATE_REVIEW_COMPLETED,
+        approved=True,
+        vision_input=None,
+        red_team_min_stakes=Stakes.HIGH,
+    )
+
+    assert (target, approved) == (TaskStatus.BLOCKED, False)
+    assert event == COMPLETION_ORACLE_ESCALATION_ROUTED
+    oracle_gate.evaluate.assert_awaited_once()
+
+
+async def test_completion_oracle_no_deliverable_fails_closed() -> None:
+    """A wired builder yielding no deliverable blocks completion (fail-closed).
+
+    The peer-review gate would otherwise receive a ``None`` input and silently
+    preserve approval, so the task reroutes to IN_PROGRESS before the gate runs.
+    """
+    oracle_gate = mock_of[CompletionOracleGate](evaluate=AsyncMock())
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=None),
+    )
+
+    target, _reason, _event, approved = await run_completion_gates(
+        completion_oracle_gate=oracle_gate,
+        completion_oracle_min_stakes=Stakes.LOW,
+        red_team_gate=None,
+        vision_gate=None,
+        deliverable_input_builder=builder,
+        on_missing_deliverable="block",
+        task=_task(),
+        target=TaskStatus.COMPLETED,
+        transition_reason="approved",
+        event=APPROVAL_GATE_REVIEW_COMPLETED,
+        approved=True,
+        vision_input=None,
+        red_team_min_stakes=Stakes.HIGH,
+    )
+
+    assert (target, approved) == (TaskStatus.IN_PROGRESS, False)
+    oracle_gate.evaluate.assert_not_awaited()
 
 
 async def test_completion_oracle_below_min_stakes_skips() -> None:

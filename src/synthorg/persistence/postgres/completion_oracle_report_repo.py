@@ -210,7 +210,7 @@ class PostgresCompletionOracleReportArchiveRepository:
                 report=report,
                 recorded_at=normalize_utc(row["recorded_at"]),
             )
-        except (ValidationError, ValueError, KeyError) as exc:
+        except (ValidationError, ValueError, KeyError, IndexError, TypeError) as exc:
             msg = (
                 "Failed to deserialize completion-oracle report for execution "
                 f"{row.get('execution_id')!r}"

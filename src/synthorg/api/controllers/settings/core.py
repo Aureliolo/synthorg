@@ -64,8 +64,8 @@ class UpdateSettingRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     value: str = Field(max_length=65536, description="New value as string")
-    confirm: bool = Field(
-        default=False, description="Confirm a security-weakening transition"
+    confirm: bool | None = Field(
+        default=None, description="Confirm a security-weakening transition"
     )
     reason: str | None = Field(
         default=None, description="Rationale for a confirmed weakening write"
@@ -352,7 +352,7 @@ class SettingsCoreController(Controller):
         # write ignores this object.
         actor = require_authenticated_user(request)
         governance = SettingsWriteGovernance(
-            confirm=data.confirm,
+            confirm=bool(data.confirm),
             reason=data.reason or "",
             actor=str(actor.user_id),
         )

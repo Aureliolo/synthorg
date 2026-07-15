@@ -245,6 +245,27 @@ class CompletionOracleGateService:
                 reviewer_agent_id=self._reviewer_agent_id,
                 summary=_ESCALATE_DISPATCH_SUMMARY,
             )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- the runner is only contracted to wrap
+            # failures as CompletionOracleDispatchError, but an unwrapped
+            # exception must not wedge or silently pass completion: it fails
+            # CLOSED to a synthetic ESCALATE so the task parks for a human.
+            reraise_critical(exc)
+            logger.warning(
+                COMPLETION_ORACLE_AGENT_FAILED,
+                execution_id=review_input.execution_id,
+                task_id=review_input.task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                fail_closed=True,
+            )
+            return self._escalate_report(
+                review_input,
+                reviewer_agent_id=self._reviewer_agent_id,
+                summary=_ESCALATE_DISPATCH_SUMMARY,
+            )
 
         try:
             report = await self._report_repo.get(
@@ -274,7 +295,13 @@ class CompletionOracleGateService:
         if (
             report.execution_id != review_input.execution_id
             or report.task_id != review_input.task_id
+            or report.reviewer_agent_id != self._reviewer_agent_id
+            or report.executor_agent_id != review_input.executor_agent_id
         ):
+            # All four pinned identities must match the trusted context. Without
+            # the reviewer / executor checks a filed report could carry forged
+            # identities that satisfy _forbid_self_review() while the real
+            # executor reviewed its own work, defeating independent review.
             logger.warning(
                 COMPLETION_ORACLE_VERDICT_MISMATCH,
                 stored_execution_id=report.execution_id,

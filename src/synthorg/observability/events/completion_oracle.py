@@ -104,6 +104,12 @@ COMPLETION_ORACLE_SHADOW_OBSERVED: Final[str] = (
 COMPLETION_ORACLE_REWORK_ROUTED: Final[str] = "completion_oracle.review.rework_routed"
 """Review gate consumed a REJECT verdict and routed the task to IN_PROGRESS."""
 
+COMPLETION_ORACLE_ESCALATION_ROUTED: Final[str] = (
+    "completion_oracle.review.escalation_routed"
+)
+"""Review gate consumed an ESCALATE verdict and parked the task at BLOCKED for a
+human decision, distinct from a REJECT's agent-rework routing."""
+
 COMPLETION_ORACLE_NO_DISTINCT_REVIEWER: Final[str] = (
     "completion_oracle.review.no_distinct_reviewer"
 )

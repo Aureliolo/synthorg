@@ -164,37 +164,50 @@ async def _resolve_reviewer_tier(app_state: AppState) -> ModelTier:
 def attach_completion_oracle_gates(
     app_state: AppState,
     *,
+    enabled: bool,
     completion_oracle_runtime: CompletionOracleRuntime | None,
 ) -> None:
     """Attach (or clear) the build/test and peer-review gates on the review gate.
 
     The single seam both the startup wiring and the hot-reload path call, so a
-    settings edit that rebuilds ``completion_oracle_runtime`` re-attaches the
-    gates to the persistent review-gate service on the next task (no restart).
-    A ``None`` runtime detaches both gates so a disabled oracle stops firing a
-    stale gate. A no-op when no review gate is wired (persistence-less boot).
+    settings edit re-attaches the gates to the persistent review-gate service on
+    the next task (no restart). The two gates are wired *independently*: the
+    deterministic build/test gate needs no provider, so it attaches whenever the
+    oracle is ``enabled`` regardless of whether the provider-backed peer runtime
+    could be built; the peer-review gate attaches only when its
+    ``completion_oracle_runtime`` is present. A provider-less / degraded boot
+    therefore still fails closed on unverified code tasks. A no-op when no
+    review gate is wired (persistence-less boot).
 
     Args:
         app_state: Application state holding the review gate + record store.
-        completion_oracle_runtime: The rebuilt oracle bundle, or ``None`` when
-            the oracle is disabled.
+        enabled: Whether the completion oracle is enabled (drives the
+            deterministic build/test gate, which needs no provider).
+        completion_oracle_runtime: The rebuilt peer-review bundle, or ``None``
+            when the oracle is disabled or no provider is configured.
     """
     review_gate_service = app_state.slice(ApprovalStateSlice).review_gate
     if review_gate_service is None:
         return
-    if completion_oracle_runtime is None:
+    if enabled:
+        review_gate_service.set_build_test_gate(
+            BuildTestOracle(),
+            records=code_execution_records_of(app_state),
+        )
+    else:
         review_gate_service.set_build_test_gate(None, records=None)
+    if completion_oracle_runtime is None:
         review_gate_service.set_completion_oracle_gate(
             None, shadow_mode=False, min_stakes=Stakes.LOW
         )
-        # Observability for a hot-reload toggle: a later disable would otherwise
-        # leave no trace beyond the initial boot state.
-        logger.info(COMPLETION_ORACLE_GATES_WIRED, attached=False)
+        # Observability for a hot-reload toggle: a later disable / provider loss
+        # would otherwise leave no trace beyond the initial boot state.
+        logger.info(
+            COMPLETION_ORACLE_GATES_WIRED,
+            build_test_attached=enabled,
+            peer_review_attached=False,
+        )
         return
-    review_gate_service.set_build_test_gate(
-        BuildTestOracle(),
-        records=code_execution_records_of(app_state),
-    )
     review_gate_service.set_completion_oracle_gate(
         completion_oracle_runtime.gate,
         shadow_mode=completion_oracle_runtime.shadow_mode,
@@ -202,7 +215,8 @@ def attach_completion_oracle_gates(
     )
     logger.info(
         COMPLETION_ORACLE_GATES_WIRED,
-        attached=True,
+        build_test_attached=enabled,
+        peer_review_attached=True,
         shadow_mode=completion_oracle_runtime.shadow_mode,
         min_stakes=completion_oracle_runtime.min_stakes.value,
     )

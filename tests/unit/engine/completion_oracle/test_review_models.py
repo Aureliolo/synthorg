@@ -5,8 +5,6 @@ reviewer distinct from the executor at every layer that carries the ids: the
 report, the gate result, the archive record, and the trusted runtime context.
 """
 
-from datetime import UTC, datetime
-
 import pytest
 from pydantic import ValidationError
 
@@ -22,8 +20,11 @@ from synthorg.engine.completion_oracle.runtime_context import (
     CompletionOracleRuntimeContext,
 )
 from synthorg.security.redteam.models import RedTeamSeverity
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
+
+_CLOCK = FakeClock()
 
 
 def _report(
@@ -106,15 +107,31 @@ class TestGateResultInvariants:
 
 
 class TestRecordInvariants:
-    def test_record_keys_must_match_report(self) -> None:
+    @pytest.mark.parametrize(
+        ("execution_id", "task_id", "verdict"),
+        [
+            # Verdict differs from the embedded report.
+            ("exec-1", "task-1", CompletionOracleVerdict.APPROVE),
+            # execution_id differs while the verdict matches the report.
+            ("exec-2", "task-1", CompletionOracleVerdict.REJECT),
+            # task_id differs while the verdict matches the report.
+            ("exec-1", "task-2", CompletionOracleVerdict.REJECT),
+        ],
+    )
+    def test_record_keys_must_match_report(
+        self,
+        execution_id: str,
+        task_id: str,
+        verdict: CompletionOracleVerdict,
+    ) -> None:
         report = _report(verdict=CompletionOracleVerdict.REJECT)
         with pytest.raises(ValidationError, match="does not match report"):
             CompletionOracleReportRecord(
-                execution_id="exec-1",
-                task_id="task-1",
-                verdict=CompletionOracleVerdict.APPROVE,
+                execution_id=execution_id,
+                task_id=task_id,
+                verdict=verdict,
                 report=report,
-                recorded_at=datetime.now(UTC),
+                recorded_at=_CLOCK.now(),
             )
 
 

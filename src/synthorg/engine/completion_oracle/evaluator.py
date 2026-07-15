@@ -30,7 +30,6 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.completion_oracle import (
     BUILD_TEST_CHECKER_FAULT,
     BUILD_TEST_CHECKER_UNAVAILABLE,
-    BUILD_TEST_GATE_BLOCKED,
     BUILD_TEST_GATE_EVALUATED,
 )
 from synthorg.persistence.code_execution_protocol import (
@@ -102,23 +101,21 @@ class BuildTestOracle:
             return self._checker_fault_result(requirement)
 
         evaluation = self._verdict_from_records(requirement, page)
-        if evaluation.blocks_completion:
-            logger.warning(
-                BUILD_TEST_GATE_BLOCKED,
-                task_id=str(task.id),
-                verdict=evaluation.verdict.value,
-                requirement=requirement.value,
-                tests_seen=evaluation.tests_seen,
-                tests_failed=evaluation.tests_failed,
-            )
-        else:
-            logger.info(
-                BUILD_TEST_GATE_EVALUATED,
-                task_id=str(task.id),
-                verdict=evaluation.verdict.value,
-                requirement=requirement.value,
-                tests_seen=evaluation.tests_seen,
-            )
+        # Neutral evaluation event carrying a ``blocked`` field. The enforcing
+        # BUILD_TEST_GATE_BLOCKED event is emitted only by the adapter
+        # (apply_build_test_gate) when it actually reroutes the task, so a
+        # read-surface evaluation (the live feed / approvals re-source) never
+        # emits a block that produced no transition, and an enforced block is
+        # not counted twice.
+        logger.info(
+            BUILD_TEST_GATE_EVALUATED,
+            task_id=str(task.id),
+            verdict=evaluation.verdict.value,
+            requirement=requirement.value,
+            tests_seen=evaluation.tests_seen,
+            tests_failed=evaluation.tests_failed,
+            blocked=evaluation.blocks_completion,
+        )
         return evaluation
 
     async def _query_records(
@@ -224,9 +221,11 @@ class BuildTestOracle:
             return OracleEvaluation(
                 verdict=OracleVerdict.BUILD_TEST_FAILED,
                 requirement=requirement,
+                # The reason is logged and surfaced as the task transition
+                # reason, so it must carry only safe status metadata: a command
+                # line can embed credentials or other secret arguments (SEC-1).
                 reason=(
-                    f"Latest test run failed (command {latest.command!r}, "
-                    f"exit {latest.returncode}"
+                    f"Latest test run failed (exit {latest.returncode}"
                     f"{', timed out' if latest.timed_out else ''})."
                 ),
                 tests_seen=tests_seen,
@@ -240,10 +239,7 @@ class BuildTestOracle:
         return OracleEvaluation(
             verdict=verdict,
             requirement=requirement,
-            reason=(
-                f"Latest test run passed (command {latest.command!r}); "
-                f"{tests_seen} test run(s) inspected."
-            ),
+            reason=(f"Latest test run passed; {tests_seen} test run(s) inspected."),
             tests_seen=tests_seen,
             tests_failed=tests_failed,
         )

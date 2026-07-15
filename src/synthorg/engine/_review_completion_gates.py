@@ -133,6 +133,31 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         else None
     )
 
+    # Fail CLOSED for the peer-review gate: when the oracle is active and the
+    # builder is wired but produced no deliverable, the gate would otherwise
+    # receive a None input and silently preserve approval, letting the task
+    # reach COMPLETED without the independent review the oracle promises.
+    if (
+        oracle_active
+        and deliverable_input_builder is not None
+        and (deliverable_input is None)
+    ):
+        logger.warning(
+            COMPLETION_ORACLE_GATE_SKIPPED,
+            task_id=str(task.id),
+            reason="no_deliverable_block",
+            note=(
+                "Completion oracle is active but no reviewable deliverable was "
+                "retrievable; blocking completion (fail-closed)."
+            ),
+        )
+        return (
+            TaskStatus.IN_PROGRESS,
+            "Completion review could not retrieve a deliverable to inspect.",
+            APPROVAL_GATE_REVIEW_REWORK,
+            False,
+        )
+
     if completion_oracle_gate is not None:
         if compare_stakes(task.stakes, completion_oracle_min_stakes) < 0:
             logger.info(

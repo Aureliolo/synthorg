@@ -95,6 +95,7 @@ def _publish_red_team_runtime(
 def _publish_completion_oracle_runtime(
     app_state: AppState,
     *,
+    enabled: bool,
     completion_oracle_runtime: CompletionOracleRuntime | None,
     review_gate_service: ReviewGateService | None,
 ) -> None:
@@ -102,14 +103,17 @@ def _publish_completion_oracle_runtime(
 
     Delegates to the shared ``attach_completion_oracle_gates`` seam (also called
     by the hot-reload path) so boot and reload cannot diverge on how the gates
-    attach. A reinit that turns the oracle off (``completion_oracle_runtime`` is
-    ``None``) detaches both gates so the review pipeline does not keep firing a
-    stale one.
+    attach. The deterministic build/test gate attaches whenever the oracle is
+    ``enabled`` (it needs no provider); the peer-review gate attaches only when
+    ``completion_oracle_runtime`` is present, so a provider-less boot still fails
+    closed on unverified code tasks.
 
     Args:
         app_state: Application state, for the code-execution record store.
+        enabled: Whether the completion oracle is enabled (drives the
+            deterministic build/test gate).
         completion_oracle_runtime: The built peer-review bundle, or ``None``
-            when the oracle is disabled.
+            when the oracle is disabled or no provider is configured.
         review_gate_service: The review-gate service; a ``None`` here short-
             circuits (the shared seam re-resolves it from app state anyway).
     """
@@ -120,7 +124,9 @@ def _publish_completion_oracle_runtime(
     )
 
     attach_completion_oracle_gates(
-        app_state, completion_oracle_runtime=completion_oracle_runtime
+        app_state,
+        enabled=enabled,
+        completion_oracle_runtime=completion_oracle_runtime,
     )
 
 
@@ -365,6 +371,7 @@ async def install_runtime_services(
     # on the disabled-reinit path.
     _publish_completion_oracle_runtime(
         app_state,
+        enabled=services.completion_oracle_enabled,
         completion_oracle_runtime=services.completion_oracle_runtime,
         review_gate_service=review_gate_service,
     )

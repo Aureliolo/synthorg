@@ -70,7 +70,9 @@ class CompletionOracleReportArchiveRepository(
     """
 
     @override
-    async def append(  # pyright: ignore[reportIncompatibleMethodOverride] -- domain-specific param name
+    # ``record`` keeps the archive's domain vocabulary rather than the base
+    # protocol's generic parameter name; the override is otherwise compatible.
+    async def append(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, record: CompletionOracleReportRecord, /
     ) -> None:
         """Persist one record (append-only; a duplicate execution is a violation).

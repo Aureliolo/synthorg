@@ -20,6 +20,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import APPROVAL_GATE_REVIEW_REWORK
 from synthorg.observability.events.completion_oracle import (
     BUILD_TEST_GATE_BLOCKED,
+    COMPLETION_ORACLE_ESCALATION_ROUTED,
     COMPLETION_ORACLE_REWORK_ROUTED,
     COMPLETION_ORACLE_SHADOW_OBSERVED,
 )
@@ -108,13 +109,15 @@ async def apply_completion_oracle_gate(  # noqa: PLR0913 -- gate inputs, all req
     event: str,
     approved: bool,
 ) -> GateOutcome:
-    """Invoke the peer-review gate; rework on REJECT / ESCALATE.
+    """Invoke the peer-review gate; rework on REJECT, park on ESCALATE.
 
-    Never silently passes: a REJECT (criteria unmet / tests fail / stub) or an
-    ESCALATE (no confident verdict, or no distinct reviewer resolvable)
-    reroutes the task to IN_PROGRESS rework with the reviewer's summary as the
-    reason. APPROVE / APPROVE_WITH_NOTES leaves the target unchanged. In shadow
-    mode the verdict is computed and surfaced but never enforced.
+    Never silently passes. The two non-approving verdicts route to distinct
+    outcomes: a REJECT (criteria unmet / tests fail / stub) is agent-actionable,
+    so it reroutes to IN_PROGRESS rework; an ESCALATE (no confident verdict, no
+    distinct reviewer resolvable, or a reviewer fault) is *not* something the
+    agent can fix by reworking, so it parks the task at BLOCKED for a human
+    decision. APPROVE / APPROVE_WITH_NOTES leaves the target unchanged. In
+    shadow mode the verdict is computed and surfaced but never enforced.
 
     Returns:
         The (possibly rerouted) ``(target, reason, event, approved)``.
@@ -135,6 +138,20 @@ async def apply_completion_oracle_gate(  # noqa: PLR0913 -- gate inputs, all req
         CompletionOracleVerdict.APPROVE_WITH_NOTES,
     ):
         return target, transition_reason, event, approved
+    if result.verdict is CompletionOracleVerdict.ESCALATE:
+        logger.warning(
+            COMPLETION_ORACLE_ESCALATION_ROUTED,
+            task_id=task_id,
+            execution_id=review_input.execution_id,
+            verdict=result.verdict.value,
+            findings=len(result.report.findings),
+        )
+        return (
+            TaskStatus.BLOCKED,
+            f"Completion review escalated to a human decision: {result.report.summary}",
+            COMPLETION_ORACLE_ESCALATION_ROUTED,
+            False,
+        )
     logger.warning(
         COMPLETION_ORACLE_REWORK_ROUTED,
         task_id=task_id,

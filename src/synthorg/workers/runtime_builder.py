@@ -237,6 +237,7 @@ class RuntimeServices(NamedTuple):
     work_pipeline: WorkPipeline | None
     red_team_runtime: RedTeamRuntime | None = None
     completion_oracle_runtime: CompletionOracleRuntime | None = None
+    completion_oracle_enabled: bool = False
     vision_gate: VisionVerifierGate | None = None
 
 
@@ -561,6 +562,7 @@ async def build_runtime_services(
         work_pipeline=work_pipeline,
         red_team_runtime=red_team_runtime,
         completion_oracle_runtime=completion_oracle_runtime,
+        completion_oracle_enabled=completion_oracle_config.enabled,
         vision_gate=vision_gate,
     )
 
@@ -681,6 +683,7 @@ async def reload_runtime_services(app_state: AppState) -> None:
             # hot-reloadable (enable / shadow / min-stakes / reviewer tier).
             attach_completion_oracle_gates(
                 app_state,
+                enabled=services.completion_oracle_enabled,
                 completion_oracle_runtime=services.completion_oracle_runtime,
             )
         except Exception as exc:

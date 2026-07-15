@@ -154,6 +154,12 @@ class TaskActivityObserver:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            # Artifact listing failed, but a known oracle block is still a
+            # truthful FAILED outcome; matching the approvals surface (which
+            # can show FAILED from the oracle alone). Fall back to None
+            # (unclassifiable) only when the oracle also does not block.
+            if await self._resolve_oracle_block(task):
+                return RunOutcome.FAILED
             return None
         oracle_blocked = await self._resolve_oracle_block(task)
         return derive_run_outcome(
