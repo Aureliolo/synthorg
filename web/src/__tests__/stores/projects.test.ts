@@ -543,7 +543,7 @@ describe('useProjectsStore', () => {
       expect(state.selectedProject?.autonomy_mode).toBe('locked')
     })
 
-    it('drops the event when new_version is missing or malformed', () => {
+    it('drops the event when new_version is missing', () => {
       useProjectsStore.setState({
         projects: [makeProject('proj-001', { autonomy_mode: 'supervised' })],
         selectedProject: makeProject('proj-001', { autonomy_mode: 'supervised' }),
@@ -563,6 +563,56 @@ describe('useProjectsStore', () => {
       expect(state.projects[0]?.autonomy_mode).toBe('supervised')
       expect(state.projects[0]?.version).toBe(1)
       expect(state.selectedProject?.autonomy_mode).toBe('supervised')
+    })
+
+    it('drops the event when new_version is a non-integer value', () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001', { autonomy_mode: 'supervised' })],
+        selectedProject: makeProject('proj-001', { autonomy_mode: 'supervised' }),
+      })
+
+      // A malformed typed version (string here) fails sanitisation and drops
+      // the whole event rather than applying the mode with a bogus version.
+      useProjectsStore.getState().updateFromWsEvent({
+        event_type: 'project.autonomy_mode_changed',
+        channel: 'projects',
+        version: 1,
+        timestamp: '2026-07-15T00:00:00Z',
+        payload: { project_id: 'proj-001', new_mode: 'locked', new_version: '7' },
+      } as unknown as WsEvent)
+
+      const state = useProjectsStore.getState()
+      expect(state.projects[0]?.autonomy_mode).toBe('supervised')
+      expect(state.projects[0]?.version).toBe(1)
+      expect(state.selectedProject?.version).toBe(1)
+    })
+
+    it('ignores an event whose version is not newer than the local row', () => {
+      useProjectsStore.setState({
+        projects: [
+          makeProject('proj-001', { autonomy_mode: 'supervised', version: 5 }),
+        ],
+        selectedProject: makeProject('proj-001', {
+          autonomy_mode: 'supervised',
+          version: 5,
+        }),
+      })
+
+      // An out-of-order / duplicate delivery carrying an older version must
+      // not regress the newer local state.
+      useProjectsStore.getState().updateFromWsEvent({
+        event_type: 'project.autonomy_mode_changed',
+        channel: 'projects',
+        version: 1,
+        timestamp: '2026-07-15T00:00:00Z',
+        payload: { project_id: 'proj-001', new_mode: 'locked', new_version: 3 },
+      } satisfies WsEvent)
+
+      const state = useProjectsStore.getState()
+      expect(state.projects[0]?.autonomy_mode).toBe('supervised')
+      expect(state.projects[0]?.version).toBe(5)
+      expect(state.selectedProject?.autonomy_mode).toBe('supervised')
+      expect(state.selectedProject?.version).toBe(5)
     })
   })
 

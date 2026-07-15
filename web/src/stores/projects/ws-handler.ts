@@ -19,11 +19,13 @@ function applyAutonomyModeChanged(
   newMode: AutonomyLevel | null,
   newVersion: number,
 ): void {
-  const patch = <T extends { version: number }>(p: T): T => ({
-    ...p,
-    autonomy_mode: newMode,
-    version: newVersion,
-  })
+  // Monotonic version gate: apply only strictly newer events so a duplicate
+  // or out-of-order WS delivery cannot regress local state. Compared per row
+  // so the list and the open detail each honour their own version.
+  const patch = <T extends { version: number }>(p: T): T =>
+    newVersion > p.version
+      ? { ...p, autonomy_mode: newMode, version: newVersion }
+      : p
   set((state) => ({
     projects: state.projects.map((p) => (p.id === projectId ? patch(p) : p)),
     selectedProject:
