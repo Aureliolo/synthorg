@@ -247,7 +247,7 @@ curl -X PATCH http://localhost:3001/api/v1/departments/${DEPT_NAME} \
   -d '{"autonomy_level": "supervised"}'
 ```
 
-Clear with `{"autonomy_level": null}` to fall back to the company default.
+Clear with `{"autonomy_level": null}` to remove the department override. Resolution then falls to the company default, unless a more-specific per-initiative or per-agent override still applies.
 
 ### Set a project's autonomy mode
 

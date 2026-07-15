@@ -34,7 +34,6 @@ class ProjectAutonomyModeRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     mode: AutonomyLevel | None = Field(
-        default=None,
         description="Operator-set oversight mode (null inherits the default)",
     )
     confirm: bool = Field(
@@ -48,36 +47,58 @@ class ProjectAutonomyModeRequest(BaseModel):
     )
 
 
-def _is_optin_to_full(
-    previous: AutonomyLevel | None, new: AutonomyLevel | None
-) -> bool:
-    """Whether ``previous -> new`` is a transition INTO full (gate-off).
+class AutonomyModeTransition(BaseModel):
+    """An initiative autonomy-mode change, carrying override + effective modes.
 
-    Returns:
-        ``True`` when *new* is ``full`` and *previous* was not.
+    Attributes:
+        previous: The operator-set override before the change (``None`` means
+            "inherit the default").
+        new: The operator-set override after the change (``None`` means
+            "inherit").
+        effective_previous: What the initiative resolved to before the change,
+            with inheritance applied.
+        effective_new: What the initiative resolves to after the change, with
+            inheritance applied.
     """
-    return new is AutonomyLevel.FULL and previous is not AutonomyLevel.FULL
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    previous: AutonomyLevel | None
+    new: AutonomyLevel | None
+    effective_previous: AutonomyLevel
+    effective_new: AutonomyLevel
+
+    @property
+    def gate_disabled(self) -> bool:
+        """Whether the effective post-change mode leaves the gate off (full)."""
+        return self.effective_new is AutonomyLevel.FULL
+
+    @property
+    def newly_gate_off(self) -> bool:
+        """Whether the change NEWLY enters full (gate-off) from a gated tier."""
+        return self.gate_disabled and self.effective_previous is not AutonomyLevel.FULL
 
 
 def guard_full_autonomy_optin(
     *,
     role: HumanRole | None,
-    previous: AutonomyLevel | None,
-    new: AutonomyLevel | None,
+    transition: AutonomyModeTransition,
     confirm: bool,
 ) -> None:
     """Gate the security-weakening opt-in to full (gate-off) autonomy.
 
-    Setting an initiative to ``full`` disables the per-action SecOps gate
-    for its agents, so a transition INTO ``full`` is a deliberate,
-    CEO-only action: any other role, or a missing ``confirm``, is rejected.
-    Tightening or lateral transitions are unguarded.
+    The guard keys off the EFFECTIVE resolved modes, so clearing an override
+    that inherits ``full`` is guarded the same as setting ``full`` outright.
+    Reaching an effective ``full`` from a gated tier disables the per-action
+    SecOps gate for the initiative's agents, so it is a deliberate, CEO-only
+    action: any other role, or a missing ``confirm``, is rejected. Tightening
+    or lateral transitions are unguarded.
 
     Raises:
         ForbiddenError: A non-CEO role attempted the transition to full.
         ValidationError: The transition to full lacked ``confirm=true``.
     """
-    if not _is_optin_to_full(previous, new):
+    if not transition.newly_gate_off:
         return
     if role is not HumanRole.CEO:
         logger.warning(
@@ -98,24 +119,27 @@ def guard_full_autonomy_optin(
 def audit_autonomy_mode_change(
     *,
     project_id: str,
-    previous: AutonomyLevel | None,
-    new: AutonomyLevel | None,
+    transition: AutonomyModeTransition,
     requested_by: str,
 ) -> None:
     """Audit an initiative autonomy-mode transition after the write lands.
 
-    A transition INTO ``full`` (gate-off) is logged at WARNING so a
-    gate-disabling opt-in stands out in the audit stream from a routine
-    tightening; every other transition is INFO. Carries the actor and the
-    from/to modes so an incident review can attribute who set what.
+    ``gate_disabled`` is keyed off the EFFECTIVE result, so clearing an
+    override that inherits ``full`` is recorded as gate-off rather than
+    mislabelled from the ``None`` literal. A transition that NEWLY enters
+    gate-off is logged at WARNING so it stands out from a routine tightening;
+    every other transition is INFO. Carries the actor plus the override and
+    effective modes so an incident review can attribute who set what.
     """
-    to_full = _is_optin_to_full(previous, new)
-    emit = logger.warning if to_full else logger.info
+    previous = transition.previous
+    new = transition.new
+    emit = logger.warning if transition.newly_gate_off else logger.info
     emit(
         API_PROJECT_AUTONOMY_MODE_CHANGED,
         project_id=project_id,
         previous_mode=previous.value if previous is not None else None,
         new_mode=new.value if new is not None else None,
+        effective_mode=transition.effective_new.value,
         requested_by=requested_by,
-        gate_disabled=to_full,
+        gate_disabled=transition.gate_disabled,
     )

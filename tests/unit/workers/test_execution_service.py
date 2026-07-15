@@ -106,11 +106,23 @@ class TestProjectAutonomyModeResolution:
         )
         assert await service._resolve_project_autonomy_mode(NotBlankStr("p1")) is None
 
-    async def test_absent_project_returns_none(self) -> None:
+    async def test_absent_project_fails_closed_to_locked(self) -> None:
         service = self._service(
             project_repo=mock_of[ProjectRepository](get=AsyncMock(return_value=None))
         )
-        assert await service._resolve_project_autonomy_mode(NotBlankStr("p1")) is None
+        with capture_logs() as logs:
+            resolved = await service._resolve_project_autonomy_mode(NotBlankStr("p1"))
+        # A task naming a project_id whose row is absent is anomalous; fail
+        # CLOSED rather than silently inheriting a looser company default.
+        assert resolved == AutonomyLevel.LOCKED
+        degraded = [
+            log
+            for log in logs
+            if log["event"] == WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED
+        ]
+        assert len(degraded) == 1
+        assert degraded[0]["reason"] == "project_not_found"
+        assert degraded[0]["fail_closed_to"] == "locked"
 
     async def test_no_repo_wired_returns_none(self) -> None:
         service = self._service(project_repo=None)

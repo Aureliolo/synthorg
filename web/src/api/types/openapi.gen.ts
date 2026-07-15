@@ -14583,7 +14583,7 @@ export type components = {
              * @description Operator-set oversight mode (null inherits the default)
              * @enum {string|null}
              */
-            readonly mode?: "full" | "semi" | "supervised" | "locked" | null;
+            readonly mode: "full" | "semi" | "supervised" | "locked" | null;
         };
         /** ProjectCharter */
         readonly ProjectCharter: {

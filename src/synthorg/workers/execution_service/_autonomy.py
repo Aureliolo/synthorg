@@ -18,23 +18,25 @@ async def read_project_autonomy_mode(
 ) -> AutonomyLevel | None:
     """Read the initiative's operator-set autonomy mode.
 
-    Returns ``None`` only when there is genuinely no override to apply: no
-    project repo wired, no project associated, or the project exists with no
-    ``autonomy_mode`` set. A ``None`` there inherits the department/company
-    default.
+    Returns ``None`` only when there is genuinely no initiative to read from:
+    no project repo wired, no project associated with the task, or the
+    associated project exists with no ``autonomy_mode`` set. A ``None`` there
+    inherits the department/company default.
 
-    A lookup FAILURE is handled differently, and fails CLOSED: an operator
-    may have locked this initiative down precisely because the company
-    default is more permissive, so a lookup miss must never silently resolve
-    to a looser tier than the (now unreadable) override. It resolves to the
-    most restrictive tier (``LOCKED``) instead, so a persistence fault
-    over-gates (extra approvals) rather than under-gates (an unattended
-    permissive run). ``LOCKED`` is a project-tier value: a per-agent override
-    still takes precedence.
+    Both a lookup FAILURE and a referenced-but-absent project fail CLOSED to
+    ``LOCKED``: an operator may have locked this initiative down precisely
+    because the company default is more permissive, so neither an unreadable
+    override nor a vanished project row may silently resolve to a looser tier.
+    A task that names a ``project_id`` whose row cannot be found is anomalous
+    (deleted mid-flight, or a data inconsistency), so it over-gates (extra
+    approvals) rather than under-gates (an unattended permissive run).
+    ``LOCKED`` is a project-tier value: a per-agent override still takes
+    precedence.
 
     Returns:
         The project's ``autonomy_mode``; ``None`` when no override applies;
-        ``AutonomyLevel.LOCKED`` when the lookup failed.
+        ``AutonomyLevel.LOCKED`` when the lookup failed or the referenced
+        project is absent.
     """
     if project_repo is None or project_id is None:
         return None
@@ -53,4 +55,12 @@ async def read_project_autonomy_mode(
             error=safe_error_description(exc),
         )
         return AutonomyLevel.LOCKED
-    return project.autonomy_mode if project is not None else None
+    if project is None:
+        logger.warning(
+            WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED,
+            project_id=project_id,
+            reason="project_not_found",
+            fail_closed_to=AutonomyLevel.LOCKED.value,
+        )
+        return AutonomyLevel.LOCKED
+    return project.autonomy_mode

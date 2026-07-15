@@ -118,6 +118,25 @@ class TestProjectController:
         assert resp.status_code == 400
         assert resp.json()["success"] is False
 
+    async def test_set_autonomy_mode_requires_mode_field(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Empty Body"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+        # An empty body must not silently clear the override: ``mode`` carries
+        # no default, so inheritance has to be selected deliberately.
+        resp = await async_test_client.patch(
+            f"/api/v1/projects/{project_id}/autonomy-mode",
+            json={},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
+        assert resp.json()["success"] is False
+
     async def test_set_full_mode_ceo_confirmed_audits_gate_off(
         self, async_test_client: LoopAsyncClient
     ) -> None:
@@ -204,6 +223,11 @@ class TestProjectController:
         )
         assert resp.status_code == 409
         assert resp.json()["success"] is False
+        # The rejected version-guarded write must leave the row untouched, so
+        # an implementation that mutates before reporting the conflict fails.
+        get_resp = await async_test_client.get(f"/api/v1/projects/{project_id}")
+        assert get_resp.status_code == 200
+        assert get_resp.json()["data"]["autonomy_mode"] is None
 
     async def test_list_projects_after_create(
         self, async_test_client: LoopAsyncClient

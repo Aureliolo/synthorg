@@ -68,6 +68,33 @@ describe('ProjectOversightSection', () => {
     )
   })
 
+  it('keeps the confirmation open when the full opt-in fails', async () => {
+    setAutonomyMode.mockResolvedValue(null)
+    renderSection()
+    fireEvent.change(modeSelect(), { target: { value: 'full' } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Disable gate' }))
+    await waitFor(() =>
+      expect(setAutonomyMode).toHaveBeenCalledWith('proj-001', 'full', true),
+    )
+    // The store returned its null failure sentinel: the dialog stays open so
+    // the operator can retry from the same surface.
+    expect(screen.getByText('Turn off the security gate?')).toBeInTheDocument()
+  })
+
+  it('closes the confirmation after a successful full opt-in', async () => {
+    setAutonomyMode.mockResolvedValue(
+      makeProject('proj-001', { autonomy_mode: 'full' }),
+    )
+    renderSection()
+    fireEvent.change(modeSelect(), { target: { value: 'full' } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Disable gate' }))
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Turn off the security gate?'),
+      ).not.toBeInTheDocument(),
+    )
+  })
+
   it('disables the full option for a non-CEO role', () => {
     roleRef.current = 'manager'
     renderSection()

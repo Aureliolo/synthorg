@@ -10,6 +10,7 @@ from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.channels import CHANNEL_PROJECTS, publish_ws_event
 from synthorg.api.controllers._project_autonomy import (
+    AutonomyModeTransition,
     ProjectAutonomyModeRequest,
     audit_autonomy_mode_change,
     guard_full_autonomy_optin,
@@ -33,6 +34,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.project_service import ProjectService
 from synthorg.api.ws_models import WsEventType
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.domain_errors import (
     NotFoundError,
     ValidationError,
@@ -48,6 +50,7 @@ from synthorg.observability.events.api import (
     API_VALIDATION_FAILED,
 )
 from synthorg.persistence.state import persistence_of
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -219,10 +222,25 @@ class ProjectController(Controller):
             operation="update",
         )
         previous_mode = project.autonomy_mode
-        guard_full_autonomy_optin(
-            role=role_of(request),
+        # Clearing an override (mode=None) inherits the company default, which
+        # can itself be full (gate-off). Guard and audit the EFFECTIVE resolved
+        # mode so a clear-into-inherited-full can neither bypass the CEO opt-in
+        # nor be mislabelled as gate-on. Department overrides are not yet a
+        # resolution input, so the effective fallback is the company default.
+        company_default = await config_resolver_of(state.app_state).get_enum(
+            "company", "autonomy_level", AutonomyLevel
+        )
+        transition = AutonomyModeTransition(
             previous=previous_mode,
             new=data.mode,
+            effective_previous=(
+                previous_mode if previous_mode is not None else company_default
+            ),
+            effective_new=data.mode if data.mode is not None else company_default,
+        )
+        guard_full_autonomy_optin(
+            role=role_of(request),
+            transition=transition,
             confirm=data.confirm,
         )
         updated = project.model_copy(
@@ -240,8 +258,7 @@ class ProjectController(Controller):
             raise VersionConflictError(msg) from exc
         audit_autonomy_mode_change(
             project_id=project_id,
-            previous=previous_mode,
-            new=data.mode,
+            transition=transition,
             requested_by=extract_requester(state),
         )
         publish_ws_event(

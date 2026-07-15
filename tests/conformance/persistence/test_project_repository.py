@@ -58,8 +58,13 @@ class TestProjectRepository:
 
     @pytest.mark.parametrize(
         "mode",
-        [AutonomyLevel.LOCKED, AutonomyLevel.SUPERVISED, AutonomyLevel.FULL],
-        ids=["locked", "supervised", "full"],
+        [
+            AutonomyLevel.LOCKED,
+            AutonomyLevel.SUPERVISED,
+            AutonomyLevel.SEMI,
+            AutonomyLevel.FULL,
+        ],
+        ids=["locked", "supervised", "semi", "full"],
     )
     async def test_autonomy_mode_set_round_trips(
         self, backend: PersistenceBackend, mode: AutonomyLevel

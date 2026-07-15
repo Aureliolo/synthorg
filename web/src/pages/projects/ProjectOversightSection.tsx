@@ -77,9 +77,9 @@ export function ProjectOversightSection({ project }: ProjectOversightSectionProp
         description="Unrestricted mode disables the per-action security gate for this initiative's agents: they auto-approve every action, including destructive ones. Only defensible for a throwaway, zero-blast-radius sandbox."
         variant="destructive"
         confirmLabel="Disable gate"
-        onConfirm={() => {
-          void setAutonomyMode(project.id, 'full', true)
-        }}
+        onConfirm={async () =>
+          (await setAutonomyMode(project.id, 'full', true)) !== null
+        }
       />
     </SectionCard>
   )

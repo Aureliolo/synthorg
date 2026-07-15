@@ -24,6 +24,29 @@ function applyAutonomyModeChanged(
   }))
 }
 
+function handleAutonomyModeChanged(
+  set: ProjectsSet,
+  payload: { project_id?: unknown; new_mode?: unknown },
+): void {
+  const projectId = sanitizeWsString(payload.project_id) ?? null
+  if (!projectId) return
+  // A raw ``null`` is a legitimate override clear and applies immediately.
+  // A non-null value that fails enum sanitisation is malformed: drop the
+  // event (the periodic refetch reconciles) rather than wrongly clearing
+  // the displayed override.
+  if (payload.new_mode === null) {
+    applyAutonomyModeChanged(set, projectId, null)
+    return
+  }
+  const newMode = sanitizeWsEnumOrNull<AutonomyLevel>(
+    payload.new_mode,
+    AUTONOMY_LEVEL_VALUES,
+    { field: 'new_mode' },
+  )
+  if (newMode === null) return
+  applyAutonomyModeChanged(set, projectId, newMode)
+}
+
 function applyProjectDeleted(
   set: ProjectsSet,
   deletedId: string,
@@ -62,17 +85,7 @@ function updateFromWsEventImpl(
     return
   }
   if (event.event_type === 'project.autonomy_mode_changed') {
-    const payload = event.payload as { project_id?: unknown; new_mode?: unknown }
-    const projectId = sanitizeWsString(payload.project_id) ?? null
-    if (!projectId) return
-    // ``null`` covers both a cleared override and an unknown value; the
-    // periodic refetch reconciles the rare invalid-payload case.
-    const newMode = sanitizeWsEnumOrNull<AutonomyLevel>(
-      payload.new_mode,
-      AUTONOMY_LEVEL_VALUES,
-      { field: 'new_mode' },
-    )
-    applyAutonomyModeChanged(set, projectId, newMode)
+    handleAutonomyModeChanged(set, event.payload)
     return
   }
   get().fetchProjects().catch((err: unknown) => {
