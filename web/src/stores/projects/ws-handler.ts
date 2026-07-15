@@ -8,8 +8,7 @@ import type { ProjectsGet, ProjectsSet } from './types'
 
 const log = createLogger('projects')
 
-// WS versions are untrusted: accept only a positive integer, else keep the
-// local version so a malformed payload never desyncs optimistic concurrency.
+// WS versions are untrusted: accept only a positive integer.
 function sanitizeWsVersion(raw: unknown): number | null {
   return typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 ? raw : null
 }
@@ -18,12 +17,12 @@ function applyAutonomyModeChanged(
   set: ProjectsSet,
   projectId: string,
   newMode: AutonomyLevel | null,
-  newVersion: number | null,
+  newVersion: number,
 ): void {
   const patch = <T extends { version: number }>(p: T): T => ({
     ...p,
     autonomy_mode: newMode,
-    ...(newVersion !== null ? { version: newVersion } : {}),
+    version: newVersion,
   })
   set((state) => ({
     projects: state.projects.map((p) => (p.id === projectId ? patch(p) : p)),
@@ -40,13 +39,15 @@ function handleAutonomyModeChanged(
 ): void {
   const projectId = sanitizeWsString(payload.project_id) ?? null
   if (!projectId) return
-  // Keep the local version in step with the server so a subsequent
-  // version-guarded PATCH does not spuriously 409 after this live update.
+  // Apply the mode and version atomically: without a valid version, updating
+  // the mode alone would leave the local version stale and 409 the next
+  // guarded edit. A missing / malformed version drops the whole event (the
+  // periodic refetch reconciles); the backend always sends it.
   const newVersion = sanitizeWsVersion(payload.new_version)
+  if (newVersion === null) return
   // A raw ``null`` is a legitimate override clear and applies immediately.
   // A non-null value that fails enum sanitisation is malformed: drop the
-  // event (the periodic refetch reconciles) rather than wrongly clearing
-  // the displayed override.
+  // event rather than wrongly clearing the displayed override.
   if (payload.new_mode === null) {
     applyAutonomyModeChanged(set, projectId, null, newVersion)
     return

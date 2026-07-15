@@ -542,6 +542,28 @@ describe('useProjectsStore', () => {
       expect(state.projects[0]?.version).toBe(1)
       expect(state.selectedProject?.autonomy_mode).toBe('locked')
     })
+
+    it('drops the event when new_version is missing or malformed', () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001', { autonomy_mode: 'supervised' })],
+        selectedProject: makeProject('proj-001', { autonomy_mode: 'supervised' }),
+      })
+
+      // A valid mode but no usable version must not apply: updating the mode
+      // alone would leave the local version stale and 409 the next edit.
+      useProjectsStore.getState().updateFromWsEvent({
+        event_type: 'project.autonomy_mode_changed',
+        channel: 'projects',
+        version: 1,
+        timestamp: '2026-07-15T00:00:00Z',
+        payload: { project_id: 'proj-001', new_mode: 'locked' },
+      } as unknown as WsEvent)
+
+      const state = useProjectsStore.getState()
+      expect(state.projects[0]?.autonomy_mode).toBe('supervised')
+      expect(state.projects[0]?.version).toBe(1)
+      expect(state.selectedProject?.autonomy_mode).toBe('supervised')
+    })
   })
 
   describe('updateFromWsEvent PROJECT_DELETED', () => {
