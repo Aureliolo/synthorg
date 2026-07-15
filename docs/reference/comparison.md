@@ -11,7 +11,7 @@ description: >-
 
 How SynthOrg compares to agent orchestration frameworks, platforms, and research projects.
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 **Legend:**
 ✔ Full support | ~ Partial support | - Not supported | ⏲ Planned
