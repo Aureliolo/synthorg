@@ -101,7 +101,9 @@ class WsProjectAutonomyModeChangedPayload(BaseModel):
     other dashboards reflect an initiative's operator-set oversight mode
     live. ``previous_mode`` / ``new_mode`` are ``None`` when the override
     is (respectively, was) cleared to inherit the department/company
-    default.
+    default. ``new_version`` is the project's post-write optimistic-
+    concurrency revision, so a receiving client keeps its local version in
+    step and a subsequent version-guarded edit does not spuriously 409.
     """
 
     model_config = PAYLOAD_CONFIG
@@ -112,6 +114,7 @@ class WsProjectAutonomyModeChangedPayload(BaseModel):
     project_id: NotBlankStr
     new_mode: NotBlankStr | None = None
     previous_mode: NotBlankStr | None = None
+    new_version: int
 
 
 class WsProjectStatusChangedPayload(BaseModel):

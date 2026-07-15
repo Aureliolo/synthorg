@@ -8,34 +8,47 @@ import type { ProjectsGet, ProjectsSet } from './types'
 
 const log = createLogger('projects')
 
+// WS versions are untrusted: accept only a positive integer, else keep the
+// local version so a malformed payload never desyncs optimistic concurrency.
+function sanitizeWsVersion(raw: unknown): number | null {
+  return typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 ? raw : null
+}
+
 function applyAutonomyModeChanged(
   set: ProjectsSet,
   projectId: string,
   newMode: AutonomyLevel | null,
+  newVersion: number | null,
 ): void {
+  const patch = <T extends { version: number }>(p: T): T => ({
+    ...p,
+    autonomy_mode: newMode,
+    ...(newVersion !== null ? { version: newVersion } : {}),
+  })
   set((state) => ({
-    projects: state.projects.map((p) =>
-      p.id === projectId ? { ...p, autonomy_mode: newMode } : p,
-    ),
+    projects: state.projects.map((p) => (p.id === projectId ? patch(p) : p)),
     selectedProject:
       state.selectedProject?.id === projectId
-        ? { ...state.selectedProject, autonomy_mode: newMode }
+        ? patch(state.selectedProject)
         : state.selectedProject,
   }))
 }
 
 function handleAutonomyModeChanged(
   set: ProjectsSet,
-  payload: { project_id?: unknown; new_mode?: unknown },
+  payload: { project_id?: unknown; new_mode?: unknown; new_version?: unknown },
 ): void {
   const projectId = sanitizeWsString(payload.project_id) ?? null
   if (!projectId) return
+  // Keep the local version in step with the server so a subsequent
+  // version-guarded PATCH does not spuriously 409 after this live update.
+  const newVersion = sanitizeWsVersion(payload.new_version)
   // A raw ``null`` is a legitimate override clear and applies immediately.
   // A non-null value that fails enum sanitisation is malformed: drop the
   // event (the periodic refetch reconciles) rather than wrongly clearing
   // the displayed override.
   if (payload.new_mode === null) {
-    applyAutonomyModeChanged(set, projectId, null)
+    applyAutonomyModeChanged(set, projectId, null, newVersion)
     return
   }
   const newMode = sanitizeWsEnumOrNull<AutonomyLevel>(
@@ -44,7 +57,7 @@ function handleAutonomyModeChanged(
     { field: 'new_mode' },
   )
   if (newMode === null) return
-  applyAutonomyModeChanged(set, projectId, newMode)
+  applyAutonomyModeChanged(set, projectId, newMode, newVersion)
 }
 
 function applyProjectDeleted(

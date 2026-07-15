@@ -271,6 +271,7 @@ class ProjectController(Controller):
                 "previous_mode": (
                     previous_mode.value if previous_mode is not None else None
                 ),
+                "new_version": updated.version,
             },
         )
         return Response(

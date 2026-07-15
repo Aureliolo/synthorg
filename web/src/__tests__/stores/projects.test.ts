@@ -486,13 +486,17 @@ describe('useProjectsStore', () => {
         channel: 'projects',
         version: 1,
         timestamp: '2026-07-15T00:00:00Z',
-        payload: { project_id: 'proj-001', new_mode: 'locked' },
+        payload: { project_id: 'proj-001', new_mode: 'locked', new_version: 4 },
       } satisfies WsEvent)
 
       const state = useProjectsStore.getState()
-      expect(state.projects.find((p) => p.id === 'proj-001')?.autonomy_mode).toBe('locked')
+      const updated = state.projects.find((p) => p.id === 'proj-001')
+      expect(updated?.autonomy_mode).toBe('locked')
+      // The server version rides along so a later guarded edit does not 409.
+      expect(updated?.version).toBe(4)
       expect(state.projects.find((p) => p.id === 'proj-002')?.autonomy_mode).toBeNull()
       expect(state.selectedProject?.autonomy_mode).toBe('locked')
+      expect(state.selectedProject?.version).toBe(4)
     })
 
     it('applies a raw null as a legitimate override clear', () => {
@@ -506,12 +510,14 @@ describe('useProjectsStore', () => {
         channel: 'projects',
         version: 1,
         timestamp: '2026-07-15T00:00:00Z',
-        payload: { project_id: 'proj-001', new_mode: null },
+        payload: { project_id: 'proj-001', new_mode: null, new_version: 5 },
       } satisfies WsEvent)
 
       const state = useProjectsStore.getState()
       expect(state.projects[0]?.autonomy_mode).toBeNull()
+      expect(state.projects[0]?.version).toBe(5)
       expect(state.selectedProject?.autonomy_mode).toBeNull()
+      expect(state.selectedProject?.version).toBe(5)
     })
 
     it('drops a malformed non-null mode instead of clearing the override', () => {
@@ -527,11 +533,13 @@ describe('useProjectsStore', () => {
         channel: 'projects',
         version: 1,
         timestamp: '2026-07-15T00:00:00Z',
-        payload: { project_id: 'proj-001', new_mode: 'omniscient' },
+        payload: { project_id: 'proj-001', new_mode: 'omniscient', new_version: 9 },
       } as unknown as WsEvent)
 
       const state = useProjectsStore.getState()
+      // The whole event is dropped: neither mode nor version is applied.
       expect(state.projects[0]?.autonomy_mode).toBe('locked')
+      expect(state.projects[0]?.version).toBe(1)
       expect(state.selectedProject?.autonomy_mode).toBe('locked')
     })
   })

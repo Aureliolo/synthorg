@@ -37,6 +37,7 @@ export interface WsProjectAutonomyModeChangedPayload {
   project_id: string
   new_mode?: AutonomyLevel | null
   previous_mode?: AutonomyLevel | null
+  new_version: number
 }
 
 export interface WsProjectStatusChangedPayload {
