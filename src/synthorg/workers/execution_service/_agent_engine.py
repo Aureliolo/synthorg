@@ -232,13 +232,35 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
             # transition and terminal frame partway through (the exact hang
             # this handler exists to prevent).
             reason = f"{_SPINE_FAILURE_REASON}: {safe_error_description(exc)}"
-            await asyncio.shield(self._finalise_failed_spine(task, reason))
+            await self._finalise_failed_spine_guarded(task, reason)
+            raise
+
+    async def _finalise_failed_spine_guarded(self, task: Task, reason: str) -> None:
+        """Finalise the FAILED spine, awaiting cleanup even under cancellation.
+
+        ``asyncio.shield`` alone keeps the cleanup coroutine running when a
+        shutdown-drain cancels this frame, but it does not wait for it: the
+        awaiter unwinds while the transition + terminal frame may still be
+        in flight. Retaining the task and awaiting it on cancellation (before
+        re-raising) guarantees a crashed spine never lands in a non-terminal
+        state.
+
+        Raises:
+            CancelledError: Re-raised after the cleanup completes when a
+                shutdown drain cancels this frame.
+        """
+        cleanup = asyncio.ensure_future(self._finalise_failed_spine(task, reason))
+        try:
+            await asyncio.shield(cleanup)
+        except asyncio.CancelledError:
+            if not cleanup.done():
+                await cleanup
             raise
 
     async def _finalise_failed_spine(self, task: Task, reason: str) -> None:
         """Persist the FAILED status and project the terminal error frame.
 
-        Run under :func:`asyncio.shield` by the caller so a shutdown-drain
+        Driven by :meth:`_finalise_failed_spine_guarded` so a shutdown-drain
         cancellation cannot tear down the transition + frame partway through.
         """
         await sync_to_task_engine(

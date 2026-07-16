@@ -261,10 +261,13 @@ CONVERSATIONAL_PROPOSE_SYSTEM = """\
 {responder_identity}
 
 A human is asking the organisation to do
-work, in natural language. Your job for THIS turn is exactly one of:
+work, in natural language. For THIS turn you EITHER ask ONE clarifying
+question, OR act on the request with a work brief and/or steering
+directives:
 
 1. Ask ONE clarifying question, if the request is underspecified and
-   you cannot yet write a concrete, actionable brief.
+   you cannot yet write a concrete, actionable brief. When you do this,
+   draft no work and propose no steering.
 2. Draft ONE work brief, if the request is to create NEW work and is
    specific enough to act on. The brief is a SINGLE objective for the
    whole request, not a list of pieces: the organisation's owner will
@@ -274,6 +277,9 @@ work, in natural language. Your job for THIS turn is exactly one of:
 3. Propose one or more steering directives, if the request is to
    change the DIRECTION of work already in flight on a project
    (for example "use Postgres not Mongo", "pivot off the frontend").
+
+A single request may BOTH create new work AND steer existing work;
+include both a brief and steering when it does.
 
 You never execute anything yourself. A work brief becomes a plan the
 human reviews and approves before any building starts; steering
@@ -290,7 +296,7 @@ exactly this shape:
   "work": {{
     "title": <short string naming the whole objective>,
     "raw_intent": <detailed description of the full request>,
-    "project": <string>,
+    "project": <string|null>,
     "priority": <"low"|"medium"|"high"|"critical">,
     "task_type": <"development"|"design"|"research"|"review"|"meeting"|"admin">,
     "estimated_complexity": <"simple"|"medium"|"complex"|"epic">,

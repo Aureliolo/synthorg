@@ -22,10 +22,10 @@ function decisionOptionsOf(
 /**
  * The option to show selected. A decided approval carries the operator's actual
  * pick on ``evidence_package.chosen_option_id``, so surface that; a pending fork
- * has none yet, so pre-select the recommended option (or the first) as the
+ * has none yet, so the recommended option (or the first) is shown selected as the
  * default the operator can change.
  */
-/** The recommended option (or the first) as the pre-selection default. */
+/** The recommended option (or the first) as the default selection. */
 function fallbackOptionId(options: readonly PlanOption[]): string | null {
   return options.find((o) => o.recommended)?.id ?? options[0]?.id ?? null
 }

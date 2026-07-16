@@ -39,7 +39,7 @@ class TestToolCreation:
         props = cast("JsonDict", schema)["properties"]
         assert "question" in props
         assert "options" in props
-        assert schema["required"] == ["question"]
+        assert schema["required"] == ["question", "options"]
 
 
 def _rich_options() -> list[dict[str, object]]:
@@ -99,21 +99,17 @@ class TestExecute:
         assert opt_ids == ["react", "svelte"]
         assert sum(o.recommended for o in item.evidence_package.options) == 1
 
-    async def test_open_ended_has_no_evidence(
+    async def test_missing_options_rejected(
         self,
         tool: RequestProjectDecisionTool,
-        approval_store: ApprovalStore,
     ) -> None:
+        # Every project decision must offer structured options; a bare question
+        # with no options is rejected, never parked as an answerless item.
         result = await tool.execute(
             arguments={"question": "What should the release cadence be?"},
         )
-        assert not result.is_error
-        item = await approval_store.get(
-            cast("JsonDict", result.metadata)["approval_id"]
-        )
-        assert item is not None
-        assert item.evidence_package is None
-        assert json.loads(item.metadata["options"]) == []
+        assert result.is_error
+        assert "Invalid decision arguments" in result.content
 
     async def test_option_titles_in_content(
         self,
@@ -228,7 +224,7 @@ class TestExecute:
             arguments={"question": "Framework?", "options": options},
         )
         assert result.is_error
-        assert "at least two options" in result.content
+        assert "Invalid decision arguments" in result.content
 
     async def test_blank_question_rejected(
         self,
@@ -248,6 +244,8 @@ class TestExecute:
 
         approval_store.add = _failing_add  # type: ignore[method-assign]
 
-        result = await tool.execute(arguments={"question": "Framework?"})
+        result = await tool.execute(
+            arguments={"question": "Framework?", "options": _rich_options()},
+        )
         assert result.is_error
         assert "Failed to create decision request" in result.content

@@ -346,15 +346,28 @@ function sanitizeReasoningTrace(lines: readonly string[]): string[] {
     .filter((line) => line.length > 0)
 }
 
+/** Sanitise one option, or ``null`` if any required field is empty after it. */
+function sanitizeOneOption(option: PlanOption): PlanOption | null {
+  const id = sanitizeWsString(option.id, 128) ?? ''
+  const title = sanitizeWsString(option.title, 256) ?? ''
+  const summary = sanitizeWsString(option.summary, 4096) ?? ''
+  if (id.length === 0 || title.length === 0 || summary.length === 0) return null
+  return { id, title, summary, recommended: option.recommended }
+}
+
 function sanitizePlanOptions(options: readonly PlanOption[]): PlanOption[] {
-  return options
-    .map((option) => ({
-      id: sanitizeWsString(option.id, 128) ?? '',
-      title: sanitizeWsString(option.title, 256) ?? '',
-      summary: sanitizeWsString(option.summary, 4096) ?? '',
-      recommended: option.recommended,
-    }))
-    .filter((option) => option.id.length > 0)
+  const seen = new Set<string>()
+  const result: PlanOption[] = []
+  for (const option of options) {
+    // Drop an option with any empty required field or a duplicate id: a blank
+    // label or an id that sanitisation collapsed onto another would render an
+    // unusable or mislabelled control.
+    const clean = sanitizeOneOption(option)
+    if (clean === null || seen.has(clean.id)) continue
+    seen.add(clean.id)
+    result.push(clean)
+  }
+  return result
 }
 
 function sanitizeEvidenceStrings(pkg: SafeEvidencePackage) {
@@ -391,6 +404,11 @@ function sanitizeEvidencePackage(
   // ``Record<string, string>`` via ``isStringStringRecord``, so every
   // ``value`` below is guaranteed to be a string -- no non-string
   // branch required.
+  const options = sanitizePlanOptions(pkg.options)
+  const chosen =
+    pkg.chosen_option_id === null
+      ? null
+      : sanitizeWsString(pkg.chosen_option_id, 128) ?? null
   return {
     ...sanitizeEvidenceStrings(pkg),
     reasoning_trace: sanitizeReasoningTrace(pkg.reasoning_trace),
@@ -399,11 +417,12 @@ function sanitizeEvidencePackage(
     signature_threshold: pkg.signature_threshold,
     signatures: sanitizeSignatures(pkg.signatures),
     is_fully_signed: pkg.is_fully_signed,
-    options: sanitizePlanOptions(pkg.options),
+    options,
+    // Keep the operator's pick only when it still uniquely names a retained
+    // option; a pick that sanitisation dropped or collapsed is cleared so the
+    // UI never points at an ambiguous or removed option.
     chosen_option_id:
-      pkg.chosen_option_id === null
-        ? null
-        : sanitizeWsString(pkg.chosen_option_id, 128) ?? null,
+      chosen !== null && options.some((o) => o.id === chosen) ? chosen : null,
   }
 }
 

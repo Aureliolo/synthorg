@@ -46,6 +46,10 @@ logger = get_logger(__name__)
 #: ``arch:decide`` action type.
 _DECISION_ACTION_TYPE: str = "decision:project"
 
+#: Every project decision must offer at least two structured options so the
+#: operator always picks by option id rather than approving with no decision.
+_MIN_OPTIONS: Final[int] = 2
+
 #: Bound on the number of options a single decision may present, so a
 #: runaway model cannot flood the human with choices.
 _MAX_OPTIONS: int = 12
@@ -104,13 +108,12 @@ class RequestProjectDecisionArgs(BaseModel):
         description="The decision to put to the human (what must be chosen)",
     )
     options: tuple[DecisionOption, ...] = Field(
-        default=(),
+        min_length=_MIN_OPTIONS,
         max_length=_MAX_OPTIONS,
         description=(
             "The options to choose between, each with a title, a writeup of "
-            "its tradeoffs, and whether you recommend it (>=2 when given, "
-            "exactly one recommended, unique ids). Empty for an open-ended "
-            "decision the human answers in free text."
+            "its tradeoffs, and whether you recommend it (at least two, "
+            "exactly one recommended, unique ids)."
         ),
     )
 
@@ -121,14 +124,16 @@ class RequestProjectDecisionArgs(BaseModel):
         Reuses the shared :func:`validate_decision_options` so the args model
         rejects malformed options (fewer than two, not exactly one recommended,
         duplicate ids) at parse time, rather than deferring the check to the
-        downstream :class:`EvidencePackage` construction.
+        downstream :class:`EvidencePackage` construction. Every project
+        decision offers structured options, so the operator always picks by
+        option id rather than being able to approve with no decision at all.
 
         Returns:
             The validated args.
         """
         validate_decision_options(
             entity_id="request_project_decision",
-            kind=PlanItemKind.DECISION if self.options else PlanItemKind.WORK,
+            kind=PlanItemKind.DECISION,
             options=self.plan_options(),
         )
         return self
@@ -137,7 +142,7 @@ class RequestProjectDecisionArgs(BaseModel):
         """Project the options onto the shared :class:`PlanOption` shape.
 
         Returns:
-            The options as ``PlanOption``s (empty for an open-ended decision).
+            The options as ``PlanOption``s (always at least two).
         """
         return tuple(
             PlanOption(
@@ -178,12 +183,10 @@ class RequestProjectDecisionTool(BaseTool):
             description=(
                 "Put a project-shaping decision you cannot make on your own "
                 "to a human (a framework choice, an architecture for the core "
-                "engine, an asset direction). When the choice is between known "
-                "options, list each with a title, a writeup of its tradeoffs, "
-                "and whether you recommend it (mark exactly one). Execution "
-                "pauses until the human picks; their choice is recorded and "
-                "given back to you. Omit options for an open-ended decision "
-                "the human answers in free text."
+                "engine, an asset direction). List at least two options, each "
+                "with a title, a writeup of its tradeoffs, and whether you "
+                "recommend it (mark exactly one). Execution pauses until the "
+                "human picks; their choice is recorded and given back to you."
             ),
             category=ToolCategory.OTHER,
             action_type="comms:internal",
@@ -202,8 +205,8 @@ class RequestProjectDecisionTool(BaseTool):
         """Create a decision item and signal parking.
 
         Args:
-            arguments: Must contain ``question``; ``options`` is optional (and
-                when given carries the rich per-option writeups).
+            arguments: Must contain ``question`` and ``options`` (at least two,
+                each carrying the rich per-option writeups).
 
         Returns:
             ``ToolExecutionResult`` with ``requires_parking=True``,
@@ -233,28 +236,27 @@ class RequestProjectDecisionTool(BaseTool):
 
         question = args.question.strip()
         approval_id = str(uuid4())
-        # Options are already validated by ``RequestProjectDecisionArgs``'s
-        # model validator (rejected at ``parse_typed`` above), so building the
-        # evidence package here cannot fail on the option invariants.
-        evidence = self._build_evidence(approval_id, args)
+        # One timestamp for the whole decision so the evidence package and the
+        # approval item share it. Options are already validated by
+        # ``RequestProjectDecisionArgs``'s model validator (rejected at
+        # ``parse_typed`` above), so building the evidence cannot fail here.
+        now = datetime.now(UTC)
+        evidence = self._build_evidence(approval_id, args, now)
 
-        store_error = await self._persist_item(approval_id, args, evidence)
+        store_error = await self._persist_item(approval_id, args, evidence, now)
         if store_error is not None:
             return store_error
 
         return self._build_success(approval_id, question, args.options)
 
     def _build_evidence(
-        self, approval_id: str, args: RequestProjectDecisionArgs
-    ) -> EvidencePackage | None:
-        """Build the decision evidence package, or ``None`` for open-ended.
+        self, approval_id: str, args: RequestProjectDecisionArgs, now: datetime
+    ) -> EvidencePackage:
+        """Build the decision evidence package carrying the rich options.
 
         Returns:
-            An :class:`EvidencePackage` carrying the rich options, or ``None``
-            when the decision is open-ended (no options).
+            An :class:`EvidencePackage` carrying the rich options.
         """
-        if not args.options:
-            return None
         return EvidencePackage(
             id=NotBlankStr(approval_id),
             title=_short_title(args.question),
@@ -264,14 +266,15 @@ class RequestProjectDecisionTool(BaseTool):
             source_agent_id=NotBlankStr(self._agent_id),
             task_id=NotBlankStr(self._task_id) if self._task_id else None,
             risk_level=ApprovalRiskLevel.LOW,
-            created_at=datetime.now(UTC),
+            created_at=now,
         )
 
     async def _persist_item(
         self,
         approval_id: str,
         args: RequestProjectDecisionArgs,
-        evidence: EvidencePackage | None,
+        evidence: EvidencePackage,
+        now: datetime,
     ) -> ToolExecutionResult | None:
         """Create and persist the decision approval item.
 
@@ -299,7 +302,7 @@ class RequestProjectDecisionTool(BaseTool):
             # resume path restores the run; the decision marker below drives
             # the project-brain DECISION record.
             source=ApprovalSource.PARKED_CONTEXT,
-            created_at=datetime.now(UTC),
+            created_at=now,
             task_id=self._task_id,
             evidence_package=evidence,
             metadata={

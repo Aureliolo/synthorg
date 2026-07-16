@@ -72,6 +72,32 @@ def _summarise_decision(
     return "I've started on the following:\n" + "\n".join(lines)
 
 
+async def _best_effort_unwind(
+    approval_store: ApprovalStoreProtocol,
+    summaries: list[SteeringProposalSummary],
+    conversation_id: str,
+) -> None:
+    """Unwind every parked steering approval, tolerating individual failures.
+
+    A single unwind failure must not abort the remaining cleanups nor replace
+    the original plan/parking exception the caller re-raises; each failure is
+    logged and swallowed so compensation stays best-effort.
+    """
+    for parked in summaries:
+        try:
+            await unwind_parked_steering(approval_store, parked.approval_id)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                COS_PROPOSE_FAILED,
+                conversation_id=conversation_id,
+                approval_id=parked.approval_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="steering unwind failed; compensation stays best-effort",
+            )
+
+
 class ProposeActMixin:
     """Draft a plan for a work brief and/or park steering directives.
 
@@ -137,8 +163,9 @@ class ProposeActMixin:
                 note="plan draft failed; unwinding parked steering",
                 parked=len(steering_summaries),
             )
-            for parked in steering_summaries:
-                await unwind_parked_steering(self._approval_store, parked.approval_id)
+            await _best_effort_unwind(
+                self._approval_store, steering_summaries, str(conversation.id)
+            )
             raise
 
         await self._turn_repo.append(
@@ -261,8 +288,9 @@ class ProposeActMixin:
                 note="steering park failed mid-batch; unwinding earlier parks",
                 parked=len(summaries),
             )
-            for parked in summaries:
-                await unwind_parked_steering(self._approval_store, parked.approval_id)
+            await _best_effort_unwind(
+                self._approval_store, summaries, str(conversation.id)
+            )
             raise
         return summaries
 

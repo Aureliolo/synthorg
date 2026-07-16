@@ -157,17 +157,22 @@ async def test_absent_project_is_minted_conversation_keyed() -> None:
 
 async def test_duplicate_project_on_redispatch_is_idempotent() -> None:
     repo = _project_repo()
-    repo.create.side_effect = DuplicateRecordError("project already provisioned")
     dispatcher = ConversationalPlanDispatcher(
         project_repo=repo,
         work_pipeline=StubWorkPipeline(),
         dispatch_port=_RecordingPort(),
     )
-    # The duplicate is swallowed as an idempotent reuse, not raised.
-    summary = await dispatcher.draft_plan(
+    first = await dispatcher.draft_plan(
         conversation=_conversation(), args=_args(), work=_work(), now=_NOW
     )
-    assert summary.project
+    # A re-dispatch of the same conversation finds the project already
+    # provisioned; the duplicate is swallowed as idempotent reuse and resolves
+    # to the same conversation-keyed project, not raised.
+    repo.create.side_effect = DuplicateRecordError("project already provisioned")
+    second = await dispatcher.draft_plan(
+        conversation=_conversation(), args=_args(), work=_work(), now=_NOW
+    )
+    assert second.project == first.project
 
 
 async def test_intake_failure_propagates() -> None:

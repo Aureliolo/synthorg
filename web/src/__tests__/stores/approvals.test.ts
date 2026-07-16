@@ -599,6 +599,39 @@ describe('handleWsEvent', () => {
     expect(stored?.evidence_package?.signatures).toHaveLength(1)
   })
 
+  it('drops invalid options and clears a chosen id that no longer matches', () => {
+    useApprovalsStore.setState({ approvals: [] })
+    const event = makeWsEvent(
+      makeApproval('evidence-options', {
+        evidence_package: {
+          id: 'ev-opt',
+          options: [
+            { id: 'a', title: 'Option A', summary: 'tradeoffs a', recommended: true },
+            { id: 'b', title: '', summary: 'tradeoffs b', recommended: false },
+          ],
+          chosen_option_id: 'b',
+          title: 'Decision',
+          narrative: 'Which one?',
+          reasoning_trace: [],
+          recommended_actions: [],
+          source_agent_id: 'agent-eng',
+          task_id: null,
+          risk_level: 'low',
+          metadata: {},
+          signature_threshold: 0,
+          signatures: [],
+          is_fully_signed: false,
+          created_at: '2026-04-21T00:00:00Z',
+        },
+      }),
+    )
+    useApprovalsStore.getState().handleWsEvent(event)
+    const evidence = useApprovalsStore.getState().approvals[0]?.evidence_package
+    // The blank-title option 'b' is dropped, and the pick that named it clears.
+    expect(evidence?.options.map((o) => o.id)).toEqual(['a'])
+    expect(evidence?.chosen_option_id).toBeNull()
+  })
+
   it('rejects approval whose evidence metadata contains non-string values', () => {
     useApprovalsStore.setState({ approvals: [] })
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})

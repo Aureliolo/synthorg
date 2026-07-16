@@ -20,7 +20,7 @@ from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import VersionConflictError
+from synthorg.core.domain_errors import ResourceNotFoundError, VersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task_enums import TaskStatus
@@ -277,7 +277,22 @@ async def _sync_plan_status(
     if not plan_id:
         return
     service = PlanService(repo=persistence_of(app_state).plans, clock=app_state.clock)
-    initial = await service.get(plan_id)
+    try:
+        initial = await service.get(plan_id)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # Honour the logged-not-raised contract: a lookup failure here must
+        # not propagate to the caller (the decision is already persisted on
+        # the approval), or a retried request re-runs the whole resume.
+        reraise_critical(exc)
+        logger.warning(
+            APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
+            plan_id=plan_id,
+            target_status=status.value,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="plan-status sync failed during initial lookup",
+        )
+        return
     if initial is None:
         logger.warning(
             APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
@@ -288,12 +303,15 @@ async def _sync_plan_status(
         return
 
     async def read() -> tuple[Plan, int]:
-        # Re-read on each attempt so a retry's CAS uses the current version;
-        # a raced deletion falls back to the last-known plan so the write
-        # surfaces the not-found through the generic branch below.
+        # Re-read on each attempt so a retry's CAS uses the current version. A
+        # plan deleted after the initial fetch aborts the loop cleanly: a write
+        # against the stale last-known plan would only spin the CAS retries into
+        # a misleading "version conflict" before failing anyway.
         plan = await service.get(plan_id)
-        current = plan if plan is not None else initial
-        return current, current.version
+        if plan is None:
+            msg = "durable plan deleted mid status-sync"
+            raise ResourceNotFoundError(msg)
+        return plan, plan.version
 
     async def write(plan: Plan, _version: int) -> None:
         await service.sync_status(plan, status)
@@ -302,6 +320,13 @@ async def _sync_plan_status(
         await CASRetryHandler(
             resource="plan_status_sync", max_attempts=_MAX_STATUS_SYNC_ATTEMPTS
         ).execute(read, write)
+    except ResourceNotFoundError:
+        logger.warning(
+            APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
+            plan_id=plan_id,
+            target_status=status.value,
+            note="plan-status sync skipped: durable plan deleted mid-sync",
+        )
     except VersionConflictError:
         logger.error(
             APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,

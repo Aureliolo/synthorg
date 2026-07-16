@@ -7,7 +7,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.controllers._plan_review_resume import try_plan_review_resume
+from synthorg.api.controllers._plan_review_resume import (
+    _sync_plan_status,
+    try_plan_review_resume,
+)
 from synthorg.api.lifecycle_helpers.plan_review_wiring import PLAN_ID_METADATA_KEY
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
@@ -213,6 +216,20 @@ class TestPlanReviewResume:
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
         assert stored.status is PlanStatus.REJECTED
+
+    async def test_sync_plan_status_aborts_on_raced_deletion(self) -> None:
+        # The plan is present on the initial fetch but gone on the CAS re-read
+        # (a delete raced the status sync). The loop must abort cleanly on the
+        # not-found rather than spin its retries against the stale plan into a
+        # misleading version-conflict error log.
+        plan = _durable_plan("parent-1")
+        state, _, _, backend = await _seed(task=_task("parent-1"), plan=plan)
+        scripted_get = AsyncMock(side_effect=[plan, None])
+        backend.plans.get = scripted_get  # type: ignore[method-assign]
+        await _sync_plan_status(state, str(plan.id), PlanStatus.APPROVED)
+        # Exactly two reads: the initial fetch plus one CAS read that saw the
+        # deletion and aborted. A retry against the stale plan would read again.
+        assert scripted_get.await_count == 2
 
     async def test_missing_task_marks_task_failed(self) -> None:
         # The approval references a task that no longer exists (get_task -> None):
