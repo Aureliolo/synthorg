@@ -31,7 +31,6 @@ Engine-side construction helpers live in
 import asyncio
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import NamedTuple
 
 from pydantic import ValidationError
 
@@ -44,17 +43,14 @@ from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceError
 from synthorg.engine.completion_oracle.builder import (
-    CompletionOracleRuntime,
     build_completion_oracle_tool_seed,
 )
-from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.health import (
     HealthJudge,
     HealthMonitoringPipeline,
     TriageFilter,
 )
-from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.state import WorkspaceStateSlice
@@ -76,10 +72,8 @@ from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.autonomy.resolver import AutonomyResolver
 from synthorg.security.redteam.builder import (
-    RedTeamRuntime,
     build_red_team_tool_seed,
 )
-from synthorg.security.visionverify.protocol import VisionVerifierGate
 from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingsError
@@ -107,10 +101,10 @@ from synthorg.workers._engine_assembly import (
     _construct_agent_engine,
 )
 from synthorg.workers._red_team_runtime import build_red_team_runtime_or_none
+from synthorg.workers._runtime_services import RuntimeServices
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
-    WorkerExecutionService,
 )
 
 logger = get_logger(__name__)
@@ -207,40 +201,6 @@ def _build_health_runtime(
     return pipeline, _enabled
 
 
-class RuntimeServices(NamedTuple):
-    """The runtime services built behind the provider switch.
-
-    INVARIANT (enforced by construction in :func:`build_runtime_services`,
-    not by the type): when ``coordinator`` is not ``None`` it and
-    ``worker_execution_service`` share the *same* boot
-    :class:`AgentEngine` instance, so worker tasks and coordinator
-    sub-agents observe one interrupt store, event-stream hub, and clock
-    seam. The ``work_pipeline`` (when not ``None``) holds those very
-    ``worker_execution_service`` and ``coordinator`` instances plus a
-    single shared :class:`AgentTaskScorer`, so solo and team routing
-    never diverge. A divergent engine would split agent state silently;
-    ``tests/unit/workers/test_runtime_builder.py`` asserts the identity.
-    ``coordinator`` and ``work_pipeline`` are ``None`` only in the
-    empty-company (no-provider) case, where ``worker_execution_service``
-    is a :class:`NoProviderExecutionService`; ``work_pipeline`` is also
-    ``None`` when no intake runtime is wired (no work entry path).
-    ``red_team_runtime`` is ``None`` when the adversarial gate is
-    disabled (default) OR when no provider is configured.
-    ``completion_oracle_runtime`` is ``None`` only when
-    ``engine.completion_oracle_enabled`` is off (it defaults ON) or no
-    provider is configured; the build/test gate still attaches whenever the
-    oracle is enabled, since it needs no provider.
-    """
-
-    worker_execution_service: WorkerExecutionService
-    coordinator: MultiAgentCoordinator | None
-    work_pipeline: WorkPipeline | None
-    red_team_runtime: RedTeamRuntime | None = None
-    completion_oracle_runtime: CompletionOracleRuntime | None = None
-    completion_oracle_enabled: bool = False
-    vision_gate: VisionVerifierGate | None = None
-
-
 def _select_active_provider(
     app_state: AppState,
 ) -> tuple[ProviderRegistry, tuple[str, ...]] | None:
@@ -302,6 +262,7 @@ def _degraded_no_coordinator(
     workspace_root: Path,
     provider: CompletionProvider,
     *,
+    oracle_enabled: bool,
     error: BaseException | None = None,
 ) -> RuntimeServices:
     """Boot the degraded no-coordinator mode: task execution rejected at the seam.
@@ -316,6 +277,9 @@ def _degraded_no_coordinator(
         app_state: Live application state.
         workspace_root: Absolute filesystem root for the vision gate.
         provider: The active provider (its vision gate still boots).
+        oracle_enabled: Whether the completion oracle is enabled, so the
+            deterministic build/test gate still attaches in degraded mode
+            (it needs no coordinator, only the execution-record store).
         error: The caught config error, when reached from the coordinator
             build's late backstop rather than the cheap pre-check.
 
@@ -346,6 +310,7 @@ def _degraded_no_coordinator(
         worker_execution_service=NoProviderExecutionService(),
         coordinator=None,
         work_pipeline=None,
+        completion_oracle_enabled=oracle_enabled,
         vision_gate=_build_vision_gate_or_none(
             app_state=app_state,
             workspace_root=workspace_root,
@@ -377,12 +342,17 @@ async def build_runtime_services(
         otherwise a ``NoProviderExecutionService`` and ``None`` for the
         coordinator and the work pipeline.
     """
+    # Resolve the oracle config before any early return so the deterministic
+    # build/test gate's enablement survives the no-provider and degraded paths;
+    # only the peer-review runtime depends on an active provider.
+    completion_oracle_config = await resolve_completion_oracle_config(app_state)
     selected = _select_active_provider(app_state)
     if selected is None:
         return RuntimeServices(
             worker_execution_service=NoProviderExecutionService(),
             coordinator=None,
             work_pipeline=None,
+            completion_oracle_enabled=completion_oracle_config.enabled,
             vision_gate=_build_vision_gate_or_none(
                 app_state=app_state,
                 workspace_root=workspace_root,
@@ -399,12 +369,16 @@ async def build_runtime_services(
     # self-heal reload path (an unrelated watched-key write while the model is
     # still blank) from churning healthy resources.
     if not await decomposition_model_is_configured(app_state):
-        return _degraded_no_coordinator(app_state, workspace_root, provider)
+        return _degraded_no_coordinator(
+            app_state,
+            workspace_root,
+            provider,
+            oracle_enabled=completion_oracle_config.enabled,
+        )
 
     red_team_seed = build_red_team_tool_seed(
         config=app_state.config.security.red_team,
     )
-    completion_oracle_config = await resolve_completion_oracle_config(app_state)
     completion_oracle_seed = build_completion_oracle_tool_seed(
         config=completion_oracle_config,
     )
@@ -474,7 +448,13 @@ async def build_runtime_services(
         # Backstop for the case the pre-check cannot catch: the model was
         # cleared between the pre-check read and this eager build. Degrade to
         # the same no-coordinator mode the pre-check returns.
-        return _degraded_no_coordinator(app_state, workspace_root, provider, error=exc)
+        return _degraded_no_coordinator(
+            app_state,
+            workspace_root,
+            provider,
+            oracle_enabled=completion_oracle_config.enabled,
+            error=exc,
+        )
     security = app_state.config.security
     logger.info(
         API_APP_STARTUP,

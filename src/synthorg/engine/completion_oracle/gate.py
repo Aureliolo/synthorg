@@ -208,6 +208,11 @@ class CompletionOracleGateService:
     ) -> CompletionOracleReport:
         """Dispatch the reviewer and fetch its verdict, escalating on any fault.
 
+        Sequences the three reviewer-invocation stages: dispatch the agent
+        session, fetch the filed verdict, and validate its pinned identities.
+        Any stage that faults short-circuits to a synthetic ESCALATE report so
+        an unverifiable review parks the task for a human rather than passing.
+
         Returns:
             The reviewer's filed report, or a synthetic ESCALATE report when
             dispatch failed, the verdict was missing, or its ids did not match.
@@ -221,6 +226,31 @@ class CompletionOracleGateService:
             execution_id=review_input.execution_id,
             task_id=review_input.task_id,
         )
+        dispatch_escalation = await self._dispatch_reviewer(review_input)
+        if dispatch_escalation is not None:
+            return dispatch_escalation
+        fetched = await self._fetch_verdict(review_input)
+        if fetched is None:
+            return self._escalate_report(
+                review_input,
+                reviewer_agent_id=self._reviewer_agent_id,
+                summary=_ESCALATE_MISSING_SUMMARY,
+            )
+        return self._validate_verdict(review_input, fetched)
+
+    async def _dispatch_reviewer(
+        self,
+        review_input: CompletionOracleReviewInput,
+    ) -> CompletionOracleReport | None:
+        """Run the reviewer agent session inside its trusted runtime context.
+
+        Returns:
+            ``None`` when the reviewer ran, or a synthetic ESCALATE report when
+            dispatch faulted (fail-CLOSED).
+
+        Raises:
+            asyncio.CancelledError: Propagated when the run is cancelled.
+        """
         trusted_ctx = CompletionOracleRuntimeContext(
             execution_id=review_input.execution_id,
             task_id=review_input.task_id,
@@ -266,16 +296,30 @@ class CompletionOracleGateService:
                 reviewer_agent_id=self._reviewer_agent_id,
                 summary=_ESCALATE_DISPATCH_SUMMARY,
             )
+        return None
 
+    async def _fetch_verdict(
+        self,
+        review_input: CompletionOracleReviewInput,
+    ) -> CompletionOracleReport | None:
+        """Read the reviewer's filed verdict from the per-execution repository.
+
+        Returns:
+            The stored report, or ``None`` when the read raised, so the caller
+            escalates fail-CLOSED.
+
+        Raises:
+            asyncio.CancelledError: Propagated when the fetch is cancelled.
+        """
         try:
-            report = await self._report_repo.get(
+            return await self._report_repo.get(
                 execution_id=review_input.execution_id,
             )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- a failed verdict read fails CLOSED: the
-            # handler returns an ESCALATE report so an unreadable verdict parks
+            # caller returns an ESCALATE report so an unreadable verdict parks
             # the task for a human, never a silent pass.
             reraise_critical(exc)
             logger.warning(
@@ -286,12 +330,19 @@ class CompletionOracleGateService:
                 error=safe_error_description(exc),
                 fail_closed=True,
             )
-            return self._escalate_report(
-                review_input,
-                reviewer_agent_id=self._reviewer_agent_id,
-                summary=_ESCALATE_MISSING_SUMMARY,
-            )
+            return None
 
+    def _validate_verdict(
+        self,
+        review_input: CompletionOracleReviewInput,
+        report: CompletionOracleReport,
+    ) -> CompletionOracleReport:
+        """Confirm the filed report's pinned identities match the trusted context.
+
+        Returns:
+            ``report`` when all four pinned ids match, else a synthetic
+            ESCALATE report (fail-CLOSED).
+        """
         if (
             report.execution_id != review_input.execution_id
             or report.task_id != review_input.task_id

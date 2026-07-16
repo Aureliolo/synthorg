@@ -22,8 +22,7 @@ from synthorg.core.task_enums import Stakes, TaskStatus, compare_stakes
 from synthorg.engine._review_oracle_gates import (
     GateOutcome,
     apply_build_test_gate,
-    apply_completion_oracle_gate,
-    to_oracle_input,
+    apply_oracle_review_stage,
 )
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
@@ -33,9 +32,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_REVIEW_COMPLETED,
     APPROVAL_GATE_REVIEW_REWORK,
-)
-from synthorg.observability.events.completion_oracle import (
-    COMPLETION_ORACLE_GATE_SKIPPED,
 )
 from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_SKIPPED,
@@ -114,77 +110,29 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         if not approved:
             return target, transition_reason, event, approved
 
-    # Build the deliverable input once for the deliverable-consuming gates
-    # (peer review + red team), but only when one of them will actually use it
-    # at this task's stakes, so a below-threshold completion does not pay for a
-    # deliverable retrieval no gate reads.
-    oracle_active = (
-        completion_oracle_gate is not None
-        and compare_stakes(task.stakes, completion_oracle_min_stakes) >= 0
-    )
+    # Resolve the shared deliverable and run the peer-review gate as one stage.
+    # The deliverable is built once and returned so the red-team gate below
+    # reuses it: a completion where both gates are active pays a single
+    # retrieval, and a below-threshold completion pays none.
     red_team_active = (
         red_team_gate is not None
         and deliverable_input_builder is not None
         and compare_stakes(task.stakes, red_team_min_stakes) >= 0
     )
-    deliverable_input = (
-        await deliverable_input_builder.build(task)
-        if deliverable_input_builder is not None and (oracle_active or red_team_active)
-        else None
+    (
+        (target, transition_reason, event, approved),
+        deliverable_input,
+    ) = await apply_oracle_review_stage(
+        completion_oracle_gate=completion_oracle_gate,
+        completion_oracle_shadow_mode=completion_oracle_shadow_mode,
+        completion_oracle_min_stakes=completion_oracle_min_stakes,
+        deliverable_input_builder=deliverable_input_builder,
+        red_team_active=red_team_active,
+        task=task,
+        outcome=(target, transition_reason, event, approved),
     )
-
-    # Fail CLOSED for the peer-review gate: when the oracle is active and the
-    # builder is wired but produced no deliverable, the gate would otherwise
-    # receive a None input and silently preserve approval, letting the task
-    # reach COMPLETED without the independent review the oracle promises.
-    if (
-        oracle_active
-        and deliverable_input_builder is not None
-        and (deliverable_input is None)
-    ):
-        logger.warning(
-            COMPLETION_ORACLE_GATE_SKIPPED,
-            task_id=str(task.id),
-            reason="no_deliverable_block",
-            note=(
-                "Completion oracle is active but no reviewable deliverable was "
-                "retrievable; blocking completion (fail-closed)."
-            ),
-        )
-        return (
-            TaskStatus.IN_PROGRESS,
-            "Completion review could not retrieve a deliverable to inspect.",
-            APPROVAL_GATE_REVIEW_REWORK,
-            False,
-        )
-
-    if completion_oracle_gate is not None:
-        if compare_stakes(task.stakes, completion_oracle_min_stakes) < 0:
-            logger.info(
-                COMPLETION_ORACLE_GATE_SKIPPED,
-                task_id=str(task.id),
-                reason="below_stakes_threshold",
-                stakes=task.stakes.value,
-                min_stakes=completion_oracle_min_stakes.value,
-            )
-        else:
-            (
-                target,
-                transition_reason,
-                event,
-                approved,
-            ) = await apply_completion_oracle_gate(
-                gate=completion_oracle_gate,
-                review_input=to_oracle_input(deliverable_input),
-                shadow_mode=completion_oracle_shadow_mode,
-                task_id=str(task.id),
-                target=target,
-                transition_reason=transition_reason,
-                event=event,
-                approved=approved,
-            )
-            if not approved:
-                return target, transition_reason, event, approved
+    if not approved:
+        return target, transition_reason, event, approved
 
     if red_team_gate is not None and deliverable_input_builder is not None:
         if compare_stakes(task.stakes, red_team_min_stakes) < 0:

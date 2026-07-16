@@ -11,16 +11,18 @@ transition tuple and the deliverable-input adapter. Each gate returns the
 from typing import TYPE_CHECKING
 
 from synthorg.core.task import Task
-from synthorg.core.task_enums import TaskStatus
+from synthorg.core.task_enums import Stakes, TaskStatus, compare_stakes
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
 from synthorg.engine.completion_oracle.review_input import CompletionOracleReviewInput
 from synthorg.engine.completion_oracle.review_models import CompletionOracleVerdict
+from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import APPROVAL_GATE_REVIEW_REWORK
 from synthorg.observability.events.completion_oracle import (
     BUILD_TEST_GATE_BLOCKED,
     COMPLETION_ORACLE_ESCALATION_ROUTED,
+    COMPLETION_ORACLE_GATE_SKIPPED,
     COMPLETION_ORACLE_REWORK_ROUTED,
     COMPLETION_ORACLE_SHADOW_OBSERVED,
 )
@@ -165,3 +167,86 @@ async def apply_completion_oracle_gate(  # noqa: PLR0913 -- gate inputs, all req
         APPROVAL_GATE_REVIEW_REWORK,
         False,
     )
+
+
+async def apply_oracle_review_stage(  # noqa: PLR0913 -- stage inputs, all required
+    *,
+    completion_oracle_gate: CompletionOracleGate | None,
+    completion_oracle_shadow_mode: bool,
+    completion_oracle_min_stakes: Stakes,
+    deliverable_input_builder: DeliverableReviewInputBuilder | None,
+    red_team_active: bool,
+    task: Task,
+    outcome: GateOutcome,
+) -> tuple[GateOutcome, RedTeamReviewInput | None]:
+    """Run the peer-review gate and hand back the shared deliverable input.
+
+    Resolves the reviewable deliverable ONCE (shared with the downstream
+    red-team gate, so a completion where both gates are active pays a single
+    retrieval) whenever the oracle is active at this task's stakes or the
+    red-team gate will consume it. Fails CLOSED when the oracle is active but no
+    deliverable is retrievable: the peer-review gate would otherwise receive a
+    ``None`` input and silently preserve approval, letting the task reach
+    COMPLETED without the independent review the oracle promises. Then applies
+    the stakes-gated peer-review gate.
+
+    Returns:
+        The (possibly rerouted) ``(target, reason, event, approved)`` tuple and
+        the built deliverable input (``None`` when neither gate needed it), so
+        the caller's red-team gate can reuse it without a second retrieval.
+    """
+    target, transition_reason, event, approved = outcome
+    oracle_active = (
+        completion_oracle_gate is not None
+        and compare_stakes(task.stakes, completion_oracle_min_stakes) >= 0
+    )
+    deliverable_input = (
+        await deliverable_input_builder.build(task)
+        if deliverable_input_builder is not None and (oracle_active or red_team_active)
+        else None
+    )
+    if (
+        oracle_active
+        and deliverable_input_builder is not None
+        and deliverable_input is None
+    ):
+        logger.warning(
+            COMPLETION_ORACLE_GATE_SKIPPED,
+            task_id=str(task.id),
+            reason="no_deliverable_block",
+            note=(
+                "Completion oracle is active but no reviewable deliverable was "
+                "retrievable; blocking completion (fail-closed)."
+            ),
+        )
+        return (
+            (
+                TaskStatus.IN_PROGRESS,
+                "Completion review could not retrieve a deliverable to inspect.",
+                APPROVAL_GATE_REVIEW_REWORK,
+                False,
+            ),
+            deliverable_input,
+        )
+    if completion_oracle_gate is None:
+        return (target, transition_reason, event, approved), deliverable_input
+    if not oracle_active:
+        logger.info(
+            COMPLETION_ORACLE_GATE_SKIPPED,
+            task_id=str(task.id),
+            reason="below_stakes_threshold",
+            stakes=task.stakes.value,
+            min_stakes=completion_oracle_min_stakes.value,
+        )
+        return (target, transition_reason, event, approved), deliverable_input
+    outcome = await apply_completion_oracle_gate(
+        gate=completion_oracle_gate,
+        review_input=to_oracle_input(deliverable_input),
+        shadow_mode=completion_oracle_shadow_mode,
+        task_id=str(task.id),
+        target=target,
+        transition_reason=transition_reason,
+        event=event,
+        approved=approved,
+    )
+    return outcome, deliverable_input

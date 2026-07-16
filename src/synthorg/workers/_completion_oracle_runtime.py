@@ -11,6 +11,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from synthorg.approval.state import ApprovalStateSlice
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.task_enums import Stakes
 from synthorg.core.types import ModelTier
 from synthorg.engine.agent_engine import AgentEngine
@@ -57,13 +58,16 @@ async def resolve_completion_oracle_config(
     """Resolve the oracle's behaviour config from settings.
 
     Tolerates a settings-store outage by falling back to the on-by-default
-    config: a transient read failure must not silently disable the oracle.
+    config: a transient read failure must not silently disable the oracle. An
+    unwired config resolver (the most extreme outage, e.g. a degraded boot that
+    reaches the runtime build before settings are up) falls back the same way,
+    so resolving the config can never crash the runtime-services assembly.
 
     Returns:
         The resolved :class:`CompletionOracleConfig`.
     """
-    resolver = config_resolver_of(app_state)
     try:
+        resolver = config_resolver_of(app_state)
         enabled = await resolver.get_bool("engine", "completion_oracle_enabled")
         shadow = await resolver.get_bool("engine", "completion_oracle_shadow_mode")
         min_stakes = await resolver.get_enum(
@@ -75,7 +79,7 @@ async def resolve_completion_oracle_config(
         return CompletionOracleConfig(
             enabled=enabled, shadow_mode=shadow, min_stakes=min_stakes
         )
-    except (SettingsError, ValueError) as exc:
+    except (SettingsError, ServiceUnavailableError, ValueError) as exc:
         # Distinct from GATE_SKIPPED: the fallback config keeps the oracle
         # ENABLED, so a settings-store outage must not read as a deliberate
         # skip on an operator's "is the gate running?" dashboard.
