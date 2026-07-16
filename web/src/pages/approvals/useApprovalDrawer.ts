@@ -3,7 +3,48 @@ import { REJECTION_REASON_REQUIRED } from './errors'
 import { getRiskLevelColor } from '@/utils/approvals'
 import type { SemanticColor } from '@/utils/agent-status'
 import { useToastStore } from '@/stores/toast'
-import type { ApprovalResponse, ApproveRequest, RejectRequest } from '@/api/types/approvals'
+import type {
+  ApprovalResponse,
+  ApproveRequest,
+  RejectRequest,
+} from '@/api/types/approvals'
+import type { PlanOption } from '@/api/types/plans'
+
+const CHOICE_REQUIRED = 'Choose an option before approving.'
+
+/** The execution-time decision options an approval offers, or empty. */
+export function decisionOptionsOf(
+  approval: ApprovalResponse | null,
+): readonly PlanOption[] {
+  return approval?.evidence_package?.options ?? []
+}
+
+/** Pre-select the recommended option so a decision fork opens with a default. */
+function defaultChosenOptionId(approval: ApprovalResponse | null): string | null {
+  const options = decisionOptionsOf(approval)
+  return options.find((o) => o.recommended)?.id ?? options[0]?.id ?? null
+}
+
+/**
+ * Build the approve payload. A decision fork carries the operator's
+ * ``chosen_option_id`` (the backend resolves it to the option writeup the
+ * parked agent resumes with); a plain approval carries only an optional
+ * comment.
+ */
+function buildApproveRequest(
+  approval: ApprovalResponse,
+  comment: string,
+  chosenOptionId: string | null,
+): ApproveRequest | undefined {
+  const trimmed = comment.trim()
+  if (decisionOptionsOf(approval).length > 0) {
+    return {
+      chosen_option_id: chosenOptionId,
+      ...(trimmed && { comment: trimmed }),
+    }
+  }
+  return trimmed ? { comment: trimmed } : undefined
+}
 
 /** Run `onChange` during render whenever `value`'s identity changes. */
 export function useResetOnChange(value: unknown, onChange: () => void): void {
@@ -21,6 +62,11 @@ export interface ApprovalDecision {
   setRejectOpen: (open: boolean) => void
   comment: string
   setComment: (value: string) => void
+  /** The chosen decision-option id, or ``null`` for a plain approval. */
+  chosenOptionId: string | null
+  setChosenOptionId: (value: string) => void
+  /** Decision-fork options this approval offers (empty for a plain approval). */
+  options: readonly PlanOption[]
   reason: string
   setReason: (value: string) => void
   reasonError: string | null
@@ -42,6 +88,7 @@ function confidenceLabelFor(approval: ApprovalResponse | null): string | null {
 interface ApproveDeps {
   approval: ApprovalResponse | null
   comment: string
+  chosenOptionId: string | null
   onApprove: (id: string, data?: ApproveRequest) => Promise<boolean>
   setSubmitting: (value: boolean) => void
   setComment: (value: string) => void
@@ -50,10 +97,18 @@ interface ApproveDeps {
 async function approveDecision(deps: ApproveDeps): Promise<boolean | undefined> {
   const { approval } = deps
   if (!approval || approval.status !== 'pending') return
+  if (decisionOptionsOf(approval).length > 0 && !deps.chosenOptionId) {
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Choice required',
+      description: CHOICE_REQUIRED,
+    })
+    return false
+  }
   deps.setSubmitting(true)
   try {
-    const trimmed = deps.comment.trim()
-    const ok = await deps.onApprove(approval.id, trimmed ? { comment: trimmed } : undefined)
+    const data = buildApproveRequest(approval, deps.comment, deps.chosenOptionId)
+    const ok = await deps.onApprove(approval.id, data)
     if (ok) {
       deps.setComment('')
       return true
@@ -112,6 +167,9 @@ export function useApprovalDecision(
   const [approveOpen, setApproveOpen] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
   const [comment, setComment] = useState('')
+  const [chosenOptionId, setChosenOptionId] = useState<string | null>(() =>
+    defaultChosenOptionId(approval),
+  )
   const [reason, setReason] = useState('')
   const [reasonError, setReasonError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -123,6 +181,7 @@ export function useApprovalDecision(
     setApproveOpen(false)
     setRejectOpen(openRejectOnTargetChange && approval != null)
     setComment('')
+    setChosenOptionId(defaultChosenOptionId(approval))
     setReason('')
     setReasonError(null)
     setSubmitting(false)
@@ -139,8 +198,16 @@ export function useApprovalDecision(
   })
 
   const handleApprove = useCallback(
-    () => approveDecision({ approval, comment, onApprove, setSubmitting, setComment }),
-    [approval, comment, onApprove],
+    () =>
+      approveDecision({
+        approval,
+        comment,
+        chosenOptionId,
+        onApprove,
+        setSubmitting,
+        setComment,
+      }),
+    [approval, comment, chosenOptionId, onApprove],
   )
 
   const handleReject = useCallback(
@@ -155,6 +222,9 @@ export function useApprovalDecision(
     setRejectOpen,
     comment,
     setComment,
+    chosenOptionId,
+    setChosenOptionId,
+    options: decisionOptionsOf(approval),
     reason,
     setReason,
     reasonError,

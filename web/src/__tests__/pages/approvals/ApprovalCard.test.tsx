@@ -131,6 +131,37 @@ describe('ApprovalCard', () => {
     expect(defaultHandlers.onReject).toHaveBeenCalledWith('test-1')
   })
 
+  it('routes a decision fork to the drawer instead of a one-click approve', async () => {
+    // A decision fork needs a chosen option, so the card offers "Review to
+    // choose" (opens the drawer) rather than the approve/reject pair.
+    renderCard({
+      evidence_package: {
+        id: 'ev-dec',
+        title: 'Fork',
+        narrative: 'Pick one',
+        reasoning_trace: [],
+        recommended_actions: [],
+        metadata: {},
+        signature_threshold: 1,
+        signatures: [],
+        is_fully_signed: false,
+        source_agent_id: 'agent-eng',
+        task_id: null,
+        risk_level: 'medium',
+        created_at: '2026-05-19T12:00:00Z',
+        chosen_option_id: null,
+        options: [
+          { id: 'a', title: 'A', summary: 'first', recommended: true },
+          { id: 'b', title: 'B', summary: 'second', recommended: false },
+        ],
+      },
+    })
+    expect(screen.queryByRole('button', { name: /^approve$/i })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /review to choose/i }))
+    expect(defaultHandlers.onSelect).toHaveBeenCalledWith('test-1')
+    expect(defaultHandlers.onApprove).not.toHaveBeenCalled()
+  })
+
   it('calls onToggleSelect when checkbox is clicked', async () => {
     renderCard()
     await userEvent.click(screen.getByRole('checkbox'))

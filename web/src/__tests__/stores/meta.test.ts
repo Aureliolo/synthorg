@@ -278,7 +278,7 @@ describe('proposeConversation', () => {
             status: 'needs_clarification',
             clarifying_question: 'Which quarter?',
             conversation_closed: false,
-            proposals: [],
+            plan_draft: null,
             responder_role: 'CFO',
             responder_name: 'Casey',
             routed_topic: 'budget',

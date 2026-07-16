@@ -120,15 +120,11 @@ export const metaHandlers = [
         status: 'proposed',
         clarifying_question: null,
         conversation_closed: false,
-        proposals: [
-          {
-            approval_id: 'appr-mock-001',
-            proposal_id: 'prop-mock-001',
-            title: 'Mock proposed work',
-            task_type: 'development',
-            priority: 'medium',
-          },
-        ],
+        plan_draft: {
+          task_id: 'task-mock-001',
+          project: 'Mock Project',
+          title: 'Mock drafted plan',
+        },
         // Concern routing is off by default: the generic Chief
         // of Staff answers, so no role attribution is carried.
         responder_role: null,

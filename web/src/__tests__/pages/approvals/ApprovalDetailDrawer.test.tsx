@@ -51,7 +51,13 @@ vi.mock('motion/react', async () => {
 function makeHandlers() {
   return {
     onClose: vi.fn(),
-    onApprove: vi.fn<(id: string, data?: { readonly comment?: string | null }) => Promise<boolean>>()
+    onApprove: vi.fn<(
+      id: string,
+      data?: {
+        readonly comment?: string | null
+        readonly chosen_option_id?: string | null
+      },
+    ) => Promise<boolean>>()
       .mockResolvedValue(true),
     onReject: vi.fn<(id: string, data: { readonly reason: string }) => Promise<boolean>>()
       .mockResolvedValue(true),
@@ -400,5 +406,79 @@ describe('ApprovalDetailDrawer', () => {
     expect(screen.getByText('This run failed')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /acknowledge/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+  })
+})
+
+/** An evidence package carrying a two-option execution-time decision fork. */
+function decisionEvidence() {
+  return {
+    id: 'ev-dec',
+    title: 'Core engine architecture',
+    narrative: 'How should the core engine be structured?',
+    reasoning_trace: [],
+    recommended_actions: [],
+    metadata: {},
+    signature_threshold: 1,
+    signatures: [],
+    is_fully_signed: false,
+    source_agent_id: 'agent-eng',
+    task_id: null,
+    risk_level: 'medium' as const,
+    created_at: '2026-05-19T12:00:00Z',
+    chosen_option_id: null,
+    options: [
+      {
+        id: 'actor',
+        title: 'Actor model',
+        summary: 'Message-passing isolation; higher upfront complexity.',
+        recommended: true,
+      },
+      {
+        id: 'pipeline',
+        title: 'Pipeline model',
+        summary: 'Simple staged flow; weaker back-pressure control.',
+        recommended: false,
+      },
+    ],
+  }
+}
+
+describe('ApprovalDetailDrawer decision fork', () => {
+  it('renders each option with its writeup and the recommendation', () => {
+    renderDrawer({ evidence_package: decisionEvidence() })
+    expect(screen.getByText('Choose an option')).toBeInTheDocument()
+    expect(screen.getByText('Actor model')).toBeInTheDocument()
+    expect(
+      screen.getByText('Message-passing isolation; higher upfront complexity.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Recommended')).toBeInTheDocument()
+    // The recommended option is pre-selected.
+    expect(screen.getByRole('radio', { name: /Actor model/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+  })
+
+  it('approves with the recommended option by default', async () => {
+    const user = userEvent.setup()
+    renderDrawer({ evidence_package: decisionEvidence() })
+    await user.click(screen.getByRole('button', { name: /^approve$/i }))
+    const dialog = screen.getByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: /^approve$/i }))
+    expect(defaultHandlers.onApprove).toHaveBeenCalledWith('test-1', {
+      chosen_option_id: 'actor',
+    })
+  })
+
+  it('approves with a different option once the operator selects it', async () => {
+    const user = userEvent.setup()
+    renderDrawer({ evidence_package: decisionEvidence() })
+    await user.click(screen.getByRole('radio', { name: /Pipeline model/ }))
+    await user.click(screen.getByRole('button', { name: /^approve$/i }))
+    const dialog = screen.getByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: /^approve$/i }))
+    expect(defaultHandlers.onApprove).toHaveBeenCalledWith('test-1', {
+      chosen_option_id: 'pipeline',
+    })
   })
 })

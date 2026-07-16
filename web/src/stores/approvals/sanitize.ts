@@ -8,6 +8,7 @@ import type {
   ApprovalTaskRef,
   SafeEvidencePackage,
 } from '@/api/types/approvals'
+import type { PlanOption } from '@/api/types/plans'
 import {
   APPROVAL_RISK_LEVEL_VALUES,
   APPROVAL_SOURCE_VALUES,
@@ -43,6 +44,20 @@ function isRecommendedActionShape(value: unknown): boolean {
     && typeof v['label'] === 'string'
     && typeof v['description'] === 'string'
     && typeof v['confirmation_required'] === 'boolean'
+  )
+}
+
+/** Every decision option must carry the fields the sanitizer reads. */
+function isPlanOptionShape(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false
+  }
+  const v = value as Record<string, unknown>
+  return (
+    typeof v['id'] === 'string'
+    && typeof v['title'] === 'string'
+    && typeof v['summary'] === 'string'
+    && typeof v['recommended'] === 'boolean'
   )
 }
 
@@ -86,6 +101,7 @@ function isEvidencePackageBaseFields(v: Record<string, unknown>): boolean {
   return (
     typeof v['is_fully_signed'] === 'boolean'
     && (v['task_id'] === null || typeof v['task_id'] === 'string')
+    && (v['chosen_option_id'] === null || typeof v['chosen_option_id'] === 'string')
   )
 }
 
@@ -97,6 +113,8 @@ function isEvidencePackageCollections(v: Record<string, unknown>): boolean {
     && v['recommended_actions'].every(isRecommendedActionShape)
     && Array.isArray(v['signatures'])
     && v['signatures'].every(isSignatureShape)
+    && Array.isArray(v['options'])
+    && v['options'].every(isPlanOptionShape)
   )
 }
 
@@ -328,6 +346,17 @@ function sanitizeReasoningTrace(lines: readonly string[]): string[] {
     .filter((line) => line.length > 0)
 }
 
+function sanitizePlanOptions(options: readonly PlanOption[]): PlanOption[] {
+  return options
+    .map((option) => ({
+      id: sanitizeWsString(option.id, 128) ?? '',
+      title: sanitizeWsString(option.title, 256) ?? '',
+      summary: sanitizeWsString(option.summary, 4096) ?? '',
+      recommended: option.recommended,
+    }))
+    .filter((option) => option.id.length > 0)
+}
+
 function sanitizeEvidenceStrings(pkg: SafeEvidencePackage) {
   return {
     id: sanitizeWsString(pkg.id, 128) ?? '',
@@ -370,6 +399,11 @@ function sanitizeEvidencePackage(
     signature_threshold: pkg.signature_threshold,
     signatures: sanitizeSignatures(pkg.signatures),
     is_fully_signed: pkg.is_fully_signed,
+    options: sanitizePlanOptions(pkg.options),
+    chosen_option_id:
+      pkg.chosen_option_id === null
+        ? null
+        : sanitizeWsString(pkg.chosen_option_id, 128) ?? null,
   }
 }
 

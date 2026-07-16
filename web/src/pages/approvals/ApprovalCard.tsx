@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Clock, ShieldOff } from 'lucide-react'
+import { AlertTriangle, Clock, Scale, ShieldOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import { RunOutcomeBadge } from '@/components/ui/run-outcome-badge'
 import { StatusPill } from '@/components/ui/status-pill'
 import { ApprovalDecisionButtons } from './ApprovalDecisionButtons'
@@ -219,17 +220,40 @@ function ApprovalCardHeader(props: ApprovalCardHeaderProps) {
   )
 }
 
+/** True when the approval is an execution-time decision fork (options to pick). */
+function hasDecisionOptions(approval: ApprovalResponse): boolean {
+  return (approval.evidence_package?.options.length ?? 0) > 0
+}
+
 function ApprovalCardActions({
-  id,
+  approval,
   isFailed,
+  onSelect,
   onApprove,
   onReject,
 }: {
-  id: string
+  approval: ApprovalResponse
   isFailed: boolean
+  onSelect: (id: string) => void
   onApprove: (id: string) => void
   onReject: (id: string) => void
 }) {
+  const id = approval.id
+  // A decision fork needs a chosen option, so there is no valid one-click
+  // approve from the card: route the operator to the drawer to choose.
+  if (hasDecisionOptions(approval)) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="mt-3 gap-1"
+        onClick={() => onSelect(id)}
+      >
+        <Scale className="size-3.5" aria-hidden />
+        Review to choose
+      </Button>
+    )
+  }
   return (
     <ApprovalDecisionButtons
       isFailed={isFailed}
@@ -294,8 +318,9 @@ function ApprovalCardImpl({
 
       {isPending && (
         <ApprovalCardActions
-          id={approval.id}
+          approval={approval}
           isFailed={isFailed}
+          onSelect={onSelect}
           onApprove={onApprove}
           onReject={onReject}
         />

@@ -561,6 +561,8 @@ describe('handleWsEvent', () => {
       makeApproval('with-evidence', {
         evidence_package: {
           id: 'ev-1',
+          options: [],
+          chosen_option_id: null,
           title: 'Evidence Title',
           narrative: 'Narrative body',
           reasoning_trace: ['step 1', 'step 2'],
@@ -603,6 +605,8 @@ describe('handleWsEvent', () => {
       makeApproval('bad-evidence', {
         evidence_package: {
           id: 'ev-2',
+          options: [],
+          chosen_option_id: null,
           title: 't',
           narrative: 'n',
           reasoning_trace: [],
@@ -638,6 +642,8 @@ describe('handleWsEvent', () => {
         makeApproval('bad-chain-pos', {
           evidence_package: {
             id: 'ev-cp',
+            options: [],
+            chosen_option_id: null,
             title: 't',
             narrative: 'n',
             reasoning_trace: [],
@@ -680,6 +686,8 @@ describe('handleWsEvent', () => {
         makeApproval('bad-threshold', {
           evidence_package: {
             id: 'ev-th',
+            options: [],
+            chosen_option_id: null,
             title: 't',
             narrative: 'n',
             reasoning_trace: [],

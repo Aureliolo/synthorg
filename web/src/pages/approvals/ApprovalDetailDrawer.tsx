@@ -67,6 +67,31 @@ function ApprovalDrawerHeader({
   )
 }
 
+function approveDialogCopy(
+  decision: ApprovalDecision,
+  isFailed: boolean,
+): { title: string; description: string } {
+  if (isFailed) {
+    return {
+      title: 'Acknowledge failure',
+      description: 'Acknowledge this failed run and close it. The task stays failed.',
+    }
+  }
+  if (decision.options.length > 0) {
+    const selected = decision.options.find((o) => o.id === decision.chosenOptionId)
+    return {
+      title: 'Approve with the selected option',
+      description: selected
+        ? `Proceed with "${selected.title}". The agent resumes with this decision.`
+        : 'Choose an option above, then approve.',
+    }
+  }
+  return {
+    title: 'Approve Action',
+    description: 'Are you sure you want to approve this action?',
+  }
+}
+
 function ApprovalDecisionDialogs({
   decision,
   isFailed,
@@ -74,6 +99,7 @@ function ApprovalDecisionDialogs({
   decision: ApprovalDecision
   isFailed: boolean
 }) {
+  const copy = approveDialogCopy(decision, isFailed)
   return (
     <>
       <ConfirmDialog
@@ -82,12 +108,8 @@ function ApprovalDecisionDialogs({
           decision.setApproveOpen(o)
           if (!o) decision.setComment('')
         }}
-        title={isFailed ? 'Acknowledge failure' : 'Approve Action'}
-        description={
-          isFailed
-            ? 'Acknowledge this failed run and close it. The task stays failed.'
-            : 'Are you sure you want to approve this action?'
-        }
+        title={copy.title}
+        description={copy.description}
         confirmLabel={isFailed ? 'Acknowledge' : 'Approve'}
         onConfirm={decision.handleApprove}
         loading={decision.submitting}
@@ -114,12 +136,16 @@ function ApprovalDrawerBody({
   showLoadingState,
   detailError,
   confidenceLabel,
+  chosenOptionId,
+  onChooseOption,
   onClose,
 }: {
   approval: ApprovalResponse | null
   showLoadingState: boolean
   detailError: string | null | undefined
   confidenceLabel: string | null
+  chosenOptionId: string | null
+  onChooseOption: ((id: string) => void) | undefined
   onClose: () => void
 }) {
   if (showLoadingState && !detailError) {
@@ -145,7 +171,14 @@ function ApprovalDrawerBody({
     )
   }
   if (!approval) return null
-  return <ApprovalDetailContent approval={approval} confidenceLabel={confidenceLabel} />
+  return (
+    <ApprovalDetailContent
+      approval={approval}
+      confidenceLabel={confidenceLabel}
+      chosenOptionId={chosenOptionId}
+      {...(onChooseOption && { onChooseOption })}
+    />
+  )
 }
 
 /**
@@ -206,6 +239,8 @@ export function ApprovalDetailDrawer({
           showLoadingState={showLoadingState}
           detailError={detailError}
           confidenceLabel={decision.confidenceLabel}
+          chosenOptionId={decision.chosenOptionId}
+          onChooseOption={canDecide ? decision.setChosenOptionId : undefined}
           onClose={onClose}
         />
       </Drawer>

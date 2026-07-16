@@ -35,10 +35,11 @@ interface ChiefOfStaffAssistantMessage {
 /** One rendered turn in the Chief of Staff explain-only transcript. */
 export type ChiefOfStaffMessage = UserTurn | ChiefOfStaffAssistantMessage
 
-/** A parked work item, with its approval id for a deep link. */
-export interface RequestWorkProposal {
+/** A plan drafted from the request, awaiting holistic review in Plan Review. */
+export interface RequestWorkPlanDraft {
   title: string
-  approvalId: string
+  project: string
+  taskId: string
 }
 
 /** A parked steering directive, with its approval id for a deep link. */
@@ -58,8 +59,8 @@ interface RequestWorkAssistantMessage {
   responderName?: string | undefined
   /** Concern topic that selected the role, when routed. */
   routedTopic?: string | undefined
-  /** Parked work items, on the "proposed" branch. */
-  proposals?: readonly RequestWorkProposal[] | undefined
+  /** The drafted plan to review, on the "proposed" branch. */
+  planDraft?: RequestWorkPlanDraft | undefined
   /** Parked steering directives, on the "proposed" branch. */
   steering?: readonly RequestWorkSteering[] | undefined
   /** Renders as a distinct error notice (not a normal assistant reply). */
