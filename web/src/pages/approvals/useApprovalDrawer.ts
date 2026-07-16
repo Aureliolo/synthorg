@@ -6,7 +6,7 @@ import { useToastStore } from '@/stores/toast'
 import type { ApprovalResponse, ApproveRequest, RejectRequest } from '@/api/types/approvals'
 
 /** Run `onChange` during render whenever `value`'s identity changes. */
-function useResetOnChange(value: unknown, onChange: () => void): void {
+export function useResetOnChange(value: unknown, onChange: () => void): void {
   const prevRef = useRef(value)
   if (value !== prevRef.current) {
     prevRef.current = value

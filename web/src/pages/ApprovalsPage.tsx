@@ -160,11 +160,7 @@ function ApprovalDrawerHost({ ctrl }: { ctrl: ApprovalsPageController }) {
 function ApprovalCardRejectHost({ ctrl }: { ctrl: ApprovalsPageController }) {
   const { cardReject } = ctrl
   return (
-    <ApprovalRejectDialog
-      decision={cardReject.decision}
-      isFailed={cardReject.isFailed}
-      onClosed={cardReject.clearTarget}
-    />
+    <ApprovalRejectDialog decision={cardReject.decision} isFailed={cardReject.isFailed} />
   )
 }
 

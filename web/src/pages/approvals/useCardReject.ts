@@ -3,7 +3,11 @@ import { useCallback, useState } from 'react'
 import type { ApprovalResponse, RejectRequest } from '@/api/types/approvals'
 import { isFailedApproval } from '@/utils/approvals'
 
-import { type ApprovalDecision, useApprovalDecision } from './useApprovalDrawer'
+import {
+  type ApprovalDecision,
+  useApprovalDecision,
+  useResetOnChange,
+} from './useApprovalDrawer'
 
 // Approving from a card is a one-click action that never opens this dialog, so
 // the decision hook's approve path is wired to a stable no-op here.
@@ -16,8 +20,6 @@ export interface CardReject {
   isFailed: boolean
   /** Open the reject-with-reason dialog for the given approval id. */
   openReject: (id: string) => void
-  /** Clear the target once the dialog fully closes. */
-  clearTarget: () => void
 }
 
 /**
@@ -26,8 +28,7 @@ export interface CardReject {
  * detouring through the detail drawer. Reuses {@link useApprovalDecision} so
  * the reason field, validation, and submit state match the drawer exactly; the
  * `openRejectOnTargetChange` flag makes a fresh target open the dialog
- * synchronously. The dialog's close (cancel or successful reject, both routed
- * through ConfirmDialog -> onClosed) is the sole owner of clearing the target.
+ * synchronously.
  */
 export function useCardReject(
   approvals: readonly ApprovalResponse[],
@@ -39,14 +40,22 @@ export function useCardReject(
 
   const decision = useApprovalDecision(target, NOOP_APPROVE, onReject, true)
 
+  // Clear the target whenever the reject dialog closes, however it closed. A
+  // user cancel or a successful reject routes through ConfirmDialog, but a
+  // programmatic close (the approval leaves `pending` or drops off the list via
+  // a WebSocket update) flips `rejectOpen` inside useApprovalDecision with no
+  // onOpenChange. This render-phase sync is the single owner that keeps
+  // `targetId` from going stale and blocking a later reopen of the same card.
+  useResetOnChange(decision.rejectOpen, () => {
+    if (!decision.rejectOpen) setTargetId(null)
+  })
+
   const openReject = useCallback((id: string) => setTargetId(id), [])
-  const clearTarget = useCallback(() => setTargetId(null), [])
 
   return {
     target,
     decision,
     isFailed: target !== null && isFailedApproval(target),
     openReject,
-    clearTarget,
   }
 }

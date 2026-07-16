@@ -112,7 +112,7 @@ test.describe('Approval critical flow', () => {
     await expect(page.getByText('Approval granted').first()).toBeVisible()
   })
 
-  test('rejects a pending request via the drawer + POST .../reject round-trip', async ({
+  test('rejects a pending request via the per-card reject dialog + POST .../reject round-trip', async ({
     page,
   }) => {
     const pending = {
@@ -150,17 +150,6 @@ test.describe('Approval critical flow', () => {
         },
       })
     })
-    // Detail GET feeds the drawer a single approval (not a list), so its
-    // pending footer (Approve / Reject) renders.
-    await page.route(`**/api/v1/approvals/${pending.id}`, (route) => {
-      if (route.request().method() !== 'GET') {
-        route.fallback()
-        return
-      }
-      route.fulfill({
-        json: { success: true, data: pending, error: null, error_detail: null },
-      })
-    })
     await page.route(`**/api/v1/approvals/${pending.id}/reject`, (route) =>
       route.fulfill({
         json: {
@@ -172,16 +161,12 @@ test.describe('Approval critical flow', () => {
       }),
     )
 
-    // The card's Reject opens the detail drawer (role=dialog); the
-    // drawer's Reject opens an alert-dialog requiring a reason.
+    // The card's Reject opens the reject-reason alert-dialog directly
+    // (no drawer detour), mirroring the one-click Approve affordance.
     await page.goto('/approvals')
     await expect(page.getByText('Deploy to production').first()).toBeVisible()
     await page.getByRole('button', { name: /^reject$/i }).first().click()
 
-    const drawer = page.getByRole('dialog')
-    await expect(drawer).toBeVisible()
-    // Drawer footer Reject -> opens the "Reject Action" alert-dialog.
-    await drawer.getByRole('button', { name: /^reject$/i }).first().click()
     const confirm = page.getByRole('alertdialog')
     await expect(confirm.getByText(/reject action/i)).toBeVisible()
     await confirm.getByRole('textbox').fill('Not authorised for production')

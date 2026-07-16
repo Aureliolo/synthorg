@@ -5,13 +5,6 @@ import type { ApprovalDecision } from './useApprovalDrawer'
 export interface ApprovalRejectDialogProps {
   decision: ApprovalDecision
   isFailed: boolean
-  /**
-   * Called after the dialog fully closes (cancel or successful reject), on top
-   * of the decision's own state reset. The list-level card-reject flow uses it
-   * to clear the target approval so the same card can be reopened; the drawer
-   * leaves it unset because its own approval selection owns that lifecycle.
-   */
-  onClosed?: () => void
 }
 
 /**
@@ -19,7 +12,7 @@ export interface ApprovalRejectDialogProps {
  * list-level per-card Reject button so both collect a mandatory reason through
  * the same dialog rather than two divergent copies.
  */
-export function ApprovalRejectDialog({ decision, isFailed, onClosed }: ApprovalRejectDialogProps) {
+export function ApprovalRejectDialog({ decision, isFailed }: ApprovalRejectDialogProps) {
   return (
     <ConfirmDialog
       open={decision.rejectOpen}
@@ -28,7 +21,6 @@ export function ApprovalRejectDialog({ decision, isFailed, onClosed }: ApprovalR
         if (!o) {
           decision.setReason('')
           decision.setReasonError(null)
-          onClosed?.()
         }
       }}
       title={isFailed ? 'Retry task' : 'Reject Action'}
