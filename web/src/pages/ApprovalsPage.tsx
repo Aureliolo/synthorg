@@ -12,6 +12,7 @@ import type { ApprovalRiskLevel } from '@/api/types/enums'
 import { ApprovalFilterBar } from './approvals/ApprovalFilterBar'
 import { ApprovalRiskGroupSection } from './approvals/ApprovalRiskGroupSection'
 import { ApprovalDetailDrawer } from './approvals/ApprovalDetailDrawer'
+import { ApprovalRejectDialog } from './approvals/ApprovalRejectDialog'
 import { BatchActionBar } from './approvals/BatchActionBar'
 import { ApprovalsSkeleton } from './approvals/ApprovalsSkeleton'
 import {
@@ -156,6 +157,13 @@ function ApprovalDrawerHost({ ctrl }: { ctrl: ApprovalsPageController }) {
   )
 }
 
+function ApprovalCardRejectHost({ ctrl }: { ctrl: ApprovalsPageController }) {
+  const { cardReject } = ctrl
+  return (
+    <ApprovalRejectDialog decision={cardReject.decision} isFailed={cardReject.isFailed} />
+  )
+}
+
 function ApprovalBatchSection({ ctrl }: { ctrl: ApprovalsPageController }) {
   const { batch, data } = ctrl
   const count = data.selectedIds.size
@@ -277,6 +285,7 @@ export default function ApprovalsPage() {
 
       <ApprovalGroups ctrl={ctrl} />
       <ApprovalDrawerHost ctrl={ctrl} />
+      <ApprovalCardRejectHost ctrl={ctrl} />
       <ApprovalBatchSection ctrl={ctrl} />
     </div>
   )

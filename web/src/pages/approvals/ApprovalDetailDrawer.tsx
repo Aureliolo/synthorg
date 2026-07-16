@@ -20,6 +20,7 @@ import type {
 } from '@/api/types/approvals'
 import { ApprovalDecisionButtons } from './ApprovalDecisionButtons'
 import { ApprovalDetailContent } from './ApprovalDetailContent'
+import { ApprovalRejectDialog } from './ApprovalRejectDialog'
 import { type ApprovalDecision, useApprovalDecision } from './useApprovalDrawer'
 
 export interface ApprovalDetailDrawerProps {
@@ -103,43 +104,7 @@ function ApprovalDecisionDialogs({
         />
       </ConfirmDialog>
 
-      <ConfirmDialog
-        open={decision.rejectOpen}
-        onOpenChange={(o) => {
-          decision.setRejectOpen(o)
-          if (!o) {
-            decision.setReason('')
-            decision.setReasonError(null)
-          }
-        }}
-        title={isFailed ? 'Retry task' : 'Reject Action'}
-        description={
-          isFailed
-            ? 'Send this task back for rework. Explain what to change.'
-            : 'Please provide a reason for rejection.'
-        }
-        confirmLabel={isFailed ? 'Retry' : 'Reject'}
-        variant="destructive"
-        onConfirm={decision.handleReject}
-        loading={decision.submitting}
-      >
-        <InputField
-          multiline
-          label={isFailed ? 'Reason for rework' : 'Reason for rejection'}
-          value={decision.reason}
-          onValueChange={(value) => {
-            decision.setReason(value)
-            if (decision.reasonError && value.trim()) decision.setReasonError(null)
-          }}
-          placeholder="Give the requester enough context to iterate."
-          rows={3}
-          maxLength={2000}
-          required
-          autoFocus
-          error={decision.reasonError}
-          className="mt-2"
-        />
-      </ConfirmDialog>
+      <ApprovalRejectDialog decision={decision} isFailed={isFailed} />
     </>
   )
 }

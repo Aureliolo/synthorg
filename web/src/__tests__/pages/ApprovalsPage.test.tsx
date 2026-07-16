@@ -1,4 +1,5 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import ApprovalsPage from '@/pages/ApprovalsPage'
 import { makeApproval } from '../helpers/factories'
@@ -128,5 +129,105 @@ describe('ApprovalsPage', () => {
     }
     renderPage()
     expect(screen.queryByLabelText('Loading approvals')).not.toBeInTheDocument()
+  })
+
+  describe('per-card reject', () => {
+    function cardRejectButton(title: string) {
+      // ApprovalCard's accessible name is `Approval: <title>` (aria-label).
+      return within(
+        screen.getByRole('article', { name: `Approval: ${title}` }),
+      ).getByRole('button', { name: /reject/i })
+    }
+
+    it('rejects directly from the card via the reason dialog (no drawer detour)', async () => {
+      const user = userEvent.setup()
+      hookReturn = {
+        ...defaultReturn,
+        approvals: [makeApproval('a1', { risk_level: 'high', status: 'pending', title: 'Ship it' })],
+        rejectOne: vi.fn().mockResolvedValue(makeApproval('a1', { status: 'rejected' })),
+        selectedIds: new Set(),
+      }
+      renderPage()
+
+      // The per-card Reject opens the reject-reason dialog directly, not the
+      // detail drawer (role="dialog"): the reason field is reachable in one click.
+      await user.click(cardRejectButton('Ship it'))
+      const dialog = await screen.findByRole('alertdialog')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+      await user.type(
+        within(dialog).getByLabelText(/reason for rejection/i),
+        'Not aligned with the brief',
+      )
+      await user.click(within(dialog).getByRole('button', { name: /^reject$/i }))
+
+      expect(hookReturn.rejectOne).toHaveBeenCalledOnce()
+      expect(hookReturn.rejectOne).toHaveBeenCalledWith('a1', {
+        reason: 'Not aligned with the brief',
+      })
+      // The dialog closes once the reject resolves.
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    })
+
+    it('does not reject when the reason is blank', async () => {
+      const user = userEvent.setup()
+      hookReturn = {
+        ...defaultReturn,
+        approvals: [makeApproval('a1', { risk_level: 'high', status: 'pending', title: 'Ship it' })],
+        rejectOne: vi.fn().mockResolvedValue(makeApproval('a1', { status: 'rejected' })),
+        selectedIds: new Set(),
+      }
+      renderPage()
+
+      await user.click(cardRejectButton('Ship it'))
+      const dialog = await screen.findByRole('alertdialog')
+      await user.click(within(dialog).getByRole('button', { name: /^reject$/i }))
+
+      expect(hookReturn.rejectOne).not.toHaveBeenCalled()
+      // Validation keeps the dialog open so the operator can supply a reason.
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    })
+
+    it('reopens the reject dialog for the same card after cancel', async () => {
+      const user = userEvent.setup()
+      hookReturn = {
+        ...defaultReturn,
+        approvals: [makeApproval('a1', { risk_level: 'high', status: 'pending', title: 'Ship it' })],
+        selectedIds: new Set(),
+      }
+      renderPage()
+
+      await user.click(cardRejectButton('Ship it'))
+      expect(await screen.findByRole('alertdialog')).toBeInTheDocument()
+      await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: /cancel/i }))
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+
+      // Cancelling cleared the target, so the same card can be reopened.
+      await user.click(cardRejectButton('Ship it'))
+      expect(await screen.findByRole('alertdialog')).toBeInTheDocument()
+      expect(hookReturn.rejectOne).not.toHaveBeenCalled()
+    })
+
+    it('targets the correct card when several are pending', async () => {
+      const user = userEvent.setup()
+      hookReturn = {
+        ...defaultReturn,
+        approvals: [
+          makeApproval('a1', { risk_level: 'high', status: 'pending', title: 'Ship it' }),
+          makeApproval('b2', { risk_level: 'high', status: 'pending', title: 'Deploy widget' }),
+        ],
+        rejectOne: vi.fn().mockResolvedValue(makeApproval('b2', { status: 'rejected' })),
+        selectedIds: new Set(),
+      }
+      renderPage()
+
+      await user.click(cardRejectButton('Deploy widget'))
+      const dialog = await screen.findByRole('alertdialog')
+      await user.type(within(dialog).getByLabelText(/reason for rejection/i), 'Wrong target')
+      await user.click(within(dialog).getByRole('button', { name: /^reject$/i }))
+
+      expect(hookReturn.rejectOne).toHaveBeenCalledOnce()
+      expect(hookReturn.rejectOne).toHaveBeenCalledWith('b2', { reason: 'Wrong target' })
+    })
   })
 })
