@@ -184,11 +184,13 @@ async def apply_oracle_review_stage(  # noqa: PLR0913 -- stage inputs, all requi
     Resolves the reviewable deliverable ONCE (shared with the downstream
     red-team gate, so a completion where both gates are active pays a single
     retrieval) whenever the oracle is active at this task's stakes or the
-    red-team gate will consume it. Fails CLOSED when the oracle is active but no
-    deliverable is retrievable: the peer-review gate would otherwise receive a
-    ``None`` input and silently preserve approval, letting the task reach
-    COMPLETED without the independent review the oracle promises. Then applies
-    the stakes-gated peer-review gate.
+    red-team gate will consume it. An ENFORCED (non-shadow) oracle fails CLOSED
+    whenever no deliverable is retrievable -- whether the builder returned
+    ``None`` or none is wired -- because the peer-review gate would otherwise
+    receive a ``None`` input and silently preserve approval, letting the task
+    reach COMPLETED without the independent review the oracle promises. Shadow
+    mode only observes, so it never blocks. Then applies the stakes-gated
+    peer-review gate.
 
     Returns:
         The (possibly rerouted) ``(target, reason, event, approved)`` tuple and
@@ -207,9 +209,14 @@ async def apply_oracle_review_stage(  # noqa: PLR0913 -- stage inputs, all requi
     )
     if (
         oracle_active
-        and deliverable_input_builder is not None
         and deliverable_input is None
+        and not completion_oracle_shadow_mode
     ):
+        # Fail CLOSED on enforcement mode, not builder presence: an enforced
+        # oracle that cannot obtain a reviewable deliverable -- whether the
+        # builder returned None OR none is wired at all -- must not let the task
+        # reach COMPLETED unreviewed. Shadow mode only observes, so it never
+        # blocks and preserves the incoming outcome (handled below).
         logger.warning(
             COMPLETION_ORACLE_GATE_SKIPPED,
             task_id=str(task.id),

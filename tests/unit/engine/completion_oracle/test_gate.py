@@ -1,6 +1,7 @@
 """Unit tests for the Layer 2 peer-review gate (fail-CLOSED orchestration)."""
 
 from datetime import datetime
+from typing import override
 
 import pytest
 
@@ -103,6 +104,20 @@ class _RaisingArchive:
         return 0
 
 
+class _NowRaisingClock(FakeClock):
+    """Clock whose wall-clock read fails, probing the archive fail-open boundary.
+
+    ``monotonic`` still works (the gate times the evaluation with it), but
+    ``now`` -- called only when constructing the archive record -- raises, so a
+    timestamp fault must be swallowed like an append failure.
+    """
+
+    @override
+    def now(self) -> datetime:
+        msg = "clock backend unavailable"
+        raise RuntimeError(msg)
+
+
 def _gate(
     runner: _ScriptedRunner,
     repo: InMemoryCompletionOracleReportRepository,
@@ -177,6 +192,26 @@ class TestCompletionOracleGate:
         result = await _gate(runner, repo, report_archive=archive).evaluate(_input())
         assert result.verdict is CompletionOracleVerdict.REJECT
         assert archive.calls == 1
+
+    async def test_archive_record_construction_failure_does_not_alter_verdict(
+        self,
+    ) -> None:
+        # The record construction + clock read sit inside the fail-OPEN archive
+        # boundary: a clock fault must be swallowed, leaving the decided verdict
+        # intact, and the append is never reached.
+        repo = InMemoryCompletionOracleReportRepository()
+        runner = _ScriptedRunner(repo, report=_report(CompletionOracleVerdict.APPROVE))
+        archive = _RaisingArchive()
+        gate = CompletionOracleGateService(
+            agent_runner=runner,
+            report_repo=repo,
+            reviewer_agent_id=_REVIEWER,
+            report_archive=archive,
+            clock=_NowRaisingClock(),
+        )
+        result = await gate.evaluate(_input())
+        assert result.verdict is CompletionOracleVerdict.APPROVE
+        assert archive.calls == 0
 
     async def test_missing_verdict_escalates(self) -> None:
         # Runner returns without filing a verdict: fail-CLOSED to ESCALATE.

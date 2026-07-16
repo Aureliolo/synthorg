@@ -391,14 +391,18 @@ class CompletionOracleGateService:
         """
         if self._report_archive is None:
             return
-        record = CompletionOracleReportRecord(
-            execution_id=review_input.execution_id,
-            task_id=review_input.task_id,
-            verdict=report.verdict,
-            report=report,
-            recorded_at=self._clock.now(),
-        )
         try:
+            # Timestamping and record construction sit inside the fail-open
+            # boundary too: the verdict is already decided, so a clock or
+            # validation error here must be swallowed like an append failure
+            # rather than propagate and abort the completion decision.
+            record = CompletionOracleReportRecord(
+                execution_id=review_input.execution_id,
+                task_id=review_input.task_id,
+                verdict=report.verdict,
+                report=report,
+                recorded_at=self._clock.now(),
+            )
             await self._report_archive.append(record)
         except DuplicateRecordError:
             logger.debug(

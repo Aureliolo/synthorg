@@ -367,6 +367,68 @@ async def test_completion_oracle_no_deliverable_fails_closed() -> None:
     oracle_gate.evaluate.assert_not_awaited()
 
 
+async def test_completion_oracle_no_builder_enforced_fails_closed() -> None:
+    """An enforced oracle with no input builder wired blocks completion.
+
+    Fail-closed keys on enforcement mode, not builder presence: when the oracle
+    is active but no deliverable is retrievable (here because no builder is
+    wired at all), the task must not reach COMPLETED unreviewed.
+    """
+    oracle_gate = mock_of[CompletionOracleGate](evaluate=AsyncMock())
+
+    target, _reason, _event, approved = await run_completion_gates(
+        completion_oracle_gate=oracle_gate,
+        completion_oracle_min_stakes=Stakes.LOW,
+        red_team_gate=None,
+        vision_gate=None,
+        deliverable_input_builder=None,
+        on_missing_deliverable="block",
+        task=_task(),
+        target=TaskStatus.COMPLETED,
+        transition_reason="approved",
+        event=APPROVAL_GATE_REVIEW_COMPLETED,
+        approved=True,
+        vision_input=None,
+        red_team_min_stakes=Stakes.HIGH,
+    )
+
+    assert (target, approved) == (TaskStatus.IN_PROGRESS, False)
+    oracle_gate.evaluate.assert_not_awaited()
+
+
+async def test_completion_oracle_shadow_mode_no_deliverable_does_not_block() -> None:
+    """Shadow mode never blocks, even when no deliverable is retrievable.
+
+    Fail-closed is reserved for enforced oracles; a shadow oracle only observes,
+    so a missing deliverable preserves the incoming COMPLETED outcome rather
+    than rerouting to rework.
+    """
+    oracle_gate = mock_of[CompletionOracleGate](evaluate=AsyncMock())
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=None),
+    )
+
+    target, _reason, _event, approved = await run_completion_gates(
+        completion_oracle_gate=oracle_gate,
+        completion_oracle_shadow_mode=True,
+        completion_oracle_min_stakes=Stakes.LOW,
+        red_team_gate=None,
+        vision_gate=None,
+        deliverable_input_builder=builder,
+        on_missing_deliverable="block",
+        task=_task(),
+        target=TaskStatus.COMPLETED,
+        transition_reason="approved",
+        event=APPROVAL_GATE_REVIEW_COMPLETED,
+        approved=True,
+        vision_input=None,
+        red_team_min_stakes=Stakes.HIGH,
+    )
+
+    assert (target, approved) == (TaskStatus.COMPLETED, True)
+    oracle_gate.evaluate.assert_not_awaited()
+
+
 async def test_completion_oracle_below_min_stakes_skips() -> None:
     """A task below completion_oracle_min_stakes skips the peer review."""
     oracle_gate = mock_of[CompletionOracleGate](evaluate=AsyncMock())
