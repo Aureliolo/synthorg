@@ -39,13 +39,13 @@ from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import config_resolver_of
 from synthorg.workers._coordinator_assembly import _build_runtime_coordinator
+from synthorg.workers._runtime_services import RuntimeServices
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
     WorkerExecutionService,
 )
 from synthorg.workers.runtime_builder import (
-    RuntimeServices,
     build_runtime_services,
     reload_runtime_services,
 )
