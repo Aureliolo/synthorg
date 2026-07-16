@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated } from '../client'
+import { apiClient, LLM_BOUND_TIMEOUT_MS, unwrap, unwrapPaginated } from '../client'
 import type { PaginatedResult } from '../client'
 import type {
   CharterApprovalResult,
@@ -17,13 +17,6 @@ export interface CharterFilters {
 }
 
 const BASE = '/meta/charters'
-
-// The interview turn (LLM charter drafting) and approval (which synchronously
-// runs solo-vs-team routing + decomposition + kickoff) both make model calls
-// that can exceed the client's 30s default on slower providers (e.g. local
-// Ollama). Give these endpoints a generous ceiling so a slow-but-successful
-// call is not aborted and surfaced as a false "network error".
-const LLM_BOUND_TIMEOUT_MS = 300_000
 
 export async function listCharters(
   filters?: CharterFilters,

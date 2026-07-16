@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import ApprovalsPage from '@/pages/ApprovalsPage'
 import { makeApproval } from '../helpers/factories'
@@ -128,5 +129,30 @@ describe('ApprovalsPage', () => {
     }
     renderPage()
     expect(screen.queryByLabelText('Loading approvals')).not.toBeInTheDocument()
+  })
+
+  it('rejects directly from the card via the reason dialog (no drawer detour)', async () => {
+    const user = userEvent.setup()
+    hookReturn = {
+      ...defaultReturn,
+      approvals: [makeApproval('a1', { risk_level: 'high', status: 'pending', title: 'Ship it' })],
+      rejectOne: vi.fn().mockResolvedValue(makeApproval('a1', { status: 'rejected' })),
+      selectedIds: new Set(),
+    }
+    renderPage()
+
+    // The per-card Reject opens the reject-reason dialog directly, not the
+    // detail drawer: the reason field is reachable in one click.
+    await user.click(screen.getByRole('button', { name: /reject/i }))
+    const dialog = await screen.findByRole('alertdialog')
+    await user.type(
+      within(dialog).getByLabelText(/reason for rejection/i),
+      'Not aligned with the brief',
+    )
+    await user.click(within(dialog).getByRole('button', { name: /^reject$/i }))
+
+    expect(hookReturn.rejectOne).toHaveBeenCalledWith('a1', {
+      reason: 'Not aligned with the brief',
+    })
   })
 })

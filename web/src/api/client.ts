@@ -73,6 +73,17 @@ export const apiClient = axios.create({
   xsrfCookieName: '',
 })
 
+/**
+ * Per-request timeout for LLM-bound endpoints (Chief-of-Staff chat, charter
+ * drafting). These block on a synchronous agent session server-side and
+ * routinely exceed the {@link apiClient} 30s default: a propose turn is
+ * regularly 25-35s. An endpoint that waits on a model call MUST override the
+ * default via ``{ timeout: LLM_BOUND_TIMEOUT_MS }``, or a slow-but-successful
+ * turn aborts client-side while the server completes and parks the work,
+ * surfacing a false "could not respond" failure over a real success.
+ */
+export const LLM_BOUND_TIMEOUT_MS = 300_000
+
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {

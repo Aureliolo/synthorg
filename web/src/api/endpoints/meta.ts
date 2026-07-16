@@ -21,6 +21,7 @@ import type {
 } from '../types/http'
 import {
   apiClient,
+  LLM_BOUND_TIMEOUT_MS,
   paginateAll,
   unwrap,
   unwrapPaginated,
@@ -326,6 +327,10 @@ export async function postChatPropose(
     headers: {
       'Idempotency-Key': idempotencyKey ?? crypto.randomUUID(),
     },
+    // LLM-bound: the CoS propose turn runs a synchronous agent session that
+    // regularly exceeds the 30s client default; without the override a slow-
+    // but-successful turn aborts here while the server parks the work.
+    timeout: LLM_BOUND_TIMEOUT_MS,
   })
   return unwrap(response)
 }
@@ -361,6 +366,9 @@ export async function postChatGroup(
       headers: {
         'Idempotency-Key': idempotencyKey ?? crypto.randomUUID(),
       },
+      // LLM-bound: a group round runs an agent session per participant and can
+      // far exceed the 30s client default.
+      timeout: LLM_BOUND_TIMEOUT_MS,
     },
   )
   return unwrap(response)
@@ -398,6 +406,9 @@ export async function postChatAct(
       headers: {
         'Idempotency-Key': idempotencyKey ?? crypto.randomUUID(),
       },
+      // LLM-bound: the acting agent runs a tool-using session that can exceed
+      // the 30s client default.
+      timeout: LLM_BOUND_TIMEOUT_MS,
     },
   )
   return unwrap(response)
@@ -510,6 +521,9 @@ export async function postChat(
       headers: {
         'Idempotency-Key': idempotencyKey ?? crypto.randomUUID(),
       },
+      // LLM-bound: the explain-chat answer runs an agent session that can
+      // exceed the 30s client default.
+      timeout: LLM_BOUND_TIMEOUT_MS,
     },
   )
   const result = unwrap(response)

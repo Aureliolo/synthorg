@@ -6,7 +6,9 @@ import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { useToastStore } from '@/stores/toast'
 import { filterApprovals, groupByRiskLevel, type ApprovalPageFilters } from '@/utils/approvals'
 import type { ApprovalRiskLevel } from '@/api/types/enums'
+import type { RejectRequest } from '@/api/types/approvals'
 import { REJECTION_REASON_REQUIRED } from './errors'
+import { type CardReject, useCardReject } from './useCardReject'
 
 const VALID_STATUSES: ReadonlySet<string> = new Set(['pending', 'approved', 'rejected', 'expired'])
 const VALID_RISK_LEVELS: ReadonlySet<string> = new Set(['critical', 'high', 'medium', 'low'])
@@ -199,6 +201,7 @@ export interface ApprovalsPageController {
   derived: ApprovalsDerived
   wasConnectedRef: React.RefObject<boolean>
   emptyStateProps: ReturnType<typeof useEmptyStateProps>
+  cardReject: CardReject
   handleApproveOne: (id: string) => Promise<void>
   handleRejectOne: (id: string) => void
   handleRiskToggle: (level: ApprovalRiskLevel) => void
@@ -210,8 +213,8 @@ export function useApprovalsPageController(): ApprovalsPageController {
   const batch = useApprovalBatch(data)
   const derived = useApprovalsDerived(data.approvals, url.filters)
   const wasConnectedRef = useWasConnected(data.wsConnected)
-  const { fetchApproval, approveOne, optimisticApprove } = data
-  const { selectedId, filters, handleSelectApproval, handleFiltersChange } = url
+  const { fetchApproval, approveOne, optimisticApprove, rejectOne } = data
+  const { selectedId, filters, handleFiltersChange } = url
 
   useEffect(() => {
     if (selectedId) void fetchApproval(selectedId)
@@ -225,7 +228,16 @@ export function useApprovalsPageController(): ApprovalsPageController {
     },
     [approveOne, optimisticApprove],
   )
-  const handleRejectOne = useCallback((id: string) => handleSelectApproval(id), [handleSelectApproval])
+
+  // The per-card Reject opens a reject-with-reason dialog directly (symmetric
+  // with one-click Approve) rather than detouring through the detail drawer.
+  const rejectOneBool = useCallback(
+    async (id: string, payload: RejectRequest): Promise<boolean> =>
+      (await rejectOne(id, payload)) !== null,
+    [rejectOne],
+  )
+  const cardReject = useCardReject(data.approvals, rejectOneBool)
+  const handleRejectOne = cardReject.openReject
 
   const handleRiskToggle = useCallback(
     (level: ApprovalRiskLevel) => {
@@ -257,6 +269,7 @@ export function useApprovalsPageController(): ApprovalsPageController {
     derived,
     wasConnectedRef,
     emptyStateProps,
+    cardReject,
     handleApproveOne,
     handleRejectOne,
     handleRiskToggle,
