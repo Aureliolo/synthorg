@@ -42,10 +42,27 @@ class TestToolCreation:
         assert schema["required"] == ["question"]
 
 
+def _rich_options() -> list[dict[str, object]]:
+    """Two rich options (one recommended) for a decision fork."""
+    return [
+        {
+            "id": "react",
+            "title": "React",
+            "summary": "Mature ecosystem, larger bundle, familiar to the team.",
+            "recommended": True,
+        },
+        {
+            "id": "svelte",
+            "title": "Svelte",
+            "summary": "Small bundle, compiler-based, smaller ecosystem.",
+        },
+    ]
+
+
 class TestExecute:
     """Execution parks with the clarification + decision markers set."""
 
-    async def test_creates_decision_item(
+    async def test_creates_decision_item_with_options(
         self,
         tool: RequestProjectDecisionTool,
         approval_store: ApprovalStore,
@@ -53,7 +70,7 @@ class TestExecute:
         result = await tool.execute(
             arguments={
                 "question": "Which web framework should we target?",
-                "options": ["React", "Vue", "Svelte"],
+                "options": _rich_options(),
             },
         )
         assert not result.is_error
@@ -73,9 +90,16 @@ class TestExecute:
         assert item.action_type == "decision:project"
         assert item.description == "Which web framework should we target?"
         assert item.metadata["decision"] == "true"
-        assert json.loads(item.metadata["options"]) == ["React", "Vue", "Svelte"]
+        # The brain-record alternatives are the option titles.
+        assert json.loads(item.metadata["options"]) == ["React", "Svelte"]
+        # The rich per-option writeups ride on the evidence package the
+        # operator picks from.
+        assert item.evidence_package is not None
+        opt_ids = [o.id for o in item.evidence_package.options]
+        assert opt_ids == ["react", "svelte"]
+        assert sum(o.recommended for o in item.evidence_package.options) == 1
 
-    async def test_options_optional(
+    async def test_open_ended_has_no_evidence(
         self,
         tool: RequestProjectDecisionTool,
         approval_store: ApprovalStore,
@@ -88,16 +112,44 @@ class TestExecute:
             cast("JsonDict", result.metadata)["approval_id"]
         )
         assert item is not None
+        assert item.evidence_package is None
         assert json.loads(item.metadata["options"]) == []
 
-    async def test_options_in_content(
+    async def test_option_titles_in_content(
         self,
         tool: RequestProjectDecisionTool,
     ) -> None:
         result = await tool.execute(
-            arguments={"question": "Framework?", "options": ["A", "B"]},
+            arguments={"question": "Framework?", "options": _rich_options()},
         )
-        assert "A, B" in result.content
+        assert "React, Svelte" in result.content
+
+    async def test_invalid_options_no_recommended_rejected(
+        self,
+        tool: RequestProjectDecisionTool,
+    ) -> None:
+        options = [
+            {"id": "a", "title": "A", "summary": "first"},
+            {"id": "b", "title": "B", "summary": "second"},
+        ]
+        result = await tool.execute(
+            arguments={"question": "Framework?", "options": options},
+        )
+        assert result.is_error
+        assert "Invalid decision options" in result.content
+
+    async def test_single_option_rejected(
+        self,
+        tool: RequestProjectDecisionTool,
+    ) -> None:
+        options = [
+            {"id": "a", "title": "A", "summary": "only one", "recommended": True}
+        ]
+        result = await tool.execute(
+            arguments={"question": "Framework?", "options": options},
+        )
+        assert result.is_error
+        assert "Invalid decision options" in result.content
 
     async def test_blank_question_rejected(
         self,

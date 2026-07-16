@@ -8070,6 +8070,8 @@ export type components = {
         };
         /** ApproveRequest */
         readonly ApproveRequest: {
+            /** @description Chosen option id for an execution-time decision approval. */
+            readonly chosen_option_id?: string | null;
             /** @description Optional comment explaining the approval decision. */
             readonly comment?: string | null;
         };
@@ -15812,6 +15814,8 @@ export type components = {
         readonly RunOutcome: "succeeded" | "empty" | "failed";
         /** SafeEvidencePackage */
         readonly SafeEvidencePackage: {
+            /** @description Operator's chosen option id (only with options) */
+            readonly chosen_option_id: string | null;
             /**
              * Format: date-time
              * @description Artifact creation timestamp
@@ -15832,6 +15836,11 @@ export type components = {
             };
             /** @description Plain-English explanation of the approval context */
             readonly narrative: string;
+            /**
+             * @description Decision options for an execution-time fork (>=2, one rec.)
+             * @default []
+             */
+            readonly options: readonly components["schemas"]["PlanOption"][];
             /**
              * @description Compressed reasoning steps
              * @default []

@@ -19,6 +19,8 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.core.plan import PlanOption, validate_decision_options
+from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.structured_artifact import StructuredArtifact
 from synthorg.core.types import NotBlankStr
 
@@ -85,6 +87,13 @@ class EvidencePackage(StructuredArtifact):
         narrative: 2-5 sentence plain-English explanation.
         reasoning_trace: Compressed reasoning steps (NOT full CoT).
         recommended_actions: 1-3 action options for the approver.
+        options: For an execution-time DECISION raised mid-build (a genuine
+            implementation fork), the choices the operator picks among (at
+            least two, exactly one recommended, unique ids); empty for a
+            plain approve/reject evidence package.
+        chosen_option_id: The option the operator selected when resolving a
+            decision; ``None`` until decided, and only meaningful when
+            ``options`` is non-empty.
         source_agent_id: Agent that produced this package.
         task_id: Related task, if any.
         risk_level: Risk classification.
@@ -104,6 +113,14 @@ class EvidencePackage(StructuredArtifact):
         min_length=1,
         max_length=3,
         description="Action options for the approver (1-3)",
+    )
+    options: tuple[PlanOption, ...] = Field(
+        default=(),
+        description="Decision options for an execution-time fork (>=2, one rec.)",
+    )
+    chosen_option_id: NotBlankStr | None = Field(
+        default=None,
+        description="Operator's chosen option id (only with options)",
     )
     source_agent_id: NotBlankStr = Field(
         description="Producing agent identifier",
@@ -140,6 +157,31 @@ class EvidencePackage(StructuredArtifact):
         """
         distinct = {sig.approver_id for sig in self.signatures}
         return len(distinct) >= self.signature_threshold
+
+    @model_validator(mode="after")
+    def _validate_decision_options(self) -> Self:
+        """Enforce the decision-option invariants when options are present.
+
+        Reuses the shared plan invariant: a package with options is a
+        DECISION (>=2 unique options, exactly one recommended, any chosen id
+        naming one of them); a package without options must carry no chosen
+        option id.
+
+        Returns:
+            The validated instance.
+
+        Raises:
+            ValueError: When the options / chosen_option_id violate the
+                decision invariants.
+        """
+        kind = PlanItemKind.DECISION if self.options else PlanItemKind.WORK
+        validate_decision_options(
+            entity_id=self.id,
+            kind=kind,
+            options=self.options,
+            chosen_option_id=self.chosen_option_id,
+        )
+        return self
 
     @model_validator(mode="after")
     def _validate_signature_uniqueness(self) -> Self:

@@ -22,6 +22,7 @@ from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.artifact import ArtifactType
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ValidationError
 from synthorg.core.evidence import EvidencePackage
 from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import TaskStatus
@@ -496,3 +497,37 @@ async def _get_approval_or_404(
         log_event=API_RESOURCE_NOT_FOUND,
         operation="read",
     )
+
+
+def resolve_decision_reason(
+    item: ApprovalItem,
+    *,
+    chosen_option_id: str | None,
+    comment: str | None,
+) -> str | None:
+    """Resolve the effective decision reason for an approval.
+
+    For an execution-time decision that offers options
+    (``evidence_package.options``), the operator picks by ``chosen_option_id``
+    and the chosen option's writeup (``"<title>: <summary>"``) becomes the
+    decision the parked agent continues with. For every other approval the
+    free-text ``comment`` is used unchanged.
+
+    Returns:
+        The decision reason to record and inject on resume.
+
+    Raises:
+        ValidationError: When the approval offers options but no valid
+            ``chosen_option_id`` names one of them.
+    """
+    evidence = item.evidence_package
+    if evidence is None or not evidence.options:
+        return comment
+    if chosen_option_id is None:
+        msg = "This decision requires choosing an option (chosen_option_id)."
+        raise ValidationError(msg)
+    option = next((o for o in evidence.options if o.id == chosen_option_id), None)
+    if option is None:
+        msg = "chosen_option_id does not name an option on this decision."
+        raise ValidationError(msg)
+    return f"{option.title}: {option.summary}"

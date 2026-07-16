@@ -136,10 +136,13 @@ async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collab
             execution_result, ctx, agent_id, task_id, task_engine
         )
 
-    if (
-        reason == TerminationReason.PARKED
-        and execution_result.metadata.get("clarification") is True
+    if reason == TerminationReason.PARKED and (
+        execution_result.metadata.get("clarification") is True
+        or execution_result.metadata.get("decision") is True
     ):
+        # Both a clarification question and an execution-time decision fork
+        # wait on the operator, so the task parks in AWAITING_INPUT until the
+        # human answers / picks an option; the resume path moves it back.
         return await _transition_to_awaiting_input(
             execution_result, ctx, agent_id, task_id, task_engine
         )
@@ -455,7 +458,7 @@ async def _transition_to_awaiting_input(
     task_id: str,
     task_engine: TaskEngine | None,
 ) -> ExecutionResult:
-    """Transition task to AWAITING_INPUT on a clarification park.
+    """Transition task to AWAITING_INPUT on a clarification / decision park.
 
     Only the IN_PROGRESS entry status is moved; any other status is
     left untouched (the park may have happened before the ASSIGNED ->
@@ -475,7 +478,7 @@ async def _transition_to_awaiting_input(
         ctx, _ = await _transition_and_sync(
             ctx,
             target_status=TaskStatus.AWAITING_INPUT,
-            reason="Agent paused for human clarification",
+            reason="Agent paused for human input",
             agent_id=agent_id,
             task_id=task_id,
             task_engine=task_engine,

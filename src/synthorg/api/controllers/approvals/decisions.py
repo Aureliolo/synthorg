@@ -27,6 +27,7 @@ from synthorg.api.controllers.approvals._shared import (
     _get_approval_or_404,
     _resolve_urgency_thresholds,
     _to_approval_response,
+    resolve_decision_reason,
 )
 from synthorg.api.dto import (
     ApiResponse,
@@ -285,6 +286,12 @@ class ApprovalsDecisionsController(Controller):
             item = await _get_approval_or_404(app_state, approval_id)
             _resolve_decision(request, item, approval_id)
             decided_by, decided_by_user_id = _decided_attribution()
+            # For an execution-time decision offering options, the operator's
+            # chosen option becomes the decision the parked agent continues
+            # with; every other approval uses the free-text comment.
+            decision_reason = resolve_decision_reason(
+                item, chosen_option_id=data.chosen_option_id, comment=data.comment
+            )
             now = datetime.now(UTC)
             previous_status = item.status
             updated = item.model_copy(
@@ -292,7 +299,7 @@ class ApprovalsDecisionsController(Controller):
                     "status": ApprovalStatus.APPROVED,
                     "decided_at": now,
                     "decided_by": decided_by,
-                    "decision_reason": data.comment,
+                    "decision_reason": decision_reason,
                 },
             )
             # ``_save_decision_and_notify`` emits the
@@ -313,7 +320,7 @@ class ApprovalsDecisionsController(Controller):
                 decided_by=decided_by,
                 decided_by_user_id=decided_by_user_id,
                 previous_status=previous_status,
-                decision_reason=data.comment,
+                decision_reason=decision_reason,
                 ws_event=WsEventType.APPROVAL_APPROVED,
             )
             return response_obj.model_dump(mode="json")
