@@ -305,6 +305,7 @@ export async function postChatPropose(
   conversationId?: string,
   project?: string,
   idempotencyKey?: string,
+  signal?: AbortSignal,
 ): Promise<ConversationalProposeResponse> {
   const trimmed = message.trim()
   if (!trimmed) {
@@ -331,6 +332,10 @@ export async function postChatPropose(
     // regularly exceeds the 30s client default; without the override a slow-
     // but-successful turn aborts here while the server parks the work.
     timeout: LLM_BOUND_TIMEOUT_MS,
+    // Caller-supplied signal lets the operator abort a long-pending turn. The
+    // server still completes and parks any work (the request is idempotent),
+    // so aborting only detaches the client's wait.
+    ...(signal && { signal }),
   })
   return unwrap(response)
 }

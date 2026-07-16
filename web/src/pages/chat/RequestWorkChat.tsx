@@ -155,7 +155,14 @@ export function RequestWorkChat() {
             }}
           />
         ))}
-        {ctrl.proposeLoading && <ChatThinkingIndicator label="Working on it" />}
+        {ctrl.proposeLoading && (
+          <div className="flex items-center justify-between gap-3">
+            <ChatThinkingIndicator label="Working on it" />
+            <Button variant="ghost" size="sm" onClick={ctrl.cancel}>
+              Cancel
+            </Button>
+          </div>
+        )}
       </div>
 
       {ctrl.conversationClosed && (

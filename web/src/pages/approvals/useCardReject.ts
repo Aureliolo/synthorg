@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import type { ApprovalResponse, RejectRequest } from '@/api/types/approvals'
 import { isFailedApproval } from '@/utils/approvals'
@@ -24,7 +24,10 @@ export interface CardReject {
  * Drives the list-level per-card Reject dialog. The card's Reject button opens
  * a reject-with-reason dialog directly (mirroring one-click Approve) instead of
  * detouring through the detail drawer. Reuses {@link useApprovalDecision} so
- * the reason field, validation, and submit state match the drawer exactly.
+ * the reason field, validation, and submit state match the drawer exactly; the
+ * `openRejectOnTargetChange` flag makes a fresh target open the dialog
+ * synchronously. The dialog's close (cancel or successful reject, both routed
+ * through ConfirmDialog -> onClosed) is the sole owner of clearing the target.
  */
 export function useCardReject(
   approvals: readonly ApprovalResponse[],
@@ -34,26 +37,7 @@ export function useCardReject(
   const target =
     targetId != null ? (approvals.find((a) => a.id === targetId) ?? null) : null
 
-  // Clear the target on a successful reject so the decision hook's id-change
-  // reset closes the dialog and the same card can be reopened later.
-  const rejectAndClear = useCallback(
-    async (id: string, data: RejectRequest): Promise<boolean> => {
-      const ok = await onReject(id, data)
-      if (ok) setTargetId(null)
-      return ok
-    },
-    [onReject],
-  )
-
-  const decision = useApprovalDecision(target, NOOP_APPROVE, rejectAndClear)
-  const { setRejectOpen } = decision
-
-  // Open the dialog once a fresh target is set. This runs after commit, so it
-  // wins over the in-render id-change reset inside useApprovalDecision that
-  // would otherwise leave the newly-targeted dialog closed.
-  useEffect(() => {
-    if (targetId !== null) setRejectOpen(true)
-  }, [targetId, setRejectOpen])
+  const decision = useApprovalDecision(target, NOOP_APPROVE, onReject, true)
 
   const openReject = useCallback((id: string) => setTargetId(id), [])
   const clearTarget = useCallback(() => setTargetId(null), [])

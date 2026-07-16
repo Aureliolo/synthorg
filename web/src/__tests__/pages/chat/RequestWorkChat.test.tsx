@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { apiSuccess } from '@/mocks/handlers'
 import { RequestWorkChat } from '@/pages/chat/RequestWorkChat'
 import { useMetaStore } from '@/stores/meta'
+import { useToastStore } from '@/stores/toast'
 import { server } from '@/test-setup'
 
 function renderChat() {
@@ -20,6 +21,7 @@ function renderChat() {
 
 beforeEach(() => {
   useMetaStore.setState({ proposeLoading: false, error: null })
+  useToastStore.setState({ toasts: [] })
 })
 
 describe('RequestWorkChat', () => {
@@ -116,6 +118,33 @@ describe('RequestWorkChat', () => {
     expect(screen.getByText('Prioritise the launch checklist')).toBeInTheDocument()
     // The closed conversation disables further input.
     expect(screen.getByLabelText('Work request')).toBeDisabled()
+  })
+
+  it('cancels an in-flight propose and shows the cancelled notice (no error toast)', async () => {
+    // Never resolves server-side (a bare pending promise, so no timer / leaked
+    // handle); the request only settles via the client abort the Cancel button
+    // triggers.
+    server.use(
+      http.post('/api/v1/meta/chat/propose', async () => {
+        await new Promise<void>(() => {})
+        return HttpResponse.json(apiSuccess({}))
+      }),
+    )
+    const user = userEvent.setup()
+    renderChat()
+
+    await user.type(screen.getByLabelText('Work request'), 'do a slow thing')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    // The Cancel affordance appears while the propose is in flight.
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/request cancelled/i)).toBeInTheDocument()
+    })
+    // A deliberate cancel is not an error: no failure notice, no error toast.
+    expect(screen.queryByText(/could not respond/i)).not.toBeInTheDocument()
+    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
   it('renders a clarifying question without attribution when unrouted', async () => {

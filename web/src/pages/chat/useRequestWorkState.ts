@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 import type { ConversationalProposeResponse } from '@/api/endpoints/meta'
 import { useConversationsStore } from '@/stores/conversations'
@@ -36,6 +36,8 @@ export interface RequestWorkState {
   setInput: (value: string) => void
   triggerSend: () => void
   retryBefore: (beforeMsgId: number) => void
+  /** Abort the in-flight propose turn (renders a cancelled bubble, no error). */
+  cancel: () => void
   /** Clear a closed conversation so the next send opens a fresh one. */
   startNew: () => void
 }
@@ -48,6 +50,7 @@ export function useRequestWorkState(): RequestWorkState {
   const proposeLoading = useMetaStore((s) => s.proposeLoading)
   const propose = useMetaStore((s) => s.proposeConversation)
   const scrollRef = useScrollToBottom(messages)
+  const abortRef = useRef<AbortController | null>(null)
 
   const sendMessage = useCallback(
     async (message: string, idempotencyKey?: string) => {
@@ -55,31 +58,27 @@ export function useRequestWorkState(): RequestWorkState {
       // Mint the key once per logical turn; a manual retry reuses it so a
       // parked proposal that actually succeeded is deduped, not re-parked.
       const key = idempotencyKey ?? crypto.randomUUID()
-      setWork((s) => ({
-        messages: [
-          ...s.messages,
-          {
-            id: nextMessageId(),
-            role: 'user',
-            content: message,
-            idempotencyKey: key,
-          },
-        ],
-      }))
+      setWork((s) => ({ messages: [...s.messages, buildUserMessage(message, key)] }))
       const conversationId = useConversationsStore.getState().work.conversationId
-      const result = await propose(message, conversationId, key)
+      const controller = new AbortController()
+      abortRef.current = controller
+      const result = await propose(message, conversationId, key, controller.signal)
+      abortRef.current = null
       if (result) {
         setWork({
           conversationId: result.conversation_id,
           closed: result.conversation_closed,
         })
       }
-      setWork((s) => ({
-        messages: [...s.messages, buildAssistantMessage(result)],
-      }))
+      const reply = buildReplyMessage(result, controller.signal.aborted)
+      setWork((s) => ({ messages: [...s.messages, reply] }))
     },
     [propose, setWork],
   )
+
+  const cancel = useCallback(() => {
+    abortRef.current?.abort()
+  }, [])
 
   const triggerSend = useCallback(() => {
     const message = input.trim()
@@ -120,6 +119,7 @@ export function useRequestWorkState(): RequestWorkState {
     setInput,
     triggerSend,
     retryBefore,
+    cancel,
     startNew,
   }
 }
@@ -137,12 +137,35 @@ function toAttribution(result: ConversationalProposeResponse): Attribution {
   }
 }
 
+function buildUserMessage(content: string, idempotencyKey: string): RequestWorkMessage {
+  return { id: nextMessageId(), role: 'user', content, idempotencyKey }
+}
+
+// A user abort resolves to null with the signal marked aborted; render a
+// distinct cancelled bubble rather than the failure notice.
+function buildReplyMessage(
+  result: ConversationalProposeResponse | null,
+  aborted: boolean,
+): RequestWorkMessage {
+  if (result === null && aborted) return buildCancelledMessage()
+  return buildAssistantMessage(result)
+}
+
 function buildFailureMessage(): RequestWorkMessage {
   return {
     id: nextMessageId(),
     role: 'assistant',
     content: 'The assistant could not respond. Please try again.',
     isError: true,
+  }
+}
+
+function buildCancelledMessage(): RequestWorkMessage {
+  return {
+    id: nextMessageId(),
+    role: 'assistant',
+    content:
+      'Request cancelled. Any work the organisation had already queued still appears in Approvals.',
   }
 }
 

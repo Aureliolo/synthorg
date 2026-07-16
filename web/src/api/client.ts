@@ -84,7 +84,6 @@ export const apiClient = axios.create({
  */
 export const LLM_BOUND_TIMEOUT_MS = 300_000
 
-
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms)

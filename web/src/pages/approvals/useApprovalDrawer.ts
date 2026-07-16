@@ -103,6 +103,11 @@ export function useApprovalDecision(
   approval: ApprovalResponse | null,
   onApprove: (id: string, data?: ApproveRequest) => Promise<boolean>,
   onReject: (id: string, data: RejectRequest) => Promise<boolean>,
+  // When true, a fresh non-null target opens the reject dialog in the same
+  // render pass the target changes. The card-reject flow sets this so its
+  // "click Reject -> dialog" step needs no post-commit effect racing this
+  // reset; the drawer leaves it false (a target switch closes the dialog).
+  openRejectOnTargetChange = false,
 ): ApprovalDecision {
   const [approveOpen, setApproveOpen] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
@@ -116,7 +121,7 @@ export function useApprovalDecision(
   // Reset dialog/input state when the displayed approval changes.
   useResetOnChange(approval?.id, () => {
     setApproveOpen(false)
-    setRejectOpen(false)
+    setRejectOpen(openRejectOnTargetChange && approval != null)
     setComment('')
     setReason('')
     setReasonError(null)

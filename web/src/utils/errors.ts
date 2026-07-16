@@ -46,6 +46,18 @@ const STATUS_FALLBACK_MESSAGES: Readonly<Record<number, string>> = {
   504: 'Temporary connectivity issue. Please retry shortly.',
 }
 
+/**
+ * True when a rejected request was aborted by the caller (an
+ * `AbortController.abort()`), not a server or network failure. axios surfaces
+ * this as a `CanceledError`; a raw fetch/`AbortSignal` path surfaces a DOM
+ * `AbortError`. Callers use it to suppress error toasts for a deliberate
+ * user cancel and render a distinct "cancelled" state instead.
+ */
+export function isAbortError(err: unknown): boolean {
+  if (axios.isCancel(err)) return true
+  return err instanceof Error && err.name === 'AbortError'
+}
+
 /** Pydantic v1 / v2 leak patterns; see `_isPydanticishMessage` for use. */
 const PYDANTIC_PHRASE_PATTERN =
   /(field required|value is not a valid|string too (short|long)|input should|string should|list should|dict should)/i

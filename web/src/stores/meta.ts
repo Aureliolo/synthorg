@@ -32,7 +32,7 @@ import type {
 import { ErrorCode } from '@/api/types/errors'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorDetail, getErrorMessage, unavailableMessage } from '@/utils/errors'
+import { getErrorDetail, getErrorMessage, isAbortError, unavailableMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('meta')
@@ -79,11 +79,19 @@ async function runProposeConversation(
   message: string,
   conversationId?: string,
   idempotencyKey?: string,
+  signal?: AbortSignal,
 ): Promise<ConversationalProposeResponse | null> {
   set({ proposeLoading: true })
   try {
-    return await postChatPropose(message, conversationId, undefined, idempotencyKey)
+    return await postChatPropose(message, conversationId, undefined, idempotencyKey, signal)
   } catch (err) {
+    // A deliberate operator abort is not a failure: no error toast, no
+    // log.error. The caller sees the null sentinel and renders a cancelled
+    // state; the server still completes and parks any work idempotently.
+    if (isAbortError(err)) {
+      log.debug('Propose request cancelled by user')
+      return null
+    }
     const { title, description } = describeConversationalError(
       err,
       'Propose request failed',
@@ -310,6 +318,7 @@ interface MetaState {
     message: string,
     conversationId?: string,
     idempotencyKey?: string,
+    signal?: AbortSignal,
   ) => Promise<ConversationalProposeResponse | null>
   converseGroup: (
     message: string,
@@ -353,7 +362,8 @@ export const useMetaStore = create<MetaState>((set) => ({
     message: string,
     conversationId?: string,
     idempotencyKey?: string,
-  ) => runProposeConversation(set, message, conversationId, idempotencyKey),
+    signal?: AbortSignal,
+  ) => runProposeConversation(set, message, conversationId, idempotencyKey, signal),
   converseGroup: (
     message: string,
     agentIds: readonly string[],
