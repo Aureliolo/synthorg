@@ -481,4 +481,19 @@ describe('ApprovalDetailDrawer decision fork', () => {
       chosen_option_id: 'pipeline',
     })
   })
+
+  it('shows the operator-chosen option (not the recommended one) on a decided fork', () => {
+    // A decided approval carries the actual pick on the evidence package; the
+    // read-only option list must surface that, not fall back to recommended.
+    renderDrawer({
+      status: 'approved',
+      evidence_package: { ...decisionEvidence(), chosen_option_id: 'pipeline' },
+    })
+    const pipelineRow = screen.getByText('Pipeline model').closest('li')
+    if (!pipelineRow) throw new Error('pipeline option row not found')
+    expect(within(pipelineRow).getByText('Selected')).toBeInTheDocument()
+    const actorRow = screen.getByText('Actor model').closest('li')
+    if (!actorRow) throw new Error('actor option row not found')
+    expect(within(actorRow).queryByText('Selected')).not.toBeInTheDocument()
+  })
 })

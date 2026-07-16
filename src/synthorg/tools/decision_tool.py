@@ -17,17 +17,18 @@ continues with, injected by ``ApprovalGate.build_resume_message``.
 
 import json
 from datetime import UTC, datetime
-from typing import ClassVar, override
+from typing import ClassVar, Final, Self, override
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.evidence import EvidencePackage, RecommendedAction
-from synthorg.core.plan import PlanOption
+from synthorg.core.plan import PlanOption, validate_decision_options
+from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
@@ -48,6 +49,24 @@ _DECISION_ACTION_TYPE: str = "decision:project"
 #: Bound on the number of options a single decision may present, so a
 #: runaway model cannot flood the human with choices.
 _MAX_OPTIONS: int = 12
+
+#: Cap for the evidence package's compact ``title`` label, derived from the
+#: (up to 4096-char) question so the title stays a short summary distinct from
+#: the full ``narrative``.
+_TITLE_MAX_LEN: Final[int] = 120
+
+
+def _short_title(question: str) -> NotBlankStr:
+    """Derive a compact label from the (possibly long) decision question.
+
+    Returns:
+        The whitespace-collapsed question, truncated to a short label.
+    """
+    compact = " ".join(question.split())
+    if len(compact) <= _TITLE_MAX_LEN:
+        return NotBlankStr(compact)
+    return NotBlankStr(compact[: _TITLE_MAX_LEN - 3].rstrip() + "...")
+
 
 #: The lone recommended action on an options decision: approve = proceed
 #: with the option the operator picks.
@@ -94,6 +113,41 @@ class RequestProjectDecisionArgs(BaseModel):
             "decision the human answers in free text."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_options(self) -> Self:
+        """Enforce the decision-option invariants at the boundary type itself.
+
+        Reuses the shared :func:`validate_decision_options` so the args model
+        rejects malformed options (fewer than two, not exactly one recommended,
+        duplicate ids) at parse time, rather than deferring the check to the
+        downstream :class:`EvidencePackage` construction.
+
+        Returns:
+            The validated args.
+        """
+        validate_decision_options(
+            entity_id="request_project_decision",
+            kind=PlanItemKind.DECISION if self.options else PlanItemKind.WORK,
+            options=self.plan_options(),
+        )
+        return self
+
+    def plan_options(self) -> tuple[PlanOption, ...]:
+        """Project the options onto the shared :class:`PlanOption` shape.
+
+        Returns:
+            The options as ``PlanOption``s (empty for an open-ended decision).
+        """
+        return tuple(
+            PlanOption(
+                id=opt.id,
+                title=opt.title,
+                summary=opt.summary,
+                recommended=opt.recommended,
+            )
+            for opt in self.options
+        )
 
 
 class RequestProjectDecisionTool(BaseTool):
@@ -179,16 +233,10 @@ class RequestProjectDecisionTool(BaseTool):
 
         question = args.question.strip()
         approval_id = str(uuid4())
-        try:
-            evidence = self._build_evidence(approval_id, args)
-        except ValueError as exc:
-            # The options violated the decision invariants (fewer than two /
-            # not exactly one recommended / duplicate ids). Report the
-            # invariant message, never the raw input beyond it.
-            return ToolExecutionResult(
-                content=f"Invalid decision options: {safe_error_description(exc)}",
-                is_error=True,
-            )
+        # Options are already validated by ``RequestProjectDecisionArgs``'s
+        # model validator (rejected at ``parse_typed`` above), so building the
+        # evidence package here cannot fail on the option invariants.
+        evidence = self._build_evidence(approval_id, args)
 
         store_error = await self._persist_item(approval_id, args, evidence)
         if store_error is not None:
@@ -204,27 +252,15 @@ class RequestProjectDecisionTool(BaseTool):
         Returns:
             An :class:`EvidencePackage` carrying the rich options, or ``None``
             when the decision is open-ended (no options).
-
-        Raises:
-            ValueError: When the options violate the decision invariants.
         """
         if not args.options:
             return None
-        options = tuple(
-            PlanOption(
-                id=opt.id,
-                title=opt.title,
-                summary=opt.summary,
-                recommended=opt.recommended,
-            )
-            for opt in args.options
-        )
         return EvidencePackage(
             id=NotBlankStr(approval_id),
-            title=args.question,
+            title=_short_title(args.question),
             narrative=args.question,
             recommended_actions=(_PROCEED_ACTION,),
-            options=options,
+            options=args.plan_options(),
             source_agent_id=NotBlankStr(self._agent_id),
             task_id=NotBlankStr(self._task_id) if self._task_id else None,
             risk_level=ApprovalRiskLevel.LOW,
@@ -244,35 +280,36 @@ class RequestProjectDecisionTool(BaseTool):
         Returns:
             The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
         """
-        try:
-            from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
-            from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
+        from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
+        from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
 
-            # The brain-DECISION record reads the alternatives from this
-            # titles list; the rich per-option writeups live on the evidence
-            # package the operator picks from.
-            option_titles = [opt.title for opt in args.options]
-            item = ApprovalItem(
-                id=UUID(approval_id),
-                action_type=_DECISION_ACTION_TYPE,
-                title="Project decision requested",
-                description=args.question,
-                requested_by=self._agent_id,
-                risk_level=ApprovalRiskLevel.LOW,
-                # Reuse the parked-context source so the existing
-                # mid-execution resume path restores the run; the decision
-                # marker below drives the project-brain DECISION record.
-                source=ApprovalSource.PARKED_CONTEXT,
-                created_at=datetime.now(UTC),
-                task_id=self._task_id,
-                evidence_package=evidence,
-                metadata={
-                    "source": "request_project_decision",
-                    "clarification": "true",
-                    "decision": "true",
-                    "options": json.dumps(option_titles),
-                },
-            )
+        # The brain-DECISION record reads the alternatives from this titles
+        # list; the rich per-option writeups live on the evidence package the
+        # operator picks from. Constructed outside the try so a construction
+        # bug surfaces distinctly from a store outage.
+        option_titles = [opt.title for opt in args.options]
+        item = ApprovalItem(
+            id=UUID(approval_id),
+            action_type=_DECISION_ACTION_TYPE,
+            title="Project decision requested",
+            description=args.question,
+            requested_by=self._agent_id,
+            risk_level=ApprovalRiskLevel.LOW,
+            # Reuse the parked-context source so the existing mid-execution
+            # resume path restores the run; the decision marker below drives
+            # the project-brain DECISION record.
+            source=ApprovalSource.PARKED_CONTEXT,
+            created_at=datetime.now(UTC),
+            task_id=self._task_id,
+            evidence_package=evidence,
+            metadata={
+                "source": "request_project_decision",
+                "clarification": "true",
+                "decision": "true",
+                "options": json.dumps(option_titles),
+            },
+        )
+        try:
             await self._approval_store.add(item)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)

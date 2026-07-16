@@ -1,3 +1,5 @@
+import { useCallback, useId, useMemo, useRef } from 'react'
+
 import { Scale, Sparkles } from 'lucide-react'
 
 import { StatusPill } from '@/components/ui/status-pill'
@@ -55,6 +57,10 @@ function DecisionOptionRow({
         type="button"
         role="radio"
         aria-checked={chosen}
+        // Roving tabindex: only the selected option is in the tab sequence;
+        // Arrow keys move focus + selection among the rest (WAI-ARIA APG).
+        tabIndex={chosen ? 0 : -1}
+        data-option-id={option.id}
         onClick={() => onChoose(option.id)}
         className={cn(
           'w-full rounded-md border p-card text-left transition-colors',
@@ -65,6 +71,12 @@ function DecisionOptionRow({
       </button>
     </li>
   )
+}
+
+function arrowKeyDirection(key: string): -1 | 0 | 1 {
+  if (key === 'ArrowDown' || key === 'ArrowRight') return 1
+  if (key === 'ArrowUp' || key === 'ArrowLeft') return -1
+  return 0
 }
 
 /**
@@ -82,19 +94,52 @@ export function DecisionOptionsSection({
   chosenOptionId: string | null
   onChooseOption: ((id: string) => void) | undefined
 }) {
-  const options = approval.evidence_package?.options ?? []
+  const options = useMemo(
+    () => approval.evidence_package?.options ?? [],
+    [approval.evidence_package?.options],
+  )
+  const headingId = useId()
+  const listRef = useRef<HTMLUListElement>(null)
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (onChooseOption === undefined) return
+      const direction = arrowKeyDirection(e.key)
+      if (direction === 0) return
+      const currentIndex = options.findIndex((o) => o.id === chosenOptionId)
+      if (currentIndex === -1) return
+      e.preventDefault()
+      const nextIndex = (currentIndex + direction + options.length) % options.length
+      const next = options[nextIndex]
+      if (!next) return
+      onChooseOption(next.id)
+      const buttons =
+        listRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]')
+      Array.from(buttons ?? [])
+        .find((btn) => btn.dataset['optionId'] === next.id)
+        ?.focus()
+    },
+    [onChooseOption, options, chosenOptionId],
+  )
+
   if (options.length === 0) return null
+  const interactive = onChooseOption !== undefined
   return (
     <div>
-      <span className="flex items-center gap-1.5 text-compact font-semibold uppercase tracking-wider text-muted-foreground">
+      <span
+        id={headingId}
+        className="flex items-center gap-1.5 text-compact font-semibold uppercase tracking-wider text-muted-foreground"
+      >
         <Scale className="size-3.5" aria-hidden="true" />
         Choose an option
       </span>
       <ul
+        ref={listRef}
         className="mt-2 space-y-2"
-        {...(onChooseOption !== undefined && {
+        {...(interactive && {
           role: 'radiogroup',
-          'aria-label': 'Decision options',
+          'aria-labelledby': headingId,
+          onKeyDown: handleKeyDown,
         })}
       >
         {options.map((option) => (

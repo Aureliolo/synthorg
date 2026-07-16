@@ -124,6 +124,26 @@ class TestExecute:
         )
         assert "React, Svelte" in result.content
 
+    async def test_long_question_yields_short_title(
+        self,
+        tool: RequestProjectDecisionTool,
+        approval_store: ApprovalStore,
+    ) -> None:
+        long_question = "Which framework? " + "x" * 400
+        result = await tool.execute(
+            arguments={"question": long_question, "options": _rich_options()},
+        )
+        assert not result.is_error
+        item = await approval_store.get(
+            cast("JsonDict", result.metadata)["approval_id"]
+        )
+        assert item is not None
+        assert item.evidence_package is not None
+        # The title is a compact label; the full question rides on narrative.
+        assert len(item.evidence_package.title) <= 120
+        assert item.evidence_package.narrative == long_question
+        assert item.description == long_question
+
     async def test_invalid_options_no_recommended_rejected(
         self,
         tool: RequestProjectDecisionTool,
@@ -135,8 +155,67 @@ class TestExecute:
         result = await tool.execute(
             arguments={"question": "Framework?", "options": options},
         )
+        # The args model validator rejects at parse time.
         assert result.is_error
-        assert "Invalid decision options" in result.content
+        assert "Invalid decision arguments" in result.content
+        assert "recommended" in result.content
+
+    async def test_two_recommended_rejected(
+        self,
+        tool: RequestProjectDecisionTool,
+    ) -> None:
+        options = [
+            {"id": "a", "title": "A", "summary": "first", "recommended": True},
+            {"id": "b", "title": "B", "summary": "second", "recommended": True},
+        ]
+        result = await tool.execute(
+            arguments={"question": "Framework?", "options": options},
+        )
+        assert result.is_error
+        assert "recommended" in result.content
+
+    async def test_duplicate_option_ids_rejected(
+        self,
+        tool: RequestProjectDecisionTool,
+    ) -> None:
+        options = [
+            {"id": "a", "title": "A", "summary": "first", "recommended": True},
+            {"id": "a", "title": "B", "summary": "second"},
+        ]
+        result = await tool.execute(
+            arguments={"question": "Framework?", "options": options},
+        )
+        assert result.is_error
+        assert "duplicate option ids" in result.content
+
+    async def test_too_many_options_rejected(
+        self,
+        tool: RequestProjectDecisionTool,
+    ) -> None:
+        options = [
+            {"id": f"o{i}", "title": f"O{i}", "summary": "x", "recommended": i == 0}
+            for i in range(13)
+        ]
+        result = await tool.execute(
+            arguments={"question": "Framework?", "options": options},
+        )
+        assert result.is_error
+        assert "Invalid decision arguments" in result.content
+
+    async def test_malformed_option_schema_rejected(
+        self,
+        tool: RequestProjectDecisionTool,
+    ) -> None:
+        options = [
+            {"id": "a", "title": "A", "recommended": True},  # missing summary
+            {"id": "b", "title": "B", "summary": "second"},
+        ]
+        result = await tool.execute(
+            arguments={"question": "Framework?", "options": options},
+        )
+        assert result.is_error
+        assert "Invalid decision arguments" in result.content
+        assert "summary" in result.content
 
     async def test_single_option_rejected(
         self,
@@ -149,7 +228,7 @@ class TestExecute:
             arguments={"question": "Framework?", "options": options},
         )
         assert result.is_error
-        assert "Invalid decision options" in result.content
+        assert "at least two options" in result.content
 
     async def test_blank_question_rejected(
         self,

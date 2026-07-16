@@ -53,6 +53,7 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 - `src/synthorg/core/concurrency/cas_retry.py` `CASRetryHandler`: the shared version-token (`expected_updated_at`) compare-and-set retry handler. Retries a read-modify-write on `VersionConflictError` and re-raises after a bounded attempt count; the settings-blob sites below drive it rather than hand-rolling the loop.
 - `src/synthorg/organization/team_navigation.py` (`mutate_company_departments` / `with_company_departments_cas`) and `src/synthorg/api/controllers/template_packs.py` (`_apply_pack_to_settings`): CAS over the `company.departments` / `company.agents` settings blob through `CASRetryHandler`; the retry budget resolves per call from `coordination.company_departments_cas_retry_attempts`.
 - `src/synthorg/api/controllers/departments/_shared.py`: CAS over the `dept_ceremony_policies` setting through `CASRetryHandler`.
+- `src/synthorg/api/controllers/_plan_review_resume.py` `_sync_plan_status`: CAS over the durable plan's status when reflecting an approval decision, through `CASRetryHandler`; exhaustion is swallowed-and-logged (the decision already persisted on the approval), not re-raised.
 
 ### C/Sync -- Sync retry where `GeneralRetryHandler` is unreachable
 

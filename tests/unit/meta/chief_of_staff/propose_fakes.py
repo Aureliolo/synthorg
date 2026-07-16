@@ -7,7 +7,6 @@ suites share one set of repository doubles and one proposer builder.
 """
 
 from datetime import UTC, date, datetime
-from uuid import uuid4
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import (
@@ -27,7 +26,7 @@ from synthorg.meta.chief_of_staff.propose import ChiefOfStaffProposer
 from synthorg.meta.chief_of_staff.routing import RoleRouter
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import FakeClock
+from tests._shared import FakeClock, as_uuid
 from tests._shared.conversation_fakes import (
     FakeConversationRepo,
     FakeTurnRepo,
@@ -52,7 +51,7 @@ def make_identity(  # noqa: PLR0913 -- test identity builder: many independent k
         A registered-shaped identity with the given role and provider.
     """
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid(name),
         name=NotBlankStr(name),
         role=NotBlankStr(role),
         department=NotBlankStr(department),

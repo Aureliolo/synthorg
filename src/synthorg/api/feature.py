@@ -70,6 +70,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "GroupInviteCoordinator",
         "build_conversational_actor",
         "build_chief_of_staff_narrator",
+        "ConversationalPlanDispatcher",
     ),
     depends_on=(),
 )

@@ -52,6 +52,7 @@ function resetStore() {
   _resetPendingTransitions()
   useApprovalsStore.setState({
     approvals: [],
+    total: 0,
     selectedApproval: null,
     loading: false,
     loadingDetail: false,

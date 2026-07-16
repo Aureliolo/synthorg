@@ -42,7 +42,7 @@ from synthorg.meta.chief_of_staff.responder import (
     RoutingDecision,
     build_attributed_assistant_turn,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_CONVERSATION_STATUS_TRANSITIONED,
     COS_PROPOSE_FAILED,
@@ -60,10 +60,10 @@ def _summarise_decision(
     work: ProposedWork | None,
     steering: tuple[ProposedSteering, ...],
 ) -> str:
-    """One-line assistant summary of the drafted plan and parked steering.
+    """Multi-line assistant summary of the drafted plan and parked steering.
 
     Returns:
-        Resulting string.
+        Resulting string (a lead line plus one bullet per work/steering item).
     """
     lines: list[str] = []
     if work is not None:
@@ -119,6 +119,14 @@ class ProposeActMixin:
             plan_draft = await self._draft_plan(conversation, args, decision, now)
         except Exception as exc:
             reraise_critical(exc)
+            logger.warning(
+                COS_PROPOSE_FAILED,
+                conversation_id=str(conversation.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="plan draft failed; unwinding parked steering",
+                parked=len(steering_summaries),
+            )
             for parked in steering_summaries:
                 await unwind_parked_steering(self._approval_store, parked.approval_id)
             raise
@@ -235,6 +243,14 @@ class ProposeActMixin:
                 )
         except Exception as exc:
             reraise_critical(exc)
+            logger.warning(
+                COS_PROPOSE_FAILED,
+                conversation_id=str(conversation.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="steering park failed mid-batch; unwinding earlier parks",
+                parked=len(summaries),
+            )
             for parked in summaries:
                 await unwind_parked_steering(self._approval_store, parked.approval_id)
             raise

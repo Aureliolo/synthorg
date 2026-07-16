@@ -48,7 +48,8 @@
         "build_group_chat_service",
         "GroupInviteCoordinator",
         "build_conversational_actor",
-        "build_chief_of_staff_narrator"
+        "build_chief_of_staff_narrator",
+        "ConversationalPlanDispatcher"
       ],
       "mcp_tool_names": [],
       "name": "api_core",
@@ -1396,6 +1397,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-16T19:13:43.188677Z",
+  "generated_at": "2026-07-16T21:25:46.838996Z",
   "schema_version": 1
 }

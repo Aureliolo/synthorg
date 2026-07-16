@@ -531,3 +531,21 @@ def resolve_decision_reason(
         msg = "chosen_option_id does not name an option on this decision."
         raise ValidationError(msg)
     return f"{option.title}: {option.summary}"
+
+
+def record_chosen_option(
+    item: ApprovalItem, *, chosen_option_id: str | None
+) -> EvidencePackage | None:
+    """Return the evidence package with the operator's pick recorded, or ``None``.
+
+    A decided decision fork must carry the structured choice, not only the
+    derived free-text reason, so the dashboard renders the option the operator
+    actually picked (rather than falling back to the recommended default) and an
+    audit reads it without parsing prose. ``None`` for a non-decision approval,
+    so the caller leaves ``evidence_package`` untouched. The id has already been
+    validated against the options by :func:`resolve_decision_reason`.
+    """
+    evidence = item.evidence_package
+    if evidence is None or not evidence.options or chosen_option_id is None:
+        return None
+    return evidence.model_copy(update={"chosen_option_id": chosen_option_id})

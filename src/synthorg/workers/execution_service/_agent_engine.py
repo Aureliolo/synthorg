@@ -1,6 +1,7 @@
 # module-kind: service
 """Real agent-runtime worker execution service."""
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, override
@@ -226,20 +227,31 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
             # Record the sanitised cause alongside the generic context so the
             # persisted FAILED reason names what actually broke, not just that
             # the spine failed; safe_error_description avoids leaking a raw
-            # str(exc) that could carry a secret.
+            # str(exc) that could carry a secret. Shielded so a shutdown drain
+            # cancelling this task mid-cleanup cannot abort the FAILED
+            # transition and terminal frame partway through (the exact hang
+            # this handler exists to prevent).
             reason = f"{_SPINE_FAILURE_REASON}: {safe_error_description(exc)}"
-            await sync_to_task_engine(
-                self._task_engine,
-                target_status=TaskStatus.FAILED,
-                task_id=str(task.id),
-                agent_id=_SYSTEM_PIPELINE_AGENT_ID,
-                reason=reason,
-                critical=True,
-            )
-            await self._engine.project_background_failure(
-                task_id=str(task.id), agent_id=_SYSTEM_PIPELINE_AGENT_ID
-            )
+            await asyncio.shield(self._finalise_failed_spine(task, reason))
             raise
+
+    async def _finalise_failed_spine(self, task: Task, reason: str) -> None:
+        """Persist the FAILED status and project the terminal error frame.
+
+        Run under :func:`asyncio.shield` by the caller so a shutdown-drain
+        cancellation cannot tear down the transition + frame partway through.
+        """
+        await sync_to_task_engine(
+            self._task_engine,
+            target_status=TaskStatus.FAILED,
+            task_id=str(task.id),
+            agent_id=_SYSTEM_PIPELINE_AGENT_ID,
+            reason=reason,
+            critical=True,
+        )
+        await self._engine.project_background_failure(
+            task_id=str(task.id), agent_id=_SYSTEM_PIPELINE_AGENT_ID
+        )
 
     @override
     async def _provision_environment(

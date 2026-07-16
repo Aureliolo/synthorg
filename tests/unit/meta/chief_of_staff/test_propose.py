@@ -67,6 +67,13 @@ _STEER_NO_PROJECT_JSON = (
     '"work": null, '
     '"steering": [{"kind": "hint", "text": "prefer the shared util"}]}'
 )
+_STEER_TWO_SECOND_NO_PROJECT_JSON = (
+    '{"needs_clarification": false, "clarifying_question": null, '
+    '"work": null, '
+    '"steering": [{"project": "checkout", "kind": "redirect", '
+    '"text": "use Postgres not Mongo"}, '
+    '{"kind": "hint", "text": "prefer the shared util"}]}'
+)
 
 
 def _stub_dispatcher(
@@ -258,6 +265,24 @@ class TestSteeringPropose:
                 )
             )
         # Pre-validation raises before any park lands.
+        assert await approvals.list_items() == ()
+
+    async def test_steering_batch_validates_all_before_parking_any(self) -> None:
+        # Two directives in one turn: the first names a project, the second
+        # does not. The whole batch is pre-validated before anything parks, so
+        # the second's missing project rejects the turn and the first never
+        # lands a half-committed park.
+        provider = ScriptedProvider(
+            responses=[make_text_response(_STEER_TWO_SECOND_NO_PROJECT_JSON)]
+        )
+        proposer, *_, approvals = build_proposer(provider=provider)
+        with pytest.raises(ValueError, match="no project"):
+            await proposer.converse(
+                ProposeArgs(
+                    message=NotBlankStr("steer the agents"),
+                    created_by=NotBlankStr("user-1"),
+                )
+            )
         assert await approvals.list_items() == ()
 
     async def test_plan_draft_failure_unwinds_parked_steering(self) -> None:

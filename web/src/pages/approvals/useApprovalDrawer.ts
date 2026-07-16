@@ -19,10 +19,24 @@ export function decisionOptionsOf(
   return approval?.evidence_package?.options ?? []
 }
 
-/** Pre-select the recommended option so a decision fork opens with a default. */
+/**
+ * The option to show selected. A decided approval carries the operator's actual
+ * pick on ``evidence_package.chosen_option_id``, so surface that; a pending fork
+ * has none yet, so pre-select the recommended option (or the first) as the
+ * default the operator can change.
+ */
+/** The recommended option (or the first) as the pre-selection default. */
+function fallbackOptionId(options: readonly PlanOption[]): string | null {
+  return options.find((o) => o.recommended)?.id ?? options[0]?.id ?? null
+}
+
 function defaultChosenOptionId(approval: ApprovalResponse | null): string | null {
   const options = decisionOptionsOf(approval)
-  return options.find((o) => o.recommended)?.id ?? options[0]?.id ?? null
+  const persisted = approval?.evidence_package?.chosen_option_id
+  if (persisted != null && options.some((o) => o.id === persisted)) {
+    return persisted
+  }
+  return fallbackOptionId(options)
 }
 
 /**

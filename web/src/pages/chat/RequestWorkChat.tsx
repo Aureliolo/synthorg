@@ -122,7 +122,7 @@ export function RequestWorkChat() {
         <EmptyState
           icon={ClipboardList}
           title="Request work"
-          description="Describe work in natural language. The Chief of Staff clarifies, then queues concrete items for your approval; concern-routed turns are answered by the matching role agent."
+          description="Describe work in natural language. The Chief of Staff clarifies, then drafts one plan for you to review holistically in Plan Review before any work begins; concern-routed turns are answered by the matching role agent."
         />
         <ExamplePrompts
           prompts={EXAMPLE_PROMPTS}

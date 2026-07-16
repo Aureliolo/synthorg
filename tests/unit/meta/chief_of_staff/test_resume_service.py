@@ -27,7 +27,7 @@ from synthorg.persistence.conversation_protocol import (
     ConversationRepository,
     ConversationTurnRepository,
 )
-from tests._shared import mock_of
+from tests._shared import mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -52,9 +52,9 @@ def _service(
 async def test_invites_for_approval_filters_by_approval_id() -> None:
     repo = mock_of[ConversationInviteRepository]()
     repo.query.return_value = ()
-    await _service(invite_repo=repo).invites_for_approval("appr-9")
+    await _service(invite_repo=repo).invites_for_approval(sid("appr-9"))
     repo.query.assert_awaited_once_with(
-        ConversationInviteFilterSpec(approval_id="appr-9"),
+        ConversationInviteFilterSpec(approval_id=sid("appr-9")),
     )
 
 
@@ -62,13 +62,13 @@ async def test_transition_invite_delegates_cas() -> None:
     repo = mock_of[ConversationInviteRepository]()
     repo.transition_if.return_value = False
     won = await _service(invite_repo=repo).transition_invite(
-        "inv-1",
+        sid("inv-1"),
         from_status=ConversationInviteStatus.PENDING,
         to_status=ConversationInviteStatus.ACCEPTED,
     )
     assert won is False
     repo.transition_if.assert_awaited_once_with(
-        "inv-1",
+        sid("inv-1"),
         ConversationInviteStatus.PENDING,
         ConversationInviteStatus.ACCEPTED,
     )
@@ -77,10 +77,10 @@ async def test_transition_invite_delegates_cas() -> None:
 async def test_active_participants_filters_active_status() -> None:
     repo = mock_of[ConversationParticipantRepository]()
     repo.query.return_value = ()
-    await _service(participant_repo=repo).active_participants("conv-1")
+    await _service(participant_repo=repo).active_participants(sid("conv-1"))
     repo.query.assert_awaited_once_with(
         ConversationParticipantFilterSpec(
-            conversation_id="conv-1",
+            conversation_id=sid("conv-1"),
             status=ConversationParticipantStatus.ACTIVE,
         ),
     )

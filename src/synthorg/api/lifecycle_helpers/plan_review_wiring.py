@@ -166,8 +166,18 @@ class PlanReviewApprovalGate:
             # The plan committed but the approval did not: without the
             # approval there is no route to ever approve or reject this plan,
             # so the row would be a permanent orphan (a retry mints a fresh
-            # plan id, never colliding). Compensate by deleting the plan so
-            # the failure surfaces cleanly and leaves no dangling record.
+            # plan id, never colliding). Log the cause, then compensate by
+            # deleting the plan so the failure surfaces cleanly and leaves no
+            # dangling record (the compensating delete's own failure is logged
+            # separately and never masks this error).
+            logger.warning(
+                API_APP_STARTUP,
+                service="plan_review_gate",
+                note="approval-store write failed; compensating orphaned plan",
+                plan_id=str(durable_plan.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             await self._delete_orphan_plan(durable_plan.id)
             raise
         return PlanReviewHandoff(

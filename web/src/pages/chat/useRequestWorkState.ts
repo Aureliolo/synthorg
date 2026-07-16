@@ -187,7 +187,6 @@ function buildAssistantMessage(
     ? {
         title: result.plan_draft.title,
         project: result.plan_draft.project,
-        taskId: result.plan_draft.task_id,
       }
     : undefined
   const steering = result.steering.map((s) => ({

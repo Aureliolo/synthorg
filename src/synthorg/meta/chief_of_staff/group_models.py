@@ -126,10 +126,9 @@ class ConversationInvite(BaseModel):
     """An agent-initiated invite parked behind a human consent decision.
 
     Links one ``ApprovalItem`` (by ``approval_id``) to the requested
-    membership change. On consent
-    the invited agent is added to the participant roster via a
-    ``PENDING -> ACCEPTED`` compare-and-set; on rejection membership is
-    left unchanged (``PENDING -> DECLINED``).
+    membership change. On consent the invited agent is added to the
+    participant roster via a ``PENDING -> ACCEPTED`` compare-and-set; on
+    rejection membership is left unchanged (``PENDING -> DECLINED``).
 
     Attributes:
         id: Unique invite identifier.

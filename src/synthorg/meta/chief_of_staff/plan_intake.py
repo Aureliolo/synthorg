@@ -15,7 +15,9 @@ the same plan-review spine, differing only in their entry envelope (a
 free-form chat brief here, a structured charter there). The background
 dispatch rides a narrow :class:`ConversationalWorkDispatchPort` so the
 ``meta`` layer never imports the ``workers`` layer; the worker execution
-service satisfies the port and is attached at startup.
+service satisfies the port and is attached at startup. The port is
+required: drafting fails closed (``ServiceUnavailableError``) when it is
+absent, so no intake task is ever created without a spine to run it.
 """
 
 import uuid
@@ -23,7 +25,7 @@ from datetime import datetime
 from typing import Protocol
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
@@ -37,10 +39,7 @@ from synthorg.meta.chief_of_staff.models import (
     ProposeArgs,
     ProposedWork,
 )
-from synthorg.observability import (
-    get_logger,
-    log_exception_redacted,
-)
+from synthorg.observability import get_logger
 from synthorg.observability.events.chief_of_staff import (
     COS_PROPOSE_FAILED,
     COS_PROPOSE_PROPOSED,
@@ -52,8 +51,8 @@ logger = get_logger(__name__)
 _ORIGIN_ADAPTER_ID: NotBlankStr = NotBlankStr("conversational-cos")
 # Fixed namespace for deriving a deterministic, retry-stable project id from
 # the (unique) conversation id via uuid5, so a re-dispatched brief on the same
-# conversation reuses one project rather than minting duplicates. Mirrors the
-# charter dispatcher's project derivation; treat as part of the contract.
+# conversation reuses one project rather than minting duplicates. Follows the
+# same derivation pattern as the charter dispatcher (a distinct namespace uuid).
 _PROJECT_NAMESPACE: uuid.UUID = uuid.UUID("6f1d4c2e-0000-4000-8000-000000000003")
 
 
@@ -62,8 +61,9 @@ class ConversationalWorkDispatchPort(Protocol):
 
     Structurally satisfied by the worker execution service; declared here
     so the ``meta`` layer depends on a protocol it owns rather than
-    importing the ``workers`` layer. Absent, the dispatcher runs the spine
-    synchronously as a fallback (see :class:`ConversationalPlanDispatcher`).
+    importing the ``workers`` layer. The implementation spawns the spine as
+    a tracked task that drives the task to a terminal status on failure, so
+    a dispatched task never orphans.
     """
 
     def dispatch_conversational_execution(
@@ -82,16 +82,16 @@ class ConversationalPlanDispatcher:
 
     Late-binds the work pipeline and the background-dispatch port: both
     wire only after persistence connects, so the proposer attaches this
-    dispatcher once they are available. When the port is absent the spine
-    runs synchronously (the decompose+park completes inline before the
-    chat turn returns) rather than being backgrounded.
+    dispatcher once they are available. The port is required at drafting
+    time; an unwired port fails the request closed rather than creating an
+    intake task with no spine to run it.
 
     Args:
         project_repo: Project store (resolve / create).
         work_pipeline: The work pipeline spine entry.
         clock: Injectable time source.
-        dispatch_port: Background-dispatch port; ``None`` runs the spine
-            synchronously.
+        dispatch_port: Background-dispatch port; ``None`` until wired, at
+            which point drafting fails closed.
     """
 
     __slots__ = ("_clock", "_dispatch_port", "_project_repo", "_work_pipeline")
@@ -121,20 +121,37 @@ class ConversationalPlanDispatcher:
 
         Intake runs synchronously so the returned summary names a real task
         the chat can subscribe to; the decompose+park spine (which produces
-        the durable plan and parks it for review) is backgrounded when a
-        dispatch port is attached, or run inline otherwise.
+        the durable plan and parks it for review) is backgrounded via the
+        dispatch port. Fails closed before any state is created when the port
+        is unwired, so a task is never left with no spine to run it.
 
         Returns:
             The :class:`PlanDraftSummary` naming the objective task and
             project the plan is being drafted for.
 
         Raises:
+            ServiceUnavailableError: When the dispatch port is not wired.
             WorkPipelineError: When intake rejects the objective.
         """
+        port = self._dispatch_port
+        if port is None:
+            logger.error(
+                COS_PROPOSE_FAILED,
+                conversation_id=str(conversation.id),
+                note="work brief accepted but dispatch port not wired",
+            )
+            msg = "Plan drafting is unavailable: the work dispatch port is not wired."
+            raise ServiceUnavailableError(msg)
         project_id = await self._resolve_project(conversation, args, work)
         work_item = self._build_work_item(conversation, args, work, project_id, now)
         task = await self._work_pipeline.intake_only(work_item)
-        await self._dispatch(work_item, task)
+        # The port spawns a tracked spine that fails the task on its own error;
+        # it must not raise synchronously for a runtime-execution failure.
+        port.dispatch_conversational_execution(
+            work_pipeline=self._work_pipeline,
+            work_item=work_item,
+            task=task,
+        )
         logger.info(
             COS_PROPOSE_PROPOSED,
             conversation_id=str(conversation.id),
@@ -147,34 +164,6 @@ class ConversationalPlanDispatcher:
             project=project_id,
             title=work.title,
         )
-
-    async def _dispatch(self, work_item: WorkItem, task: Task) -> None:
-        """Background the decompose+park spine, or run it inline as fallback.
-
-        With a port the spine is a tracked background task so the chat turn
-        returns immediately; without one the spine runs synchronously (the
-        chat turn blocks through decomposition). The synchronous fallback is
-        the rare no-worker-runtime path; a port is normally attached.
-        """
-        if self._dispatch_port is not None:
-            self._dispatch_port.dispatch_conversational_execution(
-                work_pipeline=self._work_pipeline,
-                work_item=work_item,
-                task=task,
-            )
-            return
-        try:
-            await self._work_pipeline.continue_from_intake(work_item, task)
-        except Exception as exc:
-            reraise_critical(exc)
-            log_exception_redacted(
-                logger,
-                COS_PROPOSE_FAILED,
-                exc,
-                task_id=str(task.id),
-                note="synchronous plan-draft spine failed (no dispatch port)",
-            )
-            raise
 
     async def _resolve_project(
         self,
@@ -195,6 +184,9 @@ class ConversationalPlanDispatcher:
         named = work.project or args.project
         if named is not None:
             existing = await self._project_repo.get(named)
+            # A read, not a lock: if the named project is deleted between here
+            # and dispatch, the pipeline's own project resolution re-checks and
+            # raises a typed ProjectNotFoundError -- that check is the authority.
             if existing is not None:
                 return named
         project_uuid = uuid.uuid5(_PROJECT_NAMESPACE, f"conversation-{conversation.id}")
@@ -214,6 +206,13 @@ class ConversationalPlanDispatcher:
                 conversation_id=str(conversation.id),
                 project=project_id,
                 note="project already provisioned on a prior turn",
+            )
+        else:
+            logger.debug(
+                COS_PROPOSE_PROPOSED,
+                conversation_id=str(conversation.id),
+                project=project_id,
+                note="project provisioned for conversational objective",
             )
         return project_id
 

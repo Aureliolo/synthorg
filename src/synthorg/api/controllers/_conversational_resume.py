@@ -13,8 +13,8 @@ through the gated feature services), so a decided approval resolves
 even after its feature is toggled off:
 
 - :func:`try_conversational_intake_resume` -- issue (or drop) a decided
-  conversational steering directive (``CONVERSATIONAL_INTAKE``). A work
-  brief no longer parks here; it drafts a plan into Plan Review instead.
+  conversational steering directive (``CONVERSATIONAL_INTAKE``); a work
+  brief drafts a plan into Plan Review and is never parked here.
 - :func:`try_conversational_invite_resume` -- add (or decline) an
   agent-initiated invite on consent (``CONVERSATIONAL_INVITE``).
 
@@ -91,12 +91,12 @@ async def try_conversational_intake_resume(
 ) -> bool:
     """Resolve a decided conversational steering directive, if this is one.
 
-    The only ``CONVERSATIONAL_INTAKE`` approval the proposer still parks is
-    a steering directive (a work brief drafts a plan into Plan Review
-    instead of parking here). A steering directive rides in the approval
-    metadata, not a proposal row: on approval it issues to the steering
-    service, on rejection it is a no-op. Everything else returns ``False``
-    so the caller falls through to the parked-context / review-gate flows.
+    The only ``CONVERSATIONAL_INTAKE`` approval the proposer parks is a
+    steering directive; a work brief drafts a plan into Plan Review and is
+    never parked here. A steering directive rides in the approval metadata,
+    not a proposal row: on approval it issues to the steering service, on
+    rejection it is a no-op. Everything else returns ``False`` so the caller
+    falls through to the parked-context / review-gate flows.
 
     Returns:
         ``True`` when this flow owns the decision (a steering directive),

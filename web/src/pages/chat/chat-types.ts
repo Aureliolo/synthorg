@@ -39,7 +39,6 @@ export type ChiefOfStaffMessage = UserTurn | ChiefOfStaffAssistantMessage
 export interface RequestWorkPlanDraft {
   title: string
   project: string
-  taskId: string
 }
 
 /** A parked steering directive, with its approval id for a deep link. */

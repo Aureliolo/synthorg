@@ -427,7 +427,7 @@ self_improvement:
 
 `signal_resume_intent` dispatches every decided approval through a deterministic flow chain keyed off the persisted `ApprovalItem.source` discriminator. The discriminator is fixed at creation so a decided approval routes correctly even if the relevant subsystem is briefly unavailable.
 
-1. **Flow 0** (Conversational intake; `source = CONVERSATIONAL_INTAKE`, `try_conversational_intake_resume`): the dispatcher looks up the gating `ConversationalProposal`, rebuilds the parked `WorkItem` from `work_item_json`, and on approve runs intake **synchronously** (`work_pipeline.intake_only`) so the created task id is surfaced onto the approval before returning, then **backgrounds** the remaining spine (`dispatch_conversational_execution` -> `work_pipeline.continue_from_intake`). Surfacing the task id lets the caller subscribe to the task's AG-UI progress stream while the run executes (see [Live execution progress](#live-execution-progress)); the proposal moves to `EXECUTED` (dispatched, not awaited). On reject the proposal moves to `REJECTED` and the pipeline is never touched. Hard misconfiguration (no work pipeline) raises 503 rather than silently stranding the work.
+1. **Flow 0** (Conversational steering; `source = CONVERSATIONAL_INTAKE`, `try_conversational_intake_resume`): the only `CONVERSATIONAL_INTAKE` approval the proposer parks is a **steering directive** (a redirect / priority nudge), carried in the approval metadata (`STEERING_INTAKE_*` keys), not a proposal row. On approve it issues the directive to the steering service; on reject it is a no-op. A conversational **work brief** is never parked here: the propose turn drafts it synchronously into a durable `Plan` and parks that for holistic review through Flow 0.7 (`PLAN_REVIEW`) via the `ConversationalPlanDispatcher` (see [Plan Review: Conversational entry](plan-review.md#conversational-entry)). Every other source falls through.
 2. **Flow 0.5** (Agent invite; `source = CONVERSATIONAL_INVITE`, `try_conversational_invite_resume`): the dispatcher seats the invited agent into the group conversation on approve (re-checking the participant cap against the live roster) or moves the invite to `DECLINED` on reject. Owned here; every other source falls through.
 3. **Flow 0.7** (Plan approval; `source = PLAN_REVIEW`, `try_plan_review_resume`): the plan-review gate persisted a durable `Plan` and parked an approval item referencing its `plan_id`. On approve the durable plan is loaded and rebuilt into a dispatchable subtask tree (so any operator edits made while it was under review are exactly what builds), and the plan's status is synced to `APPROVED`; on reject the parent task is cancelled and the plan is marked `REJECTED`. The decision is reflected onto the plan first, so a dispatch failure marks the parent task `FAILED` while the plan stays `APPROVED`. Owned here; every other source falls through. See [Plan Review](plan-review.md).
 4. **Flow 1** (Mid-execution parking; `source = PARKED_CONTEXT`, `try_mid_execution_resume`): the agent that called `request_human_approval` is parked; the decision resumes the parked context. Direct MCP chat actions (`/meta/chat/act`) park here.
@@ -437,13 +437,15 @@ Each branch returns `True` once it owns the decision, suppressing fall-through. 
 
 ### Live execution progress
 
-The gap between approving proposed work and the completion review used to be a
-silent wait, which made the second (completion) approval look like it appeared
-from nowhere. Because Flow 0 surfaces the created task id at approval time, the
-caller subscribes to that task's per-task AG-UI SSE stream
-(`GET /events/stream?session_id=<task_id>`, owner/CEO-gated) and watches the run
-execute: run-started, per-turn tool-call progress (and per-step progress on the
-plan/hybrid loops), any approval pause, and run-finished/failed. The engine
+The gap between kicking off work and seeing an outcome used to be a silent
+wait. A conversational work brief surfaces its objective task id synchronously
+from the propose turn (the `PlanDraftSummary` the `ConversationalPlanDispatcher`
+returns after `intake_only`, before any human decision), and an approved run
+surfaces its task id at approval time. Either way the caller subscribes to that
+task's per-task AG-UI SSE stream (`GET /events/stream?session_id=<task_id>`,
+owner/CEO-gated) and watches the run execute: run-started, per-turn tool-call
+progress (and per-step progress on the plan/hybrid loops), any approval pause,
+and run-finished/failed. The engine
 projects these frames best-effort through the `EventStreamHub`
 (`engine/_stream_progress.py`); a failing projection never breaks execution. The
 dashboard renders them inline in the chat flows via `useTaskProgress` +

@@ -6,18 +6,21 @@ invariants, and ``resolve_decision_reason`` which turns the operator's
 """
 
 from datetime import UTC, datetime
-from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
-from synthorg.api.controllers.approvals._shared import resolve_decision_reason
+from synthorg.api.controllers.approvals._shared import (
+    record_chosen_option,
+    resolve_decision_reason,
+)
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.evidence import EvidencePackage, RecommendedAction
 from synthorg.core.plan import PlanOption
 from synthorg.core.types import NotBlankStr
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -40,7 +43,7 @@ def _option(id_: str, *, recommended: bool = False) -> PlanOption:
 
 def _evidence(options: tuple[PlanOption, ...]) -> EvidencePackage:
     return EvidencePackage(
-        id=NotBlankStr(str(uuid4())),
+        id=NotBlankStr(str(as_uuid("ev-dec"))),
         title=NotBlankStr("Core engine architecture"),
         narrative=NotBlankStr("How should the core engine be structured?"),
         recommended_actions=(_ACTION,),
@@ -53,7 +56,7 @@ def _evidence(options: tuple[PlanOption, ...]) -> EvidencePackage:
 
 def _item(evidence: EvidencePackage | None) -> ApprovalItem:
     return ApprovalItem(
-        id=uuid4(),
+        id=as_uuid("appr-dec"),
         action_type=NotBlankStr("decision:project"),
         title=NotBlankStr("Project decision requested"),
         description=NotBlankStr("How should the core engine be structured?"),
@@ -85,7 +88,7 @@ class TestEvidencePackageOptions:
     def test_chosen_option_id_requires_options(self) -> None:
         with pytest.raises(PydanticValidationError):
             EvidencePackage(
-                id=NotBlankStr(str(uuid4())),
+                id=NotBlankStr(str(as_uuid("ev-req"))),
                 title=NotBlankStr("t"),
                 narrative=NotBlankStr("n"),
                 recommended_actions=(_ACTION,),
@@ -118,3 +121,19 @@ class TestResolveDecisionReason:
             item, chosen_option_id=None, comment="a free-text answer"
         )
         assert reason == "a free-text answer"
+
+
+class TestRecordChosenOption:
+    def test_records_the_pick_onto_the_evidence(self) -> None:
+        item = _item(_evidence((_option("a", recommended=True), _option("b"))))
+        updated = record_chosen_option(item, chosen_option_id="b")
+        assert updated is not None
+        assert updated.chosen_option_id == "b"
+
+    def test_none_for_a_non_decision_approval(self) -> None:
+        item = _item(None)
+        assert record_chosen_option(item, chosen_option_id=None) is None
+
+    def test_none_when_no_option_chosen(self) -> None:
+        item = _item(_evidence((_option("a", recommended=True), _option("b"))))
+        assert record_chosen_option(item, chosen_option_id=None) is None

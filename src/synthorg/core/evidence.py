@@ -92,8 +92,8 @@ class EvidencePackage(StructuredArtifact):
             least two, exactly one recommended, unique ids); empty for a
             plain approve/reject evidence package.
         chosen_option_id: The option the operator selected when resolving a
-            decision; ``None`` until decided, and only meaningful when
-            ``options`` is non-empty.
+            decision; ``None`` until decided, and must be ``None`` when
+            ``options`` is empty (rejected at construction).
         source_agent_id: Agent that produced this package.
         task_id: Related task, if any.
         risk_level: Risk classification.
