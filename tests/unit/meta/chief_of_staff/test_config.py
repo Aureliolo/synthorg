@@ -58,7 +58,6 @@ class TestChiefOfStaffConfig:
         assert cfg.propose_model is None
         assert cfg.propose_temperature == pytest.approx(0.3)
         assert cfg.propose_max_tokens == 2000
-        assert cfg.propose_max_proposals_per_turn == 5
         assert cfg.propose_max_clarification_turns == 5
 
     def test_propose_default_risk_level_medium(self) -> None:
@@ -71,10 +70,6 @@ class TestChiefOfStaffConfig:
         cfg = ChiefOfStaffConfig(propose_enabled=True)
         assert cfg.propose_enabled is True
         assert cfg.chat_enabled is False
-
-    def test_propose_max_proposals_upper_bound(self) -> None:
-        with pytest.raises(ValidationError):
-            ChiefOfStaffConfig(propose_max_proposals_per_turn=21)
 
     def test_propose_max_clarification_turns_lower_bound(self) -> None:
         with pytest.raises(ValidationError):

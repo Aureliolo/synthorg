@@ -105,8 +105,17 @@ tool approval, creating an `ApprovalItem` (`source=PARKED_CONTEXT`,
 human's answer arrives through the standard approvals-decision endpoint and
 resumes the run with the answer injected. The `request_project_decision`
 tool (gated by `engine.scoping_enabled`) works the same way and additionally
-records the choice as a project-brain `DECISION` entry. `InterruptType.INFO_REQUEST`
-exists as scaffolding but is not currently emitted.
+records the choice as a project-brain `DECISION` entry. When the choice is
+between known options, the agent supplies each with a title, a writeup of its
+tradeoffs, and a single recommendation; these ride on the `ApprovalItem`'s
+`EvidencePackage` (`options`, validated by the same decision-item invariants as a
+plan `PlanItem`) so the operator picks **structurally** by option id rather than
+typing free text. The dashboard renders the writeups and posts the pick as
+`chosen_option_id` on approve; the approve controller resolves it to the option's
+writeup, which becomes the decision the parked agent resumes with (and the brain
+`DECISION` entry's answer). An open-ended decision (no options) keeps the
+free-text answer path. `InterruptType.INFO_REQUEST` exists as scaffolding but is
+not currently emitted.
 
 Non-SSE polling fallback: `GET /api/v1/interrupts` +
 `POST /api/v1/interrupts/{id}/resume`. Used by CLI/integration tests and
@@ -124,6 +133,11 @@ payload. It extends `StructuredArtifact` (shared base with
 - `id`, `title`, `narrative`: human-readable summary
 - `reasoning_trace`: compressed reasoning steps
 - `recommended_actions`: 1-3 `RecommendedAction` options
+- `options`, `chosen_option_id`: the decision fork for an execution-time
+  decision approval. `options` is a tuple of `PlanOption` (id, title, tradeoff
+  summary, recommended) validated by the shared decision-item invariants (>= 2,
+  exactly one recommended, unique ids); `chosen_option_id` is the operator's pick
+  and must name one of the options. Empty for a non-decision package.
 - `risk_level`: `ApprovalRiskLevel`
 - `source_agent_id`, `task_id`, `metadata`
 

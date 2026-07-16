@@ -149,8 +149,10 @@ any team builds, so an operator can review, rework, or send the plan back for ch
 through the `/plans` API and Plan Review workspace before approving (see
 [Plan Review](plan-review.md)); the **mid-task clarification pause** (`AWAITING_INPUT`,
 `engine.clarification_enabled`) lets an agent ask a human an open-ended question; and
-the **project-decision gate** (`engine.scoping_enabled`) records the human's choice as
-a project-brain `DECISION` entry.
+the **project-decision gate** (`engine.scoping_enabled`) puts a mid-build implementation
+fork to a human, who picks structurally from the agent-supplied options (each with a
+tradeoff writeup, one recommended) and records the choice as a project-brain `DECISION`
+entry.
 
 ## Intake Engine
 

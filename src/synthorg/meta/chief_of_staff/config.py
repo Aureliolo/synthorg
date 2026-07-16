@@ -34,13 +34,6 @@ _PROPOSE_MAX_TOKENS_MIN: int = 100
 # the pending message would not survive.
 _CONVERSATIONAL_HISTORY_TOKEN_BUDGET_DEFAULT: int = 4000
 _CONVERSATIONAL_HISTORY_TOKEN_BUDGET_MIN: int = 200
-# Five proposals per turn bounds the approval-queue fan-out a single
-# conversation turn can create; the 1..20 envelope is the same range
-# the model_validator on ProposeDecision enforces for the model's own
-# JSON output.
-_PROPOSE_MAX_PROPOSALS_DEFAULT: int = 5
-_PROPOSE_MAX_PROPOSALS_MIN: int = 1
-_PROPOSE_MAX_PROPOSALS_MAX: int = 20
 # Five clarifying turns is the cap before the conversation force-closes
 # with _CAP_MESSAGE; 1..20 is the same envelope as the per-turn cap so
 # operators tuning one routinely tune the other in tandem.
@@ -203,8 +196,6 @@ class ChiefOfStaffConfig(BaseModel):
         conversational_history_token_budget: Token budget for the windowed
             conversation history injected into a propose/group prompt;
             oldest turns are dropped first.
-        propose_max_proposals_per_turn: Upper bound on work items a
-            single turn may emit (bounds approval-queue fan-out).
         propose_max_clarification_turns: Maximum clarifying questions
             before the model must either propose or yield a terminal
             turn (prevents an unbounded clarify loop).
@@ -322,11 +313,6 @@ class ChiefOfStaffConfig(BaseModel):
             "Token budget for the windowed conversation history injected "
             "into a propose/group prompt; oldest turns are dropped first."
         ),
-    )
-    propose_max_proposals_per_turn: int = Field(
-        default=_PROPOSE_MAX_PROPOSALS_DEFAULT,
-        ge=_PROPOSE_MAX_PROPOSALS_MIN,
-        le=_PROPOSE_MAX_PROPOSALS_MAX,
     )
     propose_max_clarification_turns: int = Field(
         default=_PROPOSE_MAX_CLARIFICATION_DEFAULT,
