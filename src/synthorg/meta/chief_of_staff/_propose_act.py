@@ -86,6 +86,16 @@ class ProposeActMixin:
     _config: ChiefOfStaffConfig
     _plan_dispatcher: ConversationalPlanDispatcher | None
 
+    def attach_plan_dispatcher(self, dispatcher: ConversationalPlanDispatcher) -> None:
+        """Attach the conversational plan dispatcher (late-bind seam).
+
+        The dispatcher drives an accepted work brief into the plan-review
+        spine (provision project, intake the objective, background the
+        decompose+park). Wired by the startup hook once the work pipeline
+        and background-dispatch port are available.
+        """
+        self._plan_dispatcher = dispatcher
+
     async def _act_on_decision(  # noqa: PLR0913 -- one turn's full act context
         self,
         conversation: Conversation,

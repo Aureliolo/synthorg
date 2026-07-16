@@ -15,6 +15,10 @@ from pydantic import BaseModel
 from synthorg._core.features import require_service
 from synthorg.api.api_core_state import idempotency_service_of
 from synthorg.api.auth.controller_helpers import require_authenticated_user
+from synthorg.api.controllers.approvals._decision_resolution import (
+    record_chosen_option,
+    resolve_decision_reason,
+)
 from synthorg.api.controllers.approvals._enrichment import resolve_approval_context
 from synthorg.api.controllers.approvals._notify import (
     _decided_attribution,
@@ -27,8 +31,6 @@ from synthorg.api.controllers.approvals._shared import (
     _get_approval_or_404,
     _resolve_urgency_thresholds,
     _to_approval_response,
-    record_chosen_option,
-    resolve_decision_reason,
 )
 from synthorg.api.dto import (
     ApiResponse,

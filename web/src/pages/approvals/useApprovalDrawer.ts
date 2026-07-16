@@ -13,7 +13,7 @@ import type { PlanOption } from '@/api/types/plans'
 const CHOICE_REQUIRED = 'Choose an option before approving.'
 
 /** The execution-time decision options an approval offers, or empty. */
-export function decisionOptionsOf(
+function decisionOptionsOf(
   approval: ApprovalResponse | null,
 ): readonly PlanOption[] {
   return approval?.evidence_package?.options ?? []

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
-from synthorg.api.controllers.approvals._shared import (
+from synthorg.api.controllers.approvals._decision_resolution import (
     record_chosen_option,
     resolve_decision_reason,
 )
