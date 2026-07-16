@@ -1,7 +1,6 @@
 # module-kind: service
 """Real agent-runtime worker execution service."""
 
-import asyncio
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, override
@@ -55,6 +54,9 @@ from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.workers.environment_runner import SandboxEnvironmentRunner
 from synthorg.workers.execution_resume import ResumeDispatchMixin
 from synthorg.workers.execution_service._autonomy import read_project_autonomy_mode
+from synthorg.workers.execution_service._spine_finalisation import (
+    finalise_failed_spine_guarded,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
@@ -70,10 +72,6 @@ if TYPE_CHECKING:
     from synthorg.security.autonomy.resolver import AutonomyResolver
 
 logger = get_logger(__name__)
-
-# Agent id stamped on a terminal RUN_ERROR projected for a background spine
-# failure that never reached the loop (so no real agent identity resolved).
-_SYSTEM_PIPELINE_AGENT_ID: Final[str] = "system:pipeline"
 
 _SPINE_FAILURE_REASON: Final[str] = "Background pipeline spine failed before execution"
 
@@ -232,48 +230,10 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
             # transition and terminal frame partway through (the exact hang
             # this handler exists to prevent).
             reason = f"{_SPINE_FAILURE_REASON}: {safe_error_description(exc)}"
-            await self._finalise_failed_spine_guarded(task, reason)
+            await finalise_failed_spine_guarded(
+                self._task_engine, self._engine, task, reason
+            )
             raise
-
-    async def _finalise_failed_spine_guarded(self, task: Task, reason: str) -> None:
-        """Finalise the FAILED spine, awaiting cleanup even under cancellation.
-
-        ``asyncio.shield`` alone keeps the cleanup coroutine running when a
-        shutdown-drain cancels this frame, but it does not wait for it: the
-        awaiter unwinds while the transition + terminal frame may still be
-        in flight. Retaining the task and awaiting it on cancellation (before
-        re-raising) guarantees a crashed spine never lands in a non-terminal
-        state.
-
-        Raises:
-            CancelledError: Re-raised after the cleanup completes when a
-                shutdown drain cancels this frame.
-        """
-        cleanup = asyncio.ensure_future(self._finalise_failed_spine(task, reason))
-        try:
-            await asyncio.shield(cleanup)
-        except asyncio.CancelledError:
-            if not cleanup.done():
-                await cleanup
-            raise
-
-    async def _finalise_failed_spine(self, task: Task, reason: str) -> None:
-        """Persist the FAILED status and project the terminal error frame.
-
-        Driven by :meth:`_finalise_failed_spine_guarded` so a shutdown-drain
-        cancellation cannot tear down the transition + frame partway through.
-        """
-        await sync_to_task_engine(
-            self._task_engine,
-            target_status=TaskStatus.FAILED,
-            task_id=str(task.id),
-            agent_id=_SYSTEM_PIPELINE_AGENT_ID,
-            reason=reason,
-            critical=True,
-        )
-        await self._engine.project_background_failure(
-            task_id=str(task.id), agent_id=_SYSTEM_PIPELINE_AGENT_ID
-        )
 
     @override
     async def _provision_environment(
