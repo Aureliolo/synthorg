@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.communication.conversation.enums import (
-    ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
 )
@@ -21,7 +20,6 @@ from synthorg.persistence._conversation_marshalling import (
     row_to_conversation,
     row_to_invite,
     row_to_participant,
-    row_to_proposal,
     row_to_turn,
 )
 from tests._shared import as_uuid, sid
@@ -136,34 +134,6 @@ class TestRowToInvite:
         assert invite.status is ConversationInviteStatus.PENDING
 
 
-def _proposal_row(proposal_id: str) -> dict[str, object]:
-    """Build a DB row dict for ``row_to_proposal`` with *proposal_id*."""
-    return {
-        "id": proposal_id,
-        "conversation_id": "conv-1",
-        "approval_id": "appr-1",
-        "work_item_json": '{"title": "Build landing page"}',
-        "status": ConversationalProposalStatus.PENDING.value,
-        "created_at": _NOW.isoformat(),
-    }
-
-
-class TestRowToProposal:
-    """``row_to_proposal`` deserialises the TEXT id column to a ``UUID``.
-
-    The proposal marshaller is shared by both backend repositories, so a
-    single unit test guards the round-trip and the malformed-id path for
-    SQLite and Postgres alike.
-    """
-
-    def test_valid_uuid_round_trips_to_uuid(self) -> None:
-        proposal = row_to_proposal(_proposal_row(sid("pr1")))
-        assert proposal.id == as_uuid("pr1")
-        assert proposal.conversation_id == "conv-1"
-        assert proposal.approval_id == "appr-1"
-        assert proposal.status is ConversationalProposalStatus.PENDING
-
-
 @pytest.mark.parametrize(
     ("row_builder", "marshaller"),
     [
@@ -171,7 +141,6 @@ class TestRowToProposal:
         (_conversation_row, row_to_conversation),
         (_turn_row, row_to_turn),
         (_invite_row, row_to_invite),
-        (_proposal_row, row_to_proposal),
     ],
 )
 def test_malformed_id_raises_query_error(

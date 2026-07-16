@@ -54,9 +54,6 @@ from synthorg.persistence.conversation_protocol import (
     ConversationRepository,
     ConversationTurnRepository,
 )
-from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalRepository,
-)
 from tests._shared import FakeClock, as_uuid, make_app_state, mock_of, sid
 from tests.unit.meta.chief_of_staff.group_chat_fakes import (
     FakeInviteRepo,
@@ -162,7 +159,6 @@ def _resume_service(
         The facade wrapping the test's invite + participant doubles.
     """
     return ConversationalResumeService(
-        proposal_repo=mock_of[ConversationalProposalRepository](),
         invite_repo=invite_repo,
         participant_repo=participant_repo,
         conversation_repo=mock_of[ConversationRepository](),

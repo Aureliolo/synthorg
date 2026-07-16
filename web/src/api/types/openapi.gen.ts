@@ -14041,6 +14041,12 @@ export type components = {
             /** @description The comment text */
             readonly body: string;
         };
+        /** PlanDraftSummary */
+        readonly PlanDraftSummary: {
+            readonly project: string;
+            readonly task_id: string;
+            readonly title: string;
+        };
         /** PlanItem */
         readonly PlanItem: {
             /** @description Per-item criteria that define done (never empty) */
@@ -14697,22 +14703,13 @@ export type components = {
          * @enum {string}
          */
         readonly ProposalAltitude: "config_tuning" | "architecture" | "prompt_tuning" | "code_modification" | "tool_creation";
-        /** ProposedApprovalSummary */
-        readonly ProposedApprovalSummary: {
-            readonly approval_id: string;
-            readonly priority: components["schemas"]["Priority"];
-            readonly proposal_id: string;
-            readonly task_type: components["schemas"]["TaskType"];
-            readonly title: string;
-        };
         /** ProposeResult */
         readonly ProposeResult: {
             readonly clarifying_question: string | null;
             /** @default false */
             readonly conversation_closed: boolean;
             readonly conversation_id: string;
-            /** @default [] */
-            readonly proposals: readonly components["schemas"]["ProposedApprovalSummary"][];
+            readonly plan_draft: components["schemas"]["PlanDraftSummary"] | null;
             readonly responder_name: string | null;
             readonly responder_role: string | null;
             readonly routed_topic: string | null;

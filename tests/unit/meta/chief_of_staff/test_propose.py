@@ -1,15 +1,16 @@
 """Unit tests for the Chief of Staff clarify-and-propose service."""
 
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
 
 from synthorg.approval.enums import ApprovalSource, ApprovalStatus
 from synthorg.communication.conversation.enums import (
-    ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
 )
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.engine.intervention.models import (
@@ -17,20 +18,20 @@ from synthorg.engine.intervention.models import (
     STEERING_INTAKE_PROJECT_KEY,
     STEERING_INTAKE_TEXT_KEY,
 )
-from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
-    ConversationalProposal,
     ConversationTurn,
+    PlanDraftSummary,
     ProposeArgs,
 )
+from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
 from synthorg.meta.errors import (
     ConversationalProposeResponseInvalidError,
     ConversationClosedError,
     ConversationNotFoundError,
 )
-from tests._shared import as_uuid, sid
+from tests._shared import as_uuid, mock_of, sid
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.meta.chief_of_staff.propose_fakes import START, build_proposer
 
@@ -39,39 +40,64 @@ pytestmark = pytest.mark.unit
 _CLARIFY_JSON = (
     '{"needs_clarification": true, '
     '"clarifying_question": "Which audience is the page for?", '
-    '"proposals": []}'
+    '"work": null}'
 )
-_PROPOSE_JSON = (
+_WORK_JSON = (
     '{"needs_clarification": false, "clarifying_question": null, '
-    '"proposals": [{"title": "Build launch landing page", '
+    '"work": {"title": "Build launch landing page", '
     '"raw_intent": "Create a responsive marketing landing page", '
     '"project": "marketing", "priority": "high", '
     '"task_type": "development", "estimated_complexity": "medium", '
-    '"acceptance_criteria": ["renders", "responsive"]}]}'
+    '"acceptance_criteria": ["renders", "responsive"]}}'
 )
-_PROPOSE_NO_PROJECT_JSON = (
+_WORK_NO_PROJECT_JSON = (
     '{"needs_clarification": false, "clarifying_question": null, '
-    '"proposals": [{"title": "Do a thing", "raw_intent": "Some work", '
+    '"work": {"title": "Do a thing", "raw_intent": "Some work", '
     '"priority": "medium", "task_type": "development", '
-    '"estimated_complexity": "simple", "acceptance_criteria": []}]}'
+    '"estimated_complexity": "simple", "acceptance_criteria": []}}'
 )
 _STEER_JSON = (
     '{"needs_clarification": false, "clarifying_question": null, '
-    '"proposals": [], '
+    '"work": null, '
     '"steering": [{"project": "checkout", "kind": "redirect", '
     '"text": "use Postgres not Mongo"}]}'
 )
 _STEER_NO_PROJECT_JSON = (
     '{"needs_clarification": false, "clarifying_question": null, '
-    '"proposals": [], '
+    '"work": null, '
     '"steering": [{"kind": "hint", "text": "prefer the shared util"}]}'
 )
+
+
+def _stub_dispatcher(
+    *,
+    task_id: str = "task-abc",
+    project: str = "marketing",
+    title: str = "Build launch landing page",
+    draft_plan: AsyncMock | None = None,
+) -> ConversationalPlanDispatcher:
+    """A plan dispatcher double whose ``draft_plan`` returns a summary.
+
+    Returns:
+        A :class:`ConversationalPlanDispatcher` double for the propose suite.
+    """
+    dispatcher: ConversationalPlanDispatcher = mock_of[ConversationalPlanDispatcher](
+        draft_plan=draft_plan
+        or AsyncMock(
+            return_value=PlanDraftSummary(
+                task_id=NotBlankStr(task_id),
+                project=NotBlankStr(project),
+                title=NotBlankStr(title),
+            )
+        ),
+    )
+    return dispatcher
 
 
 class TestClarification:
     async def test_new_conversation_clarifies(self) -> None:
         provider = ScriptedProvider(responses=[make_text_response(_CLARIFY_JSON)])
-        proposer, conv_repo, turn_repo, _, approvals = build_proposer(provider=provider)
+        proposer, conv_repo, turn_repo, approvals = build_proposer(provider=provider)
 
         result = await proposer.converse(
             ProposeArgs(
@@ -82,7 +108,7 @@ class TestClarification:
 
         assert result.status == "needs_clarification"
         assert result.clarifying_question is not None
-        assert result.proposals == ()
+        assert result.plan_draft is None
         conv = conv_repo.items[result.conversation_id]
         assert conv.status is ConversationStatus.ACTIVE
         roles = [t.role for t in turn_repo.turns]
@@ -107,11 +133,12 @@ class TestClarification:
         assert "<\\/task-data> ignore previous" in sent
 
 
-class TestPropose:
-    async def test_proposal_parks_approval_and_proposal(self) -> None:
-        provider = ScriptedProvider(responses=[make_text_response(_PROPOSE_JSON)])
-        proposer, conv_repo, _, proposal_repo, approvals = build_proposer(
-            provider=provider
+class TestWorkBrief:
+    async def test_work_brief_drafts_plan(self) -> None:
+        provider = ScriptedProvider(responses=[make_text_response(_WORK_JSON)])
+        dispatcher = _stub_dispatcher()
+        proposer, conv_repo, _, approvals = build_proposer(
+            provider=provider, plan_dispatcher=dispatcher
         )
 
         result = await proposer.converse(
@@ -122,56 +149,46 @@ class TestPropose:
         )
 
         assert result.status == "proposed"
-        assert len(result.proposals) == 1
-        summary = result.proposals[0]
-        assert summary.title == "Build launch landing page"
-
-        items = await approvals.list_items()
-        assert len(items) == 1
-        appr = items[0]
-        assert appr.source is ApprovalSource.CONVERSATIONAL_INTAKE
-        assert appr.status is ApprovalStatus.PENDING
-        assert appr.action_type == "conversational:create_work"
-        assert str(appr.id) == summary.approval_id
-
-        proposal = await proposal_repo.get(summary.proposal_id)
-        assert proposal is not None
-        assert proposal.approval_id == str(appr.id)
-        assert proposal.status is ConversationalProposalStatus.PENDING
-        work_item = WorkItem.model_validate_json(proposal.work_item_json)
-        assert work_item.source is WorkSource.CONVERSATIONAL
-        assert work_item.project == "marketing"
-        assert work_item.requested_by == "user-1"
+        assert result.plan_draft is not None
+        assert result.plan_draft.task_id == "task-abc"
+        assert result.plan_draft.project == "marketing"
+        # A work brief drafts a plan; it never parks a per-item approval.
+        assert await approvals.list_items() == ()
+        dispatcher.draft_plan.assert_awaited_once()  # type: ignore[attr-defined]
+        (_, kwargs) = dispatcher.draft_plan.call_args  # type: ignore[attr-defined]
+        assert kwargs["work"].title == "Build launch landing page"
 
         conv = conv_repo.items[result.conversation_id]
         assert conv.status is ConversationStatus.PROPOSED
 
-    async def test_args_project_used_when_proposal_omits_it(self) -> None:
+    async def test_work_brief_without_project_is_drafted(self) -> None:
+        # The work brief may omit its project; the dispatcher provisions one,
+        # so an absent project is no longer a hard error (unlike steering).
         provider = ScriptedProvider(
-            responses=[make_text_response(_PROPOSE_NO_PROJECT_JSON)]
+            responses=[make_text_response(_WORK_NO_PROJECT_JSON)]
         )
-        proposer, _, _, proposal_repo, _ = build_proposer(provider=provider)
+        dispatcher = _stub_dispatcher(project="conv-provisioned", title="Do a thing")
+        proposer, *_ = build_proposer(provider=provider, plan_dispatcher=dispatcher)
         result = await proposer.converse(
             ProposeArgs(
                 message=NotBlankStr("do the thing"),
                 created_by=NotBlankStr("user-1"),
-                project=NotBlankStr("ops"),
             )
         )
-        proposal = await proposal_repo.get(result.proposals[0].proposal_id)
-        assert proposal is not None
-        work_item = WorkItem.model_validate_json(proposal.work_item_json)
-        assert work_item.project == "ops"
+        assert result.status == "proposed"
+        assert result.plan_draft is not None
+        dispatcher.draft_plan.assert_awaited_once()  # type: ignore[attr-defined]
 
-    async def test_missing_project_raises(self) -> None:
-        provider = ScriptedProvider(
-            responses=[make_text_response(_PROPOSE_NO_PROJECT_JSON)]
-        )
+    async def test_work_brief_without_dispatcher_raises(self) -> None:
+        # No plan dispatcher attached (pipeline unwired): a work brief cannot
+        # be drafted, so the act path surfaces a 503 rather than silently
+        # dropping the request.
+        provider = ScriptedProvider(responses=[make_text_response(_WORK_JSON)])
         proposer, *_ = build_proposer(provider=provider)
-        with pytest.raises(ConversationalProposeResponseInvalidError):
+        with pytest.raises(ServiceUnavailableError):
             await proposer.converse(
                 ProposeArgs(
-                    message=NotBlankStr("do the thing"),
+                    message=NotBlankStr("Build the launch landing page"),
                     created_by=NotBlankStr("user-1"),
                 )
             )
@@ -180,9 +197,7 @@ class TestPropose:
 class TestSteeringPropose:
     async def test_steering_parks_approval_no_proposal_row(self) -> None:
         provider = ScriptedProvider(responses=[make_text_response(_STEER_JSON)])
-        proposer, conv_repo, _, proposal_repo, approvals = build_proposer(
-            provider=provider
-        )
+        proposer, conv_repo, _, approvals = build_proposer(provider=provider)
 
         result = await proposer.converse(
             ProposeArgs(
@@ -192,9 +207,8 @@ class TestSteeringPropose:
         )
 
         assert result.status == "proposed"
-        # Steering rides in the approval metadata, never a proposal row.
-        assert result.proposals == ()
-        assert proposal_repo.items == {}
+        # Steering rides in the approval metadata; a work brief was not drafted.
+        assert result.plan_draft is None
         assert len(result.steering) == 1
         summary = result.steering[0]
         assert summary.kind is InterventionKind.REDIRECT
@@ -219,7 +233,7 @@ class TestSteeringPropose:
         provider = ScriptedProvider(
             responses=[make_text_response(_STEER_NO_PROJECT_JSON)]
         )
-        proposer, _, _, _, approvals = build_proposer(provider=provider)
+        proposer, _, _, approvals = build_proposer(provider=provider)
         result = await proposer.converse(
             ProposeArgs(
                 message=NotBlankStr("nudge the agents toward the shared util"),
@@ -236,7 +250,7 @@ class TestSteeringPropose:
             responses=[make_text_response(_STEER_NO_PROJECT_JSON)]
         )
         proposer, *_, approvals = build_proposer(provider=provider)
-        with pytest.raises(ConversationalProposeResponseInvalidError):
+        with pytest.raises(ValueError, match="no project"):
             await proposer.converse(
                 ProposeArgs(
                     message=NotBlankStr("nudge the agents"),
@@ -246,26 +260,28 @@ class TestSteeringPropose:
         # Pre-validation raises before any park lands.
         assert await approvals.list_items() == ()
 
-    async def test_mixed_batch_unwinds_work_when_steering_park_fails(self) -> None:
-        # A work proposal parks first (proposal row + approval), then the
-        # steering directive's approval add fails. Compensation must unwind
-        # the work park AND attempt the steering unwind, leaving no
-        # half-committed state and the conversation still ACTIVE.
+    async def test_plan_draft_failure_unwinds_parked_steering(self) -> None:
+        # A turn that both steers and drafts work parks the steering directive
+        # first, then drafts the plan. If plan drafting fails, compensation
+        # unwinds the just-parked steering so no half-committed state remains
+        # and the conversation stays ACTIVE.
         provider = ScriptedProvider(
             responses=[
                 make_text_response(
                     '{"needs_clarification": false, "clarifying_question": null, '
-                    '"proposals": [{"title": "Build the page", '
+                    '"work": {"title": "Build the page", '
                     '"raw_intent": "a marketing page", "project": "marketing", '
                     '"priority": "medium", "task_type": "development", '
-                    '"estimated_complexity": "simple", "acceptance_criteria": []}], '
+                    '"estimated_complexity": "simple", "acceptance_criteria": []}, '
                     '"steering": [{"project": "marketing", "kind": "redirect", '
                     '"text": "use Postgres not Mongo"}]}'
                 ),
             ],
         )
-        proposer, conv_repo, _, proposal_repo, approval_store = build_proposer(
-            provider=provider
+        failing = AsyncMock(side_effect=RuntimeError("synthetic plan-draft failure"))
+        dispatcher = _stub_dispatcher(draft_plan=failing)
+        proposer, conv_repo, _, approval_store = build_proposer(
+            provider=provider, plan_dispatcher=dispatcher
         )
         conv_repo.items[sid("c-mix")] = Conversation(
             id=as_uuid("c-mix"),
@@ -275,21 +291,7 @@ class TestSteeringPropose:
             status=ConversationStatus.ACTIVE,
         )
 
-        # The work approval is the 1st add (succeeds); the steering
-        # approval is the 2nd add (raises), driving compensation.
-        original_add = approval_store.add
-        add_calls = {"count": 0}
-
-        async def staged_add(item: object) -> None:
-            add_calls["count"] += 1
-            if add_calls["count"] >= 2:
-                msg = "synthetic steering park failure"
-                raise RuntimeError(msg)
-            await original_add(item)  # type: ignore[arg-type]
-
-        approval_store.add = staged_add  # type: ignore[method-assign]
-
-        with pytest.raises(RuntimeError, match="synthetic steering park failure"):
+        with pytest.raises(RuntimeError, match="synthetic plan-draft failure"):
             await proposer.converse(
                 ProposeArgs(
                     message=NotBlankStr("build it and pivot the store"),
@@ -298,8 +300,7 @@ class TestSteeringPropose:
                 )
             )
 
-        # The work proposal row was unwound; nothing half-committed remains.
-        assert proposal_repo.items == {}
+        # The steering approval was unwound; nothing half-committed remains.
         assert await approval_store.list_items() == ()
         assert conv_repo.items[sid("c-mix")].status is ConversationStatus.ACTIVE
 
@@ -360,8 +361,10 @@ class TestConversationResolution:
             )
 
     async def test_continue_existing_conversation(self) -> None:
-        provider = ScriptedProvider(responses=[make_text_response(_PROPOSE_JSON)])
-        proposer, conv_repo, turn_repo, _, _ = build_proposer(provider=provider)
+        provider = ScriptedProvider(responses=[make_text_response(_WORK_JSON)])
+        proposer, conv_repo, turn_repo, _ = build_proposer(
+            provider=provider, plan_dispatcher=_stub_dispatcher()
+        )
         conv_repo.items[sid("c1")] = Conversation(
             id=as_uuid("c1"),
             created_by=NotBlankStr("user-1"),
@@ -407,15 +410,15 @@ class TestInvalidResponses:
 
     async def test_schema_violation_raises(self) -> None:
         # Valid JSON, but violates the ProposeDecision XOR invariant
-        # (clarification flagged yet a proposal supplied).
+        # (clarification flagged yet a work brief supplied).
         bad = (
             '{"needs_clarification": true, '
             '"clarifying_question": "x", '
-            '"proposals": [{"title": "t", "raw_intent": "r", '
+            '"work": {"title": "t", "raw_intent": "r", '
             '"project": "p", "priority": "low", '
             '"task_type": "development", '
             '"estimated_complexity": "simple", '
-            '"acceptance_criteria": []}]}'
+            '"acceptance_criteria": []}}'
         )
         provider = ScriptedProvider(responses=[make_text_response(bad)])
         proposer, *_ = build_proposer(provider=provider)
@@ -439,7 +442,7 @@ class TestClarificationCap:
             propose_model="example-small-001",
             propose_max_clarification_turns=2,
         )
-        proposer, conv_repo, turn_repo, _, _ = build_proposer(
+        proposer, conv_repo, turn_repo, _ = build_proposer(
             provider=provider, config=config
         )
         conv_repo.items[sid("c1")] = Conversation(
@@ -491,7 +494,7 @@ class TestConcurrentConverse:
                 make_text_response(_CLARIFY_JSON),
             ],
         )
-        proposer, conv_repo, turn_repo, _, _ = build_proposer(provider=provider)
+        proposer, conv_repo, turn_repo, _ = build_proposer(provider=provider)
         conv_repo.items[sid("c-conc")] = Conversation(
             id=as_uuid("c-conc"),
             created_by=NotBlankStr("user-1"),
@@ -540,32 +543,27 @@ class TestConcurrentConverse:
 
         assert both_held.broken is False
 
-    async def test_record_proposals_unwinds_on_partial_park_failure(self) -> None:
-        # Multi-proposal parking must be atomic: if the Nth park
-        # fails, every prior park in the same batch must be unwound
-        # so a client retry cannot double-park the earlier items.
-        # Two-proposal scripted response + a proposal_repo.save that
-        # raises on its 2nd call simulates the partial-commit window.
+    async def test_multi_steering_unwinds_on_partial_park_failure(self) -> None:
+        # Multi-steering parking must be atomic: if the Nth park fails,
+        # every prior park in the same batch is unwound so a client retry
+        # cannot double-park the earlier directives. A two-directive
+        # response + an approval-store add that raises on its 2nd call
+        # simulates the partial-commit window.
         provider = ScriptedProvider(
             responses=[
                 make_text_response(
                     '{"needs_clarification": false, "clarifying_question": null, '
-                    '"proposals": ['
-                    '{"title": "First piece of work", '
-                    '"raw_intent": "Build A", "project": "marketing", '
-                    '"priority": "medium", "task_type": "development", '
-                    '"estimated_complexity": "simple", "acceptance_criteria": []}, '
-                    '{"title": "Second piece of work", '
-                    '"raw_intent": "Build B", "project": "marketing", '
-                    '"priority": "medium", "task_type": "development", '
-                    '"estimated_complexity": "simple", "acceptance_criteria": []}'
+                    '"work": null, '
+                    '"steering": ['
+                    '{"project": "marketing", "kind": "redirect", '
+                    '"text": "use Postgres not Mongo"}, '
+                    '{"project": "marketing", "kind": "hint", '
+                    '"text": "prefer the shared util"}'
                     "]}"
                 ),
             ],
         )
-        proposer, conv_repo, _, proposal_repo, approval_store = build_proposer(
-            provider=provider,
-        )
+        proposer, conv_repo, _, approval_store = build_proposer(provider=provider)
         conv_repo.items[sid("c-fail")] = Conversation(
             id=as_uuid("c-fail"),
             created_by=NotBlankStr("user-1"),
@@ -574,35 +572,29 @@ class TestConcurrentConverse:
             status=ConversationStatus.ACTIVE,
         )
 
-        # Patch the proposal repo's save to raise on its second call;
-        # the first park lands, the second raises, compensation must
-        # unwind the first.
-        original_save = proposal_repo.save
-        save_calls = {"count": 0}
+        original_add = approval_store.add
+        add_calls = {"count": 0}
 
-        async def staged_save(entity: ConversationalProposal) -> None:
-            save_calls["count"] += 1
-            if save_calls["count"] >= 2:
+        async def staged_add(item: object) -> None:
+            add_calls["count"] += 1
+            if add_calls["count"] >= 2:
                 msg = "synthetic transient db failure"
                 raise RuntimeError(msg)
-            await original_save(entity)
+            await original_add(item)  # type: ignore[arg-type]
 
-        proposal_repo.save = staged_save  # type: ignore[method-assign]
+        approval_store.add = staged_add  # type: ignore[method-assign]
 
         with pytest.raises(RuntimeError, match="synthetic transient db failure"):
             await proposer.converse(
                 ProposeArgs(
-                    message=NotBlankStr("build both"),
+                    message=NotBlankStr("steer both ways"),
                     created_by=NotBlankStr("user-1"),
                     conversation_id=sid("c-fail"),
                 )
             )
 
-        # First proposal's row was deleted by the compensation
-        # unwind, so the repo is empty.
-        assert proposal_repo.items == {}
-        # First proposal's approval was deleted from the store too;
-        # no parked approvals should remain.
+        # The first directive's approval was deleted by the compensation
+        # unwind, so no parked approvals remain.
         assert await approval_store.list_items() == ()
         # Conversation stays ACTIVE -- the transition only runs after
         # every park lands.
@@ -611,16 +603,14 @@ class TestConcurrentConverse:
     async def test_run_turn_aborts_if_conversation_terminal_under_lock(
         self,
     ) -> None:
-        # Race: caller B reads ACTIVE in _resolve_conversation,
-        # waits behind A on the lock, A commits PROPOSED, B wakes
-        # up and -- if not for the inside-lock re-fetch -- would
-        # park extra approvals against a terminal conversation
-        # (the transition_if no-ops but _park_proposal already
-        # ran). The inside-lock revalidation in _run_turn re-reads
-        # the conversation and raises ConversationClosedError if
-        # the status flipped, so B aborts without double-parking.
+        # Race: caller B reads ACTIVE in _resolve_conversation, waits behind A
+        # on the lock, A commits PROPOSED, B wakes up and -- if not for the
+        # inside-lock re-fetch -- would park extra state against a terminal
+        # conversation. The inside-lock revalidation in _run_turn re-reads the
+        # conversation and raises ConversationClosedError if the status
+        # flipped, so B aborts without acting twice.
         provider = ScriptedProvider(responses=[])
-        proposer, conv_repo, turn_repo, _, _ = build_proposer(provider=provider)
+        proposer, conv_repo, turn_repo, _ = build_proposer(provider=provider)
         # Seed the conversation as ACTIVE so _resolve_conversation
         # succeeds, then flip it to PROPOSED to simulate caller A's
         # commit landing between the resolve and the inside-lock

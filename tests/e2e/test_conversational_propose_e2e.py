@@ -1,19 +1,22 @@
-"""Acceptance: vague request -> clarify -> approve -> pipeline.
+"""Acceptance: a conversational work brief drafts a plan for review.
 
-End-to-end through the REAL components, no mocks on the seam under
-test:
+End-to-end through the REAL components, no mocks on the seam under test:
 
 * a real ``ChiefOfStaffProposer`` (scripted provider: turn 1 asks a
-  clarifying question, turn 2 emits one concrete proposal),
-* a real :class:`ApprovalStore` -- the proposal lands as a PENDING
-  ``CONVERSATIONAL_INTAKE`` approval-queue item,
-* the production approval-decision seam
-  (:func:`signal_resume_intent`): on approval its Flow 0
-  (``try_conversational_intake_resume``) rebuilds the ``WorkItem`` and
-  drives it through the REAL work pipeline built by the production
-  ``build_runtime_services`` over the client-simulation runtime,
-* a real ``TaskEngine``: the approved work becomes a persisted task
-  that an agent actually advances past CREATED.
+  clarifying question, turn 2 emits one concrete work brief),
+* a real :class:`ConversationalPlanDispatcher` over the REAL work
+  pipeline built by the production ``build_runtime_services``: a work
+  brief provisions/reuses the project, runs intake synchronously (a real
+  persisted task the chat can subscribe to), and hands the decompose+park
+  spine to the background-dispatch port,
+* a real ``TaskEngine``: intake creates a persisted task the plan is
+  drafted for.
+
+A work brief no longer parks a per-item approval; it becomes ONE
+objective whose owner drafts a single ``Plan`` reviewed holistically in
+Plan Review (covered by the plan-review resume suites + the live
+dogfood). This test pins the propose -> plan-draft seam: the brief
+reaches the real pipeline as a plan-gated objective.
 
 Zero real LLM spend: every provider is scripted/deterministic.
 """
@@ -25,55 +28,32 @@ from pathlib import Path
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.controllers._approval_review_gate import signal_resume_intent
-from synthorg.approval.enums import ApprovalStatus
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.models import ClientRequest
 from synthorg.client.simulation_state import ClientSimulationState
-from synthorg.communication.conversation.enums import (
-    ConversationalProposalStatus,
-)
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
-from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
+from synthorg.core.task import Task
+from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
+from synthorg.engine.pipeline.models import WorkItem
+from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.enums import AgentStatus
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
-from synthorg.meta.chief_of_staff.models import (
-    ConversationalProposal,
-    ConversationTurn,
-    ProposeArgs,
-)
+from synthorg.meta.chief_of_staff.models import ProposeArgs
+from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
 from synthorg.meta.chief_of_staff.propose import ChiefOfStaffProposer
-from synthorg.meta.chief_of_staff.resume_service import (
-    ConversationalResumeService,
-)
-from synthorg.persistence.conversation_invite_protocol import (
-    ConversationInviteRepository,
-)
-from synthorg.persistence.conversation_participant_protocol import (
-    ConversationParticipantRepository,
-)
-from synthorg.persistence.conversation_protocol import (
-    ConversationRepository,
-    ConversationTurnFilterSpec,
-    ConversationTurnRepository,
-)
-from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalFilterSpec,
-    ConversationalProposalRepository,
-)
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.models import (
     ChatMessage,
@@ -86,11 +66,11 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
-from synthorg.workers.execution_service import AgentEngineExecutionService
 from synthorg.workers.runtime_builder import build_runtime_services
 from tests._shared import FakeClock, as_uuid, make_app_state, mock_of, sid
 from tests._shared.conversation_fakes import (
-    FakeConversationRepo as _FakeConversationRepo,
+    FakeConversationRepo,
+    FakeTurnRepo,
 )
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.api.fakes import FakePersistenceBackend
@@ -102,15 +82,15 @@ _RESEARCH_SKILL = "research"
 _CLARIFY_JSON = (
     '{"needs_clarification": true, '
     '"clarifying_question": "Which project is the landing page for?", '
-    '"proposals": []}'
+    '"work": null}'
 )
-_PROPOSE_JSON = (
+_WORK_JSON = (
     '{"needs_clarification": false, "clarifying_question": null, '
-    '"proposals": [{"title": "Build launch landing page", '
+    '"work": {"title": "Build launch landing page", '
     '"raw_intent": "First scaffold the route, then a JSON status body.", '
     f'"project": "{sid("proj-conv")}", "priority": "medium", '
     '"task_type": "development", "estimated_complexity": "medium", '
-    '"acceptance_criteria": ["renders"]}]}'
+    '"acceptance_criteria": ["renders"]}}'
 )
 
 
@@ -159,102 +139,26 @@ class _TaskCreatingIntakeStrategy:
         )
 
 
-class _FakeTurnRepo:
-    def __init__(self) -> None:
-        self.turns: list[ConversationTurn] = []
+class _CapturingDispatchPort:
+    """Records the backgrounded spine call without running it.
 
-    async def append(self, event: ConversationTurn) -> None:
-        self.turns.append(event)
-
-    async def query(
-        self,
-        filter_spec: ConversationTurnFilterSpec,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[ConversationTurn, ...]:
-        rows = [
-            t
-            for t in self.turns
-            if filter_spec.conversation_id is None
-            or t.conversation_id == filter_spec.conversation_id
-        ]
-        rows.sort(key=lambda t: t.sequence, reverse=True)
-        return tuple(rows[offset : offset + limit])
-
-    async def purge_before(self, threshold: object) -> int:
-        del threshold
-        return 0
-
-
-class _FakeProposalRepo:
-    def __init__(self) -> None:
-        self.items: dict[str, ConversationalProposal] = {}
-
-    async def save(self, entity: ConversationalProposal) -> None:
-        self.items[str(entity.id)] = entity
-
-    async def get(self, entity_id: str) -> ConversationalProposal | None:
-        return self.items.get(entity_id)
-
-    async def delete(self, entity_id: str) -> bool:
-        return self.items.pop(entity_id, None) is not None
-
-    async def list_items(
-        self, *, limit: int = 100, offset: int = 0
-    ) -> tuple[ConversationalProposal, ...]:
-        return tuple(self.items.values())[offset : offset + limit]
-
-    async def transition_if(
-        self,
-        entity_id: str,
-        from_state: ConversationalProposalStatus,
-        to_state: ConversationalProposalStatus,
-        **updates: object,
-    ) -> bool:
-        cur = self.items.get(entity_id)
-        if cur is None or cur.status is not from_state:
-            return False
-        self.items[entity_id] = cur.model_copy(update={"status": to_state})
-        return True
-
-    async def query(
-        self,
-        filter_spec: ConversationalProposalFilterSpec,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[ConversationalProposal, ...]:
-        rows = [
-            p
-            for p in self.items.values()
-            if filter_spec.approval_id is None
-            or p.approval_id == filter_spec.approval_id
-        ]
-        return tuple(rows[offset : offset + limit])
-
-    async def count(self, filter_spec: ConversationalProposalFilterSpec) -> int:
-        return len(await self.query(filter_spec))
-
-
-def _resume_service(
-    proposal_repo: ConversationalProposalRepository,
-) -> ConversationalResumeService:
-    """Wrap *proposal_repo* in the ungated facade the dispatcher reads.
-
-    The intake-resume path only touches the proposal repo, so the invite
-    and participant legs are typed stubs.
-
-    Returns:
-        The resume service for the approval-decision dispatch state.
+    The decompose+park spine is exercised by the pipeline + plan-review
+    suites; here we pin only that the dispatcher hands it a plan-gated work
+    item over the intaken task.
     """
-    return ConversationalResumeService(
-        proposal_repo=proposal_repo,
-        invite_repo=mock_of[ConversationInviteRepository](),
-        participant_repo=mock_of[ConversationParticipantRepository](),
-        conversation_repo=mock_of[ConversationRepository](),
-        turn_repo=mock_of[ConversationTurnRepository](),
-    )
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[WorkItem, Task]] = []
+
+    def dispatch_conversational_execution(
+        self,
+        *,
+        work_pipeline: WorkPipeline,
+        work_item: WorkItem,
+        task: Task,
+    ) -> None:
+        del work_pipeline
+        self.calls.append((work_item, task))
 
 
 def _make_agent(name: str, skill: str) -> AgentIdentity:
@@ -306,7 +210,7 @@ async def _build_pipeline(
     task_engine: TaskEngine,
     tmp_path: Path,
     agents: tuple[AgentIdentity, ...],
-) -> tuple[DefaultWorkPipeline, AgentEngineExecutionService]:
+) -> DefaultWorkPipeline:
     provider = ScriptedDriver("test-provider", strategy=_SoloStrategy())
     registry = ProviderRegistry({"test-provider": provider})
     agent_registry = AgentRegistryService()
@@ -326,11 +230,6 @@ async def _build_pipeline(
         config=root_config,
     )
     intake = IntakeEngine(strategy=_TaskCreatingIntakeStrategy(task_engine))
-    # The ``has_*`` flags derive from slice contents, so we only wire the
-    # actual service references. A ``ClientSimulationState`` autospec
-    # carries both ``intake_engine`` and ``review_pipeline`` as MagicMock
-    # attributes, so ``has_simulation_runtime`` reads truthy without us
-    # spelling out a stub review pipeline.
     app_state = make_app_state(
         provider_registry=registry,
         config=root_config,
@@ -350,46 +249,48 @@ async def _build_pipeline(
     runtime = await build_runtime_services(app_state, workspace_root=tmp_path)
     pipeline = runtime.work_pipeline
     assert isinstance(pipeline, DefaultWorkPipeline)
-    worker_service = runtime.worker_execution_service
-    assert isinstance(worker_service, AgentEngineExecutionService)
-    return pipeline, worker_service
+    return pipeline
 
 
-async def test_vague_request_clarifies_then_executes_on_approval(
+async def test_work_brief_drafts_a_plan_over_the_real_pipeline(
     persistence: FakePersistenceBackend,
     task_engine: TaskEngine,
     tmp_path: Path,
 ) -> None:
     await persistence.projects.create(_project("proj-conv"))
     agent = _make_agent("solo-dev", _RESEARCH_SKILL)
-    pipeline, worker_service = await _build_pipeline(
+    pipeline = await _build_pipeline(
         persistence=persistence,
         task_engine=task_engine,
         tmp_path=tmp_path,
         agents=(agent,),
     )
-
-    approval_store = ApprovalStore()
-    proposal_repo = _FakeProposalRepo()
+    port = _CapturingDispatchPort()
+    dispatcher = ConversationalPlanDispatcher(
+        project_repo=persistence.projects,
+        work_pipeline=pipeline,
+        clock=FakeClock(),
+        dispatch_port=port,
+    )
     proposer = ChiefOfStaffProposer(
         provider=ScriptedProvider(
             responses=[
                 make_text_response(_CLARIFY_JSON),
-                make_text_response(_PROPOSE_JSON),
+                make_text_response(_WORK_JSON),
             ]
         ),
         config=ChiefOfStaffConfig(
             propose_enabled=True,
             propose_model=NotBlankStr("test-model-001"),
         ),
-        conversation_repo=_FakeConversationRepo(),
-        turn_repo=_FakeTurnRepo(),
-        proposal_repo=proposal_repo,
-        approval_store=approval_store,
+        conversation_repo=FakeConversationRepo(),
+        turn_repo=FakeTurnRepo(),
+        approval_store=ApprovalStore(),
         clock=FakeClock(),
     )
+    proposer.attach_plan_dispatcher(dispatcher)
 
-    # Turn 1: vague request -> clarifying question.
+    # Turn 1: vague request -> clarifying question, nothing drafted.
     first = await proposer.converse(
         ProposeArgs(
             message=NotBlankStr("I need a landing page"),
@@ -397,9 +298,9 @@ async def test_vague_request_clarifies_then_executes_on_approval(
         )
     )
     assert first.status == "needs_clarification"
-    assert await approval_store.list_items() == ()
+    assert port.calls == []
 
-    # Turn 2: the answer -> a concrete parked proposal.
+    # Turn 2: the answer -> a concrete work brief drafts a plan.
     second = await proposer.converse(
         ProposeArgs(
             message=NotBlankStr("For the proj-conv launch"),
@@ -408,117 +309,17 @@ async def test_vague_request_clarifies_then_executes_on_approval(
         )
     )
     assert second.status == "proposed"
-    assert len(second.proposals) == 1
-    approval_id = second.proposals[0].approval_id
+    assert second.plan_draft is not None
+    assert second.plan_draft.project == sid("proj-conv")
 
-    pending = await approval_store.list_items(status=ApprovalStatus.PENDING)
-    assert [str(a.id) for a in pending] == [approval_id]
-    parked = await approval_store.get(NotBlankStr(approval_id))
-    assert parked is not None
-
-    # Human approves: persist the decision (as the controller does),
-    # then drive the production approval-decision seam.
-    await approval_store.save(
-        parked.model_copy(
-            update={
-                "status": ApprovalStatus.APPROVED,
-                "decided_at": parked.created_at,
-                "decided_by": "operator",
-            }
-        )
-    )
-    dispatch_state = make_app_state(
-        approval_store=approval_store,
-        conversational_resume_service=_resume_service(proposal_repo),
-        work_pipeline=pipeline,
-        worker_execution_service=worker_service,
-    )
-    await signal_resume_intent(
-        dispatch_state,
-        approval_id,
-        approved=True,
-        decided_by="operator",
-        task_id=None,
-    )
-    # The decompose+execute spine is backgrounded (only intake is synchronous),
-    # so wait for it before asserting the run's effects on the task.
-    await worker_service.drain_resume_tasks()
-
-    # The proposal executed via the pipeline: a real task exists and an
-    # agent advanced it past CREATED.
-    proposal = await proposal_repo.get(second.proposals[0].proposal_id)
-    assert proposal is not None
-    assert proposal.status is ConversationalProposalStatus.EXECUTED
-
-    tasks = await persistence.tasks.list_items()
-    assert len(tasks) == 1
-    executed = tasks[0]
-    assert executed.project == sid("proj-conv")
-    assert executed.status is not TaskStatus.CREATED
-    assert executed.assigned_to == str(agent.id)
-
-
-async def test_rejected_proposal_never_touches_pipeline(
-    persistence: FakePersistenceBackend,
-    task_engine: TaskEngine,
-    tmp_path: Path,
-) -> None:
-    await persistence.projects.create(_project("proj-conv"))
-    agent = _make_agent("solo-dev", _RESEARCH_SKILL)
-    pipeline, _ = await _build_pipeline(
-        persistence=persistence,
-        task_engine=task_engine,
-        tmp_path=tmp_path,
-        agents=(agent,),
-    )
-    approval_store = ApprovalStore()
-    proposal_repo = _FakeProposalRepo()
-    proposer = ChiefOfStaffProposer(
-        provider=ScriptedProvider(responses=[make_text_response(_PROPOSE_JSON)]),
-        config=ChiefOfStaffConfig(
-            propose_enabled=True,
-            propose_model=NotBlankStr("test-model-001"),
-        ),
-        conversation_repo=_FakeConversationRepo(),
-        turn_repo=_FakeTurnRepo(),
-        proposal_repo=proposal_repo,
-        approval_store=approval_store,
-        clock=FakeClock(),
-    )
-    result = await proposer.converse(
-        ProposeArgs(
-            message=NotBlankStr("Build the proj-conv launch page"),
-            created_by=NotBlankStr("operator"),
-        )
-    )
-    approval_id = result.proposals[0].approval_id
-    parked = await approval_store.get(NotBlankStr(approval_id))
-    assert parked is not None
-    await approval_store.save(
-        parked.model_copy(
-            update={
-                "status": ApprovalStatus.REJECTED,
-                "decided_at": parked.created_at,
-                "decided_by": "operator",
-                "decision_reason": NotBlankStr("Not now"),
-            }
-        )
-    )
-    dispatch_state = make_app_state(
-        approval_store=approval_store,
-        conversational_resume_service=_resume_service(proposal_repo),
-        work_pipeline=pipeline,
-    )
-    await signal_resume_intent(
-        dispatch_state,
-        approval_id,
-        approved=False,
-        decided_by="operator",
-        decision_reason="Not now",
-        task_id=None,
-    )
-
-    proposal = await proposal_repo.get(result.proposals[0].proposal_id)
-    assert proposal is not None
-    assert proposal.status is ConversationalProposalStatus.REJECTED
-    assert await persistence.tasks.list_items() == ()
+    # Intake ran synchronously against the real pipeline: a real task exists
+    # for the drafted plan, and the decompose+park spine was handed to the
+    # background port as a plan-gated objective.
+    task_id = second.plan_draft.task_id
+    persisted = await persistence.tasks.get(NotBlankStr(task_id))
+    assert persisted is not None
+    assert persisted.project == sid("proj-conv")
+    assert len(port.calls) == 1
+    dispatched_item, dispatched_task = port.calls[0]
+    assert str(dispatched_task.id) == task_id
+    assert dispatched_item.plan_required is True

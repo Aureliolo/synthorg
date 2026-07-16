@@ -46,9 +46,6 @@ from synthorg.persistence.conversation_protocol import (
     ConversationRepository,
     ConversationTurnRepository,
 )
-from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalRepository,
-)
 from synthorg.providers.drivers.scripted import (
     ScriptedDriver,
     SequencedResponseStrategy,
@@ -191,7 +188,6 @@ def _consent_app_state(
         agent_registry=registry,
         clock=FakeClock(start=START + timedelta(minutes=1)),
         conversational_resume_service=ConversationalResumeService(
-            proposal_repo=mock_of[ConversationalProposalRepository](),
             invite_repo=invite_repo,
             participant_repo=participant_repo,
             conversation_repo=mock_of[ConversationRepository](),

@@ -129,10 +129,6 @@ def make_app_state(  # type: ignore[explicit-any]  # heterogeneous service/confi
         "subworkflow_service": (EngineStateSlice, "subworkflow_service"),
         "self_improvement_service": (MetaStateSlice, "self_improvement_service"),
         "custom_rules_service": (MetaStateSlice, "custom_rules_service"),
-        "conversational_proposal_repo": (
-            MetaStateSlice,
-            "conversational_proposal_repo",
-        ),
         "conversational_resume_service": (
             MetaStateSlice,
             "conversational_resume_service",

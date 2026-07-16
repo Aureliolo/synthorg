@@ -26,9 +26,6 @@ from synthorg.persistence.completion_oracle_report_protocol import (
 from synthorg.persistence.conversation_invite_protocol import (
     ConversationInviteFilterSpec,
 )
-from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalFilterSpec,
-)
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptFilterSpec,
 )
@@ -51,36 +48,6 @@ def _join(clauses: list[str], empty: str) -> str:
         The joined ``WHERE`` body, or *empty* when no clause applies.
     """
     return " AND ".join(clauses) if clauses else empty
-
-
-def build_conversational_proposal_filter_clauses(
-    filter_spec: ConversationalProposalFilterSpec,
-    *,
-    placeholder: str,
-    empty: str,
-) -> tuple[str, list[object]]:
-    """Build the WHERE body and params for a conversational-proposal filter.
-
-    Args:
-        filter_spec: The proposal filter to translate.
-        placeholder: Backend bound-parameter token (``"?"`` / ``"%s"``).
-        empty: Clause emitted when no predicate applies (``"1=1"`` / ``"TRUE"``).
-
-    Returns:
-        The joined ``WHERE`` body and its positional parameters.
-    """
-    clauses: list[str] = []
-    params: list[object] = []
-    if filter_spec.conversation_id is not None:
-        clauses.append(f"conversation_id = {placeholder}")
-        params.append(filter_spec.conversation_id)
-    if filter_spec.approval_id is not None:
-        clauses.append(f"approval_id = {placeholder}")
-        params.append(filter_spec.approval_id)
-    if filter_spec.status is not None:
-        clauses.append(f"status = {placeholder}")
-        params.append(filter_spec.status.value)
-    return _join(clauses, empty), params
 
 
 def build_conversation_invite_filter_clauses(

@@ -1,15 +1,16 @@
-"""Conversational-intake parking + steering execution helpers.
+"""Conversational steering parking + execution helpers.
 
-Free functions that compose and park the approval-queue items the Chief of
-Staff proposer produces (work items and steering directives), and that execute
-an approved steering directive at the approval gate. Kept separate from
-``propose.py`` and the approval-gate module so each concern stays within its
-module-size tier; the parking mechanics and the steering execution are one
-cohesive conversational-intake surface.
+Free functions that compose and park the one conversational approval the
+Chief of Staff proposer still produces (a steering directive), and that
+execute an approved steering directive at the approval gate. A work brief
+is no longer parked here: it drafts a plan into Plan Review via the
+:class:`~synthorg.meta.chief_of_staff.plan_intake.ConversationalPlanDispatcher`.
+Kept separate from ``propose.py`` and the approval-gate module so each
+concern stays within its module-size tier.
 
-A steering directive carries no ``ConversationalProposal`` row: it rides in the
-approval ``metadata`` (the ``STEERING_INTAKE_*`` keys), so the gate reads it
-back on approval and routes it to ``SteeringService.issue``.
+A steering directive carries no proposal row: it rides in the approval
+``metadata`` (the ``STEERING_INTAKE_*`` keys), so the gate reads it back
+on approval and routes it to ``SteeringService.issue``.
 """
 
 import uuid
@@ -20,7 +21,6 @@ from synthorg._core.features import require_service
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalSource, ApprovalStatus
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -30,31 +30,23 @@ from synthorg.engine.intervention.models import (
     STEERING_INTAKE_PROJECT_KEY,
     STEERING_INTAKE_TEXT_KEY,
 )
-from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
-    ConversationalProposal,
     ProposeArgs,
     ProposedSteering,
-    ProposedWork,
     SteeringProposalSummary,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
-    APPROVAL_GATE_CONVERSATIONAL_FAILED,
-    APPROVAL_GATE_CONVERSATIONAL_REJECTED,
 )
 from synthorg.observability.events.chief_of_staff import (
-    COS_CONVERSATION_STATUS_TRANSITIONED,
     COS_PROPOSE_FAILED,
 )
 
 logger = get_logger(__name__)
 
-_ORIGIN_ADAPTER_ID: NotBlankStr = NotBlankStr("conversational-cos")
-_WORK_ACTION_TYPE: NotBlankStr = NotBlankStr("conversational:create_work")
 _STEERING_ACTION_TYPE: NotBlankStr = NotBlankStr("conversational:steer")
 
 
@@ -65,66 +57,6 @@ def _new_approval_id() -> NotBlankStr:
         ``NotBlankStr`` instance.
     """
     return NotBlankStr(str(uuid.uuid4()))
-
-
-def build_work_item(
-    conversation: Conversation,
-    args: ProposeArgs,
-    proposed: ProposedWork,
-    project: NotBlankStr,
-    now: datetime,
-) -> WorkItem:
-    """Compose the pipeline-spine envelope for one work proposal.
-
-    Returns:
-        ``WorkItem`` instance.
-    """
-    return WorkItem(
-        origin_adapter_id=_ORIGIN_ADAPTER_ID,
-        source=WorkSource.CONVERSATIONAL,
-        title=proposed.title,
-        raw_intent=proposed.raw_intent,
-        project=project,
-        requested_by=args.created_by,
-        priority=proposed.priority,
-        task_type=proposed.task_type,
-        estimated_complexity=proposed.estimated_complexity,
-        acceptance_criteria=proposed.acceptance_criteria,
-        correlation_id=str(conversation.id),
-        created_at=now,
-    )
-
-
-def build_work_approval_item(  # noqa: PLR0913 -- ApprovalItem field set is broad
-    *,
-    approval_id: NotBlankStr,
-    proposal_id: NotBlankStr,
-    conversation: Conversation,
-    args: ProposeArgs,
-    proposed: ProposedWork,
-    config: ChiefOfStaffConfig,
-    now: datetime,
-) -> ApprovalItem:
-    """Compose the parked approval-queue item for one work proposal.
-
-    Returns:
-        ``ApprovalItem`` instance.
-    """
-    return ApprovalItem(
-        id=uuid.UUID(approval_id),
-        action_type=_WORK_ACTION_TYPE,
-        title=proposed.title,
-        description=proposed.raw_intent,
-        requested_by=args.created_by,
-        risk_level=config.propose_default_risk_level,
-        source=ApprovalSource.CONVERSATIONAL_INTAKE,
-        status=ApprovalStatus.PENDING,
-        created_at=now,
-        metadata={
-            "conversation_id": str(conversation.id),
-            "proposal_id": proposal_id,
-        },
-    )
 
 
 async def park_steering(  # noqa: PLR0913 -- intake collaborators threaded in
@@ -256,53 +188,10 @@ async def resume_conversational_steering(
     Returns:
         ``True`` when *item* is a steering directive (owned here): on approval
         it issues, on rejection it is a no-op. ``False`` when *item* is not a
-        steering directive, so the caller falls through to the work-proposal
-        flow.
+        steering directive, so the caller falls through.
     """
     if not is_conversational_steering(item):
         return False
     if approved:
         await execute_conversational_steering(app_state, item)
     return True
-
-
-async def reject_conversational_proposal(
-    app_state: AppState,
-    approval_id: str,
-    proposal: ConversationalProposal,
-) -> None:
-    """CAS the work proposal from PENDING to REJECTED; pipeline never runs."""
-    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
-
-    repo = require_service(
-        app_state.slice(MetaStateSlice).conversational_proposal_repo,
-        "Conversational Proposal Repository",
-    )
-    proposal_id = str(proposal.id)
-    transitioned = await repo.transition_if(
-        proposal_id,
-        ConversationalProposalStatus.PENDING,
-        ConversationalProposalStatus.REJECTED,
-    )
-    if transitioned:
-        logger.info(
-            COS_CONVERSATION_STATUS_TRANSITIONED,
-            proposal_id=proposal_id,
-            from_status=ConversationalProposalStatus.PENDING.value,
-            to_status=ConversationalProposalStatus.REJECTED.value,
-        )
-        logger.info(
-            APPROVAL_GATE_CONVERSATIONAL_REJECTED,
-            approval_id=approval_id,
-            proposal_id=proposal_id,
-        )
-        return
-    # Concurrent decision already transitioned this proposal (e.g. duplicate
-    # approval-decision request). Surface the no-op so the log doesn't claim a
-    # success we didn't make.
-    logger.warning(
-        APPROVAL_GATE_CONVERSATIONAL_FAILED,
-        approval_id=approval_id,
-        proposal_id=proposal_id,
-        note="proposal already transitioned (reject path)",
-    )

@@ -135,6 +135,7 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
     from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
         wire_chief_of_staff_proposer,
         wire_conversational_actor,
+        wire_conversational_plan_dispatcher,
     )
     from synthorg.api.lifecycle_helpers.feature_wiring import (  # noqa: PLC0415
         _wire_chief_of_staff_chat,
@@ -218,6 +219,7 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
             provider_registry=registry,
             cost_tracker=cost_tracker,
         )
+        await wire_conversational_plan_dispatcher(app_state)
         await wire_sprint_service(app_state)
         await wire_kanban_board(app_state)
     except Exception as exc:

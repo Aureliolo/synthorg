@@ -2,11 +2,10 @@
 """Repo facade for the conversational approval-resume flows.
 
 The approvals controller resolves a decided conversational approval
-(intake proposal or agent invite) through the resume flows in
+(a steering directive or an agent invite) through the resume flows in
 ``api/controllers/_conversational_resume.py``. This thin service is the
-single seam those flows route every proposal / invite / participant repo
-call through, so the controller layer never touches a repository
-protocol.
+single seam those flows route every invite / participant repo call
+through, so the controller layer never touches a repository protocol.
 
 The service is deliberately *ungated*: it wraps only the persistence
 repositories (never the toggle-gated Chief-of-Staff feature services),
@@ -23,7 +22,6 @@ modules these protocols depend on, which would otherwise trip the
 cold-import cycle gate.
 """
 
-from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import (
     ConversationInviteStatus,
@@ -36,14 +34,12 @@ from synthorg.meta.chief_of_staff.group_models import (
 )
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
-    ConversationalProposal,
     ConversationTurn,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.chief_of_staff import (
     COS_RESUME_INVITE_TRANSITION,
     COS_RESUME_PARTICIPANT_ADMITTED,
-    COS_RESUME_PROPOSAL_TRANSITION,
 )
 from synthorg.persistence.conversation_invite_protocol import (
     ConversationInviteFilterSpec,
@@ -58,10 +54,6 @@ from synthorg.persistence.conversation_protocol import (
     ConversationTurnFilterSpec,
     ConversationTurnRepository,
 )
-from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalFilterSpec,
-    ConversationalProposalRepository,
-)
 
 logger = get_logger(__name__)
 
@@ -73,20 +65,17 @@ class ConversationalResumeService:
         "_conversation_repo",
         "_invite_repo",
         "_participant_repo",
-        "_proposal_repo",
         "_turn_repo",
     )
 
     def __init__(
         self,
         *,
-        proposal_repo: ConversationalProposalRepository,
         invite_repo: ConversationInviteRepository,
         participant_repo: ConversationParticipantRepository,
         conversation_repo: ConversationRepository,
         turn_repo: ConversationTurnRepository,
     ) -> None:
-        self._proposal_repo = proposal_repo
         self._invite_repo = invite_repo
         self._participant_repo = participant_repo
         self._conversation_repo = conversation_repo
@@ -138,46 +127,6 @@ class ConversationalResumeService:
             limit=limit,
             offset=offset,
         )
-
-    async def proposals_for_approval(
-        self,
-        approval_id: str,
-    ) -> tuple[ConversationalProposal, ...]:
-        """Return the proposal rows backing a decided intake approval.
-
-        Returns:
-            The matching proposals (empty when none back the approval).
-        """
-        return await self._proposal_repo.query(
-            ConversationalProposalFilterSpec(approval_id=approval_id),
-        )
-
-    async def transition_proposal(
-        self,
-        proposal_id: str,
-        *,
-        from_status: ConversationalProposalStatus,
-        to_status: ConversationalProposalStatus,
-    ) -> bool:
-        """Atomically CAS a proposal between two statuses.
-
-        Returns:
-            ``True`` when this caller won the transition, ``False`` when
-            a concurrent writer had already moved the proposal.
-        """
-        won = await self._proposal_repo.transition_if(
-            proposal_id,
-            from_status,
-            to_status,
-        )
-        logger.info(
-            COS_RESUME_PROPOSAL_TRANSITION,
-            proposal_id=proposal_id,
-            from_status=from_status.value,
-            to_status=to_status.value,
-            won=won,
-        )
-        return won
 
     async def invites_for_approval(
         self,

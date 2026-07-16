@@ -1,10 +1,13 @@
 """Integration tests: concern routing in front of the propose loop."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import ConversationKind, RoutingReason
-from synthorg.meta.chief_of_staff.models import ProposeArgs
+from synthorg.meta.chief_of_staff.models import PlanDraftSummary, ProposeArgs
+from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
 from synthorg.meta.chief_of_staff.responder import (
     generic_responder,
     resolve_responder_provider,
@@ -26,16 +29,29 @@ pytestmark = pytest.mark.unit
 _CLARIFY_JSON = (
     '{"needs_clarification": true, '
     '"clarifying_question": "Which budget line?", '
-    '"proposals": []}'
+    '"work": null}'
 )
 _PROPOSE_JSON = (
     '{"needs_clarification": false, "clarifying_question": null, '
-    '"proposals": [{"title": "Trim cloud spend", '
+    '"work": {"title": "Trim cloud spend", '
     '"raw_intent": "Reduce monthly cloud cost by 20%", '
     '"project": "finance", "priority": "high", '
     '"task_type": "research", "estimated_complexity": "medium", '
-    '"acceptance_criteria": ["cost report"]}]}'
+    '"acceptance_criteria": ["cost report"]}}'
 )
+
+
+def _stub_dispatcher() -> ConversationalPlanDispatcher:
+    dispatcher: ConversationalPlanDispatcher = mock_of[ConversationalPlanDispatcher](
+        draft_plan=AsyncMock(
+            return_value=PlanDraftSummary(
+                task_id=NotBlankStr("task-fin"),
+                project=NotBlankStr("finance"),
+                title=NotBlankStr("Trim cloud spend"),
+            )
+        ),
+    )
+    return dispatcher
 
 
 async def _keyword_router(*, cfo_name: str = "Casey") -> KeywordRoleRouter:
@@ -46,7 +62,7 @@ async def _keyword_router(*, cfo_name: str = "Casey") -> KeywordRoleRouter:
 class TestRoutedClarification:
     async def test_routed_clarification_answers_as_role_agent(self) -> None:
         provider = ScriptedProvider(responses=[make_text_response(_CLARIFY_JSON)])
-        proposer, conv_repo, turn_repo, _, _ = build_proposer(
+        proposer, conv_repo, turn_repo, _ = build_proposer(
             provider=provider, role_router=await _keyword_router()
         )
 
@@ -83,8 +99,10 @@ class TestRoutedClarification:
 class TestRoutedProposal:
     async def test_routed_proposal_records_attribution(self) -> None:
         provider = ScriptedProvider(responses=[make_text_response(_PROPOSE_JSON)])
-        proposer, conv_repo, turn_repo, _, _ = build_proposer(
-            provider=provider, role_router=await _keyword_router()
+        proposer, conv_repo, turn_repo, _ = build_proposer(
+            provider=provider,
+            role_router=await _keyword_router(),
+            plan_dispatcher=_stub_dispatcher(),
         )
 
         result = await proposer.converse(
@@ -109,7 +127,7 @@ class TestRoutedProposal:
 class TestRoutingDisabled:
     async def test_no_router_keeps_generic_chief_of_staff(self) -> None:
         provider = ScriptedProvider(responses=[make_text_response(_CLARIFY_JSON)])
-        proposer, conv_repo, turn_repo, _, _ = build_proposer(provider=provider)
+        proposer, conv_repo, turn_repo, _ = build_proposer(provider=provider)
 
         result = await proposer.converse(
             ProposeArgs(
@@ -131,7 +149,7 @@ class TestRoutingDisabled:
 
     async def test_no_keyword_match_stays_generic(self) -> None:
         provider = ScriptedProvider(responses=[make_text_response(_CLARIFY_JSON)])
-        proposer, conv_repo, _, _, _ = build_proposer(
+        proposer, conv_repo, _, _ = build_proposer(
             provider=provider, role_router=await _keyword_router()
         )
 

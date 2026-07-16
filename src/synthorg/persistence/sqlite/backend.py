@@ -72,11 +72,10 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
         """SQLite durably persists conversational approvals.
 
         The schema carries the ``conversations`` / ``conversation_turns``
-        / ``conversational_proposals`` / ``conversation_participants``
-        tables and the ``approvals.source`` CHECK admits the
-        ``conversational_intake`` / ``conversational_invite`` sources, so a
-        parked propose/invite approval survives a reconnect and resumes
-        through Flow 0 identically to Postgres.
+        / ``conversation_participants`` tables and the ``approvals.source``
+        CHECK admits the ``conversational_intake`` / ``conversational_invite``
+        sources, so a parked steering/invite approval survives a reconnect
+        and resumes through Flow 0 identically to Postgres.
 
         Returns:
             ``True`` -- the SQLite ApprovalStore retains parked approvals.

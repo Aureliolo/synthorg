@@ -1,15 +1,14 @@
 """Unit tests for :class:`ConversationalResumeService`.
 
 The service is a thin, deliberately-ungated facade the approvals
-resume flows route every proposal / invite / participant repository
-call through. These tests pin that each method delegates to the right
-repository with the right filter / transition arguments, so the
-controller layer never has to touch a repository protocol directly.
+resume flows route every invite / participant repository call through.
+These tests pin that each method delegates to the right repository with
+the right filter / transition arguments, so the controller layer never
+has to touch a repository protocol directly.
 """
 
 import pytest
 
-from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.meta.chief_of_staff.enums import (
     ConversationInviteStatus,
     ConversationParticipantStatus,
@@ -28,10 +27,6 @@ from synthorg.persistence.conversation_protocol import (
     ConversationRepository,
     ConversationTurnRepository,
 )
-from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalFilterSpec,
-    ConversationalProposalRepository,
-)
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
@@ -39,7 +34,6 @@ pytestmark = pytest.mark.unit
 
 def _service(
     *,
-    proposal_repo: ConversationalProposalRepository | None = None,
     invite_repo: ConversationInviteRepository | None = None,
     participant_repo: ConversationParticipantRepository | None = None,
     conversation_repo: ConversationRepository | None = None,
@@ -47,37 +41,11 @@ def _service(
 ) -> ConversationalResumeService:
     """Build the service, defaulting any unsupplied repo to a typed mock."""
     return ConversationalResumeService(
-        proposal_repo=proposal_repo or mock_of[ConversationalProposalRepository](),
         invite_repo=invite_repo or mock_of[ConversationInviteRepository](),
         participant_repo=participant_repo
         or mock_of[ConversationParticipantRepository](),
         conversation_repo=conversation_repo or mock_of[ConversationRepository](),
         turn_repo=turn_repo or mock_of[ConversationTurnRepository](),
-    )
-
-
-async def test_proposals_for_approval_filters_by_approval_id() -> None:
-    repo = mock_of[ConversationalProposalRepository]()
-    repo.query.return_value = ()
-    await _service(proposal_repo=repo).proposals_for_approval("appr-1")
-    repo.query.assert_awaited_once_with(
-        ConversationalProposalFilterSpec(approval_id="appr-1"),
-    )
-
-
-async def test_transition_proposal_delegates_cas() -> None:
-    repo = mock_of[ConversationalProposalRepository]()
-    repo.transition_if.return_value = True
-    won = await _service(proposal_repo=repo).transition_proposal(
-        "prop-1",
-        from_status=ConversationalProposalStatus.PENDING,
-        to_status=ConversationalProposalStatus.EXECUTED,
-    )
-    assert won is True
-    repo.transition_if.assert_awaited_once_with(
-        "prop-1",
-        ConversationalProposalStatus.PENDING,
-        ConversationalProposalStatus.EXECUTED,
     )
 
 

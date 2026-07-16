@@ -1,14 +1,14 @@
 # module-kind: code
-"""Startup reconciliation for conversational-intake persistence.
+"""Startup reconciliation for conversational-invite persistence.
 
 With an in-memory ``ApprovalStore`` the approval queue starts empty every
-boot, so any PENDING conversational proposal or invite row a previous
-process committed to persistence can never be resumed (its approval is
-gone). Those rows are unreachable: this module marks them terminal at
-startup (proposal -> REJECTED, invite -> DECLINED) so they stop surfacing
-as actionable in proposal/invite listings while the audit record of the
-intake survives. On a persistent store the approvals survive restart, so
-the rows stay resumable and are left untouched.
+boot, so any PENDING agent invite row a previous process committed to
+persistence can never be resumed (its consent approval is gone). Those
+rows are unreachable: this module marks them terminal at startup
+(invite -> DECLINED) so they stop surfacing as actionable in invite
+listings while the audit record survives. On a persistent store the
+approvals survive restart, so the rows stay resumable and are left
+untouched.
 """
 
 from collections.abc import Awaitable, Callable, Sequence
@@ -57,17 +57,16 @@ async def _retire_pending_items[StatusT, SpecT, ItemT: _HasId](
     return len(items), transitioned
 
 
-async def reconcile_orphaned_conversational_intake(
+async def reconcile_orphaned_conversational_invites(
     repositories: ConversationalRepositories,
     approval_store: ApprovalStoreProtocol,
 ) -> None:
-    """Mark PENDING proposals/invites with no durable backing approval terminal.
+    """Mark PENDING invites with no durable backing approval terminal.
 
-    Each orphaned PENDING proposal moves PENDING -> REJECTED and each
-    orphaned PENDING invite moves PENDING -> DECLINED via the repository
-    CAS, preserving the row (audit trail) while removing it from the
-    actionable set. A store of unknown type is treated as persistent
-    (left untouched) to avoid retiring resumable work.
+    Each orphaned PENDING invite moves PENDING -> DECLINED via the
+    repository CAS, preserving the row (audit trail) while removing it
+    from the actionable set. A store of unknown type is treated as
+    persistent (left untouched) to avoid retiring resumable consent.
     """
     store_is_in_memory = (
         isinstance(approval_store, ApprovalStore)
@@ -77,30 +76,17 @@ async def reconcile_orphaned_conversational_intake(
         logger.info(
             API_APP_STARTUP,
             service="chief_of_staff_proposer",
-            note="conversational intake reconcile skipped: store treated as persistent",
+            note="conversational invite reconcile skipped: store treated as persistent",
             approval_store_type=type(approval_store).__name__,
         )
         return
-    from synthorg.communication.conversation.enums import (  # noqa: PLC0415
-        ConversationalProposalStatus,
-    )
     from synthorg.meta.chief_of_staff.enums import (  # noqa: PLC0415
         ConversationInviteStatus,
     )
     from synthorg.persistence.conversation_invite_protocol import (  # noqa: PLC0415
         ConversationInviteFilterSpec,
     )
-    from synthorg.persistence.conversational_proposal_protocol import (  # noqa: PLC0415
-        ConversationalProposalFilterSpec,
-    )
 
-    queried_proposals, rejected_proposals = await _retire_pending_items(
-        repositories.proposal_repo.query,
-        repositories.proposal_repo.transition_if,
-        ConversationalProposalFilterSpec(status=ConversationalProposalStatus.PENDING),
-        ConversationalProposalStatus.PENDING,
-        ConversationalProposalStatus.REJECTED,
-    )
     queried_invites, declined_invites = await _retire_pending_items(
         repositories.invite_repo.query,
         repositories.invite_repo.transition_if,
@@ -108,16 +94,14 @@ async def reconcile_orphaned_conversational_intake(
         ConversationInviteStatus.PENDING,
         ConversationInviteStatus.DECLINED,
     )
-    if queried_proposals or queried_invites:
+    if queried_invites:
         logger.info(
             API_APP_STARTUP,
             service="chief_of_staff_proposer",
-            note="retired orphaned conversational intake rows (in-memory store)",
-            pending_proposals=queried_proposals,
-            rejected_proposals=rejected_proposals,
+            note="retired orphaned conversational invite rows (in-memory store)",
             pending_invites=queried_invites,
             declined_invites=declined_invites,
         )
 
 
-__all__ = ["reconcile_orphaned_conversational_intake"]
+__all__ = ["reconcile_orphaned_conversational_invites"]

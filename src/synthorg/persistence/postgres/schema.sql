@@ -1604,25 +1604,6 @@ CREATE INDEX idx_ct_created_at ON conversation_turns (created_at);
 CREATE INDEX idx_ct_conversation_sequence
 ON conversation_turns (conversation_id, sequence DESC, id DESC);
 
-CREATE TABLE conversational_proposals (
-    id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
-    conversation_id TEXT NOT NULL
-    CONSTRAINT fk_cp_conversation REFERENCES conversations (id),
-    approval_id TEXT NOT NULL CHECK (LENGTH(TRIM(approval_id)) > 0),
-    work_item_json TEXT NOT NULL CHECK (LENGTH(TRIM(work_item_json)) > 0),
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (
-        status IN ('pending', 'executing', 'executed', 'rejected')
-    ),
-    created_at TIMESTAMPTZ NOT NULL
-);
-CREATE UNIQUE INDEX idx_cp_approval_id
-ON conversational_proposals (approval_id);
--- Serves the "list proposals for a conversation" query (filter conversation_id,
--- ORDER BY created_at DESC, id DESC); composite incl. the id tiebreaker
--- fully covers the sort so the planner skips a post-filter sort pass.
-CREATE INDEX idx_cp_conversation_id
-ON conversational_proposals (conversation_id, created_at DESC, id DESC);
-
 CREATE TABLE conversation_participants (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     conversation_id TEXT NOT NULL
