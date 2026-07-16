@@ -8,6 +8,7 @@ graph queries built on top of this catalog.
 
 from collections.abc import Mapping
 from types import MappingProxyType
+from typing import Final
 
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role import Role
@@ -286,11 +287,34 @@ _RED_TEAM = Role(
     ),
 )
 
-RED_TEAM_ROLE_NAME: str = _RED_TEAM.name
+RED_TEAM_ROLE_NAME: Final[str] = _RED_TEAM.name
 """Canonical name of the built-in Red Team role.
 
 Exposed so other modules (the red-team subsystem, tests) reference a
 single string constant instead of duplicating the literal.
+"""
+
+_COMPLETION_REVIEWER = Role(
+    name="Completion Reviewer",
+    department=DepartmentName.QUALITY_ASSURANCE,
+    required_skills=(
+        "acceptance-verification",
+        "build-test-validation",
+        "independent-review",
+    ),
+    reports_to="QA Lead",
+    description=(
+        "Built-in independent reviewer. Verifies a deliverable actually meets "
+        "its acceptance criteria, builds, and its tests pass before the org "
+        "marks the work complete. Distinct from any executor by construction."
+    ),
+)
+
+COMPLETION_REVIEWER_ROLE_NAME: Final[str] = _COMPLETION_REVIEWER.name
+"""Canonical name of the built-in Completion Reviewer role.
+
+Exposed so the completion-oracle subsystem references a single string
+constant instead of duplicating the literal.
 """
 
 # ── Creative & Marketing ──────────────────────────────────────────
@@ -385,6 +409,7 @@ BUILTIN_ROLES: tuple[Role, ...] = (
     _HR_MANAGER,
     _SECURITY_OPERATIONS,
     _RED_TEAM,
+    _COMPLETION_REVIEWER,
     # Creative & Marketing
     _CONTENT_WRITER,
     _BRAND_STRATEGIST,

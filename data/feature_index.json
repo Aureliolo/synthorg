@@ -326,6 +326,27 @@
       ]
     },
     {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/engine/completion_oracle",
+      "ghost_wired_symbols": [
+        "build_completion_oracle_tool_seed",
+        "build_completion_oracle_runtime",
+        "CompletionOracleGateService",
+        "ReviewerAgentEngineRunner",
+        "SubmitCompletionOracleVerdictTool",
+        "InMemoryCompletionOracleReportRepository",
+        "BuildTestOracle",
+        "build_completion_reviewer_identity",
+        "attach_completion_oracle_gates"
+      ],
+      "mcp_tool_names": [],
+      "name": "completion_oracle",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": []
+    },
+    {
       "controllers": [
         "CoordinationController",
         "CoordinationMetricsController"
@@ -1376,6 +1397,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-14T10:35:57.416468Z",
+  "generated_at": "2026-07-15T22:47:37.764577Z",
   "schema_version": 1
 }

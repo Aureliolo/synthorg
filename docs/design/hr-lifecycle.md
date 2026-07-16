@@ -60,6 +60,8 @@ The built-in catalog covers common organisational roles:
     - **QA Engineer**: Test plans, manual testing, bug reporting
     - **Automation Engineer**: Test frameworks, CI integration, E2E tests
     - **Performance Engineer**: Load testing, profiling, optimisation
+    - **Red Team**: Adversarial review of high-stakes deliverables (boot-instantiated)
+    - **Completion Reviewer**: Independent peer review at the completion oracle (boot-instantiated)
 
 === "Data & Analytics"
 

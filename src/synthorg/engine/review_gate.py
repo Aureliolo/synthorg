@@ -90,7 +90,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         task_engine: TaskEngine,
         persistence: PersistenceBackend | None = None,
         red_team_gate: RedTeamGate | None = None,
-        red_team_input_builder: DeliverableReviewInputBuilder | None = None,
+        deliverable_input_builder: DeliverableReviewInputBuilder | None = None,
         red_team_on_missing_deliverable: Literal["block", "skip"] = "block",
         red_team_min_stakes: Stakes = Stakes.HIGH,
         vision_gate: VisionVerifierGate | None = None,
@@ -100,7 +100,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         self._task_engine = task_engine
         self._persistence = persistence
         self._red_team_gate = red_team_gate
-        self._red_team_input_builder = red_team_input_builder
+        self._deliverable_input_builder = deliverable_input_builder
         self._red_team_on_missing_deliverable: Literal["block", "skip"] = (
             red_team_on_missing_deliverable
         )
@@ -108,6 +108,13 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         self._vision_gate = vision_gate
         self._receipt_service = receipt_service
         self._background_tasks = background_tasks
+        # Completion-oracle gates are attached post-construction via the wiring
+        # seams once persistence / the boot engine exist; default to inert.
+        self._build_test_gate = None
+        self._code_execution_records = None
+        self._completion_oracle_gate = None
+        self._completion_oracle_shadow_mode = False
+        self._completion_oracle_min_stakes = Stakes.LOW
 
     async def check_can_decide(
         self,
@@ -261,9 +268,14 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             transition_reason += f": {normalized_reason}"
         event = APPROVAL_GATE_REVIEW_COMPLETED
         target, transition_reason, event, approved = await run_completion_gates(
+            build_test_gate=self._build_test_gate,
+            code_execution_records=self._code_execution_records,
+            completion_oracle_gate=self._completion_oracle_gate,
+            completion_oracle_shadow_mode=self._completion_oracle_shadow_mode,
+            completion_oracle_min_stakes=self._completion_oracle_min_stakes,
             red_team_gate=self._red_team_gate,
             vision_gate=self._vision_gate,
-            red_team_input_builder=self._red_team_input_builder,
+            deliverable_input_builder=self._deliverable_input_builder,
             on_missing_deliverable=self._red_team_on_missing_deliverable,
             task=task,
             target=target,
@@ -432,9 +444,14 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             event,
             approved,
         ) = await run_completion_gates(
+            build_test_gate=self._build_test_gate,
+            code_execution_records=self._code_execution_records,
+            completion_oracle_gate=self._completion_oracle_gate,
+            completion_oracle_shadow_mode=self._completion_oracle_shadow_mode,
+            completion_oracle_min_stakes=self._completion_oracle_min_stakes,
             red_team_gate=self._red_team_gate,
             vision_gate=self._vision_gate,
-            red_team_input_builder=self._red_team_input_builder,
+            deliverable_input_builder=self._deliverable_input_builder,
             on_missing_deliverable=self._red_team_on_missing_deliverable,
             task=task,
             target=target,

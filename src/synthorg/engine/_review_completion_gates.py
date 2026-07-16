@@ -1,12 +1,13 @@
 # module-kind: code
 """Completion-gate chain for the review gate.
 
-Houses the adversarial-gate chain (red-team then vision) the review
-gate runs before an IN_REVIEW -> COMPLETED transition, plus the
-pipeline-verdict mapping. Both completion entry points share it: the
-pipeline-driven ``run_pipeline`` and the human-driven ``complete_review``
-call :func:`run_completion_gates`, so a configured gate fires on every
-path to COMPLETED rather than only the pipeline one.
+Orchestrates the full gate chain the review gate runs before an
+IN_REVIEW -> COMPLETED transition, in order: the completion oracle
+(build/test then agent-session peer review), then the adversarial red-team
+and vision gates, plus the pipeline-verdict mapping. Both completion entry
+points share it: the pipeline-driven ``run_pipeline`` and the human-driven
+``complete_review`` call :func:`run_completion_gates`, so a configured gate
+fires on every path to COMPLETED rather than only the pipeline one.
 
 Separating the gate chain from the service lets the gate-application
 logic be unit-tested without constructing the full ``ReviewGateService``.
@@ -18,6 +19,13 @@ from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskStatus, compare_stakes
+from synthorg.engine._review_oracle_gates import (
+    GateOutcome,
+    apply_build_test_gate,
+    apply_oracle_review_stage,
+)
+from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
+from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
 from synthorg.engine.review.models import PipelineResult, ReviewVerdict
 from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
 from synthorg.observability import get_logger
@@ -37,6 +45,7 @@ from synthorg.observability.events.vision_verify import (
     VISION_GATE_SKIPPED,
     VISION_REWORK_ROUTED,
 )
+from synthorg.persistence.code_execution_protocol import CodeExecutionRecordRepository
 from synthorg.security.redteam.protocol import RedTeamGate
 from synthorg.security.visionverify.models import VisionReviewInput
 from synthorg.security.visionverify.protocol import VisionVerifierGate
@@ -46,15 +55,17 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-#: Transition tuple a gate returns: (target, reason, event, approved).
-GateOutcome = tuple[TaskStatus, str, str, bool]
-
 
 async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all required
     *,
+    build_test_gate: BuildTestOracle | None = None,
+    code_execution_records: CodeExecutionRecordRepository | None = None,
+    completion_oracle_gate: CompletionOracleGate | None = None,
+    completion_oracle_shadow_mode: bool = False,
+    completion_oracle_min_stakes: Stakes = Stakes.LOW,
     red_team_gate: RedTeamGate | None,
     vision_gate: VisionVerifierGate | None,
-    red_team_input_builder: DeliverableReviewInputBuilder | None,
+    deliverable_input_builder: DeliverableReviewInputBuilder | None,
     on_missing_deliverable: Literal["block", "skip"],
     task: Task,
     target: TaskStatus,
@@ -64,33 +75,66 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
     vision_input: VisionReviewInput | None,
     red_team_min_stakes: Stakes,
 ) -> GateOutcome:
-    """Run the red-team then vision gates before a COMPLETED transition.
+    """Run the completion-oracle gates before a COMPLETED transition.
 
-    When the incoming verdict is already a rejection (``approved`` is
-    ``False``), returns immediately without evaluating any gate. The
-    red-team gate is active only when BOTH the gate and its
-    ``red_team_input_builder`` are wired AND the task's stakes are at or
-    above ``red_team_min_stakes``: the adversarial pass is reserved for
-    consequential work (matching the routing layer, which only marks
-    ``red_team_required`` at that same threshold), so low-stakes
-    deliverables are not gated. A gate attached without a builder (for
-    example a boot with no persistence, where the flight-recorder
-    deliverable source is absent) is left inert rather than fail-closed,
-    since blocking every completion on a wiring gap the operator did not
-    ask for would be worse than not gating. When active, the input is
-    built from the task's recorded deliverable; a ``None`` build result is
-    handled by :func:`apply_red_team_gate` under ``on_missing_deliverable``.
-    A BLOCK from either gate reroutes the task to IN_PROGRESS rework.
+    The chain, in order (cheapest and most objective first): the
+    execution-grounded build/test gate, the agent-session peer-review gate,
+    then the adversarial red-team gate and the vision gate. The build/test
+    and peer-review gates are the completion oracle: "done" means the code
+    builds and tests pass AND an independent reviewer approved. The build/test
+    gate fails CLOSED (a failing or unverified code task blocks); the
+    peer-review gate never silently passes (a REJECT or ESCALATE reworks the
+    task). The red-team / vision gates keep their existing fail-OPEN posture.
+
+    When the incoming verdict is already a rejection, returns immediately.
+    Each deliverable-consuming gate is stakes-gated by its own threshold; the
+    deliverable input is built once and shared. A BLOCK / REJECT / failing
+    verdict from any gate reroutes the task to IN_PROGRESS rework.
 
     Returns:
-        The (possibly rerouted) ``(target, reason, event, approved)``
-        tuple. Unchanged when no gate is configured, the task is below
-        the stakes threshold, or every gate passes; rerouted to
-        IN_PROGRESS rework on any BLOCK.
+        The (possibly rerouted) ``(target, reason, event, approved)`` tuple.
     """
     if not approved:
         return target, transition_reason, event, approved
-    if red_team_gate is not None and red_team_input_builder is not None:
+
+    if build_test_gate is not None:
+        target, transition_reason, event, approved = await apply_build_test_gate(
+            gate=build_test_gate,
+            records=code_execution_records,
+            task=task,
+            target=target,
+            transition_reason=transition_reason,
+            event=event,
+            approved=approved,
+        )
+        if not approved:
+            return target, transition_reason, event, approved
+
+    # Resolve the shared deliverable and run the peer-review gate as one stage.
+    # The deliverable is built once and returned so the red-team gate below
+    # reuses it: a completion where both gates are active pays a single
+    # retrieval, and a below-threshold completion pays none.
+    red_team_active = (
+        red_team_gate is not None
+        and deliverable_input_builder is not None
+        and compare_stakes(task.stakes, red_team_min_stakes) >= 0
+    )
+    (
+        (target, transition_reason, event, approved),
+        deliverable_input,
+    ) = await apply_oracle_review_stage(
+        completion_oracle_gate=completion_oracle_gate,
+        completion_oracle_shadow_mode=completion_oracle_shadow_mode,
+        completion_oracle_min_stakes=completion_oracle_min_stakes,
+        deliverable_input_builder=deliverable_input_builder,
+        red_team_active=red_team_active,
+        task=task,
+        outcome=(target, transition_reason, event, approved),
+    )
+    if not approved:
+        return target, transition_reason, event, approved
+
+    if red_team_gate is not None and deliverable_input_builder is not None:
         if compare_stakes(task.stakes, red_team_min_stakes) < 0:
             logger.info(
                 RED_TEAM_GATE_SKIPPED,
@@ -105,7 +149,6 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
                 ),
             )
         else:
-            red_team_input = await red_team_input_builder.build(task)
             target, transition_reason, event, approved = await apply_red_team_gate(
                 gate=red_team_gate,
                 on_missing_deliverable=on_missing_deliverable,
@@ -114,7 +157,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
                 transition_reason=transition_reason,
                 event=event,
                 approved=approved,
-                red_team_input=red_team_input,
+                red_team_input=deliverable_input,
             )
     elif red_team_gate is not None:
         logger.warning(

@@ -439,6 +439,30 @@ CREATE INDEX idx_rtr_task_id ON red_team_reports (task_id, recorded_at DESC);
 CREATE INDEX idx_rtr_verdict ON red_team_reports (verdict, recorded_at DESC);
 CREATE INDEX idx_rtr_recorded_at ON red_team_reports (recorded_at DESC);
 
+-- Durable audit archive of completion-oracle peer-review verdicts (one row
+-- per execution). The full report is JSON in ``report_json``; ``verdict`` /
+-- ``reviewer_agent_id`` / ``executor_agent_id`` / ``finding_count`` /
+-- ``report_summary`` are structured columns the read surface filters and
+-- previews on. The row-level CHECK enforces the reviewer-is-distinct
+-- invariant for any non-Pydantic writer, mirroring decision_records.
+CREATE TABLE completion_oracle_reports (
+    execution_id TEXT NOT NULL PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    reviewer_agent_id TEXT NOT NULL,
+    executor_agent_id TEXT NOT NULL CHECK (executor_agent_id != reviewer_agent_id),
+    verdict TEXT NOT NULL CHECK (
+        verdict IN ('approve', 'approve_with_notes', 'reject', 'escalate')
+    ),
+    finding_count INTEGER NOT NULL DEFAULT 0 CHECK (finding_count >= 0),
+    report_summary TEXT NOT NULL,
+    report_json TEXT NOT NULL,
+    recorded_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX idx_cor_task_id ON completion_oracle_reports (task_id, recorded_at DESC);
+CREATE INDEX idx_cor_verdict ON completion_oracle_reports (verdict, recorded_at DESC);
+CREATE INDEX idx_cor_recorded_at ON completion_oracle_reports (recorded_at DESC);
+
 -- ── Heartbeats ────────────────────────────────────────────────
 CREATE TABLE heartbeats (
     execution_id TEXT NOT NULL PRIMARY KEY,

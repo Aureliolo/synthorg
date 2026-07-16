@@ -31,7 +31,6 @@ Engine-side construction helpers live in
 import asyncio
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import NamedTuple
 
 from pydantic import ValidationError
 
@@ -43,14 +42,15 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceError
-from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.completion_oracle.builder import (
+    build_completion_oracle_tool_seed,
+)
 from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.health import (
     HealthJudge,
     HealthMonitoringPipeline,
     TriageFilter,
 )
-from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.state import WorkspaceStateSlice
@@ -72,10 +72,8 @@ from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.autonomy.resolver import AutonomyResolver
 from synthorg.security.redteam.builder import (
-    RedTeamRuntime,
     build_red_team_tool_seed,
 )
-from synthorg.security.visionverify.protocol import VisionVerifierGate
 from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingsError
@@ -84,6 +82,11 @@ from synthorg.settings.state import config_resolver_of
 from synthorg.tools.sandbox.factory import resolve_sandbox_for_category
 from synthorg.workers._agent_engine_collaborators import (
     build_boot_flight_recorder_sink,
+)
+from synthorg.workers._completion_oracle_runtime import (
+    attach_completion_oracle_gates,
+    build_completion_oracle_runtime_or_none,
+    resolve_completion_oracle_config,
 )
 from synthorg.workers._coordinator_assembly import (
     _build_runtime_coordinator,
@@ -98,10 +101,10 @@ from synthorg.workers._engine_assembly import (
     _construct_agent_engine,
 )
 from synthorg.workers._red_team_runtime import build_red_team_runtime_or_none
+from synthorg.workers._runtime_services import RuntimeServices
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
-    WorkerExecutionService,
 )
 
 logger = get_logger(__name__)
@@ -198,34 +201,6 @@ def _build_health_runtime(
     return pipeline, _enabled
 
 
-class RuntimeServices(NamedTuple):
-    """The runtime services built behind the provider switch.
-
-    INVARIANT (enforced by construction in :func:`build_runtime_services`,
-    not by the type): when ``coordinator`` is not ``None`` it and
-    ``worker_execution_service`` share the *same* boot
-    :class:`AgentEngine` instance, so worker tasks and coordinator
-    sub-agents observe one interrupt store, event-stream hub, and clock
-    seam. The ``work_pipeline`` (when not ``None``) holds those very
-    ``worker_execution_service`` and ``coordinator`` instances plus a
-    single shared :class:`AgentTaskScorer`, so solo and team routing
-    never diverge. A divergent engine would split agent state silently;
-    ``tests/unit/workers/test_runtime_builder.py`` asserts the identity.
-    ``coordinator`` and ``work_pipeline`` are ``None`` only in the
-    empty-company (no-provider) case, where ``worker_execution_service``
-    is a :class:`NoProviderExecutionService`; ``work_pipeline`` is also
-    ``None`` when no intake runtime is wired (no work entry path).
-    ``red_team_runtime`` is ``None`` when the adversarial gate is
-    disabled (default) OR when no provider is configured.
-    """
-
-    worker_execution_service: WorkerExecutionService
-    coordinator: MultiAgentCoordinator | None
-    work_pipeline: WorkPipeline | None
-    red_team_runtime: RedTeamRuntime | None = None
-    vision_gate: VisionVerifierGate | None = None
-
-
 def _select_active_provider(
     app_state: AppState,
 ) -> tuple[ProviderRegistry, tuple[str, ...]] | None:
@@ -287,6 +262,7 @@ def _degraded_no_coordinator(
     workspace_root: Path,
     provider: CompletionProvider,
     *,
+    oracle_enabled: bool,
     error: BaseException | None = None,
 ) -> RuntimeServices:
     """Boot the degraded no-coordinator mode: task execution rejected at the seam.
@@ -301,6 +277,9 @@ def _degraded_no_coordinator(
         app_state: Live application state.
         workspace_root: Absolute filesystem root for the vision gate.
         provider: The active provider (its vision gate still boots).
+        oracle_enabled: Whether the completion oracle is enabled, so the
+            deterministic build/test gate still attaches in degraded mode
+            (it needs no coordinator, only the execution-record store).
         error: The caught config error, when reached from the coordinator
             build's late backstop rather than the cheap pre-check.
 
@@ -331,6 +310,7 @@ def _degraded_no_coordinator(
         worker_execution_service=NoProviderExecutionService(),
         coordinator=None,
         work_pipeline=None,
+        completion_oracle_enabled=oracle_enabled,
         vision_gate=_build_vision_gate_or_none(
             app_state=app_state,
             workspace_root=workspace_root,
@@ -362,12 +342,17 @@ async def build_runtime_services(
         otherwise a ``NoProviderExecutionService`` and ``None`` for the
         coordinator and the work pipeline.
     """
+    # Resolve the oracle config before any early return so the deterministic
+    # build/test gate's enablement survives the no-provider and degraded paths;
+    # only the peer-review runtime depends on an active provider.
+    completion_oracle_config = await resolve_completion_oracle_config(app_state)
     selected = _select_active_provider(app_state)
     if selected is None:
         return RuntimeServices(
             worker_execution_service=NoProviderExecutionService(),
             coordinator=None,
             work_pipeline=None,
+            completion_oracle_enabled=completion_oracle_config.enabled,
             vision_gate=_build_vision_gate_or_none(
                 app_state=app_state,
                 workspace_root=workspace_root,
@@ -384,16 +369,28 @@ async def build_runtime_services(
     # self-heal reload path (an unrelated watched-key write while the model is
     # still blank) from churning healthy resources.
     if not await decomposition_model_is_configured(app_state):
-        return _degraded_no_coordinator(app_state, workspace_root, provider)
+        return _degraded_no_coordinator(
+            app_state,
+            workspace_root,
+            provider,
+            oracle_enabled=completion_oracle_config.enabled,
+        )
 
     red_team_seed = build_red_team_tool_seed(
         config=app_state.config.security.red_team,
+    )
+    completion_oracle_seed = build_completion_oracle_tool_seed(
+        config=completion_oracle_config,
     )
     mcp_bridge_tools = await _build_mcp_bridge_tools(app_state)
     tool_registry, tool_count, sandbox_backends = await _build_tool_registry(
         app_state,
         workspace_root,
-        extra_tools=(*red_team_seed.extra_tools, *mcp_bridge_tools),
+        extra_tools=(
+            *red_team_seed.extra_tools,
+            *completion_oracle_seed.extra_tools,
+            *mcp_bridge_tools,
+        ),
     )
     coordination_metrics_collector = _construct_coordination_collector(app_state)
     external_api_runtime = await _build_external_api_runtime(app_state)
@@ -451,7 +448,13 @@ async def build_runtime_services(
         # Backstop for the case the pre-check cannot catch: the model was
         # cleared between the pre-check read and this eager build. Degrade to
         # the same no-coordinator mode the pre-check returns.
-        return _degraded_no_coordinator(app_state, workspace_root, provider, error=exc)
+        return _degraded_no_coordinator(
+            app_state,
+            workspace_root,
+            provider,
+            oracle_enabled=completion_oracle_config.enabled,
+            error=exc,
+        )
     security = app_state.config.security
     logger.info(
         API_APP_STARTUP,
@@ -509,6 +512,13 @@ async def build_runtime_services(
         provider_name=names[0],
         seed=red_team_seed,
     )
+    completion_oracle_runtime = await build_completion_oracle_runtime_or_none(
+        app_state=app_state,
+        engine=engine,
+        provider_name=names[0],
+        seed=completion_oracle_seed,
+        config=completion_oracle_config,
+    )
     vision_gate = _build_vision_gate_or_none(
         app_state=app_state,
         workspace_root=workspace_root,
@@ -521,6 +531,7 @@ async def build_runtime_services(
         coordinator_wired=coordinator is not None,
         work_pipeline_wired=work_pipeline is not None,
         red_team_wired=red_team_runtime is not None,
+        completion_oracle_wired=completion_oracle_runtime is not None,
         vision_gate_wired=vision_gate is not None,
         security_enabled=security.enabled,
         security_enforcement_mode=security.enforcement_mode.value,
@@ -530,6 +541,8 @@ async def build_runtime_services(
         coordinator=coordinator,
         work_pipeline=work_pipeline,
         red_team_runtime=red_team_runtime,
+        completion_oracle_runtime=completion_oracle_runtime,
+        completion_oracle_enabled=completion_oracle_config.enabled,
         vision_gate=vision_gate,
     )
 
@@ -642,6 +655,17 @@ async def reload_runtime_services(app_state: AppState) -> None:
             await wire_real_intake_entry(app_state, hot_swap=True)
             await wire_real_objective_entry(app_state, hot_swap=True)
             await wire_real_task_board_entry(app_state, hot_swap=True)
+            # Re-attach the completion-oracle gates to the persistent review
+            # gate: ``build_runtime_services`` rebuilds the oracle runtime from
+            # the live settings, but the gates live on the review-gate service
+            # (not the swapped worker service), so a rebuild alone would leave
+            # the stale gate attached. This makes the oracle settings
+            # hot-reloadable (enable / shadow / min-stakes / reviewer tier).
+            attach_completion_oracle_gates(
+                app_state,
+                enabled=services.completion_oracle_enabled,
+                completion_oracle_runtime=services.completion_oracle_runtime,
+            )
         except Exception as exc:
             reraise_critical(exc)
             # Roll back the eagerly-committed simulation state while no new

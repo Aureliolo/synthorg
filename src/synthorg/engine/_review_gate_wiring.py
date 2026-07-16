@@ -14,8 +14,11 @@ from synthorg.core.task_enums import Stakes
 # re-enters the review-gate module that imports this mixin. PEP 649 keeps
 # them resolvable for typing without the runtime import.
 from synthorg.engine._review_gate_receipt import DeliverableReceiptSeam
+from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
+from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
 from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
+from synthorg.persistence.code_execution_protocol import CodeExecutionRecordRepository
 from synthorg.security.redteam.protocol import RedTeamGate
 from synthorg.security.visionverify.protocol import VisionVerifierGate
 
@@ -29,10 +32,15 @@ class ReviewGateWiringMixin:
     _receipt_service: DeliverableReceiptSeam | None
     _vision_gate: VisionVerifierGate | None
     _red_team_gate: RedTeamGate | None
-    _red_team_input_builder: DeliverableReviewInputBuilder | None
+    _deliverable_input_builder: DeliverableReviewInputBuilder | None
     _background_tasks: BackgroundTaskRegistry | None
     _red_team_on_missing_deliverable: Literal["block", "skip"]
     _red_team_min_stakes: Stakes
+    _build_test_gate: BuildTestOracle | None
+    _code_execution_records: CodeExecutionRecordRepository | None
+    _completion_oracle_gate: CompletionOracleGate | None
+    _completion_oracle_shadow_mode: bool
+    _completion_oracle_min_stakes: Stakes
 
     def set_receipt_service(self, receipt_service: DeliverableReceiptSeam) -> None:
         """Attach the receipt service after construction (boot wiring seam)."""
@@ -58,21 +66,25 @@ class ReviewGateWiringMixin:
         and ``run_pipeline``); the review input is built from the
         completing task's recorded deliverable by the
         :class:`DeliverableReviewInputBuilder` attached via
-        :meth:`set_red_team_input_builder`.
+        :meth:`set_deliverable_input_builder`.
         """
         self._red_team_gate = red_team_gate
 
-    def set_red_team_input_builder(
+    def set_deliverable_input_builder(
         self, builder: DeliverableReviewInputBuilder
     ) -> None:
-        """Attach the red-team review-input builder (boot wiring seam).
+        """Attach the shared deliverable review-input builder (boot wiring seam).
 
-        Wired alongside :meth:`set_red_team_gate` once the flight-recorder
-        frame store is connected. The builder sources the deliverable text
-        and execution id the gate evaluates; without it a configured gate
-        falls under the ``on_missing_deliverable`` posture for every task.
+        Wired once the flight-recorder frame store is connected, independently
+        of whether the red-team gate is enabled: BOTH the completion-oracle
+        peer-review gate and the red-team gate source their deliverable text +
+        execution id from this one builder. Because the peer-review gate is on
+        by default while red-team is opt-in, coupling this to the red-team
+        subsystem would leave the oracle's reviewer with no deliverable and
+        silently pass every task. Without a builder a configured gate falls
+        under the ``on_missing_deliverable`` posture for every task.
         """
-        self._red_team_input_builder = builder
+        self._deliverable_input_builder = builder
 
     def set_background_tasks(self, registry: BackgroundTaskRegistry) -> None:
         """Attach the background-task registry for gated completions.
@@ -117,14 +129,55 @@ class ReviewGateWiringMixin:
         """
         self._red_team_min_stakes = min_stakes
 
+    def set_build_test_gate(
+        self,
+        gate: BuildTestOracle | None,
+        *,
+        records: CodeExecutionRecordRepository | None,
+    ) -> None:
+        """Attach (or clear) the build/test oracle gate (boot wiring seam).
+
+        Wired at on-startup once the persistence backend is connected, so the
+        gate can read the completing task's persisted test-execution records.
+        Passing ``None`` clears a previously-attached gate. When attached, the
+        gate fires first in the completion chain (before the peer-review,
+        red-team, and vision gates), blocking a failing / unverified code task.
+        """
+        self._build_test_gate = gate
+        self._code_execution_records = records
+
+    def set_completion_oracle_gate(
+        self,
+        gate: CompletionOracleGate | None,
+        *,
+        shadow_mode: bool,
+        min_stakes: Stakes,
+    ) -> None:
+        """Attach (or clear) the agent-session peer-review gate (boot wiring seam).
+
+        Wired at on-startup once the boot ``AgentEngine`` exists. When attached
+        and the task's stakes meet ``min_stakes``, the gate dispatches an
+        independent reviewer agent and reworks the task on a REJECT / ESCALATE.
+        In ``shadow_mode`` the verdict is surfaced but never enforced. Passing
+        ``None`` clears a previously-attached gate.
+        """
+        self._completion_oracle_gate = gate
+        self._completion_oracle_shadow_mode = shadow_mode
+        self._completion_oracle_min_stakes = min_stakes
+
     def has_completion_gates(self) -> bool:
-        """Return whether any adversarial completion gate is configured.
+        """Return whether any completion gate is configured.
 
         Returns:
-            ``True`` when at least one completion gate (red-team or
-            vision) is attached, so a completion must pass every
-            configured gate before reaching COMPLETED. A ``True`` result
-            does not imply both gates run: the chain evaluates only those
-            that are attached.
+            ``True`` when at least one completion gate (build/test,
+            peer-review, red-team, or vision) is attached, so a completion
+            must pass every configured gate before reaching COMPLETED. A
+            ``True`` result does not imply all gates run: the chain evaluates
+            only those that are attached and above their stakes threshold.
         """
-        return self._red_team_gate is not None or self._vision_gate is not None
+        return (
+            self._build_test_gate is not None
+            or self._completion_oracle_gate is not None
+            or self._red_team_gate is not None
+            or self._vision_gate is not None
+        )

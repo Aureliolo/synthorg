@@ -56,6 +56,7 @@ from tests.unit.api.fakes import (
     FakeCheckpointRepository,
     FakeCodebaseStructureMapRepository,
     FakeCollaborationMetricRepository,
+    FakeCompletionOracleReportArchiveRepository,
     FakeCostRecordRepository,
     FakeDecisionRepository,
     FakeDocsRepository,
@@ -805,6 +806,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._checkpoints = FakeCheckpointRepository()
         self._flight_recorder_frames = FakeFlightRecorderFrameRepository()
         self._red_team_reports = FakeRedTeamReportArchiveRepository()
+        self._completion_oracle_reports = FakeCompletionOracleReportArchiveRepository()
         self._heartbeats = FakeHeartbeatRepository()
         self._agent_states = FakeAgentStateRepository()
         self._settings_repo = FakeSettingsRepository()
@@ -1082,6 +1084,13 @@ class FakePersistenceBackend(PersistenceBackend):
     @property
     def red_team_reports(self) -> FakeRedTeamReportArchiveRepository:
         return self._red_team_reports
+
+    @override
+    @property
+    def completion_oracle_reports(
+        self,
+    ) -> FakeCompletionOracleReportArchiveRepository:
+        return self._completion_oracle_reports
 
     @override
     @property

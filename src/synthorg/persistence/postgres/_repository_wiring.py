@@ -53,6 +53,9 @@ from synthorg.persistence.postgres.code_execution_repo import (
 from synthorg.persistence.postgres.codebase_structure_map_repo import (
     PostgresCodebaseStructureMapRepository,
 )
+from synthorg.persistence.postgres.completion_oracle_report_repo import (
+    PostgresCompletionOracleReportArchiveRepository,
+)
 from synthorg.persistence.postgres.connection_repo import (
     PostgresConnectionRepository,
 )
@@ -252,6 +255,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._checkpoints = None
         self._flight_recorder_frames = None
         self._red_team_reports = None
+        self._completion_oracle_reports = None
         self._deliverable_receipts = None
         self._knowledge_usage_records = None
         self._code_execution_records = None
@@ -344,6 +348,9 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._checkpoints = PostgresCheckpointRepository(pool)
         self._flight_recorder_frames = PostgresFlightRecorderFrameRepository(pool)
         self._red_team_reports = PostgresRedTeamReportArchiveRepository(pool)
+        self._completion_oracle_reports = (
+            PostgresCompletionOracleReportArchiveRepository(pool)
+        )
         self._deliverable_receipts = PostgresDeliverableReceiptRepository(pool)
         self._knowledge_usage_records = PostgresKnowledgeUsageRecordRepository(pool)
         self._code_execution_records = PostgresCodeExecutionRecordRepository(pool)

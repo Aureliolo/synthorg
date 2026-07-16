@@ -34,6 +34,9 @@ from synthorg.persistence.checkpoint_protocol import (
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
+from synthorg.persistence.completion_oracle_report_protocol import (
+    CompletionOracleReportArchiveRepository,
+)
 from synthorg.persistence.cost_record_protocol import CostRecordRepository
 from synthorg.persistence.decision_protocol import DecisionRepository
 from synthorg.persistence.deliverable_receipt_protocol import (
@@ -126,6 +129,9 @@ if TYPE_CHECKING:
     from synthorg.core.task import Task
     from synthorg.engine.agent_state import AgentRuntimeState
     from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
+    from synthorg.engine.completion_oracle.review_models import (
+        CompletionOracleReportRecord,
+    )
     from synthorg.engine.decisions import DecisionRecord
     from synthorg.engine.workflow.definition import WorkflowDefinition
     from synthorg.execution.parked_context import ParkedContext
@@ -551,6 +557,23 @@ class _FakeRedTeamReportArchiveRepository:
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
     ) -> tuple[RedTeamReportRecord, ...]:
+        return ()
+
+    async def purge_before(self, threshold: object) -> int:
+        return 0
+
+
+class _FakeCompletionOracleReportArchiveRepository:
+    async def append(self, record: object) -> None:
+        pass
+
+    async def query(
+        self,
+        filter_spec: object,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[CompletionOracleReportRecord, ...]:
         return ()
 
     async def purge_before(self, threshold: object) -> int:
@@ -1450,6 +1473,12 @@ class _FakeBackend:
         return _FakeRedTeamReportArchiveRepository()
 
     @property
+    def completion_oracle_reports(
+        self,
+    ) -> _FakeCompletionOracleReportArchiveRepository:
+        return _FakeCompletionOracleReportArchiveRepository()
+
+    @property
     def heartbeats(self) -> _FakeHeartbeatRepository:
         return _FakeHeartbeatRepository()
 
@@ -1865,6 +1894,17 @@ class TestProtocolCompliance:
         assert isinstance(backend.red_team_reports, RedTeamReportArchiveRepository)
         assert isinstance(
             _FakeRedTeamReportArchiveRepository(), RedTeamReportArchiveRepository
+        )
+
+    def test_fake_completion_oracle_report_repo_is_archive_repository(self) -> None:
+        # Backend-routed assertion, twin of the red-team check above.
+        backend = _FakeBackend()
+        assert isinstance(
+            backend.completion_oracle_reports, CompletionOracleReportArchiveRepository
+        )
+        assert isinstance(
+            _FakeCompletionOracleReportArchiveRepository(),
+            CompletionOracleReportArchiveRepository,
         )
 
     def test_fake_heartbeat_repo_is_heartbeat_repository(self) -> None:

@@ -244,6 +244,10 @@ def _wire_task_activity_observer(
     from synthorg.core.normalization import (  # noqa: PLC0415
         normalize_ascii_lowercase,
     )
+    from synthorg.core.task import Task  # noqa: PLC0415
+    from synthorg.engine.completion_oracle.evaluator import (  # noqa: PLC0415
+        BuildTestOracle,
+    )
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.persistence.artifact_protocol import (  # noqa: PLC0415
         ArtifactFilterSpec,
@@ -276,6 +280,17 @@ def _wire_task_activity_observer(
     async def _list_artifacts(task_id: str) -> Sequence[Artifact]:
         return await persistence.artifacts.query(ArtifactFilterSpec(task_id=task_id))
 
+    _build_test_oracle = BuildTestOracle()
+
+    async def _oracle_block_for(task: Task) -> bool:
+        # Re-source the run outcome for the live feed the same way the approvals
+        # queue does, so a code task whose tests failed / never ran shows FAILED
+        # on both surfaces rather than only in the queue.
+        evaluation = await _build_test_oracle.evaluate(
+            task, records=persistence.code_execution_records
+        )
+        return evaluation.blocks_completion
+
     async def _resolve_agent(agent_id: str) -> ActivityAgentRef | None:
         # Resolve the assignee's display identity at event time so a live
         # config change (renamed agent, moved department) is reflected without
@@ -298,6 +313,7 @@ def _wire_task_activity_observer(
         list_artifacts=_list_artifacts,
         record_metric=tracker.record_task_metric,
         resolve_agent=_resolve_agent,
+        oracle_block_for=_oracle_block_for,
     )
     task_engine.register_observer(observer)  # type: ignore[attr-defined]
     logger.info(API_SERVICE_AUTO_WIRED, service="task_activity_observer")

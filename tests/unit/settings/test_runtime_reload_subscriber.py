@@ -53,6 +53,15 @@ class TestProtocol:
         assert ("design", "image_generation_enabled") in watched
         assert ("design", "image_model") in watched
 
+    def test_watched_keys_include_auto_review_and_completion_oracle(self) -> None:
+        sub, _ = _make_subscriber()
+        watched = sub.watched_keys
+        assert ("engine", "auto_review_on_completion") in watched
+        assert ("engine", "completion_oracle_enabled") in watched
+        assert ("engine", "completion_oracle_shadow_mode") in watched
+        assert ("engine", "completion_oracle_min_stakes") in watched
+        assert ("engine", "completion_oracle_reviewer_model_tier") in watched
+
 
 class TestReload:
     @pytest.mark.parametrize(
@@ -64,6 +73,11 @@ class TestReload:
             ("coordination", "decomposition_model"),
             ("design", "image_generation_enabled"),
             ("design", "image_model"),
+            ("engine", "auto_review_on_completion"),
+            ("engine", "completion_oracle_enabled"),
+            ("engine", "completion_oracle_shadow_mode"),
+            ("engine", "completion_oracle_min_stakes"),
+            ("engine", "completion_oracle_reviewer_model_tier"),
         ],
     )
     async def test_watched_change_triggers_reload(

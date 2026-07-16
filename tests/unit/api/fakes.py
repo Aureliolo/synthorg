@@ -33,6 +33,9 @@ from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import DocMetadata
 from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
 from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
+from synthorg.engine.completion_oracle.review_models import (
+    CompletionOracleReportRecord,
+)
 from synthorg.execution.parked_context import ParkedContext
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
@@ -43,6 +46,9 @@ from synthorg.hr.performance.models import (
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
 from synthorg.persistence.audit_protocol import AuditFilterSpec
 from synthorg.persistence.checkpoint_protocol import CheckpointFilterSpec
+from synthorg.persistence.completion_oracle_report_protocol import (
+    CompletionOracleReportFilterSpec,
+)
 from synthorg.persistence.docs_protocol import DocsFilterSpec
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
@@ -752,6 +758,60 @@ class FakeRedTeamReportArchiveRepository:
     def _filtered(
         self, filter_spec: RedTeamReportFilterSpec
     ) -> list[RedTeamReportRecord]:
+        candidates = list(self._records.values())
+        if filter_spec.execution_id is not None:
+            candidates = [
+                r for r in candidates if r.execution_id == filter_spec.execution_id
+            ]
+        if filter_spec.task_id is not None:
+            candidates = [r for r in candidates if r.task_id == filter_spec.task_id]
+        if filter_spec.verdict is not None:
+            candidates = [r for r in candidates if r.verdict == filter_spec.verdict]
+        return candidates
+
+
+class FakeCompletionOracleReportArchiveRepository:
+    """In-memory completion-oracle report archive for tests.
+
+    Twin of :class:`FakeRedTeamReportArchiveRepository`: enforces the same
+    single-shot-per-execution invariant (the primary key on ``execution_id``)
+    the SQL backends carry, so the api fixture exercises the real
+    duplicate-append behaviour.
+    """
+
+    def __init__(self) -> None:
+        self._records: dict[str, CompletionOracleReportRecord] = {}
+
+    async def append(self, record: CompletionOracleReportRecord) -> None:
+        if record.execution_id in self._records:
+            msg = (
+                "Completion-oracle report for execution "
+                f"{record.execution_id!r} already exists"
+            )
+            raise DuplicateRecordError(msg)
+        self._records[record.execution_id] = record
+
+    async def query(
+        self,
+        filter_spec: CompletionOracleReportFilterSpec,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[CompletionOracleReportRecord, ...]:
+        candidates = self._filtered(filter_spec)
+        candidates.sort(key=lambda r: (r.recorded_at, r.execution_id), reverse=True)
+        return tuple(candidates[offset : offset + limit])
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        before = len(self._records)
+        self._records = {
+            k: v for k, v in self._records.items() if v.recorded_at >= threshold
+        }
+        return before - len(self._records)
+
+    def _filtered(
+        self, filter_spec: CompletionOracleReportFilterSpec
+    ) -> list[CompletionOracleReportRecord]:
         candidates = list(self._records.values())
         if filter_spec.execution_id is not None:
             candidates = [

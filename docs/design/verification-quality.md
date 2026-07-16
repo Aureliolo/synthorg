@@ -130,10 +130,15 @@ Key design decisions:
   `IN_PROGRESS` for rework with the stage name and reason in metadata.
 - **Default fallback**: when no pipeline is configured, the existing
   `ReviewGateService` single-stage behaviour runs.
-- **Automatic vs human-gated**: `engine.auto_review_on_completion` (default off)
-  controls who acts on a task reaching `IN_REVIEW`. Off, a human opens the review
-  and decides; on, the staged pipeline runs automatically at boot-wiring time and
-  applies its verdict without waiting for a human.
+- **Automatic vs human-gated**: `engine.auto_review_on_completion` (default **on**,
+  hot-reloadable) controls who acts on a task reaching `IN_REVIEW`. On, the staged
+  pipeline runs automatically and applies its verdict so a verified task
+  self-completes without a human; off, a human opens the review and decides. It is
+  on by default so the review pipeline (the completion oracle included) runs
+  automatically rather than parking every task in `IN_REVIEW` for a human. The
+  setting only decides whether the pipeline runs *automatically*: the oracle gate
+  (see below) enforces on both paths, since a human approval still invokes the same
+  gate through `complete_review`.
 
 Beyond the review pipeline, the lifecycle exposes additional human gates that all
 route through the same `signal_resume_intent` approvals-resume path, each off by
@@ -188,19 +193,99 @@ brief / criteria are wrapped with `wrap_untrusted` before reaching the model;
 screenshot bytes travel as structured `image_parts`, not as prompt text, and are
 elided from the cassette's human-readable copy.
 
+## Completion Oracle Gate
+
+The completion oracle makes "done" mean *the code compiles, its tests pass,
+and an independent reviewer approves* rather than "the run produced some
+artifacts". It is **on by default** (opt-out via
+`engine.completion_oracle_enabled`) and is two composed gates that run first in
+the completion chain, before the red-team and vision gates, on every path to
+COMPLETED (both the auto-review `run_pipeline` and the human-driven
+`complete_review`), because they live on `ReviewGateService`, not on the
+auto-review trigger. Its natural home is the autonomous flow: with
+`engine.auto_review_on_completion` on by default a verified task self-completes
+and the oracle gates that completion; a human opening a review is gated by the
+same two gates. All the oracle settings (`completion_oracle_enabled`,
+`_shadow_mode`, `_min_stakes`, `_reviewer_model_tier`) are hot-reloadable: an
+edit rebuilds the runtime and re-attaches the gates to the persistent review
+service on the next task, no restart.
+
+### Layer 1: execution-grounded build/test gate
+
+A deterministic gate (`engine/completion_oracle/evaluator.py`
+`BuildTestOracle`) that is a pure function of a task's grounding
+classification and its already-persisted `CodeExecutionRecord`s (the
+`purpose="tests"` rows the code-runner writes), so it needs no new persistence.
+`classify_grounding_requirement` marks a task REQUIRED when it declares (or
+produced) a CODE / TESTS artifact; a docs / plan / decision task is
+NOT_APPLICABLE and the oracle abstains. The verdict uses LATEST-run semantics
+(the newest test run decides), so a task that failed, was reworked, and now
+passes is VERIFIED rather than blocked forever. A REQUIRED task whose latest
+test run failed (`BUILD_TEST_FAILED`) or that has no passing test evidence
+(`UNVERIFIED`, the stub the oracle exists to catch) is routed back to
+IN_PROGRESS. This gate **fails CLOSED**: absent, failing, or unreadable test
+evidence for a code task blocks; only the *structural* absence of the record
+store (a persistence-less boot, `CHECKER_UNAVAILABLE`) passes through.
+
+The build/test verdict is also the source of truth for a run's `RunOutcome`:
+`derive_run_outcome` takes an `oracle_blocked` flag so the approvals read
+surface shows a code task that does not build as FAILED even when it produced
+artifacts, mirroring how EMPTY is resolved at read time.
+
+### Layer 2: agent-session peer reviewer
+
+The independent reviewer is a real agent session (`AgentEngine.run` on a
+transient REVIEW task pinned to CRITICAL stakes), not a single `complete_*`
+call, mirroring the red-team gate's shape. A built-in `Completion Reviewer`
+role in Quality Assurance gives it a stable, non-human-assignable identity
+distinct from any executor by construction (defence-in-depth equality-checked
+at gate time). The reviewer reads the deliverable, may build it and run its
+tests, and files exactly one verdict (APPROVE / APPROVE_WITH_NOTES / REJECT /
+ESCALATE) via the single terminal tool `submit_completion_oracle_verdict`,
+guarded by a trusted-runtime-context contextvar so the reviewer cannot be
+spoofed into filing under a different execution and cannot spoof who reviewed
+whom (the identities are seeded by the gate, not taken from the tool
+arguments). The untrusted deliverable / criteria are wrapped with
+`wrap_untrusted` at the prompt boundary (SEC-1).
+
+The reviewer-is-distinct invariant is enforced at three layers: a
+`CompletionOracleReport` model validator, the gate's structural resolution,
+and a row-level `CHECK (executor_agent_id != reviewer_agent_id)` on the
+`completion_oracle_reports` archive table (the twin of the `decision_records`
+CHECK). Each verdict is archived (best-effort) in that append-only, dual-backend
+table so an operator can answer "why was this deliverable sent back?" long after
+the run; an archive-write failure is logged but never blocks or alters the
+verdict (fail-OPEN, the one fail-open path in an otherwise fail-closed gate).
+
+### Fail-CLOSED posture and mapping
+
+Unlike the red-team and vision gates, which fail OPEN so a verifier defect can
+never block completion, the peer-review gate **fails CLOSED**: a dispatch
+failure, a missing verdict, or an unresolvable distinct reviewer yields an
+ESCALATE verdict, never a silent pass. A REJECT or ESCALATE reroutes the task
+to IN_PROGRESS rework with the reviewer's summary as the reason; APPROVE /
+APPROVE_WITH_NOTES lets completion proceed. `completion_oracle_min_stakes`
+(default `low`, so every task is reviewed) gates the expensive agent-session
+review; the deterministic build/test gate runs regardless of it.
+`completion_oracle_shadow_mode` runs the reviewer and surfaces the verdict
+without enforcing it, for an observation period before enforcement. The reviewer
+tier is pinned via `completion_oracle_reviewer_model_tier` (default `medium`),
+never inheriting the executor's tier.
+
 ## Order of Operations
 
-Five quality and approval surfaces (verification stage, review
-pipeline, mid-execution `AUTH_REQUIRED` park, post-completion
-`IN_REVIEW` gate, adversarial red-team gate) operate at distinct
-points in the task lifecycle.
+Quality and approval surfaces operate at distinct points in the task
+lifecycle: the verification stage, the review pipeline, the mid-execution
+`AUTH_REQUIRED` park, the post-completion `IN_REVIEW` gate, the completion
+oracle (build/test then peer review), and the adversarial red-team gate.
 
 | Phase | Surface | Trigger | Task status during | Exit | Where documented |
 |-------|---------|---------|--------------------|------|------------------|
 | Mid-execution | `AUTH_REQUIRED` park | Agent calls a tool that requires approval at runtime (e.g. `deploy`, `db:admin`). Driven by `ApprovalGate` middleware. | `AUTH_REQUIRED` | Approved: returns to `ASSIGNED`. Denied / timeout: `CANCELLED`. | [Security: Approval Workflow](security.md#approval-workflow) |
 | Agent done | Verification stage | Workflow blueprint has a `VERIFICATION` control-flow node. Runs as a separate evaluator agent with its own context. | `IN_PROGRESS` (engine-internal) | Pass: continue to next node. Fail: regenerate. Refer: hand to human via `VERIFICATION_REFER` edge. | This page, [Workflow Node and Edge Types](#workflow-node-and-edge-types) |
 | Agent done | Review pipeline | Task transitions `IN_PROGRESS` to `IN_REVIEW`. Chain of `ReviewStage` instances runs. | `IN_REVIEW` | First-failing stage returns the task to `IN_PROGRESS`; all-pass moves to `COMPLETED`. | This page, [Review Pipeline](#review-pipeline) |
-| Review pipeline PASS | Red-team gate | Opt-in (`CompanyConfig.security.red_team.enabled`) AND stakes-gated: fires when the review pipeline returns its COMPLETED verdict, BEFORE the task-engine transition lands, only when `task.stakes >= stakes_routing.red_team_min_stakes` (default `HIGH`). | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the red-team summary as the rework reason. PASS / PASS_WITH_FINDINGS: pipeline's verdict stands. Below the stakes threshold: SKIP (logs `RED_TEAM_GATE_SKIPPED`), pipeline's verdict stands. | [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate) |
+| Review pipeline PASS | Completion oracle gate | On by default (`engine.completion_oracle_enabled`). Two composed gates, first in the chain: the deterministic build/test gate (always) and the agent-session peer reviewer (when `task.stakes >= completion_oracle_min_stakes`, default `low`). Fires on both the auto-review and human-approve paths. | `IN_REVIEW` | Build/test `BUILD_TEST_FAILED` / `UNVERIFIED` (fail-CLOSED) or reviewer REJECT / ESCALATE: routes back to `IN_PROGRESS` with the reason. VERIFIED + APPROVE: proceeds. Shadow mode: verdict surfaced, not enforced. | This page, [Completion Oracle Gate](#completion-oracle-gate) |
+| Completion oracle PASS | Red-team gate | Opt-in (`CompanyConfig.security.red_team.enabled`) AND stakes-gated: fires when the review pipeline returns its COMPLETED verdict and the completion oracle has not blocked, BEFORE the task-engine transition lands, only when `task.stakes >= stakes_routing.red_team_min_stakes` (default `HIGH`). | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the red-team summary as the rework reason. PASS / PASS_WITH_FINDINGS: pipeline's verdict stands. Below the stakes threshold: SKIP (logs `RED_TEAM_GATE_SKIPPED`), pipeline's verdict stands. | [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate) |
 | Red-team gate PASS | Vision verifier gate | Opt-in (`CompanyConfig.security.vision_verify.enabled`). The UI cousin of the red-team gate: fires after the red-team gate for GUI deliverables that carry screenshots (`vision_input`). Pluggable `VisionVerifier` (`noop` / `heuristic` / `llm_vision`) judges whether the running app matches the brief. | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the vision summary as the rework reason. PASS / PASS_WITH_FINDINGS: prior verdict stands. Absent screenshots: SKIP (non-GUI deliverable). | This page, [Vision Verifier Gate](#vision-verifier-gate) |
 | Human decision | Review-gate decision | A human approves/rejects the parked review item via `ReviewGateService.complete_review`. Both a completed run (`review:task_completion`) and a **failed** run (`review:task_failed`) reach the queue. | `IN_REVIEW` or `FAILED` | Completed: approve `IN_REVIEW -> COMPLETED`, reject `IN_REVIEW -> IN_PROGRESS`. Failed: approve **acknowledges** (stays `FAILED`), reject **retries** `FAILED -> ASSIGNED`. | [Security: Failed-run review decisions](security.md#failed-run-review-decisions) |
 
@@ -220,6 +305,13 @@ Key invariants:
 - The review pipeline does not mint new `TaskStatus` values; the
   task stays at `IN_REVIEW` throughout, with stage progress in
   metadata.
+- The gates split on fail policy, and a maintainer must not invert them
+  by copy-paste. The red-team and vision gates fail OPEN on an internal
+  fault (a verifier defect must never block completion). The completion
+  oracle fails CLOSED: the build/test gate blocks a code task it cannot
+  confirm builds, and the peer-review gate escalates to a human when no
+  distinct reviewer or verdict is resolvable, because its whole purpose
+  (an independent reviewer must exist) would otherwise be silently defeated.
 
 ---
 

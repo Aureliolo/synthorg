@@ -84,7 +84,7 @@ SynthOrg ships with 30+ built-in roles organised by department:
 | Design | UX Designer, UI Designer, UX Researcher |
 | Engineering | Software Architect, Frontend Developer, Backend Developer, Full-Stack Developer, DevOps/SRE Engineer, Database Engineer, Knowledge Architect |
 | Security | Security Engineer, Security Operations |
-| Quality Assurance | QA Lead, QA Engineer, Automation Engineer, Performance Engineer, Red Team |
+| Quality Assurance | QA Lead, QA Engineer, Automation Engineer, Performance Engineer, Red Team, Completion Reviewer |
 | Data & Analytics | Data Analyst, Data Engineer, ML Engineer |
 | Operations | Project Manager, Scrum Master, HR Manager |
 | Creative & Marketing | Content Writer, Brand Strategist, Growth Marketer |
