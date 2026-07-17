@@ -5,7 +5,6 @@ from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
-from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
@@ -18,7 +17,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
-from synthorg.engine.errors import ProjectNotFoundError
+from synthorg.engine.errors import DecompositionError, ProjectNotFoundError
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.errors import (
@@ -332,6 +331,7 @@ class TestPlanReviewGate:
             request_plan_approval=AsyncMock(
                 return_value=PlanReviewHandoff(
                     approval_id="appr-1",
+                    plan_id="plan-1",
                     subtask_count=3,
                     detail="3 subtasks awaiting approval",
                 )
@@ -349,6 +349,37 @@ class TestPlanReviewGate:
         # builds until the human approves the parked plan.
         coordinator.plan_preview.assert_awaited_once()
         coordinator.coordinate.assert_not_called()
+
+    async def test_decomposition_failure_marks_plan_failed_not_500(self) -> None:
+        # The Tetris dogfood regression: a decomposition failure must degrade to
+        # a visible FAILED plan + FAILED task + is_success=false, never a raw 500
+        # that leaves a project + orphan task behind with no plan.
+        coordinator = mock_of[MultiAgentCoordinator]()
+        coordinator.plan_preview.side_effect = DecompositionError("decompose boom")
+        pipeline, _ = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=_project(),
+            verdict=RoutingVerdict.SPLITTABLE,
+            coordinator=coordinator,
+            agents=(make_e2e_identity(),),
+        )
+        gate = mock_of[PlanReviewGate]()
+        pipeline.attach_plan_review_gate(gate)
+
+        result = await pipeline.run(_work_item(plan_required=True))
+
+        assert result.is_success is False
+        assert result.final_task_status is TaskStatus.FAILED
+        assert result.execution_path is ExecutionPath.PLAN_REVIEW
+        assert result.plan_review_handoff is not None
+        # No approval is parked: the shell is opened, then marked FAILED.
+        assert result.plan_review_handoff.approval_id is None
+        cast("AsyncMock", gate.open_plan).assert_awaited_once()
+        cast("AsyncMock", gate.fail_plan).assert_awaited_once()
+        cast("AsyncMock", gate.request_plan_approval).assert_not_awaited()
 
     async def test_splittable_dispatches_team_without_gate(self) -> None:
         coordinator = mock_of[MultiAgentCoordinator]()
@@ -399,6 +430,7 @@ class TestPlanRequired:
             request_plan_approval=AsyncMock(
                 return_value=PlanReviewHandoff(
                     approval_id="appr-1",
+                    plan_id="plan-1",
                     subtask_count=3,
                     detail="3 subtasks awaiting approval",
                 )
@@ -458,6 +490,7 @@ class TestOwnerStaffing:
             request_plan_approval=AsyncMock(
                 return_value=PlanReviewHandoff(
                     approval_id="appr-1",
+                    plan_id="plan-1",
                     subtask_count=2,
                     detail="2 subtasks awaiting approval",
                 )
@@ -499,6 +532,7 @@ class TestOwnerStaffing:
             request_plan_approval=AsyncMock(
                 return_value=PlanReviewHandoff(
                     approval_id="appr-1",
+                    plan_id="plan-1",
                     subtask_count=1,
                     detail="1 subtask awaiting approval",
                 )
@@ -534,6 +568,7 @@ class TestOwnerStaffing:
             request_plan_approval=AsyncMock(
                 return_value=PlanReviewHandoff(
                     approval_id="appr-1",
+                    plan_id="plan-1",
                     subtask_count=1,
                     detail="1 subtask awaiting approval",
                 )
@@ -566,6 +601,7 @@ class TestOwnerStaffing:
             request_plan_approval=AsyncMock(
                 return_value=PlanReviewHandoff(
                     approval_id="appr-1",
+                    plan_id="plan-1",
                     subtask_count=1,
                     detail="1 subtask awaiting approval",
                 )
@@ -574,11 +610,19 @@ class TestOwnerStaffing:
         pipeline.attach_plan_review_gate(gate)
 
         # With no agent to staff, owner resolution yields no lead (the
-        # roster-empty path); the run then fails downstream because a team
-        # plan needs at least one agent. The critical invariant is that no
-        # phantom lead is stamped on the way to that failure.
-        with pytest.raises(ValidationError):
-            await pipeline.run(_work_item(plan_required=True))
+        # roster-empty path); the run then fails gracefully because a team plan
+        # needs at least one agent. Rather than raising a 500, the plan shell is
+        # opened then marked FAILED and the run reports failure. The critical
+        # invariant is that no phantom lead is stamped on the way to that failure.
+        result = await pipeline.run(_work_item(plan_required=True))
+        assert result.is_success is False
+        assert result.final_task_status is TaskStatus.FAILED
+        assert result.execution_path is ExecutionPath.PLAN_REVIEW
+        assert result.plan_review_handoff is not None
+        assert result.plan_review_handoff.approval_id is None
+        cast("AsyncMock", gate.open_plan).assert_awaited_once()
+        cast("AsyncMock", gate.fail_plan).assert_awaited_once()
+        cast("AsyncMock", gate.request_plan_approval).assert_not_awaited()
         cast("AsyncMock", handles["project_repo"]).update.assert_not_awaited()
 
     async def test_concurrent_runs_stamp_a_single_lead(self) -> None:
@@ -626,6 +670,7 @@ class TestOwnerStaffing:
             request_plan_approval=AsyncMock(
                 return_value=PlanReviewHandoff(
                     approval_id="appr-1",
+                    plan_id="plan-1",
                     subtask_count=1,
                     detail="1 subtask awaiting approval",
                 )

@@ -21,14 +21,19 @@ from .models import ResolvedModel
 logger = get_logger(__name__)
 
 
-def _cost_key(m: ResolvedModel) -> tuple[float, str]:
-    """Sort key: cheapest first, then provider name for stable tie-breaking.
+def _cost_key(m: ResolvedModel) -> tuple[bool, float, str]:
+    """Sort key: agent-eligible first, then cheapest, then provider name.
+
+    Eligibility leads the key so a provider kept out of agent work (e.g. a
+    gateway added for feature calls only) is never picked over an eligible
+    provider that serves the same model; it wins only when it is the sole
+    provider for the ref. Cost then provider name break the remaining ties.
 
     Returns:
-        A ``(total_cost_per_1k, provider_name)`` tuple usable as a sort
-        key (cheapest first, provider name breaking ties).
+        A ``(not agent_eligible, total_cost_per_1k, provider_name)`` tuple
+        usable as a sort key (eligible first, cheapest, then name).
     """
-    return (m.total_cost_per_1k, m.provider_name)
+    return (not m.agent_eligible, m.total_cost_per_1k, m.provider_name)
 
 
 @runtime_checkable

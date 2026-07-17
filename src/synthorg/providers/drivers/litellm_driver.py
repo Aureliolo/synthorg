@@ -50,6 +50,7 @@ from pydantic import JsonValue
 
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger, safe_error_description
@@ -58,6 +59,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
     PROVIDER_CONNECTION_ERROR,
+    PROVIDER_EMPTY_COMPLETION,
     PROVIDER_QUOTA_EXCEEDED,
     PROVIDER_RATE_LIMITED,
     PROVIDER_STREAM_CHUNK_NO_DELTA,
@@ -617,6 +619,30 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         finish = map_finish_reason(
             getattr(choice, "finish_reason", None),
         )
+
+        # A response with neither content nor a surviving tool call is not a
+        # usable completion. ``extract_tool_calls`` drops a malformed tool call
+        # (unparseable arguments), which can leave a TOOL_USE turn empty, and a
+        # provider can also return an empty STOP turn. ``CompletionResponse``
+        # rejects that shape unless the finish reason is already ERROR /
+        # CONTENT_FILTER, so building it here would raise a ValidationError out
+        # of the driver mid-call (surfacing as a 500 up the stack). Normalise
+        # to ERROR: the caller (the decomposition self-correction loop, the
+        # react loop) then receives a well-formed empty completion and applies
+        # its own graceful retry / fail-loud handling instead.
+        if (
+            content is None
+            and not tool_calls
+            and finish not in (FinishReason.CONTENT_FILTER, FinishReason.ERROR)
+        ):
+            logger.warning(
+                PROVIDER_EMPTY_COMPLETION,
+                provider=self._provider_name,
+                model=model_config.id,
+                finish_reason=finish.value,
+                had_raw_tool_calls=bool(raw_tc),
+            )
+            finish = FinishReason.ERROR
 
         usage_obj = getattr(response, "usage", None)
         input_tok = int(getattr(usage_obj, "prompt_tokens", 0) or 0)

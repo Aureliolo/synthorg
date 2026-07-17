@@ -250,6 +250,7 @@ class ProviderResponse(BaseModel):
     oauth_scope: NotBlankStr | None = None
     custom_header_name: NotBlankStr | None = None
     preset_name: NotBlankStr | None = None
+    agent_eligible: bool = True
     supports_model_pull: bool = False
     supports_model_delete: bool = False
     supports_model_config: bool = False

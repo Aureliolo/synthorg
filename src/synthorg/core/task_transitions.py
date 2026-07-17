@@ -5,7 +5,7 @@ the Engine design page, extended with BLOCKED, CANCELLED,
 FAILED, INTERRUPTED, SUSPENDED, REJECTED, AUTH_REQUIRED, and
 AWAITING_INPUT transitions for completeness::
 
-    CREATED -> ASSIGNED | REJECTED
+    CREATED -> ASSIGNED | REJECTED | FAILED
     ASSIGNED -> IN_PROGRESS | AUTH_REQUIRED | BLOCKED | CANCELLED
                | FAILED | INTERRUPTED | SUSPENDED
     IN_PROGRESS -> IN_REVIEW | AWAITING_INPUT | AUTH_REQUIRED | BLOCKED
@@ -36,7 +36,13 @@ from synthorg.observability.events.task import (
 )
 
 VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
-    TaskStatus.CREATED: frozenset({TaskStatus.ASSIGNED, TaskStatus.REJECTED}),
+    # CREATED -> FAILED: a greenlit objective's root task can fail during the
+    # planning phase (decomposition never produced a plan) before it is ever
+    # assigned; FAILED is re-runnable (-> ASSIGNED), so the failed run stays on
+    # the board and re-runnable rather than becoming a silent orphan.
+    TaskStatus.CREATED: frozenset(
+        {TaskStatus.ASSIGNED, TaskStatus.REJECTED, TaskStatus.FAILED}
+    ),
     TaskStatus.ASSIGNED: frozenset(
         {
             TaskStatus.IN_PROGRESS,

@@ -229,6 +229,18 @@ class ProviderConfig(BaseModel):
         default=None,
         description="Preset used to create this provider (if any)",
     )
+    agent_eligible: bool = Field(
+        default=True,
+        description=(
+            "Whether this provider may back an agent: its models are seeded "
+            "onto agents at provisioning and picked by stakes routing. When "
+            "False the provider stays fully usable for explicitly-configured "
+            "feature calls (chat / judge / charter models the operator sets), "
+            "but no agent is ever assigned or routed to it. Lets an operator "
+            "keep a gateway available without any agent silently sourcing from "
+            "it."
+        ),
+    )
 
     _AUTH_REQUIRED_FIELDS: ClassVar[dict[AuthType, tuple[str, ...]]] = {
         AuthType.OAUTH: (

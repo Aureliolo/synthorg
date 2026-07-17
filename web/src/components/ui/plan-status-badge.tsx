@@ -3,19 +3,23 @@ import type { PlanStatus } from '@/api/types'
 import { StatusPill, type StatusPillTone } from './status-pill'
 
 const STATUS_LABELS: Record<PlanStatus, string> = {
+  planning: 'Planning',
   draft: 'Draft',
   pending_review: 'Pending review',
   approved: 'Approved',
   rejected: 'Rejected',
   superseded: 'Superseded',
+  failed: 'Failed',
 }
 
 const STATUS_TONES: Record<PlanStatus, StatusPillTone> = {
+  planning: 'text-secondary',
   draft: 'text-secondary',
   pending_review: 'warning',
   approved: 'success',
   rejected: 'danger',
   superseded: 'text-secondary',
+  failed: 'danger',
 }
 
 export interface PlanStatusBadgeProps {

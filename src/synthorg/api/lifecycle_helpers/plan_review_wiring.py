@@ -12,6 +12,7 @@ unless an operator opts in.
 """
 
 import uuid
+from datetime import datetime
 from typing import Final
 from uuid import UUID
 
@@ -23,6 +24,7 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.plan_review import PlanReview
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -30,10 +32,15 @@ from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.decomposition.plan_mapping import (
     PlanProvenance,
     plan_from_decomposition,
+    plan_shell,
 )
 from synthorg.engine.pipeline.models import PlanReviewHandoff, WorkItem
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.pipeline import (
+    PIPELINE_PLAN_DECOMPOSITION_FAILED,
+    PIPELINE_PLAN_SHELL_OPENED,
+)
 from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.providers.registry import ProviderRegistry
 
@@ -107,19 +114,70 @@ class PlanReviewApprovalGate:
         self._plans = plans
         self._clock = clock
 
+    def _provenance(
+        self,
+        work_item: WorkItem,
+        task: Task,
+        now: datetime,
+        *,
+        status: PlanStatus,
+        review: PlanReview | None,
+    ) -> PlanProvenance:
+        """Build the plan provenance shared by the shell and the filled plan.
+
+        Returns:
+            A :class:`PlanProvenance` stamping the objective / project identity,
+            timing, lifecycle status, and (denormalised) review context.
+        """
+        return PlanProvenance(
+            project=work_item.project,
+            objective_id=work_item.correlation_id,
+            objective_title=NotBlankStr(task.title),
+            parent_task_id=NotBlankStr(str(task.id)),
+            created_at=now,
+            status=status,
+            forecast_id=work_item.forecast_id,
+            review=review,
+            objective_criteria=tuple(
+                NotBlankStr(c.description) for c in task.acceptance_criteria
+            ),
+        )
+
+    async def open_plan(self, *, work_item: WorkItem, task: Task) -> UUID:
+        """Persist a PLANNING plan shell before decomposition runs.
+
+        Returns:
+            The id of the persisted PLANNING shell.
+        """
+        now = self._clock.now()
+        shell = plan_shell(
+            self._provenance(
+                work_item, task, now, status=PlanStatus.PLANNING, review=None
+            )
+        )
+        await self._plans.create(shell)
+        logger.info(
+            PIPELINE_PLAN_SHELL_OPENED,
+            plan_id=str(shell.id),
+            project=work_item.project,
+            task_id=str(task.id),
+        )
+        return shell.id
+
     async def request_plan_approval(
         self,
         *,
+        plan_id: UUID,
         work_item: WorkItem,
         task: Task,
         plan: DecompositionResult,
         review: PlanReview | None = None,
     ) -> PlanReviewHandoff:
-        """Persist *plan* durably and park it as an approval item.
+        """Fill the PLANNING shell with *plan* and park it as an approval item.
 
-        The plan is persisted first so the parked approval always references
-        a durable :class:`~synthorg.core.plan.Plan`; a persistence failure
-        surfaces before any dangling approval is created.
+        The shell (persisted by :meth:`open_plan`) is updated in place to
+        PENDING_REVIEW with the decomposed items, so a plan is first-class from
+        greenlight and the parked approval references the same durable id.
 
         Returns:
             A :class:`PlanReviewHandoff` naming the parked approval item.
@@ -127,22 +185,28 @@ class PlanReviewApprovalGate:
         approval_id = uuid.uuid4()
         detail = _plan_detail(plan)
         now = self._clock.now()
-        durable_plan = plan_from_decomposition(
+        shell = await self._plans.get(NotBlankStr(str(plan_id)))
+        filled = plan_from_decomposition(
             plan,
-            PlanProvenance(
-                project=work_item.project,
-                objective_id=work_item.correlation_id,
-                objective_title=NotBlankStr(task.title),
-                parent_task_id=NotBlankStr(str(task.id)),
-                created_at=now,
-                forecast_id=work_item.forecast_id,
-                review=review,
-                objective_criteria=tuple(
-                    NotBlankStr(c.description) for c in task.acceptance_criteria
-                ),
+            self._provenance(
+                work_item, task, now, status=PlanStatus.PENDING_REVIEW, review=review
             ),
         )
-        await self._plans.create(durable_plan)
+        durable_plan = filled.model_copy(
+            update={
+                "id": plan_id,
+                "created_at": shell.created_at if shell is not None else now,
+                "version": (shell.version + 1) if shell is not None else 1,
+                "updated_at": now,
+            }
+        )
+        if shell is not None:
+            await self._plans.update(durable_plan, expected_version=shell.version)
+        else:
+            # The shell was lost (e.g. opened on a prior boot then pruned);
+            # persist the filled plan fresh so the approval still references a
+            # durable plan rather than dangling.
+            await self._plans.create(durable_plan)
         approval = ApprovalItem(
             id=approval_id,
             action_type=NotBlankStr(_PLAN_ACTION_TYPE),
@@ -163,47 +227,58 @@ class PlanReviewApprovalGate:
             await self._approval_store.add(approval)
         except Exception as exc:
             reraise_critical(exc)
-            # The plan committed but the approval did not: without the
-            # approval there is no route to ever approve or reject this plan,
-            # so the row would be a permanent orphan (a retry mints a fresh
-            # plan id, never colliding). Log the cause, then compensate by
-            # deleting the plan so the failure surfaces cleanly and leaves no
-            # dangling record (the compensating delete's own failure is logged
-            # separately and never masks this error).
+            # The plan is filled but the approval did not park: without an
+            # approval there is no route to approve or reject it, so mark the
+            # durable plan FAILED (it stays visible in Plan Review, carrying the
+            # reason) rather than leaving a PENDING_REVIEW plan with no approval.
             logger.warning(
                 API_APP_STARTUP,
                 service="plan_review_gate",
-                note="approval-store write failed; compensating orphaned plan",
+                note="approval-store write failed; marking plan FAILED",
                 plan_id=str(durable_plan.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            await self._delete_orphan_plan(durable_plan.id)
+            await self.fail_plan(
+                plan_id=durable_plan.id, reason="approval-store write failed"
+            )
             raise
         return PlanReviewHandoff(
             approval_id=NotBlankStr(str(approval_id)),
+            plan_id=NotBlankStr(str(durable_plan.id)),
             subtask_count=len(plan.plan.subtasks),
             detail=NotBlankStr(detail),
         )
 
-    async def _delete_orphan_plan(self, plan_id: UUID) -> None:
-        """Best-effort delete of a plan orphaned by an approval-write failure.
+    async def fail_plan(self, *, plan_id: UUID, reason: str) -> None:
+        """Mark the PLANNING shell FAILED so a failed run leaves a visible plan.
 
-        A secondary failure here is logged, not raised, so it never masks the
-        original approval-store error the caller is propagating.
+        Idempotent-ish: a missing shell (already pruned) is logged and skipped
+        rather than raised, since the caller is already on a failure path.
         """
-        try:
-            await self._plans.delete(NotBlankStr(str(plan_id)))
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
+        plan = await self._plans.get(NotBlankStr(str(plan_id)))
+        if plan is None:
             logger.warning(
-                API_APP_STARTUP,
-                service="plan_review_gate",
-                note="failed to delete orphaned plan after approval-write failure",
+                PIPELINE_PLAN_DECOMPOSITION_FAILED,
                 plan_id=str(plan_id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                note="plan shell missing; cannot mark FAILED",
             )
+            return
+        now = self._clock.now()
+        failed = plan.model_copy(
+            update={
+                "status": PlanStatus.FAILED,
+                "failure_reason": NotBlankStr(reason or "decomposition failed"),
+                "version": plan.version + 1,
+                "updated_at": now,
+            }
+        )
+        await self._plans.update(failed, expected_version=plan.version)
+        logger.warning(
+            PIPELINE_PLAN_DECOMPOSITION_FAILED,
+            plan_id=str(plan_id),
+            reason=reason,
+        )
 
 
 async def wire_plan_review_gate(app_state: AppState) -> None:

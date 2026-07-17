@@ -65,6 +65,7 @@ function makeProvider(name: string): ProviderWithName {
     preset_name: null,
     supports_model_pull: false,
     supports_model_delete: false,
+    agent_eligible: true,
     supports_model_config: false,
   };
 }

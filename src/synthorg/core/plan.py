@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.plan_enums import PlanItemKind, PlanStatus
+from synthorg.core.plan_enums import ITEMLESS_STATUSES, PlanItemKind, PlanStatus
 from synthorg.core.plan_review import PlanReview
 from synthorg.core.task_enums import (
     Complexity,
@@ -315,6 +315,11 @@ class Plan(BaseModel):
         default=PlanStatus.DRAFT,
         description="Plan lifecycle status",
     )
+    failure_reason: NotBlankStr | None = Field(
+        default=None,
+        description="Why decomposition failed, set when status is FAILED so the "
+        "review surface shows a visible reason instead of an empty plan",
+    )
     forecast_id: UUID | None = Field(
         default=None,
         description="Cost forecast released alongside the plan",
@@ -366,10 +371,16 @@ class Plan(BaseModel):
             dependency points to a known item, and the graph is acyclic.
 
         Raises:
-            ValueError: When ``items`` is empty, ids duplicate, a dependency
-                references an unknown item id, or the graph contains a cycle.
+            ValueError: When ``items`` is empty for a status that requires a
+                filled plan, ids duplicate, a dependency references an unknown
+                item id, or the graph contains a cycle.
         """
         if not self.items:
+            if self.status in ITEMLESS_STATUSES:
+                # A PLANNING shell (persisted at greenlight, not yet decomposed)
+                # or a FAILED plan (decomposition never produced items) carries
+                # no items yet; there is no DAG to validate.
+                return self
             msg = "a plan must contain at least one item"
             raise ValueError(msg)
         ids = [item.id for item in self.items]

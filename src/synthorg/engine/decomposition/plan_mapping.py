@@ -136,6 +136,38 @@ def plan_from_decomposition(
     )
 
 
+def plan_shell(provenance: PlanProvenance) -> Plan:
+    """Build a durable ``Plan`` shell persisted at greenlight, before decomposition.
+
+    The shell carries the objective / project identity but no items yet: the
+    decomposer fills them in (via :func:`plan_from_decomposition`, moving the
+    plan to ``PENDING_REVIEW``), or a failed decomposition marks it ``FAILED``.
+    Persisting it up front makes every greenlit objective leave a first-class,
+    visible plan even when decomposition never completes, rather than a silent
+    orphan task.
+
+    Args:
+        provenance: The plan-level identity and timing to stamp; its ``status``
+            is normally :attr:`PlanStatus.PLANNING` for a shell.
+
+    Returns:
+        A validated :class:`Plan` with an empty item list (permitted for the
+        PLANNING / FAILED statuses).
+    """
+    return Plan(
+        project=provenance.project,
+        objective_id=provenance.objective_id,
+        objective_title=provenance.objective_title,
+        parent_task_id=provenance.parent_task_id,
+        items=(),
+        status=provenance.status,
+        forecast_id=provenance.forecast_id,
+        objective_criteria=provenance.objective_criteria,
+        created_at=provenance.created_at,
+        updated_at=provenance.created_at,
+    )
+
+
 def _subtask_from_item(item: PlanItem) -> SubtaskDefinition:
     """Project a durable plan item back onto a decomposition subtask.
 

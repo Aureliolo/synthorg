@@ -73,22 +73,38 @@ panel is attached the plan is parked with `review = None`.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> DRAFT
+    [*] --> PLANNING
+    PLANNING --> PENDING_REVIEW: decomposition fills the shell
+    PLANNING --> FAILED: decomposition failed / empty
     DRAFT --> PENDING_REVIEW
     PENDING_REVIEW --> APPROVED
     PENDING_REVIEW --> REJECTED
     PENDING_REVIEW --> DRAFT: edit / request-changes
     APPROVED --> [*]
     REJECTED --> [*]
+    FAILED --> [*]
 ```
 
-An edit or request-changes is accepted only from a non-terminal status.
+**Plan-first-from-greenlight.** When a splittable initiative is greenlit, a
+`PLANNING` **shell** (no items yet) is persisted *before* decomposition runs, so
+every greenlit objective leaves a first-class, visible plan even if decomposition
+never completes. Decomposition fills the shell in place (moving it to
+`PENDING_REVIEW`); a decomposition that fails or produces no items transitions the
+shell to `FAILED`, carrying a `failure_reason` the review surface shows, rather
+than leaving a silent orphan task. The `PLANNING` and `FAILED` statuses are the
+only ones permitted to carry an empty item list (enforced by the model validator
+and the SQLite / Postgres `items` CHECK); every other status requires a non-empty,
+validated item DAG.
 
-`DRAFT` and `PENDING_REVIEW` are the reworkable statuses; `APPROVED`, `REJECTED`,
-and `SUPERSEDED` are terminal. An operator rework or request-changes is accepted
-only from a reworkable status, so a decided plan cannot be revived. Each edit bumps
-`version`, and every write is version-guarded (optimistic concurrency): a stale
-writer is rejected with a conflict rather than silently clobbering a concurrent edit.
+An edit or request-changes is accepted only from a reworkable status.
+
+`DRAFT` and `PENDING_REVIEW` are the reworkable statuses; `PLANNING` is a transient
+shell (not operator-reworkable); `APPROVED`, `REJECTED`, `SUPERSEDED`, and `FAILED`
+are terminal. An operator rework or request-changes is accepted only from a
+reworkable status, so a decided or failed plan cannot be revived (a retry is a
+fresh run). Each edit bumps `version`, and every write is version-guarded
+(optimistic concurrency): a stale writer is rejected with a conflict rather than
+silently clobbering a concurrent edit.
 
 ## Persistence
 

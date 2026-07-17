@@ -120,6 +120,21 @@ function PlanReviewToolbar({ plan, onEdit, onRequestChanges }: {
   )
 }
 
+/** Visible failure notice for a FAILED plan (decomposition never completed). */
+function PlanFailureBanner({ plan }: { plan: Plan }) {
+  if (plan.status !== 'failed') return null
+  return (
+    <ErrorBanner
+      severity="error"
+      title="Decomposition failed"
+      description={
+        plan.failure_reason ??
+        'The planner could not decompose this objective. Re-run it to try again.'
+      }
+    />
+  )
+}
+
 function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) => void }) {
   const criticalPath = useMemo(
     () => criticalPathFor(plan.items, plan.task_structure),
@@ -173,6 +188,7 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
         onEdit={() => setMode('edit')}
         onRequestChanges={() => setMode('request-changes')}
       />
+      <PlanFailureBanner plan={plan} />
       <PlanMetricsHeader stats={stats} taskStructure={plan.task_structure} />
       <PlanOpenQuestionsPanel plan={plan} />
       <PlanAttentionPanel items={plan.items} criticalPath={criticalPath} />

@@ -2446,11 +2446,17 @@ CREATE TABLE plans (
     CONSTRAINT plans_objective_title_check CHECK (CHAR_LENGTH(TRIM(objective_title)) > 0),
     parent_task_id TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(parent_task_id)) > 0),
     items JSONB NOT NULL
-    CHECK (JSONB_TYPEOF(items) = 'array' AND JSONB_ARRAY_LENGTH(items) > 0),
+    CONSTRAINT plans_items_check CHECK (
+        JSONB_TYPEOF(items) = 'array'
+        AND (status IN ('planning', 'failed') OR JSONB_ARRAY_LENGTH(items) > 0)
+    ),
     task_structure TEXT NOT NULL DEFAULT 'sequential',
     coordination_topology TEXT NOT NULL DEFAULT 'auto',
     status TEXT NOT NULL DEFAULT 'draft'
-    CHECK (status IN ('draft', 'pending_review', 'approved', 'rejected', 'superseded')),
+    CONSTRAINT plans_status_check CHECK (status IN (
+        'planning', 'draft', 'pending_review', 'approved', 'rejected',
+        'superseded', 'failed'
+    )),
     forecast_id TEXT,
     review JSONB,
     open_questions JSONB NOT NULL DEFAULT '[]'::JSONB,
@@ -2459,7 +2465,9 @@ CREATE TABLE plans (
     version_history JSONB NOT NULL DEFAULT '[]'::JSONB,
     version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
     created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
+    updated_at TIMESTAMPTZ NOT NULL,
+    failure_reason TEXT
+    CHECK (failure_reason IS NULL OR CHAR_LENGTH(TRIM(failure_reason)) > 0)
 );
 CREATE INDEX idx_plans_status ON plans (status);
 CREATE INDEX idx_plans_project ON plans (project);

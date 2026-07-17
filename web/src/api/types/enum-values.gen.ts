@@ -655,11 +655,13 @@ export const PLAN_REVIEW_VERDICT_VALUES = [
 export type PlanReviewVerdict = (typeof PLAN_REVIEW_VERDICT_VALUES)[number]
 
 export const PLAN_STATUS_VALUES = [
+    'planning',
     'draft',
     'pending_review',
     'approved',
     'rejected',
     'superseded',
+    'failed',
 ] as const
 export type PlanStatus = (typeof PLAN_STATUS_VALUES)[number]
 

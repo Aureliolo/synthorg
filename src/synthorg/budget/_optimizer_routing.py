@@ -231,8 +231,8 @@ class _CostOptimizerRoutingMixin:
                 continue
 
             agent_records = by_agent.get(agent.agent_id, [])
-            most_used_model = _find_most_used_model(agent_records)
-            if most_used_model is None:
+            most_used = _find_most_used_model(agent_records)
+            if most_used is None:
                 logger.debug(
                     CFO_DOWNGRADE_SKIPPED,
                     agent_id=agent.agent_id,
@@ -240,8 +240,10 @@ class _CostOptimizerRoutingMixin:
                 )
                 continue
 
+            most_used_provider, most_used_model = most_used
             recommendation = _build_downgrade_recommendation(
                 agent_id=agent.agent_id,
+                provider=most_used_provider,
                 current_model=most_used_model,
                 downgrade_map=downgrade_map,
                 resolver=self._model_resolver,
@@ -279,12 +281,19 @@ class _CostOptimizerRoutingMixin:
             if most_used is None:
                 continue
 
-            current_resolved = self._model_resolver.resolve_safe(most_used)
+            most_used_provider, most_used_model = most_used
+            current_resolved = self._model_resolver.resolve_for_pair(
+                most_used_provider, most_used_model
+            )
             if current_resolved is None:
                 continue
 
             # Find cheapest model with sufficient context window
             for candidate in all_models:
+                if not candidate.agent_eligible:
+                    # Never suggest moving an agent onto a provider the operator
+                    # kept out of agent work.
+                    continue
                 if candidate.model_id == current_resolved.model_id:
                     continue
                 if candidate.total_cost_per_1k >= current_resolved.total_cost_per_1k:
@@ -305,7 +314,7 @@ class _CostOptimizerRoutingMixin:
                 suggestions.append(
                     RoutingSuggestion(
                         agent_id=agent_id,
-                        current_model=most_used,
+                        current_model=most_used_model,
                         suggested_model=candidate.model_id,
                         current_cost_per_1k=round(
                             current_resolved.total_cost_per_1k,
@@ -316,7 +325,7 @@ class _CostOptimizerRoutingMixin:
                             BUDGET_ROUNDING_PRECISION,
                         ),
                         reason=(
-                            f"Switch from {most_used!r} "
+                            f"Switch from {most_used_model!r} "
                             f"({cur_fmt}/1k) to "
                             f"{candidate.model_id!r} "
                             f"({cand_fmt}/1k) "

@@ -22,6 +22,7 @@ from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan_review import PlanReview
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.coordination.models import CoordinationContext
 from synthorg.engine.coordination.service import MultiAgentCoordinator
@@ -67,7 +68,9 @@ from synthorg.observability.events.chief_of_staff import (
 from synthorg.observability.events.pipeline import (
     PIPELINE_PHASE_COMPLETED,
     PIPELINE_PHASE_FAILED,
+    PIPELINE_PLAN_DECOMPOSITION_FAILED,
     PIPELINE_PLAN_REVIEW_PANEL_ATTACHED,
+    PIPELINE_PLAN_REVIEW_PANEL_FAILED,
     PIPELINE_PLAN_REVIEW_REQUESTED,
     PIPELINE_PROJECT_LEAD_CONTENDED,
     PIPELINE_PROJECT_LEAD_ORPHANED,
@@ -420,17 +423,26 @@ class DefaultWorkPipeline:
                 ExecutionPath.REFINEMENT, task.status, refine_handoff, None
             )
         if self._should_gate_plan():
-            # Splittable team work under a human plan-approval gate: decompose
-            # into a plan, park it for approval, and stop. Nothing builds until
-            # the plan is approved, at which point the durable plan (with any
-            # operator edits) is rebuilt and dispatched.
+            # Splittable team work under a human plan-approval gate: persist a
+            # plan shell, decompose to fill it, park it for approval, and stop.
+            # Nothing builds until the plan is approved, at which point the
+            # durable plan (with any operator edits) is rebuilt and dispatched.
+            # A failed decomposition marks the shell FAILED (approval_id=None)
+            # and the run is reported as unsuccessful (final status FAILED)
+            # rather than raising a 500 -- the failure surfaces as a visible
+            # FAILED plan, not a silent orphan.
             plan_handoff = await self._phase(
                 phases,
                 _PHASE_PLAN_REVIEW,
                 self._plan_review(work_item, task, agents, phases, owner),
             )
+            final_status = (
+                task.status
+                if plan_handoff.approval_id is not None
+                else TaskStatus.FAILED
+            )
             return _ExecutionOutcome(
-                ExecutionPath.PLAN_REVIEW, task.status, None, plan_handoff
+                ExecutionPath.PLAN_REVIEW, final_status, None, plan_handoff
             )
         final_status = await self._phase(
             phases, _PHASE_TEAM, self._run_team(work_item, task, agents, owner)
@@ -878,21 +890,50 @@ class DefaultWorkPipeline:
 
         Returns:
             The :class:`PlanReviewHandoff` the caller surfaces so the human
-            can approve the plan.
+            can approve the plan. On a decomposition failure the handoff carries
+            ``approval_id=None`` (the durable plan is marked FAILED and stays
+            visible in Plan Review); nothing is dispatched and no 500 escapes.
         """
         coordinator = self._coordinator
         gate = self._plan_review_gate
         assert coordinator is not None  # noqa: S101 -- guarded by _should_gate_plan
         assert gate is not None  # noqa: S101 -- guarded by _should_gate_plan
-        plan = await coordinator.plan_preview(
-            self._coordination_context(task, agents, owner)
-        )
+        # Persist the plan as a first-class shell at greenlight, so a failed
+        # decomposition leaves a visible FAILED plan rather than an orphan task.
+        plan_id = await gate.open_plan(work_item=work_item, task=task)
+        try:
+            plan = await coordinator.plan_preview(
+                self._coordination_context(task, agents, owner)
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- not swallowed: a decomposition failure is
+            # surfaced as a FAILED plan + FAILED task + is_success=false result so
+            # the greenlit run never emits a 500 and never leaves a silent orphan.
+            reraise_critical(exc)
+            reason = safe_error_description(exc)
+            logger.warning(
+                PIPELINE_PLAN_DECOMPOSITION_FAILED,
+                correlation_id=work_item.correlation_id,
+                task_id=str(task.id),
+                plan_id=str(plan_id),
+                error_type=type(exc).__name__,
+                error=reason,
+            )
+            await gate.fail_plan(plan_id=plan_id, reason=reason)
+            await self._fail_task(task, work_item, reason=reason)
+            return PlanReviewHandoff(
+                approval_id=None,
+                plan_id=NotBlankStr(str(plan_id)),
+                subtask_count=0,
+                detail=NotBlankStr(f"Decomposition failed: {reason}"),
+            )
         review = await self._phase(
             phases,
             _PHASE_REVIEW_PANEL,
             self._run_review_panel(task, plan, agents, owner),
         )
         handoff = await gate.request_plan_approval(
+            plan_id=plan_id,
             work_item=work_item,
             task=task,
             plan=plan,
@@ -906,6 +947,33 @@ class DefaultWorkPipeline:
             subtask_count=handoff.subtask_count,
         )
         return handoff
+
+    async def _fail_task(self, task: Task, work_item: WorkItem, *, reason: str) -> None:
+        """Transition the objective's root task to FAILED, best-effort.
+
+        A decomposition failure marks the root task FAILED so it surfaces on the
+        board and stays re-runnable. A transition hiccup is logged, not raised:
+        the run is already reported unsuccessful (final status FAILED) and the
+        durable plan is FAILED, so a failed status-write must not mask the
+        original decomposition failure or turn it into a 500.
+        """
+        try:
+            await self._task_engine.transition_task(
+                str(task.id),
+                TaskStatus.FAILED,
+                requested_by=work_item.requested_by,
+                reason=f"decomposition failed: {reason}",
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                PIPELINE_PLAN_DECOMPOSITION_FAILED,
+                correlation_id=work_item.correlation_id,
+                task_id=str(task.id),
+                note="failed to transition root task to FAILED",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _run_review_panel(
         self,
@@ -924,7 +992,20 @@ class DefaultWorkPipeline:
         panel = self._plan_review_panel
         if panel is None:
             return None
-        return await panel.review(task=task, plan=plan, agents=agents, owner=owner)
+        try:
+            return await panel.review(task=task, plan=plan, agents=agents, owner=owner)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # The plan is already decomposed; a panel failure (e.g. a provider
+            # error mid-review) must not fail the run or 500 the approve. Park
+            # the plan for human approval review-less rather than losing it.
+            reraise_critical(exc)
+            logger.warning(
+                PIPELINE_PLAN_REVIEW_PANEL_FAILED,
+                task_id=str(task.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
 
     async def _run_solo(
         self,

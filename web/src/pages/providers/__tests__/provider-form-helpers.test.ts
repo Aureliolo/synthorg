@@ -51,6 +51,7 @@ function values(overrides: Partial<ProviderFormValues> = {}): ProviderFormValues
     keepAlive: '',
     litellmProvider: '',
     tosAccepted: false,
+    agentEligible: true,
     ...overrides,
   }
 }

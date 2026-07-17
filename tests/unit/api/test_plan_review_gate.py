@@ -102,7 +102,25 @@ def _work_item() -> WorkItem:
 
 
 class TestPlanReviewApprovalGate:
-    async def test_persists_durable_plan_and_references_id(self) -> None:
+    async def test_open_plan_persists_planning_shell(self) -> None:
+        plans = FakePlanRepository()
+        gate = PlanReviewApprovalGate(
+            approval_store=ApprovalStore(),
+            plans=plans,
+            clock=FakeClock(),
+        )
+        task = _result_task("root")
+
+        plan_id = await gate.open_plan(work_item=_work_item(), task=task)
+
+        # A first-class plan exists at greenlight, PLANNING, with no items yet.
+        shell = await plans.get(NotBlankStr(str(plan_id)))
+        assert shell is not None
+        assert shell.status is PlanStatus.PLANNING
+        assert shell.items == ()
+        assert shell.parent_task_id == str(task.id)
+
+    async def test_fills_shell_and_references_id(self) -> None:
         store = ApprovalStore()
         plans = FakePlanRepository()
         gate = PlanReviewApprovalGate(
@@ -111,65 +129,87 @@ class TestPlanReviewApprovalGate:
             clock=FakeClock(),
         )
         task = _result_task("root")
+        work_item = _work_item()
 
+        plan_id = await gate.open_plan(work_item=work_item, task=task)
         handoff = await gate.request_plan_approval(
-            work_item=_work_item(),
+            plan_id=plan_id,
+            work_item=work_item,
             task=task,
             plan=_decomposition(),
         )
 
         assert handoff.subtask_count == 2
+        assert handoff.approval_id is not None
+        assert handoff.plan_id == str(plan_id)
 
+        # The shell was filled in place (same id), not re-created.
         persisted = await plans.list_items()
         assert len(persisted) == 1
         durable = persisted[0]
+        assert durable.id == plan_id
         assert durable.status is PlanStatus.PENDING_REVIEW
         assert durable.parent_task_id == str(task.id)
         assert len(durable.items) == 2
 
         parked = await store.list_items()
         assert len(parked) == 1
-        metadata = parked[0].metadata
-        assert metadata[PLAN_ID_METADATA_KEY] == str(durable.id)
+        assert parked[0].metadata[PLAN_ID_METADATA_KEY] == str(durable.id)
 
-    async def test_persistence_failure_parks_no_approval(self) -> None:
-        store = ApprovalStore()
+    async def test_fail_plan_marks_failed_with_reason(self) -> None:
+        plans = FakePlanRepository()
         gate = PlanReviewApprovalGate(
-            approval_store=store,
+            approval_store=ApprovalStore(),
+            plans=plans,
+            clock=FakeClock(),
+        )
+        task = _result_task("root")
+        plan_id = await gate.open_plan(work_item=_work_item(), task=task)
+
+        await gate.fail_plan(plan_id=plan_id, reason="decompose boom")
+
+        failed = await plans.get(NotBlankStr(str(plan_id)))
+        assert failed is not None
+        assert failed.status is PlanStatus.FAILED
+        assert failed.failure_reason == "decompose boom"
+        assert failed.items == ()
+
+    async def test_open_plan_persistence_failure_raises(self) -> None:
+        gate = PlanReviewApprovalGate(
+            approval_store=ApprovalStore(),
             plans=_FailingPlanRepository(),
             clock=FakeClock(),
         )
 
         with pytest.raises(QueryError):
-            await gate.request_plan_approval(
-                work_item=_work_item(),
-                task=_result_task("root"),
-                plan=_decomposition(),
-            )
+            await gate.open_plan(work_item=_work_item(), task=_result_task("root"))
 
-        # The plan is persisted before the approval is parked, so a persistence
-        # failure must leave no dangling approval behind.
-        assert await store.list_items() == ()
-
-    async def test_approval_write_failure_deletes_orphan_plan(self) -> None:
-        # The plan commits, then the approval write fails: without the approval
-        # there is no route to ever decide the plan, so the created plan must be
-        # compensated (deleted) rather than left as a permanent orphan.
+    async def test_approval_write_failure_marks_plan_failed(self) -> None:
+        # The plan is filled, then the approval write fails: rather than deleting
+        # the now-first-class plan, it is marked FAILED so the failure stays
+        # visible in Plan Review (a retry is a fresh run, not a resurrected plan).
         plans = FakePlanRepository()
         gate = PlanReviewApprovalGate(
             approval_store=_FailingApprovalStore(),
             plans=plans,
             clock=FakeClock(),
         )
+        task = _result_task("root")
+        work_item = _work_item()
+        plan_id = await gate.open_plan(work_item=work_item, task=task)
 
         with pytest.raises(QueryError):
             await gate.request_plan_approval(
-                work_item=_work_item(),
-                task=_result_task("root"),
+                plan_id=plan_id,
+                work_item=work_item,
+                task=task,
                 plan=_decomposition(),
             )
 
-        assert await plans.list_items() == ()
+        persisted = await plans.list_items()
+        assert len(persisted) == 1
+        assert persisted[0].status is PlanStatus.FAILED
+        assert persisted[0].failure_reason is not None
 
 
 class TestWirePlanReviewGate:

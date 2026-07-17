@@ -45,11 +45,22 @@ PIPELINE_TASK_MISSING: Final[str] = "pipeline.task.missing"
 PIPELINE_REFINEMENT_REQUESTED: Final[str] = "pipeline.refinement.requested"
 """Team-bound work lacked a definition of done; refinement was opened."""
 
+PIPELINE_PLAN_SHELL_OPENED: Final[str] = "pipeline.plan_review.shell_opened"
+"""A PLANNING plan shell was persisted at greenlight, before decomposition."""
+
 PIPELINE_PLAN_REVIEW_REQUESTED: Final[str] = "pipeline.plan_review.requested"
 """A decomposed plan was parked for human approval before team dispatch."""
 
+PIPELINE_PLAN_DECOMPOSITION_FAILED: Final[str] = (
+    "pipeline.plan_review.decomposition_failed"
+)
+"""Decomposition failed; the plan shell was marked FAILED and the task failed."""
+
 PIPELINE_PLAN_REVIEW_PANEL_ATTACHED: Final[str] = "pipeline.plan_review.panel_attached"
 """The stakeholder plan-review panel was attached to the work pipeline."""
+
+PIPELINE_PLAN_REVIEW_PANEL_FAILED: Final[str] = "pipeline.plan_review.panel_failed"
+"""The stakeholder panel errored; the plan is parked for approval review-less."""
 
 PIPELINE_ENTRY_UNKNOWN_SOURCE: Final[str] = "pipeline.entry.unknown_source"
 """No work-entry adapter is wired for the requested work source."""

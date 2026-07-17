@@ -105,6 +105,7 @@ def build_provider_config(
         custom_header_value=_unwrap_secret(request.custom_header_value),
         models=request.models,
         preset_name=request.preset_name,
+        agent_eligible=request.agent_eligible,
     )
 
 
@@ -174,6 +175,12 @@ def apply_update(
             updates[field] = (
                 _unwrap_secret(value) if field in _UPDATE_SECRET_FIELDS else value
             )
+
+    # ``agent_eligible`` is a non-nullable bool on the config, so it is handled
+    # apart from the generic clear-on-None loop: apply it only when the request
+    # carried a concrete True/False (``None`` means "not sent, no change").
+    if request.agent_eligible is not None:
+        updates["agent_eligible"] = request.agent_eligible
 
     # auth_type change: clear all fields NOT owned by the new auth type.
     # ``.get`` (not subscript) tolerates a non-AuthType value that slipped

@@ -242,15 +242,26 @@ class PlanReviewHandoff(BaseModel):
     exact approved plan is dispatched (no re-decomposition).
 
     Attributes:
-        approval_id: The parked plan-approval item the human approves.
-        subtask_count: Number of subtasks in the decomposed plan.
-        detail: Human-readable summary of the plan awaiting approval.
+        approval_id: The parked plan-approval item the human approves, or
+            ``None`` when decomposition failed: the durable plan is marked
+            FAILED (and stays visible in Plan Review) but no approval is parked
+            because there is nothing to approve.
+        plan_id: The durable plan this handoff refers to (always set, whether
+            the plan was parked for approval or marked FAILED).
+        subtask_count: Number of subtasks in the decomposed plan (0 on failure).
+        detail: Human-readable summary of the plan (awaiting approval, or the
+            decomposition failure).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    approval_id: NotBlankStr = Field(
-        description="The parked plan-approval item to approve",
+    approval_id: NotBlankStr | None = Field(
+        default=None,
+        description="The parked plan-approval item to approve, or None on a "
+        "failed decomposition (plan marked FAILED, nothing to approve)",
+    )
+    plan_id: NotBlankStr = Field(
+        description="The durable plan this handoff refers to",
     )
     subtask_count: int = Field(
         ge=0,

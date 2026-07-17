@@ -49,6 +49,7 @@ PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED: Final[str] = (
 )
 PROVIDER_TOOL_CALL_MISSING_FUNCTION: Final[str] = "provider.tool_call.missing_function"
 PROVIDER_FINISH_REASON_UNKNOWN: Final[str] = "provider.finish_reason.unknown"
+PROVIDER_EMPTY_COMPLETION: Final[str] = "provider.completion.empty"
 
 # ── Runtime tool-call failure feedback ───────────────────────
 PROVIDER_TOOL_CALL_FAILURE_OBSERVED: Final[str] = (

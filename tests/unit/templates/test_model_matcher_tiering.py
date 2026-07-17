@@ -51,10 +51,14 @@ def _model(  # noqa: PLR0913 -- keyword-only test factory
 
 class _Provider:
     def __init__(
-        self, *models: ProviderModelConfig, base_url: str | None = None
+        self,
+        *models: ProviderModelConfig,
+        base_url: str | None = None,
+        agent_eligible: bool = True,
     ) -> None:
         self.models = models
         self.base_url = base_url
+        self.agent_eligible = agent_eligible
 
 
 _ONE_B: int = 1_000_000_000
