@@ -8,6 +8,12 @@ read, rework, or send the plan back for changes through the `/plans` API and the
 Plan Review workspace, then approve or reject it through the existing `/approvals`
 decision path.
 
+Plan Review is the single review surface for shaping an initiative: a request
+yields one plan reviewed as a whole, never a scatter of per-item approvals. This is
+the sole reason approval-gating defaults on (see [Conversational
+entry](#conversational-entry)); mid-build implementation forks are a separate,
+narrow surface documented in [agent-execution.md](agent-execution.md).
+
 ## Durable Plan Entity
 
 `Plan` (`core/plan.py`) is the first-class replacement for a plan that previously
@@ -115,6 +121,22 @@ API, and the resume path stay in step:
   criteria and expected artifacts, so the fail-loud zero-artifact guard engages on
   the plan-review dispatch path.
 
+## Conversational entry
+
+The "Request work" chat mode (`/meta/chat/propose`) is a first-class producer of
+plans. A conversational brief becomes ONE durable objective, not a list of
+candidate work items to approve individually. `ConversationalPlanDispatcher`
+(`meta/chief_of_staff/plan_intake.py`) provisions or reuses a project (a `uuid5`
+keyed on the conversation, so a follow-up turn lands on the same project), builds a
+single `WorkItem` with `plan_required=True`, and runs `intake_only` synchronously so
+the operator gets an immediate `PlanDraftSummary` (task id, project, title). Execution
+is backgrounded: `continue_from_intake` decomposes the objective and, because
+`plan_required` forces a `SPLITTABLE` routing verdict into the (default-on) gate,
+parks a `PLAN_REVIEW` approval carrying the drafted plan. The propose turn therefore
+never parks per-item work approvals; it hands back a pointer into Plan Review, and
+the dashboard's Request-work result links there. Steering directives a turn also
+raises stay on their own confirmation path (compensated if the plan draft fails).
+
 ## API
 
 `PlanController` (`api/controllers/plans.py`, path `/plans`) owns the plan-native
@@ -164,7 +186,7 @@ runtime-services rebuild:
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
-| `coordination.plan_approval_required` | `false` | Master gate: when off, splittable team work dispatches straight to the coordinator and no plan is parked. Everything below is inert until this is on. |
+| `coordination.plan_approval_required` | `true` | Master gate: when off, splittable team work dispatches straight to the coordinator and no plan is parked. On by default so every greenlit initiative parks a plan for holistic review. Everything below is inert until this is on. |
 | `coordination.plan_review_panel_enabled` | `true` | Whether the stakeholder panel runs before the human sees the plan. Defaults on, but only takes effect once approval is gated and a provider is wired; otherwise the plan is parked with `review = None`. |
 | `coordination.plan_review_panel_size` | `4` (max `8`) | Maximum panellists seated (the relevant leads sized to the plan, not everyone). |
 | `coordination.plan_review_panel_max_turns` | `6` | Hard turn cap per panellist session before it must submit a verdict. |

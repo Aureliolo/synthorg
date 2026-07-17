@@ -18,8 +18,10 @@ from synthorg.api.controllers._plan_decision_record import record_plan_decisions
 from synthorg.api.lifecycle_helpers.plan_review_wiring import PLAN_ID_METADATA_KEY
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
+from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import VersionConflictError
+from synthorg.core.domain_errors import ResourceNotFoundError, VersionConflictError
+from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.coordination.models import CoordinationContext
@@ -275,40 +277,72 @@ async def _sync_plan_status(
     if not plan_id:
         return
     service = PlanService(repo=persistence_of(app_state).plans, clock=app_state.clock)
-    for attempt in range(1, _MAX_STATUS_SYNC_ATTEMPTS + 1):
-        try:
-            plan = await service.get(plan_id)
-            if plan is None:
-                logger.warning(
-                    APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
-                    plan_id=plan_id,
-                    target_status=status.value,
-                    note="plan-status sync skipped: durable plan not found",
-                )
-                return
-            await service.sync_status(plan, status)
-        except VersionConflictError:
-            if attempt < _MAX_STATUS_SYNC_ATTEMPTS:
-                continue
-            logger.error(
-                APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
-                plan_id=plan_id,
-                target_status=status.value,
-                attempts=attempt,
-                note="plan-status sync lost repeated version conflicts; "
-                "/plans status diverges from the recorded decision",
-            )
-            return
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            logger.warning(
-                APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
-                plan_id=plan_id,
-                target_status=status.value,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                note="plan-status sync failed; /plans status may lag the decision",
-            )
-            return
-        else:
-            return
+    try:
+        initial = await service.get(plan_id)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # Honour the logged-not-raised contract: a lookup failure here must
+        # not propagate to the caller (the decision is already persisted on
+        # the approval), or a retried request re-runs the whole resume.
+        reraise_critical(exc)
+        logger.warning(
+            APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
+            plan_id=plan_id,
+            target_status=status.value,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="plan-status sync failed during initial lookup",
+        )
+        return
+    if initial is None:
+        logger.warning(
+            APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
+            plan_id=plan_id,
+            target_status=status.value,
+            note="plan-status sync skipped: durable plan not found",
+        )
+        return
+
+    async def read() -> tuple[Plan, int]:
+        # Re-read on each attempt so a retry's CAS uses the current version. A
+        # plan deleted after the initial fetch aborts the loop cleanly: a write
+        # against the stale last-known plan would only spin the CAS retries into
+        # a misleading "version conflict" before failing anyway.
+        plan = await service.get(plan_id)
+        if plan is None:
+            msg = "durable plan deleted mid status-sync"
+            raise ResourceNotFoundError(msg)
+        return plan, plan.version
+
+    async def write(plan: Plan, _version: int) -> None:
+        await service.sync_status(plan, status)
+
+    try:
+        await CASRetryHandler(
+            resource="plan_status_sync", max_attempts=_MAX_STATUS_SYNC_ATTEMPTS
+        ).execute(read, write)
+    except ResourceNotFoundError:
+        logger.warning(
+            APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
+            plan_id=plan_id,
+            target_status=status.value,
+            note="plan-status sync skipped: durable plan deleted mid-sync",
+        )
+    except VersionConflictError:
+        logger.error(
+            APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
+            plan_id=plan_id,
+            target_status=status.value,
+            attempts=_MAX_STATUS_SYNC_ATTEMPTS,
+            note="plan-status sync lost repeated version conflicts; "
+            "/plans status diverges from the recorded decision",
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
+            plan_id=plan_id,
+            target_status=status.value,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="plan-status sync failed; /plans status may lag the decision",
+        )

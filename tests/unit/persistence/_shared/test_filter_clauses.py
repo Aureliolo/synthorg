@@ -10,14 +10,14 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.communication.conversation.enums import ConversationalProposalStatus
+from synthorg.meta.chief_of_staff.enums import ConversationInviteStatus
 from synthorg.persistence._shared._filter_clauses import (
-    build_conversational_proposal_filter_clauses,
+    build_conversation_invite_filter_clauses,
     build_deliverable_receipt_filter_clauses,
     build_evolution_outcome_filter_clauses,
 )
-from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalFilterSpec,
+from synthorg.persistence.conversation_invite_protocol import (
+    ConversationInviteFilterSpec,
 )
 from synthorg.persistence.deliverable_receipt_protocol import (
     DeliverableReceiptFilterSpec,
@@ -28,8 +28,8 @@ from synthorg.persistence.evolution_outcome_protocol import EvolutionOutcomeFilt
 @pytest.mark.unit
 @pytest.mark.parametrize(("placeholder", "empty"), [("?", "1=1"), ("%s", "TRUE")])
 def test_empty_filter_falls_back_per_backend(placeholder: str, empty: str) -> None:
-    body, params = build_conversational_proposal_filter_clauses(
-        ConversationalProposalFilterSpec(),
+    body, params = build_conversation_invite_filter_clauses(
+        ConversationInviteFilterSpec(),
         placeholder=placeholder,
         empty=empty,
     )
@@ -40,9 +40,9 @@ def test_empty_filter_falls_back_per_backend(placeholder: str, empty: str) -> No
 @pytest.mark.unit
 @pytest.mark.parametrize("placeholder", ["?", "%s"])
 def test_enum_field_serialises_to_value_with_placeholder(placeholder: str) -> None:
-    body, params = build_conversational_proposal_filter_clauses(
-        ConversationalProposalFilterSpec(
-            status=ConversationalProposalStatus.PENDING,
+    body, params = build_conversation_invite_filter_clauses(
+        ConversationInviteFilterSpec(
+            status=ConversationInviteStatus.PENDING,
         ),
         placeholder=placeholder,
         empty="1=1",

@@ -15,7 +15,7 @@ from synthorg.api.conversational_builders import (
     build_group_chat_service,
 )
 from synthorg.api.lifecycle_helpers.conversational_reconcile import (
-    reconcile_orphaned_conversational_intake,
+    reconcile_orphaned_conversational_invites,
 )
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -248,17 +248,15 @@ async def _wire_conversational_repositories_and_reconcile(
     repositories = build_conversational_repositories(persistence)
     if repositories is None:
         return None
-    # The resume flows route every proposal/invite/participant repo call
-    # through this ungated facade, so it is wired alongside the repos it
-    # wraps (toggle-independent: a decided conversational approval still
-    # resolves after the propose/invite features are switched off).
+    # The resume flows route every invite/participant repo call through this
+    # ungated facade, so it is wired alongside the repos it wraps
+    # (toggle-independent: a decided conversational approval still resolves
+    # after the propose/invite features are switched off).
     app_state.wire(
         MetaStateSlice,
-        conversational_proposal_repo=repositories.proposal_repo,
         conversation_invite_repo=repositories.invite_repo,
         conversation_participant_repo=repositories.participant_repo,
         conversational_resume_service=ConversationalResumeService(
-            proposal_repo=repositories.proposal_repo,
             invite_repo=repositories.invite_repo,
             participant_repo=repositories.participant_repo,
             conversation_repo=repositories.conversation_repo,
@@ -268,17 +266,14 @@ async def _wire_conversational_repositories_and_reconcile(
     logger.info(
         API_APP_STARTUP,
         service="chief_of_staff_proposer",
-        note=(
-            "conversational proposal + invite + participant repos + "
-            "resume service wired"
-        ),
+        note="conversational invite + participant repos + resume service wired",
     )
     # Best-effort cleanup: a transient persistence error here must not
     # poison startup (the controllers would simply 503), so a failed
     # reconcile is logged and swallowed rather than crashing the lifespan
     # hook, matching the sibling best-effort wirers.
     try:
-        await reconcile_orphaned_conversational_intake(
+        await reconcile_orphaned_conversational_invites(
             repositories, effective_approval_store
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -286,7 +281,7 @@ async def _wire_conversational_repositories_and_reconcile(
         logger.warning(
             API_APP_STARTUP,
             service="chief_of_staff_proposer",
-            note="orphaned intake reconcile failed; rows kept PENDING",
+            note="orphaned invite reconcile failed; rows kept PENDING",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
@@ -398,9 +393,55 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
         )
 
 
+async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
+    """Attach the plan dispatcher to the proposer once its deps are up.
+
+    The proposer needs the work pipeline (to intake the objective and drive
+    the decompose+park spine), the project store (to provision the
+    project), and the worker execution service (to background that spine).
+    All three wire after the proposer is constructed, so this late-bind
+    hook attaches the dispatcher afterwards. A missing pipeline or store
+    leaves the proposer unable to draft a plan (its act path 503s); a
+    missing worker service degrades to a synchronous decompose+park.
+    """
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+    from synthorg.meta.chief_of_staff.plan_intake import (  # noqa: PLC0415
+        ConversationalPlanDispatcher,
+    )
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
+    from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
+
+    proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
+    if proposer is None:
+        return
+    work_pipeline = app_state.slice(EngineStateSlice).work_pipeline
+    backend = app_state.slice(PersistenceStateSlice).backend
+    if work_pipeline is None or backend is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="chief_of_staff_proposer",
+            note="plan dispatcher skipped: work pipeline or persistence not wired",
+        )
+        return
+    dispatcher = ConversationalPlanDispatcher(
+        project_repo=backend.projects,
+        work_pipeline=work_pipeline,
+        clock=app_state.clock,
+        dispatch_port=app_state.slice(RuntimeStateSlice).worker_execution_service,
+    )
+    proposer.attach_plan_dispatcher(dispatcher)
+    logger.info(
+        API_APP_STARTUP,
+        service="chief_of_staff_proposer",
+        note="plan dispatcher attached",
+    )
+
+
 __all__ = [
     "rebuild_conversational_actor",
     "wire_chief_of_staff_proposer",
     "wire_conversational_actor",
+    "wire_conversational_plan_dispatcher",
     "wire_group_chat_service",
 ]

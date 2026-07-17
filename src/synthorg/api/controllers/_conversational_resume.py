@@ -4,7 +4,7 @@
 Kept separate from ``_approval_review_gate.py`` (which holds the
 parked-context + review-gate flows and the ``signal_resume_intent``
 dispatcher) so each resume concern stays within its module-size tier;
-the agent-invite flow and the conversational-intake flow are distinct
+the agent-invite flow and the conversational-steering flow are distinct
 resume surfaces that share only the reread primitive below.
 
 Two flows live here, both keyed off the persisted
@@ -12,8 +12,9 @@ Two flows live here, both keyed off the persisted
 through the gated feature services), so a decided approval resolves
 even after its feature is toggled off:
 
-- :func:`try_conversational_intake_resume` -- run a decided
-  conversational-intake proposal (``CONVERSATIONAL_INTAKE``).
+- :func:`try_conversational_intake_resume` -- issue (or drop) a decided
+  conversational steering directive (``CONVERSATIONAL_INTAKE``); a work
+  brief drafts a plan into Plan Review and is never parked here.
 - :func:`try_conversational_invite_resume` -- add (or decline) an
   agent-initiated invite on consent (``CONVERSATIONAL_INVITE``).
 
@@ -28,14 +29,9 @@ from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.pipeline.models import WorkItem
-from synthorg.engine.pipeline.protocol import WorkPipeline
-from synthorg.engine.state import EngineStateSlice
 from synthorg.hr.state import agent_registry_of
 from synthorg.meta.chief_of_staff.group_models import ConversationInvite
-from synthorg.meta.chief_of_staff.models import ConversationalProposal
 from synthorg.meta.state import MetaStateSlice, conversational_resume_service_of
 from synthorg.observability import (
     get_logger,
@@ -43,11 +39,6 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.approval_gate import (
-    APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
-    APPROVAL_GATE_CONVERSATIONAL_EXECUTING,
-    APPROVAL_GATE_CONVERSATIONAL_FAILED,
-    APPROVAL_GATE_CONVERSATIONAL_NO_PROPOSAL,
-    APPROVAL_GATE_CONVERSATIONAL_REJECTED,
     APPROVAL_GATE_RESUME_FAILED,
 )
 from synthorg.observability.events.chief_of_staff import (
@@ -56,7 +47,6 @@ from synthorg.observability.events.chief_of_staff import (
     COS_GROUP_INVITE_FAILED,
     COS_GROUP_PARTICIPANTS_ADDED,
 )
-from synthorg.workers.state import worker_execution_service_of
 
 logger = get_logger(__name__)
 
@@ -93,356 +83,31 @@ async def _reread_approval_item(
         return None
 
 
-async def _load_conversational_proposal(
-    app_state: AppState,
-    approval_id: str,
-) -> tuple[bool, ConversationalProposal | None]:
-    """Resolve a conversational-intake proposal for *approval_id*.
-
-    Returns a (owns_decision, proposal_or_none) tuple:
-
-    * ``(False, None)``: the approval is NOT a conversational-intake
-      one (or the source could not be determined); the caller falls
-      through to other resume flows. ``try_mid_execution_resume``
-      owns the parked-context probe for the unreadable case, so
-      yielding here is the safe default rather than raising and
-      breaking that fallback.
-    * ``(True, None)``: this flow owns the decision but there is no
-      proposal row to act on (a logged no-op); the caller returns
-      ``True`` without further work.
-    * ``(True, proposal)``: this flow owns the decision and has a
-      proposal to transition.
-
-    Raises:
-        ServiceUnavailableError: When the source is confirmed
-            CONVERSATIONAL_INTAKE but the proposal repo is not wired.
-            A hard misconfiguration -- swallowing it would silently
-            strand a decided conversational approval.
-
-    Returns:
-        ``(handled, proposal)``: the proposal when present, ``None`` otherwise.
-    """
-    from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
-
-    item = await _reread_approval_item(app_state, approval_id)
-    if item is None or item.source is not ApprovalSource.CONVERSATIONAL_INTAKE:
-        return False, None
-    # This flow now owns the decision regardless of outcome.
-    service = app_state.slice(MetaStateSlice).conversational_resume_service
-    if service is None:
-        logger.error(
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            approval_id=approval_id,
-            note="conversational resume service not wired",
-        )
-        msg = "Conversational resume service unavailable"
-        raise ServiceUnavailableError(msg)
-    proposals = await service.proposals_for_approval(approval_id)
-    if not proposals:
-        logger.error(
-            APPROVAL_GATE_CONVERSATIONAL_NO_PROPOSAL,
-            approval_id=approval_id,
-        )
-        return True, None
-    return True, proposals[0]
-
-
-async def _reject_conversational_proposal(
-    app_state: AppState,
-    approval_id: str,
-    proposal: ConversationalProposal,
-) -> None:
-    """CAS the proposal from PENDING to REJECTED; pipeline never runs."""
-    from synthorg.communication.conversation.enums import (  # noqa: PLC0415
-        ConversationalProposalStatus,
-    )
-
-    service = conversational_resume_service_of(app_state)
-    proposal_id = str(proposal.id)
-    transitioned = await service.transition_proposal(
-        proposal_id,
-        from_status=ConversationalProposalStatus.PENDING,
-        to_status=ConversationalProposalStatus.REJECTED,
-    )
-    if transitioned:
-        logger.info(
-            APPROVAL_GATE_CONVERSATIONAL_REJECTED,
-            approval_id=approval_id,
-            proposal_id=proposal_id,
-        )
-        return
-    # Concurrent decision already transitioned this proposal (e.g.
-    # duplicate approval-decision request). Surface the no-op so the
-    # log doesn't claim a success we didn't make.
-    logger.warning(
-        APPROVAL_GATE_CONVERSATIONAL_FAILED,
-        approval_id=approval_id,
-        proposal_id=proposal_id,
-        note="proposal already transitioned (reject path)",
-    )
-
-
-async def _execute_conversational_proposal(
-    app_state: AppState,
-    approval_id: str,
-    proposal: ConversationalProposal,
-) -> None:
-    """Acquire EXECUTING via CAS, intake synchronously, dispatch, finalize.
-
-    Runs intake inline so the task exists (owned by the requesting human)
-    before returning: the chat surfaces its id and subscribes to the task's
-    live progress stream, then the remaining decompose+execute spine is
-    backgrounded so the approve response is not blocked by the full run. On
-    intake/dispatch failure the EXECUTING state reverts to PENDING so the
-    proposal stays retryable. EXECUTED marks the work dispatched (the task
-    tracks the run from there), matching the parked-resume async contract.
-
-    Raises:
-        ServiceUnavailableError: When the work pipeline is not wired
-            at all (cannot run approved work without it).
-        MemoryError: Raised on the corresponding failure path.
-        RecursionError: Raised on the corresponding failure path.
-    """
-    from synthorg.communication.conversation.enums import (  # noqa: PLC0415
-        ConversationalProposalStatus,
-    )
-
-    service = conversational_resume_service_of(app_state)
-    proposal_id = str(proposal.id)
-    work_item_json = proposal.work_item_json
-
-    if app_state.slice(EngineStateSlice).work_pipeline is None:
-        # Approved work can never run without a pipeline. Surface it
-        # rather than marking the approval handled while the work is
-        # silently stranded.
-        logger.error(
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            approval_id=approval_id,
-            proposal_id=proposal_id,
-            note="work pipeline not configured",
-        )
-        msg = "Work pipeline unavailable"
-        raise ServiceUnavailableError(msg)
-
-    # PENDING -> EXECUTING CAS first, so concurrent decisions cannot
-    # both drive the pipeline for the same proposal. Only the winner
-    # of this transition runs the pipeline; the loser returns without
-    # side-effects.
-    acquired = await service.transition_proposal(
-        proposal_id,
-        from_status=ConversationalProposalStatus.PENDING,
-        to_status=ConversationalProposalStatus.EXECUTING,
-    )
-    if not acquired:
-        logger.warning(
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            approval_id=approval_id,
-            proposal_id=proposal_id,
-            note="proposal already transitioned (execute-acquire path)",
-        )
-        return
-
-    logger.info(
-        APPROVAL_GATE_CONVERSATIONAL_EXECUTING,
-        approval_id=approval_id,
-        proposal_id=proposal_id,
-    )
-    try:
-        work_item = WorkItem.model_validate_json(work_item_json)
-        work_pipeline = require_service(
-            app_state.slice(EngineStateSlice).work_pipeline, "Work Pipeline"
-        )
-        # Intake synchronously so the task exists (owned by the requesting
-        # human) before we return; only the decompose+execute spine is
-        # backgrounded, so the chat gets a task id it can subscribe to.
-        task = await _resolve_or_intake_task(
-            app_state, approval_id, work_pipeline, work_item
-        )
-        worker_execution_service_of(app_state).dispatch_conversational_execution(
-            work_pipeline=work_pipeline,
-            work_item=work_item,
-            task=task,
-        )
-    except MemoryError, RecursionError:
-        raise
-    except ServiceUnavailableError:
-        raise
-    except Exception as exc:  # noqa: BLE001 -- intake/dispatch failure: don't 5xx
-        # The approve decision is already persisted; an intake or dispatch
-        # failure must not 5xx the response. Revert EXECUTING -> PENDING so
-        # the proposal is retryable rather than stuck in EXECUTING forever.
-        reverted = await service.transition_proposal(
-            proposal_id,
-            from_status=ConversationalProposalStatus.EXECUTING,
-            to_status=ConversationalProposalStatus.PENDING,
-        )
-        log_exception_redacted(
-            logger,
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            exc,
-            approval_id=approval_id,
-            proposal_id=proposal_id,
-            note="intake/dispatch failed; proposal reverted to pending"
-            if reverted
-            else (
-                "intake/dispatch failed; proposal left in EXECUTING (revert lost race)"
-            ),
-        )
-        return
-
-    # The proposal's job -- create the task and hand its execution to the
-    # background -- is done; the task tracks the run from here. EXECUTED
-    # therefore means "dispatched", matching the parked-resume contract.
-    transitioned = await service.transition_proposal(
-        proposal_id,
-        from_status=ConversationalProposalStatus.EXECUTING,
-        to_status=ConversationalProposalStatus.EXECUTED,
-    )
-    if transitioned:
-        logger.info(
-            APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
-            approval_id=approval_id,
-            proposal_id=proposal_id,
-            task_id=str(task.id),
-        )
-        return
-    # The acquire CAS guarantees we are the only caller that dispatched the
-    # work, so this only happens if a non-approval-gate writer mutated the
-    # proposal mid-flight (operator override, future admin endpoint).
-    # Surface the no-op so the log doesn't claim a CAS success we didn't make.
-    logger.warning(
-        APPROVAL_GATE_CONVERSATIONAL_FAILED,
-        approval_id=approval_id,
-        proposal_id=proposal_id,
-        note=(
-            "proposal mutated mid-execute (executing->executed CAS "
-            "failed); work already dispatched"
-        ),
-    )
-
-
-async def _resolve_or_intake_task(
-    app_state: AppState,
-    approval_id: str,
-    work_pipeline: WorkPipeline,
-    work_item: WorkItem,
-) -> Task:
-    """Reuse a prior attempt's task if one exists, else run intake.
-
-    A prior approve that reverted EXECUTING -> PENDING (e.g. a synchronous
-    dispatch rejection when no agent runtime was configured) has already
-    created + stamped a task on the approval. Reuse it on retry rather than
-    minting a duplicate orphan; only mint (and stamp) a fresh task when none
-    is recorded yet.
-
-    Returns:
-        The reused or newly created intake task.
-    """
-    store = app_state.slice(ApprovalStateSlice).store
-    task_engine = app_state.slice(EngineStateSlice).task_engine
-    # The reuse check needs the task engine to confirm the prior task still
-    # resolves; when it is unwired we cannot verify, so fall through to a fresh
-    # intake rather than raising (intake does not depend on the engine slice).
-    if store is not None and task_engine is not None:
-        item = await store.get(NotBlankStr(approval_id))
-        if item is not None and item.task_id is not None:
-            existing = await task_engine.get_task(item.task_id)
-            if existing is not None:
-                return existing
-    task = await work_pipeline.intake_only(work_item)
-    await _attach_task_id_to_approval(app_state, approval_id, str(task.id))
-    return task
-
-
-async def _attach_task_id_to_approval(
-    app_state: AppState, approval_id: str, task_id: str
-) -> None:
-    """Stamp the intake-created task id onto the decided approval item.
-
-    Conversational-intake approvals are created without a task id (the task
-    does not exist until intake runs). Once intake creates it, patch the
-    approval so a subsequent GET + the queue carry the id the chat
-    subscribes to for live progress. Overwrites only when the recorded id
-    differs from *task_id*, so a retry that re-minted a task (because a prior
-    attempt's stamped task no longer resolves) re-stamps the live id rather
-    than leaving the approval pointing at the dead one. Best-effort: a patch
-    failure costs only the live-progress deep link, never the dispatched work.
-    """
-    store = app_state.slice(ApprovalStateSlice).store
-    if store is None:
-        return
-    try:
-        item = await store.get(NotBlankStr(approval_id))
-        if item is None or item.task_id == task_id:
-            return
-        await store.save(item.model_copy(update={"task_id": task_id}))
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised; else best-effort
-        # The stamp is a live-progress convenience; a read/save failure here
-        # must not propagate into the caller and revert the already-dispatched
-        # work. Log and return so the work stands and only the deep link is lost.
-        reraise_critical(exc)
-        logger.warning(
-            APPROVAL_GATE_RESUME_FAILED,
-            approval_id=approval_id,
-            task_id=task_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note="task-id stamp failed; work dispatched, live-progress link lost",
-        )
-
-
 async def try_conversational_intake_resume(
     app_state: AppState,
     approval_id: str,
     *,
     approved: bool,
 ) -> bool:
-    """Run a decided conversational-intake proposal, if this is one.
+    """Resolve a decided conversational steering directive, if this is one.
 
-    Deterministic routing off the persisted
-    :attr:`ApprovalItem.source` discriminator: only
-    ``CONVERSATIONAL_INTAKE`` approvals are owned here; everything else
-    returns ``False`` so the caller falls through to the parked-context
-    / review-gate flows. Once owned, the decision is fully resolved on
-    this path and ``True`` is returned even on failure so the approval
-    is never double-handled.
-
-    On approval the parked ``WorkItem`` is rebuilt from the proposal
-    and driven through the work pipeline (still gated -- it only runs
-    because a human approved); the proposal is then marked EXECUTED. On
-    rejection the proposal is marked REJECTED and the pipeline is never
-    touched.
-
-    Raises:
-        ServiceUnavailableError: When the approval store read fails,
-            the proposal repo is not wired, or the work pipeline is
-            missing on approve. All three are hard misconfigurations
-            the operator must fix.
+    The only ``CONVERSATIONAL_INTAKE`` approval the proposer parks is a
+    steering directive; a work brief drafts a plan into Plan Review and is
+    never parked here. A steering directive rides in the approval metadata,
+    not a proposal row: on approval it issues to the steering service, on
+    rejection it is a no-op. Everything else returns ``False`` so the caller
+    falls through to the parked-context / review-gate flows.
 
     Returns:
-        ``True`` or ``False`` reflecting the condition.
+        ``True`` when this flow owns the decision (a steering directive),
+        ``False`` otherwise.
     """
     from synthorg.meta.chief_of_staff._intake_parking import (  # noqa: PLC0415
         resume_conversational_steering,
     )
 
-    # A steering directive rides in the approval metadata, not a proposal row.
     item = await _reread_approval_item(app_state, approval_id)
-    if await resume_conversational_steering(app_state, item, approved=approved):
-        return True
-
-    owns_decision, proposal = await _load_conversational_proposal(
-        app_state, approval_id
-    )
-    if not owns_decision:
-        return False
-    if proposal is None:
-        return True
-    if not approved:
-        await _reject_conversational_proposal(app_state, approval_id, proposal)
-        return True
-    await _execute_conversational_proposal(app_state, approval_id, proposal)
-    return True
+    return await resume_conversational_steering(app_state, item, approved=approved)
 
 
 async def _load_conversation_invite(
@@ -451,11 +116,10 @@ async def _load_conversation_invite(
 ) -> tuple[bool, ConversationInvite | None]:
     """Resolve an agent-initiated invite for *approval_id*.
 
-    Mirrors :func:`_load_conversational_proposal`. Returns a
-    ``(owns_decision, invite_or_none)`` tuple: ``(False, None)`` when the
-    approval is not a ``CONVERSATIONAL_INVITE`` one (fall through),
-    ``(True, None)`` when this flow owns the decision but no invite row
-    backs it (a logged no-op), ``(True, invite)`` otherwise.
+    Returns a ``(owns_decision, invite_or_none)`` tuple: ``(False, None)``
+    when the approval is not a ``CONVERSATIONAL_INVITE`` one (fall
+    through), ``(True, None)`` when this flow owns the decision but no
+    invite row backs it (a logged no-op), ``(True, invite)`` otherwise.
 
     Raises:
         ServiceUnavailableError: When the source is confirmed
@@ -533,8 +197,7 @@ async def _accept_invite(
     transitions PENDING -> ACCEPTED, so a duplicate decision is a safe
     no-op. The participant insert is idempotent (skipped when the target
     is already active); on insert failure the CAS is reverted to PENDING
-    so the consent stays retryable, mirroring
-    :func:`_execute_conversational_proposal`.
+    so the consent stays retryable.
 
     Raises:
         ServiceUnavailableError: When the invite / participant repos are

@@ -172,7 +172,10 @@ when a lead agent calls `request_project_decision` (gated by
 `engine.scoping_enabled`) and a human answers, the approvals-resume path
 appends an `ACCEPTED` `DECISION` entry whose `decision_outcome` is the chosen
 answer and whose `alternatives` are the offered options, with no explicit
-brain-write tool call. This is the actually-emitted successor to the dead
+brain-write tool call. When the agent offered known options (each with a tradeoff
+writeup on the approval's `EvidencePackage`), the operator picks one structurally
+and the chosen option's writeup is the recorded outcome; an open-ended decision
+records the free-text answer. This is the actually-emitted successor to the dead
 `arch:decide` action type.
 
 `BrainPayload` is `Annotated[DecisionPayload | OpenQuestionPayload | ... ,

@@ -166,14 +166,17 @@ _r.register(
         namespace=SettingNamespace.COORDINATION,
         key="plan_approval_required",
         type=SettingType.BOOLEAN,
-        default="false",
+        default="true",
         description=(
             "Gate splittable team work on human plan approval: when set, the"
             " coordinator decomposes the brief into a plan and parks it for"
             " approval before any agent builds; the approved plan is then"
-            " dispatched verbatim (no re-decomposition). Off by default, so"
-            " team work dispatches straight to the coordinator. Applied on the"
-            " next runtime-services rebuild (the gate is attached at boot)."
+            " dispatched verbatim (no re-decomposition). On by default, so"
+            " every greenlit initiative (a charter or a conversational work"
+            " brief) parks a plan for holistic review before anything is built."
+            " Turn off to dispatch team work straight to the coordinator."
+            " Applied on the next runtime-services rebuild (the gate is"
+            " attached at boot)."
         ),
         group="General",
         level=SettingLevel.ADVANCED,

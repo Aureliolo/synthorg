@@ -121,7 +121,6 @@ COS_GROUP_INVITE_DECLINED: Final[str] = "chief_of_staff.group_chat.invite_declin
 
 # -- Conversational approval-resume facade -----------------------------
 
-COS_RESUME_PROPOSAL_TRANSITION: Final[str] = "chief_of_staff.resume.proposal_transition"
 COS_RESUME_INVITE_TRANSITION: Final[str] = "chief_of_staff.resume.invite_transition"
 COS_RESUME_PARTICIPANT_ADMITTED: Final[str] = (
     "chief_of_staff.resume.participant_admitted"

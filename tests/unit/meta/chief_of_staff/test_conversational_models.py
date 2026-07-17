@@ -6,7 +6,6 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.communication.conversation.enums import (
-    ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
 )
@@ -14,7 +13,6 @@ from synthorg.core.task_enums import Complexity, Priority, TaskType
 from synthorg.engine.intervention.enums import InterventionKind
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
-    ConversationalProposal,
     ConversationTurn,
     ProposeDecision,
     ProposedSteering,
@@ -142,35 +140,33 @@ class TestProposeDecision:
             clarifying_question="Which audience is the page for?",
         )
         assert d.needs_clarification
-        assert d.proposals == ()
+        assert d.work is None
 
-    def test_proposal_path(self) -> None:
+    def test_work_path(self) -> None:
         d = ProposeDecision(
             needs_clarification=False,
-            proposals=(
-                ProposedWork(
-                    title="Build landing page",
-                    raw_intent="Create the page",
-                ),
+            work=ProposedWork(
+                title="Build landing page",
+                raw_intent="Create the page",
             ),
         )
         assert not d.needs_clarification
-        assert len(d.proposals) == 1
+        assert d.work is not None
 
     def test_clarification_requires_question(self) -> None:
         with pytest.raises(ValidationError, match="clarifying_question"):
             ProposeDecision(needs_clarification=True)
 
-    def test_clarification_forbids_proposals(self) -> None:
+    def test_clarification_forbids_work(self) -> None:
         with pytest.raises(ValidationError):
             ProposeDecision(
                 needs_clarification=True,
                 clarifying_question="What exactly?",
-                proposals=(ProposedWork(title="x", raw_intent="y"),),
+                work=ProposedWork(title="x", raw_intent="y"),
             )
 
-    def test_proposal_path_requires_one_of_proposals_or_steering(self) -> None:
-        with pytest.raises(ValidationError, match="proposals or steering"):
+    def test_proposal_path_requires_one_of_work_or_steering(self) -> None:
+        with pytest.raises(ValidationError, match="work or steering"):
             ProposeDecision(needs_clarification=False)
 
     def test_steering_only_path(self) -> None:
@@ -185,19 +181,19 @@ class TestProposeDecision:
             ),
         )
         assert not d.needs_clarification
-        assert d.proposals == ()
+        assert d.work is None
         assert len(d.steering) == 1
         assert d.steering[0].kind is InterventionKind.REDIRECT
 
-    def test_proposals_and_steering_together(self) -> None:
+    def test_work_and_steering_together(self) -> None:
         d = ProposeDecision(
             needs_clarification=False,
-            proposals=(ProposedWork(title="x", raw_intent="y"),),
+            work=ProposedWork(title="x", raw_intent="y"),
             steering=(
                 ProposedSteering(kind=InterventionKind.HINT, text="prefer the util"),
             ),
         )
-        assert len(d.proposals) == 1
+        assert d.work is not None
         assert len(d.steering) == 1
 
     def test_clarification_forbids_steering(self) -> None:
@@ -210,12 +206,12 @@ class TestProposeDecision:
                 ),
             )
 
-    def test_proposal_path_forbids_question(self) -> None:
+    def test_work_path_forbids_question(self) -> None:
         with pytest.raises(ValidationError):
             ProposeDecision(
                 needs_clarification=False,
                 clarifying_question="should not be here",
-                proposals=(ProposedWork(title="x", raw_intent="y"),),
+                work=ProposedWork(title="x", raw_intent="y"),
             )
 
     def test_frozen(self) -> None:
@@ -275,7 +271,7 @@ class TestProposeResultSteering:
             status="proposed",
             steering=(self._summary(),),
         )
-        assert result.proposals == ()
+        assert result.plan_draft is None
         assert len(result.steering) == 1
 
     def test_clarification_forbids_steering(self) -> None:
@@ -286,38 +282,3 @@ class TestProposeResultSteering:
                 clarifying_question="which project?",
                 steering=(self._summary(),),
             )
-
-
-class TestConversationalProposal:
-    """ConversationalProposal model."""
-
-    def _make(self, **overrides: object) -> ConversationalProposal:
-        defaults: dict[str, object] = {
-            "id": as_uuid("prop-1"),
-            "conversation_id": sid("conv-1"),
-            "approval_id": "appr-1",
-            "work_item_json": '{"title": "x"}',
-            "created_at": _NOW,
-        }
-        defaults.update(overrides)
-        return ConversationalProposal(**defaults)  # type: ignore[arg-type]
-
-    def test_default_status_pending(self) -> None:
-        assert self._make().status is ConversationalProposalStatus.PENDING
-
-    def test_status_roundtrip(self) -> None:
-        prop = self._make(status=ConversationalProposalStatus.EXECUTED)
-        assert prop.status is ConversationalProposalStatus.EXECUTED
-
-    def test_blank_work_item_json_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            self._make(work_item_json="  ")
-
-    def test_extra_forbidden(self) -> None:
-        with pytest.raises(ValidationError):
-            self._make(extra="x")
-
-    def test_frozen(self) -> None:
-        prop = self._make()
-        with pytest.raises(ValidationError):
-            prop.status = ConversationalProposalStatus.REJECTED  # type: ignore[misc]

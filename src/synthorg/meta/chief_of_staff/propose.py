@@ -37,7 +37,7 @@ from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.meta.chief_of_staff._capability_gate import resolve_cos_autonomous_cap
-from synthorg.meta.chief_of_staff._propose_parking import ProposeParkingMixin
+from synthorg.meta.chief_of_staff._propose_act import ProposeActMixin
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
 from synthorg.meta.chief_of_staff.enums import RoutingReason
@@ -48,6 +48,7 @@ from synthorg.meta.chief_of_staff.models import (
     ProposeDecision,
     ProposeResult,
 )
+from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
 from synthorg.meta.chief_of_staff.prompts import (
     CONVERSATIONAL_PROPOSE_SYSTEM,
     CONVERSATIONAL_PROPOSE_USER,
@@ -87,9 +88,6 @@ from synthorg.persistence.conversation_protocol import (
     ConversationTurnFilterSpec,
     ConversationTurnRepository,
 )
-from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalRepository,
-)
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderTimeoutError
@@ -117,20 +115,20 @@ _CAP_MESSAGE: NotBlankStr = NotBlankStr(
 _MAX_TURNS_QUERY_LIMIT: int = 1000
 
 
-class ChiefOfStaffProposer(ProposeParkingMixin):
+class ChiefOfStaffProposer(ProposeActMixin):
     """Clarify-or-propose conversational service.
 
     Single responsibility (keeps ``ChiefOfStaffChat`` explain-only).
     Each :meth:`converse` call appends the human turn, runs one
     structured LLM turn, and either records a clarifying question or
-    parks concrete work items behind the approval queue.
+    acts on the request: drafting a single plan for a work brief (parked
+    for holistic Plan Review) and/or parking steering directives.
 
     Args:
         provider: LLM completion provider.
         config: Chief of Staff configuration.
         conversation_repo: Conversation header store.
         turn_repo: Append-only conversation turn store.
-        proposal_repo: Conversational proposal store.
         approval_store: Human approval queue.
         clock: Injectable time source (defaults to ``SystemClock``).
         cost_tracker: Optional cost tracker for LLM accounting.
@@ -159,7 +157,6 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         config: ChiefOfStaffConfig,
         conversation_repo: ConversationRepository,
         turn_repo: ConversationTurnRepository,
-        proposal_repo: ConversationalProposalRepository,
         approval_store: ApprovalStoreProtocol,
         clock: Clock | None = None,
         cost_tracker: CostTrackerProtocol | None = None,
@@ -173,7 +170,6 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         self._config = config
         self._conversation_repo = conversation_repo
         self._turn_repo = turn_repo
-        self._proposal_repo = proposal_repo
         self._approval_store = approval_store
         self._clock: Clock = clock or SystemClock()
         self._cost_tracker = cost_tracker
@@ -182,9 +178,15 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         self._config_resolver = config_resolver
         self._estimator: PromptTokenEstimator = estimator or DefaultTokenEstimator()
         self._master_enabled = master_enabled
+        # Late-bind seam: the plan dispatcher wraps the work pipeline +
+        # project store + background-dispatch port, which wire only after
+        # persistence connects, so a startup hook attaches it to the
+        # already-built proposer. Absent, a work brief cannot be drafted
+        # into a plan and the act path raises ServiceUnavailableError.
+        self._plan_dispatcher: ConversationalPlanDispatcher | None = None
         # Per-conversation locks serialise the whole turn pipeline
         # (resolve -> ordered_turns -> append user -> run model ->
-        # append assistant + proposals -> update conversation) so two
+        # append assistant + act -> update conversation) so two
         # concurrent ``converse()`` calls on the same conversation
         # cannot interleave their snapshots of history nor commit
         # turns the other side never saw. New conversations
@@ -343,7 +345,7 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
             return await self._record_clarification(
                 conversation, decision, routing, outcome.reason, next_sequence + 1, now
             )
-        return await self._record_proposals(
+        return await self._act_on_decision(
             conversation,
             args,
             decision,
@@ -466,7 +468,6 @@ class ChiefOfStaffProposer(ProposeParkingMixin):
         """
         system = CONVERSATIONAL_PROPOSE_SYSTEM.format(
             responder_identity=responder.persona,
-            max_proposals=self._config.propose_max_proposals_per_turn,
         )
         user = CONVERSATIONAL_PROPOSE_USER.format(
             conversation_history=wrap_untrusted(

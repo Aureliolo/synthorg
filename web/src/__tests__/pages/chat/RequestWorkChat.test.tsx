@@ -11,7 +11,8 @@ import { useToastStore } from '@/stores/toast'
 import { server } from '@/test-setup'
 
 function renderChat() {
-  // Queued proposals/steering render <Link> to /approvals, so a router is required.
+  // The plan-draft link (/plans) and steering links (/approvals) render
+  // <Link>, so a router is required.
   return render(
     <MemoryRouter>
       <RequestWorkChat />
@@ -30,7 +31,7 @@ describe('RequestWorkChat', () => {
     expect(screen.getByText('Request work')).toBeInTheDocument()
   })
 
-  it('renders a routed proposal with role attribution after sending', async () => {
+  it('renders a drafted plan with role attribution after sending', async () => {
     server.use(
       http.post('/api/v1/meta/chat/propose', () =>
         HttpResponse.json(
@@ -39,15 +40,11 @@ describe('RequestWorkChat', () => {
             status: 'proposed',
             clarifying_question: null,
             conversation_closed: false,
-            proposals: [
-              {
-                approval_id: 'a-1',
-                proposal_id: 'p-1',
-                title: 'Trim cloud spend',
-                task_type: 'research',
-                priority: 'high',
-              },
-            ],
+            plan_draft: {
+              task_id: 'task-1',
+              project: 'Cost',
+              title: 'Trim cloud spend',
+            },
             responder_role: 'CFO',
             responder_name: 'Casey',
             routed_topic: 'budget',
@@ -68,10 +65,12 @@ describe('RequestWorkChat', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText('Queued 1 item for your approval.'),
+        screen.getByText('Drafted a plan for your review.'),
       ).toBeInTheDocument()
     })
-    expect(screen.getByText('Trim cloud spend')).toBeInTheDocument()
+    // The plan title links into Plan Review for holistic review.
+    const planLink = screen.getByRole('link', { name: 'Trim cloud spend' })
+    expect(planLink).toHaveAttribute('href', '/plans')
     // Attribution: the routed CFO agent answered.
     expect(screen.getByText('Casey')).toBeInTheDocument()
     expect(screen.getByText('CFO')).toBeInTheDocument()
@@ -86,7 +85,7 @@ describe('RequestWorkChat', () => {
             status: 'proposed',
             clarifying_question: null,
             conversation_closed: true,
-            proposals: [],
+            plan_draft: null,
             responder_role: null,
             responder_name: null,
             routed_topic: null,
@@ -110,9 +109,9 @@ describe('RequestWorkChat', () => {
     await user.click(screen.getByRole('button', { name: 'Send message' }))
 
     await waitFor(() => {
-      // A steering-only turn must still report the queued count, not "0".
+      // A steering-only turn (no plan drafted) reports the steering count.
       expect(
-        screen.getByText('Queued 1 item for your approval.'),
+        screen.getByText('Queued 1 steering directive for your confirmation.'),
       ).toBeInTheDocument()
     })
     expect(screen.getByText('Prioritise the launch checklist')).toBeInTheDocument()
@@ -156,7 +155,7 @@ describe('RequestWorkChat', () => {
             status: 'needs_clarification',
             clarifying_question: 'Which project is this for?',
             conversation_closed: false,
-            proposals: [],
+            plan_draft: null,
             responder_role: null,
             responder_name: null,
             routed_topic: null,

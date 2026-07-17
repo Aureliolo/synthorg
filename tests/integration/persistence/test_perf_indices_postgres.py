@@ -177,7 +177,6 @@ class TestDecisionRecordsCompositeIndex:
 async def _seed_conversation_family(backend: PostgresPersistenceBackend) -> None:
     pool = backend._pool
     assert pool is not None, "fixture must connect the backend before seeding"
-    conv = sid("conv-000")
     async with pool.connection() as conn, conn.transaction():
         for i in range(10):
             await conn.execute(
@@ -187,19 +186,6 @@ async def _seed_conversation_family(backend: PostgresPersistenceBackend) -> None
                     sid(f"conv-{i:03d}"),
                     "system",
                     _BASE + timedelta(seconds=i),
-                    _BASE + timedelta(seconds=i),
-                ),
-            )
-        for i in range(10):
-            await conn.execute(
-                "INSERT INTO conversational_proposals "
-                "(id, conversation_id, approval_id, work_item_json, created_at) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                (
-                    sid(f"prop-{i:03d}"),
-                    conv,
-                    sid(f"appr-{i:03d}"),
-                    "{}",
                     _BASE + timedelta(seconds=i),
                 ),
             )
@@ -266,24 +252,6 @@ class TestConversationFamilyPerfIndices:
         )
         assert "idx_conversations_created_id" in plan, (
             f"(created_at DESC, id DESC) index not used for list_items:\n{plan}"
-        )
-
-    async def test_proposals_by_conversation_index_used(
-        self,
-        postgres_backend: PostgresPersistenceBackend,
-    ) -> None:
-        await _seed_conversation_family(postgres_backend)
-        plan = await _explain_plan(
-            postgres_backend,
-            sql.SQL(
-                "SELECT * FROM conversational_proposals WHERE conversation_id = %s "
-                "ORDER BY created_at DESC, id DESC LIMIT 50",
-            ),
-            sid("conv-000"),
-            table="conversational_proposals",
-        )
-        assert "idx_cp_conversation_id" in plan, (
-            f"(conversation_id, created_at DESC) index not used:\n{plan}"
         )
 
     async def test_invites_by_target_agent_index_used(

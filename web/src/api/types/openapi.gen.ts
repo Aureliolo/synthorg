@@ -8070,6 +8070,8 @@ export type components = {
         };
         /** ApproveRequest */
         readonly ApproveRequest: {
+            /** @description Chosen option id for an execution-time decision approval. */
+            readonly chosen_option_id?: string | null;
             /** @description Optional comment explaining the approval decision. */
             readonly comment?: string | null;
         };
@@ -14041,6 +14043,12 @@ export type components = {
             /** @description The comment text */
             readonly body: string;
         };
+        /** PlanDraftSummary */
+        readonly PlanDraftSummary: {
+            readonly project: string;
+            readonly task_id: string;
+            readonly title: string;
+        };
         /** PlanItem */
         readonly PlanItem: {
             /** @description Per-item criteria that define done (never empty) */
@@ -14697,22 +14705,13 @@ export type components = {
          * @enum {string}
          */
         readonly ProposalAltitude: "config_tuning" | "architecture" | "prompt_tuning" | "code_modification" | "tool_creation";
-        /** ProposedApprovalSummary */
-        readonly ProposedApprovalSummary: {
-            readonly approval_id: string;
-            readonly priority: components["schemas"]["Priority"];
-            readonly proposal_id: string;
-            readonly task_type: components["schemas"]["TaskType"];
-            readonly title: string;
-        };
         /** ProposeResult */
         readonly ProposeResult: {
             readonly clarifying_question: string | null;
             /** @default false */
             readonly conversation_closed: boolean;
             readonly conversation_id: string;
-            /** @default [] */
-            readonly proposals: readonly components["schemas"]["ProposedApprovalSummary"][];
+            readonly plan_draft: components["schemas"]["PlanDraftSummary"] | null;
             readonly responder_name: string | null;
             readonly responder_role: string | null;
             readonly routed_topic: string | null;
@@ -15815,6 +15814,8 @@ export type components = {
         readonly RunOutcome: "succeeded" | "empty" | "failed";
         /** SafeEvidencePackage */
         readonly SafeEvidencePackage: {
+            /** @description Operator's chosen option id (only with options) */
+            readonly chosen_option_id: string | null;
             /**
              * Format: date-time
              * @description Artifact creation timestamp
@@ -15835,6 +15836,11 @@ export type components = {
             };
             /** @description Plain-English explanation of the approval context */
             readonly narrative: string;
+            /**
+             * @description Decision options for an execution-time fork (>=2, one rec.)
+             * @default []
+             */
+            readonly options: readonly components["schemas"]["PlanOption"][];
             /**
              * @description Compressed reasoning steps
              * @default []

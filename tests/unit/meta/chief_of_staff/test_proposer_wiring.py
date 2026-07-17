@@ -10,10 +10,9 @@ from synthorg.api.app_builders import build_chief_of_staff_proposer
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.conversational_builders import build_conversational_actor
 from synthorg.api.lifecycle_helpers.conversational_reconcile import (
-    reconcile_orphaned_conversational_intake,
+    reconcile_orphaned_conversational_invites,
 )
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.communication.conversation.enums import ConversationalProposalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.hr.registry import AgentRegistryService
@@ -21,7 +20,6 @@ from synthorg.meta.chief_of_staff.actor import ConversationalActor
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.enums import ConversationInviteStatus
 from synthorg.meta.chief_of_staff.group_models import ConversationInvite
-from synthorg.meta.chief_of_staff.models import ConversationalProposal
 from synthorg.meta.chief_of_staff.propose import ChiefOfStaffProposer
 from synthorg.persistence.approval_protocol import ApprovalRepository
 from synthorg.persistence.conversational_factory import (
@@ -31,22 +29,10 @@ from synthorg.persistence.conversational_factory import (
 from tests._shared import as_uuid, mock_of, sid
 from tests._shared.scripted_provider import ScriptedProvider
 from tests.unit.meta.chief_of_staff.group_chat_fakes import FakeInviteRepo
-from tests.unit.meta.chief_of_staff.propose_fakes import FakeProposalRepo
 
 pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 5, 19, 12, 0, tzinfo=UTC)
-
-
-def _pending_proposal(proposal_id: str) -> ConversationalProposal:
-    return ConversationalProposal(
-        id=as_uuid(proposal_id),
-        conversation_id=sid("conv-orphan"),
-        approval_id="appr-gone",
-        work_item_json="{}",
-        status=ConversationalProposalStatus.PENDING,
-        created_at=_NOW,
-    )
 
 
 def _pending_invite(invite_id: str) -> ConversationInvite:
@@ -63,13 +49,10 @@ def _pending_invite(invite_id: str) -> ConversationInvite:
     )
 
 
-def _reconcile_repos(
-    proposal_repo: FakeProposalRepo, invite_repo: FakeInviteRepo
-) -> ConversationalRepositories:
+def _reconcile_repos(invite_repo: FakeInviteRepo) -> ConversationalRepositories:
     return ConversationalRepositories(
         conversation_repo=object(),  # type: ignore[arg-type]
         turn_repo=object(),  # type: ignore[arg-type]
-        proposal_repo=proposal_repo,
         participant_repo=object(),  # type: ignore[arg-type]
         invite_repo=invite_repo,
     )
@@ -115,7 +98,6 @@ def _repos() -> ConversationalRepositories:
     return ConversationalRepositories(
         conversation_repo=object(),  # type: ignore[arg-type]
         turn_repo=object(),  # type: ignore[arg-type]
-        proposal_repo=object(),  # type: ignore[arg-type]
         participant_repo=object(),  # type: ignore[arg-type]
         invite_repo=object(),  # type: ignore[arg-type]
     )
@@ -206,32 +188,19 @@ class TestBuildConversationalActor:
         assert isinstance(result, ConversationalActor)
 
 
-class TestReconcileOrphanedConversationalIntake:
+class TestReconcileOrphanedConversationalInvites:
     async def test_in_memory_store_retires_pending_orphans(self) -> None:
         # With an in-memory ApprovalStore the approval queue is empty at
-        # boot, so prior-boot PENDING proposals/invites are unreachable.
-        # They are retired terminal (proposal -> REJECTED, invite ->
-        # DECLINED) so the row survives as an audit record while leaving
-        # the actionable set; a terminal proposal is left untouched.
-        proposal_repo = FakeProposalRepo()
-        await proposal_repo.save(_pending_proposal("p-orphan"))
-        executed = _pending_proposal("p-done").model_copy(
-            update={"status": ConversationalProposalStatus.EXECUTED}
-        )
-        await proposal_repo.save(executed)
+        # boot, so prior-boot PENDING invites are unreachable. They are
+        # retired terminal (invite -> DECLINED) so the row survives as an
+        # audit record while leaving the actionable set.
         invite_repo = FakeInviteRepo()
         await invite_repo.save(_pending_invite("i-orphan"))
 
-        await reconcile_orphaned_conversational_intake(
-            _reconcile_repos(proposal_repo, invite_repo), ApprovalStore()
+        await reconcile_orphaned_conversational_invites(
+            _reconcile_repos(invite_repo), ApprovalStore()
         )
 
-        orphan = await proposal_repo.get(sid("p-orphan"))
-        assert orphan is not None
-        assert orphan.status is ConversationalProposalStatus.REJECTED
-        done = await proposal_repo.get(sid("p-done"))
-        assert done is not None
-        assert done.status is ConversationalProposalStatus.EXECUTED
         retired_invite = await invite_repo.get(sid("i-orphan"))
         assert retired_invite is not None
         assert retired_invite.status is ConversationInviteStatus.DECLINED
@@ -240,19 +209,14 @@ class TestReconcileOrphanedConversationalIntake:
         # A store that is not a recognised in-memory ApprovalStore is
         # treated as persistent: its approvals survive restart, so PENDING
         # rows stay resumable and must NOT be deleted.
-        proposal_repo = FakeProposalRepo()
-        await proposal_repo.save(_pending_proposal("p-keep"))
         invite_repo = FakeInviteRepo()
         await invite_repo.save(_pending_invite("i-keep"))
 
-        await reconcile_orphaned_conversational_intake(
-            _reconcile_repos(proposal_repo, invite_repo),
+        await reconcile_orphaned_conversational_invites(
+            _reconcile_repos(invite_repo),
             mock_of[ApprovalStoreProtocol](),
         )
 
-        kept_proposal = await proposal_repo.get(sid("p-keep"))
-        assert kept_proposal is not None
-        assert kept_proposal.status is ConversationalProposalStatus.PENDING
         kept_invite = await invite_repo.get(sid("i-keep"))
         assert kept_invite is not None
         assert kept_invite.status is ConversationInviteStatus.PENDING
@@ -262,19 +226,14 @@ class TestReconcileOrphanedConversationalIntake:
         # keeps its approvals across restart, so PENDING rows stay
         # resumable and must NOT be retired -- this is the third
         # discriminator branch (a real ApprovalStore, but persistent).
-        proposal_repo = FakeProposalRepo()
-        await proposal_repo.save(_pending_proposal("p-keep"))
         invite_repo = FakeInviteRepo()
         await invite_repo.save(_pending_invite("i-keep"))
 
-        await reconcile_orphaned_conversational_intake(
-            _reconcile_repos(proposal_repo, invite_repo),
+        await reconcile_orphaned_conversational_invites(
+            _reconcile_repos(invite_repo),
             ApprovalStore(repo=mock_of[ApprovalRepository]()),
         )
 
-        kept_proposal = await proposal_repo.get(sid("p-keep"))
-        assert kept_proposal is not None
-        assert kept_proposal.status is ConversationalProposalStatus.PENDING
         kept_invite = await invite_repo.get(sid("i-keep"))
         assert kept_invite is not None
         assert kept_invite.status is ConversationInviteStatus.PENDING

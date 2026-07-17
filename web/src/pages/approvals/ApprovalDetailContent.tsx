@@ -20,6 +20,7 @@ import { RunOutcomeBadge } from '@/components/ui/run-outcome-badge'
 import { TaskProgress } from '@/components/ui/task-progress'
 import { useTaskProgress } from '@/hooks/useTaskProgress'
 import { ROUTES } from '@/router/routes'
+import { DecisionOptionsSection } from './ApprovalDecisionOptions'
 import { ApprovalTimeline } from './ApprovalTimeline'
 import {
   getApprovalStepLabel,
@@ -411,9 +412,15 @@ function ApprovalExtraSections({ approval }: { approval: ApprovalResponse }) {
 export function ApprovalDetailContent({
   approval,
   confidenceLabel,
+  chosenOptionId = null,
+  onChooseOption,
 }: {
   approval: ApprovalResponse
   confidenceLabel: string | null
+  /** Selected decision-option id, for a decision-fork approval. */
+  chosenOptionId?: string | null
+  /** Picks a decision option; omit to render the options read-only. */
+  onChooseOption?: (id: string) => void
 }) {
   return (
     <div className="flex-1 overflow-y-auto p-card space-y-section-gap">
@@ -430,6 +437,11 @@ export function ApprovalDetailContent({
       {Boolean(approval.description || approval.metadata['stripped_description']) && (
         <DescriptionSection approval={approval} />
       )}
+      <DecisionOptionsSection
+        approval={approval}
+        chosenOptionId={chosenOptionId}
+        onChooseOption={onChooseOption}
+      />
       <ProducedOutputSection approval={approval} />
       <EvidenceSection approval={approval} />
       <div>

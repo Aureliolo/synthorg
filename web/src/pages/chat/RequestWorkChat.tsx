@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ExamplePrompts } from '@/components/ui/example-prompts'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
+import { ROUTES } from '@/router/routes'
 import { approvalDetailPath } from '@/utils/approvals'
 
 import { hasAttribution } from './attribution'
@@ -41,25 +42,27 @@ function ApprovalLink({ id, label }: { id: string; label: string }) {
   )
 }
 
-function QueuedApprovals({ msg }: { msg: RequestWorkMessage }) {
+function ProposedOutcome({ msg }: { msg: RequestWorkMessage }) {
   if (msg.role !== 'assistant') return null
-  const proposals = msg.proposals ?? []
+  const planDraft = msg.planDraft
   const steering = msg.steering ?? []
-  if (proposals.length === 0 && steering.length === 0) return null
+  if (!planDraft && steering.length === 0) return null
   return (
     <div className="mt-2 space-y-2 text-xs text-text-secondary">
-      {proposals.length > 0 && (
+      {planDraft && (
         <div>
-          <p className="font-medium text-foreground">Approve to start</p>
+          <p className="font-medium text-foreground">Review the plan</p>
           <p className="text-micro text-muted-foreground">
-            This is the first gate: approving queues the work. Once it runs, a
-            separate review of the result appears in Approvals.
+            The organisation drafted one plan for this request. Review it as a
+            whole in Plan Review; no work runs until you approve it.
           </p>
-          <ul className="mt-1 list-disc pl-4">
-            {proposals.map((p) => (
-              <ApprovalLink key={p.approvalId} id={p.approvalId} label={p.title} />
-            ))}
-          </ul>
+          <Link
+            to={ROUTES.PLANS}
+            className="mt-1 inline-block underline underline-offset-2 hover:text-foreground"
+          >
+            {planDraft.title}
+          </Link>
+          <span className="ml-1 text-muted-foreground">({planDraft.project})</span>
         </div>
       )}
       {steering.length > 0 && (
@@ -85,7 +88,7 @@ function ProposeReplyBubble({ msg }: { msg: RequestWorkMessage }) {
       )}
     >
       <p className="whitespace-pre-wrap">{msg.content}</p>
-      <QueuedApprovals msg={msg} />
+      <ProposedOutcome msg={msg} />
       {msg.role === 'assistant' &&
         hasAttribution(msg.responderName, msg.responderRole) && (
           <ResponderAttribution
@@ -119,7 +122,7 @@ export function RequestWorkChat() {
         <EmptyState
           icon={ClipboardList}
           title="Request work"
-          description="Describe work in natural language. The Chief of Staff clarifies, then queues concrete items for your approval; concern-routed turns are answered by the matching role agent."
+          description="Describe work in natural language. The Chief of Staff clarifies, then drafts one plan for you to review holistically in Plan Review before any work begins; concern-routed turns are answered by the matching role agent."
         />
         <ExamplePrompts
           prompts={EXAMPLE_PROMPTS}

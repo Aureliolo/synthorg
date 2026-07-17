@@ -726,6 +726,11 @@ class ApproveRequest(BaseModel):
 
     Attributes:
         comment: Optional comment explaining the approval.
+        chosen_option_id: For an execution-time decision that offers options
+            (``evidence_package.options``), the id of the option the operator
+            picks; required for such approvals and ignored otherwise. The
+            chosen option's writeup becomes the decision the parked agent
+            continues with.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -734,6 +739,11 @@ class ApproveRequest(BaseModel):
         default=None,
         max_length=4096,
         description="Optional comment explaining the approval decision.",
+    )
+    chosen_option_id: NotBlankStr | None = Field(
+        default=None,
+        max_length=64,
+        description="Chosen option id for an execution-time decision approval.",
     )
 
 

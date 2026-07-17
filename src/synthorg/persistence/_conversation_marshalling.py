@@ -12,7 +12,6 @@ from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from synthorg.communication.conversation.enums import (
-    ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
 )
@@ -28,7 +27,6 @@ from synthorg.meta.chief_of_staff.group_models import (
 )
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
-    ConversationalProposal,
     ConversationTurn,
 )
 from synthorg.observability import get_logger, safe_error_description
@@ -41,9 +39,6 @@ from synthorg.observability.events.persistence.conversation import (
 )
 from synthorg.observability.events.persistence.conversation_turn import (
     PERSISTENCE_CONVERSATION_TURN_FAILED,
-)
-from synthorg.observability.events.persistence.conversational_proposal import (
-    PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp
 
@@ -215,45 +210,10 @@ def row_to_invite(row: RowLike) -> ConversationInvite:
         raise QueryError(msg) from exc
 
 
-def row_to_proposal(row: RowLike) -> ConversationalProposal:
-    """Convert a database row into a :class:`ConversationalProposal`.
-
-    Shared by both backend repositories so the id column (a ``TEXT``
-    column holding ``str(uuid)``) deserialises to a ``UUID`` identically
-    on SQLite and Postgres, with one error path and one test surface.
-
-    Returns:
-        Result of type ``ConversationalProposal``.
-
-    Raises:
-        QueryError: If the row contains corrupt or unparseable data.
-    """
-    try:
-        return ConversationalProposal(
-            id=UUID(str(row["id"])),
-            conversation_id=str(row["conversation_id"]),
-            approval_id=str(row["approval_id"]),
-            work_item_json=str(row["work_item_json"]),
-            status=ConversationalProposalStatus(str(row["status"])),
-            created_at=coerce_row_timestamp(row["created_at"]),
-        )
-    except (ValueError, TypeError, KeyError, IndexError) as exc:
-        msg = "Failed to parse conversational proposal row"
-        logger.warning(
-            PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED,
-            operation="deserialize",
-            row_id=_safe_row_id(row),
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
-
-
 __all__ = [
     "RowLike",
     "row_to_conversation",
     "row_to_invite",
     "row_to_participant",
-    "row_to_proposal",
     "row_to_turn",
 ]

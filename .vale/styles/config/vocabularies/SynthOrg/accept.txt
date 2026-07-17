@@ -6,6 +6,7 @@ bloc
 busl
 coderabbit
 codespell
+compensatable
 coo
 dependabot
 deptry
@@ -57,6 +58,8 @@ unparseable
 vale
 vulture
 wantin
+writeup
+writeups
 yamllint
 zar
 zensical

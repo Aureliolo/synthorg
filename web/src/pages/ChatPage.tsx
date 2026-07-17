@@ -94,7 +94,7 @@ const MODES: readonly ModeDefinition[] = [
     icon: ClipboardList,
     title: 'Request work',
     explainer:
-      'Describe work in natural language. The Chief of Staff clarifies, then queues concrete work items for your approval before anything runs.',
+      'Describe work in natural language. The Chief of Staff clarifies, then drafts one plan for you to review in Plan Review before any work begins.',
     component: () => <RequestWorkChat />,
     flag: 'propose_enabled',
     settingKey: 'chief_of_staff.propose_enabled',

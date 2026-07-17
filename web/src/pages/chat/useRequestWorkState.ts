@@ -11,7 +11,7 @@ import { useScrollToBottom } from './use-scroll-to-bottom'
 
 export type {
   RequestWorkMessage,
-  RequestWorkProposal,
+  RequestWorkPlanDraft,
   RequestWorkSteering,
 } from './chat-types'
 
@@ -183,24 +183,34 @@ function buildAssistantMessage(
       ...toAttribution(result),
     }
   }
-  const proposals = result.proposals.map((p) => ({
-    title: p.title,
-    approvalId: p.approval_id,
-  }))
+  const planDraft = result.plan_draft
+    ? {
+        title: result.plan_draft.title,
+        project: result.plan_draft.project,
+      }
+    : undefined
   const steering = result.steering.map((s) => ({
     text: s.text,
     approvalId: s.approval_id,
   }))
-  // Count both branches: a turn that parks only steering directives would
-  // otherwise read "Queued 0 work items" and hide real queued work.
-  const total = proposals.length + steering.length
-  const plural = total === 1 ? '' : 's'
   return {
     id: nextMessageId(),
     role: 'assistant',
-    content: `Queued ${total} item${plural} for your approval.`,
-    proposals,
-    steering,
+    content: proposedContent(planDraft, steering.length),
+    ...(planDraft && { planDraft }),
+    ...(steering.length > 0 && { steering }),
     ...toAttribution(result),
   }
+}
+
+// The request now yields ONE plan drafted for holistic review (never per-item
+// approvals); steering directives, when present, are still confirmed in
+// Approvals. Lead with whichever the turn produced.
+function proposedContent(
+  planDraft: { title: string } | undefined,
+  steeringCount: number,
+): string {
+  if (planDraft) return 'Drafted a plan for your review.'
+  const plural = steeringCount === 1 ? '' : 's'
+  return `Queued ${steeringCount} steering directive${plural} for your confirmation.`
 }

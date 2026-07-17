@@ -1,26 +1,34 @@
 """Agent-callable tool to put a project-shaping decision to a human.
 
 Lets a lead agent surface a decision it cannot make on its own (a
-framework choice, a packaging option, an asset direction) and wait for a
-human to choose. Creates an ``ApprovalItem`` (source ``PARKED_CONTEXT`` so
-the existing mid-execution resume path restores the run) marked both as a
-clarification (so the task moves to ``AWAITING_INPUT`` while it waits) and
-as a decision (so the human's answer is recorded as a project-brain
-DECISION entry on resume). The chosen option rides back in as the decision
-reason that ``ApprovalGate.build_resume_message`` injects.
+framework choice, an architecture for the core engine, an asset
+direction) and wait for a human to choose. When the choice is between
+known options, the agent supplies each with a title, a writeup of its
+tradeoffs, and whether it recommends it; those ride on an
+:class:`EvidencePackage` so the operator picks structurally (by option
+id) rather than typing free text. Creates an ``ApprovalItem`` (source
+``PARKED_CONTEXT`` so the existing mid-execution resume path restores the
+run) marked both as a clarification (so the task moves to
+``AWAITING_INPUT`` while it waits) and as a decision (so the human's
+choice is recorded as a project-brain DECISION entry on resume). The
+chosen option's writeup rides back in as the decision the parked agent
+continues with, injected by ``ApprovalGate.build_resume_message``.
 """
 
 import json
 from datetime import UTC, datetime
-from typing import ClassVar, override
+from typing import ClassVar, Final, Self, override
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.evidence import EvidencePackage, RecommendedAction
+from synthorg.core.plan import PlanOption, validate_decision_options
+from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
@@ -38,9 +46,56 @@ logger = get_logger(__name__)
 #: ``arch:decide`` action type.
 _DECISION_ACTION_TYPE: str = "decision:project"
 
+#: Every project decision must offer at least two structured options so the
+#: operator always picks by option id rather than approving with no decision.
+_MIN_OPTIONS: Final[int] = 2
+
 #: Bound on the number of options a single decision may present, so a
 #: runaway model cannot flood the human with choices.
 _MAX_OPTIONS: int = 12
+
+#: Cap for the evidence package's compact ``title`` label, derived from the
+#: (up to 4096-char) question so the title stays a short summary distinct from
+#: the full ``narrative``.
+_TITLE_MAX_LEN: Final[int] = 120
+
+
+def _short_title(question: str) -> NotBlankStr:
+    """Derive a compact label from the (possibly long) decision question.
+
+    Returns:
+        The whitespace-collapsed question, truncated to a short label.
+    """
+    compact = " ".join(question.split())
+    if len(compact) <= _TITLE_MAX_LEN:
+        return NotBlankStr(compact)
+    return NotBlankStr(compact[: _TITLE_MAX_LEN - 3].rstrip() + "...")
+
+
+#: The lone recommended action on an options decision: approve = proceed
+#: with the option the operator picks.
+_PROCEED_ACTION: RecommendedAction = RecommendedAction(
+    action_type=NotBlankStr("approve"),
+    label=NotBlankStr("Approve with the selected option"),
+    description=NotBlankStr("Proceed with the option you pick."),
+)
+
+
+class DecisionOption(BaseModel):
+    """One option offered for a project decision, with its tradeoffs."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr = Field(max_length=64, description="Stable option identifier")
+    title: NotBlankStr = Field(max_length=200, description="Short option title")
+    summary: NotBlankStr = Field(
+        max_length=4096,
+        description="The option's tradeoffs and rationale, so the operator can choose",
+    )
+    recommended: bool = Field(
+        default=False,
+        description="Whether you recommend this option (exactly one must be true)",
+    )
 
 
 class RequestProjectDecisionArgs(BaseModel):
@@ -52,11 +107,52 @@ class RequestProjectDecisionArgs(BaseModel):
         max_length=4096,
         description="The decision to put to the human (what must be chosen)",
     )
-    options: tuple[NotBlankStr, ...] = Field(
-        default=(),
+    options: tuple[DecisionOption, ...] = Field(
+        min_length=_MIN_OPTIONS,
         max_length=_MAX_OPTIONS,
-        description="The options to choose between (may be empty for open-ended)",
+        description=(
+            "The options to choose between, each with a title, a writeup of "
+            "its tradeoffs, and whether you recommend it (at least two, "
+            "exactly one recommended, unique ids)."
+        ),
     )
+
+    @model_validator(mode="after")
+    def _validate_options(self) -> Self:
+        """Enforce the decision-option invariants at the boundary type itself.
+
+        Reuses the shared :func:`validate_decision_options` so the args model
+        rejects malformed options (fewer than two, not exactly one recommended,
+        duplicate ids) at parse time, rather than deferring the check to the
+        downstream :class:`EvidencePackage` construction. Every project
+        decision offers structured options, so the operator always picks by
+        option id rather than being able to approve with no decision at all.
+
+        Returns:
+            The validated args.
+        """
+        validate_decision_options(
+            entity_id="request_project_decision",
+            kind=PlanItemKind.DECISION,
+            options=self.plan_options(),
+        )
+        return self
+
+    def plan_options(self) -> tuple[PlanOption, ...]:
+        """Project the options onto the shared :class:`PlanOption` shape.
+
+        Returns:
+            The options as ``PlanOption``s (always at least two).
+        """
+        return tuple(
+            PlanOption(
+                id=opt.id,
+                title=opt.title,
+                summary=opt.summary,
+                recommended=opt.recommended,
+            )
+            for opt in self.options
+        )
 
 
 class RequestProjectDecisionTool(BaseTool):
@@ -86,10 +182,11 @@ class RequestProjectDecisionTool(BaseTool):
             name="request_project_decision",
             description=(
                 "Put a project-shaping decision you cannot make on your own "
-                "to a human (a framework choice, a packaging option, an asset "
-                "direction). Provide the question and, when the choice is "
-                "between known options, list them. Execution pauses until the "
-                "human decides; their choice is recorded and given back to you."
+                "to a human (a framework choice, an architecture for the core "
+                "engine, an asset direction). List at least two options, each "
+                "with a title, a writeup of its tradeoffs, and whether you "
+                "recommend it (mark exactly one). Execution pauses until the "
+                "human picks; their choice is recorded and given back to you."
             ),
             category=ToolCategory.OTHER,
             action_type="comms:internal",
@@ -108,12 +205,14 @@ class RequestProjectDecisionTool(BaseTool):
         """Create a decision item and signal parking.
 
         Args:
-            arguments: Must contain ``question``; ``options`` is optional.
+            arguments: Must contain ``question`` and ``options`` (at least two,
+                each carrying the rich per-option writeups).
 
         Returns:
             ``ToolExecutionResult`` with ``requires_parking=True``,
             ``clarification=True`` and ``decision=True`` in metadata on
-            success, or an error result on failure.
+            success, or an error result on failure (invalid args, malformed
+            options, or a store failure).
         """
         try:
             args = parse_typed(
@@ -136,20 +235,46 @@ class RequestProjectDecisionTool(BaseTool):
             )
 
         question = args.question.strip()
-        options = tuple(opt.strip() for opt in args.options)
         approval_id = str(uuid4())
+        # One timestamp for the whole decision so the evidence package and the
+        # approval item share it. Options are already validated by
+        # ``RequestProjectDecisionArgs``'s model validator (rejected at
+        # ``parse_typed`` above), so building the evidence cannot fail here.
+        now = datetime.now(UTC)
+        evidence = self._build_evidence(approval_id, args, now)
 
-        store_error = await self._persist_item(approval_id, question, options)
+        store_error = await self._persist_item(approval_id, args, evidence, now)
         if store_error is not None:
             return store_error
 
-        return self._build_success(approval_id, question, options)
+        return self._build_success(approval_id, question, args.options)
+
+    def _build_evidence(
+        self, approval_id: str, args: RequestProjectDecisionArgs, now: datetime
+    ) -> EvidencePackage:
+        """Build the decision evidence package carrying the rich options.
+
+        Returns:
+            An :class:`EvidencePackage` carrying the rich options.
+        """
+        return EvidencePackage(
+            id=NotBlankStr(approval_id),
+            title=_short_title(args.question),
+            narrative=args.question,
+            recommended_actions=(_PROCEED_ACTION,),
+            options=args.plan_options(),
+            source_agent_id=NotBlankStr(self._agent_id),
+            task_id=NotBlankStr(self._task_id) if self._task_id else None,
+            risk_level=ApprovalRiskLevel.LOW,
+            created_at=now,
+        )
 
     async def _persist_item(
         self,
         approval_id: str,
-        question: str,
-        options: tuple[str, ...],
+        args: RequestProjectDecisionArgs,
+        evidence: EvidencePackage,
+        now: datetime,
     ) -> ToolExecutionResult | None:
         """Create and persist the decision approval item.
 
@@ -158,30 +283,36 @@ class RequestProjectDecisionTool(BaseTool):
         Returns:
             The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
         """
-        try:
-            from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
-            from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
+        from synthorg.approval.enums import ApprovalSource  # noqa: PLC0415
+        from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
 
-            item = ApprovalItem(
-                id=UUID(approval_id),
-                action_type=_DECISION_ACTION_TYPE,
-                title="Project decision requested",
-                description=question,
-                requested_by=self._agent_id,
-                risk_level=ApprovalRiskLevel.LOW,
-                # Reuse the parked-context source so the existing
-                # mid-execution resume path restores the run; the decision
-                # marker below drives the project-brain DECISION record.
-                source=ApprovalSource.PARKED_CONTEXT,
-                created_at=datetime.now(UTC),
-                task_id=self._task_id,
-                metadata={
-                    "source": "request_project_decision",
-                    "clarification": "true",
-                    "decision": "true",
-                    "options": json.dumps(list(options)),
-                },
-            )
+        # The brain-DECISION record reads the alternatives from this titles
+        # list; the rich per-option writeups live on the evidence package the
+        # operator picks from. Constructed outside the try so a construction
+        # bug surfaces distinctly from a store outage.
+        option_titles = [opt.title for opt in args.options]
+        item = ApprovalItem(
+            id=UUID(approval_id),
+            action_type=_DECISION_ACTION_TYPE,
+            title="Project decision requested",
+            description=args.question,
+            requested_by=self._agent_id,
+            risk_level=ApprovalRiskLevel.LOW,
+            # Reuse the parked-context source so the existing mid-execution
+            # resume path restores the run; the decision marker below drives
+            # the project-brain DECISION record.
+            source=ApprovalSource.PARKED_CONTEXT,
+            created_at=now,
+            task_id=self._task_id,
+            evidence_package=evidence,
+            metadata={
+                "source": "request_project_decision",
+                "clarification": "true",
+                "decision": "true",
+                "options": json.dumps(option_titles),
+            },
+        )
+        try:
             await self._approval_store.add(item)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
@@ -203,7 +334,7 @@ class RequestProjectDecisionTool(BaseTool):
         self,
         approval_id: str,
         question: str,
-        options: tuple[str, ...],
+        options: tuple[DecisionOption, ...],
     ) -> ToolExecutionResult:
         """Build the success result with parking + decision metadata.
 
@@ -218,7 +349,9 @@ class RequestProjectDecisionTool(BaseTool):
             risk_level=ApprovalRiskLevel.LOW.value,
             title="Project decision requested",
         )
-        options_hint = f" Options: {', '.join(options)}." if options else ""
+        options_hint = (
+            f" Options: {', '.join(opt.title for opt in options)}." if options else ""
+        )
         return ToolExecutionResult(
             content=(
                 f"Decision requested (id={approval_id}). Execution will pause "

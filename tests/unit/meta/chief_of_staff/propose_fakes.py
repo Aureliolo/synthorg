@@ -7,7 +7,6 @@ suites share one set of repository doubles and one proposer builder.
 """
 
 from datetime import UTC, date, datetime
-from uuid import uuid4
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import (
@@ -22,14 +21,14 @@ from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     ProposeArgs,
 )
+from synthorg.meta.chief_of_staff.plan_intake import ConversationalPlanDispatcher
 from synthorg.meta.chief_of_staff.propose import ChiefOfStaffProposer
 from synthorg.meta.chief_of_staff.routing import RoleRouter
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import FakeClock
+from tests._shared import FakeClock, as_uuid
 from tests._shared.conversation_fakes import (
     FakeConversationRepo,
-    FakeProposalRepo,
     FakeTurnRepo,
 )
 from tests._shared.scripted_provider import ScriptedProvider
@@ -52,7 +51,7 @@ def make_identity(  # noqa: PLR0913 -- test identity builder: many independent k
         A registered-shaped identity with the given role and provider.
     """
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid(name),
         name=NotBlankStr(name),
         role=NotBlankStr(role),
         department=NotBlankStr(department),
@@ -83,29 +82,32 @@ async def build_registry(*identities: AgentIdentity) -> AgentRegistryService:
     return registry
 
 
-def build_proposer(
+def build_proposer(  # noqa: PLR0913 -- test builder: independent DI knobs
     *,
     provider: ScriptedProvider,
     config: ChiefOfStaffConfig | None = None,
     role_router: RoleRouter | None = None,
     provider_registry: ProviderRegistry | None = None,
     config_resolver: ConfigResolver | None = None,
+    plan_dispatcher: ConversationalPlanDispatcher | None = None,
 ) -> tuple[
     ChiefOfStaffProposer,
     FakeConversationRepo,
     FakeTurnRepo,
-    FakeProposalRepo,
     ApprovalStore,
 ]:
     """Build a proposer over in-memory doubles for the test suites.
 
+    When *plan_dispatcher* is supplied it is attached so the proposer can
+    draft a plan for an accepted work brief; without it, the act path raises
+    on a work brief (matching an unwired pipeline).
+
     Returns:
-        The proposer and its conversation / turn / proposal repos and
-        the approval store, so a test can inspect persisted state.
+        The proposer and its conversation / turn repos and the approval
+        store, so a test can inspect persisted state.
     """
     conv_repo = FakeConversationRepo()
     turn_repo = FakeTurnRepo()
-    proposal_repo = FakeProposalRepo()
     approval_store = ApprovalStore()
     # Routing is gated per turn on ``routing_enabled``; a test that injects a
     # router wants it to fire, so default that flag on when a router is given.
@@ -120,14 +122,15 @@ def build_proposer(
         ),
         conversation_repo=conv_repo,
         turn_repo=turn_repo,
-        proposal_repo=proposal_repo,
         approval_store=approval_store,
         clock=FakeClock(start=START),
         role_router=role_router,
         provider_registry=provider_registry,
         config_resolver=config_resolver,
     )
-    return proposer, conv_repo, turn_repo, proposal_repo, approval_store
+    if plan_dispatcher is not None:
+        proposer.attach_plan_dispatcher(plan_dispatcher)
+    return proposer, conv_repo, turn_repo, approval_store
 
 
 # The repo doubles live in ``tests._shared.conversation_fakes`` now; they are
@@ -136,7 +139,6 @@ def build_proposer(
 __all__ = [
     "START",
     "FakeConversationRepo",
-    "FakeProposalRepo",
     "FakeTurnRepo",
     "ProposeArgs",
     "build_proposer",

@@ -77,7 +77,6 @@ _ALLOWED_ANALYZE_STMTS: dict[str, str] = {
     "cost_records": "ANALYZE cost_records",
     "decision_records": "ANALYZE decision_records",
     "conversations": "ANALYZE conversations",
-    "conversational_proposals": "ANALYZE conversational_proposals",
     "conversation_invites": "ANALYZE conversation_invites",
     "webhook_receipts": "ANALYZE webhook_receipts",
 }
@@ -99,11 +98,6 @@ _ALLOWED_EXPLAIN_STMTS: dict[str, str] = {
     "SELECT * FROM conversations ORDER BY created_at DESC, id DESC LIMIT 50": (
         "EXPLAIN QUERY PLAN SELECT * FROM conversations "
         "ORDER BY created_at DESC, id DESC LIMIT 50"
-    ),
-    "SELECT * FROM conversational_proposals WHERE conversation_id = ? "
-    "ORDER BY created_at DESC, id DESC LIMIT 50": (
-        "EXPLAIN QUERY PLAN SELECT * FROM conversational_proposals "
-        "WHERE conversation_id = ? ORDER BY created_at DESC, id DESC LIMIT 50"
     ),
     "SELECT * FROM conversation_invites WHERE target_agent_id = ? LIMIT 50": (
         "EXPLAIN QUERY PLAN SELECT * FROM conversation_invites "
@@ -224,14 +218,6 @@ async def _seed_conversation_family(backend: SQLitePersistenceBackend) -> None:
             "VALUES (?, ?, ?, ?)",
             (sid(f"conv-{i:03d}"), "system", _iso(i), _iso(i)),
         )
-    conv = sid("conv-000")
-    for i in range(10):
-        await db.execute(
-            "INSERT INTO conversational_proposals "
-            "(id, conversation_id, approval_id, work_item_json, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (sid(f"prop-{i:03d}"), conv, sid(f"appr-{i:03d}"), "{}", _iso(i)),
-        )
     # One invite per conversation: the partial unique index
     # idx_cinv_one_pending_per_target forbids two pending invites with the
     # same (conversation_id, target_agent_id), and new invites default to
@@ -287,21 +273,6 @@ class TestConversationFamilyPerfIndices:
         )
         assert "idx_conversations_created_id" in plan, (
             f"(created_at DESC, id DESC) index not used for list_items:\n{plan}"
-        )
-
-    async def test_proposals_by_conversation_index_used(
-        self,
-        on_disk_backend: SQLitePersistenceBackend,
-    ) -> None:
-        await _seed_conversation_family(on_disk_backend)
-        plan = await _explain_plan(
-            on_disk_backend,
-            "SELECT * FROM conversational_proposals WHERE conversation_id = ? "
-            "ORDER BY created_at DESC, id DESC LIMIT 50",
-            sid("conv-000"),
-        )
-        assert "idx_cp_conversation_id" in plan, (
-            f"(conversation_id, created_at DESC) index not used:\n{plan}"
         )
 
     async def test_invites_by_target_agent_index_used(

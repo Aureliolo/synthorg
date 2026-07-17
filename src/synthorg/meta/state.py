@@ -38,9 +38,6 @@ from synthorg.persistence.conversation_invite_protocol import (
 from synthorg.persistence.conversation_participant_protocol import (
     ConversationParticipantRepository,
 )
-from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalRepository,
-)
 
 
 class MetaStateSlice(BaseFeatureStateSlice):
@@ -58,7 +55,6 @@ class MetaStateSlice(BaseFeatureStateSlice):
     chief_of_staff_proposer: ChiefOfStaffProposer | None = None
     chief_of_staff_chat: ChiefOfStaffChat | None = None
     org_inflection_monitor: OrgInflectionMonitor | None = None
-    conversational_proposal_repo: ConversationalProposalRepository | None = None
     conversation_invite_repo: ConversationInviteRepository | None = None
     conversation_participant_repo: ConversationParticipantRepository | None = None
     conversational_resume_service: ConversationalResumeService | None = None
@@ -236,20 +232,6 @@ def chief_of_staff_proposer_of(
     return require_service(
         app_state.slice(MetaStateSlice).chief_of_staff_proposer,
         "Chief of Staff Proposer",
-    )
-
-
-def conversational_proposal_repo_of(
-    app_state: AppStateSliceMixin,
-) -> ConversationalProposalRepository:
-    """Resolve the conversational proposal repo from its slice, or raise 503.
-
-    Returns:
-        The wired conversational proposal repository.
-    """
-    return require_service(
-        app_state.slice(MetaStateSlice).conversational_proposal_repo,
-        "Conversational Proposal Repository",
     )
 
 

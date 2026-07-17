@@ -31,22 +31,3 @@ class ConversationStatus(StrEnum):
     ACTIVE = "active"
     PROPOSED = "proposed"
     CLOSED = "closed"
-
-
-class ConversationalProposalStatus(StrEnum):
-    """Lifecycle state of a conversational work proposal.
-
-    Attributes:
-        PENDING: Awaiting the human approval decision.
-        EXECUTING: Approved, pipeline run in flight. Acquired via
-            PENDING -> EXECUTING CAS so only one concurrent decision
-            drives the pipeline; reverted to PENDING on failure
-            (retryable) or advanced to EXECUTED on success.
-        EXECUTED: Approved; the work item ran through the pipeline.
-        REJECTED: Declined; the work item never reached the pipeline.
-    """
-
-    PENDING = "pending"
-    EXECUTING = "executing"
-    EXECUTED = "executed"
-    REJECTED = "rejected"

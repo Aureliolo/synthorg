@@ -268,7 +268,6 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
         config=chief_of_staff_config,
         conversation_repo=repositories.conversation_repo,
         turn_repo=repositories.turn_repo,
-        proposal_repo=repositories.proposal_repo,
         approval_store=approval_store,
         clock=clock,
         cost_tracker=cost_tracker,

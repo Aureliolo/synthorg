@@ -22,7 +22,6 @@ from pydantic import (
 
 from synthorg.approval.enums import ApprovalStatus
 from synthorg.communication.conversation.enums import (
-    ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
 )
@@ -412,17 +411,19 @@ class ConversationTurn(BaseModel):
 
 
 class ProposedWork(BaseModel):
-    """A single human-shaped work spec emitted by the clarify step.
+    """A single human-shaped work brief emitted by the clarify step.
 
-    Maps one-to-one onto the buildable fields of the work pipeline's
-    ``WorkItem`` entry contract; provenance and ids are added when the
-    proposal is accepted, not here.
+    Maps onto the buildable fields of the work pipeline's ``WorkItem``
+    entry contract. The brief is not fragmented into approvable pieces:
+    it becomes ONE objective that the owner decomposes into a single
+    ``Plan``, reviewed holistically in Plan Review. Provenance and ids
+    are added when the plan is drafted, not here.
 
     Attributes:
         title: Short human-readable work title.
         raw_intent: Detailed request / description body.
-        project: Project the work belongs to (optional; resolved at
-            acceptance when absent).
+        project: Project the work belongs to (optional; provisioned at
+            plan-draft time when absent).
         priority: Work priority.
         task_type: Classification of the work type.
         estimated_complexity: Complexity estimate (drives routing).
@@ -481,25 +482,28 @@ class ProposeDecision(BaseModel):
     """Structured output of one clarify-or-propose model turn.
 
     Exactly one branch is taken: either the model asks a single clarifying
-    question, or it emits one or more concrete work proposals and/or steering
-    directives. Clarification is mutually exclusive with proposing.
+    question, or it emits ONE concrete work brief and/or one-or-more steering
+    directives. A single conversational request becomes a single objective
+    (one ``Plan``, reviewed as a whole), never a set of independently
+    approvable pieces. Clarification is mutually exclusive with proposing.
 
     Attributes:
         needs_clarification: ``True`` when the request is still
             underspecified and a question is being asked.
         clarifying_question: The question to put back to the human;
             required iff ``needs_clarification``.
-        proposals: The proposed work items.
+        work: The single work brief to draft a plan for; ``None`` when the
+            turn only steers an in-flight project.
         steering: The proposed steering directives (redirect / hint an
-            in-flight project). At least one of ``proposals`` / ``steering``
-            is non-empty iff not ``needs_clarification``.
+            in-flight project). At least one of ``work`` / ``steering``
+            is present iff not ``needs_clarification``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     needs_clarification: bool
     clarifying_question: NotBlankStr | None = None
-    proposals: tuple[ProposedWork, ...] = ()
+    work: ProposedWork | None = None
     steering: tuple[ProposedSteering, ...] = ()
 
     @model_validator(mode="after")
@@ -516,16 +520,13 @@ class ProposeDecision(BaseModel):
             if self.clarifying_question is None:
                 msg = "clarifying_question is required when needs_clarification is True"
                 raise ValueError(msg)
-            if self.proposals or self.steering:
-                msg = (
-                    "proposals/steering must be empty when needs_clarification is True"
-                )
+            if self.work is not None or self.steering:
+                msg = "work/steering must be empty when needs_clarification is True"
                 raise ValueError(msg)
         else:
-            if not self.proposals and not self.steering:
+            if self.work is None and not self.steering:
                 msg = (
-                    "proposals or steering must be non-empty when "
-                    "needs_clarification is False"
+                    "work or steering must be present when needs_clarification is False"
                 )
                 raise ValueError(msg)
             if self.clarifying_question is not None:
@@ -534,33 +535,6 @@ class ProposeDecision(BaseModel):
                 )
                 raise ValueError(msg)
         return self
-
-
-class ConversationalProposal(BaseModel):
-    """A proposed work item parked behind a human approval decision.
-
-    Links one ``ApprovalItem`` (by ``approval_id``) to the serialised
-    ``WorkItem`` to run if and only if the human approves. The work
-    item is stored as JSON so the approval-decision seam can rebuild
-    it without re-running the model.
-
-    Attributes:
-        id: Unique proposal identifier.
-        conversation_id: Originating conversation id.
-        approval_id: The gating approval-queue item id.
-        work_item_json: ``WorkItem.model_dump_json()`` payload.
-        status: Lifecycle state (pending, executed, rejected).
-        created_at: When the proposal was parked.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    id: UUID = Field(default_factory=uuid4)
-    conversation_id: NotBlankStr
-    approval_id: NotBlankStr
-    work_item_json: NotBlankStr
-    status: ConversationalProposalStatus = ConversationalProposalStatus.PENDING
-    created_at: AwareDatetime
 
 
 # ── Proposer service boundary ─────────────────────────────────────
@@ -586,24 +560,30 @@ class ProposeArgs(BaseModel):
     project: NotBlankStr | None = None
 
 
-class ProposedApprovalSummary(BaseModel):
-    """One parked proposal, summarised for the API response.
+class PlanDraftSummary(BaseModel):
+    """The plan-draft handoff for one accepted work brief.
+
+    A conversational request that clears clarification becomes ONE
+    objective task whose owner drafts a single ``Plan``; the plan is
+    then parked for holistic human review (Plan Review), never a set of
+    per-item approvals. This summary names the objective task the plan is
+    being drafted for so the chat can deep-link the operator to the plan
+    once decomposition completes.
 
     Attributes:
-        approval_id: The gating approval-queue item id.
-        proposal_id: The conversational proposal id.
-        title: Proposed work title.
-        task_type: Classification of the proposed work.
-        priority: Proposed work priority.
+        task_id: The objective task the plan is being drafted for; the
+            chat subscribes to its progress stream and the parked
+            plan-review approval carries the same id.
+        project: The project the work was filed under (provisioned when
+            the request named none).
+        title: The objective title.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    approval_id: NotBlankStr
-    proposal_id: NotBlankStr
+    task_id: NotBlankStr
+    project: NotBlankStr
     title: NotBlankStr
-    task_type: TaskType
-    priority: Priority
 
 
 class SteeringProposalSummary(BaseModel):
@@ -627,17 +607,18 @@ class SteeringProposalSummary(BaseModel):
 class ProposeResult(BaseModel):
     """Outcome of one ``converse`` turn.
 
-    Exactly one branch: a clarifying question (conversation stays
-    open) or one-or-more parked proposals (conversation moves to
-    PROPOSED).
+    Exactly one branch: a clarifying question (conversation stays open),
+    or the turn acts (conversation moves to PROPOSED) by drafting a plan
+    for a work brief and/or parking steering directives.
 
     Attributes:
         conversation_id: The conversation this turn belongs to.
         status: ``"needs_clarification"`` or ``"proposed"``.
         clarifying_question: The question to put to the human; set iff
             ``status == "needs_clarification"``.
-        proposals: Parked proposal summaries; non-empty iff
-            ``status == "proposed"``.
+        plan_draft: The plan-draft handoff when the turn accepted a work
+            brief (its owner is drafting a single ``Plan`` for holistic
+            Plan Review); ``None`` on a steering-only or clarification turn.
         conversation_closed: ``True`` when the clarification cap was
             reached and the conversation was force-closed.
         responder_role: Role of the agent that answered this turn when
@@ -660,7 +641,7 @@ class ProposeResult(BaseModel):
     conversation_id: NotBlankStr
     status: Literal["needs_clarification", "proposed"]
     clarifying_question: NotBlankStr | None = None
-    proposals: tuple[ProposedApprovalSummary, ...] = ()
+    plan_draft: PlanDraftSummary | None = None
     steering: tuple[SteeringProposalSummary, ...] = ()
     conversation_closed: bool = False
     responder_role: NotBlankStr | None = None
@@ -674,12 +655,13 @@ class ProposeResult(BaseModel):
         """Enforce branch invariants between ``status`` and payload.
 
         ``needs_clarification``: ``clarifying_question`` is required and
-        ``proposals`` must be empty (the conversation stays open for
-        another turn). ``proposed``: ``proposals`` must be non-empty
-        and ``clarifying_question`` must be ``None`` (the turn parked
-        work, no follow-up question to ask). Catches caller mistakes
-        at construction instead of letting an ambiguous payload reach
-        the API response.
+        both ``plan_draft`` and ``steering`` must be empty (the
+        conversation stays open for another turn). ``proposed``: at least
+        one of ``plan_draft`` / ``steering`` must be present and
+        ``clarifying_question`` must be ``None`` (the turn acted, no
+        follow-up question to ask). Catches caller mistakes at
+        construction instead of letting an ambiguous payload reach the
+        API response.
 
         Returns:
             ``Self`` instance.
@@ -694,17 +676,15 @@ class ProposeResult(BaseModel):
                     "status is 'needs_clarification'"
                 )
                 raise ValueError(msg)
-            if self.proposals or self.steering:
+            if self.plan_draft is not None or self.steering:
                 msg = (
-                    "proposals/steering must be empty when "
+                    "plan_draft/steering must be empty when "
                     "status is 'needs_clarification'"
                 )
                 raise ValueError(msg)
         else:
-            if not self.proposals and not self.steering:
-                msg = (
-                    "proposals or steering must be non-empty when status is 'proposed'"
-                )
+            if self.plan_draft is None and not self.steering:
+                msg = "plan_draft or steering must be present when status is 'proposed'"
                 raise ValueError(msg)
             if self.clarifying_question is not None:
                 msg = "clarifying_question must be None when status is 'proposed'"

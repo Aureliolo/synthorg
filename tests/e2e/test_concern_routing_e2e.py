@@ -34,7 +34,7 @@ def _classification(*, topic: str, role: str, confidence: float) -> str:
 
 _CLARIFY = (
     '{"needs_clarification": true, '
-    '"clarifying_question": "Could you say more?", "proposals": []}'
+    '"clarifying_question": "Could you say more?", "work": null}'
 )
 
 
@@ -70,7 +70,7 @@ async def _drive_routed_turn(*, topic: str, role: str, message: str) -> None:
         max_tokens=200,
         timeout_seconds=120.0,
     )
-    proposer, _, turn_repo, _, _ = build_proposer(
+    proposer, _, turn_repo, _ = build_proposer(
         provider=provider,
         config=ChiefOfStaffConfig(
             propose_enabled=True,

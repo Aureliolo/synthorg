@@ -2,29 +2,24 @@
 """Shared in-memory conversation repository doubles.
 
 One canonical set of ``ConversationRepository`` / ``ConversationTurnRepository``
-/ ``ConversationalProposalRepository`` doubles for every suite that drives the
-conversational-org persistence seam (the proposer suites, the charter service
-suite, the dispatch suite). Consolidated so a protocol change (a new filter
-kwarg, a new method) updates one place instead of silently drifting across
-per-file copies -- the exact drift that lets a fake fall behind the protocol
-under typeguard's whole-protocol check.
+doubles for every suite that drives the conversational-org persistence seam
+(the proposer suites, the charter service suite, the dispatch suite).
+Consolidated so a protocol change (a new filter kwarg, a new method) updates
+one place instead of silently drifting across per-file copies -- the exact
+drift that lets a fake fall behind the protocol under typeguard's
+whole-protocol check.
 """
 
 from datetime import datetime
 
 from synthorg.communication.conversation.enums import (
-    ConversationalProposalStatus,
     ConversationStatus,
 )
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
-    ConversationalProposal,
     ConversationTurn,
 )
 from synthorg.persistence.conversation_protocol import ConversationTurnFilterSpec
-from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalFilterSpec,
-)
 
 
 class FakeConversationRepo:
@@ -120,63 +115,4 @@ class FakeTurnRepo:
         return before - len(self.turns)
 
 
-class FakeProposalRepo:
-    """In-memory ``ConversationalProposalRepository`` double."""
-
-    def __init__(self) -> None:
-        self.items: dict[str, ConversationalProposal] = {}
-
-    async def save(self, entity: ConversationalProposal) -> None:
-        self.items[str(entity.id)] = entity
-
-    async def get(self, entity_id: str) -> ConversationalProposal | None:
-        return self.items.get(entity_id)
-
-    async def delete(self, entity_id: str) -> bool:
-        return self.items.pop(entity_id, None) is not None
-
-    async def list_items(
-        self, *, limit: int = 100, offset: int = 0
-    ) -> tuple[ConversationalProposal, ...]:
-        return tuple(self.items.values())[offset : offset + limit]
-
-    async def transition_if(
-        self,
-        entity_id: str,
-        from_state: ConversationalProposalStatus,
-        to_state: ConversationalProposalStatus,
-        **updates: object,
-    ) -> bool:
-        current = self.items.get(entity_id)
-        if current is None or current.status is not from_state:
-            return False
-        self.items[entity_id] = current.model_copy(update={"status": to_state})
-        return True
-
-    async def query(
-        self,
-        filter_spec: ConversationalProposalFilterSpec,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[ConversationalProposal, ...]:
-        rows = [
-            p
-            for p in self.items.values()
-            if (
-                filter_spec.approval_id is None
-                or p.approval_id == filter_spec.approval_id
-            )
-            and (
-                filter_spec.conversation_id is None
-                or p.conversation_id == filter_spec.conversation_id
-            )
-            and (filter_spec.status is None or p.status is filter_spec.status)
-        ]
-        return tuple(rows[offset : offset + limit])
-
-    async def count(self, filter_spec: ConversationalProposalFilterSpec) -> int:
-        return len(await self.query(filter_spec))
-
-
-__all__ = ["FakeConversationRepo", "FakeProposalRepo", "FakeTurnRepo"]
+__all__ = ["FakeConversationRepo", "FakeTurnRepo"]

@@ -35,9 +35,6 @@ from synthorg.persistence.conversation_invite_protocol import (
 from synthorg.persistence.conversation_participant_protocol import (
     ConversationParticipantRepository,
 )
-from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalRepository,
-)
 from tests._shared import make_app_state, mock_of
 from tests._shared.conversation_fakes import FakeConversationRepo, FakeTurnRepo
 
@@ -79,7 +76,6 @@ def _service(
         The resume service; only its conversation/turn reads are exercised.
     """
     return ConversationalResumeService(
-        proposal_repo=mock_of[ConversationalProposalRepository](),
         invite_repo=mock_of[ConversationInviteRepository](),
         participant_repo=mock_of[ConversationParticipantRepository](),
         conversation_repo=conv_repo,

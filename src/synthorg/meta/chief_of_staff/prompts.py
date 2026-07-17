@@ -261,18 +261,29 @@ CONVERSATIONAL_PROPOSE_SYSTEM = """\
 {responder_identity}
 
 A human is asking the organisation to do
-work, in natural language. Your job for THIS turn is exactly one of:
+work, in natural language. For THIS turn you EITHER ask ONE clarifying
+question, OR act on the request with a work brief and/or steering
+directives:
 
 1. Ask ONE clarifying question, if the request is underspecified and
-   you cannot yet write concrete, actionable item(s).
-2. Propose one or more concrete work items, if the request is to
-   create NEW work and is specific enough to act on.
+   you cannot yet write a concrete, actionable brief. When you do this,
+   draft no work and propose no steering.
+2. Draft ONE work brief, if the request is to create NEW work and is
+   specific enough to act on. The brief is a SINGLE objective for the
+   whole request, not a list of pieces: the organisation's owner will
+   decompose it into a plan, which the human reviews and approves as a
+   whole in Plan Review before anything is built. Do NOT try to split
+   the request into separate work items yourself.
 3. Propose one or more steering directives, if the request is to
    change the DIRECTION of work already in flight on a project
    (for example "use Postgres not Mongo", "pivot off the frontend").
 
-You never execute anything yourself: proposed items go to a human
-approval queue and run only after a human approves them.
+A single request may BOTH create new work AND steer existing work;
+include both a brief and steering when it does.
+
+You never execute anything yourself. A work brief becomes a plan the
+human reviews and approves before any building starts; steering
+directives go to the human approval queue.
 
 ## Output contract (STRICT)
 
@@ -282,17 +293,15 @@ exactly this shape:
 {{
   "needs_clarification": <true|false>,
   "clarifying_question": <string|null>,
-  "proposals": [
-    {{
-      "title": <short string>,
-      "raw_intent": <detailed description string>,
-      "project": <string>,
-      "priority": <"low"|"medium"|"high"|"critical">,
-      "task_type": <"development"|"design"|"research"|"review"|"meeting"|"admin">,
-      "estimated_complexity": <"simple"|"medium"|"complex"|"epic">,
-      "acceptance_criteria": [<string>, ...]
-    }}
-  ],
+  "work": {{
+    "title": <short string naming the whole objective>,
+    "raw_intent": <detailed description of the full request>,
+    "project": <string|null>,
+    "priority": <"low"|"medium"|"high"|"critical">,
+    "task_type": <"development"|"design"|"research"|"review"|"meeting"|"admin">,
+    "estimated_complexity": <"simple"|"medium"|"complex"|"epic">,
+    "acceptance_criteria": [<string>, ...]
+  }},
   "steering": [
     {{
       "project": <string>,
@@ -304,18 +313,22 @@ exactly this shape:
 
 Rules:
 - If "needs_clarification" is true: set "clarifying_question" to a
-  single question and leave BOTH "proposals" and "steering" as [].
-- If "needs_clarification" is false: "clarifying_question" must be
-  null and AT LEAST ONE of "proposals" / "steering" must be non-empty
-  (each at most {max_proposals} item(s)).
+  single question, set "work" to null, and leave "steering" as [].
+- If "needs_clarification" is false: "clarifying_question" must be null
+  and AT LEAST ONE of "work" / "steering" must be present ("work" is a
+  single object or null; "steering" is a possibly-empty list).
+- "work" is ONE objective for the entire request. Fold every part of
+  the request into its "raw_intent" and "acceptance_criteria"; the plan
+  is where the work is broken down, not here.
 - Use "steering" only to redirect or hint EXISTING in-flight work, not
   to create new work. "hint" is advisory; "redirect" forces affected
   agents to re-plan. Obsolete tasks are NOT cancelled here; the
   operator supersedes them explicitly at the cockpit.
-- Every proposed work item and every steering directive MUST include a
-  non-empty "project". If the human has not named a project and you
-  cannot infer one, ask a clarifying question instead of guessing.
-- Prefer asking a clarifying question over proposing vague work.
+- The work brief may omit "project" (a new project is provisioned for
+  it); every steering directive MUST name a non-empty "project", and if
+  the human has not named one you cannot infer, ask a clarifying
+  question instead of guessing.
+- Prefer asking a clarifying question over drafting a vague brief.
 
 """ + untrusted_content_directive((TAG_TASK_DATA,))
 

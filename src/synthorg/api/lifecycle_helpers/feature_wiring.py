@@ -17,6 +17,7 @@ from synthorg.api.lifecycle_helpers.charter_wiring import _wire_charter_engine
 from synthorg.api.lifecycle_helpers.conversational_wiring import (
     wire_chief_of_staff_proposer,
     wire_conversational_actor,
+    wire_conversational_plan_dispatcher,
     wire_group_chat_service,
 )
 from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (
@@ -629,6 +630,9 @@ async def wire_features_on_startup(
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
     )
+    # Attach the plan dispatcher to the proposer now the pipeline is up, so a
+    # conversational work brief drafts one plan into Plan Review.
+    await wire_conversational_plan_dispatcher(app_state)
     # Sprint service: runs real sprints for agile_kanban orgs. Wired before
     # the board so the board's advisory sprint gate has its dependency.
     await wire_sprint_service(app_state)

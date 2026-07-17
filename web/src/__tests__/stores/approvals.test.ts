@@ -52,6 +52,7 @@ function resetStore() {
   _resetPendingTransitions()
   useApprovalsStore.setState({
     approvals: [],
+    total: 0,
     selectedApproval: null,
     loading: false,
     loadingDetail: false,
@@ -561,6 +562,8 @@ describe('handleWsEvent', () => {
       makeApproval('with-evidence', {
         evidence_package: {
           id: 'ev-1',
+          options: [],
+          chosen_option_id: null,
           title: 'Evidence Title',
           narrative: 'Narrative body',
           reasoning_trace: ['step 1', 'step 2'],
@@ -596,6 +599,39 @@ describe('handleWsEvent', () => {
     expect(stored?.evidence_package?.signatures).toHaveLength(1)
   })
 
+  it('drops invalid options and clears a chosen id that no longer matches', () => {
+    useApprovalsStore.setState({ approvals: [] })
+    const event = makeWsEvent(
+      makeApproval('evidence-options', {
+        evidence_package: {
+          id: 'ev-opt',
+          options: [
+            { id: 'a', title: 'Option A', summary: 'tradeoffs a', recommended: true },
+            { id: 'b', title: '', summary: 'tradeoffs b', recommended: false },
+          ],
+          chosen_option_id: 'b',
+          title: 'Decision',
+          narrative: 'Which one?',
+          reasoning_trace: [],
+          recommended_actions: [],
+          source_agent_id: 'agent-eng',
+          task_id: null,
+          risk_level: 'low',
+          metadata: {},
+          signature_threshold: 0,
+          signatures: [],
+          is_fully_signed: false,
+          created_at: '2026-04-21T00:00:00Z',
+        },
+      }),
+    )
+    useApprovalsStore.getState().handleWsEvent(event)
+    const evidence = useApprovalsStore.getState().approvals[0]?.evidence_package
+    // The blank-title option 'b' is dropped, and the pick that named it clears.
+    expect(evidence?.options.map((o) => o.id)).toEqual(['a'])
+    expect(evidence?.chosen_option_id).toBeNull()
+  })
+
   it('rejects approval whose evidence metadata contains non-string values', () => {
     useApprovalsStore.setState({ approvals: [] })
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -603,6 +639,8 @@ describe('handleWsEvent', () => {
       makeApproval('bad-evidence', {
         evidence_package: {
           id: 'ev-2',
+          options: [],
+          chosen_option_id: null,
           title: 't',
           narrative: 'n',
           reasoning_trace: [],
@@ -638,6 +676,8 @@ describe('handleWsEvent', () => {
         makeApproval('bad-chain-pos', {
           evidence_package: {
             id: 'ev-cp',
+            options: [],
+            chosen_option_id: null,
             title: 't',
             narrative: 'n',
             reasoning_trace: [],
@@ -680,6 +720,8 @@ describe('handleWsEvent', () => {
         makeApproval('bad-threshold', {
           evidence_package: {
             id: 'ev-th',
+            options: [],
+            chosen_option_id: null,
             title: 't',
             narrative: 'n',
             reasoning_trace: [],

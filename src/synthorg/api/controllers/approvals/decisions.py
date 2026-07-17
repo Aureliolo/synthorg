@@ -15,6 +15,10 @@ from pydantic import BaseModel
 from synthorg._core.features import require_service
 from synthorg.api.api_core_state import idempotency_service_of
 from synthorg.api.auth.controller_helpers import require_authenticated_user
+from synthorg.api.controllers.approvals._decision_resolution import (
+    record_chosen_option,
+    resolve_decision_reason,
+)
 from synthorg.api.controllers.approvals._enrichment import resolve_approval_context
 from synthorg.api.controllers.approvals._notify import (
     _decided_attribution,
@@ -285,16 +289,26 @@ class ApprovalsDecisionsController(Controller):
             item = await _get_approval_or_404(app_state, approval_id)
             _resolve_decision(request, item, approval_id)
             decided_by, decided_by_user_id = _decided_attribution()
+            decision_reason = resolve_decision_reason(
+                item, chosen_option_id=data.chosen_option_id, comment=data.comment
+            )
             now = datetime.now(UTC)
             previous_status = item.status
-            updated = item.model_copy(
-                update={
-                    "status": ApprovalStatus.APPROVED,
-                    "decided_at": now,
-                    "decided_by": decided_by,
-                    "decision_reason": data.comment,
-                },
+            update: dict[str, object] = {
+                "status": ApprovalStatus.APPROVED,
+                "decided_at": now,
+                "decided_by": decided_by,
+                "decision_reason": decision_reason,
+            }
+            # A decided decision fork records the operator's structured pick on
+            # the evidence package so downstream reads surface it without
+            # parsing the derived reason string.
+            chosen_evidence = record_chosen_option(
+                item, chosen_option_id=data.chosen_option_id
             )
+            if chosen_evidence is not None:
+                update["evidence_package"] = chosen_evidence
+            updated = item.model_copy(update=update)
             # ``_save_decision_and_notify`` emits the
             # ``APPROVAL_STATUS_TRANSITIONED`` log immediately after the
             # persistence write succeeds, so a downstream notification or
@@ -313,7 +327,7 @@ class ApprovalsDecisionsController(Controller):
                 decided_by=decided_by,
                 decided_by_user_id=decided_by_user_id,
                 previous_status=previous_status,
-                decision_reason=data.comment,
+                decision_reason=decision_reason,
                 ws_event=WsEventType.APPROVAL_APPROVED,
             )
             return response_obj.model_dump(mode="json")
