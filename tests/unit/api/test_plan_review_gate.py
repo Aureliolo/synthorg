@@ -52,6 +52,15 @@ class _FailingApprovalStore(ApprovalStore):
         raise QueryError(msg)
 
 
+class _UpdateFailingPlanRepository(FakePlanRepository):
+    """Plan repo whose ``update`` always fails, to exercise the double-fault."""
+
+    @override
+    async def update(self, plan: Plan, *, expected_version: int | None = None) -> None:
+        msg = "update boom"
+        raise QueryError(msg)
+
+
 def _result_task(subtask_id: str) -> Task:
     return Task(
         id=as_uuid(subtask_id),
@@ -209,7 +218,60 @@ class TestPlanReviewApprovalGate:
         persisted = await plans.list_items()
         assert len(persisted) == 1
         assert persisted[0].status is PlanStatus.FAILED
-        assert persisted[0].failure_reason is not None
+        assert persisted[0].failure_reason == "approval-store write failed"
+
+    async def test_fail_plan_write_failure_is_swallowed_not_raised(self) -> None:
+        # The compensating FAILED write is the one on the failure path; if it
+        # itself fails, fail_plan must NOT raise (that would reintroduce the 500
+        # this whole change removes). The plan stays PLANNING and it is logged.
+        plans = _UpdateFailingPlanRepository()
+        gate = PlanReviewApprovalGate(
+            approval_store=ApprovalStore(),
+            plans=plans,
+            clock=FakeClock(),
+        )
+        task = _result_task("root")
+        plan_id = await gate.open_plan(work_item=_work_item(), task=task)
+
+        # No exception escapes.
+        await gate.fail_plan(plan_id=plan_id, reason="decompose boom")
+
+        shell = await plans.get(NotBlankStr(str(plan_id)))
+        assert shell is not None
+        assert shell.status is PlanStatus.PLANNING
+
+    async def test_fail_plan_is_idempotent_on_already_failed(self) -> None:
+        plans = FakePlanRepository()
+        gate = PlanReviewApprovalGate(
+            approval_store=ApprovalStore(),
+            plans=plans,
+            clock=FakeClock(),
+        )
+        task = _result_task("root")
+        plan_id = await gate.open_plan(work_item=_work_item(), task=task)
+
+        await gate.fail_plan(plan_id=plan_id, reason="first")
+        first = await plans.get(NotBlankStr(str(plan_id)))
+        # A second compensation (e.g. the outer pipeline guard after the
+        # approval-store path already failed it) is a no-op, not a re-write.
+        await gate.fail_plan(plan_id=plan_id, reason="second")
+        second = await plans.get(NotBlankStr(str(plan_id)))
+
+        assert first is not None
+        assert second is not None
+        assert second.version == first.version
+        assert second.failure_reason == "first"
+
+    async def test_fail_plan_missing_shell_is_noop(self) -> None:
+        plans = FakePlanRepository()
+        gate = PlanReviewApprovalGate(
+            approval_store=ApprovalStore(),
+            plans=plans,
+            clock=FakeClock(),
+        )
+        # No shell opened; fail_plan on an unknown id must not raise.
+        await gate.fail_plan(plan_id=as_uuid("ghost"), reason="boom")
+        assert await plans.list_items() == ()
 
 
 class TestWirePlanReviewGate:

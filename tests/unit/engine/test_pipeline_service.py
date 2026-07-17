@@ -7,7 +7,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.persistence_errors import PersistenceVersionConflictError
+from synthorg.core.persistence_errors import (
+    PersistenceVersionConflictError,
+    QueryError,
+)
 from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
@@ -379,7 +382,42 @@ class TestPlanReviewGate:
         assert result.plan_review_handoff.approval_id is None
         cast("AsyncMock", gate.open_plan).assert_awaited_once()
         cast("AsyncMock", gate.fail_plan).assert_awaited_once()
+        # The failure reason threads through to the durable plan so Plan Review
+        # shows WHY it failed, not just that it did.
+        fail_call = cast("AsyncMock", gate.fail_plan).await_args
+        assert fail_call is not None
+        assert "decompose boom" in fail_call.kwargs["reason"]
         cast("AsyncMock", gate.request_plan_approval).assert_not_awaited()
+
+    async def test_approval_park_failure_marks_plan_failed_not_500(self) -> None:
+        # A failure AFTER decomposition (parking the approval) is now also
+        # compensated by the pipeline guard: FAILED plan + FAILED task +
+        # is_success=false, never an escaping 500.
+        coordinator = mock_of[MultiAgentCoordinator]()
+        pipeline, _ = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=_project(),
+            verdict=RoutingVerdict.SPLITTABLE,
+            coordinator=coordinator,
+            agents=(make_e2e_identity(),),
+        )
+        gate = mock_of[PlanReviewGate]()
+        cast("AsyncMock", gate.request_plan_approval).side_effect = QueryError(
+            "park boom"
+        )
+        pipeline.attach_plan_review_gate(gate)
+
+        result = await pipeline.run(_work_item(plan_required=True))
+
+        assert result.is_success is False
+        assert result.final_task_status is TaskStatus.FAILED
+        assert result.plan_review_handoff is not None
+        assert result.plan_review_handoff.approval_id is None
+        cast("AsyncMock", gate.request_plan_approval).assert_awaited_once()
+        cast("AsyncMock", gate.fail_plan).assert_awaited_once()
 
     async def test_splittable_dispatches_team_without_gate(self) -> None:
         coordinator = mock_of[MultiAgentCoordinator]()

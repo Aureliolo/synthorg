@@ -188,12 +188,12 @@ async function approveImpl(
       // The charter was approved (a human decided) but the run produced no
       // successful work: e.g. decomposition failed. Surface that instead of a
       // false success. The failure is durable and visible as a FAILED plan in
-      // Plan Review, so the operator can inspect the reason and re-run it.
+      // Plan Review, so the operator can inspect the reason and start a new run.
       useToastStore.getState().add({
         variant: 'error',
         title: 'Charter approved, but the run failed',
         description:
-          'The objective could not be decomposed into a plan. Open Plan Review for the failed plan and its reason, then re-run it.',
+          'The objective could not be prepared into a plan. Open Plan Review for the failed plan and its reason, then start a new project run.',
       })
     }
     return result

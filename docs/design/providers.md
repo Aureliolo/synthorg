@@ -413,7 +413,7 @@ Two built-in selectors are provided:
 
 | Selector | Behaviour |
 |----------|----------|
-| `QuotaAwareSelector` (default) | Prefer agent-eligible providers, then those with available quota, then cheapest; falls back to cheapest overall when all providers are exhausted |
+| `QuotaAwareSelector` (default) | Filter to providers with available quota first; within that pool (or all candidates when none have quota), prefer agent-eligible providers, then cheapest |
 | `CheapestSelector` | Prefer agent-eligible providers, then pick the cheapest candidate by total cost per 1k tokens, ignoring quota state |
 
 The selector is injected into `ModelResolver` (and transitively into `ModelRouter`)

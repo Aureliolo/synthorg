@@ -23,7 +23,11 @@ from synthorg.approval.state import approval_store_of
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock
+from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import ResourceNotFoundError, VersionConflictError
+from synthorg.core.persistence_errors import PersistenceVersionConflictError
+from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.plan_review import PlanReview
 from synthorg.core.task import Task
@@ -38,7 +42,10 @@ from synthorg.engine.pipeline.models import PlanReviewHandoff, WorkItem
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.pipeline import (
-    PIPELINE_PLAN_DECOMPOSITION_FAILED,
+    PIPELINE_PLAN_APPROVAL_PARK_FAILED,
+    PIPELINE_PLAN_FAIL_SHELL_MISSING,
+    PIPELINE_PLAN_FAIL_WRITE_FAILED,
+    PIPELINE_PLAN_MARKED_FAILED,
     PIPELINE_PLAN_SHELL_OPENED,
 )
 from synthorg.persistence.plan_protocol import PlanRepository
@@ -47,6 +54,11 @@ from synthorg.providers.registry import ProviderRegistry
 logger = get_logger(__name__)
 
 _PLAN_ACTION_TYPE = "plan:approve"
+
+# Bounded compare-and-swap retries when the plan is reworked concurrently with
+# its FAILED-compensation write, so a losing CAS re-reads and reapplies rather
+# than aborting the one write meant to make a failure visible.
+_MAX_FAIL_ATTEMPTS: Final[int] = 3
 
 #: ``ApprovalItem.metadata`` keys carrying resume context. The plan itself is
 #: durable (referenced by ``plan_id``); the approval only points at it.
@@ -232,9 +244,7 @@ class PlanReviewApprovalGate:
             # durable plan FAILED (it stays visible in Plan Review, carrying the
             # reason) rather than leaving a PENDING_REVIEW plan with no approval.
             logger.warning(
-                API_APP_STARTUP,
-                service="plan_review_gate",
-                note="approval-store write failed; marking plan FAILED",
+                PIPELINE_PLAN_APPROVAL_PARK_FAILED,
                 plan_id=str(durable_plan.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -251,34 +261,67 @@ class PlanReviewApprovalGate:
         )
 
     async def fail_plan(self, *, plan_id: UUID, reason: str) -> None:
-        """Mark the PLANNING shell FAILED so a failed run leaves a visible plan.
+        """Mark a plan FAILED so a failed run leaves a visible plan, best-effort.
 
-        Idempotent-ish: a missing shell (already pruned) is logged and skipped
-        rather than raised, since the caller is already on a failure path.
+        This is the compensating write on every plan-review failure path, so it
+        is hardened three ways: it is idempotent (a plan already FAILED, or a
+        missing shell, is a no-op), a concurrent rework is retried via CAS, and a
+        persistent write failure is logged, not raised. It must never mask the
+        original failure the caller is surfacing (a re-raised approval error, or
+        the failed handoff `_plan_review` returns) nor turn a handled failure
+        into a 500 -- which is exactly what an unguarded write here would do.
         """
-        plan = await self._plans.get(NotBlankStr(str(plan_id)))
-        if plan is None:
+        key = NotBlankStr(str(plan_id))
+        marked_reason = NotBlankStr(reason or "decomposition failed")
+
+        async def read() -> tuple[Plan, int]:
+            plan = await self._plans.get(key)
+            if plan is None:
+                msg = "plan shell missing"
+                raise ResourceNotFoundError(msg)
+            return plan, plan.version
+
+        async def write(plan: Plan, _version: int) -> None:
+            if plan.status is PlanStatus.FAILED:
+                return  # idempotent: a prior compensation already marked it
+            failed = plan.model_copy(
+                update={
+                    "status": PlanStatus.FAILED,
+                    "failure_reason": marked_reason,
+                    "version": plan.version + 1,
+                    "updated_at": self._clock.now(),
+                }
+            )
+            try:
+                await self._plans.update(failed, expected_version=plan.version)
+            except PersistenceVersionConflictError as exc:
+                # Translate to the domain twin CASRetryHandler retries on.
+                raise VersionConflictError(str(exc)) from exc
+
+        try:
+            await CASRetryHandler(
+                resource="plan_fail", max_attempts=_MAX_FAIL_ATTEMPTS
+            ).execute(read, write)
+        except ResourceNotFoundError:
             logger.warning(
-                PIPELINE_PLAN_DECOMPOSITION_FAILED,
-                plan_id=str(plan_id),
-                note="plan shell missing; cannot mark FAILED",
+                PIPELINE_PLAN_FAIL_SHELL_MISSING, plan_id=str(plan_id), reason=reason
             )
             return
-        now = self._clock.now()
-        failed = plan.model_copy(
-            update={
-                "status": PlanStatus.FAILED,
-                "failure_reason": NotBlankStr(reason or "decomposition failed"),
-                "version": plan.version + 1,
-                "updated_at": now,
-            }
-        )
-        await self._plans.update(failed, expected_version=plan.version)
-        logger.warning(
-            PIPELINE_PLAN_DECOMPOSITION_FAILED,
-            plan_id=str(plan_id),
-            reason=reason,
-        )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- the compensating FAILED write is a
+            # best-effort side channel; the caller already surfaces the failure,
+            # so a persistent write error (or exhausted CAS) must not mask it or
+            # escape as a 500 from the greenlit run.
+            reraise_critical(exc)
+            logger.error(
+                PIPELINE_PLAN_FAIL_WRITE_FAILED,
+                plan_id=str(plan_id),
+                reason=reason,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        logger.info(PIPELINE_PLAN_MARKED_FAILED, plan_id=str(plan_id), reason=reason)
 
 
 async def wire_plan_review_gate(app_state: AppState) -> None:

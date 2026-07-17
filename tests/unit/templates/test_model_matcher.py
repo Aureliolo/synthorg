@@ -402,6 +402,27 @@ class TestMatchAllAgents:
         assert matches[0].provider_name == "beta"
         assert matches[0].model_id == "beta-1"
 
+    def test_excludes_agent_ineligible_provider_from_the_pool(self) -> None:
+        # An agent-ineligible provider (e.g. a feature-only gateway) is kept out
+        # of the seeding pool: the matcher assigns the eligible provider's model
+        # even though the ineligible one would also match.
+        providers = {
+            "gateway": _Provider((_make_model("gateway-1"),), agent_eligible=False),
+            "eligible": _Provider((_make_model("eligible-1"),), agent_eligible=True),
+        }
+        matches = match_all_agents([{}], providers)
+        assert len(matches) == 1
+        assert matches[0].provider_name == "eligible"
+        assert matches[0].model_id == "eligible-1"
+
+    def test_all_providers_ineligible_omits_agent(self) -> None:
+        # With every provider ineligible for agents, the pool is empty and the
+        # agent is omitted (fail-closed) rather than sourced from a gateway.
+        providers = {
+            "gateway": _Provider((_make_model("gateway-1"),), agent_eligible=False),
+        }
+        assert match_all_agents([{}], providers) == []
+
     def test_no_models_anywhere_omits_agent(self) -> None:
         providers = {"prov": _provider()}
         matches = match_all_agents([{}], providers)

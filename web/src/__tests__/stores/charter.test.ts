@@ -125,6 +125,36 @@ describe('useCharterStore', () => {
     expect(useToastStore.getState().toasts[0]!.variant).toBe('success')
   })
 
+  it('approve surfaces an error toast when the run failed (is_success false)', async () => {
+    const charter = buildCharter({
+      id: 'c-1',
+      status: 'approved',
+      approved_by: 'op',
+      approved_at: '2026-05-22T00:00:00Z',
+      correlation_id: 'conv-1',
+      task_id: 'task-1',
+    })
+    const result: CharterApprovalResult = {
+      charter,
+      project_id: 'charter-c-1',
+      task_id: 'task-1',
+      is_success: false,
+    }
+    server.use(
+      http.post('/api/v1/meta/charters/:id/approve', () =>
+        HttpResponse.json(successFor<typeof approveCharterApi>(result)),
+      ),
+    )
+    // The charter was approved (a human decided) but the run produced no
+    // successful work: the store must surface that as an error, not a false
+    // success, so the operator opens Plan Review for the FAILED plan.
+    const out = await useCharterStore.getState().approve('c-1')
+    expect(out?.is_success).toBe(false)
+    const toast = useToastStore.getState().toasts[0]!
+    expect(toast.variant).toBe('error')
+    expect(toast.title).toMatch(/run failed/i)
+  })
+
   it('cancel transitions the draft to cancelled', async () => {
     const ok = await useCharterStore.getState().cancel('charter-default')
     expect(ok).toBe(true)

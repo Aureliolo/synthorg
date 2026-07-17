@@ -79,10 +79,14 @@ stateDiagram-v2
     DRAFT --> PENDING_REVIEW
     PENDING_REVIEW --> APPROVED
     PENDING_REVIEW --> REJECTED
+    PENDING_REVIEW --> FAILED: approval-park failed
     PENDING_REVIEW --> DRAFT: edit / request-changes
+    DRAFT --> SUPERSEDED: superseded by a re-plan
+    PENDING_REVIEW --> SUPERSEDED: superseded by a re-plan
     APPROVED --> [*]
     REJECTED --> [*]
     FAILED --> [*]
+    SUPERSEDED --> [*]
 ```
 
 **Plan-first-from-greenlight.** When a splittable initiative is greenlit, a
@@ -91,10 +95,14 @@ every greenlit objective leaves a first-class, visible plan even if decompositio
 never completes. Decomposition fills the shell in place (moving it to
 `PENDING_REVIEW`); a decomposition that fails or produces no items transitions the
 shell to `FAILED`, carrying a `failure_reason` the review surface shows, rather
-than leaving a silent orphan task. The `PLANNING` and `FAILED` statuses are the
-only ones permitted to carry an empty item list (enforced by the model validator
-and the SQLite / Postgres `items` CHECK); every other status requires a non-empty,
-validated item DAG.
+than leaving a silent orphan task. A plan can also reach `FAILED` *after*
+decomposition succeeded, if parking the approval fails: it is then FAILED with its
+items intact, so `FAILED` permits (but does not require) an empty item list. The
+`PLANNING` and `FAILED` statuses are the only ones permitted to carry an empty item
+list (enforced by the model validator and the SQLite / Postgres `items` CHECK);
+every other status requires a non-empty, validated item DAG. A `failure_reason` is
+present iff the status is `FAILED` (a cross-field model validator enforces both
+directions).
 
 An edit or request-changes is accepted only from a reworkable status.
 
@@ -111,7 +119,9 @@ silently clobbering a concurrent edit.
 `PlanRepository` (`persistence/plan_protocol.py`) composes the ADR-0001 generics
 `IdKeyedRepository[Plan, NotBlankStr]` + `FilteredQueryRepository[Plan,
 PlanFilterSpec]`, with SQLite and Postgres implementations kept in parity. The
-`plans` table stores `items` as JSON (a non-empty array, CHECK-enforced), and
+`plans` table stores `items` as JSON (a non-empty array for every status except
+the `PLANNING` / `FAILED` shells, which may carry no items, CHECK-enforced), the
+nullable `failure_reason` (non-blank when present, CHECK-enforced), and
 `review` / `open_questions` / `assumptions` / `objective_criteria` /
 `version_history` as JSON columns; Postgres uses `TIMESTAMPTZ` for the timestamps
 and a composite `(project, status, id)` index for the combined-filter list query.
@@ -192,7 +202,8 @@ Approve/reject route through the existing idempotent `/approvals/{id}` path into
   re-runnable; the plan stays `APPROVED` because the decision stands.
 - On reject, the parent task is cancelled and nothing builds.
 - The gate persists the plan before parking the approval; if the approval write
-  fails, the just-created plan is compensated (deleted) so no orphan remains.
+  fails, the filled plan is marked `FAILED` (carrying the reason) rather than
+  deleted, so the failure stays visible in Plan Review instead of vanishing.
 
 ## Configuration
 
@@ -218,6 +229,9 @@ description, owner, complexity, stakes) or sends the plan back for changes, and
 surfaces a disconnected-updates banner when the WebSocket drops. Beyond the item
 list, it renders review panels derived from the plan (no extra persisted state):
 
+- **Decomposition failure** (`PlanFailureBanner`): shown only for a `FAILED` plan,
+  surfacing its `failure_reason` so the operator can see why the run failed and
+  start a fresh one.
 - **Needs your input** (`PlanOpenQuestionsPanel`): the planner's open questions and
   assumptions to answer or correct before approving.
 - **Cost forecast** (`PlanForecastPanel`): the plan's `forecast_id` hydrated to show

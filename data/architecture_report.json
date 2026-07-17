@@ -518,8 +518,8 @@
     },
     "src/synthorg/engine/pipeline/service.py": {
       "cap": 1100,
-      "loc": 968,
-      "ratio": 0.88,
+      "loc": 993,
+      "ratio": 0.903,
       "tier": "complex_service"
     },
     "src/synthorg/engine/plan_execute_loop.py": {
@@ -1298,8 +1298,8 @@
     },
     "src/synthorg/providers/drivers/litellm_driver.py": {
       "cap": 700,
-      "loc": 715,
-      "ratio": 1.021,
+      "loc": 699,
+      "ratio": 0.999,
       "tier": "adapter"
     },
     "src/synthorg/providers/health_prober.py": {
@@ -1555,15 +1555,15 @@
     "synthorg.core.autonomy_enums": 42,
     "synthorg.core.boundary": 66,
     "synthorg.core.clock": 230,
-    "synthorg.core.critical_errors": 664,
-    "synthorg.core.domain_errors": 247,
+    "synthorg.core.critical_errors": 665,
+    "synthorg.core.domain_errors": 248,
     "synthorg.core.effective_autonomy": 24,
     "synthorg.core.error_taxonomy": 63,
     "synthorg.core.iso_datetime": 30,
     "synthorg.core.memory_enums": 49,
     "synthorg.core.normalization": 115,
     "synthorg.core.pagination": 33,
-    "synthorg.core.persistence_errors": 250,
+    "synthorg.core.persistence_errors": 251,
     "synthorg.core.plan_enums": 21,
     "synthorg.core.project_enums": 32,
     "synthorg.core.registry": 28,
@@ -1746,7 +1746,7 @@
     },
     "synthorg.engine.pipeline.service:DefaultWorkPipeline": {
       "lcom4": 1,
-      "loc": 859
+      "loc": 882
     },
     "synthorg.engine.review_gate:ReviewGateService": {
       "lcom4": 1,

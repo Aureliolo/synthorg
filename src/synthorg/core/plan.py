@@ -378,8 +378,8 @@ class Plan(BaseModel):
         if not self.items:
             if self.status in ITEMLESS_STATUSES:
                 # A PLANNING shell (persisted at greenlight, not yet decomposed)
-                # or a FAILED plan (decomposition never produced items) carries
-                # no items yet; there is no DAG to validate.
+                # or a FAILED plan (which may fail before any items were produced)
+                # is permitted to carry no items; there is no DAG to validate.
                 return self
             msg = "a plan must contain at least one item"
             raise ValueError(msg)
@@ -395,6 +395,36 @@ class Plan(BaseModel):
                 msg = f"plan item {item.id!r} references unknown items: {missing}"
                 raise ValueError(msg)
         self._reject_dependency_cycle()
+        return self
+
+    @model_validator(mode="after")
+    def _validate_failure_reason(self) -> Self:
+        """Tie ``failure_reason`` to the FAILED status, both directions.
+
+        A FAILED plan must carry a reason (so Plan Review always shows why it
+        failed), and only a FAILED plan may carry one (a reason on any live
+        status would be a stale leftover). The ``fail_plan`` compensation always
+        sets both together; this is the entity-level backstop for every other
+        caller of ``save``/``update``.
+
+        Returns:
+            ``self`` when ``failure_reason`` is present iff the status is FAILED.
+
+        Raises:
+            ValueError: When a FAILED plan has no reason, or a non-FAILED plan
+                carries one.
+        """
+        has_reason = self.failure_reason is not None
+        is_failed = self.status is PlanStatus.FAILED
+        if is_failed and not has_reason:
+            msg = "a FAILED plan must carry a failure_reason"
+            raise ValueError(msg)
+        if has_reason and not is_failed:
+            msg = (
+                f"failure_reason is only valid for a FAILED plan, "
+                f"not status={self.status.value}"
+            )
+            raise ValueError(msg)
         return self
 
     def _reject_dependency_cycle(self) -> None:

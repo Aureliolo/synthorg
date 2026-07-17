@@ -42,6 +42,9 @@ class TestValidTransitions:
             (TaskStatus.FAILED, TaskStatus.ASSIGNED),
             (TaskStatus.INTERRUPTED, TaskStatus.ASSIGNED),
             (TaskStatus.SUSPENDED, TaskStatus.ASSIGNED),
+            # A greenlit objective's root task can fail during planning,
+            # before it is ever assigned (decomposition / plan-review failure).
+            (TaskStatus.CREATED, TaskStatus.FAILED),
             # REJECTED and AUTH_REQUIRED transitions
             (TaskStatus.CREATED, TaskStatus.REJECTED),
             (TaskStatus.ASSIGNED, TaskStatus.AUTH_REQUIRED),

@@ -308,6 +308,11 @@ export function buildCreateFromPresetRequest(
 ): CreateFromPresetRequest {
   const apiKey = normaliseOptional(v.apiKey)
   const subscriptionToken = normaliseOptional(v.subscriptionToken)
+  // agent_eligible is deliberately not forwarded: the backend
+  // CreateFromPresetRequest schema has no such field, so a preset-created
+  // provider always defaults to agent-eligible. The toggle is hidden for the
+  // preset path (only shown for custom-create / edit) and is set afterwards
+  // via an edit, so there is no silent data loss here.
   return {
     preset_name: presetName,
     name: v.name.trim(),

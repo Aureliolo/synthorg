@@ -13,10 +13,11 @@ class PlanStatus(StrEnum):
     PENDING_REVIEW once it is parked for the operator's decision. APPROVED,
     REJECTED, SUPERSEDED, and FAILED are terminal: an operator rework or a
     request-changes is only accepted from a non-terminal status (see
-    :data:`REWORKABLE_STATUSES`). FAILED marks a plan whose decomposition never
-    produced items (the shell failed to fill), so a failed run always leaves a
-    visible plan carrying its :attr:`Plan.failure_reason` rather than a silent
-    orphan; a retry is a fresh plan. SUPERSEDED is reserved for a plan retired
+    :data:`REWORKABLE_STATUSES`). FAILED marks a plan whose run failed to reach
+    review (decomposition failed, or parking the approval failed after it was
+    filled), so a failed run always leaves a visible plan carrying its
+    :attr:`Plan.failure_reason` rather than a silent orphan; a retry is a fresh
+    plan. SUPERSEDED is reserved for a plan retired
     by a fresh re-plan; the current edit path revises a plan in place (bumping
     :attr:`Plan.version`) rather than retaining prior revisions.
     """
@@ -50,8 +51,9 @@ TERMINAL_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
 )
 
 #: Statuses whose plan may carry an empty item list: the PLANNING shell has not
-#: been filled yet, and a FAILED plan's decomposition never produced items.
-#: Every other status must carry a non-empty, validated item DAG.
+#: been filled yet, and a FAILED plan may have failed before any items were
+#: produced. FAILED permits (but does not require) empty items; every other
+#: status must carry a non-empty, validated item DAG.
 ITEMLESS_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
     {PlanStatus.PLANNING, PlanStatus.FAILED}
 )

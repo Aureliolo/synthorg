@@ -270,16 +270,24 @@ class TestLlmDecompositionStrategy:
             await strategy.decompose(task, ctx)
 
     @pytest.mark.unit
-    async def test_provider_error_propagates(self) -> None:
-        """Provider errors propagate without being caught."""
+    async def test_provider_error_surfaces_as_decomposition_error(self) -> None:
+        """A raw provider/infra failure is wrapped as a typed DecompositionError.
+
+        Decomposition must always terminate inside the domain error hierarchy so
+        the pipeline's plan-review guard can surface it as a FAILED plan rather
+        than an escaping exception (a 500). The non-DomainError raised by the
+        provider is chained as ``__cause__``.
+        """
         provider = MockCompletionProvider([])
         strategy = LlmDecompositionStrategy(provider=provider, model="test-model-001")
         task = _make_task()
         ctx = _make_context()
 
-        # MockCompletionProvider raises IndexError when empty
-        with pytest.raises(IndexError):
+        # MockCompletionProvider raises IndexError when empty; the strategy must
+        # translate that into a DecompositionError rather than let it escape.
+        with pytest.raises(DecompositionError) as exc_info:
             await strategy.decompose(task, ctx)
+        assert isinstance(exc_info.value.__cause__, IndexError)
 
     @pytest.mark.unit
     def test_protocol_conformance(self) -> None:

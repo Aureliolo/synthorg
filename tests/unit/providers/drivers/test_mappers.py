@@ -12,6 +12,7 @@ from synthorg.providers.drivers.mappers import (
     extract_tool_calls,
     map_finish_reason,
     messages_to_dicts,
+    normalize_empty_finish,
     tools_to_dicts,
 )
 from synthorg.providers.enums import MessageRole
@@ -451,3 +452,88 @@ class TestExtractRetryAfter:
         future_naive = (now + timedelta(hours=1)).replace(tzinfo=None)
         result = parse_retry_after_seconds(format_datetime(future_naive), now=now)
         assert result == pytest.approx(3600.0)
+
+
+# ── normalize_empty_finish ───────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestNormalizeEmptyFinish:
+    """A content-less, tool-call-less completion is downgraded to ERROR.
+
+    ``CompletionResponse`` rejects an empty non-error completion with a
+    ``ValidationError`` (which would surface as a 500 mid-driver-call), so the
+    mapper normalises that shape to ``ERROR`` -- the codebase's fail-loud signal
+    every downstream loop already handles -- before the response is built.
+    """
+
+    def test_empty_stop_turn_becomes_error(self) -> None:
+        result = normalize_empty_finish(
+            content=None,
+            tool_calls=(),
+            finish=FinishReason.STOP,
+            provider="test-provider",
+            model="test-model-001",
+            had_raw_tool_calls=False,
+        )
+        assert result is FinishReason.ERROR
+
+    def test_empty_tool_use_turn_becomes_error(self) -> None:
+        # A malformed tool call that extract_tool_calls dropped leaves a
+        # TOOL_USE turn with no surviving tool calls: also unusable.
+        result = normalize_empty_finish(
+            content=None,
+            tool_calls=(),
+            finish=FinishReason.TOOL_USE,
+            provider="test-provider",
+            model="test-model-001",
+            had_raw_tool_calls=True,
+        )
+        assert result is FinishReason.ERROR
+
+    def test_content_present_is_unchanged(self) -> None:
+        result = normalize_empty_finish(
+            content="here is the answer",
+            tool_calls=(),
+            finish=FinishReason.STOP,
+            provider="test-provider",
+            model="test-model-001",
+            had_raw_tool_calls=False,
+        )
+        assert result is FinishReason.STOP
+
+    def test_surviving_tool_call_is_unchanged(self) -> None:
+        call = ToolCall(id="call-1", name="do_it", arguments={})
+        result = normalize_empty_finish(
+            content=None,
+            tool_calls=(call,),
+            finish=FinishReason.TOOL_USE,
+            provider="test-provider",
+            model="test-model-001",
+            had_raw_tool_calls=True,
+        )
+        assert result is FinishReason.TOOL_USE
+
+    def test_already_error_is_left_alone(self) -> None:
+        result = normalize_empty_finish(
+            content=None,
+            tool_calls=(),
+            finish=FinishReason.ERROR,
+            provider="test-provider",
+            model="test-model-001",
+            had_raw_tool_calls=False,
+        )
+        assert result is FinishReason.ERROR
+
+    def test_content_filter_is_left_alone(self) -> None:
+        # A content-filtered empty completion is a legitimate terminal shape
+        # CompletionResponse already accepts; do not mask it as ERROR.
+        result = normalize_empty_finish(
+            content=None,
+            tool_calls=(),
+            finish=FinishReason.CONTENT_FILTER,
+            provider="test-provider",
+            model="test-model-001",
+            had_raw_tool_calls=False,
+        )
+        assert result is FinishReason.CONTENT_FILTER

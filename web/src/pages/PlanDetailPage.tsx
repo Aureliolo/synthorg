@@ -129,7 +129,7 @@ function PlanFailureBanner({ plan }: { plan: Plan }) {
       title="Decomposition failed"
       description={
         plan.failure_reason ??
-        'The planner could not decompose this objective. Re-run it to try again.'
+        'The planner could not prepare this objective for review. Start a new project run to try again.'
       }
     />
   )

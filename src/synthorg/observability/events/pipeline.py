@@ -54,7 +54,26 @@ PIPELINE_PLAN_REVIEW_REQUESTED: Final[str] = "pipeline.plan_review.requested"
 PIPELINE_PLAN_DECOMPOSITION_FAILED: Final[str] = (
     "pipeline.plan_review.decomposition_failed"
 )
-"""Decomposition failed; the plan shell was marked FAILED and the task failed."""
+"""Decomposition (or plan parking) failed; the plan shell is being marked FAILED."""
+
+PIPELINE_PLAN_MARKED_FAILED: Final[str] = "pipeline.plan_review.marked_failed"
+"""A plan shell was successfully transitioned to FAILED, carrying its reason."""
+
+PIPELINE_PLAN_FAIL_SHELL_MISSING: Final[str] = "pipeline.plan_review.fail_shell_missing"
+"""fail_plan was asked to mark a plan FAILED but its shell was already gone."""
+
+PIPELINE_PLAN_FAIL_WRITE_FAILED: Final[str] = "pipeline.plan_review.fail_write_failed"
+"""The compensating write to mark a plan FAILED itself failed; logged, not raised."""
+
+PIPELINE_PLAN_FAIL_TRANSITION_FAILED: Final[str] = (
+    "pipeline.plan_review.fail_transition_failed"
+)
+"""The best-effort transition of the root task to FAILED could not be written."""
+
+PIPELINE_PLAN_APPROVAL_PARK_FAILED: Final[str] = (
+    "pipeline.plan_review.approval_park_failed"
+)
+"""Parking the plan's approval item failed; the plan is being marked FAILED."""
 
 PIPELINE_PLAN_REVIEW_PANEL_ATTACHED: Final[str] = "pipeline.plan_review.panel_attached"
 """The stakeholder plan-review panel was attached to the work pipeline."""

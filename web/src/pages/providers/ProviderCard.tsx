@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { ProviderHealthBadge } from '@/components/ui/provider-health-badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { ProviderLogo } from '@/components/providers/ProviderLogo'
 import { providerLogoName } from '@/components/providers/provider-logos'
 import { cn } from '@/lib/utils'
@@ -11,6 +12,43 @@ interface ProviderCardProps {
   provider: ProviderWithName
   health: ProviderHealthSummary | null
   className?: string
+}
+
+function ProviderCardMetrics({
+  provider,
+  health,
+}: {
+  provider: ProviderWithName
+  health: ProviderHealthSummary | null
+}) {
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <span className="rounded-md bg-bg-surface px-1.5 py-0.5 text-xs font-mono text-text-secondary">
+        {provider.models.length} model{provider.models.length !== 1 ? 's' : ''}
+      </span>
+      {!provider.agent_eligible && (
+        <StatusPill
+          tone="warning"
+          ariaLabel="This provider is excluded from agent model assignment"
+        >
+          Agents off
+        </StatusPill>
+      )}
+      {health && (
+        <>
+          <span className="text-xs text-text-muted">
+            {health.calls_last_24h} calls/24h
+          </span>
+          <span className="text-xs text-text-muted">
+            {formatTokenCount(health.total_tokens_24h)} tok
+          </span>
+          <span className="text-xs text-text-muted">
+            {formatCost(health.total_cost_24h)}
+          </span>
+        </>
+      )}
+    </div>
+  )
 }
 
 function ProviderCardInner({ provider, health, className }: ProviderCardProps) {
@@ -59,26 +97,7 @@ function ProviderCardInner({ provider, health, className }: ProviderCardProps) {
           </span>
         )}
 
-        <div className="mt-1 flex items-center gap-2">
-          <span className="rounded-md bg-bg-surface px-1.5 py-0.5 text-xs font-mono text-text-secondary">
-            {provider.models.length} model{provider.models.length !== 1 ? 's' : ''}
-          </span>
-          {health && (
-            <span className="text-xs text-text-muted">
-              {health.calls_last_24h} calls/24h
-            </span>
-          )}
-          {health && (
-            <span className="text-xs text-text-muted">
-              {formatTokenCount(health.total_tokens_24h)} tok
-            </span>
-          )}
-          {health && (
-            <span className="text-xs text-text-muted">
-              {formatCost(health.total_cost_24h)}
-            </span>
-          )}
-        </div>
+        <ProviderCardMetrics provider={provider} health={health} />
       </div>
     </div>
   )
