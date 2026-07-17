@@ -1,15 +1,18 @@
 package verify
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/klauspost/compress/snappy"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 )
 
@@ -30,9 +33,23 @@ const (
 	// for the API), not derived from the image registry prefix.
 	githubAttestationOwnerRepo = "Aureliolo/synthorg"
 
+	// githubAPIVersion pins the REST API version. GitHub moved attestation
+	// bundles out-of-line to bundle_url and let the inline bundle go null;
+	// that reached unversioned callers through the default version. Pinning
+	// keeps the response contract deterministic against future default
+	// shifts (following bundle_url below is what restores verification).
+	githubAPIVersion = "2022-11-28"
+
 	// maxAttestationResponseBytes caps the GitHub attestation API response
 	// to prevent memory exhaustion from malicious or oversized responses.
 	maxAttestationResponseBytes = 5 << 20 // 5MB
+
+	// maxBundleFetchBytes caps a bundle fetched from bundle_url. Attestation
+	// bundles are ~10KB compressed; 5MB is generous while bounding memory.
+	maxBundleFetchBytes = 5 << 20
+
+	// maxBundleRedirects bounds redirect following when fetching bundle_url.
+	maxBundleRedirects = 5
 )
 
 // attestationHTTPTimeout bounds individual HTTP requests to the GitHub API.
@@ -53,6 +70,22 @@ var githubAPIBase = defaultGitHubAPIBase
 // other packages modifying global state.
 var attestationHTTPClient = &http.Client{}
 
+// bundleFetchClient fetches the externalized bundle from bundle_url, revalidating
+// the target on every redirect so a redirect cannot escape the host allowlist.
+var bundleFetchClient = &http.Client{
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= maxBundleRedirects {
+			return fmt.Errorf("too many redirects fetching bundle_url")
+		}
+		_, err := validateBundleURL(req.URL.String())
+		return err
+	},
+}
+
+// validateBundleURL is the effective bundle_url validator. Tests override it
+// to accept a local test server; production uses defaultValidateBundleURL.
+var validateBundleURL = defaultValidateBundleURL
+
 // setGitHubAPIBase overrides the GitHub API base URL (for tests only).
 func setGitHubAPIBase(base string) { githubAPIBase = base }
 
@@ -66,14 +99,20 @@ func VerifyProvenance(ctx context.Context, ref ImageRef, sev *verify.Verifier, c
 		return fmt.Errorf("image digest not resolved")
 	}
 
-	bundles, err := fetchGitHubAttestations(ctx, ref.Digest)
+	attestations, err := fetchGitHubAttestations(ctx, ref.Digest)
 	if err != nil {
 		return err
 	}
 
-	// Try each attestation bundle -- first successful verification wins.
+	// Try each attestation -- first successful verification wins. The bundle
+	// is resolved (inline, or fetched from bundle_url) only as each is tried.
 	var errs []error
-	for i, bundleJSON := range bundles {
+	for i, att := range attestations {
+		bundleJSON, resolveErr := resolveBundleJSON(ctx, att)
+		if resolveErr != nil {
+			errs = append(errs, fmt.Errorf("attestation[%d]: %w", i, resolveErr))
+			continue
+		}
 		if err := verifyProvenanceBundle(bundleJSON, ref.Digest, sev, certID); err != nil {
 			errs = append(errs, fmt.Errorf("attestation[%d]: %w", i, err))
 			continue
@@ -83,9 +122,13 @@ func VerifyProvenance(ctx context.Context, ref ImageRef, sev *verify.Verifier, c
 	return fmt.Errorf("no valid SLSA provenance attestation for %s: %w", ref, errors.Join(errs...))
 }
 
-// githubAttestation represents a single attestation entry in the GitHub API response.
+// githubAttestation represents a single attestation entry in the GitHub API
+// response. GitHub externalized bundle storage: the inline bundle is now
+// null and the Sigstore bundle lives at bundle_url (Snappy-compressed in
+// blob storage). Older responses may still carry an inline bundle.
 type githubAttestation struct {
-	Bundle json.RawMessage `json:"bundle"`
+	Bundle    json.RawMessage `json:"bundle"`
+	BundleURL string          `json:"bundle_url"`
 }
 
 // githubAttestationResponse is the structure returned by the GitHub
@@ -94,14 +137,14 @@ type githubAttestationResponse struct {
 	Attestations []githubAttestation `json:"attestations"`
 }
 
-// fetchGitHubAttestations queries the GitHub attestation API for Sigstore
-// bundles associated with the given image digest.
-func fetchGitHubAttestations(ctx context.Context, digest string) ([]json.RawMessage, error) {
+// fetchGitHubAttestations queries the GitHub attestation API for attestation
+// entries associated with the given image digest.
+func fetchGitHubAttestations(ctx context.Context, digest string) ([]githubAttestation, error) {
 	body, err := fetchAttestationResponseBody(ctx, digest)
 	if err != nil {
 		return nil, err
 	}
-	return parseAttestationBundles(body, digest)
+	return parseAttestations(body, digest)
 }
 
 // fetchAttestationResponseBody issues the API request, classifies the
@@ -116,6 +159,7 @@ func fetchAttestationResponseBody(ctx context.Context, digest string) ([]byte, e
 		return nil, fmt.Errorf("creating attestation request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-GitHub-Api-Version", githubAPIVersion)
 	resp, err := attestationHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching attestations from GitHub API: %w", err)
@@ -138,9 +182,10 @@ func fetchAttestationResponseBody(ctx context.Context, digest string) ([]byte, e
 	return body, nil
 }
 
-// parseAttestationBundles parses an attestation API response and returns
-// every non-empty bundle. digest is used only for error messages.
-func parseAttestationBundles(body []byte, digest string) ([]json.RawMessage, error) {
+// parseAttestations parses an attestation API response and returns every
+// entry that carries a usable bundle -- either a non-null inline bundle or a
+// bundle_url to fetch it from. digest is used only for error messages.
+func parseAttestations(body []byte, digest string) ([]githubAttestation, error) {
 	var apiResp githubAttestationResponse
 	if err := json.Unmarshal(body, &apiResp); err != nil {
 		return nil, fmt.Errorf("parsing attestation response: %w", err)
@@ -148,16 +193,113 @@ func parseAttestationBundles(body []byte, digest string) ([]json.RawMessage, err
 	if len(apiResp.Attestations) == 0 {
 		return nil, fmt.Errorf("%w via GitHub API for digest %s", ErrNoProvenanceAttestations, digest)
 	}
-	bundles := make([]json.RawMessage, 0, len(apiResp.Attestations))
+	usable := make([]githubAttestation, 0, len(apiResp.Attestations))
 	for _, a := range apiResp.Attestations {
-		if len(a.Bundle) > 0 {
-			bundles = append(bundles, a.Bundle)
+		if isUsableInlineBundle(a.Bundle) || a.BundleURL != "" {
+			usable = append(usable, a)
 		}
 	}
-	if len(bundles) == 0 {
-		return nil, fmt.Errorf("%w (no bundles in response) for digest %s", ErrNoProvenanceAttestations, digest)
+	if len(usable) == 0 {
+		return nil, fmt.Errorf("%w (no bundle or bundle_url in response) for digest %s", ErrNoProvenanceAttestations, digest)
 	}
-	return bundles, nil
+	return usable, nil
+}
+
+// isUsableInlineBundle reports whether raw is a present, non-null inline
+// bundle. A JSON null (the current API's inline value) is four bytes, so a
+// length check alone would wrongly treat it as a bundle and feed null to the
+// protojson parser.
+func isUsableInlineBundle(raw json.RawMessage) bool {
+	t := bytes.TrimSpace(raw)
+	return len(t) > 0 && !bytes.Equal(t, []byte("null"))
+}
+
+// resolveBundleJSON returns the Sigstore bundle JSON for an attestation,
+// preferring a still-present inline bundle and otherwise fetching and
+// decompressing the externalized bundle_url.
+func resolveBundleJSON(ctx context.Context, att githubAttestation) (json.RawMessage, error) {
+	if isUsableInlineBundle(att.Bundle) {
+		return att.Bundle, nil
+	}
+	if att.BundleURL == "" {
+		return nil, fmt.Errorf("attestation has neither an inline bundle nor a bundle_url")
+	}
+	return fetchBundleURL(ctx, att.BundleURL)
+}
+
+// fetchBundleURL fetches, size-caps, and decompresses the bundle at a
+// GitHub-provided bundle_url. The URL is host-allowlisted and HTTPS-only to
+// keep a tampered URL from redirecting the fetch off GitHub's storage.
+func fetchBundleURL(ctx context.Context, rawURL string) (json.RawMessage, error) {
+	u, err := validateBundleURL(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, attestationHTTPTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating bundle_url request: %w", err)
+	}
+	resp, err := bundleFetchClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching bundle from bundle_url: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("bundle_url returned HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBundleFetchBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("reading bundle_url body: %w", err)
+	}
+	if int64(len(body)) > maxBundleFetchBytes {
+		return nil, fmt.Errorf("bundle_url body too large (>%d bytes)", maxBundleFetchBytes)
+	}
+	return decodeBundleBody(resp.Header.Get("Content-Type"), body)
+}
+
+// decodeBundleBody returns the raw bundle JSON, Snappy-block-decompressing
+// when the server marks the payload as snappy (how GitHub's blob storage
+// serves it). A non-snappy payload is returned verbatim so a future switch
+// back to inline JSON keeps working.
+func decodeBundleBody(contentType string, body []byte) (json.RawMessage, error) {
+	if !strings.Contains(strings.ToLower(contentType), "snappy") {
+		return body, nil
+	}
+	decoded, err := snappy.Decode(nil, body)
+	if err != nil {
+		return nil, fmt.Errorf("decompressing snappy bundle: %w", err)
+	}
+	return decoded, nil
+}
+
+// defaultValidateBundleURL parses rawURL and confirms it is an HTTPS URL on an
+// expected GitHub attestation-bundle storage host. GitHub currently serves
+// externalized bundles from Azure Blob Storage (*.blob.core.windows.net);
+// GitHub-hosted domains are accepted too. Anything else is rejected.
+func defaultValidateBundleURL(rawURL string) (*url.URL, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("parsing bundle_url: %w", err)
+	}
+	if u.Scheme != "https" {
+		return nil, fmt.Errorf("bundle_url must be https, got %q", u.Scheme)
+	}
+	if !isAllowedBundleURLHost(u.Hostname()) {
+		return nil, fmt.Errorf("bundle_url host %q is not an allowed attestation-storage host", u.Hostname())
+	}
+	return u, nil
+}
+
+// isAllowedBundleURLHost reports whether host is an expected GitHub
+// attestation-bundle storage host.
+func isAllowedBundleURLHost(host string) bool {
+	host = strings.ToLower(host)
+	return strings.HasSuffix(host, ".blob.core.windows.net") ||
+		strings.HasSuffix(host, ".githubusercontent.com") ||
+		host == "github.com" ||
+		strings.HasSuffix(host, ".github.com")
 }
 
 // verifyProvenanceBundle parses and verifies a single Sigstore bundle from
