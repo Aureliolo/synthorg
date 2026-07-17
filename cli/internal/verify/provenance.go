@@ -48,6 +48,12 @@ const (
 	// bundles are ~10KB compressed; 5MB is generous while bounding memory.
 	maxBundleFetchBytes = 5 << 20
 
+	// maxDecodedBundleBytes caps the DECOMPRESSED bundle size. A Snappy block
+	// header declares an output length that snappy.Decode allocates up front, so
+	// this ceiling is checked before decoding to stop a decompression bomb (the
+	// fetch cap only bounds the compressed input).
+	maxDecodedBundleBytes = 16 << 20
+
 	// maxBundleRedirects bounds redirect following when fetching bundle_url.
 	maxBundleRedirects = 5
 )
@@ -151,10 +157,10 @@ func fetchGitHubAttestations(ctx context.Context, digest string) ([]githubAttest
 // response status, and returns the body bytes capped at
 // maxAttestationResponseBytes.
 func fetchAttestationResponseBody(ctx context.Context, digest string) ([]byte, error) {
-	url := fmt.Sprintf("%s/repos/%s/attestations/%s", githubAPIBase, githubAttestationOwnerRepo, digest)
+	apiURL := fmt.Sprintf("%s/repos/%s/attestations/%s", githubAPIBase, githubAttestationOwnerRepo, digest)
 	reqCtx, cancel := context.WithTimeout(ctx, attestationHTTPTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating attestation request: %w", err)
 	}
@@ -237,51 +243,77 @@ func fetchBundleURL(ctx context.Context, rawURL string) (json.RawMessage, error)
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, attestationHTTPTimeout)
 	defer cancel()
+	// Errors are reported by host only: a bundle_url can carry a scoped access
+	// token in its query string, so the raw URL must never reach logs/stderr.
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating bundle_url request: %w", err)
+		return nil, fmt.Errorf("creating bundle_url request for host %q: %w", u.Hostname(), redactURLError(err))
 	}
 	resp, err := bundleFetchClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetching bundle from bundle_url: %w", err)
+		return nil, fmt.Errorf("fetching bundle from host %q: %w", u.Hostname(), redactURLError(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("bundle_url returned HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("bundle host %q returned HTTP %d", u.Hostname(), resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBundleFetchBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("reading bundle_url body: %w", err)
+		return nil, fmt.Errorf("reading bundle from host %q: %w", u.Hostname(), err)
 	}
 	if int64(len(body)) > maxBundleFetchBytes {
-		return nil, fmt.Errorf("bundle_url body too large (>%d bytes)", maxBundleFetchBytes)
+		return nil, fmt.Errorf("bundle from host %q too large (>%d bytes)", u.Hostname(), maxBundleFetchBytes)
 	}
-	return decodeBundleBody(resp.Header.Get("Content-Type"), body)
+	return decodeBundleBody(body)
 }
 
-// decodeBundleBody returns the raw bundle JSON, Snappy-block-decompressing
-// when the server marks the payload as snappy (how GitHub's blob storage
-// serves it). A non-snappy payload is returned verbatim so a future switch
-// back to inline JSON keeps working.
-func decodeBundleBody(contentType string, body []byte) (json.RawMessage, error) {
-	if !strings.Contains(strings.ToLower(contentType), "snappy") {
+// decodeBundleBody returns the raw bundle JSON. A body that already begins with
+// a JSON object/array is returned verbatim; otherwise it is treated as a Snappy
+// block and decompressed. Sniffing the bytes rather than trusting the storage
+// host's Content-Type (set at upload time, often a generic value) keeps this
+// correct whatever header the host sends -- trusting the header would return a
+// still-compressed payload as "JSON" and reintroduce the original parse bug.
+// The declared decompressed length is bounded before allocation because
+// snappy.Decode trusts the block's self-declared output length, an
+// unbounded-allocation (decompression-bomb) vector on untrusted input.
+func decodeBundleBody(body []byte) (json.RawMessage, error) {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
 		return body, nil
 	}
-	decoded, err := snappy.Decode(nil, body)
+	declaredLen, err := snappy.DecodedLen(body)
+	if err != nil {
+		return nil, fmt.Errorf("bundle is neither JSON nor a valid snappy block: %w", err)
+	}
+	if declaredLen > maxDecodedBundleBytes {
+		return nil, fmt.Errorf("decompressed bundle too large (%d bytes, max %d)", declaredLen, maxDecodedBundleBytes)
+	}
+	decoded, err := snappy.Decode(make([]byte, 0, declaredLen), body)
 	if err != nil {
 		return nil, fmt.Errorf("decompressing snappy bundle: %w", err)
 	}
 	return decoded, nil
 }
 
-// defaultValidateBundleURL parses rawURL and confirms it is an HTTPS URL on an
-// expected GitHub attestation-bundle storage host. GitHub currently serves
-// externalized bundles from Azure Blob Storage (*.blob.core.windows.net);
-// GitHub-hosted domains are accepted too. Anything else is rejected.
+// redactURLError strips the URL from a *url.Error, returning its underlying
+// cause. net/http wraps request failures in a *url.Error whose message embeds
+// the full URL, which for a bundle_url can carry a scoped access token; the
+// inner cause (timeout, connection refused, ...) is safe to surface.
+func redactURLError(err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return urlErr.Err
+	}
+	return err
+}
+
+// defaultValidateBundleURL confirms rawURL is an HTTPS URL on an allowed
+// attestation-bundle storage host. The raw URL is never echoed in the error
+// (it may carry a scoped access token in its query string).
 func defaultValidateBundleURL(rawURL string) (*url.URL, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("parsing bundle_url: %w", err)
+		return nil, fmt.Errorf("bundle_url is not a parseable URL")
 	}
 	if u.Scheme != "https" {
 		return nil, fmt.Errorf("bundle_url must be https, got %q", u.Scheme)
@@ -292,14 +324,15 @@ func defaultValidateBundleURL(rawURL string) (*url.URL, error) {
 	return u, nil
 }
 
-// isAllowedBundleURLHost reports whether host is an expected GitHub
-// attestation-bundle storage host.
+// isAllowedBundleURLHost reports whether host is GitHub's attestation-bundle
+// storage host. GitHub serves externalized bundles from Azure Blob Storage
+// (*.blob.core.windows.net). This allowlist is SSRF/DoS defence-in-depth, not
+// the authenticity control -- verifyProvenanceBundle cryptographically verifies
+// the Sigstore bundle regardless of origin. It matches the Azure blob suffix
+// rather than a single pinned storage account so a GitHub storage-account
+// rotation cannot silently break every verified pull.
 func isAllowedBundleURLHost(host string) bool {
-	host = strings.ToLower(host)
-	return strings.HasSuffix(host, ".blob.core.windows.net") ||
-		strings.HasSuffix(host, ".githubusercontent.com") ||
-		host == "github.com" ||
-		strings.HasSuffix(host, ".github.com")
+	return strings.HasSuffix(strings.ToLower(host), ".blob.core.windows.net")
 }
 
 // verifyProvenanceBundle parses and verifies a single Sigstore bundle from

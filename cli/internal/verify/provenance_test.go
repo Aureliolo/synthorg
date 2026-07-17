@@ -2,6 +2,7 @@ package verify
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,12 +16,26 @@ import (
 	sigverify "github.com/sigstore/sigstore-go/pkg/verify"
 )
 
+// withGitHubAPIBase points the attestation API at base for the duration of the
+// test, restoring the original on cleanup.
+func withGitHubAPIBase(t *testing.T, base string) {
+	t.Helper()
+	orig := githubAPIBase
+	t.Cleanup(func() { setGitHubAPIBase(orig) })
+	setGitHubAPIBase(base)
+}
+
+// withValidateBundleURL swaps the bundle_url validator (so tests can accept a
+// local httptest host), restoring the original on cleanup.
+func withValidateBundleURL(t *testing.T, fn func(string) (*url.URL, error)) {
+	t.Helper()
+	orig := validateBundleURL
+	t.Cleanup(func() { validateBundleURL = orig })
+	validateBundleURL = fn
+}
+
 func TestVerifyProvenanceEmptyDigest(t *testing.T) {
-	ref := ImageRef{
-		Registry:   "ghcr.io",
-		Repository: "test/image",
-		Tag:        "1.0.0",
-	}
+	ref := ImageRef{Registry: "ghcr.io", Repository: "test/image", Tag: "1.0.0"}
 	err := VerifyProvenance(context.Background(), ref, nil, sigverify.CertificateIdentity{})
 	if err == nil {
 		t.Fatal("expected error for empty digest")
@@ -30,127 +45,73 @@ func TestVerifyProvenanceEmptyDigest(t *testing.T) {
 	}
 }
 
-func TestFetchGitHubAttestationsNotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
-
-	// Temporarily override the API base for testing.
-	origBase := githubAPIBase
-	defer func() { setGitHubAPIBase(origBase) }()
-	setGitHubAPIBase(srv.URL)
-
-	_, err := fetchGitHubAttestations(context.Background(), testDigest)
-	if err == nil {
-		t.Fatal("expected error for 404 response")
+func TestFetchGitHubAttestations(t *testing.T) {
+	cases := []struct {
+		name       string
+		status     int
+		body       string
+		wantErrIs  error
+		wantErrSub string
+		wantCount  int
+	}{
+		{name: "not found", status: http.StatusNotFound, wantErrIs: ErrNoProvenanceAttestations},
+		{name: "empty attestations", status: http.StatusOK, body: `{"attestations": []}`, wantErrIs: ErrNoProvenanceAttestations},
+		{name: "server error", status: http.StatusInternalServerError, wantErrSub: "HTTP 500"},
+		{name: "inline bundle", status: http.StatusOK, body: `{"attestations":[{"bundle":{"mediaType":"x"}}]}`, wantCount: 1},
 	}
-	if !errors.Is(err, ErrNoProvenanceAttestations) {
-		t.Errorf("expected ErrNoProvenanceAttestations, got: %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !strings.Contains(r.URL.Path, testDigest) {
+					t.Errorf("expected digest in URL path, got: %s", r.URL.Path)
+				}
+				if tc.status != http.StatusOK {
+					w.WriteHeader(tc.status)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+			withGitHubAPIBase(t, srv.URL)
+
+			atts, err := fetchGitHubAttestations(context.Background(), testDigest)
+			switch {
+			case tc.wantErrIs != nil:
+				if !errors.Is(err, tc.wantErrIs) {
+					t.Fatalf("expected error %v, got: %v", tc.wantErrIs, err)
+				}
+			case tc.wantErrSub != "":
+				if err == nil || !strings.Contains(err.Error(), tc.wantErrSub) {
+					t.Fatalf("expected error containing %q, got: %v", tc.wantErrSub, err)
+				}
+			default:
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if len(atts) != tc.wantCount {
+					t.Fatalf("expected %d attestations, got %d", tc.wantCount, len(atts))
+				}
+			}
+		})
 	}
 }
 
-func TestFetchGitHubAttestationsEmptyResponse(t *testing.T) {
+func TestFetchSetsAPIVersionHeader(t *testing.T) {
+	var gotVersion string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotVersion = r.Header.Get("X-GitHub-Api-Version")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"attestations": []}`))
+		_, _ = w.Write([]byte(`{"attestations":[{"bundle":{"mediaType":"x"}}]}`))
 	}))
 	defer srv.Close()
+	withGitHubAPIBase(t, srv.URL)
 
-	origBase := githubAPIBase
-	defer func() { setGitHubAPIBase(origBase) }()
-	setGitHubAPIBase(srv.URL)
-
-	_, err := fetchGitHubAttestations(context.Background(), testDigest)
-	if err == nil {
-		t.Fatal("expected error for empty attestations")
-	}
-	if !errors.Is(err, ErrNoProvenanceAttestations) {
-		t.Errorf("expected ErrNoProvenanceAttestations, got: %v", err)
-	}
-}
-
-func TestFetchGitHubAttestationsSuccess(t *testing.T) {
-	bundle := json.RawMessage(`{"mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json"}`)
-	resp := githubAttestationResponse{
-		Attestations: []githubAttestation{
-			{Bundle: bundle},
-		},
-	}
-	respJSON, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("marshaling response: %v", err)
-	}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify the URL path contains the digest.
-		if !strings.Contains(r.URL.Path, testDigest) {
-			t.Errorf("expected digest in URL path, got: %s", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(respJSON)
-	}))
-	defer srv.Close()
-
-	origBase := githubAPIBase
-	defer func() { setGitHubAPIBase(origBase) }()
-	setGitHubAPIBase(srv.URL)
-
-	bundles, err := fetchGitHubAttestations(context.Background(), testDigest)
-	if err != nil {
+	if _, err := fetchGitHubAttestations(context.Background(), testDigest); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(bundles) != 1 {
-		t.Fatalf("expected 1 bundle, got %d", len(bundles))
-	}
-}
-
-func TestFetchGitHubAttestationsServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer srv.Close()
-
-	origBase := githubAPIBase
-	defer func() { setGitHubAPIBase(origBase) }()
-	setGitHubAPIBase(srv.URL)
-
-	_, err := fetchGitHubAttestations(context.Background(), testDigest)
-	if err == nil {
-		t.Fatal("expected error for 500 response")
-	}
-	if !strings.Contains(err.Error(), fmt.Sprintf("HTTP %d", http.StatusInternalServerError)) {
-		t.Errorf("expected HTTP status in error, got: %v", err)
-	}
-}
-
-func TestVerifyProvenanceInvalidBundle(t *testing.T) {
-	// Mock GitHub API returning an invalid bundle.
-	resp := `{"attestations": [{"bundle": {"invalid": "not a sigstore bundle"}}]}`
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(resp))
-	}))
-	defer srv.Close()
-
-	origBase := githubAPIBase
-	defer func() { setGitHubAPIBase(origBase) }()
-	setGitHubAPIBase(srv.URL)
-
-	ref := ImageRef{
-		Registry:   "ghcr.io",
-		Repository: "test/image",
-		Tag:        "1.0.0",
-		Digest:     testDigest,
-	}
-
-	err := VerifyProvenance(context.Background(), ref, nil, sigverify.CertificateIdentity{})
-	if err == nil {
-		t.Fatal("expected error for invalid bundle")
-	}
-	if !strings.Contains(err.Error(), "no valid SLSA provenance attestation") {
-		t.Errorf("expected provenance attestation error, got: %v", err)
+	if gotVersion != githubAPIVersion {
+		t.Errorf("expected X-GitHub-Api-Version %q, got %q", githubAPIVersion, gotVersion)
 	}
 }
 
@@ -177,38 +138,33 @@ func TestParseAttestationsAcceptsBundleURL(t *testing.T) {
 	}
 }
 
-func TestFetchSetsAPIVersionHeader(t *testing.T) {
-	var gotVersion string
+func TestVerifyProvenanceInvalidBundle(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotVersion = r.Header.Get("X-GitHub-Api-Version")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"attestations":[{"bundle":{"mediaType":"x"}}]}`))
+		_, _ = w.Write([]byte(`{"attestations": [{"bundle": {"invalid": "not a sigstore bundle"}}]}`))
 	}))
 	defer srv.Close()
+	withGitHubAPIBase(t, srv.URL)
 
-	origBase := githubAPIBase
-	defer func() { setGitHubAPIBase(origBase) }()
-	setGitHubAPIBase(srv.URL)
-
-	if _, err := fetchGitHubAttestations(context.Background(), testDigest); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	ref := ImageRef{Registry: "ghcr.io", Repository: "test/image", Tag: "1.0.0", Digest: testDigest}
+	err := VerifyProvenance(context.Background(), ref, nil, sigverify.CertificateIdentity{})
+	if err == nil {
+		t.Fatal("expected error for invalid bundle")
 	}
-	if gotVersion != githubAPIVersion {
-		t.Errorf("expected X-GitHub-Api-Version %q, got %q", githubAPIVersion, gotVersion)
+	if !strings.Contains(err.Error(), "no valid SLSA provenance attestation") {
+		t.Errorf("expected provenance attestation error, got: %v", err)
 	}
 }
 
 func TestResolveBundleFromURL(t *testing.T) {
 	want := `{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/x-snappy")
+		// Deliberately a generic content-type: decoding must not depend on it.
+		w.Header().Set("Content-Type", "application/octet-stream")
 		_, _ = w.Write(snappy.Encode(nil, []byte(want)))
 	}))
 	defer srv.Close()
-
-	orig := validateBundleURL
-	defer func() { validateBundleURL = orig }()
-	validateBundleURL = url.Parse
+	withValidateBundleURL(t, url.Parse)
 
 	att := githubAttestation{Bundle: json.RawMessage("null"), BundleURL: srv.URL}
 	got, err := resolveBundleJSON(context.Background(), att)
@@ -234,14 +190,46 @@ func TestResolveBundlePrefersInline(t *testing.T) {
 	}
 }
 
-func TestDecodeBundleBodyRawWhenNotSnappy(t *testing.T) {
-	raw := []byte(`{"mediaType":"x"}`)
-	got, err := decodeBundleBody("application/json", raw)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+// snappyHeader builds a Snappy block whose declared decoded length is
+// declaredLen (with a single trailing byte), for exercising the size guard
+// without allocating the payload.
+func snappyHeader(declaredLen uint64) []byte {
+	buf := make([]byte, binary.MaxVarintLen64)
+	n := binary.PutUvarint(buf, declaredLen)
+	return append(buf[:n], 0x00)
+}
+
+func TestDecodeBundleBody(t *testing.T) {
+	jsonBody := `{"mediaType":"x"}`
+	cases := []struct {
+		name       string
+		in         []byte
+		want       string
+		wantErrSub string
+	}{
+		{name: "raw json passthrough", in: []byte(jsonBody), want: jsonBody},
+		{name: "json array passthrough", in: []byte(`[1,2]`), want: `[1,2]`},
+		{name: "leading whitespace json", in: []byte("  \n" + jsonBody), want: "  \n" + jsonBody},
+		{name: "snappy compressed", in: snappy.Encode(nil, []byte(jsonBody)), want: jsonBody},
+		{name: "oversized declared length rejected", in: snappyHeader(uint64(maxDecodedBundleBytes) + 1), wantErrSub: "too large"},
+		{name: "not json and not snappy", in: []byte{0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80}, wantErrSub: "neither JSON nor"},
 	}
-	if string(got) != string(raw) {
-		t.Errorf("expected raw passthrough, got %s", got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := decodeBundleBody(tc.in)
+			if tc.wantErrSub != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErrSub) {
+					t.Fatalf("expected error containing %q, got: %v", tc.wantErrSub, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -251,9 +239,11 @@ func TestDefaultValidateBundleURL(t *testing.T) {
 		url     string
 		wantErr bool
 	}{
-		{"azure blob", "https://tmaproduction.blob.core.windows.net/x", false},
-		{"github domain", "https://github.com/x", false},
+		{"azure blob subdomain", "https://tmaproduction.blob.core.windows.net/x", false},
 		{"http rejected", "http://tmaproduction.blob.core.windows.net/x", true},
+		{"github domain rejected", "https://github.com/x", true},
+		{"githubusercontent rejected", "https://raw.githubusercontent.com/x", true},
+		{"bare apex rejected", "https://blob.core.windows.net/x", true},
 		{"foreign host rejected", "https://evil.example.com/x", true},
 		{"blob lookalike rejected", "https://blob.core.windows.net.evil.com/x", true},
 	}
@@ -264,6 +254,56 @@ func TestDefaultValidateBundleURL(t *testing.T) {
 				t.Errorf("defaultValidateBundleURL(%q) err=%v, wantErr=%v", tc.url, err, tc.wantErr)
 			}
 		})
+	}
+}
+
+// TestDefaultValidateBundleURLDoesNotLeakURL confirms a parse failure never
+// echoes the raw URL (which may carry an access token) into the error.
+func TestDefaultValidateBundleURLDoesNotLeakURL(t *testing.T) {
+	secret := "https://%zz/path?sig=SECRETTOKEN"
+	_, err := defaultValidateBundleURL(secret)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if strings.Contains(err.Error(), "SECRETTOKEN") {
+		t.Errorf("error leaked the raw URL/token: %v", err)
+	}
+}
+
+// TestBundleFetchRejectsCrossHostRedirect confirms a redirect to a host outside
+// the allowlist is revalidated and rejected mid-fetch (SSRF guard).
+func TestBundleFetchRejectsCrossHostRedirect(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("should never be read"))
+	}))
+	defer target.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	redirectorURL, err := url.Parse(redirector.URL)
+	if err != nil {
+		t.Fatalf("parsing redirector url: %v", err)
+	}
+	// Accept only the first host; a redirect to any other host must be rejected.
+	withValidateBundleURL(t, func(raw string) (*url.URL, error) {
+		u, perr := url.Parse(raw)
+		if perr != nil {
+			return nil, perr
+		}
+		if u.Host != redirectorURL.Host {
+			return nil, fmt.Errorf("host %q not allowed", u.Host)
+		}
+		return u, nil
+	})
+
+	_, err = fetchBundleURL(context.Background(), redirector.URL)
+	if err == nil {
+		t.Fatal("expected cross-host redirect to be rejected")
+	}
+	if !strings.Contains(err.Error(), "not allowed") {
+		t.Errorf("expected host-not-allowed error, got: %v", err)
 	}
 }
 
@@ -284,12 +324,8 @@ func TestVerifyProvenanceViaBundleURL(t *testing.T) {
 	}))
 	defer api.Close()
 
-	origBase := githubAPIBase
-	defer func() { setGitHubAPIBase(origBase) }()
-	setGitHubAPIBase(api.URL)
-	orig := validateBundleURL
-	defer func() { validateBundleURL = orig }()
-	validateBundleURL = url.Parse
+	withGitHubAPIBase(t, api.URL)
+	withValidateBundleURL(t, url.Parse)
 
 	ref := ImageRef{Registry: "ghcr.io", Repository: "test/image", Tag: "1.0.0", Digest: testDigest}
 	err := VerifyProvenance(context.Background(), ref, nil, sigverify.CertificateIdentity{})
