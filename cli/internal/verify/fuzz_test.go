@@ -3,6 +3,8 @@ package verify
 import (
 	"strings"
 	"testing"
+
+	"github.com/klauspost/compress/snappy"
 )
 
 // FuzzIsValidDigest verifies that IsValidDigest never panics and that
@@ -73,6 +75,56 @@ func FuzzNewImageRef(f *testing.F) {
 		// Repository must contain the image repo prefix.
 		if ref.Repository != ImageRepoPrefix+name {
 			t.Errorf("Repository = %q, want %q", ref.Repository, ImageRepoPrefix+name)
+		}
+	})
+}
+
+// FuzzDefaultValidateBundleURL verifies the bundle_url SSRF gate never panics
+// and that any URL it accepts is HTTPS on an allowlisted host.
+func FuzzDefaultValidateBundleURL(f *testing.F) {
+	f.Add("https://tmaproduction.blob.core.windows.net/x?sig=abc")
+	f.Add("http://tmaproduction.blob.core.windows.net/x")
+	f.Add("https://evil.example.com/x")
+	f.Add("https://blob.core.windows.net.evil.com/x")
+	f.Add("://malformed")
+	f.Add("")
+
+	f.Fuzz(func(t *testing.T, rawURL string) {
+		u, err := defaultValidateBundleURL(rawURL)
+		if err != nil {
+			return
+		}
+		if u == nil {
+			t.Fatalf("accepted %q but returned a nil URL", rawURL)
+		}
+		if u.Scheme != "https" {
+			t.Errorf("accepted non-https URL %q (scheme %q)", rawURL, u.Scheme)
+		}
+		if !isAllowedBundleURLHost(u.Hostname()) {
+			t.Errorf("accepted URL %q on non-allowlisted host %q", rawURL, u.Hostname())
+		}
+	})
+}
+
+// FuzzDecodeBundleBody verifies decodeBundleBody never panics and never returns
+// a decoded payload larger than the decompression cap.
+func FuzzDecodeBundleBody(f *testing.F) {
+	f.Add([]byte(`{"mediaType":"x"}`))
+	f.Add([]byte(`[1,2,3]`))
+	f.Add([]byte(""))
+	f.Add(snappy.Encode(nil, []byte(`{"a":1}`)))
+	f.Add([]byte{0x80, 0x80, 0x80})
+
+	f.Fuzz(func(t *testing.T, body []byte) {
+		if len(body) > 1<<20 {
+			return // cap fuzz input size
+		}
+		out, err := decodeBundleBody(body)
+		if err != nil {
+			return
+		}
+		if len(out) > maxDecodedBundleBytes {
+			t.Errorf("decoded output %d bytes exceeds cap %d", len(out), maxDecodedBundleBytes)
 		}
 	})
 }
