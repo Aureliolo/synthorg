@@ -260,13 +260,15 @@ func TestDefaultValidateBundleURL(t *testing.T) {
 // TestDefaultValidateBundleURLDoesNotLeakURL confirms a parse failure never
 // echoes the raw URL (which may carry an access token) into the error.
 func TestDefaultValidateBundleURLDoesNotLeakURL(t *testing.T) {
-	secret := "https://%zz/path?sig=SECRETTOKEN"
-	_, err := defaultValidateBundleURL(secret)
+	// Malformed URL whose query carries a canary standing in for a real
+	// access token; a parse failure must not echo the raw URL.
+	malformed := "https://%zz/path?sig=leak-canary"
+	_, err := defaultValidateBundleURL(malformed)
 	if err == nil {
 		t.Fatal("expected parse error")
 	}
-	if strings.Contains(err.Error(), "SECRETTOKEN") {
-		t.Errorf("error leaked the raw URL/token: %v", err)
+	if strings.Contains(err.Error(), "leak-canary") {
+		t.Errorf("error leaked the raw URL: %v", err)
 	}
 }
 
@@ -304,6 +306,34 @@ func TestBundleFetchRejectsCrossHostRedirect(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not allowed") {
 		t.Errorf("expected host-not-allowed error, got: %v", err)
+	}
+}
+
+// TestBundleFetchRejectsSameSuffixCrossHostRedirect confirms a redirect that
+// changes host is rejected even when the destination would itself pass the
+// allowlist (e.g. a different Azure storage account). validateBundleURL accepts
+// every host here, so the hostname-change check is the only thing that can fail.
+func TestBundleFetchRejectsSameSuffixCrossHostRedirect(t *testing.T) {
+	var redirectTo string
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, redirectTo, http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	u, err := url.Parse(redirector.URL)
+	if err != nil {
+		t.Fatalf("parsing redirector url: %v", err)
+	}
+	// Same server, but the hostname changes 127.0.0.1 -> localhost.
+	redirectTo = "http://localhost:" + u.Port() + "/redirected"
+	withValidateBundleURL(t, url.Parse)
+
+	_, err = fetchBundleURL(context.Background(), redirector.URL)
+	if err == nil {
+		t.Fatal("expected cross-host redirect to be rejected")
+	}
+	if !strings.Contains(err.Error(), "cross-host") {
+		t.Errorf("expected cross-host redirect error, got: %v", err)
 	}
 }
 

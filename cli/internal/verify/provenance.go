@@ -76,12 +76,17 @@ var githubAPIBase = defaultGitHubAPIBase
 // other packages modifying global state.
 var attestationHTTPClient = &http.Client{}
 
-// bundleFetchClient fetches the externalized bundle from bundle_url, revalidating
-// the target on every redirect so a redirect cannot escape the host allowlist.
+// bundleFetchClient fetches the externalized bundle from bundle_url. Every
+// redirect is revalidated against the host allowlist AND rejected if it changes
+// host, so a redirect cannot hop to a different storage account even when the
+// destination is itself an allowlisted Azure blob host.
 var bundleFetchClient = &http.Client{
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= maxBundleRedirects {
 			return fmt.Errorf("too many redirects fetching bundle_url")
+		}
+		if !strings.EqualFold(req.URL.Hostname(), via[0].URL.Hostname()) {
+			return fmt.Errorf("cross-host redirect fetching bundle_url")
 		}
 		_, err := validateBundleURL(req.URL.String())
 		return err
@@ -301,8 +306,8 @@ func decodeBundleBody(body []byte) (json.RawMessage, error) {
 // inner cause (timeout, connection refused, ...) is safe to surface.
 func redactURLError(err error) error {
 	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
-		return urlErr.Err
+	for errors.As(err, &urlErr) {
+		err = urlErr.Err
 	}
 	return err
 }
