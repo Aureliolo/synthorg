@@ -412,16 +412,16 @@ async def wire_plan_review_panel(
         return
     if provider_registry is None:
         return
-    from synthorg.api._feature_provider_resolution import (  # noqa: PLC0415
-        resolve_feature_provider,
-    )
+    from synthorg.core.agent import AgentIdentity  # noqa: PLC0415
+    from synthorg.providers.protocol import CompletionProvider  # noqa: PLC0415
 
-    model = await resolver.get_str("coordination", "decomposition_model")
-    provider = resolve_feature_provider(
-        provider_registry, model, feature="plan_review_panel"
-    )
-    if provider is None:
-        return
+    registry = provider_registry
+
+    def _panel_provider_selector(identity: AgentIdentity) -> CompletionProvider:
+        # Each panellist dispatches on its own bound provider; an unregistered
+        # provider raises and the session degrades that panellist to no-verdict.
+        return registry.get(identity.model.provider)
+
     config = PlanReviewPanelConfig(
         panel_size=await resolver.get_int("coordination", "plan_review_panel_size"),
         max_turns=await resolver.get_int("coordination", "plan_review_panel_max_turns"),
@@ -430,7 +430,7 @@ async def wire_plan_review_panel(
         ),
     )
     panel = AgentSessionPlanReviewPanel(
-        provider=provider,
+        provider_selector=_panel_provider_selector,
         config=config,
         cost_tracker=cost_tracker,
         clock=app_state.clock,

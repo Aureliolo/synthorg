@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.decomposition_strategy_factory import (
+    ProviderSelector,
     build_decomposition_strategy,
 )
 from synthorg.engine.coordination.section_config import (
@@ -135,6 +136,7 @@ def build_coordinator(  # noqa: PLR0913
     task_assignment_config: TaskAssignmentConfig,
     provider: CompletionProvider | None = None,
     decomposition_model: str | None = None,
+    provider_selector: ProviderSelector | None = None,
     decomposition_strategy: str = "agent-session",
     decomposition_tool_provider: DecompositionToolProvider | None = None,
     decomposition_cost_tracker: CostTrackerProtocol | None = None,
@@ -178,6 +180,10 @@ def build_coordinator(  # noqa: PLR0913
             fallback when ``routing_scorer_config`` is not provided).
         provider: Optional LLM provider for decomposition.
         decomposition_model: Optional model ID for decomposition.
+        provider_selector: Resolves the completion client for an owner's own
+            ``identity.model.provider``; required when *provider* is given so
+            the owner-run session dispatches on the owner's bound provider
+            rather than the boot default.
         decomposition_strategy: Which decomposer to build -- ``"agent-session"``
             (default; owner-run planning loop) or ``"llm"`` (single-shot). Read
             from ``coordination.decomposition_strategy`` at boot.
@@ -245,6 +251,7 @@ def build_coordinator(  # noqa: PLR0913
         decomposition_model,
         strategy_name=decomposition_strategy,
         tool_provider=decomposition_tool_provider,
+        provider_selector=provider_selector,
         cost_tracker=decomposition_cost_tracker,
         shutdown_checker=session_shutdown_checker,
         agent_session_max_turns=agent_session_max_turns,

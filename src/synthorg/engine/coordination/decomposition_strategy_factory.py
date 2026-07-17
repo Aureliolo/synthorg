@@ -7,9 +7,11 @@ separate from :mod:`synthorg.engine.coordination.factory` so the coordinator
 assembly and the strategy-selection logic each stay within their size budget.
 """
 
+from collections.abc import Callable
 from typing import override
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.task import Task
 from synthorg.engine.decomposition.models import (
@@ -27,6 +29,9 @@ from synthorg.observability.events.decomposition import (
 from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
+
+type ProviderSelector = Callable[[AgentIdentity], CompletionProvider]
+"""Resolve the completion client for an agent's own ``(provider, model)`` pair."""
 
 
 class _NoProviderDecompositionStrategy(DecompositionStrategy):
@@ -72,6 +77,7 @@ def _build_llm_strategy(  # noqa: PLR0913 -- uniform strategy-registry kwargs
     *,
     provider: CompletionProvider,
     decomposition_model: str,
+    provider_selector: ProviderSelector,
     tool_provider: DecompositionToolProvider | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
     shutdown_checker: ShutdownChecker | None = None,
@@ -80,15 +86,15 @@ def _build_llm_strategy(  # noqa: PLR0913 -- uniform strategy-registry kwargs
 ) -> DecompositionStrategy:
     """Build the single-shot LLM decomposition strategy.
 
-    The agent-session-only deps (*tool_provider*, *cost_tracker*,
-    *shutdown_checker*, the session-tuning scalars) are accepted so the
-    strategy registry can pass a uniform kwarg set to every builder; the
+    The agent-session-only deps (*provider_selector*, *tool_provider*,
+    *cost_tracker*, *shutdown_checker*, the session-tuning scalars) are accepted
+    so the strategy registry can pass a uniform kwarg set to every builder; the
     single-shot strategy ignores them.
 
     Returns:
         An :class:`LlmDecompositionStrategy` over *provider* + *model*.
     """
-    del tool_provider, cost_tracker, shutdown_checker
+    del provider_selector, tool_provider, cost_tracker, shutdown_checker
     del agent_session_max_turns, agent_session_cost_ceiling
     from synthorg.engine.decomposition.llm import (  # noqa: PLC0415
         LlmDecompositionStrategy,
@@ -101,6 +107,7 @@ def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
     *,
     provider: CompletionProvider,
     decomposition_model: str,
+    provider_selector: ProviderSelector,
     tool_provider: DecompositionToolProvider | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
     shutdown_checker: ShutdownChecker | None = None,
@@ -141,7 +148,7 @@ def _build_agent_session_strategy(  # noqa: PLR0913 -- uniform registry kwargs
     )
 
     return AgentSessionDecompositionStrategy(
-        provider=provider,
+        provider_selector=provider_selector,
         fallback=LlmDecompositionStrategy(provider=provider, model=decomposition_model),
         tool_provider=tool_provider,
         config=config,
@@ -167,6 +174,7 @@ def build_decomposition_strategy(  # noqa: PLR0913 -- shared session deps
     *,
     strategy_name: str,
     tool_provider: DecompositionToolProvider | None,
+    provider_selector: ProviderSelector | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
     shutdown_checker: ShutdownChecker | None = None,
     agent_session_max_turns: int | None = None,
@@ -180,14 +188,24 @@ def build_decomposition_strategy(  # noqa: PLR0913 -- shared session deps
 
     Raises:
         ValueError: If exactly one of *provider* / *decomposition_model*
-            is supplied -- both or neither must be given.
+            is supplied -- both or neither must be given; or a provider is
+            given without a *provider_selector* (the agent session dispatches
+            each owner on its own bound provider).
         StrategyFactoryNotFoundError: If *strategy_name* is unknown.
     """
     if provider is not None and decomposition_model is not None:
+        if provider_selector is None:
+            msg = (
+                "Decomposition requires a provider_selector when a provider is "
+                "configured: the owner-run session dispatches each owner on its "
+                "own bound (provider, model), never a shared default."
+            )
+            raise ValueError(msg)
         return _DECOMPOSITION_STRATEGY_REGISTRY.build(
             strategy_name,
             provider=provider,
             decomposition_model=decomposition_model,
+            provider_selector=provider_selector,
             tool_provider=tool_provider,
             cost_tracker=cost_tracker,
             shutdown_checker=shutdown_checker,

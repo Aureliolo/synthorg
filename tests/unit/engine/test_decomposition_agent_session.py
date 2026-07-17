@@ -109,7 +109,7 @@ def _strategy(
     provider: ScriptedProvider, fallback: _SentinelFallback
 ) -> AgentSessionDecompositionStrategy:
     return AgentSessionDecompositionStrategy(
-        provider=provider,
+        provider_selector=lambda _identity: provider,
         fallback=fallback,
         config=AgentSessionDecompositionConfig(max_turns=4),
     )
@@ -253,7 +253,7 @@ class TestReadOnlyToolBoundary:
             )
         )
         strategy = AgentSessionDecompositionStrategy(
-            provider=ScriptedProvider([]),
+            provider_selector=lambda _identity: ScriptedProvider([]),
             fallback=_SentinelFallback(),
             tool_provider=provider,
         )
@@ -298,7 +298,7 @@ class TestAgentSessionGuards:
 
     def test_budget_checker_halts_at_ceiling(self) -> None:
         strategy = AgentSessionDecompositionStrategy(
-            provider=ScriptedProvider([]),
+            provider_selector=lambda _identity: ScriptedProvider([]),
             fallback=_SentinelFallback(),
             config=AgentSessionDecompositionConfig(cost_ceiling=1.5),
         )

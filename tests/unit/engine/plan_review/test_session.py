@@ -85,7 +85,7 @@ def _agent(label: str, *, role: str) -> AgentIdentity:
 
 def _panel(provider: ScriptedProvider) -> AgentSessionPlanReviewPanel:
     return AgentSessionPlanReviewPanel(
-        provider=provider,
+        provider_selector=lambda _identity: provider,
         config=PlanReviewPanelConfig(panel_size=1, max_turns=3),
         clock=FakeClock(),
     )

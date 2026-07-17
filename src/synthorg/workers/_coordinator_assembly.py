@@ -396,12 +396,24 @@ async def _build_runtime_coordinator(
     # ``AgentEngineExecutionService`` provisions the per-project workspace
     # lazily on first task; bare construction (no service) keeps the
     # persistence-less dev paths working as before.
+    from synthorg.core.agent import AgentIdentity  # noqa: PLC0415
+    from synthorg.providers.state import provider_registry_of  # noqa: PLC0415
+
+    _registry = provider_registry_of(app_state)
+
+    def _owner_provider_selector(identity: AgentIdentity) -> CompletionProvider:
+        # The owner-run decomposition session dispatches on the owner's own
+        # bound provider, never the boot default; an unregistered provider
+        # raises and the strategy falls back to the single-shot decomposer.
+        return _registry.get(identity.model.provider)
+
     coordinator = build_coordinator(
         config=app_state.config.coordination,
         engine=engine,
         task_assignment_config=app_state.config.task_assignment,
         provider=decomp_provider,
         decomposition_model=decomposition_model,
+        provider_selector=_owner_provider_selector,
         decomposition_strategy=decomposition_strategy,
         decomposition_cost_tracker=cost_tracker,
         agent_session_max_turns=agent_session_max_turns,
