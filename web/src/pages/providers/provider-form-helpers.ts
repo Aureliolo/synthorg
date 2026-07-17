@@ -60,6 +60,12 @@ export interface ProviderFormValues {
   keepAlive: string
   litellmProvider: string
   tosAccepted: boolean
+  /**
+   * Whether this provider may back an agent. When off the provider stays
+   * usable for explicitly-configured feature calls but is excluded from agent
+   * seeding and stakes routing, so no agent silently sources from it.
+   */
+  agentEligible: boolean
 }
 
 /** Optional store-override props for using this drawer outside the Settings page. */
@@ -302,6 +308,11 @@ export function buildCreateFromPresetRequest(
 ): CreateFromPresetRequest {
   const apiKey = normaliseOptional(v.apiKey)
   const subscriptionToken = normaliseOptional(v.subscriptionToken)
+  // agent_eligible is deliberately not forwarded: the backend
+  // CreateFromPresetRequest schema has no such field, so a preset-created
+  // provider always defaults to agent-eligible. The toggle is hidden for the
+  // preset path (only shown for custom-create / edit) and is set afterwards
+  // via an edit, so there is no silent data loss here.
   return {
     preset_name: presetName,
     name: v.name.trim(),
@@ -327,6 +338,7 @@ export function buildCreateProviderRequest(v: ProviderFormValues): CreateProvide
     tos_accepted: v.authType === 'subscription' && v.tosAccepted,
     base_url: normaliseOptional(v.baseUrl),
     keep_alive: normaliseOptional(v.keepAlive),
+    agent_eligible: v.agentEligible,
     models: [],
   }
 }
@@ -345,6 +357,7 @@ export function buildUpdateProviderRequest(v: ProviderFormValues): UpdateProvide
     tos_accepted: v.authType === 'subscription' && v.tosAccepted,
     base_url: normaliseOptional(v.baseUrl),
     keep_alive: normaliseOptional(v.keepAlive),
+    agent_eligible: v.agentEligible,
   }
 }
 

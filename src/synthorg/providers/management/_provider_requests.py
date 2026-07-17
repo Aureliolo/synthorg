@@ -100,6 +100,13 @@ class CreateProviderRequest(BaseModel):
     custom_header_value: ValidatedCustomHeaderValue = None
     models: tuple[ProviderModelConfig, ...] = ()
     preset_name: NotBlankStr | None = None
+    agent_eligible: bool = Field(
+        default=True,
+        description="Whether this provider may back an agent (seeded onto "
+        "agents and picked by stakes routing). False keeps it usable for "
+        "explicitly-configured feature calls but excludes it from all agent "
+        "assignment.",
+    )
 
 
 class UpdateProviderRequest(BaseModel):
@@ -133,6 +140,7 @@ class UpdateProviderRequest(BaseModel):
     custom_header_name: NotBlankStr | None = None
     custom_header_value: ValidatedCustomHeaderValue = None
     models: tuple[ProviderModelConfig, ...] | None = None
+    agent_eligible: bool | None = None
 
     @model_validator(mode="after")
     def _validate_credential_clear_consistency(self) -> Self:

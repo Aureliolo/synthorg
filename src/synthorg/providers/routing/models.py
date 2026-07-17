@@ -35,6 +35,14 @@ class ResolvedModel(BaseModel):
         default=True,
         description="Whether the model may execute tool-bearing agentic work",
     )
+    agent_eligible: bool = Field(
+        default=True,
+        description=(
+            "Whether the owning provider may back an agent. False mirrors the "
+            "provider's ``agent_eligible=False``, so stakes routing and agent "
+            "seeding exclude the model while feature calls may still use it."
+        ),
+    )
     cost_per_1k_input: float = Field(
         default=0.0,
         ge=0.0,

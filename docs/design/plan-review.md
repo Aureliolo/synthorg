@@ -24,15 +24,18 @@ carries only the plan's `plan_id`.
 - **`Plan`**: `id` (UUID), `project`, `objective_id`, `objective_title`
   (denormalised at creation so the surface never resolves, or falls back to, a raw
   id), `parent_task_id`, `items` (ordered tuple forming a dependency DAG),
-  `task_structure`, `coordination_topology`, `status`, `forecast_id`, `review` (the
+  `task_structure`, `coordination_topology`, `status`, `failure_reason` (why a
+  `FAILED` plan failed, `None` otherwise), `forecast_id`, `review` (the
   consolidated stakeholder-panel review, or `None`), `open_questions` and
   `assumptions` (what the planner surfaced for the human), `objective_criteria` (the
   objective's acceptance criteria, denormalised for the coverage map),
   `version_history` (snapshots of prior submitted versions), `version`,
-  `created_at`, `updated_at`. A model validator rejects an empty item list,
-  duplicate item ids, an unresolvable dependency, or a dependency **cycle**
-  (topological sort), so a malformed plan is caught at construction rather than as a
-  dispatch failure.
+  `created_at`, `updated_at`. A model validator rejects an empty item list for
+  every status except the `PLANNING` / `FAILED` shells (which may carry no
+  items), duplicate item ids, an unresolvable dependency, or a dependency
+  **cycle** (topological sort); a second validator ties `failure_reason` to the
+  `FAILED` status (present iff FAILED). A malformed plan is caught at construction
+  rather than as a dispatch failure.
 - **`PlanItem`**: `id` (a canonical UUID string, because dispatch rebuilds each
   child task from it), `title`, `description`, `dependencies`, `owner`,
   `acceptance_criteria`, `expected_artifacts`, `required_skills`, `required_tags`,
@@ -73,29 +76,55 @@ panel is attached the plan is parked with `review = None`.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> DRAFT
+    [*] --> PLANNING
+    PLANNING --> PENDING_REVIEW: decomposition fills the shell
+    PLANNING --> FAILED: decomposition failed / empty
     DRAFT --> PENDING_REVIEW
     PENDING_REVIEW --> APPROVED
     PENDING_REVIEW --> REJECTED
+    PENDING_REVIEW --> FAILED: approval-park failed
     PENDING_REVIEW --> DRAFT: edit / request-changes
+    DRAFT --> SUPERSEDED: superseded by a re-plan
+    PENDING_REVIEW --> SUPERSEDED: superseded by a re-plan
     APPROVED --> [*]
     REJECTED --> [*]
+    FAILED --> [*]
+    SUPERSEDED --> [*]
 ```
 
-An edit or request-changes is accepted only from a non-terminal status.
+**Plan-first-from-greenlight.** When a splittable initiative is greenlit, a
+`PLANNING` **shell** (no items yet) is persisted *before* decomposition runs, so
+every greenlit objective leaves a first-class, visible plan even if decomposition
+never completes. Decomposition fills the shell in place (moving it to
+`PENDING_REVIEW`); a decomposition that fails or produces no items transitions the
+shell to `FAILED`, carrying a `failure_reason` the review surface shows, rather
+than leaving a silent orphan task. A plan can also reach `FAILED` *after*
+decomposition succeeded, if parking the approval fails: it is then FAILED with its
+items intact, so `FAILED` permits (but does not require) an empty item list. The
+`PLANNING` and `FAILED` statuses are the only ones permitted to carry an empty item
+list (enforced by the model validator and the SQLite / Postgres `items` CHECK);
+every other status requires a non-empty, validated item DAG. A `failure_reason` is
+present iff the status is `FAILED` (a cross-field model validator enforces both
+directions).
 
-`DRAFT` and `PENDING_REVIEW` are the reworkable statuses; `APPROVED`, `REJECTED`,
-and `SUPERSEDED` are terminal. An operator rework or request-changes is accepted
-only from a reworkable status, so a decided plan cannot be revived. Each edit bumps
-`version`, and every write is version-guarded (optimistic concurrency): a stale
-writer is rejected with a conflict rather than silently clobbering a concurrent edit.
+An edit or request-changes is accepted only from a reworkable status.
+
+`DRAFT` and `PENDING_REVIEW` are the reworkable statuses; `PLANNING` is a transient
+shell (not operator-reworkable); `APPROVED`, `REJECTED`, `SUPERSEDED`, and `FAILED`
+are terminal. An operator rework or request-changes is accepted only from a
+reworkable status, so a decided or failed plan cannot be revived (a retry is a
+fresh run). Each edit bumps `version`, and every write is version-guarded
+(optimistic concurrency): a stale writer is rejected with a conflict rather than
+silently clobbering a concurrent edit.
 
 ## Persistence
 
 `PlanRepository` (`persistence/plan_protocol.py`) composes the ADR-0001 generics
 `IdKeyedRepository[Plan, NotBlankStr]` + `FilteredQueryRepository[Plan,
 PlanFilterSpec]`, with SQLite and Postgres implementations kept in parity. The
-`plans` table stores `items` as JSON (a non-empty array, CHECK-enforced), and
+`plans` table stores `items` as JSON (a non-empty array for every status except
+the `PLANNING` / `FAILED` shells, which may carry no items, CHECK-enforced), the
+nullable `failure_reason` (non-blank when present, CHECK-enforced), and
 `review` / `open_questions` / `assumptions` / `objective_criteria` /
 `version_history` as JSON columns; Postgres uses `TIMESTAMPTZ` for the timestamps
 and a composite `(project, status, id)` index for the combined-filter list query.
@@ -176,7 +205,8 @@ Approve/reject route through the existing idempotent `/approvals/{id}` path into
   re-runnable; the plan stays `APPROVED` because the decision stands.
 - On reject, the parent task is cancelled and nothing builds.
 - The gate persists the plan before parking the approval; if the approval write
-  fails, the just-created plan is compensated (deleted) so no orphan remains.
+  fails, the filled plan is marked `FAILED` (carrying the reason) rather than
+  deleted, so the failure stays visible in Plan Review instead of vanishing.
 
 ## Configuration
 
@@ -202,6 +232,9 @@ description, owner, complexity, stakes) or sends the plan back for changes, and
 surfaces a disconnected-updates banner when the WebSocket drops. Beyond the item
 list, it renders review panels derived from the plan (no extra persisted state):
 
+- **Decomposition failure** (`PlanFailureBanner`): shown only for a `FAILED` plan,
+  surfacing its `failure_reason` so the operator can see why the run failed and
+  start a fresh one.
 - **Needs your input** (`PlanOpenQuestionsPanel`): the planner's open questions and
   assumptions to answer or correct before approving.
 - **Cost forecast** (`PlanForecastPanel`): the plan's `forecast_id` hydrated to show

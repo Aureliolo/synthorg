@@ -57,6 +57,7 @@ class _ProviderWithModels(Protocol):
 
     models: tuple[ProviderModelConfig, ...]
     base_url: str | None
+    agent_eligible: bool
 
 
 class ModelMatch(BaseModel):
@@ -482,6 +483,11 @@ def _build_pool(
     owner: dict[int, str] = {}
     local_ids: set[int] = set()
     for pname, pcfg in providers.items():
+        # An agent-ineligible provider (e.g. a gateway kept for feature calls
+        # only) contributes no models to the seeding pool, so no agent is ever
+        # assigned one of its models at provisioning.
+        if not pcfg.agent_eligible:
+            continue
         provider_is_local = is_local_url(pcfg.base_url)
         for model in pcfg.models:
             pool.append(model)

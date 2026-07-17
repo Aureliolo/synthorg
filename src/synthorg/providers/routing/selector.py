@@ -21,14 +21,19 @@ from .models import ResolvedModel
 logger = get_logger(__name__)
 
 
-def _cost_key(m: ResolvedModel) -> tuple[float, str]:
-    """Sort key: cheapest first, then provider name for stable tie-breaking.
+def _cost_key(m: ResolvedModel) -> tuple[bool, float, str]:
+    """Sort key: agent-eligible first, then cheapest, then provider name.
+
+    Eligibility leads the key so a provider kept out of agent work (e.g. a
+    gateway added for feature calls only) is never picked over an eligible
+    provider that serves the same model; it wins only when it is the sole
+    provider for the ref. Cost then provider name break the remaining ties.
 
     Returns:
-        A ``(total_cost_per_1k, provider_name)`` tuple usable as a sort
-        key (cheapest first, provider name breaking ties).
+        A ``(not agent_eligible, total_cost_per_1k, provider_name)`` tuple
+        usable as a sort key (eligible first, cheapest, then name).
     """
-    return (m.total_cost_per_1k, m.provider_name)
+    return (not m.agent_eligible, m.total_cost_per_1k, m.provider_name)
 
 
 @runtime_checkable
@@ -55,14 +60,16 @@ class ModelCandidateSelector(Protocol):
 
 
 class QuotaAwareSelector:
-    """Prefer providers with available quota, then cheapest.
+    """Prefer providers with quota; within that pool, eligible then cheapest.
 
-    When quota information is available, candidates from providers
-    with remaining quota are preferred.  Among those (or among all
-    candidates when none have quota), the cheapest is returned.
+    Quota is the hard filter: candidates from providers with remaining
+    quota are preferred.  Within that pool (or among all candidates when
+    none have quota), the winner is chosen by ``_cost_key`` -- agent-eligible
+    first, then cheapest, then provider name -- so an ineligible provider is
+    only ever picked when it is the sole remaining candidate.
 
     With an empty quota map (the default), all providers are assumed
-    available and the selector degrades to cheapest-first.
+    available and the selector degrades to eligible-then-cheapest.
 
     The selector is immutable after construction -- reconstruct with
     a fresh quota snapshot to reflect updated quotas.
@@ -92,9 +99,9 @@ class QuotaAwareSelector:
             candidates: Non-empty tuple of resolved models.
 
         Returns:
-            Provider with available quota and lowest cost; if no
-            provider has quota, returns the globally cheapest
-            candidate.
+            The agent-eligible, lowest-cost provider that still has quota;
+            if no provider has quota, the eligible-then-cheapest candidate
+            overall.
 
         Raises:
             ModelResolutionError: If candidates is empty.
@@ -140,21 +147,23 @@ class QuotaAwareSelector:
 
 
 class CheapestSelector:
-    """Always pick the cheapest candidate regardless of quota.
+    """Pick the agent-eligible cheapest candidate, ignoring quota.
 
-    Stateless selector that ignores quota availability and selects
-    purely by ``total_cost_per_1k``.  Use when quota enforcement is
-    handled externally or when cost minimisation is the sole concern.
+    Stateless selector that ignores quota availability and selects by
+    ``_cost_key`` (agent-eligible first, then ``total_cost_per_1k``, then
+    provider name).  Use when quota enforcement is handled externally or
+    when cost minimisation is the sole concern.
     """
 
     def select(
         self,
         candidates: tuple[ResolvedModel, ...],
     ) -> ResolvedModel:
-        """Select the cheapest candidate by total cost per 1k tokens.
+        """Select the agent-eligible cheapest candidate.
 
         Returns:
-            The lowest-cost ``ResolvedModel`` from the candidates.
+            The eligible-then-lowest-cost ``ResolvedModel`` from the
+            candidates.
 
         Raises:
             ModelResolutionError: If the ``candidates`` tuple is empty.

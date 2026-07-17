@@ -42,6 +42,7 @@ function buildPlan(overrides: Partial<Plan> = {}): Plan {
     task_structure: 'sequential',
     coordination_topology: 'auto',
     status: 'pending_review',
+    failure_reason: null,
     forecast_id: null,
     review: null,
     open_questions: [],

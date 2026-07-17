@@ -380,6 +380,124 @@ class TestSelectorErrorWrapping:
         assert resolver.resolve_safe("shared") is None
 
 
+def _eligibility_config() -> dict[str, ProviderConfig]:
+    """Cheaper provider is agent-INELIGIBLE; the pricier one is eligible."""
+    return {
+        "test-eligible": ProviderConfig(
+            driver="litellm",
+            connection_name="conn-eligible",
+            agent_eligible=True,
+            models=(
+                ProviderModelConfig(
+                    id="test-shared-001",
+                    alias="shared",
+                    cost_per_1k_input=0.010,
+                    cost_per_1k_output=0.050,
+                ),
+            ),
+        ),
+        "test-gateway": ProviderConfig(
+            driver="litellm",
+            connection_name="conn-gateway",
+            agent_eligible=False,
+            models=(
+                ProviderModelConfig(
+                    id="test-shared-001",
+                    alias="shared",
+                    cost_per_1k_input=0.001,
+                    cost_per_1k_output=0.005,
+                ),
+            ),
+        ),
+    }
+
+
+# ── TestResolveForPair ───────────────────────────────────────────
+
+
+class TestResolveForPair:
+    """Provider-scoped resolution honours an agent's bound (provider, model)."""
+
+    def test_scopes_to_the_bound_provider_by_alias(self) -> None:
+        resolver = ModelResolver.from_config(_two_provider_config())
+        a = resolver.resolve_for_pair("test-provider-a", "shared")
+        b = resolver.resolve_for_pair("test-provider-b", "shared")
+        assert a is not None
+        assert a.provider_name == "test-provider-a"
+        assert b is not None
+        assert b.provider_name == "test-provider-b"
+
+    def test_scopes_to_the_bound_provider_by_model_id(self) -> None:
+        resolver = ModelResolver.from_config(_two_provider_config())
+        model = resolver.resolve_for_pair("test-provider-a", "test-shared-001")
+        assert model is not None
+        assert model.provider_name == "test-provider-a"
+        assert model.model_id == "test-shared-001"
+
+    def test_does_not_re_derive_across_providers(self) -> None:
+        # The bare-ref selector would pick the cheaper provider-b; the bound
+        # pair must stay on provider-a regardless of cost.
+        resolver = ModelResolver.from_config(_two_provider_config())
+        cheapest = resolver.resolve("shared")
+        pinned = resolver.resolve_for_pair("test-provider-a", "shared")
+        assert cheapest.provider_name == "test-provider-b"
+        assert pinned is not None
+        assert pinned.provider_name == "test-provider-a"
+
+    def test_unknown_provider_returns_none(self) -> None:
+        resolver = ModelResolver.from_config(_two_provider_config())
+        assert resolver.resolve_for_pair("no-such-provider", "shared") is None
+
+    def test_unknown_ref_returns_none(self) -> None:
+        resolver = ModelResolver.from_config(_two_provider_config())
+        assert resolver.resolve_for_pair("test-provider-a", "no-such-ref") is None
+
+    def test_explicit_pair_honoured_even_when_ineligible(self) -> None:
+        # agent_eligible governs auto-selection, not an explicit bound pair: an
+        # agent already bound to a (now-ineligible) provider still resolves.
+        resolver = ModelResolver.from_config(_eligibility_config())
+        pinned = resolver.resolve_for_pair("test-gateway", "shared")
+        assert pinned is not None
+        assert pinned.provider_name == "test-gateway"
+        assert pinned.agent_eligible is False
+
+
+# ── TestAgentEligibilitySelection ────────────────────────────────
+
+
+class TestAgentEligibilitySelection:
+    """Eligibility-first selection keeps agents off ineligible providers."""
+
+    def test_eligible_provider_beats_cheaper_ineligible(self) -> None:
+        # The cheaper provider is agent-ineligible; the default selector must
+        # still pick the pricier eligible one (never source an agent from a
+        # feature-only gateway when an eligible provider serves the model).
+        resolver = ModelResolver.from_config(_eligibility_config())
+        model = resolver.resolve("shared")
+        assert model.provider_name == "test-eligible"
+        assert model.agent_eligible is True
+
+    def test_ineligible_wins_only_as_sole_candidate(self) -> None:
+        config = {
+            "test-gateway": ProviderConfig(
+                driver="litellm",
+                connection_name="conn-gateway",
+                agent_eligible=False,
+                models=(
+                    ProviderModelConfig(
+                        id="test-shared-001",
+                        alias="shared",
+                        cost_per_1k_input=0.001,
+                        cost_per_1k_output=0.005,
+                    ),
+                ),
+            ),
+        }
+        resolver = ModelResolver.from_config(config)
+        model = resolver.resolve("shared")
+        assert model.provider_name == "test-gateway"
+
+
 # ── TestRouterSelectorPassthrough ────────────────────────────────
 
 

@@ -13,13 +13,16 @@ import { usePlansData } from '@/hooks/usePlansData'
 import { PlanListItem } from './plans/PlanListItem'
 import { PlansSkeleton } from './plans/PlansSkeleton'
 
-// Plans awaiting a decision surface first; then the rest by recency.
+// Plans awaiting a decision surface first, then failed plans (which need the
+// operator's attention / a re-run), then in-flight and decided plans by recency.
 const STATUS_ORDER: Record<PlanStatus, number> = {
   pending_review: 0,
-  draft: 1,
-  approved: 2,
-  rejected: 3,
-  superseded: 4,
+  failed: 1,
+  planning: 2,
+  draft: 3,
+  approved: 4,
+  rejected: 5,
+  superseded: 6,
 }
 
 function sortForReview(plans: readonly Plan[]): readonly Plan[] {

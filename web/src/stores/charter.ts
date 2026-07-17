@@ -178,11 +178,24 @@ async function approveImpl(
   try {
     const result = await charterApi.approveCharter(id)
     set({ draftCharter: result.charter, conversationClosed: true })
-    useToastStore.getState().add({
-      variant: 'success',
-      title: 'Charter approved',
-      description: 'The project run has started.',
-    })
+    if (result.is_success) {
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Charter approved',
+        description: 'The project run has started.',
+      })
+    } else {
+      // The charter was approved (a human decided) but the run produced no
+      // successful work: e.g. decomposition failed. Surface that instead of a
+      // false success. The failure is durable and visible as a FAILED plan in
+      // Plan Review, so the operator can inspect the reason and start a new run.
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Charter approved, but the run failed',
+        description:
+          'The objective could not be prepared into a plan. Open Plan Review for the failed plan and its reason, then start a new project run.',
+      })
+    }
     return result
   } catch (err) {
     log.error('Charter approval failed', sanitizeForLog(err))

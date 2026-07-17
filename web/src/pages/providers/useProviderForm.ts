@@ -66,6 +66,8 @@ export interface ProviderFields {
   setShowTosDialog: Dispatch<SetStateAction<boolean>>
   tosAccepted: boolean
   setTosAccepted: Dispatch<SetStateAction<boolean>>
+  agentEligible: boolean
+  setAgentEligible: Dispatch<SetStateAction<boolean>>
 }
 
 function useProviderFields(): ProviderFields {
@@ -86,6 +88,9 @@ function useProviderFields(): ProviderFields {
   const [submitting, setSubmitting] = useState(false)
   const [showTosDialog, setShowTosDialog] = useState(false)
   const [tosAccepted, setTosAccepted] = useState(false)
+  // Defaults on: a newly-added provider backs agents unless the operator opts
+  // it out (e.g. a gateway kept for feature calls only).
+  const [agentEligible, setAgentEligible] = useState(true)
   // Memoised so the object identity is stable across renders where no
   // field value changed; this keeps the handler useCallbacks (which
   // depend on `fields`) from re-creating on every parent re-render.
@@ -100,12 +105,13 @@ function useProviderFields(): ProviderFields {
       keepAlive, setKeepAlive,
       litellmProvider, setLitellmProvider, submitting, setSubmitting,
       showTosDialog, setShowTosDialog, tosAccepted, setTosAccepted,
+      agentEligible, setAgentEligible,
     }),
     [
       selectedPreset, name, authType, apiKey, subscriptionToken,
       customHeaderName, customHeaderValue, oauthTokenUrl, oauthClientId,
       oauthClientSecret, oauthScope, baseUrl, keepAlive,
-      litellmProvider, submitting, showTosDialog, tosAccepted,
+      litellmProvider, submitting, showTosDialog, tosAccepted, agentEligible,
     ],
   )
 }
@@ -136,6 +142,7 @@ function applyEditPrefill(fields: ProviderFields, provider: ProviderWithName): v
   fields.setKeepAlive(provider.keep_alive ?? '')
   fields.setLitellmProvider(provider.litellm_provider ?? '')
   fields.setTosAccepted(provider.tos_accepted_at !== null)
+  fields.setAgentEligible(provider.agent_eligible)
   // Non-secret credential fields are prefilled so editing an oauth /
   // custom_header provider no longer silently drops them; secrets stay
   // blank (cleared above) and are only re-sent when re-typed.
@@ -152,6 +159,7 @@ function applyCustomPresetSync(fields: ProviderFields): void {
   fields.setKeepAlive('')
   fields.setLitellmProvider('')
   fields.setTosAccepted(false)
+  fields.setAgentEligible(true)
   clearCredentialFields(fields)
 }
 
@@ -162,6 +170,7 @@ function applyPresetSync(fields: ProviderFields, preset: ProviderPreset): void {
   fields.setKeepAlive('')
   fields.setLitellmProvider(preset.litellm_provider)
   fields.setTosAccepted(false)
+  fields.setAgentEligible(true)
   clearCredentialFields(fields)
 }
 
@@ -305,6 +314,7 @@ function valuesOf(fields: ProviderFields): ProviderFormValues {
     keepAlive: fields.keepAlive,
     litellmProvider: fields.litellmProvider,
     tosAccepted: fields.tosAccepted,
+    agentEligible: fields.agentEligible,
   }
 }
 

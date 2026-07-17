@@ -175,6 +175,7 @@ class ModelResolver:
                     estimated_latency_ms=model_config.estimated_latency_ms,
                     tier=tier,
                     tool_capable=is_tool_capable(model_config.metadata),
+                    agent_eligible=provider_config.agent_eligible,
                 )
                 for ref in (model_config.id, model_config.alias):
                     if ref is None:
@@ -313,6 +314,36 @@ class ModelResolver:
             )
             return None
 
+    def resolve_for_pair(self, provider_name: str, ref: str) -> ResolvedModel | None:
+        """Resolve a model ref scoped to one provider, without raising.
+
+        An agent binds an exclusive ``(provider, model)`` pair, so its own
+        model must always resolve to that provider rather than being
+        re-derived across providers by the cost / quota selector: with two
+        gateways serving an overlapping id, the bare-ref selector would pick
+        the alphabetically-first (or cheapest) provider and silently move the
+        agent off the provider it was assigned. Callers that hold the agent's
+        ``identity.model.provider`` resolve through here so the pair is honoured.
+
+        Args:
+            provider_name: The provider the agent's model is bound to.
+            ref: The model alias or id to resolve within that provider.
+
+        Returns:
+            The resolved model owned by *provider_name*, or ``None`` when that
+            provider serves no such ref (a config drift the caller handles).
+        """
+        for candidate in self._index.get(ref, ()):
+            if candidate.provider_name == provider_name:
+                return candidate
+        logger.debug(
+            ROUTING_MODEL_RESOLUTION_FAILED,
+            ref=ref,
+            provider=provider_name,
+            reason="ref_not_served_by_bound_provider",
+        )
+        return None
+
     def resolve_all(self, ref: str) -> tuple[ResolvedModel, ...]:
         """Return all provider variants for a model ref.
 
@@ -356,10 +387,13 @@ class ModelResolver:
         self,
         required: ModelTier,
     ) -> tuple[ResolvedModel, ...]:
-        """Return models whose assigned tier meets *required*, cheapest-first.
+        """Return agent-eligible models whose tier meets *required*, cheapest-first.
 
         A model with no assigned tier is excluded: stakes routing must not
-        gamble that an untiered model is strong enough for the requirement.
+        gamble that an untiered model is strong enough for the requirement. A
+        model whose provider is ``agent_eligible=False`` is excluded too, so
+        stakes routing never moves an agent onto a provider the operator kept
+        out of agent work (e.g. a gateway added for feature calls only).
 
         Returns:
             The qualifying models ordered by ascending total cost per 1k, so
@@ -368,7 +402,9 @@ class ModelResolver:
         qualifying = [
             m
             for m in self.all_models()
-            if m.tier is not None and model_tier_meets(m.tier, required)
+            if m.agent_eligible
+            and m.tier is not None
+            and model_tier_meets(m.tier, required)
         ]
         return tuple(sorted(qualifying, key=lambda m: m.total_cost_per_1k))
 

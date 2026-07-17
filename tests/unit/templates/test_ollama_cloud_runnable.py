@@ -26,10 +26,15 @@ class _Provider:
     """Minimal provider exposing a typed ``models`` tuple for the matcher."""
 
     def __init__(
-        self, models: tuple[ProviderModelConfig, ...], base_url: str | None = None
+        self,
+        models: tuple[ProviderModelConfig, ...],
+        base_url: str | None = None,
+        *,
+        agent_eligible: bool = True,
     ) -> None:
         self.models = models
         self.base_url = base_url
+        self.agent_eligible = agent_eligible
 
 
 @pytest.mark.unit

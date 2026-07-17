@@ -120,6 +120,22 @@ function PlanReviewToolbar({ plan, onEdit, onRequestChanges }: {
   )
 }
 
+/** Visible failure notice for a FAILED plan (a plan-review failure, which may
+ * be decomposition OR a later step such as parking the approval). */
+function PlanFailureBanner({ plan }: { plan: Plan }) {
+  if (plan.status !== 'failed') return null
+  return (
+    <ErrorBanner
+      severity="error"
+      title="Plan processing failed"
+      description={
+        plan.failure_reason ??
+        'This plan could not be completed. Start a new project run to try again.'
+      }
+    />
+  )
+}
+
 function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) => void }) {
   const criticalPath = useMemo(
     () => criticalPathFor(plan.items, plan.task_structure),
@@ -173,6 +189,7 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
         onEdit={() => setMode('edit')}
         onRequestChanges={() => setMode('request-changes')}
       />
+      <PlanFailureBanner plan={plan} />
       <PlanMetricsHeader stats={stats} taskStructure={plan.task_structure} />
       <PlanOpenQuestionsPanel plan={plan} />
       <PlanAttentionPanel items={plan.items} criticalPath={criticalPath} />

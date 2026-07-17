@@ -42,6 +42,9 @@ class TestValidTransitions:
             (TaskStatus.FAILED, TaskStatus.ASSIGNED),
             (TaskStatus.INTERRUPTED, TaskStatus.ASSIGNED),
             (TaskStatus.SUSPENDED, TaskStatus.ASSIGNED),
+            # A greenlit objective's root task can fail during planning,
+            # before it is ever assigned (decomposition / plan-review failure).
+            (TaskStatus.CREATED, TaskStatus.FAILED),
             # REJECTED and AUTH_REQUIRED transitions
             (TaskStatus.CREATED, TaskStatus.REJECTED),
             (TaskStatus.ASSIGNED, TaskStatus.AUTH_REQUIRED),
@@ -262,10 +265,10 @@ class TestTransitionPath:
         )
 
     def test_created_to_failed_is_shortest(self) -> None:
-        # ASSIGNED can fail directly, so the shortest route skips
-        # IN_PROGRESS: CREATED -> ASSIGNED -> FAILED.
+        # CREATED can fail directly (a greenlit objective whose planning-phase
+        # decomposition never produced a plan), so the shortest route is a
+        # single hop CREATED -> FAILED.
         assert transition_path(TaskStatus.CREATED, TaskStatus.FAILED) == (
-            TaskStatus.ASSIGNED,
             TaskStatus.FAILED,
         )
 

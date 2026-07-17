@@ -287,6 +287,18 @@ Both are hot-reloadable (a change triggers a runtime-services rebuild via the
 settings subscriber, no restart), so the defaults give a sensible allocation
 with no operator input while remaining tunable per deployment.
 
+**Agent-eligible providers.** A provider carries `agent_eligible` (default
+`true`). An `agent_eligible=false` provider stays fully usable for
+explicitly-configured feature calls (the chat / judge / charter / narrative
+models an operator sets), but contributes no models to the seeding pool and is
+excluded from stakes routing, so no agent is ever *newly* seeded onto it or
+routed to it. It does not immediately cut off existing traffic: an agent already
+pinned to the provider keeps running on it because `resolve_for_pair` honours the
+explicit `(provider, model)` binding, until that agent is reassigned. This lets an
+operator stop new agents sourcing from a gateway (added deliberately, e.g. for a
+specific feature model) without disrupting agents already bound to it. The flag
+is a per-provider field on `ProviderConfig`, editable through provider CRUD.
+
 ## Model Routing Strategy
 
 Model routing determines which LLM handles a given request. Five strategies are available,
@@ -332,7 +344,8 @@ Routing maps **stakes to a required model tier** (`StakesTierRequirement`: low t
 not to a benchmark quality floor. The `StakesAwareStrategy` computes the required
 tier, bumps one tier when coordination metrics are unhealthy, holds high/critical
 work at or above the agent's own tier for the red-team gate, then scans every
-configured model at or above that tier (cheapest first) and keeps only the
+agent-eligible model at or above that tier (cheapest first; models on
+`agent_eligible=false` providers are excluded) and keeps only the
 **tool-capable** ones (`is_tool_capable`: `supports_tools` true, or verified, and
 never a model whose `tool_calls_verified` is explicitly `False`). It picks the
 cheapest survivor.
@@ -366,9 +379,10 @@ bulk tier suggestions; it runs on the operator-selected
 picked.
 
 **Per-task multi-provider routing (v1).** The stakes router resolves a tier over
-**all** configured providers with a deterministic `CheapestSelector`, so a tier can
-resolve to the cheapest model serving it across providers rather than being pinned to
-the boot default. After routing, the engine swaps the dispatched client to the routed
+**all agent-eligible** configured providers with a deterministic `CheapestSelector`
+(models on `agent_eligible=false` providers are excluded from candidacy), so a tier
+can resolve to the cheapest model serving it across the eligible providers rather than
+being pinned to the boot default. After routing, the engine swaps the dispatched client to the routed
 model's provider (`AgentEngine._resolve_provider_instance`), so the API actually
 called and the `CostRecord.provider` name are always the same provider (attribution
 parity). If the routed provider cannot be resolved from the registry, the engine keeps
@@ -379,17 +393,33 @@ pipeline) stay on that default provider in v1.
 
 ### Multi-Provider Model Resolution
 
-When multiple providers register the same model ID or alias, the `ModelResolver`
-stores all variants as a candidate tuple rather than raising a collision error.
-At resolution time, a `ModelCandidateSelector` picks the best candidate from the
-tuple.
+An agent binds an **exclusive `(provider, model)` pair**: `ModelConfig` requires
+both a `provider` and a `model_id`, and the agent's own model always resolves to
+that provider, never re-derived across providers. Two OpenAI-compatible gateways
+can legitimately advertise an overlapping model id (each live-discovers its own
+`/v1/models`), so a bare id can map to more than one provider; the resolver keeps
+all variants as a candidate tuple rather than raising a collision error, and the
+binding decides which one an agent uses.
+
+- **Provider-scoped resolution.** `ModelResolver.resolve_for_pair(provider, ref)`
+  resolves a ref within one provider. Every caller that holds an agent's
+  `identity.model.provider` (the budget downgrade enforcer, the CFO downgrade /
+  routing optimiser) resolves through it, so an overlapping id never silently
+  moves the agent onto a different provider. The run-time client is resolved from
+  `identity.model.provider` directly (`AgentEngine._dispatch_client_for`), so the
+  API called and the `CostRecord.provider` always match the agent's binding.
+- **Eligibility-first selection.** When the provider-agnostic selector *does* run
+  (feature calls, the config-selected routing strategies), it prefers
+  `agent_eligible` candidates: a provider kept out of agent work wins only when it
+  is the sole provider for the ref. Stakes routing (`models_at_or_above_tier`) and
+  agent seeding exclude ineligible providers outright.
 
 Two built-in selectors are provided:
 
 | Selector | Behaviour |
 |----------|----------|
-| `QuotaAwareSelector` (default) | Prefer providers with available quota, then cheapest among those; falls back to cheapest overall when all providers are exhausted |
-| `CheapestSelector` | Always pick the cheapest candidate by total cost per 1k tokens, ignoring quota state |
+| `QuotaAwareSelector` (default) | Filter to providers with available quota first; within that pool (or all candidates when none have quota), prefer agent-eligible providers, then cheapest |
+| `CheapestSelector` | Prefer agent-eligible providers, then pick the cheapest candidate by total cost per 1k tokens, ignoring quota state |
 
 The selector is injected into `ModelResolver` (and transitively into `ModelRouter`)
 at construction time.  `QuotaAwareSelector` is constructed with a snapshot from

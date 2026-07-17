@@ -8,33 +8,54 @@ from typing import Final
 class PlanStatus(StrEnum):
     """Lifecycle status of a decomposed plan through CEO review.
 
-    A plan is DRAFT while it is being shaped and PENDING_REVIEW once it is
-    parked for the operator's decision. APPROVED, REJECTED, and SUPERSEDED are
-    terminal: an operator rework or a request-changes is only accepted from a
-    non-terminal status (see :data:`REWORKABLE_STATUSES`). SUPERSEDED is
-    reserved for a plan retired by a fresh re-plan; the current edit path
-    revises a plan in place (bumping :attr:`Plan.version`) rather than
-    retaining prior revisions.
+    A plan is PLANNING while it is a persisted-at-greenlight shell whose items
+    the decomposer has not filled in yet, DRAFT while it is being shaped, and
+    PENDING_REVIEW once it is parked for the operator's decision. APPROVED,
+    REJECTED, SUPERSEDED, and FAILED are terminal: an operator rework or a
+    request-changes is only accepted from a non-terminal status (see
+    :data:`REWORKABLE_STATUSES`). FAILED marks a plan whose run failed to reach
+    review (decomposition failed, or parking the approval failed after it was
+    filled), so a failed run always leaves a visible plan carrying its
+    :attr:`Plan.failure_reason` rather than a silent orphan; a retry is a fresh
+    plan. SUPERSEDED is reserved for a plan retired
+    by a fresh re-plan; the current edit path revises a plan in place (bumping
+    :attr:`Plan.version`) rather than retaining prior revisions.
     """
 
+    PLANNING = "planning"
     DRAFT = "draft"
     PENDING_REVIEW = "pending_review"
     APPROVED = "approved"
     REJECTED = "rejected"
     SUPERSEDED = "superseded"
+    FAILED = "failed"
 
 
 #: Statuses from which an operator rework / request-changes is accepted. A
-#: terminal plan (APPROVED / REJECTED / SUPERSEDED) cannot be reworked back
-#: into an active status; edits on it are rejected with a conflict.
+#: transient PLANNING shell (no items yet) and every terminal plan (APPROVED /
+#: REJECTED / SUPERSEDED / FAILED) are excluded; edits on them are rejected
+#: with a conflict.
 REWORKABLE_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
     {PlanStatus.DRAFT, PlanStatus.PENDING_REVIEW}
 )
 
-#: Terminal statuses: a decision has been recorded and the plan is closed to
-#: operator rework.
+#: Terminal statuses: a decision has been recorded (or the plan failed to
+#: decompose) and the plan is closed to operator rework.
 TERMINAL_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
-    {PlanStatus.APPROVED, PlanStatus.REJECTED, PlanStatus.SUPERSEDED}
+    {
+        PlanStatus.APPROVED,
+        PlanStatus.REJECTED,
+        PlanStatus.SUPERSEDED,
+        PlanStatus.FAILED,
+    }
+)
+
+#: Statuses whose plan may carry an empty item list: the PLANNING shell has not
+#: been filled yet, and a FAILED plan may have failed before any items were
+#: produced. FAILED permits (but does not require) empty items; every other
+#: status must carry a non-empty, validated item DAG.
+ITEMLESS_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
+    {PlanStatus.PLANNING, PlanStatus.FAILED}
 )
 
 

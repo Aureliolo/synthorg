@@ -990,6 +990,7 @@ describe('setup wizard store', () => {
           auth_type: 'none',
           base_url: 'http://localhost:8000',
           tos_accepted: false,
+          agent_eligible: true,
           models: [],
         })
 
@@ -1013,6 +1014,7 @@ describe('setup wizard store', () => {
           driver: 'litellm',
           auth_type: 'none',
           tos_accepted: false,
+          agent_eligible: true,
           models: [],
         })
 

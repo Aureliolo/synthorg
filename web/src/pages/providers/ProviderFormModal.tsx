@@ -2,6 +2,7 @@ import { Dialog } from '@base-ui/react/dialog'
 import { Loader2, X } from 'lucide-react'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
+import { ToggleField } from '@/components/ui/toggle-field'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -158,6 +159,12 @@ function ProviderAdvancedFields({
         onChange={(e) => fields.setKeepAlive(e.target.value)}
         placeholder="e.g. 5m, 0, -1"
         hint="How long Ollama keeps a model loaded after a request: 5m, 0 unloads immediately, -1 keeps it forever. Empty leaves the server default."
+      />
+      <ToggleField
+        label="Eligible for agents"
+        description="When off, this provider stays usable for explicitly-configured feature calls but is never seeded onto an agent or picked by stakes routing, so no agent silently sources from it."
+        checked={fields.agentEligible}
+        onChange={fields.setAgentEligible}
       />
     </>
   )

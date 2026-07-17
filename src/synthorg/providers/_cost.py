@@ -91,6 +91,31 @@ def compute_token_cost(
     )
 
 
+def token_usage_from_response_usage(
+    usage_obj: object,
+    *,
+    cost_per_1k_input: float,
+    cost_per_1k_output: float,
+) -> TokenUsage:
+    """Build a ``TokenUsage`` from a raw provider usage object.
+
+    Reads ``prompt_tokens`` / ``completion_tokens`` off *usage_obj* (an absent
+    or ``None`` attribute counts as 0), then delegates to
+    :func:`compute_token_cost`.
+
+    Returns:
+        A populated ``TokenUsage`` for the usage object's token counts.
+    """
+    input_tok = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
+    output_tok = int(getattr(usage_obj, "completion_tokens", 0) or 0)
+    return compute_token_cost(
+        input_tok,
+        output_tok,
+        cost_per_1k_input=cost_per_1k_input,
+        cost_per_1k_output=cost_per_1k_output,
+    )
+
+
 def compute_image_cost(n: int, *, cost_per_image: float) -> TokenUsage:
     """Build a ``TokenUsage`` for a per-image-priced generation call.
 

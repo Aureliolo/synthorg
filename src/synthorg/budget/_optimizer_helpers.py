@@ -294,23 +294,27 @@ def _compute_global_avg_cost_per_1k(
 
 def _find_most_used_model(
     agent_records: Sequence[CostRecord],
-) -> str | None:
-    """Find the most frequently used model from pre-filtered records.
+) -> tuple[str, str] | None:
+    """Find the most frequently used ``(provider, model)`` pair from records.
 
     Returns:
-        The matching ``str``, or ``None`` when no match is found.
+        The most-used ``(provider, model)`` pair, or ``None`` when there are no
+        records. Keying on the pair (not the bare model id) keeps downstream
+        resolution scoped to the provider the agent actually ran on, so an
+        overlapping model id never re-derives to a different provider.
     """
-    model_counts: dict[str, int] = defaultdict(int)
+    pair_counts: dict[tuple[str, str], int] = defaultdict(int)
     for r in agent_records:
-        model_counts[r.model] += 1
-    if not model_counts:
+        pair_counts[(str(r.provider), str(r.model))] += 1
+    if not pair_counts:
         return None
-    return max(model_counts, key=lambda m: model_counts[m])
+    return max(pair_counts, key=lambda p: pair_counts[p])
 
 
-def _build_downgrade_recommendation(
+def _build_downgrade_recommendation(  # noqa: PLR0913 -- keyword-only; provider scopes resolution to the agent's bound pair
     *,
     agent_id: str,
+    provider: str,
     current_model: str,
     downgrade_map: dict[str, str],
     resolver: ModelResolver,
@@ -318,10 +322,19 @@ def _build_downgrade_recommendation(
 ) -> DowngradeRecommendation | None:
     """Build a downgrade recommendation for a single agent.
 
+    Args:
+        agent_id: The agent the recommendation targets.
+        provider: The provider the agent's current model is bound to, so the
+            current model is resolved within it rather than by a bare id.
+        current_model: The agent's most-used model id.
+        downgrade_map: Alias-to-alias downgrade path map.
+        resolver: The model resolver.
+        currency: Display currency for the recommendation.
+
     Returns:
         The resulting ``DowngradeRecommendation``, or ``None`` when unavailable.
     """
-    current_resolved = resolver.resolve_safe(current_model)
+    current_resolved = resolver.resolve_for_pair(provider, current_model)
     if current_resolved is None:
         logger.debug(
             CFO_DOWNGRADE_SKIPPED,
@@ -359,14 +372,33 @@ def _build_downgrade_recommendation(
                 model=current_model,
             )
             return None
+        # Keep the concrete model the selector picked (with its provider). The
+        # same id can exist on multiple providers, so re-resolving by bare id
+        # could silently rebind the recommendation to a different provider.
         target_ref = cheaper.model_id
+        target_resolved: ResolvedModel | None = cheaper
+    else:
+        # Scope the mapped target to the bound provider so a downgrade never
+        # silently rebinds the agent to a same-alias model on another provider.
+        target_resolved = resolver.resolve_for_pair(provider, target_ref)
 
-    target_resolved = resolver.resolve_safe(target_ref)
     if target_resolved is None:
         logger.debug(
             CFO_DOWNGRADE_SKIPPED,
             agent_id=agent_id,
             reason="target_model_not_resolved",
+            target=target_ref,
+        )
+        return None
+
+    if not target_resolved.agent_eligible:
+        # A downgrade-map target served only by an agent-ineligible provider must
+        # not be recommended (the cheaper-model fallback already filters these);
+        # recommending it would move the agent onto a feature-only gateway.
+        logger.debug(
+            CFO_DOWNGRADE_SKIPPED,
+            agent_id=agent_id,
+            reason="target_agent_ineligible",
             target=target_ref,
         )
         return None
@@ -414,7 +446,8 @@ def _find_cheaper_model(
     all_models = resolver.all_models_sorted_by_cost()
     for model in all_models:
         if (
-            model.total_cost_per_1k < current_cost_per_1k
+            model.agent_eligible
+            and model.total_cost_per_1k < current_cost_per_1k
             and model.max_context >= min_context
         ):
             return model

@@ -15,6 +15,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # must resolve at runtime when downstream tooling evaluates type hints
 # (DI containers, doc generators).
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.llm_parse import (
@@ -186,20 +187,39 @@ class LlmDecompositionStrategy:
                 attempt=attempt,
             )
 
-            async with cost_recording_scope(
-                cost_tracker=self._cost_tracker,
-                agent_id=NotBlankStr("system"),
-                task_id=str(task.id),
-                # Per-task decomposition, not a system prompt class.
-                purpose=None,
-                call_category=LLMCallCategory.SYSTEM,
-            ):
-                response = await self._provider.complete(
-                    messages,
-                    self._model,
-                    tools=[tool_def],
-                    config=comp_config,
+            try:
+                async with cost_recording_scope(
+                    cost_tracker=self._cost_tracker,
+                    agent_id=NotBlankStr("system"),
+                    task_id=str(task.id),
+                    # Per-task decomposition, not a system prompt class.
+                    purpose=None,
+                    call_category=LLMCallCategory.SYSTEM,
+                ):
+                    response = await self._provider.complete(
+                        messages,
+                        self._model,
+                        tools=[tool_def],
+                        config=comp_config,
+                    )
+            except DecompositionError:
+                raise
+            except Exception as exc:
+                # A provider/infrastructure failure (network error, exhausted
+                # provider retries, malformed response) is not a semantic parse
+                # error the self-correction loop can fix by re-prompting. Surface
+                # it as a typed DecompositionError so decomposition always
+                # terminates inside the domain hierarchy rather than letting a raw
+                # provider exception escape to the caller.
+                reraise_critical(exc)
+                msg = f"LLM decomposition provider call failed for task {task.id!r}"
+                logger.warning(
+                    DECOMPOSITION_FAILED,
+                    task_id=str(task.id),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
+                raise DecompositionError(msg) from exc
             last_response = response
 
             logger.debug(

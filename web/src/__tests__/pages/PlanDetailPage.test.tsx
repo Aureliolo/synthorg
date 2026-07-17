@@ -103,4 +103,40 @@ describe('PlanDetailPage', () => {
     ).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Watch it run/ })).toBeInTheDocument()
   })
+
+  it('surfaces the failure banner with its reason for a FAILED plan', () => {
+    hookReturn = {
+      ...defaultHookReturn,
+      plan: makePlan('plan-1', {
+        status: 'failed',
+        failure_reason: 'DecompositionError: model returned no plan',
+        items: [],
+      }),
+    }
+    renderPage()
+    expect(screen.getByText('Plan processing failed')).toBeInTheDocument()
+    expect(
+      screen.getByText(/model returned no plan/),
+    ).toBeInTheDocument()
+    // A failed plan is terminal: no rework affordance.
+    expect(
+      screen.queryByRole('button', { name: /Rework items/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('falls back to default copy when a FAILED plan has no reason', () => {
+    hookReturn = {
+      ...defaultHookReturn,
+      plan: makePlan('plan-1', {
+        status: 'failed',
+        failure_reason: null,
+        items: [],
+      }),
+    }
+    renderPage()
+    expect(screen.getByText('Plan processing failed')).toBeInTheDocument()
+    expect(
+      screen.getByText(/could not be completed/),
+    ).toBeInTheDocument()
+  })
 })

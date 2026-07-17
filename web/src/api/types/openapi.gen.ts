@@ -9904,6 +9904,11 @@ export type components = {
         };
         /** CreateProviderRequest */
         readonly CreateProviderRequest: {
+            /**
+             * @description Whether this provider may back an agent (seeded onto agents and picked by stakes routing). False keeps it usable for explicitly-configured feature calls but excludes it from all agent assignment.
+             * @default true
+             */
+            readonly agent_eligible: boolean;
             /** @description API key credential (required for API_KEY auth). */
             readonly api_key?: string | null;
             readonly auth_type?: components["schemas"]["AuthType"];
@@ -13988,6 +13993,8 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly created_at: string;
+            /** @description Why decomposition failed, set when status is FAILED so the review surface shows a visible reason instead of an empty plan */
+            readonly failure_reason: string | null;
             /**
              * Format: uuid
              * @description Cost forecast released alongside the plan
@@ -14259,17 +14266,22 @@ export type components = {
          * PlanStatus
          * @description Lifecycle status of a decomposed plan through CEO review.
          *
-         *     A plan is DRAFT while it is being shaped and PENDING_REVIEW once it is
-         *     parked for the operator's decision. APPROVED, REJECTED, and SUPERSEDED are
-         *     terminal: an operator rework or a request-changes is only accepted from a
-         *     non-terminal status (see :data:`REWORKABLE_STATUSES`). SUPERSEDED is
-         *     reserved for a plan retired by a fresh re-plan; the current edit path
-         *     revises a plan in place (bumping :attr:`Plan.version`) rather than
-         *     retaining prior revisions.
+         *     A plan is PLANNING while it is a persisted-at-greenlight shell whose items
+         *     the decomposer has not filled in yet, DRAFT while it is being shaped, and
+         *     PENDING_REVIEW once it is parked for the operator's decision. APPROVED,
+         *     REJECTED, SUPERSEDED, and FAILED are terminal: an operator rework or a
+         *     request-changes is only accepted from a non-terminal status (see
+         *     :data:`REWORKABLE_STATUSES`). FAILED marks a plan whose run failed to reach
+         *     review (decomposition failed, or parking the approval failed after it was
+         *     filled), so a failed run always leaves a visible plan carrying its
+         *     :attr:`Plan.failure_reason` rather than a silent orphan; a retry is a fresh
+         *     plan. SUPERSEDED is reserved for a plan retired
+         *     by a fresh re-plan; the current edit path revises a plan in place (bumping
+         *     :attr:`Plan.version`) rather than retaining prior revisions.
          * @default draft
          * @enum {string}
          */
-        readonly PlanStatus: "draft" | "pending_review" | "approved" | "rejected" | "superseded";
+        readonly PlanStatus: "planning" | "draft" | "pending_review" | "approved" | "rejected" | "superseded" | "failed";
         /** PlanVersionSnapshot */
         readonly PlanVersionSnapshot: {
             /**
@@ -14927,6 +14939,8 @@ export type components = {
         };
         /** ProviderResponse */
         readonly ProviderResponse: {
+            /** @default true */
+            readonly agent_eligible: boolean;
             readonly auth_type: components["schemas"]["AuthType"];
             readonly base_url: string | null;
             readonly custom_header_name: string | null;
@@ -17804,6 +17818,7 @@ export type components = {
         };
         /** UpdateProviderRequest */
         readonly UpdateProviderRequest: {
+            readonly agent_eligible?: boolean | null;
             readonly api_key?: string | null;
             /** @enum {string|null} */
             readonly auth_type?: "api_key" | "oauth" | "custom_header" | "subscription" | "none" | null;

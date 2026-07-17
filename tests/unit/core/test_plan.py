@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.plan import Plan, PlanItem, PlanOption
-from synthorg.core.plan_enums import PlanItemKind
+from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.types import NotBlankStr
 from tests._shared import as_uuid, sid
 
@@ -24,7 +24,12 @@ def _item(label: str, *, dependencies: tuple[str, ...] = ()) -> PlanItem:
     )
 
 
-def _plan(items: tuple[PlanItem, ...]) -> Plan:
+def _plan(
+    items: tuple[PlanItem, ...],
+    *,
+    status: PlanStatus = PlanStatus.DRAFT,
+    failure_reason: str | None = None,
+) -> Plan:
     return Plan(
         id=as_uuid("plan"),
         project=NotBlankStr("beachhead"),
@@ -32,6 +37,8 @@ def _plan(items: tuple[PlanItem, ...]) -> Plan:
         objective_title=NotBlankStr("Ship the game"),
         parent_task_id=NotBlankStr("root"),
         items=items,
+        status=status,
+        failure_reason=NotBlankStr(failure_reason) if failure_reason else None,
         created_at=_CREATED_AT,
         updated_at=_CREATED_AT,
     )
@@ -150,6 +157,44 @@ class TestDecisionItem:
 
     def test_resolved_option_is_none_for_work_item(self) -> None:
         assert _item("a").resolved_option() is None
+
+
+class TestPlanStatusInvariants:
+    """Itemless-status relaxation and the failure_reason cross-field invariant."""
+
+    def test_planning_shell_allows_empty_items(self) -> None:
+        plan = _plan((), status=PlanStatus.PLANNING)
+        assert plan.items == ()
+        assert plan.status is PlanStatus.PLANNING
+
+    def test_failed_allows_empty_items(self) -> None:
+        plan = _plan((), status=PlanStatus.FAILED, failure_reason="decompose boom")
+        assert plan.items == ()
+        assert plan.failure_reason == "decompose boom"
+
+    def test_failed_allows_filled_items(self) -> None:
+        # A plan can fail AFTER decomposition (a failed approval-park), keeping
+        # its items: FAILED permits, but does not require, empty items.
+        plan = _plan(
+            (_item("a"),), status=PlanStatus.FAILED, failure_reason="park boom"
+        )
+        assert len(plan.items) == 1
+
+    def test_approved_still_rejects_empty_items(self) -> None:
+        with pytest.raises(ValueError, match="at least one item"):
+            _plan((), status=PlanStatus.APPROVED)
+
+    def test_failed_requires_a_reason(self) -> None:
+        with pytest.raises(ValueError, match="must carry a failure_reason"):
+            _plan((), status=PlanStatus.FAILED)
+
+    def test_non_failed_plan_rejects_a_reason(self) -> None:
+        with pytest.raises(ValueError, match="only valid for a FAILED plan"):
+            _plan(
+                (_item("a"),),
+                status=PlanStatus.PENDING_REVIEW,
+                failure_reason="stale",
+            )
 
 
 class TestPlanInvariants:

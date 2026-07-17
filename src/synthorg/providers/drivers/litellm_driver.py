@@ -64,7 +64,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_STREAM_DONE,
 )
 from synthorg.providers import errors
-from synthorg.providers._cost import compute_token_cost
+from synthorg.providers._cost import token_usage_from_response_usage
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
@@ -107,6 +107,7 @@ from .mappers import (
     extract_tool_calls,
     map_finish_reason,
     messages_to_dicts,
+    normalize_empty_finish,
     tools_to_dicts,
 )
 
@@ -614,16 +615,17 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         content: str | None = getattr(message, "content", None)
         raw_tc = getattr(message, "tool_calls", None)
         tool_calls = extract_tool_calls(raw_tc)
-        finish = map_finish_reason(
-            getattr(choice, "finish_reason", None),
+        finish = normalize_empty_finish(
+            content=content,
+            tool_calls=tool_calls,
+            finish=map_finish_reason(getattr(choice, "finish_reason", None)),
+            provider=self._provider_name,
+            model=model_config.id,
+            had_raw_tool_calls=bool(raw_tc),
         )
 
-        usage_obj = getattr(response, "usage", None)
-        input_tok = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
-        output_tok = int(getattr(usage_obj, "completion_tokens", 0) or 0)
-        usage = compute_token_cost(
-            input_tok,
-            output_tok,
+        usage = token_usage_from_response_usage(
+            getattr(response, "usage", None),
             cost_per_1k_input=model_config.cost_per_1k_input,
             cost_per_1k_output=model_config.cost_per_1k_output,
         )
@@ -747,11 +749,8 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         Returns:
             A ``StreamChunk`` carrying the token-usage event.
         """
-        input_tok = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
-        output_tok = int(getattr(usage_obj, "completion_tokens", 0) or 0)
-        usage = compute_token_cost(
-            input_tok,
-            output_tok,
+        usage = token_usage_from_response_usage(
+            usage_obj,
             cost_per_1k_input=model_config.cost_per_1k_input,
             cost_per_1k_output=model_config.cost_per_1k_output,
         )

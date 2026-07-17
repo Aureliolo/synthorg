@@ -1,6 +1,7 @@
 import { ArrowLeft, Download, Pencil, RefreshCw, Trash2, Wifi } from 'lucide-react'
 import { Link } from 'react-router'
 import { ProviderHealthBadge } from '@/components/ui/provider-health-badge'
+import { StatusPill } from '@/components/ui/status-pill'
 import { Button } from '@/components/ui/button'
 import { ROUTES } from '@/router/routes'
 import type { ProviderHealthSummary } from '@/api/types/providers'
@@ -39,6 +40,14 @@ function ProviderTitleMeta({
       <div className="flex items-center gap-3">
         <h1 className="truncate text-xl font-semibold text-foreground">{provider.name}</h1>
         {health && <ProviderHealthBadge status={health.health_status} label />}
+        {!provider.agent_eligible && (
+          <StatusPill
+            tone="warning"
+            ariaLabel="This provider is excluded from agent model assignment"
+          >
+            Agents off
+          </StatusPill>
+        )}
       </div>
       <div className="flex items-center gap-2 text-sm text-text-secondary">
         {provider.litellm_provider && (

@@ -44,9 +44,9 @@ _MAX_LIST_ROWS: Final[int] = 10_000
 
 _COLUMNS = (
     "id, project, objective_id, objective_title, parent_task_id, items, "
-    "task_structure, coordination_topology, status, forecast_id, review, "
-    "open_questions, assumptions, objective_criteria, version_history, version, "
-    "created_at, updated_at"
+    "task_structure, coordination_topology, status, failure_reason, forecast_id, "
+    "review, open_questions, assumptions, objective_criteria, version_history, "
+    "version, created_at, updated_at"
 )
 
 _COLUMN_NAMES = tuple(_COLUMNS.split(", "))
@@ -124,6 +124,7 @@ class SQLitePlanRepository:
             plan.task_structure.value,
             plan.coordination_topology.value,
             plan.status.value,
+            plan.failure_reason,
             str(plan.forecast_id) if plan.forecast_id is not None else None,
             json.dumps(plan.review.model_dump(mode="json")) if plan.review else None,
             json.dumps(list(plan.open_questions)),

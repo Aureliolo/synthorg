@@ -229,6 +229,20 @@ class ProviderConfig(BaseModel):
         default=None,
         description="Preset used to create this provider (if any)",
     )
+    agent_eligible: bool = Field(
+        default=True,
+        description=(
+            "Whether this provider may back an agent: its models are seeded "
+            "onto agents at provisioning and picked by stakes routing. When "
+            "False the provider is excluded from new automatic seeding, stakes "
+            "routing, and provider-agnostic reselection, but stays fully usable "
+            "for explicitly-configured feature calls (chat / judge / charter "
+            "models the operator sets). It is NOT an immediate traffic cutover: "
+            "an agent already pinned to this provider keeps running on it (the "
+            "exclusive binding is honoured) until it is reassigned. Lets an "
+            "operator stop new agents sourcing from a gateway."
+        ),
+    )
 
     _AUTH_REQUIRED_FIELDS: ClassVar[dict[AuthType, tuple[str, ...]]] = {
         AuthType.OAUTH: (
@@ -295,14 +309,14 @@ class ProviderConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_model_identifiers(self) -> Self:
-        """Ensure model IDs and aliases are each unique.
+        """Ensure model IDs and aliases are each unique and non-overlapping.
 
         Returns:
             The validated model instance (``self``), unchanged.
 
         Raises:
-            ValueError: When two models share an id, or two models share
-                a non-null alias.
+            ValueError: When two models share an id, two models share a non-null
+                alias, or one model's alias equals a different model's id.
         """
         ids = [m.id for m in self.models]
         if len(ids) != len(set(ids)):
@@ -318,6 +332,25 @@ class ProviderConfig(BaseModel):
         if len(aliases) != len(set(aliases)):
             dupes = sorted(a for a, c in Counter(aliases).items() if c > 1)
             msg = f"Duplicate model aliases: {dupes}"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="ProviderConfig",
+                error=msg,
+            )
+            raise ValueError(msg)
+        # A ref that is one model's alias AND another model's id is ambiguous:
+        # a provider-scoped resolve (resolve_for_pair) returns the first match
+        # by declaration order, which could silently bind an agent to the wrong
+        # model. The exclusive (provider, model) contract requires every ref to
+        # be unambiguous within a provider.
+        id_set = set(ids)
+        colliding = sorted(
+            m.alias
+            for m in self.models
+            if m.alias is not None and m.alias != m.id and m.alias in id_set
+        )
+        if colliding:
+            msg = f"Model aliases collide with another model's id: {colliding}"
             logger.warning(
                 CONFIG_VALIDATION_FAILED,
                 model="ProviderConfig",

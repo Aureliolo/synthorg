@@ -79,6 +79,83 @@ class TestRecommendDowngrades:
         assert rec.recommended_model == "test-small-001"
         assert rec.estimated_savings_per_1k > 0
 
+    async def test_mapped_target_stays_on_bound_provider(self) -> None:
+        """A mapped downgrade target resolves within the agent's bound provider.
+
+        When two providers serve the same downgrade-target alias, the mapped
+        target must resolve to the provider the agent is bound to, never the
+        globally-cheapest variant, so the exclusive ``(provider, model)`` pair
+        is preserved.
+        """
+        resolver = make_resolver(
+            [
+                ResolvedModel(
+                    provider_name="test-provider",
+                    model_id="test-large-001",
+                    alias="large",
+                    cost_per_1k_input=0.03,
+                    cost_per_1k_output=0.06,
+                ),
+                ResolvedModel(
+                    provider_name="test-provider",
+                    model_id="test-small-001",
+                    alias="small",
+                    cost_per_1k_input=0.005,
+                    cost_per_1k_output=0.005,
+                ),
+                ResolvedModel(
+                    provider_name="other-provider",
+                    model_id="other-small-001",
+                    alias="small",
+                    cost_per_1k_input=0.001,
+                    cost_per_1k_output=0.001,
+                ),
+            ]
+        )
+        bc = BudgetConfig(
+            total_monthly=100.0,
+            auto_downgrade=AutoDowngradeConfig(
+                enabled=True,
+                threshold=80,
+                downgrade_map=(("large", "small"),),
+            ),
+        )
+        tracker = CostTracker(budget_config=bc)
+        optimizer = CostOptimizer(
+            cost_tracker=tracker,
+            budget_config=bc,
+            model_resolver=resolver,
+        )
+
+        await tracker.record(
+            make_cost_record(
+                agent_id="alice",
+                provider="test-provider",
+                model="test-large-001",
+                cost=10.0,
+                input_tokens=1000,
+                output_tokens=0,
+                timestamp=OPT_START + timedelta(hours=1),
+            ),
+        )
+        # A cheap peer so alice reads as INEFFICIENT against the global average.
+        await tracker.record(
+            make_cost_record(
+                agent_id="bob",
+                provider="test-provider",
+                model="test-small-001",
+                cost=0.1,
+                input_tokens=1000,
+                output_tokens=0,
+                timestamp=OPT_START + timedelta(hours=1),
+            ),
+        )
+
+        result = await optimizer.recommend_downgrades(start=OPT_START, end=OPT_END)
+        alice_rec = next(r for r in result.recommendations if r.agent_id == "alice")
+        # Bound-provider variant, not the cheaper ``other-provider`` one.
+        assert alice_rec.recommended_model == "test-small-001"
+
     async def test_no_cheaper_model_empty(self) -> None:
         """No recommendation when agent already uses cheapest model."""
         resolver = make_resolver(

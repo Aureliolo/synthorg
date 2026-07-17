@@ -51,6 +51,7 @@ function values(overrides: Partial<ProviderFormValues> = {}): ProviderFormValues
     keepAlive: '',
     litellmProvider: '',
     tosAccepted: false,
+    agentEligible: true,
     ...overrides,
   }
 }
@@ -86,6 +87,14 @@ describe('buildCreateProviderRequest', () => {
     expect(req.oauth_token_url).toBeUndefined()
     expect(req.api_key).toBe('k')
   })
+
+  it('forwards agent_eligible through the create request (default and opted-out)', () => {
+    expect(buildCreateProviderRequest(values({ apiKey: 'k' })).agent_eligible).toBe(true)
+    expect(
+      buildCreateProviderRequest(values({ apiKey: 'k', agentEligible: false }))
+        .agent_eligible,
+    ).toBe(false)
+  })
 })
 
 describe('buildUpdateProviderRequest', () => {
@@ -110,6 +119,12 @@ describe('buildUpdateProviderRequest', () => {
       values({ authType: 'oauth', oauthClientSecret: 'new-secret' }),
     )
     expect(req.oauth_client_secret).toBe('new-secret')
+  })
+
+  it('forwards an opted-out agent_eligible through the update request', () => {
+    expect(
+      buildUpdateProviderRequest(values({ agentEligible: false })).agent_eligible,
+    ).toBe(false)
   })
 })
 
