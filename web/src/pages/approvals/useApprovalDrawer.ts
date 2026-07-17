@@ -30,6 +30,11 @@ function fallbackOptionId(options: readonly PlanOption[]): string | null {
   return options.find((o) => o.recommended)?.id ?? options[0]?.id ?? null
 }
 
+/** Reset key that changes when an approval's persisted decision or status does. */
+function decisionSyncKey(approval: ApprovalResponse | null): string {
+  return `${approval?.evidence_package?.chosen_option_id ?? ''}|${approval?.status ?? ''}`
+}
+
 function defaultChosenOptionId(approval: ApprovalResponse | null): string | null {
   const options = decisionOptionsOf(approval)
   const persisted = approval?.evidence_package?.chosen_option_id
@@ -209,6 +214,14 @@ export function useApprovalDecision(
       setRejectOpen(false)
       setReasonError(null)
     }
+  })
+
+  // Re-derive the shown choice when the persisted decision or status changes on
+  // the SAME approval (a WebSocket update decides the displayed approval): the
+  // id-keyed reset above misses it, so without this the drawer keeps showing
+  // the stale default instead of the operator's recorded pick.
+  useResetOnChange(decisionSyncKey(approval), () => {
+    setChosenOptionId(defaultChosenOptionId(approval))
   })
 
   const handleApprove = useCallback(

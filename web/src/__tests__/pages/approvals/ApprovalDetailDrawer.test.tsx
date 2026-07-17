@@ -496,4 +496,44 @@ describe('ApprovalDetailDrawer decision fork', () => {
     if (!actorRow) throw new Error('actor option row not found')
     expect(within(actorRow).queryByText('Selected')).not.toBeInTheDocument()
   })
+
+  it('re-derives the shown pick when a WS update decides the displayed approval', async () => {
+    // The id-keyed reset misses a decision on the SAME approval; a WS upsert
+    // that records the operator's pick must move the shown selection off the
+    // stale recommended default onto the persisted choice.
+    const { rerender } = render(
+      <MemoryRouter>
+        <ApprovalDetailDrawer
+          approval={makeApproval('test-1', {
+            status: 'pending',
+            evidence_package: decisionEvidence(),
+          })}
+          open={true}
+          {...defaultHandlers}
+        />
+      </MemoryRouter>,
+    )
+    // Pending: the recommended option is the default selection.
+    expect(screen.getByRole('radio', { name: /Actor model/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    rerender(
+      <MemoryRouter>
+        <ApprovalDetailDrawer
+          approval={makeApproval('test-1', {
+            status: 'approved',
+            evidence_package: { ...decisionEvidence(), chosen_option_id: 'pipeline' },
+          })}
+          open={true}
+          {...defaultHandlers}
+        />
+      </MemoryRouter>,
+    )
+    await waitFor(() => {
+      const pipelineRow = screen.getByText('Pipeline model').closest('li')
+      if (!pipelineRow) throw new Error('pipeline option row not found')
+      expect(within(pipelineRow).getByText('Selected')).toBeInTheDocument()
+    })
+  })
 })
