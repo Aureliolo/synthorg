@@ -42,7 +42,7 @@ The "Used by" column distinguishes three relationships to the CLI:
 | `SYNTHORG_SELF_UPDATE_HTTP_TIMEOUT` | CLI | HTTP timeout for CLI binary download (duration) |
 | `SYNTHORG_SELF_UPDATE_API_TIMEOUT` | CLI | HTTP timeout for GitHub API metadata fetches (duration) |
 | `SYNTHORG_TUF_FETCH_TIMEOUT` | CLI | HTTP timeout for Sigstore TUF trusted root fetch (duration) |
-| `SYNTHORG_ATTESTATION_HTTP_TIMEOUT` | CLI | HTTP timeout for GitHub attestation API requests and bundle_url fetches (duration) |
+| `SYNTHORG_ATTESTATION_HTTP_TIMEOUT` | CLI | HTTP timeout for GitHub attestation API requests and `bundle_url` fetches (duration) |
 | `SYNTHORG_MAX_API_RESPONSE_BYTES` | CLI | Maximum bytes for API / checksum downloads (default `4MiB`; accepts `1MiB`, `1048576`). Sized for the list-commits walk used by `synthorg update`: each commit object inlines the full PGP signature plus signed-payload duplicate plus 20+ author / committer URL fields (~15 KiB / commit), so a typical 25-entry page is ~400 KiB and 4 MiB gives 10x headroom. Hard ceiling is 1 GiB via `MaxBytesCeiling`. |
 | `SYNTHORG_MAX_BINARY_BYTES` | CLI | Maximum bytes for CLI binary archive downloads (accepts `256MiB`) |
 | `SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES` | CLI | Maximum bytes per archive entry during extraction (accepts `128MiB`) |
