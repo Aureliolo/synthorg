@@ -2467,7 +2467,12 @@ CREATE TABLE plans (
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
     failure_reason TEXT
-    CHECK (failure_reason IS NULL OR CHAR_LENGTH(TRIM(failure_reason)) > 0)
+    CHECK (failure_reason IS NULL OR CHAR_LENGTH(TRIM(failure_reason)) > 0),
+    -- failure_reason is present iff the plan is FAILED: a FAILED plan must carry
+    -- a reason (so Plan Review always shows why), and no other status may carry
+    -- one. Mirrors the Plan model validator as the persistence-level backstop.
+    CONSTRAINT plans_failure_reason_status_check
+    CHECK ((status = 'failed') = (failure_reason IS NOT NULL))
 );
 CREATE INDEX idx_plans_status ON plans (status);
 CREATE INDEX idx_plans_project ON plans (project);

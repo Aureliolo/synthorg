@@ -142,6 +142,30 @@ class TestProviderConfig:
                 ),
             )
 
+    def test_alias_colliding_with_another_model_id_rejected(self) -> None:
+        # An alias that equals a DIFFERENT model's id makes a (provider, ref)
+        # binding ambiguous: resolve_for_pair would resolve it by declaration
+        # order. The exclusive (provider, model) contract requires it be rejected.
+        with pytest.raises(
+            ValidationError, match="aliases collide with another model's id"
+        ):
+            ProviderConfig(
+                auth_type=AuthType.NONE,
+                models=(
+                    ProviderModelConfig(id="m1"),
+                    ProviderModelConfig(id="m2", alias="m1"),
+                ),
+            )
+
+    def test_alias_equal_to_own_id_allowed(self) -> None:
+        # A model whose alias equals its OWN id is unambiguous (both refs point
+        # at the same model), so it is permitted.
+        config = ProviderConfig(
+            auth_type=AuthType.NONE,
+            models=(ProviderModelConfig(id="m1", alias="m1"),),
+        )
+        assert config.models[0].alias == "m1"
+
     def test_whitespace_connection_name_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             ProviderConfig(connection_name="   ")

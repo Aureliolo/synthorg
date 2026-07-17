@@ -138,6 +138,20 @@ def _apply_downgrade(
         )
         return identity
 
+    if not target_resolved.agent_eligible:
+        # When the target alias is served only by an agent-ineligible provider,
+        # the eligibility-preferring selector still returns it (no eligible
+        # alternative exists). Refuse the downgrade rather than move the agent
+        # onto a feature-only gateway; the agent keeps its current model.
+        logger.warning(
+            BUDGET_DOWNGRADE_SKIPPED,
+            agent_id=agent_id_str,
+            source_alias=source_alias,
+            target_alias=target_alias,
+            reason="target_agent_ineligible",
+        )
+        return identity
+
     new_model = _build_downgraded_model_config(
         identity.model,
         target_resolved,

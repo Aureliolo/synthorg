@@ -120,16 +120,17 @@ function PlanReviewToolbar({ plan, onEdit, onRequestChanges }: {
   )
 }
 
-/** Visible failure notice for a FAILED plan (decomposition never completed). */
+/** Visible failure notice for a FAILED plan (a plan-review failure, which may
+ * be decomposition OR a later step such as parking the approval). */
 function PlanFailureBanner({ plan }: { plan: Plan }) {
   if (plan.status !== 'failed') return null
   return (
     <ErrorBanner
       severity="error"
-      title="Decomposition failed"
+      title="Plan processing failed"
       description={
         plan.failure_reason ??
-        'The planner could not prepare this objective for review. Start a new project run to try again.'
+        'This plan could not be completed. Start a new project run to try again.'
       }
     />
   )

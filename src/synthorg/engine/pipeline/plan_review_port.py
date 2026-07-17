@@ -72,11 +72,18 @@ class PlanReviewGate(Protocol):
         ...
 
     async def fail_plan(self, *, plan_id: UUID, reason: str) -> None:
-        """Mark the PLANNING shell FAILED when decomposition never completed.
+        """Mark the persisted plan FAILED on any plan-review failure.
+
+        Called for every failure in the plan-review sequence, not only an
+        unfilled ``PLANNING`` shell: a decomposition failure, but also a panel
+        failure or an approval-store write failure on an already-filled
+        ``PENDING_REVIEW`` plan (which is then FAILED with its items intact). A
+        plan already FAILED, or a missing shell, is a no-op.
 
         Args:
-            plan_id: The PLANNING shell returned by :meth:`open_plan`.
-            reason: A scrubbed description of why decomposition failed,
-                surfaced on the durable plan so the failure is visible.
+            plan_id: The plan (a ``PLANNING`` shell or an already-filled
+                ``PENDING_REVIEW`` plan) returned by :meth:`open_plan`.
+            reason: A scrubbed description of why the plan failed, surfaced on
+                the durable plan so the failure is visible in Plan Review.
         """
         ...

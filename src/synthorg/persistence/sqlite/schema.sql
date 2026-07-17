@@ -2572,7 +2572,11 @@ CREATE TABLE plans (
     version_history TEXT NOT NULL DEFAULT '[]',
     version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    -- failure_reason is present iff the plan is FAILED: a FAILED plan must carry
+    -- a reason (so Plan Review always shows why), and no other status may carry
+    -- one. Mirrors the Plan model validator as the persistence-level backstop.
+    CHECK ((status = 'failed') = (failure_reason IS NOT NULL))
 );
 CREATE INDEX idx_plans_status ON plans (status);
 CREATE INDEX idx_plans_project ON plans (project);

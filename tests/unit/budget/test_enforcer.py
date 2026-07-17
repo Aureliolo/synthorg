@@ -113,11 +113,13 @@ def _resolved(
     model_id: str,
     provider: str = "test-provider",
     alias: str | None = None,
+    agent_eligible: bool = True,
 ) -> ResolvedModel:
     return ResolvedModel(
         provider_name=provider,
         model_id=model_id,
         alias=alias,
+        agent_eligible=agent_eligible,
     )
 
 
@@ -472,6 +474,54 @@ class TestResolveModel:
         assert result.model.model_id == "test-medium-001"
         assert result.model.provider == "test-provider"
         assert result.model.model_tier == "medium"
+
+    async def test_above_threshold_ineligible_target_unchanged(self) -> None:
+        """An agent-ineligible downgrade target is refused; model stays put."""
+        cfg = _make_budget_config(
+            auto_downgrade=AutoDowngradeConfig(
+                enabled=True,
+                threshold=85,
+                downgrade_map=(("large", "medium"),),
+            ),
+        )
+        tracker = CostTracker(budget_config=cfg)
+        await tracker.record(
+            make_cost_record(
+                cost=90.0,
+                input_tokens=100,
+                output_tokens=50,
+                timestamp=_RECORD_TS,
+            ),
+        )
+        resolver = _make_resolver(
+            {
+                "test-large-001": _resolved(
+                    model_id="test-large-001",
+                    alias="large",
+                ),
+                "large": _resolved(model_id="test-large-001", alias="large"),
+                # The downgrade target resolves only to an agent-ineligible
+                # provider (a feature-only gateway); the downgrade must be
+                # refused rather than move the agent onto it.
+                "medium": _resolved(
+                    model_id="test-medium-001",
+                    provider="test-gateway",
+                    alias="medium",
+                    agent_eligible=False,
+                ),
+            }
+        )
+        enforcer = BudgetEnforcer(
+            budget_config=cfg,
+            cost_tracker=tracker,
+            model_resolver=resolver,
+        )
+        identity = _make_identity(model_id="test-large-001")
+
+        with _patch_periods():
+            result = await enforcer.resolve_model(identity)
+
+        assert result.model.model_id == "test-large-001"
 
     async def test_above_threshold_no_matching_alias_unchanged(self) -> None:
         """Budget above threshold but no matching alias returns unchanged."""

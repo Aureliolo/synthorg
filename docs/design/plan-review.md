@@ -29,10 +29,12 @@ carries only the plan's `plan_id`.
   `assumptions` (what the planner surfaced for the human), `objective_criteria` (the
   objective's acceptance criteria, denormalised for the coverage map),
   `version_history` (snapshots of prior submitted versions), `version`,
-  `created_at`, `updated_at`. A model validator rejects an empty item list,
-  duplicate item ids, an unresolvable dependency, or a dependency **cycle**
-  (topological sort), so a malformed plan is caught at construction rather than as a
-  dispatch failure.
+  `created_at`, `updated_at`. A model validator rejects an empty item list for
+  every status except the itemless `PLANNING` / `FAILED` shells (which may carry
+  no items), duplicate item ids, an unresolvable dependency, or a dependency
+  **cycle** (topological sort); a second validator ties `failure_reason` to the
+  `FAILED` status (present iff FAILED). A malformed plan is caught at construction
+  rather than as a dispatch failure.
 - **`PlanItem`**: `id` (a canonical UUID string, because dispatch rebuilds each
   child task from it), `title`, `description`, `dependencies`, `owner`,
   `acceptance_criteria`, `expected_artifacts`, `required_skills`, `required_tags`,

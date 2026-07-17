@@ -114,7 +114,7 @@ describe('PlanDetailPage', () => {
       }),
     }
     renderPage()
-    expect(screen.getByText('Decomposition failed')).toBeInTheDocument()
+    expect(screen.getByText('Plan processing failed')).toBeInTheDocument()
     expect(
       screen.getByText(/model returned no plan/),
     ).toBeInTheDocument()
@@ -134,9 +134,9 @@ describe('PlanDetailPage', () => {
       }),
     }
     renderPage()
-    expect(screen.getByText('Decomposition failed')).toBeInTheDocument()
+    expect(screen.getByText('Plan processing failed')).toBeInTheDocument()
     expect(
-      screen.getByText(/could not prepare this objective/),
+      screen.getByText(/could not be completed/),
     ).toBeInTheDocument()
   })
 })

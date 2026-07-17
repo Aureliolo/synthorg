@@ -7,8 +7,9 @@
 --   1. status CHECK gains 'planning' and 'failed'.
 --   2. the items CHECK permits an empty array for the itemless statuses
 --      ('planning' shell not yet filled, 'failed' never filled).
---   3. a nullable failure_reason column (non-blank when present) surfaces why a
---      FAILED plan failed on the review surface.
+--   3. a nullable failure_reason column (non-blank when present, and set iff the
+--      status is 'failed') surfaces why a FAILED plan failed on the review
+--      surface.
 
 CREATE TABLE plans_new (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
@@ -37,7 +38,11 @@ CREATE TABLE plans_new (
     version_history TEXT NOT NULL DEFAULT '[]',
     version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    -- failure_reason is present iff the plan is FAILED: a FAILED plan must carry
+    -- a reason (so Plan Review always shows why), and no other status may carry
+    -- one. Mirrors the Plan model validator as the persistence-level backstop.
+    CHECK ((status = 'failed') = (failure_reason IS NOT NULL))
 );
 
 INSERT INTO plans_new (

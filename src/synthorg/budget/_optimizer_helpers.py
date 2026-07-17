@@ -384,6 +384,18 @@ def _build_downgrade_recommendation(  # noqa: PLR0913 -- keyword-only; provider 
         )
         return None
 
+    if not target_resolved.agent_eligible:
+        # A downgrade-map target served only by an agent-ineligible provider must
+        # not be recommended (the cheaper-model fallback already filters these);
+        # recommending it would move the agent onto a feature-only gateway.
+        logger.debug(
+            CFO_DOWNGRADE_SKIPPED,
+            agent_id=agent_id,
+            reason="target_agent_ineligible",
+            target=target_ref,
+        )
+        return None
+
     savings = round(
         current_resolved.total_cost_per_1k - target_resolved.total_cost_per_1k,
         BUDGET_ROUNDING_PRECISION,

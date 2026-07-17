@@ -1020,19 +1020,20 @@ class DefaultWorkPipeline:
 
         Returns:
             The consolidated :class:`PlanReview`, or ``None`` when no panel is
-            attached or none could be seated (the plan is then parked for
-            approval with no panel review).
+            attached (the plan is then parked for approval with no panel review).
+
+        Raises:
+            Exception: A panel that errors mid-review propagates so the caller's
+                plan-review guard compensates it (FAILED plan + FAILED task),
+                rather than parking a plan whose holistic review silently never
+                ran. Only the "no panel attached" path returns ``None``.
         """
         panel = self._plan_review_panel
         if panel is None:
             return None
         try:
             return await panel.review(task=task, plan=plan, agents=agents, owner=owner)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- the plan is already decomposed; a panel
-            # failure (e.g. a provider error mid-review) must not fail the run or
-            # 500 the approve. Park the plan for human approval review-less
-            # rather than losing it.
+        except Exception as exc:
             reraise_critical(exc)
             logger.warning(
                 PIPELINE_PLAN_REVIEW_PANEL_FAILED,
@@ -1040,7 +1041,7 @@ class DefaultWorkPipeline:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return None
+            raise
 
     async def _run_solo(
         self,
