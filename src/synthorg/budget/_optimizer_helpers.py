@@ -378,7 +378,9 @@ def _build_downgrade_recommendation(  # noqa: PLR0913 -- keyword-only; provider 
         target_ref = cheaper.model_id
         target_resolved: ResolvedModel | None = cheaper
     else:
-        target_resolved = resolver.resolve_safe(target_ref)
+        # Scope the mapped target to the bound provider so a downgrade never
+        # silently rebinds the agent to a same-alias model on another provider.
+        target_resolved = resolver.resolve_for_pair(provider, target_ref)
 
     if target_resolved is None:
         logger.debug(
