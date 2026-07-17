@@ -30,8 +30,8 @@ carries only the plan's `plan_id`.
   objective's acceptance criteria, denormalised for the coverage map),
   `version_history` (snapshots of prior submitted versions), `version`,
   `created_at`, `updated_at`. A model validator rejects an empty item list for
-  every status except the itemless `PLANNING` / `FAILED` shells (which may carry
-  no items), duplicate item ids, an unresolvable dependency, or a dependency
+  every status except the `PLANNING` / `FAILED` shells (which may carry no
+  items), duplicate item ids, an unresolvable dependency, or a dependency
   **cycle** (topological sort); a second validator ties `failure_reason` to the
   `FAILED` status (present iff FAILED). A malformed plan is caught at construction
   rather than as a dispatch failure.

@@ -292,9 +292,9 @@ with no operator input while remaining tunable per deployment.
 explicitly-configured feature calls (the chat / judge / charter / narrative
 models an operator sets), but contributes no models to the seeding pool and is
 excluded from stakes routing, so no agent is ever *newly* seeded onto it or
-routed to it. It is not an immediate traffic cutover: an agent already pinned to
-the provider keeps running on it because `resolve_for_pair` honours the explicit
-`(provider, model)` binding, until that agent is reassigned. This lets an
+routed to it. It does not immediately cut off existing traffic: an agent already
+pinned to the provider keeps running on it because `resolve_for_pair` honours the
+explicit `(provider, model)` binding, until that agent is reassigned. This lets an
 operator stop new agents sourcing from a gateway (added deliberately, e.g. for a
 specific feature model) without disrupting agents already bound to it. The flag
 is a per-provider field on `ProviderConfig`, editable through provider CRUD.
