@@ -19,6 +19,7 @@ from synthorg.core.resilience import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
+    PROVIDER_EMPTY_COMPLETION,
     PROVIDER_FINISH_REASON_UNKNOWN,
     PROVIDER_RETRY_AFTER_PARSE_FAILED,
     PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
@@ -209,6 +210,46 @@ def map_finish_reason(reason: str | None) -> FinishReason:
             )
         return FinishReason.ERROR
     return result
+
+
+def normalize_empty_finish(  # noqa: PLR0913 -- keyword-only completion fields
+    *,
+    content: str | None,
+    tool_calls: tuple[ToolCall, ...],
+    finish: FinishReason,
+    provider: str,
+    model: str,
+    had_raw_tool_calls: bool,
+) -> FinishReason:
+    """Force ``ERROR`` when a completion has neither content nor a tool call.
+
+    ``extract_tool_calls`` drops a malformed tool call (unparseable arguments),
+    which can leave a ``TOOL_USE`` turn empty, and a provider can also return an
+    empty ``STOP`` turn. ``CompletionResponse`` rejects that shape unless the
+    finish reason is already ``ERROR`` / ``CONTENT_FILTER``, so building it would
+    raise a ``ValidationError`` out of the driver mid-call (surfacing as a 500).
+    Normalising to ``ERROR`` lets the caller (the decomposition self-correction
+    loop, the react loop) receive a well-formed empty completion and apply its
+    own graceful retry / fail-loud handling instead.
+
+    Returns:
+        ``FinishReason.ERROR`` for an empty, non-error completion; otherwise the
+        original *finish* unchanged.
+    """
+    if (
+        content is None
+        and not tool_calls
+        and finish not in (FinishReason.CONTENT_FILTER, FinishReason.ERROR)
+    ):
+        logger.warning(
+            PROVIDER_EMPTY_COMPLETION,
+            provider=provider,
+            model=model,
+            finish_reason=finish.value,
+            had_raw_tool_calls=had_raw_tool_calls,
+        )
+        return FinishReason.ERROR
+    return finish
 
 
 def extract_tool_calls(raw: list[object] | None) -> tuple[ToolCall, ...]:

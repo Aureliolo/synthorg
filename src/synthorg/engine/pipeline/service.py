@@ -965,6 +965,9 @@ class DefaultWorkPipeline:
                 reason=f"decomposition failed: {reason}",
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort FAILED transition; the run is
+            # already reported unsuccessful and the durable plan is FAILED, so a
+            # status-write hiccup must not mask the decomposition failure.
             reraise_critical(exc)
             logger.warning(
                 PIPELINE_PLAN_DECOMPOSITION_FAILED,
@@ -995,9 +998,10 @@ class DefaultWorkPipeline:
         try:
             return await panel.review(task=task, plan=plan, agents=agents, owner=owner)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # The plan is already decomposed; a panel failure (e.g. a provider
-            # error mid-review) must not fail the run or 500 the approve. Park
-            # the plan for human approval review-less rather than losing it.
+            # lint-allow: swallow-ok -- the plan is already decomposed; a panel
+            # failure (e.g. a provider error mid-review) must not fail the run or
+            # 500 the approve. Park the plan for human approval review-less
+            # rather than losing it.
             reraise_critical(exc)
             logger.warning(
                 PIPELINE_PLAN_REVIEW_PANEL_FAILED,

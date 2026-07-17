@@ -50,7 +50,6 @@ from pydantic import JsonValue
 
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger, safe_error_description
@@ -59,14 +58,13 @@ from synthorg.observability.events.provider import (
     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
     PROVIDER_CONNECTION_ERROR,
-    PROVIDER_EMPTY_COMPLETION,
     PROVIDER_QUOTA_EXCEEDED,
     PROVIDER_RATE_LIMITED,
     PROVIDER_STREAM_CHUNK_NO_DELTA,
     PROVIDER_STREAM_DONE,
 )
 from synthorg.providers import errors
-from synthorg.providers._cost import compute_token_cost
+from synthorg.providers._cost import token_usage_from_response_usage
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
@@ -109,6 +107,7 @@ from .mappers import (
     extract_tool_calls,
     map_finish_reason,
     messages_to_dicts,
+    normalize_empty_finish,
     tools_to_dicts,
 )
 
@@ -616,40 +615,17 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         content: str | None = getattr(message, "content", None)
         raw_tc = getattr(message, "tool_calls", None)
         tool_calls = extract_tool_calls(raw_tc)
-        finish = map_finish_reason(
-            getattr(choice, "finish_reason", None),
+        finish = normalize_empty_finish(
+            content=content,
+            tool_calls=tool_calls,
+            finish=map_finish_reason(getattr(choice, "finish_reason", None)),
+            provider=self._provider_name,
+            model=model_config.id,
+            had_raw_tool_calls=bool(raw_tc),
         )
 
-        # A response with neither content nor a surviving tool call is not a
-        # usable completion. ``extract_tool_calls`` drops a malformed tool call
-        # (unparseable arguments), which can leave a TOOL_USE turn empty, and a
-        # provider can also return an empty STOP turn. ``CompletionResponse``
-        # rejects that shape unless the finish reason is already ERROR /
-        # CONTENT_FILTER, so building it here would raise a ValidationError out
-        # of the driver mid-call (surfacing as a 500 up the stack). Normalise
-        # to ERROR: the caller (the decomposition self-correction loop, the
-        # react loop) then receives a well-formed empty completion and applies
-        # its own graceful retry / fail-loud handling instead.
-        if (
-            content is None
-            and not tool_calls
-            and finish not in (FinishReason.CONTENT_FILTER, FinishReason.ERROR)
-        ):
-            logger.warning(
-                PROVIDER_EMPTY_COMPLETION,
-                provider=self._provider_name,
-                model=model_config.id,
-                finish_reason=finish.value,
-                had_raw_tool_calls=bool(raw_tc),
-            )
-            finish = FinishReason.ERROR
-
-        usage_obj = getattr(response, "usage", None)
-        input_tok = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
-        output_tok = int(getattr(usage_obj, "completion_tokens", 0) or 0)
-        usage = compute_token_cost(
-            input_tok,
-            output_tok,
+        usage = token_usage_from_response_usage(
+            getattr(response, "usage", None),
             cost_per_1k_input=model_config.cost_per_1k_input,
             cost_per_1k_output=model_config.cost_per_1k_output,
         )
@@ -773,11 +749,8 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         Returns:
             A ``StreamChunk`` carrying the token-usage event.
         """
-        input_tok = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
-        output_tok = int(getattr(usage_obj, "completion_tokens", 0) or 0)
-        usage = compute_token_cost(
-            input_tok,
-            output_tok,
+        usage = token_usage_from_response_usage(
+            usage_obj,
             cost_per_1k_input=model_config.cost_per_1k_input,
             cost_per_1k_output=model_config.cost_per_1k_output,
         )
