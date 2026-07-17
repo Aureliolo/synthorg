@@ -902,8 +902,6 @@ class DefaultWorkPipeline:
         gate = self._plan_review_gate
         assert coordinator is not None  # noqa: S101 -- guarded by _should_gate_plan
         assert gate is not None  # noqa: S101 -- guarded by _should_gate_plan
-        # Persist the plan as a first-class shell at greenlight, so a failed
-        # decomposition leaves a visible FAILED plan rather than an orphan task.
         # Persist the plan as a first-class shell at greenlight, so a failure
         # anywhere below leaves a visible FAILED plan rather than an orphan task.
         plan_id = await gate.open_plan(work_item=work_item, task=task)

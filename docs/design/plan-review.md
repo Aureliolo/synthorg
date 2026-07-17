@@ -24,7 +24,8 @@ carries only the plan's `plan_id`.
 - **`Plan`**: `id` (UUID), `project`, `objective_id`, `objective_title`
   (denormalised at creation so the surface never resolves, or falls back to, a raw
   id), `parent_task_id`, `items` (ordered tuple forming a dependency DAG),
-  `task_structure`, `coordination_topology`, `status`, `forecast_id`, `review` (the
+  `task_structure`, `coordination_topology`, `status`, `failure_reason` (why a
+  `FAILED` plan failed, `None` otherwise), `forecast_id`, `review` (the
   consolidated stakeholder-panel review, or `None`), `open_questions` and
   `assumptions` (what the planner surfaced for the human), `objective_criteria` (the
   objective's acceptance criteria, denormalised for the coverage map),

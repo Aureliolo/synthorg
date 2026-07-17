@@ -344,7 +344,8 @@ Routing maps **stakes to a required model tier** (`StakesTierRequirement`: low t
 not to a benchmark quality floor. The `StakesAwareStrategy` computes the required
 tier, bumps one tier when coordination metrics are unhealthy, holds high/critical
 work at or above the agent's own tier for the red-team gate, then scans every
-configured model at or above that tier (cheapest first) and keeps only the
+agent-eligible model at or above that tier (cheapest first; models on
+`agent_eligible=false` providers are excluded) and keeps only the
 **tool-capable** ones (`is_tool_capable`: `supports_tools` true, or verified, and
 never a model whose `tool_calls_verified` is explicitly `False`). It picks the
 cheapest survivor.
@@ -378,9 +379,10 @@ bulk tier suggestions; it runs on the operator-selected
 picked.
 
 **Per-task multi-provider routing (v1).** The stakes router resolves a tier over
-**all** configured providers with a deterministic `CheapestSelector`, so a tier can
-resolve to the cheapest model serving it across providers rather than being pinned to
-the boot default. After routing, the engine swaps the dispatched client to the routed
+**all agent-eligible** configured providers with a deterministic `CheapestSelector`
+(models on `agent_eligible=false` providers are excluded from candidacy), so a tier
+can resolve to the cheapest model serving it across the eligible providers rather than
+being pinned to the boot default. After routing, the engine swaps the dispatched client to the routed
 model's provider (`AgentEngine._resolve_provider_instance`), so the API actually
 called and the `CostRecord.provider` name are always the same provider (attribution
 parity). If the routed provider cannot be resolved from the registry, the engine keeps

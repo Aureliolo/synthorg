@@ -372,9 +372,14 @@ def _build_downgrade_recommendation(  # noqa: PLR0913 -- keyword-only; provider 
                 model=current_model,
             )
             return None
+        # Keep the concrete model the selector picked (with its provider). The
+        # same id can exist on multiple providers, so re-resolving by bare id
+        # could silently rebind the recommendation to a different provider.
         target_ref = cheaper.model_id
+        target_resolved: ResolvedModel | None = cheaper
+    else:
+        target_resolved = resolver.resolve_safe(target_ref)
 
-    target_resolved = resolver.resolve_safe(target_ref)
     if target_resolved is None:
         logger.debug(
             CFO_DOWNGRADE_SKIPPED,
