@@ -5,11 +5,14 @@ from an MCP server, bridging MCP protocol calls into the internal
 tool system.
 """
 
+import asyncio
+from collections.abc import Hashable
 from typing import override
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_CACHE_HIT,
+    MCP_CACHE_INFLIGHT_WAIT,
     MCP_CACHE_MISS,
     MCP_CACHE_STORE_FAILED,
     MCP_INVOKE_FAILED,
@@ -17,7 +20,7 @@ from synthorg.observability.events.mcp import (
 )
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
-from synthorg.tools.mcp.cache import MCPResultCache
+from synthorg.tools.mcp.cache import MCPResultCache, make_arguments_hashable
 from synthorg.tools.mcp.client import MCPClient
 from synthorg.tools.mcp.errors import MCPError
 from synthorg.tools.mcp.models import MCPToolInfo
@@ -55,6 +58,13 @@ class MCPBridgeTool(BaseTool):
         self._client = client
         self._tool_info = tool_info
         self._cache = cache
+        # Single-flight coalescing: concurrent identical invocations share one
+        # in-flight call rather than each hitting the server. Critically this
+        # stops a mutating tool (create_issue, send_message) from executing
+        # twice when two agents race the same call before either populates the
+        # cache -- the same double-execution the client's heal path guards.
+        self._inflight: dict[Hashable, asyncio.Future[ToolExecutionResult]] = {}
+        self._inflight_lock = asyncio.Lock()
 
     @property
     def tool_info(self) -> MCPToolInfo:
@@ -82,9 +92,54 @@ class MCPBridgeTool(BaseTool):
         if cached is not None:
             return cached
 
-        result = await self._invoke(arguments)
-        self._store_in_cache(arguments, result)
-        return result
+        try:
+            key = make_arguments_hashable(arguments)
+        except TypeError:
+            # Unhashable arguments cannot be coalesced (or cached); invoke
+            # directly, matching the cache's own unhashable fallback.
+            return await self._invoke(arguments)
+        return await self._invoke_single_flight(key, arguments)
+
+    async def _invoke_single_flight(
+        self,
+        key: Hashable,
+        arguments: dict[str, object],
+    ) -> ToolExecutionResult:
+        """Invoke, coalescing a concurrent identical call onto one in-flight run.
+
+        Returns:
+            Mapped ``ToolExecutionResult`` (shared with any coalesced waiter).
+        """
+        my_future: asyncio.Future[ToolExecutionResult] = (
+            asyncio.get_running_loop().create_future()
+        )
+        async with self._inflight_lock:
+            inflight = self._inflight.get(key)
+            if inflight is None:
+                self._inflight[key] = my_future
+        if inflight is not None:
+            # Another identical call is in flight; share its single result
+            # (or its failure) instead of issuing a second server call.
+            logger.debug(
+                MCP_CACHE_INFLIGHT_WAIT,
+                tool_name=self._tool_info.name,
+                server=self._tool_info.server_name,
+            )
+            return await inflight
+        try:
+            result = await self._invoke(arguments)
+        except BaseException as exc:
+            # Propagate to coalesced waiters too (incl. cancellation), then
+            # re-raise for this caller.
+            my_future.set_exception(exc)
+            raise
+        else:
+            self._store_in_cache(arguments, result)
+            my_future.set_result(result)
+            return result
+        finally:
+            async with self._inflight_lock:
+                self._inflight.pop(key, None)
 
     def _check_cache(
         self,

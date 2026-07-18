@@ -92,9 +92,7 @@ class GenericHttpHealthCheck:
         try:
             credentials = await self._catalog.get_credentials(connection.name)
             return build_auth_headers(connection.auth_method, credentials)
-        except ExternalApiCredentialError:
-            return None
-        except SecretRetrievalError:
+        except ExternalApiCredentialError, SecretRetrievalError:
             return None
 
     async def check(self, connection: Connection) -> HealthReport:

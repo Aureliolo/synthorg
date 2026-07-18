@@ -236,3 +236,111 @@ class TestFailureModes:
         )
         results = await _provider("brave", max_attempts=3).search("q")
         assert results == []
+
+    @pytest.mark.unit
+    async def test_catalog_error_is_wrapped_and_scrubbed(self) -> None:
+        """A raising catalog surfaces as a domain error, not a raw exception."""
+
+        class _RaisingCatalog:
+            async def get_credentials(self, name: str) -> dict[str, str]:
+                del name
+                msg = "secret backend unreachable"
+                raise RuntimeError(msg)
+
+        preset = get_search_preset("brave")
+        assert preset is not None
+        provider = HttpWebSearchProvider(
+            preset=preset,
+            catalog=_RaisingCatalog(),
+            connection_name="c",
+            network_policy=_OPEN_POLICY,
+        )
+        with pytest.raises(WebSearchConfigurationError):
+            await provider.search("q")
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_retry_after_header_captured_on_transient(self) -> None:
+        """A 429 Retry-After is parsed onto the transient error for backoff."""
+        respx.get(url__startswith="https://api.search.brave.com").mock(
+            return_value=httpx.Response(429, headers={"Retry-After": "30"}, json={})
+        )
+        with pytest.raises(WebSearchTransientError) as excinfo:
+            await _provider("brave", max_attempts=1).search("q")
+        assert excinfo.value.retry_after_seconds == 30.0
+
+
+class TestResultCeiling:
+    @pytest.mark.unit
+    @respx.mock
+    async def test_ceiling_below_preset_cap_wins(self) -> None:
+        route = respx.get(
+            url__startswith="https://api.search.brave.com/res/v1/web/search"
+        ).mock(return_value=httpx.Response(200, json={"web": {"results": []}}))
+        preset = get_search_preset("brave")
+        assert preset is not None
+        provider = HttpWebSearchProvider(
+            preset=preset,
+            catalog=_StubCatalog({"api_key": "k"}),
+            connection_name="c",
+            network_policy=_OPEN_POLICY,
+            max_results_ceiling=3,
+        )
+        await provider.search("q", max_results=10)
+        assert route.calls.last.request.url.params["count"] == "3"
+
+    @pytest.mark.unit
+    @respx.mock
+    async def test_preset_cap_wins_when_ceiling_higher(self) -> None:
+        route = respx.get(
+            url__startswith="https://api.search.brave.com/res/v1/web/search"
+        ).mock(return_value=httpx.Response(200, json={"web": {"results": []}}))
+        preset = get_search_preset("brave")
+        assert preset is not None
+        provider = HttpWebSearchProvider(
+            preset=preset,
+            catalog=_StubCatalog({"api_key": "k"}),
+            connection_name="c",
+            network_policy=_OPEN_POLICY,
+            max_results_ceiling=50,  # above Brave's cap of 20
+        )
+        await provider.search("q", max_results=100)
+        assert route.calls.last.request.url.params["count"] == "20"
+
+
+class TestConstructorValidation:
+    @pytest.mark.unit
+    @pytest.mark.parametrize("timeout", [0.0, -1.0])
+    def test_non_positive_timeout_rejected(self, timeout: float) -> None:
+        preset = get_search_preset("brave")
+        assert preset is not None
+        with pytest.raises(ValueError, match="timeout_seconds"):
+            HttpWebSearchProvider(
+                preset=preset,
+                catalog=_StubCatalog({"api_key": "k"}),
+                connection_name="c",
+                timeout_seconds=timeout,
+            )
+
+    @pytest.mark.unit
+    def test_non_positive_ceiling_rejected(self) -> None:
+        preset = get_search_preset("brave")
+        assert preset is not None
+        with pytest.raises(ValueError, match="max_results_ceiling"):
+            HttpWebSearchProvider(
+                preset=preset,
+                catalog=_StubCatalog({"api_key": "k"}),
+                connection_name="c",
+                max_results_ceiling=0,
+            )
+
+    @pytest.mark.unit
+    def test_blank_connection_name_rejected(self) -> None:
+        preset = get_search_preset("brave")
+        assert preset is not None
+        with pytest.raises(ValueError, match="connection_name"):
+            HttpWebSearchProvider(
+                preset=preset,
+                catalog=_StubCatalog({"api_key": "k"}),
+                connection_name="   ",
+            )

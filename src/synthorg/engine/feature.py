@@ -74,6 +74,7 @@ FEATURE: FeatureModule = FeatureManifest(
     lifecycle_hooks=(),
     construction_wirer=wire_construction,
     ghost_wired_symbols=(
+        "PlanningToolProvider",
         "TaskAssignmentService",
         "EvaluationVersionService",
         "SubworkflowService",

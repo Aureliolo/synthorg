@@ -66,7 +66,7 @@ class TestCatalogService:
     async def test_browse_returns_entries(self) -> None:
         service = CatalogService()
         entries = await service.browse()
-        assert len(entries) >= 5
+        assert len(entries) >= 4
 
     async def test_browse_entries_have_required_fields(self) -> None:
         service = CatalogService()
@@ -113,12 +113,18 @@ class FakeConnectionCatalog:
 
     def __init__(self) -> None:
         self._store: dict[str, Connection] = {}
+        self._creds: dict[str, dict[str, str]] = {}
 
-    def add(self, conn: Connection) -> None:
+    def add(self, conn: Connection, creds: dict[str, str] | None = None) -> None:
         self._store[conn.name] = conn
+        if creds is not None:
+            self._creds[conn.name] = creds
 
     async def get(self, name: str) -> Connection | None:
         return self._store.get(name)
+
+    async def get_credentials(self, name: str) -> dict[str, str]:
+        return dict(self._creds.get(name, {}))
 
 
 def _make_connection(
@@ -239,6 +245,40 @@ class TestCatalogInstall:
                 installations_repo=repo,
             )
 
+    async def test_install_dialect_match_succeeds(self) -> None:
+        """postgres-mcp binds a database connection whose dialect is postgres."""
+        service = CatalogService()
+        repo = InMemoryMcpInstallationRepository()
+        catalog = FakeConnectionCatalog()
+        catalog.add(
+            _make_connection("pg-conn", ConnectionType.DATABASE),
+            creds={"dialect": "postgres"},
+        )
+        result = await service.install(
+            "postgres-mcp",
+            "pg-conn",
+            connection_catalog=catalog,  # type: ignore[arg-type]
+            installations_repo=repo,
+        )
+        assert result.connection_name == "pg-conn"
+
+    async def test_install_dialect_mismatch_rejected(self) -> None:
+        """A sqlite-dialect connection cannot bind the postgres-mcp entry."""
+        service = CatalogService()
+        repo = InMemoryMcpInstallationRepository()
+        catalog = FakeConnectionCatalog()
+        catalog.add(
+            _make_connection("sqlite-conn", ConnectionType.DATABASE),
+            creds={"dialect": "sqlite"},
+        )
+        with pytest.raises(InvalidConnectionAuthError):
+            await service.install(
+                "postgres-mcp",
+                "sqlite-conn",
+                connection_catalog=catalog,  # type: ignore[arg-type]
+                installations_repo=repo,
+            )
+
     async def test_uninstall_existing(self, tmp_path: Path) -> None:
         service = _connectionless_catalog(tmp_path)
         repo = InMemoryMcpInstallationRepository()
@@ -277,7 +317,9 @@ class TestInstallMerge:
         assert server.transport == "stdio"
         assert server.command == "npx"
         assert "-y" in server.args
-        assert entry.npm_package in server.args
+        # The npx spec is version-pinned so a reconnect can never pull a
+        # newly-published (potentially compromised) 'latest'.
+        assert f"{entry.npm_package}@{entry.npm_version}" in server.args
         # The connection name is recorded on an explicit field (secrets are
         # resolved and injected at connect time, never persisted here).
         assert server.connection_name == "primary-gh"

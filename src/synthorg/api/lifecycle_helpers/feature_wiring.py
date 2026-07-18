@@ -356,9 +356,7 @@ async def _build_and_wire_research(
         build_research_tool_factory,
     )
     from synthorg.settings.model_ref import parse_model_ref  # noqa: PLC0415
-    from synthorg.workers._web_search_provider_wiring import (  # noqa: PLC0415
-        build_web_search_provider_or_none,
-    )
+    from synthorg.workers import _web_search_provider_wiring as _wsp  # noqa: PLC0415
 
     # ``research.model`` is a model-assignment setting storing a ``ModelRef``:
     # the provider travels with the model (the picker writes both). A blank
@@ -405,7 +403,7 @@ async def _build_and_wire_research(
         knowledge_service=app_state.slice(KnowledgeStateSlice).service,
         clock=app_state.clock,
         cost_tracker=cost_tracker_of(app_state),
-        web_search_provider=await build_web_search_provider_or_none(app_state),
+        web_search_provider=await _wsp.build_web_search_provider_or_none(app_state),
     )
     tool_factory = build_research_tool_factory(service=service, clock=app_state.clock)
     app_state.swap_slice(ResearchStateSlice(service=service, tool_factory=tool_factory))

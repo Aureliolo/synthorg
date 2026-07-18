@@ -11,6 +11,8 @@ gate stays satisfied without per-line exemptions.
 
 from typing import ClassVar
 
+from pydantic import JsonValue
+
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.tools.errors import ToolError
 
@@ -52,9 +54,25 @@ class WebSearchResponseError(WebSearchError):
 
 
 class WebSearchTransientError(WebSearchError):
-    """A transient upstream failure (timeout, transport error, 429/5xx)."""
+    """A transient upstream failure (timeout, transport error, 429/5xx).
+
+    Carries an optional ``retry_after_seconds`` parsed from a ``Retry-After``
+    response header so the retry handler can honour the server's own cooldown
+    instead of the fixed exponential schedule.
+    """
 
     status_code: ClassVar[int] = 503
     error_code: ClassVar[ErrorCode] = ErrorCode.TOOL_EXECUTION_ERROR
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     default_message: ClassVar[str] = "Web search upstream is temporarily unavailable"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        context: dict[str, JsonValue] | None = None,
+        retry_after_seconds: float | None = None,
+    ) -> None:
+        """Initialise, capturing an optional server-supplied cooldown."""
+        super().__init__(message, context=context)
+        self.retry_after_seconds = retry_after_seconds

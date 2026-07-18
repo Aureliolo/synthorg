@@ -20,7 +20,8 @@ from synthorg.tools.mcp.bridge_tool import MCPBridgeTool
 from synthorg.tools.mcp.cache import MCPResultCache
 from synthorg.tools.mcp.client import MCPClient, MCPCredentialResolver
 from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
-from synthorg.tools.mcp.models import MCPToolInfo
+from synthorg.tools.mcp.errors import MCPConnectionError, MCPDiscoveryError
+from synthorg.tools.mcp.models import MCPServerStatus, MCPToolInfo
 from synthorg.tools.mcp.sandbox import MCPSandboxConfig
 
 logger = get_logger(__name__)
@@ -47,7 +48,51 @@ class MCPToolFactory:
         self._credential_source = credential_source
         self._sandbox = sandbox
         self._clients: list[MCPClient] = []
+        self._server_statuses: list[MCPServerStatus] = []
         self._created = False
+
+    @property
+    def server_statuses(self) -> tuple[MCPServerStatus, ...]:
+        """Per-server connect outcomes from the last ``create_tools`` pass."""
+        return tuple(self._server_statuses)
+
+    async def ping_servers(self) -> tuple[MCPServerStatus, ...]:
+        """Live-ping each connected server, reporting fresh per-server liveness.
+
+        Unlike :attr:`server_statuses` (the last connect outcome) this issues a
+        real ``list_tools`` over each existing session, so a server whose child
+        died after boot surfaces as unhealthy without re-spawning it. Pings run
+        concurrently and never raise: a failing server is reported, not thrown.
+
+        Returns:
+            A per-server :class:`MCPServerStatus` snapshot taken just now.
+        """
+        pings = await asyncio.gather(
+            *(self._ping_one(client) for client in self._clients),
+            return_exceptions=False,
+        )
+        return tuple(pings)
+
+    async def _ping_one(self, client: MCPClient) -> MCPServerStatus:
+        """Ping a single client via ``list_tools``, mapping failure to a status.
+
+        Returns:
+            A fresh :class:`MCPServerStatus` for the pinged client.
+        """
+        try:
+            tools = await client.list_tools()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            return MCPServerStatus(
+                name=client.server_name,
+                connected=False,
+                error=safe_error_description(exc),
+            )
+        return MCPServerStatus(
+            name=client.server_name,
+            connected=True,
+            tool_count=len(tools),
+        )
 
     async def create_tools(self) -> tuple[MCPBridgeTool, ...]:
         """Connect to all enabled servers and create bridge tools.
@@ -126,36 +171,74 @@ class MCPToolFactory:
         for cfg, outcome in zip(servers, outcomes, strict=True):
             if isinstance(outcome, BaseException):
                 reraise_critical(outcome)
-                logger.warning(
-                    MCP_FACTORY_SERVER_FAILED,
-                    server=cfg.name,
-                    reason="connect/discover failed; server dropped",
-                    error_type=type(outcome).__name__,
-                    error=safe_error_description(outcome),
-                )
+                self._record_failure(cfg, outcome)
                 continue
             client, tools = outcome
             self._clients.append(client)
+            self._server_statuses.append(
+                MCPServerStatus(
+                    name=cfg.name,
+                    connected=True,
+                    tool_count=len(tools),
+                ),
+            )
             results.append((client, tools))
         return results
 
+    def _record_failure(
+        self,
+        cfg: MCPServerConfig,
+        outcome: BaseException,
+    ) -> None:
+        """Log and record a dropped server, escalating enabled-but-broken.
+
+        A typed connect/discovery error on an explicitly-enabled server is an
+        operator misconfiguration (bad package, unresolvable connection), so it
+        logs at ERROR to match the rest of the wiring layer; an unexpected
+        transient stays at WARNING.
+        """
+        description = safe_error_description(outcome)
+        is_misconfig = isinstance(outcome, MCPConnectionError | MCPDiscoveryError)
+        log = logger.error if is_misconfig else logger.warning
+        log(
+            MCP_FACTORY_SERVER_FAILED,
+            server=cfg.name,
+            reason="connect/discover failed; server dropped",
+            error_type=type(outcome).__name__,
+            error=description,
+        )
+        self._server_statuses.append(
+            MCPServerStatus(name=cfg.name, connected=False, error=description),
+        )
+
     async def shutdown(self) -> None:
-        """Disconnect all managed MCP clients."""
+        """Disconnect all managed MCP clients concurrently.
+
+        Fan out like ``_connect_all`` so one hung server's bounded
+        disconnect timeout cannot serialise behind the others' (turning an
+        N-server shutdown into N x the per-client timeout).
+        """
         try:
-            for client in self._clients:
-                try:
-                    await client.disconnect()
-                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                    reraise_critical(exc)
-                    logger.warning(
-                        MCP_CLIENT_DISCONNECT_FAILED,
-                        server=client.server_name,
-                        context="disconnect failed",
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
+            await asyncio.gather(
+                *(self._disconnect_one(client) for client in self._clients),
+                return_exceptions=True,
+            )
         finally:
             self._clients.clear()
+
+    async def _disconnect_one(self, client: MCPClient) -> None:
+        """Disconnect a single client, logging (not raising) a failure."""
+        try:
+            await client.disconnect()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                MCP_CLIENT_DISCONNECT_FAILED,
+                server=client.server_name,
+                context="disconnect failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     # ── Private helpers ──────────────────────────────────────────
 

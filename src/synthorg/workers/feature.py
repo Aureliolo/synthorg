@@ -25,6 +25,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "DeadLetterConsumer",
         "SeenClaimsPruner",
         "WorkerHeartbeatSubscriber",
+        "build_web_search_provider_or_none",
     ),
     depends_on=(),
 )

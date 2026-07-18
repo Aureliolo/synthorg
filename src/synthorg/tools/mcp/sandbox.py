@@ -2,12 +2,12 @@
 """Docker sandboxing for stdio MCP servers.
 
 An MCP stdio server is arbitrary third-party code (``npx -y <pkg>``) with full
-host access if spawned directly. Per the Docker-only hardening ADR (D16), every
-execution-capable tool surface must run inside a container; the MCP bridge is no
-exception. Rather than build a bespoke container-stdio transport, this wraps the
-launch in ``docker run -i`` so the MCP stdio protocol flows over the container's
-stdin/stdout while the server runs under cap-drop, no-new-privileges, a
-read-only rootfs, and cpu/memory/pid limits.
+host access if spawned directly. D16 requires the high-risk execution
+categories to run inside Docker; an MCP server executes untrusted code, so it
+sits in that set. Rather than build a bespoke container-stdio transport, this
+wraps the launch in ``docker run -i`` so the MCP stdio protocol flows over the
+container's stdin/stdout while the server runs under cap-drop, no-new-privileges,
+a read-only rootfs, and cpu/memory/pid limits.
 
 Credentials are forwarded by NAME (``-e KEY``), never by value on the command
 line: the resolved secret travels in the ``docker`` process environment (which
@@ -15,9 +15,13 @@ the MCP SDK seeds via ``get_default_environment()`` plus the returned env) and
 Docker passes it into the container, so no secret ever appears in host ``argv``.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
+
+SandboxNetwork = Literal["bridge", "none", "host"]
 
 
 class MCPSandboxConfig(BaseModel):
@@ -41,7 +45,7 @@ class MCPSandboxConfig(BaseModel):
     memory_limit: NotBlankStr = "512m"
     pids_limit: int = Field(default=256, gt=0)
     cpus: NotBlankStr = "1.0"
-    network: NotBlankStr = "bridge"
+    network: SandboxNetwork = "bridge"
 
 
 def wrap_stdio_in_sandbox(

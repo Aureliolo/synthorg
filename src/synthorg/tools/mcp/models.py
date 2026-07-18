@@ -48,6 +48,31 @@ class MCPToolInfo(BaseModel):
         return self
 
 
+class MCPServerStatus(BaseModel):
+    """Per-server outcome of an MCP factory connect pass.
+
+    Surfaced by ``MCPToolFactory.server_statuses`` so a caller (health
+    endpoint, dashboard) can tell a dropped server from a connectionless
+    one, rather than inferring failure only from an empty tool tuple.
+
+    Attributes:
+        name: Configured server name.
+        connected: Whether connect + discovery succeeded.
+        tool_count: Number of tools discovered (0 when not connected).
+        error: Scrubbed failure description when not connected.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    name: NotBlankStr = Field(description="Configured server name")
+    connected: bool = Field(description="Whether connect + discovery succeeded")
+    tool_count: int = Field(default=0, ge=0, description="Discovered tool count")
+    error: str | None = Field(
+        default=None,
+        description="Scrubbed failure description when not connected",
+    )
+
+
 class MCPRawResult(BaseModel):
     """Raw result from an MCP tool call before mapping.
 

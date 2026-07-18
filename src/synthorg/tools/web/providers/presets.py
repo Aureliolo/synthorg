@@ -61,7 +61,7 @@ class SearchProviderPreset(BaseModel):
     auth_header: NotBlankStr
     auth_template: NotBlankStr = "{key}"
     query_key: NotBlankStr
-    count_key: str | None = None
+    count_key: NotBlankStr | None = None
     extra: dict[str, JsonValue] = Field(default_factory=dict)
     max_results_cap: int = Field(gt=0, le=100)
     results_path: tuple[str, ...] = ()

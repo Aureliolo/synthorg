@@ -1,3 +1,4 @@
+# module-kind: adapter
 """MCP client -- thin async wrapper over the MCP SDK.
 
 Manages a single connection to an MCP server and provides
@@ -16,6 +17,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared._httpx_utils import create_mcp_http_client
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.resilience.general_retry import GeneralRetryHandler
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_CLIENT_CONNECTED,
@@ -23,6 +25,7 @@ from synthorg.observability.events.mcp import (
     MCP_CLIENT_CONNECTION_FAILED,
     MCP_CLIENT_DISCONNECT_FAILED,
     MCP_CLIENT_DISCONNECTED,
+    MCP_CLIENT_RECONNECT_RETRY,
     MCP_CLIENT_RECONNECTING,
     MCP_CREDENTIAL_SOURCE_MISSING,
     MCP_CREDENTIALS_INJECTED,
@@ -34,6 +37,7 @@ from synthorg.observability.events.mcp import (
     MCP_INVOKE_START,
     MCP_INVOKE_SUCCESS,
     MCP_INVOKE_TIMEOUT,
+    MCP_SANDBOX_WRAPPED,
 )
 from synthorg.observability.metrics_hub import record_client_disconnect
 from synthorg.tools.mcp.config import MCPServerConfig
@@ -50,8 +54,18 @@ logger = get_logger(__name__)
 
 # Upper bound on the graceful transport close. A hung stdio child (or a
 # detached ``npx``-spawned grandchild) must not stall a hot-reload/shutdown
-# that calls disconnect() synchronously, so the close is time-boxed.
+# that calls disconnect() synchronously, so the close is time-boxed. It must
+# stay comfortably above the MCP SDK's own SIGTERM->SIGKILL teardown budget
+# (~4s) so this outer bound never cancels the SDK mid-escalation and orphans
+# the child; per-server ``connect_timeout_seconds`` is separately capped low.
 _DISCONNECT_TIMEOUT_SECONDS: Final[float] = 10.0
+
+# Bounded self-heal backoff for reconnect: a transient blip retries with
+# short exponential backoff, held to a few attempts so the session lock is
+# never held for an unbounded stall.
+_RECONNECT_MAX_ATTEMPTS: Final[int] = 3
+_RECONNECT_BACKOFF_BASE_SECONDS: Final[float] = 0.2
+_RECONNECT_BACKOFF_CAP_SECONDS: Final[float] = 2.0
 
 
 @runtime_checkable
@@ -95,6 +109,15 @@ class MCPClient:
         self._session: ClientSession | None = None
         self._exit_stack: AsyncExitStack | None = None
         self._lock = asyncio.Lock()
+        # Bounded backoff so a transient reconnect blip self-heals without
+        # an unbounded stall while the session lock is held.
+        self._reconnect_retry = GeneralRetryHandler(
+            retryable=lambda exc: isinstance(exc, MCPConnectionError),
+            max_attempts=_RECONNECT_MAX_ATTEMPTS,
+            base=_RECONNECT_BACKOFF_BASE_SECONDS,
+            cap=_RECONNECT_BACKOFF_CAP_SECONDS,
+            event=MCP_CLIENT_RECONNECT_RETRY,
+        )
 
     @property
     def config(self) -> MCPServerConfig:
@@ -124,32 +147,45 @@ class MCPClient:
             RuntimeError: If already connected.
         """
         async with self._lock:
-            if self._session is not None:
-                msg = f"Already connected to {self._config.name!r}"
-                logger.warning(
-                    MCP_CLIENT_CONNECTION_FAILED,
-                    server=self._config.name,
-                    error=msg,
-                )
-                raise RuntimeError(msg)
-            logger.info(
-                MCP_CLIENT_CONNECTING,
+            await self._connect_locked()
+
+    async def _connect_locked(self) -> None:
+        """Connect assuming the session lock is already held.
+
+        Split out so :meth:`reconnect` can run disconnect+connect inside a
+        single lock acquisition (atomic reconnect), rather than releasing and
+        re-acquiring between the two and racing a concurrent healer.
+
+        Raises:
+            MCPConnectionError: If the connection fails.
+            RuntimeError: If already connected.
+        """
+        if self._session is not None:
+            msg = f"Already connected to {self._config.name!r}"
+            logger.warning(
+                MCP_CLIENT_CONNECTION_FAILED,
                 server=self._config.name,
-                transport=self._config.transport,
+                error=msg,
             )
-            async with AsyncExitStack() as stack:
-                session = await self._establish_session(stack)
-                # ``_exit_stack`` first so a CancelledError between
-                # these two assignments cannot leave a zombie state
-                # (``is_connected`` true, transport closed): once
-                # ``pop_all()`` lands on ``self``, ``disconnect()``
-                # owns cleanup regardless of which line is interrupted.
-                self._exit_stack = stack.pop_all()
-                self._session = session
-            logger.info(
-                MCP_CLIENT_CONNECTED,
-                server=self._config.name,
-            )
+            raise RuntimeError(msg)
+        logger.info(
+            MCP_CLIENT_CONNECTING,
+            server=self._config.name,
+            transport=self._config.transport,
+        )
+        async with AsyncExitStack() as stack:
+            session = await self._establish_session(stack)
+            # ``_exit_stack`` first so a CancelledError between
+            # these two assignments cannot leave a zombie state
+            # (``is_connected`` true, transport closed): once
+            # ``pop_all()`` lands on ``self``, ``disconnect()``
+            # owns cleanup regardless of which line is interrupted.
+            self._exit_stack = stack.pop_all()
+            self._session = session
+        logger.info(
+            MCP_CLIENT_CONNECTED,
+            server=self._config.name,
+        )
 
     async def _establish_session(
         self,
@@ -241,6 +277,11 @@ class MCPClient:
 
     async def disconnect(self) -> None:
         """Close the connection and release resources."""
+        async with self._lock:
+            await self._disconnect_locked()
+
+    async def _disconnect_locked(self) -> None:
+        """Close the transport assuming the session lock is already held."""
         # Map MCP config transport ('stdio' / 'streamable_http') to the
         # bounded ``synthorg_client_disconnects_total`` transport label
         # so each MCP transport keeps its own time-series rather than
@@ -248,48 +289,47 @@ class MCPClient:
         metric_transport = (
             "mcp_stdio" if self._config.transport == "stdio" else "mcp_http"
         )
-        async with self._lock:
-            if self._exit_stack is not None:
-                try:
-                    await asyncio.wait_for(
-                        self._exit_stack.aclose(),
-                        timeout=_DISCONNECT_TIMEOUT_SECONDS,
-                    )
-                except TimeoutError:
-                    logger.warning(
-                        MCP_CLIENT_DISCONNECT_FAILED,
-                        server=self._config.name,
-                        error=f"disconnect timed out after "
-                        f"{_DISCONNECT_TIMEOUT_SECONDS}s; child may be hung",
-                    )
-                    record_client_disconnect(
-                        transport=metric_transport,
-                        reason="timeout",
-                    )
-                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                    reraise_critical(exc)
-                    logger.warning(
-                        MCP_CLIENT_DISCONNECT_FAILED,
-                        server=self._config.name,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
-                    record_client_disconnect(
-                        transport=metric_transport,
-                        reason="transport_error",
-                    )
-                else:
-                    logger.info(
-                        MCP_CLIENT_DISCONNECTED,
-                        server=self._config.name,
-                    )
-                    record_client_disconnect(
-                        transport=metric_transport,
-                        reason="client_initiated",
-                    )
-                finally:
-                    self._session = None
-                    self._exit_stack = None
+        if self._exit_stack is not None:
+            try:
+                await asyncio.wait_for(
+                    self._exit_stack.aclose(),
+                    timeout=_DISCONNECT_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning(
+                    MCP_CLIENT_DISCONNECT_FAILED,
+                    server=self._config.name,
+                    error=f"disconnect timed out after "
+                    f"{_DISCONNECT_TIMEOUT_SECONDS}s; child may be hung",
+                )
+                record_client_disconnect(
+                    transport=metric_transport,
+                    reason="timeout",
+                )
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    MCP_CLIENT_DISCONNECT_FAILED,
+                    server=self._config.name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                record_client_disconnect(
+                    transport=metric_transport,
+                    reason="transport_error",
+                )
+            else:
+                logger.info(
+                    MCP_CLIENT_DISCONNECTED,
+                    server=self._config.name,
+                )
+                record_client_disconnect(
+                    transport=metric_transport,
+                    reason="client_initiated",
+                )
+            finally:
+                self._session = None
+                self._exit_stack = None
 
     async def list_tools(self) -> tuple[MCPToolInfo, ...]:
         """Discover tools from the connected server.
@@ -457,17 +497,31 @@ class MCPClient:
             )
 
     async def reconnect(self) -> None:
-        """Disconnect and reconnect to the server.
+        """Disconnect and reconnect to the server, atomically.
+
+        Runs disconnect+connect under a single lock acquisition so two
+        concurrent healers cannot interleave a disconnect against the other's
+        fresh connect (which would either tear down a healthy session or raise
+        a spurious "already connected"). A transient connect failure retries
+        with bounded backoff.
 
         Raises:
-            MCPConnectionError: If the reconnection fails.
+            MCPConnectionError: If the reconnection fails after retries.
         """
         logger.info(
             MCP_CLIENT_RECONNECTING,
             server=self._config.name,
         )
-        await self.disconnect()
-        await self.connect()
+        async with self._lock:
+            await self._reconnect_retry.execute(
+                self._reconnect_once,
+                server=self._config.name,
+            )
+
+    async def _reconnect_once(self) -> None:
+        """One atomic disconnect+connect cycle (lock already held)."""
+        await self._disconnect_locked()
+        await self._connect_locked()
 
     async def __aenter__(self) -> Self:
         """Enter async context: connect to server.
@@ -550,6 +604,15 @@ class MCPClient:
             # get_default_environment(): the docker process keeps PATH and gains
             # the forwarded secrets that ``--env KEY`` references by name.
             env = sandbox_env
+            # A security-relevant launch rewrite: trace it (no secrets) so an
+            # operator can confirm a stdio server was containerised.
+            logger.debug(
+                MCP_SANDBOX_WRAPPED,
+                server=self._config.name,
+                image=self._sandbox.image,
+                memory_limit=self._sandbox.memory_limit,
+                network=self._sandbox.network,
+            )
         params = StdioServerParameters(
             command=command,
             args=args,
@@ -566,11 +629,13 @@ class MCPClient:
         """Resolve the launch args + env, injecting bound-connection secrets.
 
         The connection's decrypted credentials are mapped into the environment
-        variables (``credential_env_map``) and command-line flags
-        (``credential_arg_map``) the target server expects, at connect time so
-        secrets are never persisted in the stored config. A connection-bound
-        server with no resolver is spawned without its secret and logged
-        loudly, rather than silently pretending it is configured.
+        variables (``credential_env_map``) the target server expects, at connect
+        time so secrets are never persisted in the stored config. Secrets are
+        forwarded by environment variable only: a value never lands in the
+        process argv (visible via ``ps`` / ``/proc``). Every enabled-but-
+        unresolvable state (bound connection with no map, no resolver, or a
+        short injection) is logged loudly rather than silently pretending the
+        server is authenticated.
 
         Returns:
             The final ``(args, env)`` pair for ``StdioServerParameters``.
@@ -578,8 +643,16 @@ class MCPClient:
         args = list(self._config.args)
         env = dict(self._config.env)
         name = self._config.connection_name
-        maps = self._config.credential_env_map or self._config.credential_arg_map
-        if name is None or not maps:
+        if name is None:
+            return args, (env or None)
+        env_map = self._config.credential_env_map
+        if not env_map:
+            logger.warning(
+                MCP_CREDENTIAL_SOURCE_MISSING,
+                server=self._config.name,
+                connection=name,
+                note="connection bound but entry declares no credential fields",
+            )
             return args, (env or None)
         if self._credential_source is None:
             logger.warning(
@@ -591,23 +664,39 @@ class MCPClient:
             return args, (env or None)
         creds = await self._credential_source.get_credentials(name)
         injected = 0
-        for field, env_var in self._config.credential_env_map.items():
+        for field, env_var in env_map.items():
             value = creds.get(field)
             if value:
                 env[env_var] = value
                 injected += 1
-        for field, flag in self._config.credential_arg_map.items():
-            value = creds.get(field)
-            if value:
-                args.extend((flag, value))
-                injected += 1
+        self._log_injection(name, injected, len(env_map))
+        return args, (env or None)
+
+    def _log_injection(self, connection: str, injected: int, expected: int) -> None:
+        """Log credential injection, escalating a short injection to WARNING.
+
+        ``injected < expected`` means the resolved connection is missing a
+        field the entry declares (a schema mismatch between the catalog entry
+        and the connection's credential type); it presents downstream as an
+        opaque upstream auth failure, so it is surfaced here rather than logged
+        identically to a full injection.
+        """
+        if injected < expected:
+            logger.warning(
+                MCP_CREDENTIALS_INJECTED,
+                server=self._config.name,
+                connection=connection,
+                injected_fields=injected,
+                expected_fields=expected,
+                note="fewer credential fields resolved than the entry declares",
+            )
+            return
         logger.info(
             MCP_CREDENTIALS_INJECTED,
             server=self._config.name,
-            connection=name,
+            connection=connection,
             injected_fields=injected,
         )
-        return args, (env or None)
 
     async def _connect_http(
         self,

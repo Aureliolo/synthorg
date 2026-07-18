@@ -66,8 +66,8 @@ class TestNetworkConstraint:
     def test_none_blocks_mcp_tools(self) -> None:
         """MCP tools make external calls, so network=NONE must gate them.
 
-        Regression for the audit finding that MCP defaulted to CODE_WRITE and
-        was invisible to the network sub-constraint (silent egress).
+        MCP tools must map to a network-gated action type; a non-network
+        action type would leave ``network=NONE`` unable to block MCP egress.
         """
         enforcer = SubConstraintEnforcer(
             ToolSubConstraints(network=NetworkMode.NONE),

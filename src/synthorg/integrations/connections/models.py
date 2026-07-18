@@ -22,6 +22,11 @@ from pydantic import (
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.core.types import NotBlankStr
 
+# Canonical database dialect set. Lives here (a leaf import for the whole
+# connections package) so both the database authenticator and the catalog
+# entry validate against one source rather than drifting copies.
+VALID_DIALECTS: frozenset[str] = frozenset({"postgres", "mysql", "sqlite", "mariadb"})
+
 # Per-connection webhook-receipt retention window in days. Tri-state:
 #   None    -- fall back to the global
 #              ``integrations.webhook_receipt_retention_days`` setting
@@ -383,14 +388,17 @@ class CatalogEntry(BaseModel):
         name: Human-readable server name.
         description: What the server does.
         npm_package: NPM package name for installation.
+        npm_version: Exact published version the launcher pins (``npx`` runs
+            ``<npm_package>@<npm_version>``), so a reconnect can never pull a
+            newly-published (potentially compromised) ``latest``.
         required_connection_type: Connection type needed (nullable).
         transport: MCP transport type (stdio or streamable_http).
         capabilities: List of capability tags.
         tags: Searchable tags.
         credential_env_map: Map of bound-connection credential field name to
             the environment variable the spawned server reads it from.
-        credential_arg_map: Map of bound-connection credential field name to a
-            command-line flag the value is appended under.
+            Credentials are forwarded only by environment variable so a secret
+            value can never appear in the spawned process argv.
         required_dialect: For a database-typed entry, the connection dialect
             it requires (e.g. ``"postgres"``/``"sqlite"``), since several
             entries share ``ConnectionType.DATABASE``.
@@ -402,10 +410,34 @@ class CatalogEntry(BaseModel):
     name: NotBlankStr
     description: str = ""
     npm_package: NotBlankStr | None = None
+    npm_version: NotBlankStr | None = None
     required_connection_type: ConnectionType | None = None
     transport: Literal["stdio", "streamable_http"] = "stdio"
     capabilities: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
     credential_env_map: dict[str, str] = Field(default_factory=dict)
-    credential_arg_map: dict[str, str] = Field(default_factory=dict)
     required_dialect: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_required_dialect(self) -> Self:
+        """Reject a ``required_dialect`` outside the known dialect set.
+
+        Guards against a typo in a hand-authored or DB-installed entry
+        (e.g. ``"postgress"``) that would silently never match a real
+        connection's dialect and leave the entry uninstallable.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If ``required_dialect`` is not a known dialect.
+        """
+        if self.required_dialect is not None and self.required_dialect not in (
+            VALID_DIALECTS
+        ):
+            msg = (
+                f"Catalog entry {self.id!r}: required_dialect "
+                f"{self.required_dialect!r} is not one of {sorted(VALID_DIALECTS)}"
+            )
+            raise ValueError(msg)
+        return self

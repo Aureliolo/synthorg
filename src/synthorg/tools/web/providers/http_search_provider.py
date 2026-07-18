@@ -4,26 +4,40 @@
 A single, vendor-agnostic :class:`WebSearchProvider` implementation driven
 entirely by a :class:`SearchProviderPreset`. It resolves the API key from a
 bound connection at call time (never at construction, so a rotated secret is
-picked up on the next search), issues one DNS-pinned, redirect-free REST call
-behind the injected :class:`NetworkPolicy` (SSRF guard), retries transient
-failures through :class:`GeneralRetryHandler`, and normalises the provider's
-JSON into :class:`SearchResult` objects.
+picked up on the next search), resolves the endpoint's DNS once and pins every
+(retryable) request attempt to that IP behind the injected
+:class:`NetworkPolicy` (SSRF guard, redirects disabled), retries transient
+failures through :class:`GeneralRetryHandler`, applies a per-connection rate
+limit so an agent loop cannot cause runaway spend, and normalises the
+provider's JSON into :class:`SearchResult` objects.
 
 Credential resolution reuses the connection catalog (the same brokering the
 governed external-access tool uses); nothing about the provider is
 vendor-specific beyond the injected preset.
 """
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Final, Protocol, runtime_checkable
 
 import httpx
 from pydantic import JsonValue
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.resilience.general_retry import GeneralRetryHandler
+from synthorg.core.resilience.retry_after import (
+    coerce_finite_nonneg_seconds,
+    parse_retry_after_seconds,
+)
+from synthorg.core.resilience_config import RateLimiterConfig
+from synthorg.core.types import require_not_blank
+from synthorg.integrations.rate_limiting.decorator import with_connection_rate_limit
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.web import WEB_SEARCH_FAILED, WEB_SEARCH_RETRY
+from synthorg.observability.events.web import (
+    WEB_SEARCH_FAILED,
+    WEB_SEARCH_RETRY,
+    WEB_SEARCH_START,
+)
 from synthorg.tools._dns_pinning import PinnedDnsTransport
 from synthorg.tools.network_validator import (
     DnsValidationOk,
@@ -43,11 +57,22 @@ from synthorg.tools.web.web_search import SearchResult
 logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT: Final[float] = 15.0
+_DEFAULT_MAX_RESULTS: Final[int] = 10
 _DEFAULT_RETRY_ATTEMPTS: Final[int] = 3
 _DEFAULT_RETRY_BASE: Final[float] = 0.5
 _DEFAULT_RETRY_CAP: Final[float] = 8.0
 _HTTP_BAD_REQUEST: Final[int] = 400
+_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 _RETRYABLE_STATUSES: Final[frozenset[int]] = frozenset({429, 500, 502, 503, 504})
+
+
+def _transient_delay_override(exc: Exception) -> float | None:
+    """Surface a ``WebSearchTransientError``'s server-supplied cooldown.
+
+    Returns:
+        The ``retry_after_seconds`` carried on the exception, or ``None``.
+    """
+    return getattr(exc, "retry_after_seconds", None)
 
 
 @runtime_checkable
@@ -69,12 +94,16 @@ class HttpWebSearchProvider:
         network_policy: SSRF policy applied to the endpoint; ``None`` uses the
             default (block private/reserved IPs).
         retry_handler: Bounded retry for transient failures; ``None`` builds a
-            default exponential-backoff handler.
+            default exponential-backoff handler that honours a ``Retry-After``.
         timeout_seconds: Per-request timeout.
+        rate_limiter: Per-connection rate-limit ceiling; ``None`` uses the
+            decorator's default so a runaway agent loop still cannot exceed a
+            bounded request rate against a paid provider.
         clock: Clock seam for the default retry handler's backoff.
 
     Raises:
-        ValueError: If ``timeout_seconds`` is not positive.
+        ValueError: If ``timeout_seconds`` or ``max_results_ceiling`` is not
+            positive.
     """
 
     def __init__(  # noqa: PLR0913 -- injected collaborators + tunables
@@ -87,6 +116,7 @@ class HttpWebSearchProvider:
         retry_handler: GeneralRetryHandler | None = None,
         timeout_seconds: float = _DEFAULT_TIMEOUT,
         max_results_ceiling: int | None = None,
+        rate_limiter: RateLimiterConfig | None = None,
         clock: Clock | None = None,
     ) -> None:
         if timeout_seconds <= 0:
@@ -97,23 +127,32 @@ class HttpWebSearchProvider:
             raise ValueError(msg)
         self._preset = preset
         self._catalog = catalog
-        self._connection_name = connection_name
-        self._network_policy = network_policy or NetworkPolicy()
+        self._connection_name = require_not_blank(connection_name, "connection_name")
+        self._network_policy = (
+            network_policy if network_policy is not None else NetworkPolicy()
+        )
         self._timeout = timeout_seconds
         self._max_results_ceiling = max_results_ceiling
-        self._retry = retry_handler or GeneralRetryHandler(
-            retryable=lambda exc: isinstance(exc, WebSearchTransientError),
-            max_attempts=_DEFAULT_RETRY_ATTEMPTS,
-            base=_DEFAULT_RETRY_BASE,
-            cap=_DEFAULT_RETRY_CAP,
-            event=WEB_SEARCH_RETRY,
-            clock=clock or SystemClock(),
+        self._rate_limiter = rate_limiter
+        self._retry = (
+            retry_handler
+            if retry_handler is not None
+            else GeneralRetryHandler(
+                retryable=lambda exc: isinstance(exc, WebSearchTransientError),
+                max_attempts=_DEFAULT_RETRY_ATTEMPTS,
+                base=_DEFAULT_RETRY_BASE,
+                cap=_DEFAULT_RETRY_CAP,
+                event=WEB_SEARCH_RETRY,
+                jitter=False,
+                delay_override=_transient_delay_override,
+                clock=clock if clock is not None else SystemClock(),
+            )
         )
 
     async def search(
         self,
         query: str,
-        max_results: int = 10,
+        max_results: int = _DEFAULT_MAX_RESULTS,
     ) -> list[SearchResult]:
         """Execute a search, resolving credentials and retrying transients.
 
@@ -130,6 +169,11 @@ class HttpWebSearchProvider:
             WebSearchResponseError: On a non-retryable upstream error.
             WebSearchTransientError: If retries are exhausted.
         """
+        logger.debug(
+            WEB_SEARCH_START,
+            provider=self._preset.id,
+            max_results=max_results,
+        )
         key = await self._resolve_key()
         validation = await self._validate_endpoint()
         cap = self._preset.max_results_cap
@@ -137,15 +181,24 @@ class HttpWebSearchProvider:
             cap = min(cap, self._max_results_ceiling)
         count = min(max_results, cap)
 
-        async def _op() -> list[SearchResult]:
-            return await self._request_once(
-                query=query,
-                count=count,
-                key=key,
-                validation=validation,
+        # Each retry attempt is a real request, so the rate limit wraps the
+        # per-attempt call (retries count against the ceiling), not the outer
+        # retry loop.
+        rate_limited: Callable[[], Awaitable[list[SearchResult]]] = (
+            with_connection_rate_limit(
+                self._connection_name,
+                config=self._rate_limiter,
+            )(
+                lambda: self._request_once(
+                    query=query,
+                    count=count,
+                    key=key,
+                    validation=validation,
+                ),
             )
+        )
 
-        return await self._retry.execute(_op, provider=self._preset.id)
+        return await self._retry.execute(rate_limited, provider=self._preset.id)
 
     async def _resolve_key(self) -> str:
         """Broker the API key from the bound connection.
@@ -154,9 +207,28 @@ class HttpWebSearchProvider:
             The resolved API key.
 
         Raises:
-            WebSearchConfigurationError: If no ``api_key``/``token`` is present.
+            WebSearchConfigurationError: If the connection cannot be resolved,
+                or has no ``api_key`` / ``token`` / ``access_token`` field.
         """
-        creds = await self._catalog.get_credentials(self._connection_name)
+        try:
+            creds = await self._catalog.get_credentials(self._connection_name)
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                WEB_SEARCH_FAILED,
+                provider=self._preset.id,
+                reason="credential_resolution_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            # Wrap so a deleted connection / secret-backend failure surfaces as
+            # the module's domain error with a scrubbed message, not a raw
+            # (possibly credential-bearing) exception leaking to the caller.
+            msg = (
+                f"could not resolve credentials for connection "
+                f"{self._connection_name!r}: {safe_error_description(exc)}"
+            )
+            raise WebSearchConfigurationError(msg) from exc
         key = creds.get("api_key") or creds.get("token") or creds.get("access_token")
         if not key:
             logger.warning(
@@ -295,14 +367,16 @@ class HttpWebSearchProvider:
         """
         status = response.status_code
         if status in _RETRYABLE_STATUSES:
+            retry_after = self._retry_after_seconds(response, status)
             logger.warning(
                 WEB_SEARCH_FAILED,
                 provider=self._preset.id,
                 reason="retryable_status",
                 status_code=status,
+                retry_after_seconds=retry_after,
             )
             msg = f"web search provider returned status {status}"
-            raise WebSearchTransientError(msg)
+            raise WebSearchTransientError(msg, retry_after_seconds=retry_after)
         if status >= _HTTP_BAD_REQUEST:
             logger.warning(
                 WEB_SEARCH_FAILED,
@@ -324,6 +398,26 @@ class HttpWebSearchProvider:
             msg = "web search provider returned a malformed JSON body"
             raise WebSearchResponseError(msg) from exc
         return self._extract_results(payload, count)
+
+    def _retry_after_seconds(
+        self,
+        response: httpx.Response,
+        status: int,
+    ) -> float | None:
+        """Parse a ``Retry-After`` header (429 especially) into seconds.
+
+        Honouring the server's own cooldown avoids hammering a rate-limited
+        provider through its quota window on the fixed exponential schedule.
+
+        Returns:
+            The parsed non-negative delay, or ``None`` when absent/unparseable.
+        """
+        if status != _HTTP_TOO_MANY_REQUESTS:
+            return None
+        raw = response.headers.get("Retry-After")
+        if raw is None:
+            return None
+        return coerce_finite_nonneg_seconds(parse_retry_after_seconds(raw))
 
     def _extract_results(
         self,

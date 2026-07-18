@@ -1,7 +1,9 @@
+# module-kind: declarative
 """Tools namespace setting definitions.
 
 Covers git subprocess kill-grace, Docker sandbox sidecar resource
-limits, Docker stop grace period, and subprocess sandbox kill-grace.
+limits, Docker stop grace period, subprocess sandbox kill-grace,
+native web search, and MCP stdio-server sandboxing.
 """
 
 from synthorg import __version__
@@ -210,8 +212,8 @@ _r.register(
         default="",
         description=(
             "Name of the generic_http connection holding the search provider's"
-            " API key (in its 'api_key' credential field). Empty disables web"
-            " search even when enabled."
+            " API key (read from its 'api_key', 'token', or 'access_token'"
+            " credential field). Empty disables web search even when enabled."
         ),
         group="Web Search",
         level=SettingLevel.BASIC,
@@ -270,6 +272,10 @@ _r.register(
         ),
         group="MCP",
         level=SettingLevel.ADVANCED,
+        # The image is appended as a positional ``docker run`` argument, so a
+        # leading '-' would be parsed as a flag and defeat the hardening flags
+        # set earlier in the argv; pin to an OCI image-reference shape.
+        validator_pattern=r"^[a-zA-Z0-9][\w.\-/:@]*$",
     )
 )
 

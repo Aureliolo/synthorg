@@ -40,10 +40,9 @@ class MCPServerConfig(BaseModel):
             spawn (never persisted here); ``None`` for connectionless servers.
         credential_env_map: Map of connection credential field name to the
             environment variable the server reads it from (e.g.
-            ``{"token": "GITHUB_PERSONAL_ACCESS_TOKEN"}``).
-        credential_arg_map: Map of connection credential field name to a
-            command-line flag the value is appended under (e.g.
-            ``{"database": "--db-path"}`` for a file-path argument).
+            ``{"token": "GITHUB_PERSONAL_ACCESS_TOKEN"}``). Credentials are
+            forwarded only by environment variable so a secret value can never
+            land in the spawned process argv (visible via ``ps``/``/proc``).
         url: URL for streamable HTTP server.
         headers: HTTP headers for streamable HTTP server.
         enabled_tools: Allowlist of tool names (``None`` = all).
@@ -74,17 +73,13 @@ class MCPServerConfig(BaseModel):
         default_factory=dict,
         description="Environment variables for stdio server",
     )
-    connection_name: str | None = Field(
+    connection_name: NotBlankStr | None = Field(
         default=None,
         description="Bound connection whose credentials are injected at spawn",
     )
     credential_env_map: dict[str, str] = Field(
         default_factory=dict,
         description="Credential field name to environment variable name",
-    )
-    credential_arg_map: dict[str, str] = Field(
-        default_factory=dict,
-        description="Credential field name to command-line flag",
     )
     # streamable_http fields
     url: NotBlankStr | None = Field(
@@ -154,6 +149,38 @@ class MCPServerConfig(BaseModel):
             raise ValueError(msg)
         if self.transport == "streamable_http" and self.url is None:
             msg = f"Server {self.name!r}: streamable_http transport requires 'url'"
+            logger.warning(
+                MCP_CONFIG_VALIDATION_FAILED,
+                server=self.name,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_credential_binding_is_stdio(self) -> Self:
+        """Confine credential injection to the stdio transport.
+
+        The ``streamable_http`` connect path (``_connect_http``) ignores
+        ``connection_name`` / ``credential_env_map`` entirely, so binding
+        them on a non-stdio server is silently ineffective; reject it at
+        construction rather than let an operator believe a remote server is
+        authenticated when it never receives the credential.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If credential binding is set on a non-stdio transport.
+        """
+        if self.transport == "stdio":
+            return self
+        if self.connection_name is not None or self.credential_env_map:
+            msg = (
+                f"Server {self.name!r}: credential binding "
+                f"(connection_name/credential_env_map) is only supported on the "
+                f"stdio transport, not {self.transport!r}"
+            )
             logger.warning(
                 MCP_CONFIG_VALIDATION_FAILED,
                 server=self.name,

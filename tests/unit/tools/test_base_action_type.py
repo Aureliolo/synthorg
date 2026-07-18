@@ -58,6 +58,7 @@ class TestDefaultActionTypeFromCategory:
             (ToolCategory.DEPLOYMENT, ActionType.DEPLOY_STAGING),
             (ToolCategory.MEMORY, ActionType.MEMORY_READ),
             (ToolCategory.MCP, ActionType.COMMS_EXTERNAL),
+            (ToolCategory.BROWSER, ActionType.BROWSER_NAVIGATE),
             (ToolCategory.OTHER, ActionType.CODE_READ),
         ],
     )

@@ -49,9 +49,7 @@ from synthorg.providers.model_binding import resolve_ref_provider
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import config_resolver_of
-from synthorg.workers._web_search_provider_wiring import (
-    build_web_search_provider_or_none,
-)
+from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
 from synthorg.workers.execution_service import WorkerExecutionService
 
 if TYPE_CHECKING:
@@ -317,6 +315,8 @@ async def _build_runtime_coordinator(
     app_state: AppState,
     engine: AgentEngine,
     coordination_metrics_collector: CoordinationMetricsCollector | None,
+    *,
+    search_provider: HttpWebSearchProvider | None = None,
 ) -> tuple[MultiAgentCoordinator, AgentTaskScorer, CompletionProvider, str]:
     """Build the coordinator and the shared scorer + decomposition binding.
 
@@ -413,10 +413,9 @@ async def _build_runtime_coordinator(
         # runtime's per-call resolve).
         return provider_registry_of(app_state).get(identity.model.provider)
 
-    # Grant the planning session live web research when web search is
-    # configured; this is the CORE MECHANISM PRINCIPLE's "websearch-if-
-    # configured" tool grant, so the owner researches before drafting a plan.
-    search_provider = await build_web_search_provider_or_none(app_state)
+    # Grant the planning session live web research when a web-search provider is
+    # configured, so the owner researches with real data before drafting a plan
+    # (the same fail-open pattern the research subsystem's web source uses).
     planning_tool_provider = (
         PlanningToolProvider(search_provider=search_provider)
         if search_provider is not None

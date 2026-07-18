@@ -15,9 +15,30 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     MCP_SERVER_INSTALL_VALIDATION_FAILED,
 )
+from synthorg.observability.events.mcp import MCP_INSTALL_SKIPPED_EXISTING
 from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
 
 logger = get_logger(__name__)
+
+
+def _npx_package_arg(entry: CatalogEntry) -> str:
+    """Build the ``npx`` package spec, pinning the version when declared.
+
+    An unpinned spec resolves ``latest`` on every reconnect, so a pinned
+    ``<package>@<version>`` is the supply-chain guard; a bundled entry
+    without a pin is logged so the gap is visible.
+
+    Returns:
+        ``<package>@<version>`` when pinned, else the bare package name.
+    """
+    if entry.npm_version:
+        return f"{entry.npm_package}@{entry.npm_version}"
+    logger.warning(
+        MCP_SERVER_INSTALL_VALIDATION_FAILED,
+        entry_id=entry.id,
+        reason="npm_package is not version-pinned; npx will resolve 'latest'",
+    )
+    return str(entry.npm_package)
 
 
 def installation_to_server_config(
@@ -26,11 +47,12 @@ def installation_to_server_config(
 ) -> MCPServerConfig:
     """Materialize a catalog entry + optional connection into a server config.
 
-    For ``stdio`` transport the returned config runs ``npx -y <npm_package>``
-    and records the bound ``connection_name`` plus the entry's credential
-    field-to-env-var / field-to-arg maps, so the MCP client resolves the
-    connection's secrets from the catalog and injects them into the spawned
-    process at connect time (never persisting them here).
+    For ``stdio`` transport the returned config runs
+    ``npx -y <npm_package>@<npm_version>`` (version-pinned) and records the
+    bound ``connection_name`` plus the entry's credential field-to-env-var
+    map, so the MCP client resolves the connection's secrets from the catalog
+    and injects them into the spawned process environment at connect time
+    (never persisting them here, never on the argv).
 
     Args:
         entry: The catalog entry being installed.
@@ -60,10 +82,9 @@ def installation_to_server_config(
             name=entry.id,
             transport="stdio",
             command="npx",
-            args=("-y", entry.npm_package),
+            args=("-y", _npx_package_arg(entry)),
             connection_name=connection_name,
             credential_env_map=dict(entry.credential_env_map),
-            credential_arg_map=dict(entry.credential_arg_map),
         )
 
     msg = (
@@ -111,6 +132,13 @@ def merge_installed_servers(
             )
             continue
         if entry.id in existing_names:
+            # The user-authored YAML block wins; note the override so an
+            # operator can distinguish it from an entry missing entirely.
+            logger.debug(
+                MCP_INSTALL_SKIPPED_EXISTING,
+                entry_id=entry.id,
+                reason="server name already defined in YAML; catalog install skipped",
+            )
             continue
         try:
             server_cfg = installation_to_server_config(

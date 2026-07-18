@@ -301,24 +301,56 @@ class TestMCPClientReconnect:
         self,
         mock_client: MCPClient,
     ) -> None:
-        mock_client._exit_stack = AsyncMock()
-        mock_client._exit_stack.aclose = AsyncMock()
+        """Reconnect runs disconnect+connect as one atomic locked cycle.
+
+        It drives the lock-free bodies under a single acquisition rather than
+        the public methods, so two concurrent healers cannot interleave a
+        disconnect against the other's fresh connect.
+        """
+        calls: list[str] = []
+        with (
+            patch.object(
+                mock_client,
+                "_disconnect_locked",
+                new_callable=AsyncMock,
+                side_effect=lambda: calls.append("disconnect"),
+            ),
+            patch.object(
+                mock_client,
+                "_connect_locked",
+                new_callable=AsyncMock,
+                side_effect=lambda: calls.append("connect"),
+            ),
+        ):
+            await mock_client.reconnect()
+        assert calls == ["disconnect", "connect"]
+
+    async def test_reconnect_holds_lock_across_cycle(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        """The session lock is held for the whole disconnect+connect cycle."""
+        locked_during_disconnect = False
+
+        async def _check_locked() -> None:
+            nonlocal locked_during_disconnect
+            locked_during_disconnect = mock_client._lock.locked()
 
         with (
             patch.object(
                 mock_client,
-                "disconnect",
+                "_disconnect_locked",
                 new_callable=AsyncMock,
-            ) as mock_disconnect,
+                side_effect=_check_locked,
+            ),
             patch.object(
                 mock_client,
-                "connect",
+                "_connect_locked",
                 new_callable=AsyncMock,
-            ) as mock_connect,
+            ),
         ):
             await mock_client.reconnect()
-            mock_disconnect.assert_called_once()
-            mock_connect.assert_called_once()
+        assert locked_during_disconnect is True
 
 
 class TestMCPClientContextManager:

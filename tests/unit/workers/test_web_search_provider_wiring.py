@@ -4,8 +4,10 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
+import structlog
 
 from synthorg.core.clock import SystemClock
+from synthorg.integrations.connections.models import Connection
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
 from synthorg.workers._web_search_provider_wiring import (
@@ -20,11 +22,17 @@ pytestmark = pytest.mark.unit
 
 
 class _StubCatalog:
-    """Satisfies the ConnectionCredentialSource protocol for wiring tests."""
+    """Satisfies the credential-source + connection-lookup seams for wiring tests."""
 
     async def get_credentials(self, name: str) -> dict[str, str]:
         del name
         return {"api_key": "k"}
+
+    async def get(self, name: str) -> Connection | None:
+        del name
+        # No connection object -> the provider falls back to the default
+        # rate-limit ceiling, which is all these wiring tests need.
+        return None
 
 
 def _app_state(*, catalog: object) -> AppState:
@@ -50,7 +58,14 @@ def _resolver(
 ) -> ConfigResolver:
     resolver = mock_of[ConfigResolver]()
     resolver.get_bool.return_value = enabled
-    resolver.get_str.side_effect = [provider, connection]
+    values = {"web_search_provider": provider, "web_search_connection": connection}
+
+    def _get_str(_ns: str, key: str) -> str:
+        # Keyed (not positional) so a change in read order can't silently
+        # target the wrong lookup. Non-async: AsyncMock wraps the return.
+        return values[key]
+
+    resolver.get_str.side_effect = _get_str
     resolver.get_int.return_value = max_results
     resolver.get_float.return_value = timeout
     return cast("ConfigResolver", resolver)
@@ -99,6 +114,24 @@ async def test_builds_provider_on_happy_path(
     _patch(monkeypatch, _resolver(enabled=True))
     result = await build_web_search_provider_or_none(_app_state(catalog=_StubCatalog()))
     assert isinstance(result, HttpWebSearchProvider)
+
+
+async def test_no_connection_bound_logs_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An enabled-but-unbound connection is an operator misconfig -> ERROR."""
+    _patch(monkeypatch, _resolver(enabled=True, connection="   "))
+    with structlog.testing.capture_logs() as cap:
+        result = await build_web_search_provider_or_none(
+            _app_state(catalog=_StubCatalog()),
+        )
+    assert result is None
+    errors = [
+        e
+        for e in cap
+        if e.get("service") == "web_search" and e.get("log_level") == "error"
+    ]
+    assert errors
 
 
 async def test_returns_none_when_enabled_resolve_raises(
