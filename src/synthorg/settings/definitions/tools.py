@@ -158,6 +158,83 @@ _r.register(
     )
 )
 
+# ── Native web search ────────────────────────────────────────────
+# The provider is ghost-wired at boot: built only when enabled AND a
+# bound connection resolves an API key, so a misconfigured feature never
+# crashes the runtime. A settings change applies on the next runtime
+# rebuild (no process restart). ``enum_values`` mirror
+# ``tools.web.providers.presets.SEARCH_PROVIDER_IDS`` (asserted equal by a
+# unit test) rather than importing the preset registry into the settings
+# bootstrap.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_search_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether agents may search the web. Off by default: a provider"
+            " and a connection holding its API key must be configured first."
+            " When on, the web_search tool is granted to the agent runtime and"
+            " the research subsystem's web source."
+        ),
+        group="Web Search",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_search_provider",
+        type=SettingType.ENUM,
+        default="brave",
+        enum_values=("brave", "tavily", "exa"),
+        description=(
+            "Which search provider backs the web_search tool. 'brave' (default)"
+            " is the broadest independent index; 'tavily' returns answer-shaped"
+            " results; 'exa' does semantic/conceptual search. All three read"
+            " their API key from the bound web_search connection."
+        ),
+        group="Web Search",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_search_connection",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Name of the generic_http connection holding the search provider's"
+            " API key (in its 'api_key' credential field). Empty disables web"
+            " search even when enabled."
+        ),
+        group="Web Search",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_search_max_results",
+        type=SettingType.INTEGER,
+        default="10",
+        description=(
+            "Default maximum results a single web search returns. Clamped down"
+            " to the selected provider's own ceiling."
+        ),
+        group="Web Search",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100,
+    )
+)
+
 # ── Web tool HTTP request timeout ────────────────────────────────
 
 _r.register(

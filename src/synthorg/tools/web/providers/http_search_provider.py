@@ -86,16 +86,21 @@ class HttpWebSearchProvider:
         network_policy: NetworkPolicy | None = None,
         retry_handler: GeneralRetryHandler | None = None,
         timeout_seconds: float = _DEFAULT_TIMEOUT,
+        max_results_ceiling: int | None = None,
         clock: Clock | None = None,
     ) -> None:
         if timeout_seconds <= 0:
             msg = f"timeout_seconds must be positive, got {timeout_seconds}"
+            raise ValueError(msg)
+        if max_results_ceiling is not None and max_results_ceiling <= 0:
+            msg = f"max_results_ceiling must be positive, got {max_results_ceiling}"
             raise ValueError(msg)
         self._preset = preset
         self._catalog = catalog
         self._connection_name = connection_name
         self._network_policy = network_policy or NetworkPolicy()
         self._timeout = timeout_seconds
+        self._max_results_ceiling = max_results_ceiling
         self._retry = retry_handler or GeneralRetryHandler(
             retryable=lambda exc: isinstance(exc, WebSearchTransientError),
             max_attempts=_DEFAULT_RETRY_ATTEMPTS,
@@ -127,7 +132,10 @@ class HttpWebSearchProvider:
         """
         key = await self._resolve_key()
         validation = await self._validate_endpoint()
-        count = min(max_results, self._preset.max_results_cap)
+        cap = self._preset.max_results_cap
+        if self._max_results_ceiling is not None:
+            cap = min(cap, self._max_results_ceiling)
+        count = min(max_results, cap)
 
         async def _op() -> list[SearchResult]:
             return await self._request_once(

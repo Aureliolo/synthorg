@@ -62,6 +62,9 @@ from synthorg.workers._agent_middleware_assembly import (
 )
 from synthorg.workers._classification_assembly import build_classification
 from synthorg.workers._image_provider_wiring import build_image_provider_or_none
+from synthorg.workers._web_search_provider_wiring import (
+    build_web_search_provider_or_none,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -144,6 +147,7 @@ async def _build_tool_registry(
         lifecycle_strategy=lifecycle_strategy,
     )
     image_provider = await build_image_provider_or_none(app_state)
+    search_provider = await build_web_search_provider_or_none(app_state)
     default_tools = build_default_tools_from_config(
         workspace=workspace_root,
         config=app_state.config,
@@ -155,6 +159,7 @@ async def _build_tool_registry(
         desktop_settings=desktop_settings,
         code_execution_records=code_execution_records_of(app_state),
         image_provider=image_provider,
+        web_search_provider=search_provider,
     )
     tools: list[BaseTool] = [*default_tools, *extra_tools]
     return ToolRegistry(tools), len(tools), sandbox_backends

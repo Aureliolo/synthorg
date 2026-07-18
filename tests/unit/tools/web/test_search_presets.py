@@ -44,3 +44,17 @@ class TestSearchPresets:
         assert preset is not None
         with pytest.raises(Exception):  # noqa: B017, PT011
             preset.endpoint = "https://evil.example"  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_provider_setting_enum_matches_presets(self) -> None:
+        """The tools.web_search_provider enum must not drift from the registry.
+
+        The setting hardcodes its enum_values to avoid importing the preset
+        registry into the settings bootstrap; this guards that copy.
+        """
+        import synthorg.settings.definitions  # noqa: F401
+        from synthorg.settings.registry import get_registry
+
+        definition = get_registry().get("tools", "web_search_provider")
+        assert definition is not None
+        assert set(definition.enum_values) == set(SEARCH_PROVIDER_IDS)
