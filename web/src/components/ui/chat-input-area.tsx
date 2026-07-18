@@ -26,6 +26,8 @@ export interface ChatInputAreaProps {
 /**
  * Shared multiline send box for the meta conversational surfaces. Enter
  * sends; Shift+Enter inserts a newline so operators can compose paragraphs.
+ * Enter while an IME composition is active (confirming a CJK candidate, an
+ * AZERTY dead key, etc.) never sends: it only commits the candidate.
  */
 export function ChatInputArea({
   value,
@@ -40,7 +42,9 @@ export function ChatInputArea({
 }: ChatInputAreaProps) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      // ``isComposing`` guards IME candidate confirmation: a bare Enter that
+      // commits a composition must edit the field, never send the message.
+      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault()
         onSend()
       }
