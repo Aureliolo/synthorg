@@ -8,7 +8,7 @@ import asyncio
 import copy
 from contextlib import AsyncExitStack
 from types import TracebackType
-from typing import NoReturn, Protocol, Self, runtime_checkable
+from typing import Final, NoReturn, Protocol, Self, runtime_checkable
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -46,6 +46,11 @@ from synthorg.tools.mcp.errors import (
 from synthorg.tools.mcp.models import MCPRawResult, MCPToolInfo
 
 logger = get_logger(__name__)
+
+# Upper bound on the graceful transport close. A hung stdio child (or a
+# detached ``npx``-spawned grandchild) must not stall a hot-reload/shutdown
+# that calls disconnect() synchronously, so the close is time-boxed.
+_DISCONNECT_TIMEOUT_SECONDS: Final[float] = 10.0
 
 
 @runtime_checkable
@@ -239,7 +244,21 @@ class MCPClient:
         async with self._lock:
             if self._exit_stack is not None:
                 try:
-                    await self._exit_stack.aclose()
+                    await asyncio.wait_for(
+                        self._exit_stack.aclose(),
+                        timeout=_DISCONNECT_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    logger.warning(
+                        MCP_CLIENT_DISCONNECT_FAILED,
+                        server=self._config.name,
+                        error=f"disconnect timed out after "
+                        f"{_DISCONNECT_TIMEOUT_SECONDS}s; child may be hung",
+                    )
+                    record_client_disconnect(
+                        transport=metric_transport,
+                        reason="timeout",
+                    )
                 except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                     reraise_critical(exc)
                     logger.warning(

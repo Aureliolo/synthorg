@@ -7,6 +7,7 @@ import pytest
 from synthorg.tools.mcp.bridge_tool import MCPBridgeTool
 from synthorg.tools.mcp.client import MCPClient
 from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
+from synthorg.tools.mcp.errors import MCPConnectionError
 from synthorg.tools.mcp.factory import MCPToolFactory
 from synthorg.tools.mcp.models import MCPToolInfo
 
@@ -124,6 +125,35 @@ class TestFactoryCreateTools:
         assert len(tools) == 3
         assert call_count == 2
 
+    async def test_one_failed_server_does_not_drop_others(self) -> None:
+        """Per-server failure isolation: a broken server must not blank the rest."""
+        config = MCPConfig(
+            servers=(
+                MCPServerConfig(name="bad", transport="stdio", command="echo"),
+                MCPServerConfig(name="good", transport="stdio", command="echo"),
+            ),
+        )
+        factory = MCPToolFactory(config)
+        good_tools = (MCPToolInfo(name="tool-a", description="A", server_name="good"),)
+
+        async def mock_connect_discover(
+            cfg: MCPServerConfig,
+        ) -> tuple[MCPClient, tuple[MCPToolInfo, ...]]:
+            if cfg.name == "bad":
+                msg = "boom"
+                raise MCPConnectionError(msg, context={"server": "bad"})
+            return (_make_mock_client("good", good_tools, cfg), good_tools)
+
+        with patch.object(
+            MCPToolFactory,
+            "_connect_and_discover",
+            side_effect=mock_connect_discover,
+        ):
+            tools = await factory.create_tools()
+
+        # The good server's tool survives; no exception despite the bad one.
+        assert [t.name for t in tools] == ["mcp_good_tool-a"]
+
     async def test_skip_disabled_servers(self) -> None:
         config = MCPConfig(
             servers=(
@@ -228,12 +258,10 @@ class TestFactoryReuseGuard:
             await factory.create_tools()
 
 
-class TestFactoryPartialFailureCleanup:
-    """Partial failure in TaskGroup cleans up connected clients."""
+class TestFactoryPartialFailureIsolation:
+    """A failed server is isolated: the healthy one keeps working."""
 
-    async def test_connected_clients_disconnected_on_partial_failure(
-        self,
-    ) -> None:
+    async def test_partial_failure_keeps_healthy_server(self) -> None:
         config = MCPConfig(
             servers=(
                 MCPServerConfig(
@@ -249,7 +277,8 @@ class TestFactoryPartialFailureCleanup:
             ),
         )
         factory = MCPToolFactory(config)
-        ok_client = _make_mock_client("ok-srv", ())
+        ok_tools = (MCPToolInfo(name="tool-a", description="A", server_name="ok-srv"),)
+        ok_client = _make_mock_client("ok-srv", ok_tools)
         ok_client.disconnect = AsyncMock()  # type: ignore[method-assign]
 
         msg = "server down"
@@ -258,20 +287,20 @@ class TestFactoryPartialFailureCleanup:
             cfg: MCPServerConfig,
         ) -> tuple[MCPClient, tuple[MCPToolInfo, ...]]:
             if cfg.name == "ok-srv":
-                return (ok_client, ())
+                return (ok_client, ok_tools)
             raise ConnectionError(msg)
 
-        with (
-            patch.object(
-                MCPToolFactory,
-                "_connect_and_discover",
-                side_effect=mock_connect_discover,
-            ),
-            pytest.raises(ExceptionGroup, match="unhandled"),
+        with patch.object(
+            MCPToolFactory,
+            "_connect_and_discover",
+            side_effect=mock_connect_discover,
         ):
-            await factory.create_tools()
+            tools = await factory.create_tools()
 
-        ok_client.disconnect.assert_called_once()
+        # The healthy server's tools survive; it is NOT torn down mid-create
+        # (only shutdown() disconnects it), and no exception propagates.
+        assert [t.name for t in tools] == ["mcp_ok-srv_tool-a"]
+        ok_client.disconnect.assert_not_called()
 
 
 class TestFactoryShutdownSwallowsErrors:

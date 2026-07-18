@@ -5,15 +5,14 @@ tools, and wraps each as an ``MCPBridgeTool``.
 """
 
 import asyncio
-import contextlib
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_CLIENT_DISCONNECT_FAILED,
-    MCP_FACTORY_CLEANUP,
     MCP_FACTORY_COMPLETE,
     MCP_FACTORY_REUSE_REJECTED,
+    MCP_FACTORY_SERVER_FAILED,
     MCP_FACTORY_SERVER_SKIPPED,
     MCP_FACTORY_START,
 )
@@ -50,16 +49,17 @@ class MCPToolFactory:
     async def create_tools(self) -> tuple[MCPBridgeTool, ...]:
         """Connect to all enabled servers and create bridge tools.
 
-        Uses ``asyncio.TaskGroup`` for parallel server connections.
-        Disabled servers are skipped with a log message.
+        Servers connect in parallel with per-server failure isolation: a
+        server that fails to connect or discover is logged and dropped, and
+        the tools of the servers that succeeded are still returned. Disabled
+        servers are skipped with a log message.
 
         Returns:
-            Tuple of all discovered and wrapped bridge tools.
+            Tuple of discovered and wrapped bridge tools (empty if every
+            enabled server failed).
 
         Raises:
             RuntimeError: If called more than once.
-            MCPConnectionError: If a server connection fails.
-            MCPDiscoveryError: If tool discovery fails.
         """
         if self._created:
             msg = "create_tools() must not be called more than once"
@@ -99,44 +99,39 @@ class MCPToolFactory:
         self,
         servers: list[MCPServerConfig],
     ) -> list[tuple[MCPClient, tuple[MCPToolInfo, ...]]]:
-        """Connect to servers in parallel and collect results.
+        """Connect to servers in parallel, isolating per-server failures.
+
+        Failure isolation is the point: a single broken server (a missing
+        credential, an npm outage, a crashed child) must NOT take down every
+        other server's tools. ``gather(return_exceptions=True)`` lets each
+        connect resolve independently; a failed one is logged with its server
+        name and dropped, and only the servers that connected are returned.
+        Interpreter-critical exceptions still propagate via
+        :func:`reraise_critical`.
 
         Args:
             servers: Enabled server configurations.
 
         Returns:
-            List of (client, tools) tuples.
-
-        Raises:
-            BaseException: Raised when the relevant invariant fails.
+            List of (client, tools) tuples for the servers that connected.
         """
-        tasks: list[asyncio.Task[tuple[MCPClient, tuple[MCPToolInfo, ...]]]] = []
-        try:
-            async with asyncio.TaskGroup() as tg:
-                tasks = [
-                    tg.create_task(
-                        self._connect_and_discover(cfg),
-                    )
-                    for cfg in servers
-                ]
-        except BaseException:
-            # Clean up any clients that connected before the failure
-            logger.warning(
-                MCP_FACTORY_CLEANUP,
-                reason="partial failure during parallel connect",
-            )
-            for task in tasks:
-                if task.done() and not task.cancelled():
-                    exc = task.exception()
-                    if exc is None:
-                        client, _ = task.result()
-                        with contextlib.suppress(Exception):
-                            await client.disconnect()
-            raise
-
+        outcomes = await asyncio.gather(
+            *(self._connect_and_discover(cfg) for cfg in servers),
+            return_exceptions=True,
+        )
         results: list[tuple[MCPClient, tuple[MCPToolInfo, ...]]] = []
-        for task in tasks:
-            client, tools = task.result()
+        for cfg, outcome in zip(servers, outcomes, strict=True):
+            if isinstance(outcome, BaseException):
+                reraise_critical(outcome)
+                logger.warning(
+                    MCP_FACTORY_SERVER_FAILED,
+                    server=cfg.name,
+                    reason="connect/discover failed; server dropped",
+                    error_type=type(outcome).__name__,
+                    error=safe_error_description(outcome),
+                )
+                continue
+            client, tools = outcome
             self._clients.append(client)
             results.append((client, tools))
         return results

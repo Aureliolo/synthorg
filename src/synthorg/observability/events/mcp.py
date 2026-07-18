@@ -29,6 +29,7 @@ MCP_CLIENT_DISCONNECT_FAILED: Final[str] = "mcp.client.disconnect_failed"
 MCP_FACTORY_START: Final[str] = "mcp.factory.start"
 MCP_FACTORY_COMPLETE: Final[str] = "mcp.factory.complete"
 MCP_FACTORY_SERVER_SKIPPED: Final[str] = "mcp.factory.server_skipped"
+MCP_FACTORY_SERVER_FAILED: Final[str] = "mcp.factory.server_failed"
 MCP_CACHE_STORE_FAILED: Final[str] = "mcp.cache.store_failed"
 MCP_FACTORY_CLEANUP: Final[str] = "mcp.factory.cleanup"
 
