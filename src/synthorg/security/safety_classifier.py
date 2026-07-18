@@ -251,7 +251,9 @@ class SafetyClassifier:
 
     Stage 1: strip PII, secrets, and internal IDs via
     ``InformationStripper``.  Stage 2: classify the stripped action
-    via an LLM from a different provider family.
+    via an LLM on the explicitly resolved default system provider
+    (``ProviderRegistry.default_provider``); there is no cross-family or
+    first-available auto-pick.
 
     Args:
         provider_registry: Registry of provider drivers.

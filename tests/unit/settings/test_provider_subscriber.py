@@ -6,7 +6,7 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.state import AppState
-from synthorg.config.schema import RootConfig
+from synthorg.config.schema import ProviderConfig, RootConfig
 from synthorg.providers.cassette import CassetteSession
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.errors import UnknownRoutingStrategyError
@@ -152,7 +152,13 @@ class TestProviderSubscriberRebuild:
         resolver = mock_of[ConfigResolver](
             get_int=AsyncMock(return_value=7),
             get_str=AsyncMock(return_value="example-provider"),
-            get_provider_configs=AsyncMock(return_value={}),
+            get_provider_configs=AsyncMock(
+                return_value={
+                    "example-provider": ProviderConfig(
+                        driver="litellm", connection_name="example-conn"
+                    )
+                }
+            ),
         )
         old_registry = ProviderRegistry({})
         state = make_app_state(
@@ -173,9 +179,9 @@ class TestProviderSubscriberRebuild:
         new_registry = state.slice(ProvidersStateSlice).registry
         assert new_registry is not old_registry
         assert new_registry is not None
-        # The wiring binds the resolved name onto the rebuilt registry; whether
-        # that name resolves to a driver is a registry concern (test_registry).
-        assert new_registry.default_provider_name() == "example-provider"
+        # The rebuilt registry contains the configured provider, so the bound
+        # default resolves to a registered driver (not merely a stored name).
+        assert new_registry.default_provider_resolved_name() == "example-provider"
         # default_provider goes through the same rebuild path as
         # retry_max_attempts, so the runtime reload -- the seam that makes the
         # new default reach the running engine -- must be awaited here too.
