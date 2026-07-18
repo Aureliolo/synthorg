@@ -247,11 +247,11 @@ def _select_active_provider(
             API_APP_STARTUP,
             service="runtime_services",
             note=(
-                "multiple providers registered; the first is the labelled "
-                "default and stakes routing picks the cheapest model per tier "
-                "across providers per task"
+                "multiple providers registered; system dispatch uses the "
+                "explicit providers.default_provider (no alphabetical default) "
+                "and stakes routing picks the cheapest model per tier per task"
             ),
-            default_provider=names[0],
+            default_provider=registry.default_provider_resolved_name(),
             providers=list(names),
         )
     return registry, names
@@ -407,6 +407,15 @@ async def build_runtime_services(
             workspace_root,
             oracle_enabled=completion_oracle_config.enabled,
         )
+    # ``provider`` resolved above, so its name always resolves too; the guard
+    # is a type-narrowing formality, never a runtime branch.
+    default_provider_name = registry.default_provider_resolved_name()
+    if default_provider_name is None:  # pragma: no cover - unreachable
+        return _no_active_provider_services(
+            app_state,
+            workspace_root,
+            oracle_enabled=completion_oracle_config.enabled,
+        )
 
     # Cheap pre-check before the expensive engine / MCP-bridge assembly: when
     # the coordination model is unset the coordinator build would raise anyway,
@@ -501,9 +510,6 @@ async def build_runtime_services(
             error=exc,
         )
     security = app_state.config.security
-    # Non-None here: an ambiguous / unset default returned no-provider mode
-    # above, so the resolved name always matches the ``provider`` driver.
-    default_provider_name = registry.default_provider_resolved_name() or names[0]
     logger.info(
         API_APP_STARTUP,
         service="runtime_services",

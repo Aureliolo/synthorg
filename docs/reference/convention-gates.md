@@ -79,6 +79,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_no_module_level_io.py` | push | `src/synthorg/` | full | no | `_module_level_io_baseline.txt` | harden |
 | `check_no_os_environ_outside_bootstrap.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_pre_commit_install_in_docs.py` | commit+push | setup docs | full | no | none | keep |
+| `check_no_provider_auto_pick.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_no_raw_playwright_imports.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_no_redundant_timeout.py` | commit+push | `tests/` | staged | yes | none | harden |
 | `check_no_release_please_token.py` | commit+push | `.github/**/*.yml` | staged | yes | none | keep |

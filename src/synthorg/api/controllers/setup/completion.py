@@ -189,10 +189,15 @@ async def _run_embedder_auto_select(
     # hint -- mirroring the same allowance in ``_validate_completion_prereqs``.
     provider_registry = app_state.slice(ProvidersStateSlice).registry
     if provider_registry is not None:
-        provider_names: list[str] = list(provider_registry.list_providers())
+        provider_preset_name = provider_registry.default_provider_resolved_name()
     else:
-        provider_names = list(await provider_management_of(app_state).list_providers())
-    provider_preset_name = provider_names[0] if provider_names else None
+        # Empty-company boot: no runtime registry / bound default exists yet, so
+        # the embedder's tier-inference hint (NOT an LLM dispatch binding) falls
+        # back to the first persisted provider.
+        persisted = list(await provider_management_of(app_state).list_providers())
+        provider_preset_name = (
+            persisted[0] if persisted else None
+        )  # lint-allow: provider-auto-pick -- embedder tier hint, not a dispatch
     has_gpu = await _read_has_gpu_setting(settings_svc)
     try:
         model_ids = await _collect_model_ids(app_state)

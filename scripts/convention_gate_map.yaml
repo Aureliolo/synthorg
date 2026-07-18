@@ -91,6 +91,11 @@ mandatory_rules:
     header: No Hardcoded Values
     gate: scripts/check_no_magic_numbers.py
 
+  - id: claude-md::explicit-provider-binding
+    file: CLAUDE.md
+    header: Explicit Provider Binding
+    gate: scripts/check_no_provider_auto_pick.py
+
   - id: claude-md::error-code-uniqueness
     file: CLAUDE.md
     header: Error-Code Uniqueness
