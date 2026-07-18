@@ -80,6 +80,30 @@ def test_wrapped_bound_name_index_is_flagged(tmp_path: Path) -> None:
     assert _load().main(["--repo-root", str(tmp_path)]) == 1
 
 
+def test_direct_await_list_providers_index_is_flagged(tmp_path: Path) -> None:
+    # ``list_providers`` is ``async def``: ``(await r.list_providers())[0]`` must
+    # be seen through the ``await`` wrapper, not silently pass.
+    _write(
+        tmp_path,
+        "async_a.py",
+        "async def f(r):\n    return (await r.list_providers())[0]\n",
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+
+
+def test_wrapped_await_bound_name_index_is_flagged(tmp_path: Path) -> None:
+    # The ``names = list(await r.list_providers()); names[0]`` idiom -- exactly the
+    # provider-management surface -- must be flagged despite the ``await``.
+    _write(
+        tmp_path,
+        "async_b.py",
+        "async def f(r):\n"
+        "    names = list(await r.list_providers())\n"
+        "    return names[0]\n",
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+
+
 def test_resolve_for_model_reference_is_flagged(tmp_path: Path) -> None:
     _write(tmp_path, "d.py", "def f(r):\n    return r.resolve_for_model('m')\n")
     assert _load().main(["--repo-root", str(tmp_path)]) == 1

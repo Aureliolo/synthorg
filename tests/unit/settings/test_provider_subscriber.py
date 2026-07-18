@@ -74,6 +74,7 @@ class TestProviderSubscriberProtocol:
         sub, _ = _make_subscriber()
         assert ("providers", "routing_strategy") in sub.watched_keys
         assert ("providers", "retry_max_attempts") in sub.watched_keys
+        assert ("providers", "default_provider") in sub.watched_keys
 
     def test_subscriber_name(self) -> None:
         sub, _ = _make_subscriber()
@@ -134,6 +135,45 @@ class TestProviderSubscriberRebuild:
         # The running engine captured the old registry; the runtime rebuild is
         # what makes the new cap reach the completion path.
         reload_spy.assert_awaited_once_with(state)
+
+    async def test_default_provider_change_rebuilds_and_binds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A default_provider change rebuilds the registry with the name bound.
+
+        Proves the hot-reload path: editing ``providers.default_provider`` live
+        rebuilds the registry and binds the resolved name onto it (no restart).
+        """
+        import synthorg.workers.runtime_builder as runtime_builder_mod
+
+        reload_spy = AsyncMock()
+        monkeypatch.setattr(runtime_builder_mod, "reload_runtime_services", reload_spy)
+        cfg = RootConfig(company_name="test")
+        resolver = mock_of[ConfigResolver](
+            get_int=AsyncMock(return_value=7),
+            get_str=AsyncMock(return_value="example-provider"),
+            get_provider_configs=AsyncMock(return_value={}),
+        )
+        old_registry = ProviderRegistry({})
+        state = make_app_state(
+            config=cfg,
+            approval_store=ApprovalStore(),
+            model_router=ModelRouter(cfg.routing, dict(cfg.providers)),
+            config_resolver=resolver,
+            provider_registry=old_registry,
+        )
+        sub = ProviderSettingsSubscriber(
+            config=cfg,
+            app_state=state,
+            settings_service=mock_of[SettingsService](),
+        )
+
+        await sub.on_settings_changed("providers", "default_provider")
+
+        new_registry = state.slice(ProvidersStateSlice).registry
+        assert new_registry is not old_registry
+        assert new_registry is not None
+        assert new_registry.default_provider_name() == "example-provider"
 
     async def test_retry_change_skips_rebuild_during_cassette(self) -> None:
         """An active cassette session suppresses the registry rebuild."""

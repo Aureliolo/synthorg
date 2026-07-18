@@ -285,6 +285,42 @@ class TestProviderPresentSwitch:
         assert len(degraded) == 1
         assert degraded[0]["service"] == "runtime_services"
 
+    async def test_unregistered_decomposition_provider_fails_soft(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """A decomposition ref with a valid model but an unregistered provider.
+
+        The ref carries a non-blank model id but names a provider that is NOT
+        registered, so ``resolve_ref_provider`` yields no provider and the boot
+        hard-degrades to the no-coordinator mode (previously this silently fell
+        back to the active boot provider). This is the distinct provider-side
+        surface of the removed active-provider fallback -- separate from the
+        blank-model_id case above.
+        """
+        registry = ProviderRegistry.from_config(
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                )
+            }
+        )
+        ghost_ref = serialize_model_ref(
+            ModelRef(provider="ghost-provider", model_id="example-medium-001")
+        )
+        app_state = _provider_app_state(
+            registry,
+            tmp_path,
+            blank_decomposition_model=True,
+            blank_decomposition_value=ghost_ref,
+        )
+
+        result = await build_runtime_services(app_state, workspace_root=tmp_path)
+
+        assert result.coordinator is None
+        assert result.work_pipeline is None
+        assert isinstance(result.worker_execution_service, NoProviderExecutionService)
+
     async def test_decomposition_model_cleared_after_precheck_fails_soft(
         self,
         tmp_path: Path,

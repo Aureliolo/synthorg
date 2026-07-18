@@ -151,6 +151,29 @@ class TestAgentSessionDecompose:
         # The session never ran: the provider was not called.
         assert provider.call_count == 0
 
+    async def test_owner_provider_unresolved_falls_back(self) -> None:
+        # The owner is pinned to a provider the registry does not know, so the
+        # selector raises; the strategy falls back rather than dispatching to a
+        # default gateway.
+        from synthorg.providers.errors import DriverNotRegisteredError
+
+        def _raise(_identity: object) -> ScriptedProvider:
+            msg = "owner provider not registered"
+            raise DriverNotRegisteredError(msg, context={"provider": "ghost"})
+
+        fallback = _SentinelFallback()
+        strategy = AgentSessionDecompositionStrategy(
+            provider_selector=_raise,
+            fallback=fallback,
+            config=AgentSessionDecompositionConfig(max_turns=4),
+        )
+        context = DecompositionContext(owner_identity=make_e2e_identity())
+
+        plan = await strategy.decompose(_task(), context)
+
+        assert fallback.called
+        assert plan is fallback.plan
+
     async def test_session_without_submission_falls_back(self) -> None:
         # The owner reasons but never submits a plan; the strategy degrades to
         # the fallback rather than failing the greenlight.

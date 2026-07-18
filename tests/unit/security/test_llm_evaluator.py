@@ -102,8 +102,14 @@ def _make_evaluator(
     provider_configs: dict[str, MagicMock] | None = None,
     config: LlmFallbackConfig | None = None,
     driver_map: dict[str, AsyncMock] | None = None,
+    bound_default: str | None = "provider-a",
 ) -> LlmSecurityEvaluator:
-    """Build an evaluator with mock providers."""
+    """Build an evaluator with mock providers.
+
+    ``bound_default`` models the operator's explicit ``providers.default_provider``
+    choice; pass ``None`` to model the ambiguous "2+ providers, none chosen"
+    state where the real registry resolves no default.
+    """
     if provider_configs is None:
         config_a = MagicMock()
         config_a.family = "family-a"
@@ -124,16 +130,23 @@ def _make_evaluator(
         driver_map = {"provider-a": driver_a, "provider-b": driver_b}
 
     names = tuple(sorted(driver_map.keys()))
-    default_name = names[0] if names else None
+    # Faithfully mirror ProviderRegistry.default_provider(): a SOLE provider
+    # resolves automatically; with 2+ the default resolves only when an explicit
+    # bound name (the operator's choice) names a registered provider, never a
+    # first-sorted auto-pick. bound_default=None models the ambiguous state.
+    if len(names) == 1:
+        resolved: str | None = names[0]
+    elif bound_default in driver_map:
+        resolved = bound_default
+    else:
+        resolved = None
     registry = mock_of[ProviderRegistry](
         get=MagicMock(side_effect=lambda name: driver_map[name]),
         list_providers=MagicMock(return_value=names),
-        # When no cross-family alternative exists the evaluator falls back to
-        # the explicit default system provider (the first sorted provider here).
         default_provider=MagicMock(
-            return_value=driver_map[default_name] if default_name else None,
+            return_value=driver_map[resolved] if resolved else None,
         ),
-        default_provider_resolved_name=MagicMock(return_value=default_name),
+        default_provider_resolved_name=MagicMock(return_value=resolved),
     )
 
     return LlmSecurityEvaluator(
@@ -484,6 +497,29 @@ async def test_evaluate_with_no_agent_provider_name() -> None:
 
     assert result.verdict == SecurityVerdictType.ALLOW
     mock_driver.complete.assert_awaited_once()
+
+
+@pytest.mark.unit
+async def test_evaluate_ambiguous_default_does_not_dispatch() -> None:
+    """2+ providers with no bound default: no auto-pick, no LLM dispatch."""
+    driver_a = AsyncMock()
+    driver_a.complete = AsyncMock(return_value=_make_completion_response())
+    driver_b = AsyncMock()
+    driver_b.complete = AsyncMock(return_value=_make_completion_response())
+    evaluator = _make_evaluator(
+        driver_map={"provider-a": driver_a, "provider-b": driver_b},
+        bound_default=None,
+    )
+    context = _make_context(agent_provider_name=None)
+    rule_verdict = _make_rule_verdict()
+
+    result = await evaluator.evaluate(context, rule_verdict)
+
+    # No default resolvable -> the evaluator must NOT fall back to a
+    # first-registered pick; neither driver is dispatched.
+    assert result.verdict != SecurityVerdictType.ALLOW
+    driver_a.complete.assert_not_awaited()
+    driver_b.complete.assert_not_awaited()
 
 
 # -- Additional edge cases -------------------------------------------------

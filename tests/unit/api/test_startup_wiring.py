@@ -588,16 +588,17 @@ class TestWireFineTuneOrchestrator:
         assert isinstance(orchestrator, FineTuneOrchestrator)
         # An operator-named provider that is not registered must NOT silently
         # substitute the first provider; the LLM query generator stays off and
-        # the misconfiguration is surfaced as an error.
+        # the misconfiguration is surfaced (a clean degrade, so WARNING, matching
+        # the sibling wiring helpers).
         assert orchestrator._query_generator is None
-        errors = [
+        warnings = [
             e
             for e in _wire_logs(captured)
-            if e.get("log_level") == "error"
+            if e.get("log_level") == "warning"
             and "not registered" in str(e.get("note", ""))
         ]
-        assert len(errors) == 1
-        assert errors[0]["provider_name"] == "ghost-provider"
+        assert len(warnings) == 1
+        assert warnings[0]["provider_name"] == "ghost-provider"
 
     async def test_wires_orchestrator_and_runs_recovery(self) -> None:
         fake = FakePersistenceBackend()

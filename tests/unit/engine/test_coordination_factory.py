@@ -148,6 +148,21 @@ class TestBuildCoordinator:
                 decomposition_model="test-model-001",
             )
 
+    def test_provider_and_model_without_selector_raises(self) -> None:
+        """Provider + model but no provider_selector raises ValueError.
+
+        The owner-run session dispatches each owner on its own bound provider,
+        so a selector is mandatory when a provider is configured.
+        """
+        with pytest.raises(ValueError, match="provider_selector"):
+            build_coordinator(
+                config=CoordinationSectionConfig(),
+                engine=_mock_engine(),
+                task_assignment_config=TaskAssignmentConfig(),
+                provider=mock_of[CompletionProvider](),
+                decomposition_model="test-model-001",
+            )
+
     def test_workspace_strategy_only_raises_value_error(self) -> None:
         """workspace_strategy without workspace_config raises ValueError."""
         with pytest.raises(ValueError, match="missing workspace_config"):

@@ -170,6 +170,80 @@ class TestRegistryContainsAndLen:
         assert len(ProviderRegistry({})) == 0
 
 
+# ── default_provider() / bind_default_provider() ─────────────────
+
+
+@pytest.mark.unit
+class TestDefaultProvider:
+    def test_bound_name_wins(self) -> None:
+        a: BaseCompletionProvider = _StubDriver("provider-a", _make_config())
+        b: BaseCompletionProvider = _StubDriver("provider-b", _make_config())
+        registry = ProviderRegistry({"provider-a": a, "provider-b": b})
+
+        registry.bind_default_provider("provider-b")
+
+        assert registry.default_provider() is b
+        assert registry.default_provider_resolved_name() == "provider-b"
+        assert registry.default_provider_name() == "provider-b"
+
+    def test_sole_provider_resolves_without_binding(self) -> None:
+        only: BaseCompletionProvider = _StubDriver("only", _make_config())
+        registry = ProviderRegistry({"only": only})
+
+        # A single registered provider is not a choice to make, so it resolves
+        # even with no explicit bind; the bound NAME stays unset.
+        assert registry.default_provider() is only
+        assert registry.default_provider_resolved_name() == "only"
+        assert registry.default_provider_name() is None
+
+    def test_multiple_without_bound_default_is_ambiguous(self) -> None:
+        a: BaseCompletionProvider = _StubDriver("provider-a", _make_config())
+        b: BaseCompletionProvider = _StubDriver("provider-b", _make_config())
+        registry = ProviderRegistry({"provider-a": a, "provider-b": b})
+
+        # Two providers, no explicit default: NO alphabetical fallback.
+        assert registry.default_provider() is None
+        assert registry.default_provider_resolved_name() is None
+
+    def test_bound_name_not_registered_is_ambiguous(self) -> None:
+        a: BaseCompletionProvider = _StubDriver("provider-a", _make_config())
+        b: BaseCompletionProvider = _StubDriver("provider-b", _make_config())
+        registry = ProviderRegistry({"provider-a": a, "provider-b": b})
+
+        registry.bind_default_provider("provider-ghost")
+
+        assert registry.default_provider() is None
+        assert registry.default_provider_resolved_name() is None
+
+    def test_blank_and_none_bind_normalises_to_unset(self) -> None:
+        a: BaseCompletionProvider = _StubDriver("provider-a", _make_config())
+        b: BaseCompletionProvider = _StubDriver("provider-b", _make_config())
+        registry = ProviderRegistry({"provider-a": a, "provider-b": b})
+
+        for blank in ("", "   ", None):
+            registry.bind_default_provider(blank)
+            assert registry.default_provider_name() is None
+            assert registry.default_provider() is None
+
+    def test_rebind_overwrites_idempotently(self) -> None:
+        a: BaseCompletionProvider = _StubDriver("provider-a", _make_config())
+        b: BaseCompletionProvider = _StubDriver("provider-b", _make_config())
+        registry = ProviderRegistry({"provider-a": a, "provider-b": b})
+
+        registry.bind_default_provider("provider-a")
+        registry.bind_default_provider("provider-b")
+
+        assert registry.default_provider() is b
+        assert registry.default_provider_resolved_name() == "provider-b"
+
+    def test_empty_registry_has_no_default(self) -> None:
+        registry = ProviderRegistry({})
+
+        assert registry.default_provider() is None
+        assert registry.default_provider_resolved_name() is None
+        assert registry.default_provider_name() is None
+
+
 # ── from_config() ────────────────────────────────────────────────
 
 
