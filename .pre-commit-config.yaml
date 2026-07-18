@@ -143,7 +143,7 @@ repos:
       - id: mixed-line-ending
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.21
+    rev: v0.15.22
     hooks:
       - id: ruff
         args: [--fix]
@@ -152,7 +152,7 @@ repos:
   # Markdown lint: enforces consistent formatting for top-level + docs/
   # READMEs and CLAUDE.md, plus the CLI / web sub-tree READMEs.
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.49.0
+    rev: v0.49.1
     hooks:
       - id: markdownlint
         args: [--config, .markdownlint.json]
@@ -170,7 +170,7 @@ repos:
         stages: [pre-push]
 
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.16.4
+    rev: v4.16.5
     hooks:
       - id: commitizen
         stages: [commit-msg]
@@ -194,7 +194,7 @@ repos:
         files: ^\.github/workflows/.*\.ya?ml$
 
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: v1.26.1
+    rev: v1.27.0
     hooks:
       - id: zizmor
         # Match workflows + composite actions. zizmor v1.25+ recognises both

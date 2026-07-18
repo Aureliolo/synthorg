@@ -66,6 +66,8 @@ def _discover_mirror_classes() -> list[tuple[type[BaseModel], MirrorField]]:
         for _, cls in inspect.getmembers(module, inspect.isclass):
             if cls.__module__ != module_info.name:
                 continue
+            if not issubclass(cls, BaseModel):
+                continue
             mirrors = getattr(cls, "_MIRROR_FIELDS", None)
             if not isinstance(mirrors, tuple) or not mirrors:
                 continue
