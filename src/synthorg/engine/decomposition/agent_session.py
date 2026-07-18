@@ -274,6 +274,9 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         try:
             provider = self._provider_selector(owner)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
+            # lint-allow: swallow-ok -- an owner pinned to an unregistered
+            # provider degrades to the single-shot decomposer; a greenlight is
+            # never blocked on it (criticals still re-raise below).
             reraise_critical(exc)
             # The owner is pinned to a provider the registry does not know;
             # fall back rather than dispatch to a default gateway.

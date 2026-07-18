@@ -29,34 +29,22 @@ Engine-side construction helpers live in
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from synthorg.api.state import AppState
-from synthorg.budget.baseline_store import BaselineStore
-from synthorg.budget.coordination_collector import CoordinationMetricsCollector
-from synthorg.budget.state import BudgetStateSlice, cost_tracker_of
-from synthorg.communication.state import CommunicationStateSlice
-from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceError
 from synthorg.engine.completion_oracle.builder import (
     build_completion_oracle_tool_seed,
 )
 from synthorg.engine.errors import CoordinationConfigError
-from synthorg.engine.health import (
-    HealthJudge,
-    HealthMonitoringPipeline,
-    TriageFilter,
-)
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.hr.state import agent_registry_of
 from synthorg.integrations.state import provider_credential_catalog_of
-from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.workers import (
@@ -75,9 +63,7 @@ from synthorg.security.redteam.builder import (
     build_red_team_tool_seed,
 )
 from synthorg.settings.bridge_configs import EngineBridgeConfig
-from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingsError
-from synthorg.settings.mirrors import resolve_init_int
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.sandbox.factory import resolve_sandbox_for_category
 from synthorg.workers._agent_engine_collaborators import (
@@ -101,6 +87,10 @@ from synthorg.workers._engine_assembly import (
     _construct_agent_engine,
 )
 from synthorg.workers._red_team_runtime import build_red_team_runtime_or_none
+from synthorg.workers._runtime_aux_wiring import (
+    _build_health_runtime,
+    _construct_coordination_collector,
+)
 from synthorg.workers._runtime_services import RuntimeServices
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
@@ -108,97 +98,6 @@ from synthorg.workers.execution_service import (
 )
 
 logger = get_logger(__name__)
-
-_BASELINE_WINDOW_KEY: str = "baseline_window_size"
-
-
-def _resolve_baseline_window_size() -> int:
-    """Resolve ``budget.baseline_window_size`` at boot.
-
-    Cat-2 boot knob (``read_only_post_init``): the ``BaselineStore``
-    sliding window is sized once at construction, so the value is
-    sourced env > registered default via the bootstrap resolver (a
-    runtime change requires a restart).
-
-    Returns:
-        The resolved baseline sliding-window size.
-    """
-    return resolve_init_int(SettingNamespace.BUDGET, _BASELINE_WINDOW_KEY)
-
-
-def _construct_coordination_collector(
-    app_state: AppState,
-) -> CoordinationMetricsCollector | None:
-    """Build the shared coordination-metrics collector, or ``None``.
-
-    Requires a live ``CostTracker`` (the collector's only non-optional
-    dependency). Without one - the empty/degraded path - no collector
-    is built and the metrics pipeline stays a no-op, mirroring the
-    ``_construct_agent_engine`` optional-dependency guards. The single
-    instance returned is threaded into both the single-agent
-    ``AgentEngine`` and the multi-agent coordinator so one
-    ``BaselineStore`` accumulates the single-agent baselines the
-    multi-agent metrics compare against.
-
-    Returns:
-        The shared ``CoordinationMetricsCollector``, or ``None`` when no
-        ``CostTracker`` is wired (empty / degraded path).
-    """
-    if app_state.slice(BudgetStateSlice).cost_tracker is None:
-        return None
-    baseline_store = BaselineStore(window_size=_resolve_baseline_window_size())
-    return CoordinationMetricsCollector(
-        config=app_state.config.coordination_metrics,
-        cost_tracker=cost_tracker_of(app_state),
-        message_bus=app_state.slice(CommunicationStateSlice).message_bus,
-        baseline_store=baseline_store,
-        metrics_store=app_state.slice(CoordinationStateSlice).metrics_store,
-        clock=app_state.clock,
-    )
-
-
-def _build_health_runtime(
-    app_state: AppState,
-    *,
-    quality_degradation_threshold: int,
-) -> tuple[HealthMonitoringPipeline | None, Callable[[], Awaitable[bool]] | None]:
-    """Build the post-run agent-health pipeline + its live enabled check.
-
-    The pipeline composes the sensitive :class:`HealthJudge`, the
-    conservative :class:`TriageFilter`, and the notification dispatcher as
-    the escalation sink. Without a wired dispatcher there is nowhere to
-    deliver escalations, so ``(None, None)`` is returned. The enabled
-    check re-reads ``engine.health_monitoring_enabled`` per run so the
-    monitor can be toggled without a restart.
-
-    Args:
-        app_state: The live application state.
-        quality_degradation_threshold: Bridged
-            ``engine.health_quality_degradation_threshold`` (minimum
-            consecutive INCORRECT step signals before the judge escalates).
-
-    Returns:
-        A ``(pipeline, enabled_check)`` pair, or ``(None, None)`` when no
-        notification dispatcher is wired.
-    """
-    dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
-    if dispatcher is None:
-        return None, None
-    pipeline = HealthMonitoringPipeline(
-        judge=HealthJudge(
-            quality_degradation_threshold=quality_degradation_threshold,
-        ),
-        triage=TriageFilter(),
-        notification_dispatcher=dispatcher,
-    )
-    resolver = config_resolver_of(app_state)
-
-    async def _enabled() -> bool:
-        return await resolver.get_bool(
-            SettingNamespace.ENGINE, "health_monitoring_enabled"
-        )
-
-    return pipeline, _enabled
 
 
 def _select_active_provider(
