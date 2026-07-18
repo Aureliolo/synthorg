@@ -68,11 +68,13 @@ from synthorg.observability.events.chief_of_staff import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
+from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.kill_switch import resolve_model_with_fallback
+from synthorg.settings.kill_switch import resolve_str_with_fallback
+from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -251,6 +253,10 @@ class LlmConcernRouter:
             this bound stops a hung provider from stalling the conversation;
             on timeout the router falls back to the generic responder.
         cost_tracker: Optional cost tracker for the classification call.
+        provider_registry: Source registry for the live ``routing_model``
+            re-read, so a per-call retarget resolves BOTH the provider and
+            model from the same ref. Absent, the classifier stays on the
+            build-time pair.
     """
 
     _PURPOSE_ID: ClassVar[PromptPurposeId] = PromptPurposeId.COS_ROUTING
@@ -272,6 +278,7 @@ class LlmConcernRouter:
         max_tokens: int,
         timeout_seconds: float,
         cost_tracker: CostTrackerProtocol | None = None,
+        provider_registry: ProviderRegistry | None = None,
         config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._provider = provider
@@ -283,6 +290,7 @@ class LlmConcernRouter:
         self._max_tokens = max_tokens
         self._timeout_seconds = timeout_seconds
         self._cost_tracker = cost_tracker
+        self._provider_registry = provider_registry
         self._config_resolver = config_resolver
 
     async def route(self, history: tuple[ConversationTurn, ...]) -> RoutingOutcome:
@@ -335,6 +343,37 @@ class LlmConcernRouter:
             ),
         )
 
+    async def _resolve_live_dispatch(self) -> tuple[CompletionProvider, str]:
+        """Resolve the live ``(provider, model)`` pair for one classify call.
+
+        Re-reads ``chief_of_staff.routing_model`` so an operator retargets it
+        without a restart, resolving BOTH halves from the SAME ref -- a newly
+        chosen model can never dispatch on the previously bound provider. A
+        live ref that is absent, provider-less, unregistered, or missing a
+        model id falls back to the build-time pair, matched by construction.
+
+        Returns:
+            The provider driver and model id to dispatch this call on.
+        """
+        if self._config_resolver is None or self._provider_registry is None:
+            return self._provider, self._model
+        raw_ref = await resolve_str_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.CHIEF_OF_STAFF,
+            key="routing_model",
+            fallback="",
+        )
+        if not raw_ref:
+            return self._provider, self._model
+        ref = parse_model_ref(raw_ref)
+        if not ref.provider or not ref.model_id:
+            return self._provider, self._model
+        try:
+            driver = self._provider_registry.get(ref.provider)
+        except DriverNotRegisteredError:
+            return self._provider, self._model
+        return driver, ref.model_id
+
     async def _classify(
         self,
         history: tuple[ConversationTurn, ...],
@@ -366,12 +405,7 @@ class LlmConcernRouter:
             temperature=self._temperature,
             max_tokens=self._max_tokens,
         )
-        model = await resolve_model_with_fallback(
-            resolver=self._config_resolver,
-            namespace=SettingNamespace.CHIEF_OF_STAFF,
-            key="routing_model",
-            fallback=self._model,
-        )
+        provider, model = await self._resolve_live_dispatch()
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
@@ -381,7 +415,7 @@ class LlmConcernRouter:
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await asyncio.wait_for(
-                    self._provider.complete(
+                    provider.complete(
                         messages,
                         model,
                         config=completion_config,
@@ -599,6 +633,7 @@ def build_role_router(
         max_tokens=config.routing_max_tokens,
         timeout_seconds=config.agent_call_timeout_seconds,
         cost_tracker=cost_tracker,
+        provider_registry=provider_registry,
         config_resolver=config_resolver,
     )
 

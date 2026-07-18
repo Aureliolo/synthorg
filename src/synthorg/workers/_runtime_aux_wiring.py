@@ -23,7 +23,7 @@ from synthorg.engine.health import (
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import resolve_init_int
-from synthorg.settings.state import config_resolver_of
+from synthorg.settings.state import SettingsStateSlice
 
 _BASELINE_WINDOW_KEY: str = "baseline_window_size"
 
@@ -94,11 +94,12 @@ def _build_health_runtime(
             consecutive INCORRECT step signals before the judge escalates).
 
     Returns:
-        A ``(pipeline, enabled_check)`` pair, or ``(None, None)`` when no
-        notification dispatcher is wired.
+        A ``(pipeline, enabled_check)`` pair, or ``(None, None)`` when the
+        notification dispatcher or the config resolver is not wired.
     """
     dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
-    if dispatcher is None:
+    resolver = app_state.slice(SettingsStateSlice).config_resolver
+    if dispatcher is None or resolver is None:
         return None, None
     pipeline = HealthMonitoringPipeline(
         judge=HealthJudge(
@@ -107,7 +108,6 @@ def _build_health_runtime(
         triage=TriageFilter(),
         notification_dispatcher=dispatcher,
     )
-    resolver = config_resolver_of(app_state)
 
     async def _enabled() -> bool:
         return await resolver.get_bool(

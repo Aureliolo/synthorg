@@ -173,7 +173,13 @@ class TestProviderSubscriberRebuild:
         new_registry = state.slice(ProvidersStateSlice).registry
         assert new_registry is not old_registry
         assert new_registry is not None
+        # The wiring binds the resolved name onto the rebuilt registry; whether
+        # that name resolves to a driver is a registry concern (test_registry).
         assert new_registry.default_provider_name() == "example-provider"
+        # default_provider goes through the same rebuild path as
+        # retry_max_attempts, so the runtime reload -- the seam that makes the
+        # new default reach the running engine -- must be awaited here too.
+        reload_spy.assert_awaited_once_with(state)
 
     async def test_retry_change_skips_rebuild_during_cassette(self) -> None:
         """An active cassette session suppresses the registry rebuild."""

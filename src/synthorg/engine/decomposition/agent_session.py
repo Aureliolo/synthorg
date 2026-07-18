@@ -21,7 +21,6 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
@@ -54,6 +53,7 @@ from synthorg.observability.events.decomposition import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
+from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider, ProviderSelector
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
@@ -273,13 +273,11 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
 
         try:
             provider = self._provider_selector(owner)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
-            # lint-allow: swallow-ok -- an owner pinned to an unregistered
-            # provider degrades to the single-shot decomposer; a greenlight is
-            # never blocked on it (criticals still re-raise below).
-            reraise_critical(exc)
+        except DriverNotRegisteredError as exc:
             # The owner is pinned to a provider the registry does not know;
-            # fall back rather than dispatch to a default gateway.
+            # fall back rather than dispatch to a default gateway. Only this
+            # expected miss degrades to the single-shot decomposer -- any other
+            # selector failure (a programming, state, or wiring bug) propagates.
             logger.warning(
                 DECOMPOSITION_SESSION_FALLBACK,
                 task_id=str(task.id),

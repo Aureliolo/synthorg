@@ -23,8 +23,10 @@ from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.chief_of_staff.narrative.models import ReducedRun, RunMetric
 from synthorg.meta.chief_of_staff.narrative.synthesiser import NarrativeSynthesiser
 from synthorg.meta.chief_of_staff.routing import LlmConcernRouter
+from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
@@ -84,24 +86,30 @@ async def test_propose_model_read_live(settings: SettingsService) -> None:
 
 
 async def test_routing_model_read_live(settings: SettingsService) -> None:
-    """``routing_model`` is the model passed to the classifier call live."""
-    provider = mock_of[CompletionProvider](
+    """``routing_model`` retargets the live (provider, model) pair per call.
+
+    The live re-read resolves BOTH halves from the same ref, so the driver the
+    call dispatches on is the one the ref's provider names -- here the same
+    registered ``example-provider`` mock the build-time pair used.
+    """
+    provider = mock_of[BaseCompletionProvider](
         complete=AsyncMock(
             return_value=_response(
                 '{"topic": "budget", "role": "CEO", "confidence": 0.9}'
             )
         )
     )
-    registry = await build_registry(make_identity(name="Dana", role="CEO"))
+    agent_registry = await build_registry(make_identity(name="Dana", role="CEO"))
     router = LlmConcernRouter(
         provider=provider,
         model=NotBlankStr("baked-route-001"),
-        agent_registry=registry,
+        agent_registry=agent_registry,
         confidence_floor=0.6,
         default_role=NotBlankStr("CEO"),
         temperature=0.0,
         max_tokens=200,
         timeout_seconds=120.0,
+        provider_registry=ProviderRegistry({"example-provider": provider}),
         config_resolver=_resolver(settings),
     )
     turns = (

@@ -81,14 +81,14 @@ def _make_classifier(
         driver_map = {"provider-a": mock_driver, "provider-b": mock_driver}
 
     names = tuple(sorted(driver_map.keys()))
-    # Faithfully mirror ProviderRegistry.default_provider(): a SOLE provider
-    # resolves; with 2+ the default resolves only when an explicit bound name
-    # (the operator's choice) names a registered provider, never a first-sorted
-    # auto-pick. bound_default=None models the ambiguous state.
-    if len(names) == 1:
-        resolved: str | None = names[0]
-    elif bound_default in driver_map:
-        resolved = bound_default
+    # Faithfully mirror ProviderRegistry.default_provider_resolved_name(): an
+    # explicit bound name resolves only when registered -- an invalid one is
+    # None even with a sole provider (never silently substituted). Otherwise a
+    # SOLE provider resolves; 2+ with no valid bound default is ambiguous None.
+    if bound_default is not None:
+        resolved: str | None = bound_default if bound_default in driver_map else None
+    elif len(names) == 1:
+        resolved = names[0]
     else:
         resolved = None
     registry = mock_of[ProviderRegistry](
@@ -283,7 +283,7 @@ class TestErrorHandling:
         registry = MagicMock(spec=ProviderRegistry)
         registry.list_providers = MagicMock(return_value=())
         # No resolvable default provider -> classification cannot run.
-        registry.default_provider = MagicMock(return_value=None)
+        registry.default_provider_resolved_name = MagicMock(return_value=None)
 
         config_a = MagicMock()
         config_a.family = "family-a"

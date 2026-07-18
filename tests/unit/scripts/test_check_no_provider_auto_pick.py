@@ -131,6 +131,64 @@ def test_lint_allow_marker_suppresses(tmp_path: Path) -> None:
     assert _load().main(["--repo-root", str(tmp_path)]) == 0
 
 
+def test_marker_without_reason_does_not_suppress(tmp_path: Path) -> None:
+    # A bare marker with no ``-- <reason>`` no longer suppresses: the reason is
+    # mandatory so every opt-out stays self-documenting.
+    _write(
+        tmp_path,
+        "no_reason.py",
+        "def f(r):\n"
+        "    names = r.list_providers()\n"
+        "    return names[0]  # lint-allow: provider-auto-pick\n",
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+
+
+def test_marker_inside_string_does_not_suppress(tmp_path: Path) -> None:
+    # The marker only counts as a trailing comment; the same text inside a
+    # string literal on the violation line must not silence a real finding.
+    _write(
+        tmp_path,
+        "str_marker.py",
+        "def f(r):\n"
+        "    names = r.list_providers()\n"
+        '    return {"lint-allow: provider-auto-pick -- x": names[0]}[""]\n',
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+
+
+def test_outer_binding_does_not_flag_inner_unrelated_index(tmp_path: Path) -> None:
+    # An outer ``names = list_providers()`` must not flag an unrelated
+    # ``names[0]`` that lives in a nested function's own scope.
+    _write(
+        tmp_path,
+        "nested_ok.py",
+        "def outer(r):\n"
+        "    names = r.list_providers()\n"
+        "    _ = names\n"
+        "    def inner():\n"
+        "        names = [1, 2]\n"
+        "        return names[0]\n"
+        "    return inner\n",
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 0
+
+
+def test_nested_function_own_scope_index_is_flagged(tmp_path: Path) -> None:
+    # The scope narrowing must not MISS a genuine ``names[0]`` on a
+    # list_providers() binding within the same nested function.
+    _write(
+        tmp_path,
+        "nested_bad.py",
+        "def outer(r):\n"
+        "    def inner():\n"
+        "        names = r.list_providers()\n"
+        "        return names[0]\n"
+        "    return inner\n",
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+
+
 def test_unrelated_zero_index_is_not_flagged(tmp_path: Path) -> None:
     # A ``names[0]`` whose ``names`` is NOT a list_providers() result stays clean.
     _write(

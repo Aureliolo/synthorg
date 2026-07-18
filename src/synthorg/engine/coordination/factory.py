@@ -180,9 +180,10 @@ def build_coordinator(  # noqa: PLR0913
         provider: Optional LLM provider for decomposition.
         decomposition_model: Optional model ID for decomposition.
         provider_selector: Resolves the completion client for an owner's own
-            ``identity.model.provider``; required when *provider* is given so
-            the owner-run session dispatches on the owner's bound provider
-            rather than the boot default.
+            ``identity.model.provider``; required only for the ``agent-session``
+            strategy when *provider* is given, so the owner-run session
+            dispatches on the owner's bound provider rather than the boot
+            default. The single-shot ``llm`` strategy needs no selector.
         decomposition_strategy: Which decomposer to build -- ``"agent-session"``
             (default; owner-run planning loop) or ``"llm"`` (single-shot). Read
             from ``coordination.decomposition_strategy`` at boot.

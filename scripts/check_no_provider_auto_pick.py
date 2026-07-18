@@ -32,7 +32,9 @@ Exit codes:
 
 import argparse
 import ast
+import re
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Final
 
@@ -48,6 +50,12 @@ else:
 _SRC_REL: Final[str] = "src/synthorg"
 _BASELINE_REL: Final[str] = "scripts/provider_auto_pick_baseline.txt"
 _MARKER: Final[str] = "lint-allow: provider-auto-pick"
+# The marker suppresses only as a trailing COMMENT carrying a non-empty
+# reason (``# lint-allow: provider-auto-pick -- <reason>``); the same text
+# inside a string literal must never silence a real finding.
+_ALLOW_RE: Final[re.Pattern[str]] = re.compile(
+    r"#.*" + re.escape(_MARKER) + r"\s*--\s*\S"
+)
 _LIST_PROVIDERS: Final[str] = "list_providers"
 _REMOVED_RESOLVER: Final[str] = "resolve_for_model"
 
@@ -73,15 +81,34 @@ def _is_zero_index(node: ast.Subscript) -> bool:
     return isinstance(node.slice, ast.Constant) and node.slice.value == 0
 
 
+def _iter_own_scope(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> Iterator[ast.AST]:
+    """Yield nodes lexically inside *func*'s own scope.
+
+    Does not descend into a nested function or lambda body -- each opens its
+    own scope and is scanned separately, so an outer binding never leaks into
+    an inner one (or back).
+    """
+    stack: list[ast.AST] = list(ast.iter_child_nodes(func))
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+
+
 def _provider_list_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Names bound to a ``.list_providers()`` result within *func*.
+    """Names bound to a ``.list_providers()`` result within *func*'s own scope.
 
     Covers ``names = registry.list_providers()`` and its ``list(...)`` /
     ``tuple(...)`` / ``sorted(...)`` wrappers, so the ``names[0]`` idiom is
-    caught regardless of the wrapper.
+    caught regardless of the wrapper. Nested function / lambda bodies are
+    excluded (they carry their own scope).
     """
     bound: set[str] = set()
-    for node in ast.walk(func):
+    for node in _iter_own_scope(func):
         # Both a plain ``names = ...`` and a typed ``names: list[str] = ...``
         # (annotated) binding must be seen through.
         target: ast.expr | None = None
@@ -112,7 +139,7 @@ def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
     findings: list[str] = []
 
     def _allowed(lineno: int) -> bool:
-        return 1 <= lineno <= len(lines) and _MARKER in lines[lineno - 1]
+        return 1 <= lineno <= len(lines) and bool(_ALLOW_RE.search(lines[lineno - 1]))
 
     # 1 + 3: direct list_providers()[0] and any resolve_for_model reference.
     for node in ast.walk(tree):
@@ -137,7 +164,7 @@ def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
         provider_names = _provider_list_names(node)
         if not provider_names:
             continue
-        for sub in ast.walk(node):
+        for sub in _iter_own_scope(node):
             if (
                 isinstance(sub, ast.Subscript)
                 and _is_zero_index(sub)

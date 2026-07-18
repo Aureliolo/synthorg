@@ -364,8 +364,8 @@ provider and model), `synthesis_synthesizer` (strategy
 discriminator, default `llm`), and `synthesis_max_chunks` (int, top hits fed to
 the synthesiser). The synthesiser is ghost-wired whenever a model + provider
 exist, and a `KnowledgeSettingsSubscriber` rebuilds and swaps it on any
-`synthesis_model` / `synthesis_provider` / `synthesis_synthesizer` /
-`synthesis_max_chunks` change with no restart. Chunk budgets and
+`synthesis_model` / `synthesis_synthesizer` / `synthesis_max_chunks` change
+with no restart. Chunk budgets and
 namespace/tag constants live in `knowledge/constants.py` as module-level
 `Final` values because they are part of the on-disk plus RAG-index contract: a
 runtime change would silently invalidate previously indexed chunks (the same

@@ -447,10 +447,10 @@ class SafetyClassifier:
             A ``(name, driver)`` pair, or ``(None, None)`` when no default
             provider is resolvable (unregistered, or ambiguous among several).
         """
-        provider = self._registry.default_provider()
-        if provider is None:
+        name = self._registry.default_provider_resolved_name()
+        if name is None:
             return None, None
-        return self._registry.default_provider_resolved_name(), provider
+        return name, self._registry.get(name)
 
     def _select_model(self, provider_name: str) -> str:
         """Select the model for classification.

@@ -141,15 +141,17 @@ async def resolve_default_provider_name(
 ) -> str | None:
     """Resolve ``providers.default_provider`` via the live resolver.
 
-    Returns the explicit operator-set default system provider name so a
-    registry rebuild re-binds it. There is no alphabetical fallback: a blank
-    or unregistered value leaves the registry with no default, so system /
-    infra LLM calls stay unwired rather than routing to whichever provider
+    Returns the explicit operator-set default system provider name verbatim
+    so a registry rebuild re-binds it. There is no alphabetical fallback:
+    registration is validated downstream by the registry, which leaves the
+    default unbound (system / infra LLM calls stay unwired) when the name
+    names no registered provider, rather than routing to whichever provider
     sorts first.
 
     Returns:
-        The non-blank default provider name, or ``None`` when unset,
-        unregistered (benign), or resolution fails (logged WARNING).
+        The non-blank default provider name, or ``None`` when unset / blank or
+        resolution fails (logged WARNING). A non-blank but unregistered name is
+        returned as-is; the registry then resolves it to no default.
     """
     try:
         value = await config_resolver.get_str("providers", "default_provider")

@@ -187,7 +187,7 @@ class TestSetModelIfBlank:
     async def test_sets_when_blank(self) -> None:
         svc = _mock_settings_svc()
         svc.get.return_value = SimpleNamespace(value="")
-        ref = _bound("ollama-cloud", "glm-5.2")
+        ref = _bound("example-provider", "example-medium-001")
         await _set_model_if_blank(svc, "research", "model", ref)
         svc.set.assert_awaited_once_with("research", "model", ref)
 
