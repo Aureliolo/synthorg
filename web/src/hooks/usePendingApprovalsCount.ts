@@ -23,8 +23,13 @@ export interface UsePendingApprovalsCountReturn {
  * second request.
  */
 export function usePendingApprovalsCount(): UsePendingApprovalsCountReturn {
+  // Plan reviews have their own surface (the Plan Review page + its own badge),
+  // so they are excluded from the generic approvals inbox count.
   const pendingCount = useApprovalsStore(
-    (s) => s.approvals.filter((a) => a.status === 'pending').length,
+    (s) =>
+      s.approvals.filter(
+        (a) => a.status === 'pending' && a.source !== 'plan_review',
+      ).length,
   )
   const loading = useApprovalsStore((s) => s.loading)
 

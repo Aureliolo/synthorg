@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react'
 
-import { MessageSquare, Send } from 'lucide-react'
+import { MessageSquare, Send, Sparkles } from 'lucide-react'
 
 import type { PlanItemComment } from '@/api/types/plans'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
+import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/utils/format'
 
 // Mirror PlanCommentPayload.body's max_length (api/dto_plans.py) so an
@@ -12,10 +13,31 @@ import { formatRelativeTime } from '@/utils/format'
 const COMMENT_MAX = 8192
 
 function CommentRow({ comment }: { comment: PlanItemComment }) {
+  const isAgent = comment.author_kind === 'agent'
+  const isReply = comment.reply_to_id != null
   return (
-    <li className="rounded-md border border-border p-2">
+    <li
+      className={cn(
+        'rounded-md border p-2',
+        // An agent reply is the responsible role answering, so it is tinted to
+        // read as the organisation speaking, not another operator note.
+        isAgent ? 'border-accent/40 bg-accent/5' : 'border-border',
+        // A reply is nested under the comment it answers.
+        isReply && 'ml-4 border-l-2 border-l-accent/40',
+      )}
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-xs font-medium text-foreground">{comment.author}</span>
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground">
+          {isAgent && (
+            <Sparkles className="size-3 text-accent" aria-hidden="true" />
+          )}
+          {comment.author}
+          {isAgent && (
+            <span className="rounded-full bg-accent/15 px-1.5 text-micro font-medium text-accent">
+              agent
+            </span>
+          )}
+        </span>
         <span className="text-micro text-muted-foreground">
           {formatRelativeTime(comment.created_at)}
         </span>

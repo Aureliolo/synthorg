@@ -45,6 +45,21 @@ async function fetchCommentsImpl(set: PcSet, planId: string): Promise<void> {
   }
 }
 
+async function refreshCommentsImpl(set: PcSet, planId: string): Promise<void> {
+  const token = (requestToken += 1)
+  try {
+    const comments = await listPlanComments(planId)
+    // Drop a stale reload once the operator has navigated to another plan.
+    if (token !== requestToken) return
+    set({ comments })
+  } catch (err) {
+    if (token !== requestToken) return
+    // Keep whatever is on screen (the operator's own comment); no error toast
+    // for a background reconcile.
+    log.warn('Refresh plan comments failed', sanitizeForLog(err))
+  }
+}
+
 async function addCommentImpl(
   set: PcSet,
   get: PcGet,
@@ -58,6 +73,12 @@ async function addCommentImpl(
     if (!get().comments.some((c) => c.id === comment.id)) {
       set({ comments: [...get().comments, comment] })
     }
+    // The responsible role may answer inline: that reply is persisted within
+    // the POST (server-side, before it returns), so a re-list surfaces it and
+    // reconciles against the backend truth (the pure-API-consumer contract).
+    // Silent -- no loading flash -- and best-effort: a failed refresh leaves
+    // the operator's own optimistic comment in place.
+    await refreshCommentsImpl(set, planId)
     useToastStore.getState().add({ variant: 'success', title: 'Comment added' })
     return comment
   } catch (err) {
