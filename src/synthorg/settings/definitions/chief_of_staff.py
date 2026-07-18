@@ -143,6 +143,24 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=_NS,
+        key="multi_voice_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Let specialists (your CFO, CTO, and other roles) add a short,"
+            " attributed perspective to an answer when their role genuinely"
+            " adds a distinct angle, so you see the organisation answering"
+            " rather than one voice. On by default; stays quiet on simple"
+            " questions. Turn off for single-voice answers only. Gated live"
+            " per request."
+        ),
+        group="Conversational",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
         key="learning_enabled",
         type=SettingType.BOOLEAN,
         default="false",
@@ -255,6 +273,22 @@ _r.register(
             "Provider + model for the clarify-and-propose turns, selected"
             " through the model picker (a `{provider, model_id}` reference)."
             " Empty keeps the built-in default. Read live per call."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="multi_voice_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model for the multi-voice chime-ins, selected through"
+            " the model picker (a `{provider, model_id}` reference). Empty"
+            " leaves chime-ins off until a model is set. Read live per call."
         ),
         group="Models",
         level=SettingLevel.ADVANCED,

@@ -91,6 +91,7 @@ class PromptPurposeId(StrEnum):
 
     COS_TURN_INTENT = "system:cos:turn_intent"
     COS_ROUTING = "system:cos:routing"
+    COS_MULTI_VOICE = "system:cos:multi_voice"
     COS_PROPOSE = "system:cos:propose"
     COS_CHAT = "system:cos:chat"
     COS_NARRATIVE = "system:cos:narrative"
@@ -341,6 +342,11 @@ _PROMPT_PURPOSE_SPECS: Final[
         PromptPurposeId.COS_ROUTING,
         PromptPurposeCategory.META,
         "Route a chief-of-staff request to a capability.",
+    ),
+    (
+        PromptPurposeId.COS_MULTI_VOICE,
+        PromptPurposeCategory.META,
+        "Pick specialists to add a grounded chime-in to an answer.",
     ),
     (
         PromptPurposeId.COS_PROPOSE,

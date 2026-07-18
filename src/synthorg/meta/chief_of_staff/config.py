@@ -68,6 +68,25 @@ _TURN_INTENT_MAX_TOKENS_MIN: int = 50
 # above the 0.6 routing floor; the 0.0/1.0 envelope is the probability range.
 _ACT_INTENT_CONFIDENCE_FLOOR_DEFAULT: float = 0.85
 _CHARTER_INTENT_CONFIDENCE_FLOOR_DEFAULT: float = 0.8
+# Multi-voice: after an answer, 0..N specialists add a short, attributed
+# chime-in when their role genuinely adds a distinct, grounded perspective.
+# Default-on (opt-out): it is the core of the "talk to your organisation"
+# surface, but stays quiet unless a specialist clears the value bar so simple
+# questions still get one clean answer.
+# Two extra voices is a calm default; 1 keeps it minimal and 5 caps the
+# per-answer fan-out cost.
+_MULTI_VOICE_MAX_SPEAKERS_DEFAULT: int = 2
+_MULTI_VOICE_MAX_SPEAKERS_MIN: int = 1
+_MULTI_VOICE_MAX_SPEAKERS_MAX: int = 5
+# 0.7 is a real value bar: only a specialist genuinely confident it adds a
+# distinct angle chimes in, so the transcript never fills with filler. The
+# 0.0/1.0 envelope is the probability range.
+_MULTI_VOICE_CONFIDENCE_FLOOR_DEFAULT: float = 0.7
+# A chime-in is short attributed prose, so a moderate temperature and a tight
+# token budget; 100 is the floor below which even one chime-in would truncate.
+_MULTI_VOICE_TEMPERATURE_DEFAULT: float = 0.5
+_MULTI_VOICE_MAX_TOKENS_DEFAULT: int = 600
+_MULTI_VOICE_MAX_TOKENS_MIN: int = 100
 # Group chat: one human, several agents, round-robin turns. The
 # defaults below bound a single human turn so it cannot drive unbounded
 # fan-out cost; all are operator-tunable.
@@ -248,6 +267,17 @@ class ChiefOfStaffConfig(BaseModel):
         charter_intent_confidence_floor: Minimum classifier confidence
             (0-1) before a turn may resolve to CHARTER; below it the turn
             degrades to a plain explanation.
+        multi_voice_enabled: Let specialists add a short, attributed
+            chime-in to an answer when their role adds a distinct grounded
+            perspective. Default-on (opt-out): the core of the unified
+            surface, but gated so simple questions still get one clean answer.
+        multi_voice_model: LLM model identifier for the chime-in calls.
+        multi_voice_temperature: Sampling temperature for a chime-in.
+        multi_voice_max_tokens: Token budget for one chime-in reply.
+        multi_voice_max_speakers: Maximum specialists that may chime in on
+            one answer (bounds per-answer fan-out).
+        multi_voice_confidence_floor: Minimum confidence (0-1) a specialist
+            must clear to chime in; below it it stays silent.
         group_chat_enabled: Enable the multi-agent group chat
             (``/meta/chat/group``). When off, the controller 503s.
         group_chat_max_participants: Maximum agents in one group
@@ -404,6 +434,34 @@ class ChiefOfStaffConfig(BaseModel):
     )
     charter_intent_confidence_floor: float = Field(
         default=_CHARTER_INTENT_CONFIDENCE_FLOOR_DEFAULT,
+        ge=0.0,
+        le=1.0,
+    )
+
+    # ── Multi-voice chime-ins ─────────────────────────────
+
+    multi_voice_enabled: bool = True
+    multi_voice_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model for the multi-voice chime-in LLM calls; unset until "
+        "an operator or setup selects one (never a placeholder default)",
+    )
+    multi_voice_temperature: float = Field(
+        default=_MULTI_VOICE_TEMPERATURE_DEFAULT,
+        ge=_PROPOSE_TEMPERATURE_MIN,
+        le=_PROPOSE_TEMPERATURE_MAX,
+    )
+    multi_voice_max_tokens: int = Field(
+        default=_MULTI_VOICE_MAX_TOKENS_DEFAULT,
+        ge=_MULTI_VOICE_MAX_TOKENS_MIN,
+    )
+    multi_voice_max_speakers: int = Field(
+        default=_MULTI_VOICE_MAX_SPEAKERS_DEFAULT,
+        ge=_MULTI_VOICE_MAX_SPEAKERS_MIN,
+        le=_MULTI_VOICE_MAX_SPEAKERS_MAX,
+    )
+    multi_voice_confidence_floor: float = Field(
+        default=_MULTI_VOICE_CONFIDENCE_FLOOR_DEFAULT,
         ge=0.0,
         le=1.0,
     )

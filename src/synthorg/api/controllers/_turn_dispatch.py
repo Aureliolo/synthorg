@@ -26,11 +26,14 @@ from synthorg.api.controllers._meta_chat_window import resolve_chat_snapshot_win
 from synthorg.api.controllers._meta_signals_helpers import require_signals_service
 from synthorg.api.state import AppState
 from synthorg.communication.conversation.enums import ConversationRole
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.hr.state import agent_registry_of
 from synthorg.meta.charter.models import InterviewTurnArgs, InterviewTurnResult
 from synthorg.meta.charter.state import CharterStateSlice
+from synthorg.meta.chief_of_staff._multi_voice import ChimeIn
 from synthorg.meta.chief_of_staff.actor import (
     ConversationalActArgs,
     ConversationalActResult,
@@ -52,8 +55,14 @@ from synthorg.meta.chief_of_staff.models import (
     ProposeResult,
 )
 from synthorg.meta.state import MetaStateSlice
-from synthorg.observability import get_logger
-from synthorg.observability.events.chief_of_staff import COS_TURN_DISPATCHED
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.chief_of_staff import (
+    COS_MULTI_VOICE_FAILED,
+    COS_TURN_DISPATCHED,
+)
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.kill_switch import resolve_bool_with_fallback
+from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
 
@@ -117,6 +126,13 @@ class TurnResult(BaseModel):
     group: GroupConverseResult | None = None
     act: ConversationalActResult | None = None
     charter: InterviewTurnResult | None = None
+    chime_ins: tuple[ChimeIn, ...] = Field(
+        default=(),
+        description=(
+            "Specialists who added a short attributed perspective to an "
+            "explain answer; empty for every other intent."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_single_payload(self) -> Self:
@@ -384,6 +400,46 @@ async def _dispatch_charter(
     )
 
 
+async def _maybe_chime_ins(
+    app_state: AppState, *, question: str, answer: str
+) -> tuple[ChimeIn, ...]:
+    """Gather specialist chime-ins for an explain answer, best-effort.
+
+    Runs only when the multi-voice router is wired and ``multi_voice_enabled``
+    is live-true (opt-out, default on). Never fails the turn: any error, or an
+    empty roster, yields no chime-ins so the operator still gets the answer.
+
+    Returns:
+        The resolved chime-ins, strongest-first; empty when disabled,
+        unwired, roster-empty, or the chime call fails.
+    """
+    router = app_state.slice(MetaStateSlice).multi_voice_router
+    if router is None:
+        return ()
+    enabled = await resolve_bool_with_fallback(
+        resolver=app_state.slice(SettingsStateSlice).config_resolver,
+        namespace=SettingNamespace.CHIEF_OF_STAFF,
+        key="multi_voice_enabled",
+        fallback=True,
+    )
+    if not enabled:
+        return ()
+    try:
+        active = tuple(await agent_registry_of(app_state).list_active())
+        if not active:
+            return ()
+        return await router.chime(question=question, answer=answer, active=active)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised; chime is optional
+        reraise_critical(exc)
+        logger.warning(
+            COS_MULTI_VOICE_FAILED,
+            detail="chime_gather_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ()
+
+
 async def dispatch_turn(
     app_state: AppState,
     *,
@@ -497,11 +553,15 @@ async def dispatch_turn(
             # EXPLAIN is the default and the safe fallback for every degraded
             # or unclassified turn.
             answer = await _dispatch_explain(app_state, body=body, project=data.project)
+            chime_ins = await _maybe_chime_ins(
+                app_state, question=body, answer=answer.answer
+            )
             return TurnResult(
                 intent=intent,
                 intent_reason=reason,
                 intent_confidence=confidence,
                 answer=answer,
+                chime_ins=chime_ins,
             )
 
 

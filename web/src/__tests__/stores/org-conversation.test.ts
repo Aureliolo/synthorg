@@ -32,6 +32,7 @@ function proposeTurn(closed: boolean) {
     group: null,
     act: null,
     charter: null,
+    chime_ins: [],
   })
 }
 

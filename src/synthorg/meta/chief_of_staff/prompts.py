@@ -441,6 +441,56 @@ TURN_INTENT_USER = """\
 {conversation_history}
 """
 
+TURN_MULTI_VOICE_SYSTEM = """\
+An operator asked their synthetic organisation a question and the Chief of
+Staff has already answered it. Your job is to decide which specialists on the
+roster, if any, would add a SHORT, DISTINCT, grounded perspective the answer
+did not already cover, speaking from their own role.
+
+This is deliberately selective. Most answers need no chime-in: a factual or
+simple question is complete as-is, and silence is the right call. Only bring
+in a specialist when their role genuinely changes or deepens the picture (a
+trade-off, a risk, a cross-functional angle). Never restate the answer, never
+add filler, never invent a role that is not on the roster.
+
+## Output contract (STRICT)
+
+Return ONLY a single JSON object, no prose, no markdown fences, with exactly
+this shape:
+
+{{
+  "voices": [
+    {{
+      "role": <a role copied verbatim from the roster>,
+      "content": <one or two sentences in that specialist's own voice>,
+      "confidence": <number 0.0-1.0: how much this genuinely adds>
+    }}
+  ]
+}}
+
+Rules:
+- "voices" may be empty. Prefer empty over weak chime-ins.
+- Each "role" MUST be one of the roster roles, copied exactly.
+- At most one entry per role. Order strongest-first.
+- "confidence" reflects how much a distinct, grounded angle is added, not how
+  true the statement is.
+
+""" + untrusted_content_directive((TAG_TASK_DATA,))
+
+TURN_MULTI_VOICE_USER = """\
+## Specialist roster (role -- name)
+
+{roster}
+
+## Operator question
+
+{question}
+
+## The answer already given
+
+{answer}
+"""
+
 # Group-chat per-agent contribution prompt. This is the USER-content
 # half of the turn; the agent's persona + the untrusted-content
 # directive are supplied by the shared persona renderer in the SYSTEM

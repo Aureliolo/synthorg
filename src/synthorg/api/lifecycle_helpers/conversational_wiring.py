@@ -371,6 +371,41 @@ def _wire_turn_intent_classifier(
         )
 
 
+def _wire_multi_voice_router(
+    app_state: AppState,
+    config: ChiefOfStaffConfig,
+    *,
+    provider_registry: ProviderRegistry,
+    cost_tracker: CostTrackerProtocol | None,
+) -> None:
+    """Build + wire the multi-voice chime-in router when a model is set.
+
+    ``build_multi_voice_router`` builds the router unconditionally of
+    ``multi_voice_enabled`` so the live per-turn gate can flip without a
+    restart; it returns ``None`` only when no ``multi_voice_model`` is set or
+    its bound provider is absent, leaving turns to carry no chime-ins.
+    """
+    from synthorg.meta.chief_of_staff._multi_voice import (  # noqa: PLC0415
+        build_multi_voice_router,
+    )
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+    router = build_multi_voice_router(
+        config=config,
+        provider_registry=provider_registry,
+        cost_tracker=cost_tracker,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+    )
+    if router is not None:
+        app_state.wire(MetaStateSlice, multi_voice_router=router)
+        logger.info(
+            API_APP_STARTUP,
+            service="chief_of_staff_proposer",
+            note="multi-voice router wired",
+        )
+
+
 async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
     app_state: AppState,
     *,
@@ -410,6 +445,12 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
         cost_tracker=cost_tracker,
     )
     _wire_turn_intent_classifier(
+        app_state,
+        si_config.chief_of_staff,
+        provider_registry=provider_registry,
+        cost_tracker=cost_tracker,
+    )
+    _wire_multi_voice_router(
         app_state,
         si_config.chief_of_staff,
         provider_registry=provider_registry,

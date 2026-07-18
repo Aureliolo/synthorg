@@ -111,6 +111,7 @@ export const metaHandlers = [
         group: null,
         act: null,
         charter: null,
+        chime_ins: [],
       }),
     )
   }),

@@ -51,6 +51,7 @@ _COS_BOOL_FIELDS: dict[str, str] = {
     "propose_enabled": "propose_enabled",
     "routing_enabled": "routing_enabled",
     "turn_router_enabled": "turn_router_enabled",
+    "multi_voice_enabled": "multi_voice_enabled",
     "group_chat_enabled": "group_chat_enabled",
     "learning_enabled": "learning_enabled",
     "alerts_enabled": "alerts_enabled",
@@ -68,6 +69,7 @@ _COS_MODEL_FIELDS: tuple[str, ...] = (
     "propose_model",
     "routing_model",
     "turn_intent_model",
+    "multi_voice_model",
     "narrative_model",
 )
 

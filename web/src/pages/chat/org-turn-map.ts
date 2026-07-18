@@ -54,9 +54,12 @@ function attributedReply(
   return { id: nextMessageId(), kind: 'assistant', content }
 }
 
-function mapExplain(answer: TurnResult['answer']): OrgTurn[] {
+function mapExplain(
+  answer: TurnResult['answer'],
+  chimeIns: TurnResult['chime_ins'],
+): OrgTurn[] {
   if (!answer) return []
-  return [
+  const turns: OrgTurn[] = [
     {
       id: nextMessageId(),
       kind: 'assistant',
@@ -66,6 +69,18 @@ function mapExplain(answer: TurnResult['answer']): OrgTurn[] {
       confidence: answer.confidence,
     },
   ]
+  // Specialists who cleared the value bar add a short attributed chime-in
+  // after the answer, so the operator sees the org's other voices inline.
+  for (const chime of chimeIns) {
+    turns.push({
+      id: nextMessageId(),
+      kind: 'agent',
+      content: chime.content,
+      agentName: chime.name,
+      agentRole: chime.role,
+    })
+  }
+  return turns
 }
 
 function mapPropose(propose: ProposeResult | null): OrgTurn[] {
@@ -235,6 +250,6 @@ export function mapTurnResult(result: TurnResult): OrgTurn[] {
     case 'charter':
       return mapCharter(result.charter)
     case 'explain':
-      return mapExplain(result.answer)
+      return mapExplain(result.answer, result.chime_ins)
   }
 }

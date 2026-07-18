@@ -1,10 +1,15 @@
 """Tests for the unified ``POST /meta/chat/turn`` endpoint."""
 
+from datetime import date
 from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import AgentStatus
+from synthorg.hr.state import agent_registry_of
+from synthorg.meta.chief_of_staff._multi_voice import ChimeIn
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.intent_router import (
     IntentOutcome,
@@ -30,7 +35,7 @@ from synthorg.meta.models import (
 from synthorg.meta.signals.service import SignalsService
 from synthorg.meta.state import MetaStateSlice
 from synthorg.settings.enums import SettingSource
-from tests._shared import LoopAsyncClient, sid
+from tests._shared import LoopAsyncClient, as_uuid, sid
 from tests.unit.api.conftest import make_auth_headers
 
 pytestmark = pytest.mark.unit
@@ -72,6 +77,44 @@ class _FixedClassifier:
     async def classify(self, history: tuple[ConversationTurn, ...]) -> IntentOutcome:
         del history
         return self._outcome
+
+
+class _FixedMultiVoiceRouter:
+    """A multi-voice router that always returns preset chime-ins."""
+
+    def __init__(self, chimes: tuple[ChimeIn, ...]) -> None:
+        self._chimes = chimes
+
+    async def chime(
+        self,
+        *,
+        question: str,
+        answer: str,
+        active: tuple[AgentIdentity, ...],
+    ) -> tuple[ChimeIn, ...]:
+        del question, answer, active
+        return self._chimes
+
+
+def _active_agent() -> AgentIdentity:
+    return AgentIdentity(
+        id=as_uuid("agent-cfo"),
+        name=NotBlankStr("Casey"),
+        role=NotBlankStr("CFO"),
+        department=NotBlankStr("executive"),
+        personality=PersonalityConfig(
+            traits=(NotBlankStr("analytical"),),
+            communication_style=NotBlankStr("concise"),
+        ),
+        model=ModelConfig(
+            provider=NotBlankStr("test-provider"),
+            model_id=NotBlankStr("test-model-001"),
+            temperature=0.7,
+            max_tokens=4096,
+        ),
+        hiring_date=date(2026, 1, 1),
+        status=AgentStatus.ACTIVE,
+    )
 
 
 class TestMetaTurn:
@@ -124,6 +167,43 @@ class TestMetaTurn:
             assert data["intent_reason"] == "no_intent_classifier"
             assert data["answer"]["answer"] == "Quality is up."
             chat_mock.ask.assert_awaited_once()
+        finally:
+            app_state.swap_slice(original)
+
+    async def test_explain_carries_specialist_chime_ins(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """An explain answer surfaces the wired router's attributed chime-ins."""
+        chat_mock = AsyncMock(spec=ChiefOfStaffChat)
+        chat_mock.ask.return_value = ChatResponse(
+            answer="Runway is about 14 months.", sources=(), confidence=0.8
+        )
+        signals_mock = AsyncMock(spec=SignalsService)
+        signals_mock.get_org_snapshot.return_value = _empty_snapshot()
+        router = _FixedMultiVoiceRouter(
+            (ChimeIn(role="CFO", name="Casey", content="Watch the Q3 renewal."),)
+        )
+        app_state = async_test_client.app.state.app_state
+        original = app_state.slice(MetaStateSlice)
+        # The chime gate needs at least one active agent to attribute against.
+        await agent_registry_of(app_state).register(_active_agent())
+        app_state.wire(
+            MetaStateSlice,
+            chief_of_staff_chat=chat_mock,
+            signals_service=signals_mock,
+            turn_intent_classifier=None,
+            multi_voice_router=router,
+        )
+        try:
+            resp = await async_test_client.post(
+                _BASE, headers=_HEADERS, json={"message": "How is our runway?"}
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["intent"] == "explain"
+            assert data["chime_ins"] == [
+                {"role": "CFO", "name": "Casey", "content": "Watch the Q3 renewal."}
+            ]
         finally:
             app_state.swap_slice(original)
 

@@ -78,6 +78,12 @@ COS_INTENT_FALLBACK: Final[str] = "chief_of_staff.intent.fallback"
 COS_INTENT_RESPONSE_INVALID: Final[str] = "chief_of_staff.intent.response_invalid"
 COS_TURN_DISPATCHED: Final[str] = "chief_of_staff.turn.dispatched"
 
+# -- Multi-voice chime-ins ---------------------------------------------
+
+COS_MULTI_VOICE_ADDED: Final[str] = "chief_of_staff.multi_voice.added"
+COS_MULTI_VOICE_SKIPPED: Final[str] = "chief_of_staff.multi_voice.skipped"
+COS_MULTI_VOICE_FAILED: Final[str] = "chief_of_staff.multi_voice.failed"
+
 # -- Multi-agent group chat --------------------------------------------
 
 COS_GROUP_ROUND_STARTED: Final[str] = "chief_of_staff.group_chat.round_started"

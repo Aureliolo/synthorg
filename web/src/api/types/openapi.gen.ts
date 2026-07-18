@@ -8815,6 +8815,12 @@ export type components = {
             /** @description Checkpoint size on disk */
             readonly size_bytes: number;
         };
+        /** ChimeIn */
+        readonly ChimeIn: {
+            readonly content: string;
+            readonly name: string;
+            readonly role: string;
+        };
         /**
          * CitationKind
          * @description What a citation points at.
@@ -17553,6 +17559,11 @@ export type components = {
             readonly act: components["schemas"]["ConversationalActResult"] | null;
             readonly answer: components["schemas"]["ChatResponse"] | null;
             readonly charter: components["schemas"]["InterviewTurnResult"] | null;
+            /**
+             * @description Specialists who added a short attributed perspective to an explain answer; empty for every other intent.
+             * @default []
+             */
+            readonly chime_ins: readonly components["schemas"]["ChimeIn"][];
             readonly conversation_id: string | null;
             readonly group: components["schemas"]["GroupConverseResult"] | null;
             readonly intent: components["schemas"]["TurnIntent"];

@@ -20,6 +20,7 @@ function baseResult(overrides: Partial<TurnResult>): TurnResult {
     group: null,
     act: null,
     charter: null,
+    chime_ins: [],
     ...overrides,
   }
 }
@@ -39,6 +40,31 @@ describe('mapTurnResult', () => {
     )
     expect(turns).toHaveLength(1)
     expect(turns[0]).toMatchObject({ kind: 'assistant', content: 'All good.' })
+  })
+
+  it('renders specialist chime-ins as agent turns after the answer', () => {
+    const turns = mapTurnResult(
+      baseResult({
+        intent: 'explain',
+        answer: {
+          answer: 'Runway is fine.',
+          sources: [],
+          cited_records: [],
+          confidence: 0.9,
+        },
+        chime_ins: [
+          { role: 'CFO', name: 'Casey', content: 'Watch the Q3 renewal, though.' },
+        ],
+      }),
+    )
+    expect(turns).toHaveLength(2)
+    expect(turns[0]).toMatchObject({ kind: 'assistant' })
+    expect(turns[1]).toMatchObject({
+      kind: 'agent',
+      agentName: 'Casey',
+      agentRole: 'CFO',
+      content: 'Watch the Q3 renewal, though.',
+    })
   })
 
   it('maps a clarify propose to a plain assistant turn', () => {
