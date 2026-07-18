@@ -101,6 +101,7 @@ class PromptPurposeId(StrEnum):
 
     STEERING_PROPOSE = "system:steering:propose"
     EVOLUTION_PROPOSE = "system:evolution:propose"
+    PLAN_REVIEW_ITEM_REPLY = "system:plan_review:item_reply"
     WORKSPACE = "system:workspace"
     INTAKE = "system:intake"
     VERIFICATION = "system:verification"
@@ -387,6 +388,11 @@ _PROMPT_PURPOSE_SPECS: Final[
         PromptPurposeId.EVOLUTION_PROPOSE,
         PromptPurposeCategory.ENGINE,
         "Propose an evolution to an agent's behaviour.",
+    ),
+    (
+        PromptPurposeId.PLAN_REVIEW_ITEM_REPLY,
+        PromptPurposeCategory.ENGINE,
+        "Answer an operator's comment on a plan item as the responsible role.",
     ),
     (
         PromptPurposeId.WORKSPACE,

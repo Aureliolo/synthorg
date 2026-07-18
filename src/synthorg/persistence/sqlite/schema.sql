@@ -2589,7 +2589,15 @@ CREATE TABLE plan_item_comments (
     item_id TEXT NOT NULL CHECK (LENGTH(TRIM(item_id)) > 0),
     author TEXT NOT NULL CHECK (LENGTH(TRIM(author)) > 0),
     body TEXT NOT NULL CHECK (LENGTH(TRIM(body)) > 0),
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    author_kind TEXT NOT NULL DEFAULT 'human'
+    CHECK (author_kind IN ('human', 'agent')),
+    author_agent_id TEXT
+    CHECK (author_agent_id IS NULL OR LENGTH(TRIM(author_agent_id)) > 0),
+    reply_to_id TEXT
+    CHECK (reply_to_id IS NULL OR LENGTH(TRIM(reply_to_id)) > 0)
 );
 CREATE INDEX idx_plan_item_comments_plan_item
 ON plan_item_comments (plan_id, item_id, created_at);
+CREATE INDEX idx_plan_item_comments_reply
+ON plan_item_comments (reply_to_id);

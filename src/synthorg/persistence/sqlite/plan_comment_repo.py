@@ -33,7 +33,10 @@ from synthorg.persistence.sqlite._shared import (
 
 logger = get_logger(__name__)
 
-_COLUMNS = "id, plan_id, item_id, author, body, created_at"
+_COLUMNS = (
+    "id, plan_id, item_id, author, author_kind, author_agent_id, "
+    "reply_to_id, body, created_at"
+)
 
 
 def _row_to_comment(row: aiosqlite.Row) -> PlanItemComment:
@@ -78,6 +81,9 @@ class SQLitePlanItemCommentRepository:
             event.plan_id,
             event.item_id,
             event.author,
+            event.author_kind,
+            event.author_agent_id,
+            str(event.reply_to_id) if event.reply_to_id is not None else None,
             event.body,
             format_iso_utc(event.created_at),
         )
@@ -85,7 +91,7 @@ class SQLitePlanItemCommentRepository:
             try:
                 await self._db.execute(
                     f"INSERT INTO plan_item_comments ({_COLUMNS}) "  # noqa: S608
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     params,
                 )
                 await self._db.commit()

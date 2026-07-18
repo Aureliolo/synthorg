@@ -4,12 +4,34 @@ from datetime import UTC, datetime
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_comment import PlanItemComment
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.plan_review.reply import AgentReply
+from synthorg.engine.state import EngineStateSlice
 from synthorg.persistence.state import persistence_of
 from tests._shared import LoopAsyncClient, as_uuid, sid
 from tests.unit.api.conftest import make_auth_headers
+
+
+class _FixedReplyService:
+    """A reply service that answers every comment with a preset agent reply."""
+
+    def __init__(self, reply: AgentReply) -> None:
+        self._reply = reply
+
+    async def reply(
+        self,
+        *,
+        plan: Plan,
+        item: PlanItem,
+        comment_body: str,
+        active: tuple[AgentIdentity, ...],
+    ) -> AgentReply:
+        del plan, item, comment_body, active
+        return self._reply
+
 
 _T0 = datetime(2026, 4, 1, 10, 0, tzinfo=UTC)
 _PLAN = str(as_uuid("plan-001"))
@@ -91,6 +113,47 @@ class TestPlanCommentController:
             headers=make_auth_headers("ceo"),
         )
         assert len(listed.json()["data"]) == 1
+
+    async def test_wired_reply_service_appends_an_attributed_agent_reply(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed_plan(async_test_client)
+        app_state = async_test_client.app.state.app_state
+        original = app_state.slice(EngineStateSlice)
+        app_state.wire(
+            EngineStateSlice,
+            plan_item_reply_service=_FixedReplyService(
+                AgentReply(
+                    author=NotBlankStr("Casey"),
+                    author_agent_id=NotBlankStr("agent-cfo"),
+                    body=NotBlankStr("The new ledger nets out FX exposure."),
+                )
+            ),
+        )
+        try:
+            resp = await async_test_client.post(
+                f"/api/v1/plans/{_PLAN}/comments/items/{_ITEM}",
+                json={"body": "Why this ledger?"},
+                headers=make_auth_headers("ceo"),
+            )
+            assert resp.status_code == 201
+            # The POST returns the operator's comment; the agent reply lands as a
+            # second, attributed comment in the thread.
+            listed = await async_test_client.get(
+                f"/api/v1/plans/{_PLAN}/comments",
+                headers=make_auth_headers("ceo"),
+            )
+            thread = listed.json()["data"]
+            assert len(thread) == 2
+            human, agent = thread
+            assert human["author_kind"] == "human"
+            assert agent["author_kind"] == "agent"
+            assert agent["author"] == "Casey"
+            assert agent["author_agent_id"] == "agent-cfo"
+            # The agent reply links back to the operator's comment.
+            assert agent["reply_to_id"] == human["id"]
+        finally:
+            app_state.swap_slice(original)
 
     async def test_blank_body_is_rejected(
         self, async_test_client: LoopAsyncClient

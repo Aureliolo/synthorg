@@ -26,7 +26,10 @@ from synthorg.persistence.plan_comment_protocol import PlanItemCommentFilterSpec
 
 logger = get_logger(__name__)
 
-_COLUMNS = "id, plan_id, item_id, author, body, created_at"
+_COLUMNS = (
+    "id, plan_id, item_id, author, author_kind, author_agent_id, "
+    "reply_to_id, body, created_at"
+)
 
 
 def _row_to_comment(row: DictRow) -> PlanItemComment:
@@ -60,12 +63,17 @@ class PostgresPlanItemCommentRepository:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     f"INSERT INTO plan_item_comments ({_COLUMNS}) "  # noqa: S608
-                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (
                         str(event.id),
                         event.plan_id,
                         event.item_id,
                         event.author,
+                        event.author_kind,
+                        event.author_agent_id,
+                        str(event.reply_to_id)
+                        if event.reply_to_id is not None
+                        else None,
                         event.body,
                         event.created_at,
                     ),

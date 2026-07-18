@@ -13917,6 +13917,11 @@ export type components = {
         readonly PlanCommentPayload: {
             /** @description The comment text */
             readonly body: string;
+            /**
+             * Format: uuid
+             * @description The comment this one answers, when a reply
+             */
+            readonly reply_to_id?: string | null;
         };
         /** PlanDraftSummary */
         readonly PlanDraftSummary: {
@@ -13976,6 +13981,14 @@ export type components = {
         readonly PlanItemComment: {
             /** @description Who wrote the comment */
             readonly author: string;
+            /** @description The responding agent's id for an agent comment */
+            readonly author_agent_id: string | null;
+            /**
+             * @description Whether a human or an agent wrote it
+             * @default human
+             * @enum {string}
+             */
+            readonly author_kind: "human" | "agent";
             /** @description The comment text */
             readonly body: string;
             /**
@@ -13992,6 +14005,11 @@ export type components = {
             readonly item_id: string;
             /** @description Plan the commented item belongs to */
             readonly plan_id: string;
+            /**
+             * Format: uuid
+             * @description The comment this one answers, when a reply
+             */
+            readonly reply_to_id: string | null;
         };
         /**
          * PlanItemKind
@@ -20349,6 +20367,8 @@ export interface operations {
                 readonly limit?: number;
                 /** @description Filter to approvals at this risk level. */
                 readonly risk_level?: "low" | "medium" | "high" | "critical" | null;
+                /** @description Filter to approvals from this origin (e.g. exclude plan reviews, which have their own surface). */
+                readonly source?: "parked_context" | "review_gate" | "conversational_intake" | "conversational_invite" | "plan_review" | null;
                 /** @description Filter to approvals in this status. */
                 readonly status?: "pending" | "approved" | "rejected" | "expired" | null;
             };

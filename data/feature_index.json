@@ -561,7 +561,8 @@
         "objective_entry_adapter",
         "brownfield_entry_adapter",
         "task_board_entry_adapter",
-        "structure_map_tool_factory"
+        "structure_map_tool_factory",
+        "plan_item_reply_service"
       ]
     },
     {
@@ -1399,6 +1400,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-18T15:39:13.499851Z",
+  "generated_at": "2026-07-18T16:17:56.236751Z",
   "schema_version": 1
 }

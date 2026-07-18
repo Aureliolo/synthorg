@@ -8,11 +8,11 @@ audit event a posted comment otherwise lacks, mirroring :class:`PlanService`.
 """
 
 from typing import Final
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from synthorg.api.responses import require_resource_or_404
 from synthorg.core.clock import Clock
-from synthorg.core.plan_comment import PlanItemComment
+from synthorg.core.plan_comment import CommentAuthorKind, PlanItemComment
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -75,15 +75,27 @@ class PlanCommentService:
             limit=limit,
         )
 
-    async def add_comment(
+    async def add_comment(  # noqa: PLR0913 -- comment payload fields
         self,
         *,
         plan_id: NotBlankStr,
         item_id: NotBlankStr,
         author: NotBlankStr,
         body: NotBlankStr,
+        author_kind: CommentAuthorKind = "human",
+        author_agent_id: NotBlankStr | None = None,
+        reply_to_id: UUID | None = None,
     ) -> PlanItemComment:
         """Post a comment on a plan item after validating the target exists.
+
+        Args:
+            plan_id: The plan the item belongs to.
+            item_id: The item being commented on.
+            author: The comment author's display name.
+            body: The comment text.
+            author_kind: Whether a human or an agent wrote it.
+            author_agent_id: The responding agent's id for an agent comment.
+            reply_to_id: The comment this one answers, when a reply.
 
         Returns:
             The persisted :class:`PlanItemComment`.
@@ -100,6 +112,9 @@ class PlanCommentService:
             plan_id=plan_id,
             item_id=item_id,
             author=author,
+            author_kind=author_kind,
+            author_agent_id=author_agent_id,
+            reply_to_id=reply_to_id,
             body=body,
             created_at=self._clock.now(),
         )
@@ -110,6 +125,7 @@ class PlanCommentService:
             item_id=item_id,
             comment_id=str(comment.id),
             author=author,
+            author_kind=author_kind,
         )
         return comment
 

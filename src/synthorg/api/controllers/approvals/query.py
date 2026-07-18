@@ -27,7 +27,11 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
-from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.approval.enums import (
+    ApprovalRiskLevel,
+    ApprovalSource,
+    ApprovalStatus,
+)
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APPROVAL_REPO_LISTED
@@ -66,6 +70,13 @@ class ApprovalsQueryController(Controller):
                 description="Filter to approvals raised for this action type.",
             ),
         ] = None,
+        source: Annotated[
+            ApprovalSource | None,
+            QueryParameter(
+                description="Filter to approvals from this origin (e.g. exclude "
+                "plan reviews, which have their own surface).",
+            ),
+        ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[ApprovalResponse]:
@@ -76,6 +87,8 @@ class ApprovalsQueryController(Controller):
             status: Filter by approval status.
             risk_level: Filter by risk level.
             action_type: Filter by action type string.
+            source: Filter by approval origin. Plan reviews carry their own
+                surface, so the generic inbox lists everything else.
             cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
 
@@ -91,6 +104,8 @@ class ApprovalsQueryController(Controller):
             risk_level=risk_level,
             action_type=action_type,
         )
+        if source is not None:
+            items = tuple(i for i in items if i.source is source)
         page, meta = paginate_cursor(
             items,
             limit=limit,

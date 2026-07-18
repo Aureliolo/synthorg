@@ -122,6 +122,7 @@ _TIER_POLICY_SPECS: Final[tuple[tuple[PromptPurposeId, PromptTierKind], ...]] = 
     (PromptPurposeId.META_CODE_MODIFICATION, _L),
     (PromptPurposeId.STEERING_PROPOSE, _M),
     (PromptPurposeId.EVOLUTION_PROPOSE, _M),
+    (PromptPurposeId.PLAN_REVIEW_ITEM_REPLY, _M),
     (PromptPurposeId.WORKSPACE, _M),
     (PromptPurposeId.INTAKE, _S),
     (PromptPurposeId.VERIFICATION, _M),

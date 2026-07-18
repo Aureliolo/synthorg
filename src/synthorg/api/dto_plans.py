@@ -195,8 +195,13 @@ class PlanCommentPayload(BaseModel):
     Attributes:
         body: The comment text. The author is taken from the authenticated
             user, never the request body.
+        reply_to_id: The comment this one answers, when the operator replies
+            within the item's thread; ``None`` for a top-level comment.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     body: NotBlankStr = Field(max_length=8192, description="The comment text")
+    reply_to_id: UUID | None = Field(
+        default=None, description="The comment this one answers, when a reply"
+    )

@@ -20,3 +20,9 @@ PLAN_REVIEW_REVIEWER_DUPLICATE_SUBMIT: Final[str] = (
 )
 PLAN_REVIEW_REVIEWER_ACCEPTED: Final[str] = "plan_review.reviewer.accepted"
 PLAN_REVIEW_VALIDATION_ERROR: Final[str] = "plan_review.validation.error"
+
+# Conversational plan review: a responsible role answers an operator's comment
+# on a plan item.
+PLAN_REVIEW_REPLY_ADDED: Final[str] = "plan_review.reply.added"
+PLAN_REVIEW_REPLY_SKIPPED: Final[str] = "plan_review.reply.skipped"
+PLAN_REVIEW_REPLY_FAILED: Final[str] = "plan_review.reply.failed"

@@ -135,6 +135,7 @@ _PIN_SPEC_ROWS: Final[tuple[tuple[PromptPurposeId, PinSpec], ...]] = (
     (PromptPurposeId.META_CODE_MODIFICATION, PinSpec(temperature=0.2)),
     (PromptPurposeId.STEERING_PROPOSE, PinSpec(temperature=0.1)),
     (PromptPurposeId.EVOLUTION_PROPOSE, PinSpec(temperature=0.3)),
+    (PromptPurposeId.PLAN_REVIEW_ITEM_REPLY, PinSpec(temperature=0.3)),
     (PromptPurposeId.WORKSPACE, PinSpec(temperature=0.1)),
     (PromptPurposeId.INTAKE, PinSpec()),
     (PromptPurposeId.VERIFICATION, PinSpec()),
