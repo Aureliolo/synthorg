@@ -121,7 +121,7 @@ class TestLlmIntentClassifier:
             _intent_json(intent="act", confidence=0.95, named_targets=("CFO",))
         )
         outcome = await _classifier(provider=provider).classify(
-            _user_turn("@CFO send the invoice now")
+            _user_turn("have the CFO send the invoice now")
         )
         assert outcome.intent is TurnIntent.ACT
         assert outcome.reason is IntentRoutingReason.CLASSIFIED

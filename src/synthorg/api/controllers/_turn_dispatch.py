@@ -392,31 +392,36 @@ async def dispatch_turn(
 ) -> TurnResult:
     """Classify and dispatch one unified conversational turn.
 
-    Parses any leading ``@target`` mentions off the message, resolves the
-    intent (explicit override, classifier, or the EXPLAIN default), then
-    dispatches to the owning capability. An ACT intent that names no agent, or
-    a group convene that names no participants, degrades to a plain answer so
-    an ambiguous turn never acts or convenes on a guess.
+    Resolves the intent (explicit override, classifier, or the EXPLAIN
+    default), then dispatches to the owning capability. Who a group convenes,
+    and which agent acts, come from the names the classifier reads out of the
+    operator's own words: the operator talks to the org in plain language and
+    never has to route a turn by hand. An act that names no agent, or a new
+    group that names no participants, degrades to a plain answer so an
+    ambiguous turn never acts or convenes on a guess.
 
     Returns:
         The unified :class:`TurnResult` carrying the resolved intent and its
         single capability payload.
     """
-    from synthorg.meta.chief_of_staff._explicit_target import (  # noqa: PLC0415
-        extract_explicit_targets,
-    )
-
-    body, targets = extract_explicit_targets(data.message)
+    body = data.message
     outcome = await _resolve_intent(app_state, body=body, override=data.intent_override)
     intent = outcome.intent
     reason = outcome.reason
-    # A classifier group convene surfaces its own targets; an explicit @mention
-    # overrides them. Acting needs exactly one named agent.
-    participants = targets or outcome.named_targets
+    # The acting agent and the group roster are the names the classifier read
+    # from the message; the concern router still picks the answering voice for
+    # explain/propose, so the operator never routes a turn by hand.
+    participants = outcome.named_targets
 
-    if intent is TurnIntent.ACT and not targets:
+    if intent is TurnIntent.ACT and not participants:
         intent, reason = TurnIntent.EXPLAIN, IntentRoutingReason.ACT_NO_TARGET
-    if intent is TurnIntent.GROUP_CONVENE and not participants:
+    # A new group needs named participants to open; continuing an existing
+    # group conversation reuses its roster, so only degrade when opening.
+    if (
+        intent is TurnIntent.GROUP_CONVENE
+        and not participants
+        and data.conversation_id is None
+    ):
         intent, reason = TurnIntent.EXPLAIN, IntentRoutingReason.GROUP_TARGETS_MISSING
 
     logger.info(
@@ -462,7 +467,7 @@ async def dispatch_turn(
             act = await _dispatch_act(
                 app_state,
                 body=body,
-                agent=targets[0],
+                agent=participants[0],
                 conversation_id=data.conversation_id,
                 actor_id=actor_id,
             )

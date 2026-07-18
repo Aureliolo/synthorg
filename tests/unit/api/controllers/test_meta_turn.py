@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.intent_router import (
     IntentOutcome,
@@ -194,12 +195,13 @@ class TestMetaTurn:
     async def test_act_is_fail_closed_when_direct_mcp_off(
         self, async_test_client: LoopAsyncClient
     ) -> None:
-        """An @-addressed act 503s while direct_mcp_enabled is off (default)."""
+        """A named act 503s while direct_mcp_enabled is off (default)."""
         classifier = _FixedClassifier(
             IntentOutcome(
                 intent=TurnIntent.ACT,
                 reason=IntentRoutingReason.CLASSIFIED,
                 confidence=0.95,
+                named_targets=(NotBlankStr("CFO"),),
             )
         )
         app_state = async_test_client.app.state.app_state
@@ -209,7 +211,7 @@ class TestMetaTurn:
             resp = await async_test_client.post(
                 _BASE,
                 headers=_HEADERS,
-                json={"message": "@cfo send the invoice now"},
+                json={"message": "have the CFO send the invoice now"},
             )
             # direct_mcp_enabled is off by default: acting fails closed rather
             # than being answered as a read.
