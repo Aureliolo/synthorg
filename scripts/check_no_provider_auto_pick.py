@@ -82,12 +82,18 @@ def _provider_list_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[st
     """
     bound: set[str] = set()
     for node in ast.walk(func):
-        if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
+        # Both a plain ``names = ...`` and a typed ``names: list[str] = ...``
+        # (annotated) binding must be seen through.
+        target: ast.expr | None = None
+        value: ast.expr | None = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            value = node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            target = node.target
+            value = node.value
+        if not isinstance(target, ast.Name) or value is None:
             continue
-        target = node.targets[0]
-        if not isinstance(target, ast.Name):
-            continue
-        value: ast.expr = node.value
         # Unwrap a single-arg list()/tuple()/sorted() wrapper.
         if (
             isinstance(value, ast.Call)

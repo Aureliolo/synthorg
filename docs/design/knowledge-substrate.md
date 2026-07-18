@@ -359,8 +359,8 @@ namespace (Cat-1, runtime-readable over the settings API so the wizard and
 dashboard can toggle it), all hot (`restart_required=False`): `synthesis_enabled`
 (bool, default true; live-gated at the `ask` entrypoint), `synthesis_model`
 (`MODEL_REF`, default blank; carries provider+model, must be set for `ask` to
-answer; a blank ref provider resolves via the explicit default system
-provider), `synthesis_synthesizer` (strategy
+answer; blank leaves `ask` unwired and a non-empty value must bind both
+provider and model), `synthesis_synthesizer` (strategy
 discriminator, default `llm`), and `synthesis_max_chunks` (int, top hits fed to
 the synthesiser). The synthesiser is ghost-wired whenever a model + provider
 exist, and a `KnowledgeSettingsSubscriber` rebuilds and swaps it on any

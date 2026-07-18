@@ -229,17 +229,31 @@ def _agent_model_ref(agent: dict[str, object]) -> str | None:
 
 
 def _first_agent_with_model(
-    agents: list[dict[str, object]], *, tier: str | None
+    agents: list[dict[str, object]],
+    *,
+    tier: str | None,
+    require_provider: bool = False,
 ) -> dict[str, object] | None:
     """First agent carrying a model, preferring one matched to *tier*.
 
+    Args:
+        agents: Roster agent dicts to search.
+        tier: Preferred tier; matched agents are considered first.
+        require_provider: When ``True``, skip agents whose model carries no
+            bound provider, so a ref-returning caller does not stop at a
+            provider-less agent when a later agent has a bound assignment.
+
     Returns:
-        The chosen agent dict, or ``None`` when none carries a model.
+        The chosen agent dict, or ``None`` when none carries a (bound) model.
     """
     preferred = [a for a in agents if a.get("tier") == tier] if tier else []
     for pool in (preferred, agents):
         for agent in pool:
-            if _agent_model(agent) is not None:
+            model = _agent_model(agent)
+            if model is None:
+                continue
+            provider = model.get("provider")
+            if not require_provider or (isinstance(provider, str) and provider.strip()):
                 return agent
     return None
 
@@ -267,7 +281,7 @@ def pick_model_ref_for_tier(agents: list[dict[str, object]], tier: str) -> str |
         A serialized bound model reference, or ``None`` when no agent carries
         a bound (provider + model) assignment.
     """
-    agent = _first_agent_with_model(agents, tier=tier)
+    agent = _first_agent_with_model(agents, tier=tier, require_provider=True)
     return _agent_model_ref(agent) if agent else None
 
 
@@ -293,7 +307,7 @@ def pick_decomposition_model_ref(agents: list[dict[str, object]]) -> str | None:
         A serialized bound model reference, or ``None`` when no agent carries a
         bound assignment.
     """
-    agent = _first_agent_with_model(agents, tier="large")
+    agent = _first_agent_with_model(agents, tier="large", require_provider=True)
     return _agent_model_ref(agent) if agent else None
 
 

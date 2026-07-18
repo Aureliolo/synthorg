@@ -72,7 +72,7 @@ def _build_llm_strategy(  # noqa: PLR0913 -- uniform strategy-registry kwargs
     *,
     provider: CompletionProvider,
     decomposition_model: str,
-    provider_selector: ProviderSelector,
+    provider_selector: ProviderSelector | None = None,
     tool_provider: DecompositionToolProvider | None = None,
     cost_tracker: CostTrackerProtocol | None = None,
     shutdown_checker: ShutdownChecker | None = None,
@@ -189,11 +189,12 @@ def build_decomposition_strategy(  # noqa: PLR0913 -- shared session deps
         StrategyFactoryNotFoundError: If *strategy_name* is unknown.
     """
     if provider is not None and decomposition_model is not None:
-        if provider_selector is None:
+        if strategy_name == "agent-session" and provider_selector is None:
             msg = (
-                "Decomposition requires a provider_selector when a provider is "
-                "configured: the owner-run session dispatches each owner on its "
-                "own bound (provider, model), never a shared default."
+                "The owner-run agent-session decomposition requires a "
+                "provider_selector: each owner dispatches on its own bound "
+                "(provider, model), never a shared default. The single-shot "
+                "'llm' strategy needs no selector."
             )
             raise ValueError(msg)
         return _DECOMPOSITION_STRATEGY_REGISTRY.build(

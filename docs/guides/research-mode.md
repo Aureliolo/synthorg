@@ -27,7 +27,7 @@ Settings live in the `research` namespace (`src/synthorg/settings/definitions/re
 | Key | Type | Default | Purpose |
 |---|---|---|---|
 | `research.enabled` | bool | `true` | Master switch. |
-| `research.model` | str | `""` | Provider+model reference (`MODEL_REF`, carries both) for pipeline calls; must be set for research to wire. A blank ref provider resolves via the explicit default system provider. |
+| `research.model` | str | `""` | Provider+model reference (`MODEL_REF`, carries both) for pipeline calls; empty leaves research unwired, and a non-empty value must bind both provider and model. |
 | `research.query_planner` | str | `llm` | Query-planning strategy. |
 | `research.credibility_triage` | str | `hybrid` | Triage strategy (`hybrid`, `heuristic`, `llm`). |
 | `research.deduplicator` | str | `lexical` | Deduplication strategy (`lexical`, `embedding`). |

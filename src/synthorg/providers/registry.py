@@ -119,8 +119,12 @@ class ProviderRegistry:
             The resolved default provider name, or ``None`` when ambiguous.
         """
         name = self._default_provider_name
-        if name is not None and name in self._drivers:
-            return name
+        if name is not None:
+            # An explicitly configured default is honoured only when it is
+            # registered; a set-but-unregistered name is a misconfiguration and
+            # resolves to None (never silently substitute the sole driver, which
+            # would ignore the operator's explicit -- if wrong -- choice).
+            return name if name in self._drivers else None
         if len(self._drivers) == 1:
             return next(iter(self._drivers))
         return None
