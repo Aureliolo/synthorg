@@ -2,12 +2,24 @@ import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { postTurn } from '@/api/endpoints/meta'
+import {
+  deferredStreamBody,
+  explainStreamBody,
+  sseFrame,
+  sseResponse,
+} from '@/mocks/handlers'
 import { successFor } from '@/mocks/handlers/helpers'
 import { useOrgConversationStore } from '@/stores/org-conversation'
 import { useToastStore } from '@/stores/toast'
 import { server } from '@/test-setup'
 
 const TURN = '/api/v1/meta/chat/turn'
+const TURN_STREAM = '/api/v1/meta/chat/turn/stream'
+
+/** Defer the stream to `intent` so the buffered endpoint runs the capability. */
+function deferStreamTo(intent: 'propose' | 'group_convene' | 'act' | 'charter') {
+  server.use(http.post(TURN_STREAM, () => sseResponse(deferredStreamBody(intent))))
+}
 
 function proposeTurn(closed: boolean) {
   return successFor<typeof postTurn>({
@@ -48,16 +60,63 @@ beforeEach(() => {
 })
 
 describe('useOrgConversationStore', () => {
-  it('appends the operator turn and the org answer for an explain turn', async () => {
+  it('streams the org answer for an explain turn into an assistant bubble', async () => {
+    // The default stream handler emits two deltas then a complete frame.
     await send('how are we doing?')
     const { messages, activeIntent, conversationId } = useOrgConversationStore.getState()
     expect(messages.map((m) => m.kind)).toEqual(['human', 'assistant'])
+    const answer = messages.at(-1)
+    expect(answer).toMatchObject({
+      kind: 'assistant',
+      content: 'The organisation is healthy.',
+    })
+    // The bubble is finalised (not left streaming) once the complete frame lands.
+    expect(answer).not.toMatchObject({ isStreaming: true })
     // Explain is stateless: it never pins a capability or a conversation.
     expect(activeIntent).toBeUndefined()
     expect(conversationId).toBeUndefined()
   })
 
-  it('pins the capability and conversation for a stateful propose turn', async () => {
+  it('renders a specialist chime-in streamed after the answer', async () => {
+    server.use(
+      http.post(TURN_STREAM, () =>
+        sseResponse(
+          explainStreamBody('Runway is fine.') +
+            sseFrame('chime', { role: 'CFO', name: 'Casey', content: 'Watch Q3.' }),
+        ),
+      ),
+    )
+    await send('how is our runway?')
+    const kinds = useOrgConversationStore.getState().messages.map((m) => m.kind)
+    expect(kinds).toEqual(['human', 'assistant', 'agent'])
+  })
+
+  it('appends a notice when a streamed explain is a silent intent degrade', async () => {
+    const complete = {
+      intent: 'explain',
+      intent_reason: 'act_no_target',
+      intent_confidence: null,
+      conversation_id: null,
+      answer: { answer: "Here's what I'd do.", sources: [], cited_records: [], confidence: 0.6 },
+      propose: null,
+      group: null,
+      act: null,
+      charter: null,
+      chime_ins: [],
+    }
+    server.use(
+      http.post(TURN_STREAM, () =>
+        sseResponse(sseFrame('delta', { delta: 'x' }) + sseFrame('complete', complete)),
+      ),
+    )
+    await send('delete the ticket now')
+    const last = useOrgConversationStore.getState().messages.at(-1)
+    expect(last).toMatchObject({ kind: 'notice' })
+  })
+
+  it('pins the capability and conversation for a deferred propose turn', async () => {
+    // A non-explain turn defers from the stream and runs on the buffered POST.
+    deferStreamTo('propose')
     server.use(http.post(TURN, () => HttpResponse.json(proposeTurn(false))))
     await send('build a landing page')
     const state = useOrgConversationStore.getState()
@@ -67,6 +126,7 @@ describe('useOrgConversationStore', () => {
   })
 
   it('freezes the thread once a propose conversation closes', async () => {
+    deferStreamTo('propose')
     server.use(http.post(TURN, () => HttpResponse.json(proposeTurn(true))))
     await send('ship it')
     expect(useOrgConversationStore.getState().conversationClosed).toBe(true)
@@ -77,9 +137,11 @@ describe('useOrgConversationStore', () => {
     ).toHaveLength(1)
   })
 
-  it('surfaces a failure as an error notice and a toast', async () => {
+  it('surfaces a stream failure as an error notice and a toast', async () => {
     server.use(
-      http.post(TURN, () => HttpResponse.json({ detail: 'boom' }, { status: 500 })),
+      http.post(TURN_STREAM, () =>
+        HttpResponse.json({ detail: 'boom' }, { status: 500 }),
+      ),
     )
     await send('do a thing')
     const last = useOrgConversationStore.getState().messages.at(-1)
@@ -98,6 +160,7 @@ describe('useOrgConversationStore', () => {
   })
 
   it('startNew clears the thread', async () => {
+    deferStreamTo('propose')
     server.use(http.post(TURN, () => HttpResponse.json(proposeTurn(false))))
     await send('build a landing page')
     useOrgConversationStore.getState().startNew()

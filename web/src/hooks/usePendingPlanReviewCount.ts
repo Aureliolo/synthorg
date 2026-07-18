@@ -8,9 +8,9 @@ export interface UsePendingPlanReviewCountReturn {
  * Track the number of PENDING plan-review approvals.
  *
  * A plan review is decision-gathering, not a binary approval, so it lives on
- * the Plan Review page rather than the generic Approvals inbox (#2593). This
- * derives its count from the same approvals store the sidebar's approvals badge
- * already keeps live (poll + WebSocket), so no second fetch is issued: the
+ * the Plan Review page rather than the generic Approvals inbox. This derives
+ * its count from the same approvals store the sidebar's approvals badge already
+ * keeps live (poll + WebSocket), so no second fetch is issued: the
  * always-mounted {@link usePendingApprovalsCount} owns the one request.
  */
 export function usePendingPlanReviewCount(): UsePendingPlanReviewCountReturn {

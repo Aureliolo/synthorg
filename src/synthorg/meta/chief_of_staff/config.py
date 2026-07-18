@@ -87,6 +87,14 @@ _MULTI_VOICE_CONFIDENCE_FLOOR_DEFAULT: float = 0.7
 _MULTI_VOICE_TEMPERATURE_DEFAULT: float = 0.5
 _MULTI_VOICE_MAX_TOKENS_DEFAULT: int = 600
 _MULTI_VOICE_MAX_TOKENS_MIN: int = 100
+# A chime-in is a best-effort enrichment the operator has not asked for, and
+# on the buffered turn path it is awaited before the answer returns. Its cap is
+# therefore tighter than a first-class agent call (45s vs 120s): a slow or hung
+# chime must not add a first-class call's worth of latency to a plain answer. 5s
+# is the floor for a legitimate short reply; 300s a ceiling for slow large models.
+_MULTI_VOICE_TIMEOUT_SECONDS_DEFAULT: float = 45.0
+_MULTI_VOICE_TIMEOUT_SECONDS_MIN: float = 5.0
+_MULTI_VOICE_TIMEOUT_SECONDS_MAX: float = 300.0
 # Group chat: one human, several agents, round-robin turns. The
 # defaults below bound a single human turn so it cannot drive unbounded
 # fan-out cost; all are operator-tunable.
@@ -278,8 +286,11 @@ class ChiefOfStaffConfig(BaseModel):
             one answer (bounds per-answer fan-out).
         multi_voice_confidence_floor: Minimum confidence (0-1) a specialist
             must clear to chime in; below it it stays silent.
-        group_chat_enabled: Enable the multi-agent group chat
-            (``/meta/chat/group``). When off, the controller 503s.
+        multi_voice_timeout_seconds: Wall-clock cap for one chime-in call.
+            Tighter than a first-class agent call because a chime-in is a
+            best-effort enrichment awaited before a buffered answer returns.
+        group_chat_enabled: Enable the multi-agent group chat capability.
+            When off, a group-convene turn 503s.
         group_chat_max_participants: Maximum agents in one group
             conversation (bounds per-round fan-out).
         group_chat_round_token_budget: Total token budget for one
@@ -464,6 +475,11 @@ class ChiefOfStaffConfig(BaseModel):
         default=_MULTI_VOICE_CONFIDENCE_FLOOR_DEFAULT,
         ge=0.0,
         le=1.0,
+    )
+    multi_voice_timeout_seconds: float = Field(
+        default=_MULTI_VOICE_TIMEOUT_SECONDS_DEFAULT,
+        ge=_MULTI_VOICE_TIMEOUT_SECONDS_MIN,
+        le=_MULTI_VOICE_TIMEOUT_SECONDS_MAX,
     )
 
     # ── Multi-agent group chat ────────────────────────────

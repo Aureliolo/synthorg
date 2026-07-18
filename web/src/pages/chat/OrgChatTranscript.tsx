@@ -1,6 +1,8 @@
+import { memo, useMemo } from 'react'
 import { ArrowDown } from 'lucide-react'
 
 import { ChatBubble } from '@/components/ui/chat-bubble'
+import { LiveRegion } from '@/components/ui/live-region'
 import { StatusPill } from '@/components/ui/status-pill'
 
 import { ChatErrorNotice } from './ChatErrorNotice'
@@ -69,7 +71,7 @@ interface TurnViewProps {
   events: EventProps
 }
 
-function TurnView({ turn, onRetry, events }: TurnViewProps) {
+const TurnView = memo(function TurnView({ turn, onRetry, events }: TurnViewProps) {
   switch (turn.kind) {
     case 'human':
       return (
@@ -89,6 +91,7 @@ function TurnView({ turn, onRetry, events }: TurnViewProps) {
           content={turn.content}
           roleLabel={turn.roleLabel}
           timestamp={turn.timestamp}
+          isStreaming={turn.isStreaming}
         >
           <AssistantMeta turn={turn} />
         </ChatBubble>
@@ -120,7 +123,7 @@ function TurnView({ turn, onRetry, events }: TurnViewProps) {
     case 'event':
       return <EventTurnView turn={turn} events={events} />
   }
-}
+})
 
 export interface OrgChatTranscriptProps {
   messages: readonly OrgTurn[]
@@ -140,9 +143,23 @@ export function OrgChatTranscript({
   onResolveInvite,
   onRetry,
 }: OrgChatTranscriptProps) {
-  const events: EventProps = { resolvingInvites, onResolveInvite }
+  // Stable identity so the memoised TurnView only re-renders when its own turn
+  // (or the invite-resolution set) actually changes, not on every keystroke.
+  const events: EventProps = useMemo(
+    () => ({ resolvingInvites, onResolveInvite }),
+    [resolvingInvites, onResolveInvite],
+  )
+  // While a token stream is live the growing bubble is aria-hidden, so a
+  // screen reader learns the state (not every token) from this debounced
+  // region; a thinking indicator covers the pre-first-token wait.
+  const streaming = messages.some(
+    (turn) => turn.kind === 'assistant' && turn.isStreaming === true,
+  )
   return (
     <div className="relative min-h-0 flex-1">
+      <LiveRegion className="sr-only">
+        {streaming ? 'The org is responding.' : ''}
+      </LiveRegion>
       <div
         ref={autoScroll.scrollRef}
         role="log"
@@ -153,7 +170,9 @@ export function OrgChatTranscript({
         {messages.map((turn) => (
           <TurnView key={turn.id} turn={turn} onRetry={onRetry} events={events} />
         ))}
-        {sending && <ChatThinkingIndicator label="The org is responding" />}
+        {sending && !streaming && (
+          <ChatThinkingIndicator label="The org is responding" />
+        )}
       </div>
       {autoScroll.showJumpToLatest && (
         <button

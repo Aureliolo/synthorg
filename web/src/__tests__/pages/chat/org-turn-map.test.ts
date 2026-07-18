@@ -7,7 +7,8 @@ import type {
   ProposeResult,
   TurnResult,
 } from '@/api/types'
-import { mapTurnResult } from '@/pages/chat/org-turn-map'
+import { buildCharter } from '@/mocks/handlers'
+import { intentDegradeNotice, mapTurnResult } from '@/pages/chat/org-turn-map'
 
 function baseResult(overrides: Partial<TurnResult>): TurnResult {
   return {
@@ -237,18 +238,62 @@ describe('mapTurnResult', () => {
   })
 
   it('maps a drafted charter to a note plus a charter-drafted event', () => {
-    const charter = {
-      charter: { id: 'ch-1', version: 1 },
+    const charter: InterviewTurnResult = {
+      charter: buildCharter({ id: 'ch-1' }),
       conversation_closed: false,
       conversation_id: 'c1',
       next_question: null,
       status: 'drafted',
-    } as unknown as InterviewTurnResult
+    }
     const turns = mapTurnResult(baseResult({ intent: 'charter', charter }))
     expect(turns).toHaveLength(2)
     expect(turns[1]).toMatchObject({
       kind: 'event',
       event: { type: 'charter-drafted', charterId: 'ch-1' },
     })
+  })
+
+  it('appends a notice when an explain answer is a silent intent degrade', () => {
+    const turns = mapTurnResult(
+      baseResult({
+        intent: 'explain',
+        intent_reason: 'act_no_target',
+        answer: { answer: "Here's what I'd do.", sources: [], cited_records: [], confidence: 0.6 },
+      }),
+    )
+    expect(turns).toHaveLength(2)
+    expect(turns[0]).toMatchObject({ kind: 'assistant' })
+    expect(turns[1]).toMatchObject({ kind: 'notice' })
+    expect((turns[1] as { content: string }).content).toContain('Answered as a question')
+  })
+})
+
+describe('intentDegradeNotice', () => {
+  it('is null for a normally-classified explain answer', () => {
+    expect(intentDegradeNotice(baseResult({ intent: 'explain', intent_reason: 'classified' }))).toBeNull()
+  })
+
+  it('is null for an explicit override', () => {
+    expect(
+      intentDegradeNotice(baseResult({ intent: 'explain', intent_reason: 'explicit_override' })),
+    ).toBeNull()
+  })
+
+  it('is null for a non-explain intent', () => {
+    expect(intentDegradeNotice(baseResult({ intent: 'propose', intent_reason: 'classified' }))).toBeNull()
+  })
+
+  it('returns a notice for a below-floor act', () => {
+    const notice = intentDegradeNotice(
+      baseResult({ intent: 'explain', intent_reason: 'act_floor_not_met' }),
+    )
+    expect(notice).toMatchObject({ kind: 'notice' })
+  })
+
+  it('returns a notice for a group-targets-missing degrade', () => {
+    const notice = intentDegradeNotice(
+      baseResult({ intent: 'explain', intent_reason: 'group_targets_missing' }),
+    )
+    expect(notice?.content).toContain('convening a group')
   })
 })

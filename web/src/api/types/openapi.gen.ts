@@ -2783,6 +2783,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/meta/chat/turn/stream": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** TurnStream */
+        readonly post: operations["ApiV1MetaChatTurnStreamTurnStream"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/meta/config": {
         readonly parameters: {
             readonly query?: never;
@@ -11511,8 +11528,9 @@ export type components = {
          *     Attributes:
          *         CLASSIFIED: The classifier's pick was taken as-is.
          *         EXPLICIT_OVERRIDE: The caller supplied an explicit intent override.
-         *         CONVERSATION_KIND_FIXED: An in-flight group/charter conversation
-         *             dispatches to its owning capability without re-classification.
+         *         CONVERSATION_KIND_FIXED: An in-flight GROUP conversation dispatches
+         *             straight to group chat without re-classification, so a follow-up
+         *             turn cannot collapse the thread to EXPLAIN.
          *         NO_INTENT_CLASSIFIER: No classifier is wired; defaulted to EXPLAIN.
          *         ACT_FLOOR_NOT_MET: A confident-enough ACT was not reached; degraded
          *             to EXPLAIN.
@@ -24770,6 +24788,37 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_TurnResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChatTurnStreamTurnStream: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TurnRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "text/event-stream": unknown;
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

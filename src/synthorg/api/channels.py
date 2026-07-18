@@ -138,26 +138,27 @@ def get_channels_plugin(
     return None
 
 
-def publish_ws_event(
-    request: Request[object, object, State],
+def publish_ws_event_with_plugin(
+    channels_plugin: ChannelsPlugin | None,
     event_type: WsEventType,
     channel: str,
     payload: dict[str, object],
 ) -> None:
-    """Best-effort publish an event to a named WebSocket channel.
+    """Best-effort publish to a channel through an already-resolved plugin.
 
-    Logs a warning and returns silently if the ``ChannelsPlugin``
-    is not registered or the publish call fails.  ``MemoryError``
-    and ``RecursionError`` are always re-raised.
+    The plugin-first form so a caller that outlives its request (a background
+    task fired after the response returned) can still publish: it resolves the
+    plugin while the request is live and hands it here. Logs and returns
+    silently when the plugin is absent or the publish fails; ``MemoryError``
+    and ``RecursionError`` always re-raise.
 
     Args:
-        request: The incoming Litestar request.
+        channels_plugin: The resolved plugin, or ``None`` to drop the event.
         event_type: Classification of the event.
         channel: Target channel name (shared channels from
             ``ALL_CHANNELS`` or dynamic ``user:{id}`` channels).
         payload: Event-specific data.
     """
-    channels_plugin = get_channels_plugin(request)
     if channels_plugin is None:
         logger.warning(
             API_WS_SEND_FAILED,
@@ -186,6 +187,30 @@ def publish_ws_event(
             channel=channel,
             note="Failed to publish WS event",
         )
+
+
+def publish_ws_event(
+    request: Request[object, object, State],
+    event_type: WsEventType,
+    channel: str,
+    payload: dict[str, object],
+) -> None:
+    """Best-effort publish an event to a named WebSocket channel.
+
+    Logs a warning and returns silently if the ``ChannelsPlugin``
+    is not registered or the publish call fails.  ``MemoryError``
+    and ``RecursionError`` are always re-raised.
+
+    Args:
+        request: The incoming Litestar request.
+        event_type: Classification of the event.
+        channel: Target channel name (shared channels from
+            ``ALL_CHANNELS`` or dynamic ``user:{id}`` channels).
+        payload: Event-specific data.
+    """
+    publish_ws_event_with_plugin(
+        get_channels_plugin(request), event_type, channel, payload
+    )
 
 
 def create_channels_plugin() -> ChannelsPlugin:

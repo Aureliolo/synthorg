@@ -32,6 +32,12 @@ export interface ChatBubbleProps {
   agentTopic?: string | null | undefined
   /** Danger tone for the notice variant (e.g. a failed turn). */
   isError?: boolean | undefined
+  /**
+   * The assistant answer is still streaming in: shows a caret and, crucially,
+   * hides the bubble from assistive tech so a screen reader is not spammed
+   * token-by-token (the transcript's own live region announces the state).
+   */
+  isStreaming?: boolean | undefined
   className?: string | undefined
 }
 
@@ -169,7 +175,8 @@ function BubbleBody({
   variant,
   content,
   children,
-}: Pick<ChatBubbleProps, 'variant' | 'content' | 'children'>) {
+  isStreaming = false,
+}: Pick<ChatBubbleProps, 'variant' | 'content' | 'children' | 'isStreaming'>) {
   const rendersMarkdown = MARKDOWN_VARIANTS.has(variant)
   const body =
     content === undefined ? null : rendersMarkdown ? (
@@ -180,8 +187,15 @@ function BubbleBody({
   return (
     <>
       {body}
+      {isStreaming && (
+        <span
+          className="inline-block h-4 w-1.5 animate-pulse bg-foreground/60 align-text-bottom"
+          aria-hidden
+        />
+      )}
       {children}
-      {rendersMarkdown && content ? (
+      {/* No copy affordance mid-stream: the text is still growing. */}
+      {rendersMarkdown && content && !isStreaming ? (
         <div className="flex justify-end">
           <CopyButton text={content} />
         </div>
@@ -197,9 +211,19 @@ function BubbleBody({
  * bubbles carry arbitrary inline content.
  */
 export function ChatBubble(props: ChatBubbleProps) {
-  const { variant, content, children, isError = false, className } = props
+  const {
+    variant,
+    content,
+    children,
+    isError = false,
+    isStreaming = false,
+    className,
+  } = props
   return (
     <div
+      // Hidden from assistive tech while streaming so a screen reader is not
+      // read every token; the finalised bubble (isStreaming false) is announced.
+      aria-hidden={isStreaming || undefined}
       className={cn(
         'space-y-1.5 rounded-md p-card text-sm',
         VARIANT_STYLES[variant],
@@ -208,7 +232,7 @@ export function ChatBubble(props: ChatBubbleProps) {
       )}
     >
       <BubbleHeader {...props} />
-      <BubbleBody variant={variant} content={content}>
+      <BubbleBody variant={variant} content={content} isStreaming={isStreaming}>
         {children}
       </BubbleBody>
     </div>

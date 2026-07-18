@@ -10,10 +10,14 @@ import {
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { EmptyState } from '@/components/ui/empty-state'
+import { createLogger } from '@/lib/logger'
 import { useOrgConversationStore } from '@/stores/org-conversation'
 import { formatRelativeTime } from '@/utils/format'
+import { sanitizeForLog } from '@/utils/logging'
 
 import { activeIntentForKind, hydrateOrgMessages } from './chat-hydrate'
+
+const log = createLogger('conversation-history')
 
 const KIND_LABEL: Readonly<Record<ConversationKind, string>> = {
   direct: 'Request work',
@@ -57,7 +61,8 @@ export function ConversationHistoryDrawer({
       try {
         const items = await listConversations()
         if (!cancelled) setConversations(items)
-      } catch {
+      } catch (err) {
+        log.error('Failed to load conversation history', sanitizeForLog(err))
         if (!cancelled) setError('Could not load conversation history.')
       } finally {
         if (!cancelled) setLoading(false)
@@ -84,7 +89,8 @@ export function ConversationHistoryDrawer({
           conversationClosed: conversation.status === 'closed',
         })
         onClose()
-      } catch {
+      } catch (err) {
+        log.error('Failed to resume conversation', sanitizeForLog(err))
         setResumeError('Could not resume that conversation. Pick another below.')
       } finally {
         setResumingId(null)

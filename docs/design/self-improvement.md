@@ -339,15 +339,27 @@ system's job, not the user's, so there is no mode picker.
   `group` / `act` / `charter`), and any specialist `chime_ins` (multi-voice,
   below).
 
+- **`POST /meta/chat/turn/stream`** (streamed EXPLAIN): the same classification,
+  but an `explain` turn streams token-by-token as SSE `delta` frames, then a
+  `complete` frame (the full `TurnResult`), then a `chime` frame per specialist
+  as multi-voice resolves. Every *other* intent emits a single `deferred` frame
+  and executes nothing: the client re-issues it against the buffered
+  `POST /meta/chat/turn` with the classified intent forced, so a side-effecting
+  turn (above all `act`) only ever runs on the idempotent buffered path and a
+  dropped stream can never re-run its tools.
+
 - **Intent is best-effort with a hard safety floor.** Any uncertainty degrades
   toward `explain` (a read), never toward `act` (a write) or `charter` (an
   expensive multi-turn interview): those two carry their own higher confidence
   floors (`act_intent_confidence_floor` 0.85, `charter_intent_confidence_floor`
   0.8), and a malformed/timed-out classification falls back to `explain`.
   `turn_router_enabled` gates the classifier live per request; with no
-  classifier wired every turn answers as a plain question. An in-flight
-  `group`/`charter` conversation is never re-classified mid-thread (a fixed-kind
-  short-circuit).
+  classifier wired every turn answers as a plain question. An in-flight `group`
+  conversation is never re-classified mid-thread (a fixed-kind short-circuit),
+  so a terse follow-up cannot collapse the thread out of the group; a charter
+  interview keeps its own substrate (`meta/charter`) and act turns join the
+  operator's `direct` conversation, so neither needs a distinct conversation
+  kind.
 
 - **Per-capability gates survive the one surface.** Each intent keeps its own
   `chief_of_staff.*_enabled` flag, model setting, and downstream contract,

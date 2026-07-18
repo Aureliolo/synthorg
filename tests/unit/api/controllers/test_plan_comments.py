@@ -137,8 +137,10 @@ class TestPlanCommentController:
                 headers=make_auth_headers("ceo"),
             )
             assert resp.status_code == 201
-            # The POST returns the operator's comment; the agent reply lands as a
-            # second, attributed comment in the thread.
+            # The POST returns the operator's comment as soon as it persists; the
+            # agent reply is generated in a fire-and-forget background task. Drain
+            # it so the assertion sees the settled thread rather than racing it.
+            await app_state.drain_entry_background_tasks()
             listed = await async_test_client.get(
                 f"/api/v1/plans/{_PLAN}/comments",
                 headers=make_auth_headers("ceo"),
@@ -154,6 +156,32 @@ class TestPlanCommentController:
             assert agent["reply_to_id"] == human["id"]
         finally:
             app_state.swap_slice(original)
+
+    async def test_reply_to_a_sibling_comment_is_accepted(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed_plan(async_test_client)
+        await _seed_comment(async_test_client, "parent", minute=1)
+        parent_id = str(as_uuid("parent"))
+        resp = await async_test_client.post(
+            f"/api/v1/plans/{_PLAN}/comments/items/{_ITEM}",
+            json={"body": "A threaded reply.", "reply_to_id": parent_id},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 201
+        assert resp.json()["data"]["reply_to_id"] == parent_id
+
+    async def test_reply_to_nonexistent_comment_is_404(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _seed_plan(async_test_client)
+        ghost = str(as_uuid("no-such-comment"))
+        resp = await async_test_client.post(
+            f"/api/v1/plans/{_PLAN}/comments/items/{_ITEM}",
+            json={"body": "Reply to nothing.", "reply_to_id": ghost},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
 
     async def test_blank_body_is_rejected(
         self, async_test_client: LoopAsyncClient

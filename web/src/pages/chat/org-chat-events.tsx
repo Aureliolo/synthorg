@@ -7,7 +7,6 @@ import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { ROUTES } from '@/router/routes'
 import { approvalDetailPath } from '@/utils/approvals'
 
-import { hasAttribution } from './attribution'
 import type {
   ActionEvent,
   CharterDraftedEvent,
@@ -103,10 +102,13 @@ function ActionCard({ event }: { event: ActionEvent }) {
           </Button>
         </div>
       )}
-      {hasAttribution(event.agentName, event.agentRole) && (
+      {/* An act result carries a name but no role, so attribution gates on the
+          name alone (never the both-name-and-role rule the routed replies use)
+          and renders name-only when the role is absent. */}
+      {event.agentName && (
         <ResponderAttribution
-          name={event.agentName ?? ''}
-          role={event.agentRole ?? ''}
+          name={event.agentName}
+          {...(event.agentRole != null && { role: event.agentRole })}
         />
       )}
     </div>

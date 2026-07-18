@@ -2593,11 +2593,16 @@ CREATE TABLE plan_item_comments (
     author_kind TEXT NOT NULL DEFAULT 'human'
     CHECK (author_kind IN ('human', 'agent')),
     author_agent_id TEXT
-    CHECK (author_agent_id IS NULL OR LENGTH(TRIM(author_agent_id)) > 0),
+    CHECK (
+        (author_agent_id IS NULL OR LENGTH(TRIM(author_agent_id)) > 0)
+        AND ((author_kind = 'agent') = (author_agent_id IS NOT NULL))
+    ),
     reply_to_id TEXT
+    REFERENCES plan_item_comments (id) ON DELETE SET NULL
     CHECK (reply_to_id IS NULL OR LENGTH(TRIM(reply_to_id)) > 0)
 );
 CREATE INDEX idx_plan_item_comments_plan_item
 ON plan_item_comments (plan_id, item_id, created_at);
 CREATE INDEX idx_plan_item_comments_reply
-ON plan_item_comments (reply_to_id);
+ON plan_item_comments (reply_to_id)
+WHERE reply_to_id IS NOT NULL;

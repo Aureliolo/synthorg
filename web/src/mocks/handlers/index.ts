@@ -191,6 +191,12 @@ export { authLoginSuccess, authSetupSuccess } from './auth'
 export { buildAuditEntry } from './audit'
 export { buildCharter } from './charter'
 export {
+  deferredStreamBody,
+  explainStreamBody,
+  sseFrame,
+  sseResponse,
+} from './meta'
+export {
   buildDeliverableReceipt,
   buildReceiptValidationResult,
 } from './deliverableReceipts'

@@ -1,6 +1,6 @@
 /** Approval queue and HITL evidence types. */
 
-import type { ApprovalRiskLevel, ApprovalStatus } from './enums'
+import type { ApprovalRiskLevel, ApprovalSource, ApprovalStatus } from './enums'
 import type { SafeEvidencePackageSignature } from './dtos.gen'
 
 export type {
@@ -35,6 +35,8 @@ export const SIGNATURE_ALGORITHM_VALUES = [
 /** Frontend-only query filter (not a Pydantic DTO). */
 export interface ApprovalFilters {
   status?: ApprovalStatus
+  /** Narrow to one origin (e.g. plan reviews only); server-side `source` param. */
+  source?: ApprovalSource
   risk_level?: ApprovalRiskLevel
   action_type?: string
   cursor?: string | null

@@ -10,7 +10,12 @@ import type {
 
 import { hasAttribution } from './attribution'
 import { nextMessageId } from './message-id'
-import type { OrgAgentTurn, OrgAssistantTurn, OrgTurn } from './org-chat-types'
+import type {
+  OrgAgentTurn,
+  OrgAssistantTurn,
+  OrgNoticeTurn,
+  OrgTurn,
+} from './org-chat-types'
 
 /**
  * Translate a buffered {@link TurnResult} into transcript turns.
@@ -238,6 +243,43 @@ function mapCharter(charter: InterviewTurnResult | null): OrgTurn[] {
   return turns
 }
 
+// Why a turn that meant to act / convene / charter was answered as a plain
+// question instead. The classifier ships the reason so the operator is never
+// silently downgraded; a `null` entry (classified / explicit override / a
+// fixed-kind thread) is a normal answer and shows no notice.
+const DEGRADE_NOTICE: Record<TurnResult['intent_reason'], string | null> = {
+  classified: null,
+  explicit_override: null,
+  conversation_kind_fixed: null,
+  no_intent_classifier: null,
+  act_floor_not_met:
+    'Answered as a question: I was not confident enough you wanted an action taken. Give a clear, specific instruction to act.',
+  act_no_target:
+    'Answered as a question: no acting agent was named. Say who should act (e.g. "have finance…").',
+  charter_floor_not_met:
+    'Answered as a question rather than starting a company charter. Say explicitly you want to define a new company.',
+  group_targets_missing:
+    'Answered as a question rather than convening a group. Name the roles you want in the room.',
+  classify_call_failed:
+    'Answered as a question: I could not classify your request just now. Try rephrasing.',
+  response_invalid:
+    'Answered as a question: I could not classify your request just now. Try rephrasing.',
+}
+
+/**
+ * A notice explaining a silent intent degrade, or `null` for a normal answer.
+ *
+ * Surfaced after a degraded EXPLAIN answer so an "act"/"convene"/"charter"
+ * request that fell below its confidence floor is visibly distinct from a
+ * question the operator actually asked.
+ */
+export function intentDegradeNotice(result: TurnResult): OrgNoticeTurn | null {
+  if (result.intent !== 'explain') return null
+  const message = DEGRADE_NOTICE[result.intent_reason]
+  if (message === null) return null
+  return { id: nextMessageId(), kind: 'notice', content: message }
+}
+
 /** Map a resolved turn to its transcript bubbles + inline event cards. */
 export function mapTurnResult(result: TurnResult): OrgTurn[] {
   switch (result.intent) {
@@ -249,7 +291,10 @@ export function mapTurnResult(result: TurnResult): OrgTurn[] {
       return mapAct(result.act)
     case 'charter':
       return mapCharter(result.charter)
-    case 'explain':
-      return mapExplain(result.answer, result.chime_ins)
+    case 'explain': {
+      const turns = mapExplain(result.answer, result.chime_ins)
+      const notice = intentDegradeNotice(result)
+      return notice ? [...turns, notice] : turns
+    }
   }
 }

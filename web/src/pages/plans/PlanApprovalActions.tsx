@@ -1,18 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { CheckCircle2, XCircle } from 'lucide-react'
 
+import { listApprovals } from '@/api/endpoints/approvals'
 import type { Plan } from '@/api/types/plans'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { InputField } from '@/components/ui/input-field'
+import { createLogger } from '@/lib/logger'
 import { useApprovalsStore } from '@/stores/approvals'
 import { usePlansStore } from '@/stores/plans'
+import { sanitizeForLog } from '@/utils/logging'
+
+const log = createLogger('plan-approval-actions')
 
 // Mirror RejectRequest.reason's server bound so an over-long reason is capped
 // in the browser rather than rejected after a round trip.
 const REJECT_REASON_MAX = 2000
-const APPROVAL_FETCH_LIMIT = 200
+// One page of PENDING PLAN REVIEWS (a small, bounded set for a single operator),
+// scoped by ``source`` so the plan's parked approval is found regardless of how
+// many unrelated approvals are outstanding.
+const PENDING_REVIEW_FETCH_LIMIT = 200
 
 interface PlanApproval {
   approvalId: string | undefined
@@ -31,26 +39,31 @@ interface RejectController {
 }
 
 function usePlanApproval(plan: Plan): PlanApproval {
-  const approvals = useApprovalsStore((s) => s.approvals)
+  const [approvalId, setApprovalId] = useState<string | undefined>(undefined)
 
-  // The always-mounted sidebar badge normally owns the approvals fetch; on a
-  // direct deep-link to a plan it may not have run yet, so pull once if empty.
-  useEffect(() => {
-    if (useApprovalsStore.getState().approvals.length === 0) {
-      void useApprovalsStore.getState().fetchApprovals({ limit: APPROVAL_FETCH_LIMIT })
+  // Resolve the plan's parked approval from the small, bounded set of pending
+  // plan reviews (scoped by ``source``), not the generic approvals page: with
+  // many approvals outstanding, this plan's review can fall outside a capped
+  // page of the mixed list and the approve controls would vanish.
+  const resolveApproval = useCallback(async () => {
+    try {
+      const page = await listApprovals({
+        source: 'plan_review',
+        status: 'pending',
+        limit: PENDING_REVIEW_FETCH_LIMIT,
+      })
+      setApprovalId(page.data.find((a) => a.metadata['plan_id'] === plan.id)?.id)
+    } catch (err) {
+      log.error('Failed to resolve the plan approval', sanitizeForLog(err))
+      setApprovalId(undefined)
     }
-  }, [])
+  }, [plan.id])
 
-  const approvalId = useMemo(
-    () =>
-      approvals.find(
-        (a) =>
-          a.source === 'plan_review' &&
-          a.status === 'pending' &&
-          a.metadata['plan_id'] === plan.id,
-      )?.id,
-    [approvals, plan.id],
-  )
+  // Re-resolve when the plan first enters review as well as on mount, so the
+  // controls appear as soon as its approval is parked.
+  useEffect(() => {
+    void resolveApproval()
+  }, [resolveApproval, plan.status])
 
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState('')
@@ -66,7 +79,10 @@ function usePlanApproval(plan: Plan): PlanApproval {
     setSubmitting(true)
     const result = await useApprovalsStore.getState().approveOne(approvalId)
     setSubmitting(false)
-    if (result) refetchPlan()
+    if (result) {
+      setApprovalId(undefined)
+      refetchPlan()
+    }
   }, [approvalId, refetchPlan])
 
   const confirm = useCallback(async () => {
@@ -84,6 +100,7 @@ function usePlanApproval(plan: Plan): PlanApproval {
     if (result) {
       setOpen(false)
       setReason('')
+      setApprovalId(undefined)
       refetchPlan()
     }
   }, [approvalId, reason, refetchPlan])
@@ -152,12 +169,12 @@ function PlanRejectDialog({
 /**
  * Whole-plan approve / reject, inline on the Plan Review page.
  *
- * A plan review is decision-gathering with its own surface (#2593), so it no
- * longer appears in the generic Approvals inbox; the operator approves or
- * rejects the plan as a whole here. The decision still runs through the
- * canonical `/approvals` path (the plan's parked approval, resolved from its
- * `plan_id` metadata), so approval stays atomic and drives the same resume.
- * Renders nothing unless the plan is under review with a pending approval.
+ * A plan review is decision-gathering with its own surface, so it does not
+ * appear in the generic Approvals inbox; the operator approves or rejects the
+ * plan as a whole here. The decision still runs through the canonical
+ * `/approvals` path (the plan's parked approval, resolved from its `plan_id`
+ * metadata), so approval stays atomic and drives the same resume. Renders
+ * nothing unless the plan is under review with a pending approval.
  */
 export function PlanApprovalActions({ plan }: { plan: Plan }) {
   const { approvalId, submitting, handleApprove, reject } = usePlanApproval(plan)

@@ -105,9 +105,11 @@ class AppState(AppStateSliceMixin):
         self.startup_time = (
             startup_time if startup_time is not None else self.clock.monotonic()
         )
-        # Background-task sets for the objective / brownfield entry paths.
+        # Background-task sets for the objective / brownfield entry paths and
+        # the fire-and-forget plan-review reply.
         self._objective_background_tasks: set[asyncio.Task[None]] = set()
         self._brownfield_background_tasks: set[asyncio.Task[None]] = set()
+        self._plan_reply_background_tasks: set[asyncio.Task[None]] = set()
         # Shutdown flag observable by long-lived subsystems; constructed
         # eagerly so concurrent first-reads share one ``Event``.
         self._shutdown_requested: asyncio.Event = asyncio.Event()
@@ -173,18 +175,32 @@ class AppState(AppStateSliceMixin):
         """
         return self._brownfield_background_tasks
 
-    async def drain_entry_background_tasks(self) -> None:
-        """Drain in-flight objective / brownfield entry background tasks.
+    @property
+    def plan_reply_background_tasks(self) -> set[asyncio.Task[None]]:
+        """Live set of in-flight plan-review agent-reply background tasks.
 
-        Gives the live tasks a bounded grace
+        Returns:
+            The mutable task set (callers add/discard their own tasks).
+        """
+        return self._plan_reply_background_tasks
+
+    async def drain_entry_background_tasks(self) -> None:
+        """Drain in-flight entry and plan-reply background tasks.
+
+        Covers the objective / brownfield entry paths and the fire-and-forget
+        plan-review reply. Gives the live tasks a bounded grace
         (``_ENTRY_TASK_DRAIN_GRACE_SECONDS``) to finish at a turn boundary,
         then cancels any straggler and awaits its cancellation so the
         coroutine unwinds cleanly rather than being abandoned when the
         loop tears down. Snapshots the sets up front because a completing
         task's done-callback discards itself from the live set (mutation
-        during iteration). Idempotent and safe when both sets are empty.
+        during iteration). Idempotent and safe when the sets are empty.
         """
-        pending = self._objective_background_tasks | self._brownfield_background_tasks
+        pending = (
+            self._objective_background_tasks
+            | self._brownfield_background_tasks
+            | self._plan_reply_background_tasks
+        )
         pending = {task for task in pending if not task.done()}
         if not pending:
             return

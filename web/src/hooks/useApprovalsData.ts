@@ -44,8 +44,8 @@ export function useApprovalsData(): UseApprovalsDataReturn {
   const rawApprovals = useApprovalsStore((s) => s.approvals)
   // Plan reviews live on their own surface (the Plan Review page), so the
   // generic Approvals inbox excludes them from the list, counts, and batch
-  // selection (#2593). Filtered here, after the raw store read, so the
-  // reference stays stable across renders.
+  // selection. Filtered here, after the raw store read, so the reference stays
+  // stable across renders.
   const approvals = useMemo(
     () => rawApprovals.filter((a) => a.source !== 'plan_review'),
     [rawApprovals],

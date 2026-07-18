@@ -7,7 +7,9 @@ add a short, attributed chime-in from their own role, so the operator sees the
 selective: silence is the default, and a specialist speaks only when its role
 adds a distinct, grounded perspective above a real value bar.
 
-Best-effort by construction: a chime-in never fails or blocks the answer.
+Best-effort by construction: a chime-in never *fails* the answer, and never
+delays it by more than a bounded ``multi_voice_timeout_seconds`` on the buffered
+path (the streaming path delivers it after the answer, off the critical path).
 Any classifier error, invalid reply, or below-floor candidate yields no extra
 voice, so the operator still gets the plain answer. Mirrors
 :class:`~synthorg.meta.chief_of_staff.intent_router.LlmIntentClassifier`'s
@@ -22,7 +24,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.authority import compare_authority
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
@@ -305,6 +306,8 @@ class LlmMultiVoiceRouter:
                     timeout=self._timeout_seconds,
                 )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort enrichment; a chime-in
+            # failure must never fail or block the answer it decorates.
             reraise_critical(exc)
             logger.warning(
                 COS_MULTI_VOICE_FAILED,
@@ -338,21 +341,25 @@ class LlmMultiVoiceRouter:
 def _senior_per_role(
     active: tuple[AgentIdentity, ...],
 ) -> tuple[AgentIdentity, ...]:
-    """Collapse the roster to the most-senior holder of each distinct role.
+    """Collapse the roster to one deterministic holder of each distinct role.
 
     The chime prompt lists one candidate per role, so an org with several
-    agents sharing a role does not offer the model duplicate rows; the
-    seniority pick matches how ``resolve_agent_for_role`` later attributes it.
+    agents sharing a role does not offer the model duplicate rows. Holders of
+    a role share its authority, so the alphabetically-first name is the
+    tiebreak, matching how ``resolve_agent_for_role`` later attributes it.
 
     Returns:
         One :class:`AgentIdentity` per distinct role (case-insensitive),
-        ordered most-senior-first.
+        ordered by name.
     """
     by_role: dict[str, AgentIdentity] = {}
     for agent in active:
         key = agent.role.casefold()
         held = by_role.get(key)
-        if held is None or compare_authority(agent.role, held.role) < 0:
+        # Holders of one role share its authority, so seniority never
+        # separates them; the name-ascending tiebreak keeps this pick
+        # deterministic and aligned with resolve_agent_for_role's attribution.
+        if held is None or agent.name < held.name:
             by_role[key] = agent
     return tuple(
         sorted(by_role.values(), key=lambda a: a.name),
@@ -436,7 +443,7 @@ def build_multi_voice_router(
         max_speakers=config.multi_voice_max_speakers,
         temperature=config.multi_voice_temperature,
         max_tokens=config.multi_voice_max_tokens,
-        timeout_seconds=config.agent_call_timeout_seconds,
+        timeout_seconds=config.multi_voice_timeout_seconds,
         cost_tracker=cost_tracker,
         provider_registry=provider_registry,
         config_resolver=config_resolver,

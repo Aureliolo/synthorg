@@ -1,6 +1,12 @@
 import { create } from 'zustand'
 
-import { postTurn, type PostTurnOptions } from '@/api/endpoints/meta'
+import { parseCitedRecords } from '@/api/endpoints/cited-records'
+import {
+  postTurn,
+  streamTurn,
+  type PostTurnOptions,
+  type StreamTurnOutcome,
+} from '@/api/endpoints/meta'
 import type { TurnIntent, TurnResult } from '@/api/types'
 import { createLogger } from '@/lib/logger'
 import { useApprovalsStore } from '@/stores/approvals'
@@ -11,8 +17,8 @@ import { isAbortError } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 import { nextMessageId } from '@/pages/chat/message-id'
-import type { OrgTurn } from '@/pages/chat/org-chat-types'
-import { mapTurnResult } from '@/pages/chat/org-turn-map'
+import type { OrgAssistantTurn, OrgTurn } from '@/pages/chat/org-chat-types'
+import { intentDegradeNotice, mapTurnResult } from '@/pages/chat/org-turn-map'
 
 const log = createLogger('org-conversation')
 
@@ -165,9 +171,119 @@ function handleTurnError(
   set({ messages: [...get().messages, errorNotice(description)] })
 }
 
+type Setter = (patch: Partial<OrgConversationState>) => void
+type Getter = () => OrgConversationState
+
+function applyBufferedResult(
+  set: Setter,
+  get: Getter,
+  result: TurnResult,
+  iso: string,
+): void {
+  if (result.charter) {
+    useCharterStore.getState().hydrateFromTurn(result.charter)
+  }
+  set({
+    messages: [...get().messages, ...stampNow(mapTurnResult(result), iso)],
+    ...nextThreadState(result, get()),
+  })
+}
+
+interface RunContext {
+  message: string
+  state: OrgConversationState
+  opts: SendOptions
+  iso: string
+}
+
+// Stream an EXPLAIN turn into one live-growing assistant bubble, then finalise
+// it with the answer's sources / confidence and append any chime-ins as they
+// resolve. A non-EXPLAIN turn streams nothing (the server defers it), so the
+// caller re-issues it buffered. Returns the stream's outcome for that decision.
+async function streamExplainOrDefer(
+  set: Setter,
+  get: Getter,
+  ctx: RunContext,
+): Promise<StreamTurnOutcome> {
+  const { message, state, opts, iso } = ctx
+  let streamingId: number | null = null
+  let text = ''
+  const ensureBubble = (): number => {
+    if (streamingId !== null) return streamingId
+    streamingId = nextMessageId()
+    set({
+      messages: [
+        ...get().messages,
+        { id: streamingId, kind: 'assistant', content: '', isStreaming: true, timestamp: iso },
+      ],
+    })
+    return streamingId
+  }
+  const patchBubble = (patch: Partial<OrgAssistantTurn>): void => {
+    const id = streamingId
+    if (id === null) return
+    set({
+      messages: get().messages.map((turn) =>
+        turn.id === id && turn.kind === 'assistant' ? { ...turn, ...patch } : turn,
+      ),
+    })
+  }
+  try {
+    return await streamTurn(
+      message,
+      {
+        onDelta: (delta) => {
+          text += delta
+          ensureBubble()
+          patchBubble({ content: text })
+        },
+        onComplete: (result) => {
+          const answer = result.answer
+          if (!answer) return
+          ensureBubble()
+          patchBubble({
+            content: answer.answer,
+            sources: answer.sources,
+            citedRecords: parseCitedRecords(answer.cited_records),
+            confidence: answer.confidence,
+            isStreaming: false,
+          })
+          // A degraded EXPLAIN (an act/convene/charter that fell below its
+          // floor) gets a notice so the downgrade is never silent.
+          const notice = intentDegradeNotice(result)
+          set({
+            ...(notice && { messages: [...get().messages, notice] }),
+            ...nextThreadState(result, get()),
+          })
+        },
+        onChime: (chime) => {
+          set({
+            messages: [
+              ...get().messages,
+              {
+                id: nextMessageId(),
+                kind: 'agent',
+                content: chime.content,
+                agentName: chime.name,
+                agentRole: chime.role,
+                timestamp: iso,
+              },
+            ],
+          })
+        },
+      },
+      turnRequestOptions(state, opts),
+    )
+  } finally {
+    // A stream cut short (error / abort surfaced to the caller) must not strand
+    // a bubble in the streaming state; clear the flag on every exit path.
+    patchBubble({ isStreaming: false })
+  }
+}
+
 async function runTurn(
-  set: (patch: Partial<OrgConversationState>) => void,
-  get: () => OrgConversationState,
+  set: Setter,
+  get: Getter,
   message: string,
   opts: SendOptions,
 ): Promise<void> {
@@ -178,15 +294,19 @@ async function runTurn(
     sending: true,
     messages: [...state.messages, buildHumanTurn(message, opts, iso)],
   })
+  const ctx: RunContext = { message, state, opts, iso }
   try {
-    const result = await postTurn(message, turnRequestOptions(state, opts))
-    if (result.charter) {
-      useCharterStore.getState().hydrateFromTurn(result.charter)
+    const outcome = await streamExplainOrDefer(set, get, ctx)
+    if (outcome.kind === 'deferred') {
+      // A side-effecting intent never runs on the stream: re-issue it against
+      // the buffered, idempotent endpoint with the classified intent forced, so
+      // it executes exactly once and is never re-classified.
+      const result = await postTurn(message, {
+        ...turnRequestOptions(state, opts),
+        intentOverride: outcome.intent,
+      })
+      applyBufferedResult(set, get, result, iso)
     }
-    set({
-      messages: [...get().messages, ...stampNow(mapTurnResult(result), iso)],
-      ...nextThreadState(result, get()),
-    })
   } catch (err) {
     handleTurnError(set, get, err)
   } finally {

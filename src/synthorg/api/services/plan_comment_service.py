@@ -107,6 +107,8 @@ class PlanCommentService:
             QueryError: Repository write failure (logged before propagating).
         """
         await self._require_target(plan_id, item_id)
+        if reply_to_id is not None:
+            await self._require_reply_target(plan_id, item_id, reply_to_id)
         comment = PlanItemComment(
             id=uuid4(),
             plan_id=plan_id,
@@ -154,4 +156,32 @@ class PlanCommentService:
             identifier=item_id,
             log_event=API_RESOURCE_NOT_FOUND,
             operation="comment",
+        )
+
+    async def _require_reply_target(
+        self,
+        plan_id: NotBlankStr,
+        item_id: NotBlankStr,
+        reply_to_id: UUID,
+    ) -> None:
+        """Reject a reply whose parent is not a comment on the same item (404).
+
+        The item is the thread, so a reply may only answer a comment already on
+        that same item; a parent on another item (or none at all) would strand
+        the reply outside any readable thread.
+
+        Raises:
+            NotFoundError: ``reply_to_id`` names no comment on this item.
+        """
+        siblings = await self._comments.query(
+            PlanItemCommentFilterSpec(plan_id=plan_id, item_id=item_id),
+            limit=MAX_THREAD,
+        )
+        parent = reply_to_id if reply_to_id in {c.id for c in siblings} else None
+        require_resource_or_404(
+            parent,
+            resource_type="Parent comment",
+            identifier=str(reply_to_id),
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="reply",
         )

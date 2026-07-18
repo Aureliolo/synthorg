@@ -10,6 +10,7 @@ per-capability opt-ins, idempotency, and state machines still hold.
 
 from litestar import Controller, post
 from litestar.datastructures import State
+from litestar.response import ServerSentEvent
 
 from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.controllers._chat_idempotency import (
@@ -22,6 +23,7 @@ from synthorg.api.controllers._turn_dispatch import (
     TurnResult,
     dispatch_turn,
 )
+from synthorg.api.controllers._turn_stream import stream_turn_events
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -90,3 +92,41 @@ class TurnController(Controller):
             build=_build,
         )
         return ApiResponse[TurnResult].model_validate(dumped)
+
+    @post(
+        "/turn/stream",
+        media_type="text/event-stream",
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy("meta.chat.turn", key="user"),
+        ],
+    )
+    async def turn_stream(
+        self,
+        data: TurnRequest,
+        state: State,
+    ) -> ServerSentEvent:
+        """Stream an EXPLAIN turn; defer every other intent to the buffered POST.
+
+        Gated live on ``turn_router_enabled`` like the buffered turn. An EXPLAIN
+        turn streams token-by-token then delivers chime-ins; any side-effecting
+        intent yields one ``deferred`` frame and never executes here, so an
+        acting turn always runs on the idempotent buffered endpoint (a dropped
+        stream can never re-run its tools). No idempotency key: a read stream
+        caches nothing, and the deferred re-issue carries its own.
+
+        Returns:
+            An SSE stream of ``delta`` / ``complete`` / ``chime`` frames for an
+            EXPLAIN turn, or a single ``deferred`` frame otherwise.
+
+        Raises:
+            ServiceUnavailableError: When the unified surface is disabled.
+        """
+        app_state = state.app_state
+        await ensure_feature_enabled(
+            app_state,
+            "chief_of_staff",
+            "turn_router_enabled",
+            feature_label="Unified chat",
+        )
+        return ServerSentEvent(content=stream_turn_events(app_state, data=data))

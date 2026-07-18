@@ -1,8 +1,9 @@
 import { Send } from 'lucide-react'
-import { useCallback, type KeyboardEvent } from 'react'
+import { useCallback, useRef, type KeyboardEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
+import { useTextareaAutogrow } from '@/components/ui/use-textarea-autogrow'
 import { cn } from '@/lib/utils'
 
 export interface ChatInputAreaProps {
@@ -40,6 +41,8 @@ export function ChatInputArea({
   rows = 2,
   className,
 }: ChatInputAreaProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  useTextareaAutogrow(textareaRef, value)
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       // ``isComposing`` guards IME candidate confirmation: a bare Enter that
@@ -55,6 +58,7 @@ export function ChatInputArea({
     <div className={cn('flex items-end gap-2', className)}>
       <div className="flex-1">
         <InputField
+          ref={textareaRef}
           label={label}
           multiline
           rows={rows}

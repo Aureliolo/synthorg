@@ -265,10 +265,10 @@ _r.register(
         default="true",
         description=(
             "When you comment on a plan item under review, let the responsible"
-            " role (the item's owner, else the best-fit role, else the Chief of"
-            " Staff) reply inline with a grounded answer. On by default; gated"
-            " live per comment, so a failed reply never blocks your comment."
-            " Turn off for a comment board no agent answers."
+            " agent (the item's owner role, else the Chief of Staff) reply"
+            " inline with a grounded answer. On by default; gated live per"
+            " comment, so a failed reply never blocks your comment. Turn off"
+            " for a comment board no agent answers."
         ),
         group="General",
     )

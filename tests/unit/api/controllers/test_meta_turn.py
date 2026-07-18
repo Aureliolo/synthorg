@@ -207,6 +207,47 @@ class TestMetaTurn:
         finally:
             app_state.swap_slice(original)
 
+    async def test_multi_voice_opt_out_suppresses_chime_ins(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """With multi_voice_enabled off, a wired router adds no chime-ins."""
+        from synthorg.settings.state import settings_service_of
+
+        chat_mock = AsyncMock(spec=ChiefOfStaffChat)
+        chat_mock.ask.return_value = ChatResponse(
+            answer="Runway is fine.", sources=(), confidence=0.8
+        )
+        signals_mock = AsyncMock(spec=SignalsService)
+        signals_mock.get_org_snapshot.return_value = _empty_snapshot()
+        router = _FixedMultiVoiceRouter(
+            (ChimeIn(role="CFO", name="Casey", content="An aside."),)
+        )
+        app_state = async_test_client.app.state.app_state
+        original = app_state.slice(MetaStateSlice)
+        settings = settings_service_of(app_state)
+        prior = await settings.get("chief_of_staff", "multi_voice_enabled")
+        await agent_registry_of(app_state).register(_active_agent())
+        app_state.wire(
+            MetaStateSlice,
+            chief_of_staff_chat=chat_mock,
+            signals_service=signals_mock,
+            turn_intent_classifier=None,
+            multi_voice_router=router,
+        )
+        try:
+            await settings.set("chief_of_staff", "multi_voice_enabled", "false")
+            resp = await async_test_client.post(
+                _BASE, headers=_HEADERS, json={"message": "How is our runway?"}
+            )
+            assert resp.status_code == 200
+            assert resp.json()["data"]["chime_ins"] == []
+        finally:
+            app_state.swap_slice(original)
+            if prior.source is SettingSource.DATABASE:
+                await settings.set("chief_of_staff", "multi_voice_enabled", prior.value)
+            else:
+                await settings.delete("chief_of_staff", "multi_voice_enabled")
+
     async def test_override_propose_dispatches_proposer(
         self, async_test_client: LoopAsyncClient
     ) -> None:

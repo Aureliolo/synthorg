@@ -97,8 +97,9 @@ class IntentRoutingReason(StrEnum):
     Attributes:
         CLASSIFIED: The classifier's pick was taken as-is.
         EXPLICIT_OVERRIDE: The caller supplied an explicit intent override.
-        CONVERSATION_KIND_FIXED: An in-flight group/charter conversation
-            dispatches to its owning capability without re-classification.
+        CONVERSATION_KIND_FIXED: An in-flight GROUP conversation dispatches
+            straight to group chat without re-classification, so a follow-up
+            turn cannot collapse the thread to EXPLAIN.
         NO_INTENT_CLASSIFIER: No classifier is wired; defaulted to EXPLAIN.
         ACT_FLOOR_NOT_MET: A confident-enough ACT was not reached; degraded
             to EXPLAIN.

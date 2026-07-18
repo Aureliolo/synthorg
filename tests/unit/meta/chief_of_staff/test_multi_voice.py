@@ -13,6 +13,7 @@ from synthorg.hr.enums import AgentStatus
 from synthorg.meta.chief_of_staff._multi_voice import (
     ChimeIn,
     LlmMultiVoiceRouter,
+    _senior_per_role,
     build_multi_voice_router,
 )
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
@@ -170,6 +171,23 @@ class TestLlmMultiVoiceRouter:
     async def test_timeout_yields_no_chime(self) -> None:
         router = _router(provider=_HangingProvider(), timeout_seconds=0.05)
         assert await _chime(router) == ()
+
+
+class TestSeniorPerRole:
+    def test_ties_break_on_name_ascending(self) -> None:
+        # Two holders of one role share its authority, so seniority cannot
+        # separate them; the collapse must pick the name-alphabetically-first
+        # (Alice), matching resolve_agent_for_role's deterministic attribution,
+        # NOT the first-encountered (Bob).
+        alice = _identity("Alice", "CFO")
+        bob = _identity("Bob", "CFO")
+        collapsed = _senior_per_role((bob, alice))
+        assert len(collapsed) == 1
+        assert collapsed[0].name == "Alice"
+
+    def test_one_entry_per_distinct_role(self) -> None:
+        collapsed = _senior_per_role((_CFO, _CTO))
+        assert {a.role for a in collapsed} == {"CFO", "CTO"}
 
 
 class TestBuildMultiVoiceRouter:

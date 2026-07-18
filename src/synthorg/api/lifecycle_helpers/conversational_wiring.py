@@ -366,7 +366,7 @@ def _wire_turn_intent_classifier(
         app_state.wire(MetaStateSlice, turn_intent_classifier=classifier)
         logger.info(
             API_APP_STARTUP,
-            service="chief_of_staff_proposer",
+            service="turn_intent_classifier",
             note="turn intent classifier wired",
         )
 
@@ -401,7 +401,7 @@ def _wire_multi_voice_router(
         app_state.wire(MetaStateSlice, multi_voice_router=router)
         logger.info(
             API_APP_STARTUP,
-            service="chief_of_staff_proposer",
+            service="multi_voice_router",
             note="multi-voice router wired",
         )
 
