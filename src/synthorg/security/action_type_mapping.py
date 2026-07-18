@@ -26,7 +26,7 @@ DEFAULT_CATEGORY_ACTION_MAP: Final[MappingProxyType[ToolCategory, ActionType]] =
             ToolCategory.DEPLOYMENT: ActionType.DEPLOY_STAGING,
             ToolCategory.MEMORY: ActionType.MEMORY_READ,
             ToolCategory.ONTOLOGY: ActionType.MEMORY_READ,
-            ToolCategory.MCP: ActionType.CODE_WRITE,
+            ToolCategory.MCP: ActionType.COMMS_EXTERNAL,
             ToolCategory.BROWSER: ActionType.BROWSER_NAVIGATE,
             ToolCategory.EXTERNAL_DATA: ActionType.EXTERNAL_DATA_REQUEST,
             ToolCategory.DESKTOP: ActionType.DESKTOP_LAUNCH,
