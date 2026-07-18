@@ -126,6 +126,23 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=_NS,
+        key="turn_router_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Let the unified chat classify each message and dispatch it to the"
+            " right capability (answer, propose work, act, convene a group, or"
+            " draft a charter) so you talk to your org in one conversation"
+            " instead of picking a mode (the /meta/chat/turn path). Each"
+            " capability still enforces its own toggle. Gated live per request."
+        ),
+        group="Conversational",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
         key="learning_enabled",
         type=SettingType.BOOLEAN,
         default="false",
@@ -254,6 +271,23 @@ _r.register(
             "Provider + model for the concern-routing classifier, selected"
             " through the model picker (a `{provider, model_id}` reference)."
             " Empty keeps the built-in default. Read live per call."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="turn_intent_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model for the unified turn-intent classifier, selected"
+            " through the model picker (a `{provider, model_id}` reference)."
+            " Empty leaves the unified router without a classifier, so every"
+            " turn is answered as a plain question. Read live per call."
         ),
         group="Models",
         level=SettingLevel.ADVANCED,

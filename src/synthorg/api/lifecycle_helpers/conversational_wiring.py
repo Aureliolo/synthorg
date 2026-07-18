@@ -334,6 +334,43 @@ def _wire_role_router(
     return role_router
 
 
+def _wire_turn_intent_classifier(
+    app_state: AppState,
+    config: ChiefOfStaffConfig,
+    *,
+    provider_registry: ProviderRegistry,
+    cost_tracker: CostTrackerProtocol | None,
+) -> None:
+    """Build + wire the unified turn-intent classifier when a model is set.
+
+    ``build_intent_classifier`` builds the classifier unconditionally of
+    ``turn_router_enabled`` so the live per-request gate (applied in the
+    ``/meta/chat/turn`` endpoint) can flip without a restart; it returns
+    ``None`` only when no ``turn_intent_model`` is configured or its bound
+    provider is absent, leaving the unified router to answer every turn as a
+    plain question.
+    """
+    from synthorg.meta.chief_of_staff.intent_router import (  # noqa: PLC0415
+        build_intent_classifier,
+    )
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+    classifier = build_intent_classifier(
+        config=config,
+        provider_registry=provider_registry,
+        cost_tracker=cost_tracker,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+    )
+    if classifier is not None:
+        app_state.wire(MetaStateSlice, turn_intent_classifier=classifier)
+        logger.info(
+            API_APP_STARTUP,
+            service="chief_of_staff_proposer",
+            note="turn intent classifier wired",
+        )
+
+
 async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
     app_state: AppState,
     *,
@@ -367,6 +404,12 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
     if provider_registry is None:
         return
     role_router = _wire_role_router(
+        app_state,
+        si_config.chief_of_staff,
+        provider_registry=provider_registry,
+        cost_tracker=cost_tracker,
+    )
+    _wire_turn_intent_classifier(
         app_state,
         si_config.chief_of_staff,
         provider_registry=provider_registry,

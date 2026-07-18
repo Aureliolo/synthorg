@@ -17,6 +17,7 @@ from synthorg.meta.analytics.service import AnalyticsService
 from synthorg.meta.chief_of_staff.actor import ConversationalActor
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.group_chat import GroupChatService
+from synthorg.meta.chief_of_staff.intent_router import IntentClassifier
 from synthorg.meta.chief_of_staff.monitor import OrgInflectionMonitor
 from synthorg.meta.chief_of_staff.propose import (
     ChiefOfStaffProposer,
@@ -59,6 +60,7 @@ class MetaStateSlice(BaseFeatureStateSlice):
     conversation_participant_repo: ConversationParticipantRepository | None = None
     conversational_resume_service: ConversationalResumeService | None = None
     role_router: RoleRouter | None = None
+    turn_intent_classifier: IntentClassifier | None = None
     group_chat_service: GroupChatService | None = None
     conversational_actor: ConversationalActor | None = None
     custom_rules_service: CustomRulesService | None = None
