@@ -1,352 +1,173 @@
-import { useCallback, useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router'
-import {
-  ClipboardList,
-  History,
-  MessageCircle,
-  MessagesSquare,
-  Rocket,
-  Users,
-  Zap,
-  type LucideIcon,
-} from 'lucide-react'
+import { History, MessagesSquare, Plus, Square } from 'lucide-react'
+import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
-import { ErrorBanner } from '@/components/ui/error-banner'
-import { SectionCard } from '@/components/ui/section-card'
-import {
-  SegmentedControl,
-  type SegmentedControlOption,
-} from '@/components/ui/segmented-control'
-import { SkeletonCard } from '@/components/ui/skeleton'
-import type { ChiefOfStaffFlags, MetaConfig } from '@/api/endpoints/meta'
-import { useMetaStore } from '@/stores/meta'
+import { ExamplePrompts } from '@/components/ui/example-prompts'
+import { cn } from '@/lib/utils'
+import { useOrgConversationStore } from '@/stores/org-conversation'
 
-import { ChiefOfStaffChat } from './chat/ChiefOfStaffChat'
-import {
-  ConversationHistoryDrawer,
-  type ResumableMode,
-} from './chat/ConversationHistoryDrawer'
-import { DirectActionChat } from './chat/DirectActionChat'
-import { GroupChat } from './chat/GroupChat'
-import { ProjectInterview } from './chat/ProjectInterview'
-import { RequestWorkChat } from './chat/RequestWorkChat'
+import { CharterSidePanel } from './chat/CharterSidePanel'
+import { ConversationHistoryDrawer } from './chat/ConversationHistoryDrawer'
+import { OrgChatTranscript } from './chat/OrgChatTranscript'
+import { useOrgConversation } from './chat/use-org-conversation'
 
-type ChatMode = 'staff' | 'work' | 'group' | 'action' | 'project'
+const INPUT_LABEL = 'Message the organisation'
+const INPUT_PLACEHOLDER =
+  'Ask a question, request work, discuss with the team, or pitch a project...'
 
-interface ModeDefinition {
-  readonly value: ChatMode
-  readonly label: string
-  readonly icon: LucideIcon
-  readonly title: string
-  /** One-line answer to "who am I talking to and what happens". */
-  readonly explainer: string
-  readonly component: () => React.ReactNode
-  /**
-   * Config flag gating this mode, or ``null`` for always-available
-   * modes. The backend live-gates every request anyway, so an absent
-   * config fails OPEN: better to let the server answer with its
-   * specific 503 than to hide a working feature.
-   */
-  readonly flag: keyof ChiefOfStaffFlags | null
-  /** Settings key shown when the mode is switched off. */
-  readonly settingKey: string | null
-  /**
-   * The per-capability model field on the config, or ``null`` when the
-   * mode uses the acting agent's own model (group, direct action). When
-   * the mode is enabled but this field is blank, the server 503s, so the
-   * dashboard surfaces the missing model setting inline. Fails OPEN when
-   * the config is unknown, exactly like the flag gate.
-   */
-  readonly modelField:
-    | 'chat_model'
-    | 'propose_model'
-    | 'routing_model'
-    | 'narrative_model'
-    | null
-  /**
-   * When true, the mode also needs security governance wired
-   * (``direct_mcp_ready``). Its toggle can be on yet the path stays
-   * fail-closed until the MCP self-consumer + a SecurityConfig are set,
-   * so the dashboard cross-warns instead of silently 503-ing.
-   */
-  readonly requiresGovernance: boolean
-}
-
-const MODES: readonly ModeDefinition[] = [
-  {
-    value: 'staff',
-    label: 'Chief of Staff',
-    icon: MessageCircle,
-    title: 'Chief of Staff',
-    explainer:
-      'Ask the Chief of Staff about anything in the organisation: signals, spend, proposals, agent performance. Read-only: nothing is changed.',
-    component: () => <ChiefOfStaffChat />,
-    flag: 'chat_enabled',
-    settingKey: 'chief_of_staff.explain_chat_enabled',
-    modelField: 'chat_model',
-    requiresGovernance: false,
-  },
-  {
-    value: 'work',
-    label: 'Request work',
-    icon: ClipboardList,
-    title: 'Request work',
-    explainer:
-      'Describe work in natural language. The Chief of Staff clarifies, then drafts one plan for you to review in Plan Review before any work begins.',
-    component: () => <RequestWorkChat />,
-    flag: 'propose_enabled',
-    settingKey: 'chief_of_staff.propose_enabled',
-    modelField: 'propose_model',
-    requiresGovernance: false,
-  },
-  {
-    value: 'group',
-    label: 'Group chat',
-    icon: Users,
-    title: 'Group chat',
-    explainer:
-      'Talk with several agents in one conversation. Every participant sees the shared transcript and responds each round.',
-    component: () => <GroupChat />,
-    flag: 'group_chat_enabled',
-    settingKey: 'chief_of_staff.group_chat_enabled',
-    modelField: null,
-    requiresGovernance: false,
-  },
-  {
-    value: 'action',
-    label: 'Direct action',
-    icon: Zap,
-    title: 'Direct action',
-    explainer:
-      'Instruct one agent to act with its own tools. Sensitive actions park in the approval queue instead of running immediately.',
-    component: () => <DirectActionChat />,
-    flag: 'direct_mcp_enabled',
-    settingKey: 'chief_of_staff.direct_mcp_enabled',
-    modelField: null,
-    requiresGovernance: true,
-  },
-  {
-    value: 'project',
-    label: 'New project',
-    icon: Rocket,
-    title: 'New project',
-    explainer:
-      'Pitch an idea to the CEO. It interviews you, drafts a project charter beside the conversation, and the approved charter becomes a project.',
-    component: () => <ProjectInterview />,
-    flag: null,
-    settingKey: null,
-    modelField: null,
-    requiresGovernance: false,
-  },
+const EXAMPLE_PROMPTS: readonly string[] = [
+  'What is the organisation working on right now?',
+  'Write a competitive analysis of our three closest competitors.',
+  'Have the CFO and CTO weigh up the infrastructure budget.',
+  'I want to start a weekly customer-feedback digest.',
 ]
 
-const MODE_OPTIONS: readonly SegmentedControlOption<ChatMode>[] = MODES.map(
-  (m) => ({ value: m.value, label: m.label }),
-)
-
-// Keyed by the literal union so indexing never yields ``undefined`` (a Record
-// over a literal union is not flagged by noUncheckedIndexedAccess), removing
-// the need for a non-null assertion when resolving the active mode.
-const MODES_BY_VALUE: Record<ChatMode, ModeDefinition> = Object.fromEntries(
-  MODES.map((m) => [m.value, m]),
-) as Record<ChatMode, ModeDefinition>
-
-function parseMode(raw: string | null): ChatMode {
-  return MODES.find((m) => m.value === raw)?.value ?? 'staff'
-}
-
-function ChatPageHeader() {
-  return (
-    <header>
-      <h1 className="text-2xl font-semibold text-foreground">Chat</h1>
-      <p className="text-sm text-muted-foreground">
-        Talk to your organisation: ask, request work, discuss, direct, or start
-        a project.
-      </p>
-    </header>
-  )
-}
-
-function DisabledModeNotice({ settingKey }: { settingKey: string }) {
-  // A dotted key like ``chief_of_staff.explain_chat_enabled`` maps to the
-  // ``chief_of_staff`` settings namespace; link there instead of quoting the
-  // raw key at the operator.
-  const namespace = settingKey.split('.')[0] ?? ''
-  return (
-    <EmptyState
-      icon={MessagesSquare}
-      title="This conversation mode is switched off"
-      description="Enable it in settings to use it. The other modes stay available."
-      learnMore={{ label: 'Open settings', href: `/settings/${namespace}` }}
-    />
-  )
-}
-
-function MissingModelNotice({ settingKey }: { settingKey: string }) {
-  return (
-    <EmptyState
-      icon={MessagesSquare}
-      title="No model is configured for this mode"
-      description={`Set the ${settingKey} setting to a model to use it. The other modes stay available.`}
-    />
-  )
-}
-
-function MissingGovernanceNotice() {
-  return (
-    <EmptyState
-      icon={MessagesSquare}
-      title="This mode is enabled but not yet live"
-      description="Direct action stays fail-closed until security governance is configured: set the security.mcp_self_consumer mode and a SecurityConfig. The toggle takes effect with no restart once they are set."
-    />
-  )
-}
-
-type ModeGate =
-  | { kind: 'flag-off'; settingKey: string }
-  | { kind: 'model-missing'; settingKey: string }
-  | { kind: 'governance-missing' }
-
-function modelMissingGate(
-  mode: ModeDefinition,
-  flags: ChiefOfStaffFlags,
-): ModeGate | null {
-  return mode.modelField !== null && !flags[mode.modelField]
-    ? { kind: 'model-missing', settingKey: `chief_of_staff.${mode.modelField}` }
-    : null
-}
-
-function governanceGate(
-  mode: ModeDefinition,
-  flags: ChiefOfStaffFlags,
-): ModeGate | null {
-  return mode.requiresGovernance && !flags.direct_mcp_ready
-    ? { kind: 'governance-missing' }
-    : null
-}
-
-// Fail open when the config is unknown: the endpoints live-gate every request
-// server-side, and a specific 503 beats wrongly hiding a working feature
-// behind stale client state. A switched-off mode short-circuits before the
-// model / governance checks, which would otherwise read stale sub-config.
-function modeGate(
-  mode: ModeDefinition,
-  flags: ChiefOfStaffFlags | undefined,
-): ModeGate | null {
-  if (flags === undefined) return null
-  if (mode.flag !== null && !flags[mode.flag]) {
-    return mode.settingKey !== null
-      ? { kind: 'flag-off', settingKey: mode.settingKey }
-      : null
-  }
-  return modelMissingGate(mode, flags) ?? governanceGate(mode, flags)
-}
-
-function ModeGateNotice({ gate }: { gate: ModeGate }) {
-  switch (gate.kind) {
-    case 'flag-off':
-      return <DisabledModeNotice settingKey={gate.settingKey} />
-    case 'model-missing':
-      return <MissingModelNotice settingKey={gate.settingKey} />
-    case 'governance-missing':
-      return <MissingGovernanceNotice />
-  }
-}
-
-function ModePanel({ mode, flags }: {
-  mode: ModeDefinition
-  flags: ChiefOfStaffFlags | undefined
-}) {
-  const gate = modeGate(mode, flags)
-  return (
-    <SectionCard title={mode.title} icon={mode.icon}>
-      <div className="flex flex-col gap-section-gap">
-        <p className="text-xs text-text-secondary">{mode.explainer}</p>
-        {gate === null ? mode.component() : <ModeGateNotice gate={gate} />}
-      </div>
-    </SectionCard>
-  )
-}
-
-function ModeBody({
-  active,
-  config,
-  error,
+function ChatHeader({
+  onHistory,
+  onNew,
+  canStartNew,
 }: {
-  active: ModeDefinition
-  config: MetaConfig | null
-  error: string | null
+  onHistory: () => void
+  onNew: () => void
+  canStartNew: boolean
 }) {
-  // A failed config fetch must not strand a flagged mode on a forever-
-  // skeleton: surface the error with a retry. Modes with no flag (project)
-  // render regardless, since they do not gate on config.
-  if (config === null && active.flag !== null) {
-    if (error !== null) {
-      return (
-        <ErrorBanner
-          variant="section"
-          severity="warning"
-          title="Could not load chat configuration"
-          description={error}
-          onRetry={() => {
-            void useMetaStore.getState().fetchConfig()
-          }}
-        />
-      )
-    }
-    return <SkeletonCard className="h-64" />
-  }
-  return <ModePanel mode={active} flags={config?.chief_of_staff} />
-}
-
-export default function ChatPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const mode = parseMode(searchParams.get('mode'))
-  const config = useMetaStore((s) => s.config)
-  const error = useMetaStore((s) => s.error)
-  const [historyOpen, setHistoryOpen] = useState(false)
-
-  useEffect(() => {
-    if (useMetaStore.getState().config === null) {
-      void useMetaStore.getState().fetchConfig()
-    }
-  }, [])
-
-  const setMode = useCallback(
-    (next: ChatMode) => {
-      setSearchParams((prev) => {
-        const params = new URLSearchParams(prev)
-        params.set('mode', next)
-        return params
-      })
-    },
-    [setSearchParams],
-  )
-
-  const active = MODES_BY_VALUE[mode]
-
   return (
-    <div className="space-y-section-gap">
-      <ChatPageHeader />
-      <div className="flex items-center justify-between gap-4">
-        <SegmentedControl
-          label="Conversation mode"
-          options={MODE_OPTIONS}
-          value={mode}
-          onChange={setMode}
-        />
-        <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
+    <header className="flex items-start justify-between gap-4">
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground">Chat</h1>
+        <p className="text-sm text-muted-foreground">
+          Talk to your organisation. Ask anything: the org works out what you
+          need and answers, drafts a plan, convenes the team, or starts a
+          project, showing you each step.
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {canStartNew && (
+          <Button variant="outline" size="sm" onClick={onNew}>
+            <Plus className="size-4" aria-hidden />
+            New
+          </Button>
+        )}
+        <Button variant="outline" size="sm" onClick={onHistory}>
           <History className="size-4" aria-hidden />
           History
         </Button>
       </div>
-      <ModeBody active={active} config={config} error={error} />
+    </header>
+  )
+}
+
+function EmptyConversation({
+  onSelect,
+  disabled,
+}: {
+  onSelect: (value: string) => void
+  disabled: boolean
+}) {
+  return (
+    <div className="mx-auto max-w-2xl space-y-section-gap py-8">
+      <EmptyState
+        icon={MessagesSquare}
+        title="Talk to your organisation"
+        description="One conversation for everything: questions, work requests, team discussions, and new projects. The org routes each message to whoever should answer."
+      />
+      <ExamplePrompts prompts={EXAMPLE_PROMPTS} onSelect={onSelect} disabled={disabled} />
+    </div>
+  )
+}
+
+function ClosedNotice({ onNew }: { onNew: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p role="status" className="text-xs text-text-secondary">
+        This conversation is closed.
+      </p>
+      <Button variant="outline" size="sm" onClick={onNew}>
+        Start new conversation
+      </Button>
+    </div>
+  )
+}
+
+function Composer({
+  conv,
+}: {
+  conv: ReturnType<typeof useOrgConversation>
+}) {
+  return (
+    <div className="space-y-2">
+      {conv.sending && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={conv.cancel}>
+            <Square className="size-3.5" aria-hidden />
+            Stop
+          </Button>
+        </div>
+      )}
+      {conv.conversationClosed && <ClosedNotice onNew={conv.startNew} />}
+      <ChatInputArea
+        value={conv.input}
+        onChange={conv.setInput}
+        onSend={conv.triggerSend}
+        disabled={conv.sending || conv.conversationClosed}
+        inputDisabled={conv.conversationClosed}
+        label={INPUT_LABEL}
+        placeholder={INPUT_PLACEHOLDER}
+      />
+    </div>
+  )
+}
+
+export default function ChatPage() {
+  const conv = useOrgConversation()
+  const activeIntent = useOrgConversationStore((s) => s.activeIntent)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const showCharterPanel = activeIntent === 'charter'
+  const hasConversation = conv.messages.length > 0
+
+  const thread = (
+    <div className="flex min-h-0 flex-1 flex-col gap-section-gap">
+      {hasConversation ? (
+        <OrgChatTranscript
+          messages={conv.messages}
+          sending={conv.sending}
+          autoScroll={conv.autoScroll}
+          resolvingInvites={conv.resolvingInvites}
+          onResolveInvite={conv.resolveInvite}
+          onRetry={conv.retry}
+        />
+      ) : (
+        <EmptyConversation onSelect={conv.setInput} disabled={conv.sending} />
+      )}
+      <Composer conv={conv} />
+    </div>
+  )
+
+  return (
+    <div className="flex h-full flex-col gap-section-gap">
+      <ChatHeader
+        onHistory={() => setHistoryOpen(true)}
+        onNew={conv.startNew}
+        canStartNew={hasConversation}
+      />
+      <div
+        className={cn(
+          'flex min-h-0 flex-1 gap-grid-gap',
+          showCharterPanel && 'lg:grid lg:grid-cols-2',
+        )}
+      >
+        {thread}
+        {showCharterPanel && (
+          <div className="min-h-0 overflow-y-auto">
+            <CharterSidePanel />
+          </div>
+        )}
+      </div>
       <ConversationHistoryDrawer
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
-        onResume={(resumeMode: ResumableMode) => setMode(resumeMode)}
       />
     </div>
   )

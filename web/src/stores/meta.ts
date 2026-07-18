@@ -29,17 +29,15 @@ import type {
   ConversationalActResult,
   GroupConverseResult,
 } from '@/api/types'
-import { ErrorCode } from '@/api/types/errors'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorDetail, getErrorMessage, isAbortError, unavailableMessage } from '@/utils/errors'
+import { describeConversationalError } from '@/utils/conversational-error'
+import { getErrorMessage, isAbortError, unavailableMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('meta')
 
 type MetaSet = StoreApi<MetaState>['setState']
-
-const FEATURE_UNAVAILABLE_TITLE = 'Conversational mode unavailable'
 
 /**
  * Fail-closed 503 copy for a signals fetch, shared with the meta-analytics
@@ -48,31 +46,6 @@ const FEATURE_UNAVAILABLE_TITLE = 'Conversational mode unavailable'
  */
 export const SIGNALS_UNAVAILABLE_MESSAGE =
   'Signal reporting is not enabled for this deployment. Ask your administrator to enable it.'
-
-/**
- * Build the toast title + description for a conversational action failure.
- *
- * A SERVICE_UNAVAILABLE (503) from these endpoints is the deliberate
- * fail-closed state (the mode is disabled, or direct-MCP acting lacks
- * security governance), not a transient outage, so it gets a distinct
- * title and surfaces the backend's specific reason rather than the
- * generic "try again" copy.
- */
-function describeConversationalError(
-  err: unknown,
-  fallbackTitle: string,
-): { title: string; description: string } {
-  if (getErrorDetail(err)?.error_code === ErrorCode.SERVICE_UNAVAILABLE) {
-    return {
-      title: FEATURE_UNAVAILABLE_TITLE,
-      description: unavailableMessage(
-        err,
-        'This conversational mode is not enabled. Ask your administrator to enable it.',
-      ),
-    }
-  }
-  return { title: fallbackTitle, description: getErrorMessage(err) }
-}
 
 async function runProposeConversation(
   set: MetaSet,

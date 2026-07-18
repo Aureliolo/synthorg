@@ -9,6 +9,7 @@ import { createLogger } from '@/lib/logger'
 import type {
   CharterApprovalResult,
   CharterEditRequest,
+  InterviewTurnResult,
   ProjectCharter,
 } from '@/api/types'
 
@@ -43,6 +44,12 @@ interface CharterState {
   fetchCharters: (filters?: CharterFilters) => Promise<void>
   fetchMoreCharters: (filters?: CharterFilters) => Promise<void>
   runTurn: (message: string) => Promise<void>
+  /**
+   * Adopt a charter-interview turn resolved through the unified org
+   * conversation ({@link postTurn}), so the draft side panel renders the
+   * draft and its edit/approve/cancel actions target the right conversation.
+   */
+  hydrateFromTurn: (turn: InterviewTurnResult) => void
   editDraft: (
     id: string,
     data: CharterEditRequest,
@@ -247,6 +254,12 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
   fetchCharters: (filters) => fetchChartersImpl(set, filters),
   fetchMoreCharters: (filters) => fetchMoreChartersImpl(set, get, filters),
   runTurn: (message) => runTurnImpl(set, get, message),
+  hydrateFromTurn: (turn) =>
+    set({
+      conversationId: turn.conversation_id,
+      draftCharter: turn.charter ?? get().draftCharter,
+      conversationClosed: turn.conversation_closed,
+    }),
 
   editDraft: (id, data) => editDraftImpl(set, id, data),
   approve: (id) => approveImpl(set, id),

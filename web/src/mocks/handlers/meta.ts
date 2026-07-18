@@ -14,6 +14,7 @@ import type {
   postChatAct,
   postChatGroup,
   postChatPropose,
+  postTurn,
 } from '@/api/endpoints/meta'
 import { apiSuccess, apiError, paginatedEnvelopeFor, successFor } from './helpers'
 
@@ -256,6 +257,42 @@ export const metaHandlers = [
         sources: [],
         cited_records: [],
         confidence: 0,
+      }),
+    )
+  }),
+  http.post('/api/v1/meta/chat/turn', async ({ request }) => {
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return HttpResponse.json(apiError('Message must not be blank'), {
+        status: 400,
+      })
+    }
+    if (_hasBlankField(body, 'message')) {
+      return HttpResponse.json(apiError('Message must not be blank'), {
+        status: 400,
+      })
+    }
+    // Default happy path: the org classifies an ambiguous message as a
+    // read-only question and answers it. Tests that exercise a specific
+    // capability override this with their own ``server.use(...)``.
+    return HttpResponse.json(
+      successFor<typeof postTurn>({
+        intent: 'explain',
+        intent_reason: 'no_intent_classifier',
+        intent_confidence: null,
+        conversation_id: null,
+        answer: {
+          answer: 'The organisation is healthy.',
+          sources: [],
+          cited_records: [],
+          confidence: 0.8,
+        },
+        propose: null,
+        group: null,
+        act: null,
+        charter: null,
       }),
     )
   }),

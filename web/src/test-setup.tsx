@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
 import { cancelPendingMcpCatalogSearch } from '@/stores/mcp-catalog/_state'
-import { useConversationsStore } from '@/stores/conversations'
+import { useOrgConversationStore } from '@/stores/org-conversation'
 import { resetMessageIds } from '@/pages/chat/message-id'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { usePlanCommentsStore } from '@/stores/planComments'
@@ -106,10 +106,10 @@ afterEach(() => {
   }
   cookieJar['csrf_token'] = CSRF_SEED_VALUE
   resetCircuitBreaker()
-  // The conversations store holds each chat mode's transcript in module
-  // scope, so it must be cleared between tests or a prior test's messages
-  // leak into the next render.
-  useConversationsStore.getState().resetAll()
+  // The org-conversation store holds the unified transcript in module scope,
+  // so it must be cleared between tests or a prior test's messages leak into
+  // the next render.
+  useOrgConversationStore.getState().resetAll()
   resetMessageIds()
 })
 

@@ -31,6 +31,9 @@ import {
 import { parseCitedRecords, type CitedRecord } from './cited-records'
 
 export type { CitedRecord } from './cited-records'
+// The unified conversational turn lives in its own module to keep this file
+// under its size budget; re-exported here so callers keep one import surface.
+export { postTurn, type PostTurnOptions } from './meta-turn'
 
 // Re-export the generated DTO under a domain name so callers stay insulated
 // from the generated barrel's layout; the source of truth is openapi.gen.ts.

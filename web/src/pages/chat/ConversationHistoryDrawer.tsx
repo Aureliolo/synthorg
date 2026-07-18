@@ -10,13 +10,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { EmptyState } from '@/components/ui/empty-state'
-import { useConversationsStore } from '@/stores/conversations'
+import { useOrgConversationStore } from '@/stores/org-conversation'
 import { formatRelativeTime } from '@/utils/format'
 
-import { hydrateGroupMessages, hydrateWorkMessages } from './chat-hydrate'
-
-/** Modes a persisted conversation can resume into. */
-export type ResumableMode = 'work' | 'group'
+import { activeIntentForKind, hydrateOrgMessages } from './chat-hydrate'
 
 const KIND_LABEL: Readonly<Record<ConversationKind, string>> = {
   direct: 'Request work',
@@ -24,42 +21,38 @@ const KIND_LABEL: Readonly<Record<ConversationKind, string>> = {
   group: 'Group chat',
 }
 
-function modeForKind(kind: ConversationKind): ResumableMode {
-  return kind === 'group' ? 'group' : 'work'
-}
-
 interface ConversationHistoryDrawerProps {
   open: boolean
   onClose: () => void
-  /** Called after a conversation is hydrated so the page switches modes. */
-  onResume: (mode: ResumableMode) => void
 }
 
+/**
+ * Resume a past conversation into the one unified surface.
+ *
+ * Only request-work (direct/routed) and group conversations persist a
+ * resumable timeline; each rehydrates the transcript and pins the capability
+ * it continues as, so a follow-up turn stays in that thread. The list refetches
+ * on every open (pure API consumer: nothing cached client-side).
+ */
 export function ConversationHistoryDrawer({
   open,
   onClose,
-  onResume,
 }: ConversationHistoryDrawerProps) {
-  const setWork = useConversationsStore((s) => s.setWork)
-  const setGroup = useConversationsStore((s) => s.setGroup)
+  const hydrate = useOrgConversationStore((s) => s.hydrate)
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // A failed resume must not clear the list the way a failed list-load does,
-  // so it gets its own non-blocking banner state and leaves the picker intact.
+  // so it gets its own non-blocking banner and leaves the picker intact.
   const [resumeError, setResumeError] = useState<string | null>(null)
   const [resumingId, setResumingId] = useState<string | null>(null)
 
-  // Refetch on every open so the list is never stale and nothing is cached
-  // client-side (pure API consumer).
   useEffect(() => {
     if (!open) return
     let cancelled = false
     const load = async () => {
       setLoading(true)
       setError(null)
-      // Clear a prior resume failure too, so its banner does not linger into
-      // a freshly reopened drawer where nothing has failed yet.
       setResumeError(null)
       try {
         const items = await listConversations()
@@ -82,26 +75,14 @@ export function ConversationHistoryDrawer({
       setResumeError(null)
       try {
         const turns = await getConversationTurns(conversation.id)
-        const mode = modeForKind(conversation.kind)
-        if (mode === 'group') {
-          setGroup({
-            messages: hydrateGroupMessages(turns),
-            conversationId: conversation.id,
-            roster: [],
-            selectedIds: [],
-            started: true,
-          })
-        } else {
-          setWork({
-            messages: hydrateWorkMessages(turns),
-            conversationId: conversation.id,
-            // Carry the real terminal state: resuming a closed conversation
-            // must show it closed, not present an enabled input whose next
-            // send fails ConversationClosedError.
-            closed: conversation.status === 'closed',
-          })
-        }
-        onResume(mode)
+        hydrate({
+          messages: hydrateOrgMessages(turns),
+          conversationId: conversation.id,
+          activeIntent: activeIntentForKind(conversation.kind),
+          // Carry the real terminal state: resuming a closed conversation must
+          // show it closed, not present an input whose next send fails.
+          conversationClosed: conversation.status === 'closed',
+        })
         onClose()
       } catch {
         setResumeError('Could not resume that conversation. Pick another below.')
@@ -109,7 +90,7 @@ export function ConversationHistoryDrawer({
         setResumingId(null)
       }
     },
-    [setGroup, setWork, onResume, onClose],
+    [hydrate, onClose],
   )
 
   return (
