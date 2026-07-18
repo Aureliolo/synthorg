@@ -25,6 +25,7 @@ from synthorg.api.controllers.meta import MetaController
 from synthorg.api.controllers.meta_alerts import MetaAlertsController
 from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
 from synthorg.api.controllers.meta_evolution import MetaEvolutionController
+from synthorg.api.controllers.turn import TurnController
 from synthorg.meta._mcp_loaders import (
     load_analytics_mcp_handlers,
     load_meta_mcp_handlers,
@@ -46,6 +47,7 @@ FEATURE: FeatureModule = FeatureManifest(
         MetaEvolutionController,
         MetaAlertsController,
         ConversationalController,
+        TurnController,
         ConversationHistoryController,
         MetaAnalyticsController,
         AnalyticsOverviewController,

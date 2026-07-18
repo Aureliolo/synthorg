@@ -2885,6 +2885,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/meta/chat/turn": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Turn */
+        readonly post: operations["ApiV1MetaChatTurnTurn"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/meta/config": {
         readonly parameters: {
             readonly query?: never;
@@ -7733,6 +7750,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[TurnResult] */
+        readonly ApiResponse_TurnResult_: {
+            readonly data: components["schemas"]["TurnResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[Union[dict[str, object], NoneType]] */
         readonly ApiResponse_Union_dict_str_object_NoneType_: {
             readonly data: {
@@ -8923,6 +8948,16 @@ export type components = {
             /** @description Free-text question for the Chief of Staff agent. */
             readonly question: string;
         };
+        /** ChatResponse */
+        readonly ChatResponse: {
+            readonly answer: string;
+            /** @default [] */
+            readonly cited_records: readonly components["schemas"]["CitedRecord"][];
+            /** @default 0.5 */
+            readonly confidence: number;
+            /** @default [] */
+            readonly sources: readonly string[];
+        };
         /** ChatStreamRequest */
         readonly ChatStreamRequest: {
             /** @description Free-text question for the Chief of Staff agent. */
@@ -8970,6 +9005,14 @@ export type components = {
          * @enum {string}
          */
         readonly CitationKind: "task" | "doc_slug" | "knowledge_source" | "entry" | "external_url";
+        /** CitedRecord */
+        readonly CitedRecord: {
+            /** @enum {string} */
+            readonly kind: "task" | "project" | "approval";
+            readonly label: string;
+            readonly record_id: string;
+            readonly status: string;
+        };
         /**
          * ClarificationGateConfig
          * @description ClarificationGate settings
@@ -11652,6 +11695,35 @@ export type components = {
             /** @default 0.2 */
             readonly weight: number;
         };
+        /**
+         * IntentRoutingReason
+         * @description Why a turn resolved to the intent it did.
+         *
+         *     Surfaced on the turn result so a human can see whether the intent was
+         *     classified, forced by an explicit override, fixed by the conversation's
+         *     kind, or degraded to ``EXPLAIN`` because a stricter gate was not met.
+         *
+         *     Attributes:
+         *         CLASSIFIED: The classifier's pick was taken as-is.
+         *         EXPLICIT_OVERRIDE: The caller supplied an explicit intent override.
+         *         CONVERSATION_KIND_FIXED: An in-flight group/charter conversation
+         *             dispatches to its owning capability without re-classification.
+         *         NO_INTENT_CLASSIFIER: No classifier is wired; defaulted to EXPLAIN.
+         *         ACT_FLOOR_NOT_MET: A confident-enough ACT was not reached; degraded
+         *             to EXPLAIN.
+         *         CHARTER_FLOOR_NOT_MET: A confident-enough CHARTER was not reached;
+         *             degraded to EXPLAIN.
+         *         GROUP_TARGETS_MISSING: A group was requested without enough named
+         *             participants; degraded to EXPLAIN.
+         *         ACT_NO_TARGET: An act was requested without naming an acting agent;
+         *             degraded to EXPLAIN so an ambiguous turn never acts on a guess.
+         *         CLASSIFY_CALL_FAILED: The classifier call errored or timed out;
+         *             defaulted to EXPLAIN.
+         *         RESPONSE_INVALID: The classifier reply failed to parse/validate;
+         *             defaulted to EXPLAIN.
+         * @enum {string}
+         */
+        readonly IntentRoutingReason: "classified" | "explicit_override" | "conversation_kind_fixed" | "no_intent_classifier" | "act_floor_not_met" | "charter_floor_not_met" | "group_targets_missing" | "act_no_target" | "classify_call_failed" | "response_invalid";
         /** InterruptResponse */
         readonly InterruptResponse: {
             readonly agent_id: string;
@@ -17656,6 +17728,47 @@ export type components = {
         readonly TunnelStartResponse: {
             readonly provider: string;
             readonly public_url: string;
+        };
+        /**
+         * TurnIntent
+         * @description Which org capability a single operator turn is asking for.
+         *
+         *     Attributes:
+         *         EXPLAIN: Answer a question about the org (read-only). The default
+         *             and the safe fallback for any uncertain classification.
+         *         PROPOSE: Turn a work request into a plan for holistic review.
+         *         ACT: Perform a concrete system action now, via a tool, under the
+         *             acting agent's trust level. Gated behind a stricter floor.
+         *         GROUP_CONVENE: Convene several named agents in a group discussion.
+         *         CHARTER: Interview the operator to draft a company charter.
+         * @enum {string}
+         */
+        readonly TurnIntent: "explain" | "propose" | "act" | "group_convene" | "charter";
+        /** TurnRequest */
+        readonly TurnRequest: {
+            /** @description Existing conversation to continue; None starts a new one. */
+            readonly conversation_id?: string | null;
+            /**
+             * @description Force a capability instead of classifying (e.g. to continue a typed conversation). None auto-routes.
+             * @enum {string|null}
+             */
+            readonly intent_override?: "explain" | "propose" | "act" | "group_convene" | "charter" | null;
+            /** @description The operator's message for this turn. */
+            readonly message: string;
+            /** @description Project the turn is scoped to, for propose/charter turns. */
+            readonly project?: string | null;
+        };
+        /** TurnResult */
+        readonly TurnResult: {
+            readonly act: components["schemas"]["ConversationalActResult"] | null;
+            readonly answer: components["schemas"]["ChatResponse"] | null;
+            readonly charter: components["schemas"]["InterviewTurnResult"] | null;
+            readonly conversation_id: string | null;
+            readonly group: components["schemas"]["GroupConverseResult"] | null;
+            readonly intent: components["schemas"]["TurnIntent"];
+            readonly intent_confidence: number | null;
+            readonly intent_reason: components["schemas"]["IntentRoutingReason"];
+            readonly propose: components["schemas"]["ProposeResult"] | null;
         };
         /** UpdateAgentModelRequest */
         readonly UpdateAgentModelRequest: {
@@ -25031,6 +25144,40 @@ export interface operations {
                 };
                 content: {
                     readonly "text/event-stream": unknown;
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChatTurnTurn: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Optional RFC-style retry-safe key. When supplied, an identical key within the retention window returns the cached response instead of re-running the turn, so a 5xx/timeout-driven retry cannot double-fire the conversation (or, for /act, the tool calls). Durable idempotency requires a persistence backend. */
+                readonly "Idempotency-Key"?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TurnRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_TurnResult_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

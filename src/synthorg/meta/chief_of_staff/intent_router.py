@@ -106,6 +106,8 @@ class IntentRoutingReason(StrEnum):
             degraded to EXPLAIN.
         GROUP_TARGETS_MISSING: A group was requested without enough named
             participants; degraded to EXPLAIN.
+        ACT_NO_TARGET: An act was requested without naming an acting agent;
+            degraded to EXPLAIN so an ambiguous turn never acts on a guess.
         CLASSIFY_CALL_FAILED: The classifier call errored or timed out;
             defaulted to EXPLAIN.
         RESPONSE_INVALID: The classifier reply failed to parse/validate;
@@ -119,6 +121,7 @@ class IntentRoutingReason(StrEnum):
     ACT_FLOOR_NOT_MET = "act_floor_not_met"
     CHARTER_FLOOR_NOT_MET = "charter_floor_not_met"
     GROUP_TARGETS_MISSING = "group_targets_missing"
+    ACT_NO_TARGET = "act_no_target"
     CLASSIFY_CALL_FAILED = "classify_call_failed"
     RESPONSE_INVALID = "response_invalid"
 

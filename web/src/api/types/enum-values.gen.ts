@@ -483,6 +483,20 @@ export const HUMAN_ROLE_VALUES = [
 ] as const
 export type HumanRole = (typeof HUMAN_ROLE_VALUES)[number]
 
+export const INTENT_ROUTING_REASON_VALUES = [
+    'classified',
+    'explicit_override',
+    'conversation_kind_fixed',
+    'no_intent_classifier',
+    'act_floor_not_met',
+    'charter_floor_not_met',
+    'group_targets_missing',
+    'act_no_target',
+    'classify_call_failed',
+    'response_invalid',
+] as const
+export type IntentRoutingReason = (typeof INTENT_ROUTING_REASON_VALUES)[number]
+
 export const INTERRUPT_TYPE_VALUES = [
     'tool_approval',
     'info_request',
@@ -1140,6 +1154,15 @@ export const TUNNEL_CREDENTIAL_KIND_VALUES = [
     'device_login',
 ] as const
 export type TunnelCredentialKind = (typeof TUNNEL_CREDENTIAL_KIND_VALUES)[number]
+
+export const TURN_INTENT_VALUES = [
+    'explain',
+    'propose',
+    'act',
+    'group_convene',
+    'charter',
+] as const
+export type TurnIntent = (typeof TURN_INTENT_VALUES)[number]
 
 export const URGENCY_LEVEL_VALUES = [
     'critical',
