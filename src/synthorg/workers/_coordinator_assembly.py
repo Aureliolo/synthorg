@@ -17,6 +17,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.middleware_config import CoordinationMiddlewareConfig
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.factory import build_coordinator
+from synthorg.engine.decomposition.planning_tool_provider import PlanningToolProvider
 from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.middleware._defaults import register_coordination_defaults
 from synthorg.engine.middleware.factory import build_coordination_middleware_chain
@@ -48,6 +49,9 @@ from synthorg.providers.model_binding import resolve_ref_provider
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import config_resolver_of
+from synthorg.workers._web_search_provider_wiring import (
+    build_web_search_provider_or_none,
+)
 from synthorg.workers.execution_service import WorkerExecutionService
 
 if TYPE_CHECKING:
@@ -409,6 +413,16 @@ async def _build_runtime_coordinator(
         # runtime's per-call resolve).
         return provider_registry_of(app_state).get(identity.model.provider)
 
+    # Grant the planning session live web research when web search is
+    # configured; this is the CORE MECHANISM PRINCIPLE's "websearch-if-
+    # configured" tool grant, so the owner researches before drafting a plan.
+    search_provider = await build_web_search_provider_or_none(app_state)
+    planning_tool_provider = (
+        PlanningToolProvider(search_provider=search_provider)
+        if search_provider is not None
+        else None
+    )
+
     coordinator = build_coordinator(
         config=app_state.config.coordination,
         engine=engine,
@@ -417,6 +431,7 @@ async def _build_runtime_coordinator(
         decomposition_model=decomposition_model,
         provider_selector=_owner_provider_selector,
         decomposition_strategy=decomposition_strategy,
+        decomposition_tool_provider=planning_tool_provider,
         decomposition_cost_tracker=cost_tracker,
         agent_session_max_turns=agent_session_max_turns,
         agent_session_cost_ceiling=agent_session_cost_ceiling,

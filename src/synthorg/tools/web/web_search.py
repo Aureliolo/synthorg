@@ -110,7 +110,7 @@ class WebSearchTool(BaseWebTool):
                 "URLs, and snippets for matching results."
             ),
             parameters_schema=WebSearchArgs.model_json_schema(),
-            action_type=ActionType.COMMS_EXTERNAL,
+            action_type=ActionType.EXTERNAL_DATA_REQUEST,
             network_policy=network_policy,
         )
         self._provider = provider

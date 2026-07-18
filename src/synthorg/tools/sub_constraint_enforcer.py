@@ -63,6 +63,7 @@ _GIT_CLONE_TOOL_NAMES: frozenset[str] = frozenset({"git_clone"})
 _NETWORK_ACTION_TYPES: frozenset[str] = frozenset(
     {
         ActionType.COMMS_EXTERNAL,
+        ActionType.EXTERNAL_DATA_REQUEST,
     }
 )
 
