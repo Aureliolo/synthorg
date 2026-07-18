@@ -54,6 +54,8 @@ async def _resolve_rate_limiter(
     try:
         conn = await catalog.get(connection_name)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort rate-limit tuning; the provider
+        # still applies the default ceiling, so a lookup blip is non-fatal.
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,

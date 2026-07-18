@@ -471,6 +471,7 @@
       "depends_on": [],
       "directory": "src/synthorg/engine",
       "ghost_wired_symbols": [
+        "PlanningToolProvider",
         "TaskAssignmentService",
         "EvaluationVersionService",
         "SubworkflowService",
@@ -561,8 +562,7 @@
         "objective_entry_adapter",
         "brownfield_entry_adapter",
         "task_board_entry_adapter",
-        "structure_map_tool_factory",
-        "plan_item_reply_service"
+        "structure_map_tool_factory"
       ]
     },
     {
@@ -878,7 +878,7 @@
         "MetaController",
         "MetaEvolutionController",
         "MetaAlertsController",
-        "TurnController",
+        "ConversationalController",
         "ConversationHistoryController",
         "MetaAnalyticsController",
         "AnalyticsOverviewController",
@@ -948,8 +948,6 @@
         "conversation_participant_repo",
         "conversational_resume_service",
         "role_router",
-        "turn_intent_classifier",
-        "multi_voice_router",
         "group_chat_service",
         "conversational_actor",
         "custom_rules_service",
@@ -1201,7 +1199,8 @@
         "build_distributed_backend_services",
         "DeadLetterConsumer",
         "SeenClaimsPruner",
-        "WorkerHeartbeatSubscriber"
+        "WorkerHeartbeatSubscriber",
+        "build_web_search_provider_or_none"
       ],
       "mcp_tool_names": [],
       "name": "runtime",
@@ -1400,6 +1399,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-18T23:12:52.359660Z",
+  "generated_at": "2026-07-18T23:32:46.310646Z",
   "schema_version": 1
 }
