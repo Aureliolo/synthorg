@@ -135,7 +135,24 @@ Per-item discussion lives in a separate append-only store,
 `PlanItemCommentRepository` (`persistence/plan_comment_protocol.py`, composing
 `AppendOnlyRepository`), backed by the `plan_item_comments` table. Comments are
 immutable and written independently of the version-guarded plan row, so posting a
-comment never conflicts with a concurrent rework.
+comment never conflicts with a concurrent rework. Each comment carries an
+`author_kind` (`human`/`agent`), the responding agent's id for an agent comment,
+and a flat `reply_to_id` linking a reply to the message it answers: the item *is*
+the thread, so a reply is a parent link, not a nested tree. This keeps the
+append-only immutability (each comment and reply is its own row) while making a
+comment reply-bearing and agent-answerable.
+
+When a reply model is configured, a *human* comment is answered inline by the
+responsible role: `PlanItemReplyService` (`engine/plan_review/reply.py`) resolves
+the responder (the item's `owner` role if an active agent holds it, else the
+Chief of Staff) and makes ONE grounded, fenced completion call (not a ReactLoop,
+no tools) over the item's own text, then appends an attributed agent reply linked
+to the operator's comment. It is **loop-safe** (only a human comment is answered,
+so an agent reply never triggers another) and **failure-isolated**: the human
+`POST .../comments` always returns 201 even if reply generation fails, and the
+reply is gated live per comment by `coordination.plan_review_reply_enabled`
+(opt-out, default on). Lightweight discussion never resets the plan; only
+`request-changes` does that.
 
 ## Decomposition Projection
 
@@ -152,8 +169,9 @@ API, and the resume path stay in step:
 
 ## Conversational entry
 
-The "Request work" chat mode (`/meta/chat/propose`) is a first-class producer of
-plans. A conversational brief becomes ONE durable objective, not a list of
+A work request in the unified chat (a `/meta/chat/turn` classified `propose`) is a
+first-class producer of plans. A conversational brief becomes ONE durable
+objective, not a list of
 candidate work items to approve individually. `ConversationalPlanDispatcher`
 (`meta/chief_of_staff/plan_intake.py`) provisions or reuses a project (a `uuid5`
 keyed on the conversation, so a follow-up turn lands on the same project), builds a
@@ -169,7 +187,13 @@ raises stay on their own confirmation path (compensated if the plan draft fails)
 ## API
 
 `PlanController` (`api/controllers/plans.py`, path `/plans`) owns the plan-native
-capabilities the approval flow lacks; approve/reject stay on `/approvals`.
+capabilities the approval flow lacks. Whole-plan approve/reject stay atomic on the
+canonical `/approvals/{id}` path; because a plan review is decision-gathering with
+its own surface, it is excluded from the generic Approvals inbox (a `source` filter
+on `GET /approvals`) and gains its own red nav badge, and the operator approves or
+rejects it **inline on the Plan Review page** (the toolbar resolves the plan's
+parked approval from its `plan_id` metadata and drives the same `/approvals` path,
+so approval stays atomic).
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -178,7 +202,7 @@ capabilities the approval flow lacks; approve/reject stay on `/approvals`.
 | `PATCH` | `/plans/{id}` | Rework items (new revision, back to `PENDING_REVIEW`) |
 | `POST` | `/plans/{id}/request-changes` | Send back to `DRAFT` with a note |
 | `GET` | `/plans/{id}/comments` | List a plan's comments oldest-first (optional `item_id`) |
-| `POST` | `/plans/{id}/comments/items/{item_id}` | Post a comment on an item |
+| `POST` | `/plans/{id}/comments/items/{item_id}` | Post a comment on an item (optional `reply_to_id`); a responsible role may answer inline |
 
 `PlanService` (`api/services/plan_service.py`) owns the lifecycle transitions with
 uniform `API_PLAN_*` audit logging, the terminal-status guard, version-conflict
@@ -187,9 +211,13 @@ decision transition gets the same audit coverage as an operator edit. On a rewor
 it snapshots the pre-edit version into `version_history` (bounded), so a reviewer
 can diff how a revision addressed the panel's concerns. Edits and decisions publish
 `plan.updated` / `plan.changes_requested` events, and a posted comment publishes
-`plan.comment_added`, all on the `plans` WebSocket channel. The comment endpoints
-live on `PlanCommentController` (`api/controllers/plan_comments.py`); the author is
-taken from the authenticated user, never the request body.
+`plan.comment_added`, all on the `plans` WebSocket channel. The event is a refresh
+signal (its payload stays the minimal locator); a subscriber reloads the item's
+thread, so an inline agent reply (broadcast the same way when it lands) surfaces
+without a new channel or payload shape. The comment endpoints live on
+`PlanCommentController` (`api/controllers/plan_comments.py`); a human comment's
+author is taken from the authenticated user, never the request body, and an agent
+reply is attributed to the responding role.
 
 ## Dispatch on Approval
 

@@ -28,6 +28,13 @@ Department health is the real terminal task-outcome success rate over a rolling 
 **API endpoints**: `GET /analytics/overview`, `GET /analytics/forecast`, `GET /budget/config`, `GET /departments`, `GET /departments/{name}/health`, `GET /activities`
 **WS channels**: `tasks`, `agents`, `budget`, `system`, `approvals` (all aggregated into health indicators and activity feed)
 
+#### Chat (`/chat`)
+
+One unified conversation with the organisation, Claude-Code-style: a single composer and transcript, no mode picker. The operator types anything and the org detects intent and responds inline, escalating **visibly**: a plain answer, a drafted plan handed off to Plan Review, a convened group, or a direct action. Specialists speak inline with their own attribution (transparent multi-voice, opt-out), and the Chief of Staff is the default front door. Direct acting stays fail-closed and buffered. A History drawer resumes a prior conversation; an optional charter side panel drives a charter interview. The whole surface is one call to `POST /meta/chat/turn` (intent classified server-side), so the frontend never pre-classifies the operator's intent.
+
+**API endpoints**: `POST /meta/chat/turn`, `GET /meta/chat/conversations`, `GET /meta/chat/conversations/{id}`, `GET /agents/active`
+**WS channels**: none (buffered turn; resume via REST)
+
 #### Org Chart (`/org`)
 
 Living org visualization with real-time agent status. Two view modes toggled via toolbar:
@@ -62,7 +69,7 @@ P&L management dashboard, not a billing tab. Current period spend vs budget, per
 
 #### Approvals (`/approvals`)
 
-Pending decisions queue: agents are blocked waiting for human action, so this is the highest-urgency page. Risk-level grouping with collapsible sections, urgency countdown indicators, batch select with approve/reject actions, detail drawer with approval timeline and metadata, filter bar with URL-synced state. Sidebar badge shows live pending count.
+Pending decisions queue: agents are blocked waiting for human action, so this is the highest-urgency page. Risk-level grouping with collapsible sections, urgency countdown indicators, batch select with approve/reject actions, detail drawer with approval timeline and metadata, filter bar with URL-synced state. Sidebar badge shows live pending count. **Plan reviews are excluded** from this generic inbox (a `source` filter): a plan review is decision-gathering, not a binary approval, so it has its own surface and badge on Plan Review (#2593).
 
 Each row is evidence-backed and failure-aware: it shows the resolved task title, project, and agent name (never raw UUIDs), a run-outcome badge (`succeeded` / `empty` / `failed`), and the produced-artifact set in the detail drawer. A failed run is styled unmistakably (danger surface) and never as a routine low-risk completion; its buttons relabel Approve/Reject to **Acknowledge**/**Retry** (approve acknowledges the failure and leaves the task failed, reject retries it). While an approved task executes, the detail view streams live execution progress (start, tool-call by tool-call, finish/fail) from the task's AG-UI SSE stream, so the completion review is no longer a surprise.
 
@@ -71,9 +78,9 @@ Each row is evidence-backed and failure-aware: it shows the resolved task title,
 
 #### Plan Review (`/plans`)
 
-Durable-plan review inbox: when the plan-approval gate is enabled, the decomposed plan for an objective lands here for a human decision before any team builds. The list surfaces plans awaiting review first, then the rest by recency, with client-side status filtering across the whole set. The detail page (`/plans/:planId`) shows the plan's items and lets an operator rework them (title, description, owner, complexity, stakes) or send the plan back for changes with a note; approve/reject stay on the linked approval. A disconnected-updates banner shows when the live channel drops. See [Plan Review](plan-review.md).
+Durable-plan review inbox with its own red nav badge (pending plan-review count): when the plan-approval gate is enabled, the decomposed plan for an objective lands here for a human decision before any team builds. The list surfaces plans awaiting review first, then the rest by recency, with client-side status filtering across the whole set. The detail page (`/plans/:planId`) shows the plan's items and lets an operator rework them (title, description, owner, complexity, stakes), send the plan back for changes with a note, or **approve/reject the whole plan inline** (the toolbar resolves the plan's parked approval and drives the canonical `/approvals` path, so approval stays atomic). Per-item discussion is conversational: a comment on an item is answered inline by the responsible role (the item's owner, else the Chief of Staff), rendered as an attributed agent reply. A disconnected-updates banner shows when the live channel drops. See [Plan Review](plan-review.md).
 
-**API endpoints**: `GET /plans`, `GET /plans/{id}`, `PATCH /plans/{id}`, `POST /plans/{id}/request-changes`
+**API endpoints**: `GET /plans`, `GET /plans/{id}`, `PATCH /plans/{id}`, `POST /plans/{id}/request-changes`, `GET /plans/{id}/comments`, `POST /plans/{id}/comments/items/{item_id}`, plus `POST /approvals/{id}/approve` / `reject` (inline whole-plan decision)
 **WS channels**: `plans`
 
 ### Secondary Navigation
@@ -333,12 +340,14 @@ Sidebar layout (220px expanded, 56px icon rail):
 - **Brand**: Logo / brand mark
 - **Primary**:
   - Dashboard, `LayoutDashboard`, `/`
+  - Chat, `MessagesSquare`, `/chat` (unified talk-to-your-org conversation)
   - Org Chart, `GitBranch`, `/org`
   - Roles, `Briefcase`, `/roles`
   - Task Board, `KanbanSquare`, `/tasks`
   - Budget, `DollarSign`, `/budget` (amber dot when >85% spent)
   - Mission Control, `Radio`, `/mission-control` (live cockpit, steering, flight recorder)
-  - Approvals, `ShieldCheck`, `/approvals` (badge: pending count)
+  - Approvals, `ShieldCheck`, `/approvals` (badge: pending count, excluding plan reviews)
+  - Plan Review, `ListChecks`, `/plans` (badge: pending plan-review count)
 - **Workspace** (collapsible label):
   - Agents, `Users`, `/agents`
   - Projects, `FolderKanban`, `/projects`
@@ -369,7 +378,8 @@ Sidebar layout (220px expanded, 56px icon rail):
 
 **Badge behaviours**:
 
-- **Approvals**: Live count of pending approvals from WS `approvals` channel. Red badge. Disappears at zero.
+- **Approvals**: Live count of pending approvals from WS `approvals` channel, excluding plan reviews (they have their own surface). Red badge. Disappears at zero.
+- **Plan Review**: Live count of pending plan-review approvals, derived from the same approvals store the Approvals badge reads. Red badge. Disappears at zero.
 - **Messages**: Unread message count from WS `messages` channel. Muted badge. Disappears at zero.
 - **Budget**: Amber dot (no number) when budget exceeds 85% threshold. Source: WS `budget` channel alerts.
 - **Notifications bell**: Aggregate unread count from system + approvals + budget alerts. Disappears at zero.
@@ -383,6 +393,7 @@ Sidebar layout (220px expanded, 56px icon rail):
 | Route | Page | Notes |
 |-------|------|-------|
 | `/` | Dashboard | Home. Redirects to `/setup` if not configured |
+| `/chat` | Chat | One unified "talk to your org" conversation. No mode picker: the org detects intent and responds inline (answer / plan draft / group / act), escalating visibly. Backed by `POST /meta/chat/turn` |
 | `/login` | Login | No sidebar, full page |
 | `/setup` | Setup Wizard | No sidebar, full page. Redirects to `/` if already complete |
 | `/setup/:step` | Setup Wizard step | **Guided**: `account` (conditional), `mode`, `template`, `providers`, `company`, `agents`, `capabilities`, `theme`, `complete`<br>**Quick**: `account` (conditional), `mode`, `providers`, `company`, `complete` |

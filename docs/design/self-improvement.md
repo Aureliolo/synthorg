@@ -313,27 +313,90 @@ Example override (enable the master switch + tighten the cadence):
 
 Every meta-loop entry point (`GET /meta/config`, `GET /meta/rules`, `GET /meta/signals`) reads the config via `self_improvement_config_of(app_state)`, which caches the parsed `SelfImprovementConfig` on `MetaStateSlice` so the JSON is parsed once rather than per request. The `MetaSelfImprovementSettingsSubscriber` invalidates that cache (wires the field back to `None`) on an operator edit, so setting changes are still picked up without a server restart.
 
-### Interactive endpoints
+### Interactive endpoint: one unified turn
 
-- **`POST /meta/chat`** (Chief of Staff explain-only entry point): rate-limited via `per_op_rate_limit_from_policy("meta.chat", key="user")` at **5 requests per 60 seconds per authenticated user**.  The policy is defined in `api/rate_limits/policies.py` under the `meta.chat` key. Clients exceeding the limit receive HTTP 429 with `Retry-After`. An `alert_id` or `proposal_id` on the request scopes the answer: `alert_id` resolves through the durable alert repository and routes to `explain_alert`; `proposal_id` resolves the parked `ApprovalItem` and folds its title/description/metadata into the free-form answer (not `explain_proposal`, which needs a full `ImprovementProposal` that doesn't survive into the approval queue). Alert takes priority when both are set; a stale/unresolvable id or an unwired dependency falls back to the plain free-form path. Every free-form answer (plain and proposal-scoped) is grounded in a real per-request **org-state read model** (`meta/chief_of_staff/org_state.py`, built in `api/controllers/_meta_chat_org_state.py`): the in-progress / in-review tasks, active projects, and pending approvals read straight from the task, project, and approval repositories. The answer cites the specific records it drew on in the response's `cited_records` (each a typed `{kind, record_id, label, status}`), so the Chief of Staff reports what the organisation is actually working on rather than inferring idleness. When the read model is unavailable (persistence disconnected or the approval store unwired) the answer says it cannot see task/project/approval state instead of asserting idle. The per-section sample size is the live `chief_of_staff.chat_org_state_max_items_per_section` setting (the full counts are always reported); performance metrics with no active agents are marked "no measured data yet" rather than shown as zeros. The streaming variant (`POST /meta/chat/stream`) carries the same org-state grounding and `cited_records` in its terminal `complete` frame.
+There is **one conversational surface**: the operator types anything and the
+organisation detects intent and responds, escalating visibly (answered a
+question, drafted a plan, convened a group, needs approval). Intent is the
+system's job, not the user's, so there is no mode picker.
 
-- **Server-side idempotency (all four mutating chat endpoints):** `/meta/chat`, `/meta/chat/propose`, `/meta/chat/group`, and `/meta/chat/act` each accept an optional `Idempotency-Key` header. When present, the endpoint runs under `IdempotencyService.run_idempotent` (scopes `meta.chat` / `.propose` / `.group` / `.act`): a replay with the same key and an identical request body returns the cached response instead of re-executing, so a client retry (including the axios 429/`Retry-After` retry) never double-parks a proposal, double-acts, or duplicates a turn; the same key with a different body is a `409`. Absent the header the endpoint runs normally (no idempotency).
+- **`POST /meta/chat/turn`** (the unified turn): rate-limited via
+  `per_op_rate_limit_from_policy("meta.chat.turn", key="user")` at **5 requests
+  per 60 seconds per authenticated user** (429 with `Retry-After` over the
+  limit), and idempotent under an optional `Idempotency-Key` header (scope
+  `meta.chat.turn`): a replay with the same key and body returns the cached
+  response, the same key with a different body is a `409`. An `IntentClassifier`
+  (`meta/chief_of_staff/intent_router.py`) first classifies the message to a
+  `TurnIntent` (`explain` / `propose` / `act` / `group_convene` / `charter`),
+  then `dispatch_turn` (`api/controllers/_turn_dispatch.py`) routes to the same
+  capability *service* the deleted per-mode endpoints used to call directly:
+  `ChiefOfStaffChat.ask`, `ChiefOfStaffProposer.converse`,
+  `GroupChatService.converse`, `ConversationalActor.act`, or the charter
+  interview. The surface collapses; the downstream state machines do not. The
+  response (`TurnResult`) carries the classified `intent`, an `intent_reason`
+  (why it landed there or degraded), `intent_confidence`, the `conversation_id`,
+  exactly one capability payload matching the intent (`answer` / `propose` /
+  `group` / `act` / `charter`), and any specialist `chime_ins` (multi-voice,
+  below).
 
-- **`GET /meta/alerts`** (durable org-alert log): cursor-paginated, newest-first, with optional `severity`/`alert_type` filters. Backs the dashboard's alert list and the `alert_id` chat-scoping lookup above. Degrades to an empty page (not a 503) when the alert repository is unwired.
+- **Intent is best-effort with a hard safety floor.** Any uncertainty degrades
+  toward `explain` (a read), never toward `act` (a write) or `charter` (an
+  expensive multi-turn interview): those two carry their own higher confidence
+  floors (`act_intent_confidence_floor` 0.85, `charter_intent_confidence_floor`
+  0.8), and a malformed/timed-out classification falls back to `explain`.
+  `turn_router_enabled` gates the classifier live per request; with no
+  classifier wired every turn answers as a plain question. An in-flight
+  `group`/`charter` conversation is never re-classified mid-thread (a fixed-kind
+  short-circuit).
 
-- **`POST /meta/chat/propose`** (Chief of Staff clarify-and-propose entry point): the same human conversation, but the model either asks ONE clarifying question or turns the brief into ONE objective drafted as a durable `Plan` for holistic review. On the propose branch the Chief of Staff hands the single `ProposedWork` to `ConversationalPlanDispatcher` (`plan_intake.py`), which provisions or reuses a conversation-keyed project, builds a `WorkItem` with `plan_required=True`, runs `intake_only` synchronously to hand back a `PlanDraftSummary`, and backgrounds the decompose-and-park so the (default-on) plan-approval gate parks a `PLAN_REVIEW` approval carrying the drafted plan (see [Plan Review: Conversational entry](plan-review.md#conversational-entry)). Nothing executes and no per-item work approvals are parked; the operator reviews the whole plan in Plan Review, and only on approval does the rebuilt plan dispatch. Steering directives a turn also raises stay on their own compensatable confirmation path. Same rate-limit policy shape as `/meta/chat` (`meta.chat.propose`, 5/60s/user) and the same `Idempotency-Key` discipline. Opt-in via `meta.chief_of_staff.propose_enabled`; the builder requires a registered LLM provider and a connected persistence backend (503 otherwise). The dispatcher is wired from the work pipeline + projects repo + worker-execution service at startup, so its absence surfaces as a 503 at the propose endpoint rather than a silent no-op. When `routing_enabled` is on, a concern router (`routing.py`) classifies each turn to the best-fit role agent (CFO for budget, CEO for strategy, and so on, most senior holder of a tied role) so the turn answers in that agent's persona; an uncertain classification falls back to the generic Chief of Staff. A `routing_strategy` of `keyword` uses a static keyword map (operator-overridable via `routing_keyword_rules`) with no extra LLM call. The result carries a structured `routing_reason` (`routed`, `routing_disabled`, `no_role_router`, `no_active_agents`, `below_confidence_floor`, `role_unresolved`, `classify_call_failed`, `response_invalid`, `no_keyword_match`) so a human can see why the generic Chief of Staff answered rather than that outcome being indistinguishable from a routed one. The injected conversation history is windowed to `conversational_history_token_budget` tokens (oldest turns dropped first) so a long thread cannot grow the prompt without bound.
+- **Per-capability gates survive the one surface.** Each intent keeps its own
+  `chief_of_staff.*_enabled` flag, model setting, and downstream contract,
+  re-checked per request via `ensure_feature_enabled` (`api/_feature_gate.py`):
+  a closed gate 503s and the router never reinterprets a message to dodge a
+  gate. **`act` stays fail-closed** (503 when `direct_mcp_enabled` is off or
+  security governance is inactive) **and buffered + idempotent, never
+  streamed** (a streamed action that failed mid-run would re-run its tools on
+  retry); a classified `act` naming no agent degrades to `explain` rather than
+  acting. **`propose`** drafts ONE objective into a durable `Plan` parked for
+  holistic review (see [Plan Review: Conversational entry](plan-review.md#conversational-entry));
+  nothing executes and no per-item work approvals are parked. **`group_convene`**
+  runs the round-robin multi-agent conversation (per-round token budgeting, a
+  participant cap, `agent_call_timeout_seconds` per call, `<peer-contribution>`
+  untrusted-content fences, human-consented `CONVERSATIONAL_INVITE`).
 
-- **`POST /meta/chat/group`** (multi-agent group chat): one human, several agents, in a single conversation. Each round drives the active roster once in a stable round-robin, sharing the transcript, with per-round token budgeting and a participant cap; a single agent's dispatch failure skips that agent (surfaced in `participants_skipped`) rather than aborting the round, and each agent call is bounded by `agent_call_timeout_seconds`. The round windows the shared history to `conversational_history_token_budget` tokens and reserves room for each turn's estimated INPUT prompt before dispatch, so a large history cannot consume the whole round budget on one call: when the input alone would leave no room for the output reserve the round stops with `truncated_reason = input_budget_exhausted` (alongside the existing `token_budget_exhausted` / `max_total_turns_reached`). When `invite_enabled` is on, an agent may request to bring another agent in: the request parks a `CONVERSATIONAL_INVITE` approval and the invited agent joins only after a human approves, receiving a fenced inviter+reason handover on its first turn. A partial-unique index plus an accept-time roster re-check keep the participant cap honest against concurrent invites. Because a round feeds each earlier peer's contribution to later participants, an authority-deference vector exists; the peer-contribution block is scanned for authority cues (reusing `AuthorityDeferenceGuard`) as **detect-and-log only**. This is terminal by design, not a stopgap: the `<peer-contribution>` untrusted-content fence is the actual injection defence (the model treats fenced text as inert data), and redaction is deliberately out of scope because an authority phrase is often legitimate business content. Rate-limited (`meta.chat.group`, 5/60s/user) and idempotent under an `Idempotency-Key` (scope `meta.chat.group`). Opt-in via `meta.chief_of_staff.group_chat_enabled`; requires a provider, agent registry, and connected persistence (503 otherwise); invites additionally require a wired approval store.
+- **Two levels of routing.** The intent classifier picks *which capability*;
+  the existing concern router (`routing.py`) still picks *who answers* one level
+  down, so an `explain`/`propose` turn answers in the best-fit role agent's
+  persona (CFO for budget, CEO for strategy, most senior holder of a tied role),
+  falling back to the generic Chief of Staff with a structured `routing_reason`.
+  Every `explain` answer is grounded in a per-request **org-state read model**
+  (`meta/chief_of_staff/org_state.py`): in-progress/in-review tasks, active
+  projects, and pending approvals read from the repositories, with the records
+  drawn on cited in `cited_records`; an unavailable read model says so rather
+  than asserting idle. Injected history is windowed to
+  `conversational_history_token_budget` tokens.
 
-- **`POST /meta/chat/act`** (direct MCP acting under trust): the chat agent acts directly through SynthOrg's own MCP under its configured trust level rather than only proposing. The action runs through the engine's governed tool invoker and shared `ApprovalGate`, so a sensitive action escalates and parks exactly as a task action does (`source = PARKED_CONTEXT`) and resumes via the worker's taskless branch. Rate-limited (`meta.chat.act`, 5/60s/user) and idempotent under an `Idempotency-Key` (scope `meta.chat.act`). The live `direct_mcp_enabled` gate is re-checked per request (`ensure_feature_enabled`), so toggling it off kills further acting on the next request without a restart. The optional `conversation_id` on the request is **opaque correlation metadata only**: no conversation row is created or validated for `/act`, so it is never persisted or checked; real conversation-timeline integration for direct acting is a follow-up. Opt-in via `meta.chief_of_staff.direct_mcp_enabled`; requires a boot `AgentEngine` with an MCP self-consumer AND an enabled `SecurityConfig`. The builder is **fail-closed**: with `direct_mcp_enabled` on but security governance inactive it refuses to build the actor (the endpoint 503s) rather than exposing ungated write/admin acting.
+- **Transparent multi-voice (opt-out, default on).** After an `explain` answer,
+  0..N specialists above a value floor add a short, attributed chime-in
+  (`chime_ins`), rendered as agent bubbles so the operator sees the
+  *organisation* answering rather than one synthesised voice. Best-effort: a
+  chime-in failure never fails the turn, and every chime is fenced with
+  `wrap_untrusted`. Gated live per request via `chief_of_staff.multi_voice_enabled`.
 
-- **Streaming (`POST /meta/chat/stream`, `POST /meta/chat/act/stream`):** SSE variants alongside the buffered endpoints, emitting `progress` / `complete` / `error` frames (the same convention as the model-pull stream). `/meta/chat/stream` streams a free-form Chief-of-Staff answer token-by-token (`progress` = one text delta, `complete` = the assembled answer plus sources and confidence); the scoped alert/proposal deep-explain paths stay on the buffered `/meta/chat`, which produces a short structured answer where streaming buys nothing. `/meta/chat/act/stream` emits one `progress` per continuing action turn (a turn that requested tools and looped again, carrying those tools) then a terminal `complete` with the full result of the turn that ended the loop, driven by an optional `turn_observer` hook the engine's ReAct loop calls after each continuing turn (never the terminal turn, which returns before the hook). Streaming and idempotency are mutually exclusive per request: a token stream cannot be replayed from cache, so the streaming endpoints take no `Idempotency-Key`. Both wrap `revalidated_sse_stream`, so a mid-flight auth revocation or client disconnect tears the stream down (a disconnect also cancels the running action). The dashboard streams the read-only explain chat (with a Stop control backed by a per-turn `AbortController`) but deliberately keeps **direct acting on the buffered idempotent `/meta/chat/act`**: acting mutates, so a streamed action that failed mid-run would re-execute its already-run tools on retry, whereas the buffered path replays the cached result. `/meta/chat/act/stream` therefore stays available for API consumers that accept the no-dedupe trade-off.
+- **`GET /meta/alerts`** (durable org-alert log): cursor-paginated, newest-first,
+  with optional `severity`/`alert_type` filters; degrades to an empty page (not
+  a 503) when the alert repository is unwired.
 
-- **`GET /meta/chat/conversations`** (owner-scoped conversation list) and **`GET /meta/chat/conversations/{id}`** (one conversation's turns): cursor-paginated, newest-first, scoped to the caller (`created_by`) so a conversation is never cross-tenant visible; a foreign or unknown id returns `404` (`ConversationNotFoundError`), never `403`. These back resuming a prior chat/propose/group conversation after a reload: the dashboard fetches the list and, on selection, hydrates the transcript from the turns, staying a pure API consumer (nothing is persisted client-side).
+- **`GET /meta/chat/conversations`** (owner-scoped conversation list) and
+  **`GET /meta/chat/conversations/{id}`** (one conversation's turns):
+  cursor-paginated, newest-first, scoped to the caller (`created_by`); a foreign
+  or unknown id returns `404`, never `403`. These back resuming any prior
+  conversation after a reload: the dashboard fetches the list and hydrates the
+  transcript from the turns, staying a pure API consumer.
 
-- **`GET /agents/active`** (active-agent roster): the stable runtime UUIDs, names, and roles of the currently active agents. Backs the participant picker for group chat and the acting-agent picker for direct acting.
-
-**Dashboard inline surfacing.** The Chat page reads `GET /meta/config` and surfaces each mode's gating state inline before a request rather than only reacting to a 503: an enabled mode whose per-capability model is blank shows a "no model configured" notice naming the setting (`chief_of_staff.chat_model` / `propose_model`), and direct action shows an "enabled but not yet live" notice while its effective `direct_mcp_ready` is false (the fail-closed governance gate above). The config exposes `direct_mcp_ready` as the effective actor-wired state so the cross-warning needs no restart to clear. The charter interview keeps the always-available / 503-on-demand contract but now persists its last turn failure inline so a blank `charter.interview_model` stays visible after the toast fades.
+- **`GET /agents/active`** (active-agent roster): the stable runtime UUIDs,
+  names, and roles of the currently active agents. Backs the group-convene
+  participant resolution and multi-voice attribution.
 
 ### YAML defaults
 
@@ -347,18 +410,28 @@ self_improvement:
   code_modification_enabled: false  # Framework code changes (opt-in)
   tool_creation_enabled: false      # Self-extending toolkit (opt-in)
   chief_of_staff:
-    # Explain-only chat (POST /meta/chat).
+    # Unified turn (POST /meta/chat/turn): intent classification in front.
+    turn_router_enabled: true                # Classify each turn's intent (gated live per request)
+    turn_intent_model: example-small-001     # Intent classifier model id
+    act_intent_confidence_floor: 0.85        # Higher floor for act (a write): below it degrades to explain
+    charter_intent_confidence_floor: 0.8     # Higher floor for the charter interview
+    # Transparent multi-voice: specialists chime in on an answer (opt-out).
+    multi_voice_enabled: true                # Let specialists add an attributed chime-in (gated live per request)
+    multi_voice_model: example-small-001     # Chime-in model id
+    multi_voice_max_speakers: 2              # Cap on chime-ins per answer
+    multi_voice_confidence_floor: 0.7        # Value bar a specialist must clear to chime in
+    # Explain turns (the unified turn's read path).
     chat_snapshot_window_days: 7              # Trailing signal window, live-resolved per request
     chat_org_state_max_items_per_section: 10 # Per-section org-state sample cap (tasks/projects/approvals); full counts always reported; live-resolved per request
-    # Clarify-and-propose (POST /meta/chat/propose). All opt-in.
+    # Propose turns (clarify-and-draft-a-plan). All opt-in.
     propose_enabled: false                   # Master switch
     propose_model: example-small-001         # LLM model id
     propose_temperature: 0.3                 # Lower than chat: structured output
     propose_max_tokens: 2000                 # Per-turn token budget
-    conversational_history_token_budget: 4000       # Windowed transcript budget (oldest turns dropped first); also bounds group-chat input
+    conversational_history_token_budget: 4000       # Windowed transcript budget (oldest turns dropped first); also bounds group-convene input
     propose_max_clarification_turns: 5       # Cap before force-closing the conversation
     propose_default_risk_level: medium       # Risk stamp on each parked steering ApprovalItem
-    # Concern routing in front of clarify-and-propose. All opt-in.
+    # Concern routing (who answers, within explain/propose). All opt-in.
     routing_enabled: false                   # Master switch
     routing_strategy: llm                    # "llm" (classifier) or "keyword" (static map)
     routing_model: example-small-001         # Classifier model id (llm strategy)
@@ -367,7 +440,7 @@ self_improvement:
     routing_confidence_floor: 0.6            # Below this, fall back to the generic persona
     routing_default_role: CEO                # Role to try when the named role has no active agent
     routing_keyword_rules: []                # Operator override for the keyword map (bespoke roles)
-    # Multi-agent group chat (POST /meta/chat/group). All opt-in.
+    # Group-convene turns (multi-agent). All opt-in.
     group_chat_enabled: false                # Master switch
     group_chat_max_participants: 5           # Per-conversation participant cap
     group_chat_round_token_budget: 12000     # Total token budget for one round
@@ -379,7 +452,7 @@ self_improvement:
     invite_enabled: false                    # Master switch (also requires a wired approval store)
     invite_max_per_round: 2                  # Consent-queue storm bound per round
     invite_default_risk_level: medium        # Risk stamp on the consent ApprovalItem
-    # Direct MCP acting under trust (POST /meta/chat/act). All opt-in.
+    # Act turns (direct MCP under trust). All opt-in, fail-closed.
     direct_mcp_enabled: false                # Master switch (fail-closed without SecurityConfig)
     direct_mcp_max_turns: 6                  # Hard turn cap for one chat-driven action loop
     # Documentary mode: post-run run narrative. All opt-in.
@@ -430,7 +503,7 @@ self_improvement:
 1. **Flow 0** (Conversational steering; `source = CONVERSATIONAL_INTAKE`, `try_conversational_intake_resume`): the only `CONVERSATIONAL_INTAKE` approval the proposer parks is a **steering directive** (a redirect / priority nudge), carried in the approval metadata (`STEERING_INTAKE_*` keys), not a proposal row. On approve it issues the directive to the steering service; on reject it is a no-op. A conversational **work brief** is never parked here: the propose turn drafts it synchronously into a durable `Plan` and parks that for holistic review through Flow 0.7 (`PLAN_REVIEW`) via the `ConversationalPlanDispatcher` (see [Plan Review: Conversational entry](plan-review.md#conversational-entry)). Every other source falls through.
 2. **Flow 0.5** (Agent invite; `source = CONVERSATIONAL_INVITE`, `try_conversational_invite_resume`): the dispatcher seats the invited agent into the group conversation on approve (re-checking the participant cap against the live roster) or moves the invite to `DECLINED` on reject. Owned here; every other source falls through.
 3. **Flow 0.7** (Plan approval; `source = PLAN_REVIEW`, `try_plan_review_resume`): the plan-review gate persisted a durable `Plan` and parked an approval item referencing its `plan_id`. On approve the durable plan is loaded and rebuilt into a dispatchable subtask tree (so any operator edits made while it was under review are exactly what builds), and the plan's status is synced to `APPROVED`; on reject the parent task is cancelled and the plan is marked `REJECTED`. The decision is reflected onto the plan first, so a dispatch failure marks the parent task `FAILED` while the plan stays `APPROVED`. Owned here; every other source falls through. See [Plan Review](plan-review.md).
-4. **Flow 1** (Mid-execution parking; `source = PARKED_CONTEXT`, `try_mid_execution_resume`): the agent that called `request_human_approval` is parked; the decision resumes the parked context. Direct MCP chat actions (`/meta/chat/act`) park here.
+4. **Flow 1** (Mid-execution parking; `source = PARKED_CONTEXT`, `try_mid_execution_resume`): the agent that called `request_human_approval` is parked; the decision resumes the parked context. Direct MCP act turns (a `/meta/chat/turn` classified `act`) park here.
 5. **Flow 2** (Review gate; `source = REVIEW_GATE`, default): autonomy / hiring / promotion / pruning / scaling / training / signals approvals; the decision drives the task's review transition. For a task-completion review the transition is `IN_REVIEW -> COMPLETED` (approve) or `IN_REVIEW -> IN_PROGRESS` (reject); for a **failed-run** review (`review:task_failed`) approve acknowledges the failure (the task stays `FAILED`) and reject retries (`FAILED -> ASSIGNED`). See [Security: Failed-run review decisions](security.md#failed-run-review-decisions).
 
 Each branch returns `True` once it owns the decision, suppressing fall-through. Source is the routing primary; the legacy parked-context probe is the fallback only when the just-decided approval cannot be re-read.

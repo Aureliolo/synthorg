@@ -81,7 +81,7 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 | `charter` | Deep CEO-interview charter pacing (model, turns, temperature, token budget) and default currency |
 | `external_api` | Governed external API access: provider, response-size cap, timeout, and per-minute rate limit |
 | `self_improvement` | Self-modifying meta-loop: master and per-strategy toggles, toolsmith gate, per-call models, and structural tuning (schedule, rollout, regression, guards); every switch defaults off |
-| `chief_of_staff` | Chief-of-Staff capability flags (explain-chat, propose, concern-routing, group-chat, learning, alerts, narrative, invite, direct-MCP) and per-feature models |
+| `chief_of_staff` | Unified-chat + Chief-of-Staff capability flags (turn-router, multi-voice, propose, concern-routing, group-chat, learning, alerts, narrative, invite, direct-MCP) and per-feature models |
 | `knowledge` | Knowledge substrate (document ingestion + retrieval) enable and optional generative-RAG synthesis (model, strategy, per-answer chunk budget) |
 | `design` | Image-generation master flag and the image model the design `image_generator` tool routes through |
 | `demo` | Demo-mode showcase content (e.g. greeting copy) |

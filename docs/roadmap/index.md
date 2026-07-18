@@ -55,16 +55,15 @@ provider, zero LLM spend, unless noted):
 - **Distributed dispatch**: NATS JetStream queue, worker pool, dead-letter
   consumer, dedup pruner, and heartbeat subscriber, validated under
   multi-worker synthetic load (no loss, no duplication).
-- **Conversational org interface**: talk to the company in natural language:
-  clarify-and-propose against the Chief of Staff, per-turn concern routing to
-  the best-fit role agent, multi-agent group chat, human-consented
-  agent-initiated invites, and direct MCP acting under trust (sensitive
-  actions approval-gated; fail-closed when security governance is inactive).
-  The four conversational modes (explain-chat, propose, concern routing, and
-  group chat) are on by default; explain-chat, propose, and group chat toggle
-  per request, while concern routing is baked into the proposer at startup and
-  needs a restart to change. Agent-initiated invites and direct MCP acting are
-  off by default.
+- **Conversational org interface**: one unified "talk to your org" chat in
+  natural language. A single turn is classified to an intent (answer a question,
+  draft a plan, convene a group, act) and dispatched, with per-turn concern
+  routing to the best-fit role agent and transparent multi-voice (specialists
+  chime in with attribution). Human-consented agent-initiated invites and direct
+  MCP acting under trust (sensitive actions approval-gated; fail-closed when
+  security governance is inactive) round it out. The read/propose/group and
+  multi-voice capabilities are on by default and gate live per request;
+  agent-initiated invites and direct MCP acting are off by default.
 - **Operations**: structured logging with correlation tracking and redaction,
   log shipping, Prometheus metrics, OTLP, HttpOnly-cookie multi-user sessions
   with CSRF protection, Wolfi apko-composed distroless images, Trivy + Grype

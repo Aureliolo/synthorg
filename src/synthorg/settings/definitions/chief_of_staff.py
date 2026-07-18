@@ -86,8 +86,8 @@ _r.register(
         type=SettingType.BOOLEAN,
         default="true",
         description=(
-            "Let the Chief of Staff clarify a request and park proposed work"
-            " items for your approval (the /meta/chat/propose path)."
+            "Let the Chief of Staff clarify a request and draft it into a plan"
+            " for your review when the unified chat classifies a turn as work."
         ),
         group="Conversational",
     )
@@ -117,7 +117,7 @@ _r.register(
         default="true",
         description=(
             "Hold a multi-agent group conversation with several role agents"
-            " in one room (the /meta/chat/group path)."
+            " in one room when the unified chat convenes a group."
         ),
         group="Conversational",
     )
@@ -234,8 +234,9 @@ _r.register(
         default="false",
         description=(
             "Let a chat instruction drive a real MCP action under the acting"
-            " agent's trust level (the /meta/chat/act path). Off by default:"
-            " the Chief of Staff acts for you only when you opt in. Fail-closed:"
+            " agent's trust level when the unified chat classifies a turn as an"
+            " action. Off by default: the Chief of Staff acts for you only when"
+            " you opt in. Fail-closed:"
             " it materialises only when security governance and the MCP"
             " self-consumer are wired, and stays inert (503) otherwise. A live"
             " toggle rebuilds the actor through that same fail-closed gate, so"
