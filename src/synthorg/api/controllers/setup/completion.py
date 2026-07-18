@@ -193,11 +193,11 @@ async def _run_embedder_auto_select(
     else:
         # Empty-company boot: no runtime registry / bound default exists yet, so
         # the embedder's tier-inference hint (NOT an LLM dispatch binding) falls
-        # back to the first persisted provider.
+        # back to the first persisted provider -- exempt from the no-auto-pick
+        # gate because it is a tier hint, not a dispatch binding.
         persisted = list(await provider_management_of(app_state).list_providers())
-        provider_preset_name = (
-            persisted[0] if persisted else None
-        )  # lint-allow: provider-auto-pick -- embedder tier hint, not a dispatch
+        first = persisted[0] if persisted else None  # lint-allow: provider-auto-pick
+        provider_preset_name = first
     has_gpu = await _read_has_gpu_setting(settings_svc)
     try:
         model_ids = await _collect_model_ids(app_state)

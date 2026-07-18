@@ -116,8 +116,7 @@ async def _resolve_eval_loop_modes(
         with ``model`` / ``provider_name`` stripped.
     """
     # ``eval_loop_llm_model`` is a model-assignment setting storing a
-    # ``ModelRef``: the provider travels with the model (the picker writes
-    # both), so the separate provider read is gone.
+    # ``ModelRef``, so the model id and its provider are read together.
     if resolver is None:
         boot_ref = parse_model_ref(_resolve_hr_str("eval_loop_llm_model"))
         return (

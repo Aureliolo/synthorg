@@ -14,7 +14,6 @@ or if the session ends without submitting a usable plan, it falls back to the
 single-shot :class:`LlmDecompositionStrategy` so a greenlight is never blocked.
 """
 
-from collections.abc import Callable
 from typing import Final, cast, override
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
@@ -56,7 +55,7 @@ from synthorg.observability.events.decomposition import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider, ProviderSelector
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
@@ -182,15 +181,6 @@ class SubmitDecompositionPlanTool(BaseTool):
                 f"Plan accepted with {len(plan.subtasks)} subtasks. You may stop now."
             ),
         )
-
-
-type ProviderSelector = Callable[[AgentIdentity], CompletionProvider]
-"""Resolve the completion client for an agent's own ``(provider, model)`` pair.
-
-The owner runs the planning session on the provider its identity is bound to,
-never a shared default, so an overlapping model id never dispatches the owner
-to the wrong gateway. The wiring supplies ``registry.get(identity.model.provider)``.
-"""
 
 
 class AgentSessionDecompositionStrategy(DecompositionStrategy):

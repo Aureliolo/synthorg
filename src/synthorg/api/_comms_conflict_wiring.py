@@ -24,10 +24,14 @@ from synthorg.communication.conflict_resolution.escalation.registry import (
 )
 from synthorg.communication.conflict_resolution.protocol import JudgeEvaluator
 from synthorg.config.schema import RootConfig
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+
+logger = get_logger(__name__)
 
 
 def wire_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collaborator DI
@@ -100,6 +104,11 @@ def _build_judge_evaluator(
         provider is resolvable.
     """
     if provider_registry is None:
+        logger.info(
+            API_APP_STARTUP,
+            service="conflict_judge",
+            note="no provider registry wired; conflict judge stays unwired",
+        )
         return None
     from synthorg.communication.conflict_resolution.llm_judge_evaluator import (  # noqa: PLC0415
         LlmJudgeEvaluator,
@@ -109,6 +118,14 @@ def _build_judge_evaluator(
 
     provider = provider_registry.default_provider()
     if provider is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="conflict_judge",
+            note=(
+                "no default system provider resolvable; conflict judge stays "
+                "unwired and debate/hybrid resolvers fall back to authority"
+            ),
+        )
         return None
     return LlmJudgeEvaluator(
         provider=provider,

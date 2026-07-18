@@ -4,8 +4,10 @@ The engine and tests type-hint against ``CompletionProvider`` for loose
 coupling.  Concrete adapters and test doubles satisfy it structurally.
 """
 
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from typing import Protocol, runtime_checkable
+
+from synthorg.core.agent import AgentIdentity
 
 from .capabilities import ModelCapabilities
 from .models import (
@@ -98,3 +100,13 @@ class CompletionProvider(Protocol):
             Mapping from model id to capabilities (or ``None`` on failure).
         """
         ...
+
+
+type ProviderSelector = Callable[[AgentIdentity], CompletionProvider]
+"""Resolve the completion client for an agent's own ``(provider, model)`` pair.
+
+Each agent (the decomposition owner, a plan-review panellist, ...) runs the
+session on the provider its identity is bound to, never a shared default, so an
+overlapping model id never dispatches to the wrong gateway. The wiring layer
+supplies ``registry.get(identity.model.provider)``.
+"""

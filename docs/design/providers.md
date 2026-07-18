@@ -401,9 +401,10 @@ provider sorts first). Enforced by `check_no_provider_auto_pick.py`.
 
 An agent binds an **exclusive `(provider, model)` pair**: `ModelConfig` requires
 both a `provider` and a `model_id`, and the agent's own model always resolves to
-that provider, never re-derived across providers. Two OpenAI-compatible gateways
-can legitimately advertise an overlapping model id (each live-discovers its own
-`/v1/models`), so a bare id can map to more than one provider; the resolver keeps
+that provider, never re-derived across providers. Two gateways speaking the same
+wire protocol can legitimately advertise an overlapping model id (each
+live-discovers its own `/v1/models`), so a bare id can map to more than one
+provider; the resolver keeps
 all variants as a candidate tuple rather than raising a collision error, and the
 binding decides which one an agent uses.
 

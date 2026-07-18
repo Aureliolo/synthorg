@@ -158,10 +158,10 @@ _r.register(
             "Provider + model for the eval-loop 'llm' identify/propose"
             " strategies, selected through the model picker (a `{provider,"
             " model_id}` reference). Empty (the default) keeps both steps"
-            " deterministic regardless of their mode; an empty ref provider"
-            " selects the first registered provider. EvalLoopSettingsSubscriber"
-            " rebuilds the strategies on a change, so it applies without a"
-            " restart."
+            " deterministic regardless of their mode; a ref whose provider is"
+            " blank keeps that step deterministic (no provider is resolved)."
+            " EvalLoopSettingsSubscriber rebuilds the strategies on a change,"
+            " so it applies without a restart."
         ),
         group="Evaluation",
         level=SettingLevel.ADVANCED,

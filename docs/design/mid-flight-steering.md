@@ -160,8 +160,7 @@ steering notifier and the later steering service coexist on the same slice.
 
 | Setting | Default | Effect |
 | --- | --- | --- |
-| `cockpit.steering_proposer_enabled` | `false` | Enable the LLM supersession proposer for `PROPOSE`-mode redirects. |
-| `cockpit.steering_proposer_model` | (empty) | Model id the proposer calls; empty falls back to the no-op proposer. |
-| `cockpit.steering_proposer_provider` | (empty) | Provider the proposer calls; empty falls back to the first registered provider. |
+| `cockpit.steering_proposer_enabled` | `true` | Enable the LLM supersession proposer for `PROPOSE`-mode redirects. |
+| `cockpit.steering_proposer_model` | (empty) | Provider+model reference (`MODEL_REF`, carries both) the proposer calls; empty falls back to the no-op proposer; a blank ref provider resolves via the explicit default system provider. |
 | `cockpit.steering_max_active_directives` | `100` | Cap on active directives listed on the operator board. |
 | `cockpit.steering_propose_candidate_limit` | `100` | Per-status cap on in-flight candidate tasks gathered for a `PROPOSE`-mode refinement, bounding the proposer's prompt budget. |

@@ -357,9 +357,10 @@ back-compatibility but is not the runtime gate.
 The generative-RAG `ask` surface is governed by the `knowledge` settings
 namespace (Cat-1, runtime-readable over the settings API so the wizard and
 dashboard can toggle it), all hot (`restart_required=False`): `synthesis_enabled`
-(bool, default true; live-gated at the `ask` entrypoint), `synthesis_model` (str,
-default blank; must be set for `ask` to answer), `synthesis_provider` (str, blank
-selects the first registered provider), `synthesis_synthesizer` (strategy
+(bool, default true; live-gated at the `ask` entrypoint), `synthesis_model`
+(`MODEL_REF`, default blank; carries provider+model, must be set for `ask` to
+answer; a blank ref provider resolves via the explicit default system
+provider), `synthesis_synthesizer` (strategy
 discriminator, default `llm`), and `synthesis_max_chunks` (int, top hits fed to
 the synthesiser). The synthesiser is ghost-wired whenever a model + provider
 exist, and a `KnowledgeSettingsSubscriber` rebuilds and swaps it on any

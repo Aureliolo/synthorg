@@ -410,8 +410,27 @@ async def _build_steering_proposer(
         configured = ref.provider.strip()
         if configured and configured in provider_registry:
             provider = provider_registry.get(configured)
-        elif not configured:
+        elif configured:
+            logger.warning(
+                API_APP_STARTUP,
+                service="steering_proposer",
+                note=(
+                    "configured steering-proposer provider not registered; "
+                    "no-op proposer wired"
+                ),
+                provider_name=configured,
+            )
+        else:
             provider = provider_registry.default_provider()
+            if provider is None:
+                logger.warning(
+                    API_APP_STARTUP,
+                    service="steering_proposer",
+                    note=(
+                        "no default system provider resolvable; no-op proposer "
+                        "wired until providers.default_provider is set"
+                    ),
+                )
     return build_supersession_proposer(provider, model=model, enabled=enabled)
 
 

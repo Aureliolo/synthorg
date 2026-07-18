@@ -142,12 +142,8 @@ class ProviderRegistry:
             The default provider's driver, or ``None`` when the choice is
             ambiguous and unresolved.
         """
-        name = self._default_provider_name
-        if name is not None and name in self._drivers:
-            return self._drivers[name]
-        if len(self._drivers) == 1:
-            return next(iter(self._drivers.values()))
-        return None
+        name = self.default_provider_resolved_name()
+        return self._drivers[name] if name is not None else None
 
     def bind_credential_catalog(self, catalog: ConnectionCatalog | None) -> None:
         """(Re)bind the credential catalog onto every registered driver.

@@ -384,8 +384,12 @@ async def build_runtime_services(
             oracle_enabled=completion_oracle_config.enabled,
         )
     registry, names = selected
-    provider = registry.default_provider()
-    if provider is None:
+    # Resolve the default provider by name once (the single source of the
+    # explicit-bound / sole-provider / ambiguous-None branch logic), then take
+    # its driver -- no separate default_provider() call that re-runs the same
+    # resolution and leaves an unreachable guard behind.
+    default_provider_name = registry.default_provider_resolved_name()
+    if default_provider_name is None:
         # Two or more providers are registered but none is the explicit
         # providers.default_provider, so the default system provider is
         # ambiguous. Refuse to auto-pick the alphabetically-first one; boot
@@ -407,15 +411,7 @@ async def build_runtime_services(
             workspace_root,
             oracle_enabled=completion_oracle_config.enabled,
         )
-    # ``provider`` resolved above, so its name always resolves too; the guard
-    # is a type-narrowing formality, never a runtime branch.
-    default_provider_name = registry.default_provider_resolved_name()
-    if default_provider_name is None:  # pragma: no cover - unreachable
-        return _no_active_provider_services(
-            app_state,
-            workspace_root,
-            oracle_enabled=completion_oracle_config.enabled,
-        )
+    provider = registry.get(default_provider_name)
 
     # Cheap pre-check before the expensive engine / MCP-bridge assembly: when
     # the coordination model is unset the coordinator build would raise anyway,

@@ -53,7 +53,14 @@ _REMOVED_RESOLVER: Final[str] = "resolve_for_model"
 
 
 def _is_list_providers_call(node: ast.expr) -> bool:
-    """Whether *node* is a ``<expr>.list_providers()`` call."""
+    """Whether *node* is a ``<expr>.list_providers()`` call.
+
+    Unwraps a leading ``await`` first: ``list_providers`` is ``async def`` on the
+    provider-management service, so both ``(await x.list_providers())[0]`` and the
+    ``names = list(await x.list_providers())`` idiom must be seen through.
+    """
+    if isinstance(node, ast.Await):
+        node = node.value
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)

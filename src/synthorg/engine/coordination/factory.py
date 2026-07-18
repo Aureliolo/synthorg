@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.task_enums import CoordinationTopology
 from synthorg.engine.coordination.decomposition_strategy_factory import (
-    ProviderSelector,
     build_decomposition_strategy,
 )
 from synthorg.engine.coordination.section_config import (
@@ -31,7 +30,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
     COORDINATION_FACTORY_BUILT,
 )
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider, ProviderSelector
 
 if TYPE_CHECKING:
     # config.schema would cycle here (it pulls api -> engine); the concrete

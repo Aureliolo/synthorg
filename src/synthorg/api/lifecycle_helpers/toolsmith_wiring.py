@@ -112,6 +112,14 @@ def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith r
     # than routing to whichever provider sorts first.
     provider = provider_registry.default_provider()
     if provider is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="toolsmith",
+            note=(
+                "no default system provider resolvable; toolsmith stays unwired "
+                "until providers.default_provider is set"
+            ),
+        )
         return None
     repo = _build_dynamic_tool_repo(persistence)
 

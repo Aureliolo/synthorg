@@ -66,8 +66,9 @@ _r.register(
             " unset (or naming an unregistered provider) those system calls"
             " stay unwired rather than routing to whichever provider sorts"
             " first, so a model assignment is always an explicit choice."
-            " Set automatically to the sole provider during setup when exactly"
-            " one is configured; pick it explicitly when several are."
+            " When left unset with exactly one provider configured, that sole"
+            " provider resolves automatically at runtime; with several"
+            " configured, pick one explicitly."
         ),
         group="General",
     )

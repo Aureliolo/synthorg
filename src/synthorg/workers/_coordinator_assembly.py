@@ -400,13 +400,14 @@ async def _build_runtime_coordinator(
     from synthorg.core.agent import AgentIdentity  # noqa: PLC0415
     from synthorg.providers.state import provider_registry_of  # noqa: PLC0415
 
-    _registry = provider_registry_of(app_state)
-
     def _owner_provider_selector(identity: AgentIdentity) -> CompletionProvider:
         # The owner-run decomposition session dispatches on the owner's own
         # bound provider, never the boot default; an unregistered provider
         # raises and the strategy falls back to the single-shot decomposer.
-        return _registry.get(identity.model.provider)
+        # Re-resolve the registry live per call so a provider hot-reload swap is
+        # reflected without rebuilding the coordinator (mirrors the red-team
+        # runtime's per-call resolve).
+        return provider_registry_of(app_state).get(identity.model.provider)
 
     coordinator = build_coordinator(
         config=app_state.config.coordination,

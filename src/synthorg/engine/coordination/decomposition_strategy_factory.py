@@ -7,11 +7,9 @@ separate from :mod:`synthorg.engine.coordination.factory` so the coordinator
 assembly and the strategy-selection logic each stay within their size budget.
 """
 
-from collections.abc import Callable
 from typing import override
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
-from synthorg.core.agent import AgentIdentity
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.task import Task
 from synthorg.engine.decomposition.models import (
@@ -26,12 +24,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_FAILED,
 )
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider, ProviderSelector
 
 logger = get_logger(__name__)
-
-type ProviderSelector = Callable[[AgentIdentity], CompletionProvider]
-"""Resolve the completion client for an agent's own ``(provider, model)`` pair."""
 
 
 class _NoProviderDecompositionStrategy(DecompositionStrategy):

@@ -385,7 +385,7 @@ async def _build_and_wire_research(
         else provider_registry.default_provider()
     )
     if provider is None:
-        logger.info(
+        logger.warning(
             API_APP_STARTUP,
             service="research_engine",
             note=(

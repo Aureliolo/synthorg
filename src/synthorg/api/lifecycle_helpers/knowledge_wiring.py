@@ -184,10 +184,9 @@ async def _maybe_build_knowledge_synthesizer(
             note="settings service or provider registry unavailable; retrieval-only",
         )
         return None
-    # ``synthesis_model`` is a model-assignment setting storing a ``ModelRef``:
-    # the provider travels with the model (the picker writes both), so the
-    # separate provider read is gone; an empty ref provider still means
-    # "first registered provider".
+    # ``synthesis_model`` is a model-assignment setting storing a ``ModelRef``,
+    # so the model id and its provider are read together; a blank ref provider
+    # resolves via the explicit default system provider (never first-registered).
     ref = parse_model_ref(
         (await runtime_settings.get("knowledge", "synthesis_model")).value
     )

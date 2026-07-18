@@ -91,14 +91,14 @@ class _LlmEvaluatorSupportMixin:
         # explicit default system provider rather than an arbitrary
         # first-available pick. When the default is ambiguous/unset, security
         # evaluation stays unwired and the pipeline's non-LLM path handles it.
-        provider = self._registry.default_provider()
-        if provider is None:
+        name = self._registry.default_provider_resolved_name()
+        if name is None:
             logger.warning(
                 SECURITY_LLM_EVAL_NO_PROVIDER,
                 agent_provider=agent_provider_name,
             )
             return None, None
-        name = self._registry.default_provider_resolved_name()
+        provider = self._registry.get(name)
         logger.debug(
             SECURITY_LLM_EVAL_CROSS_FAMILY,
             selected_provider=name,

@@ -382,6 +382,7 @@ class SafetyClassifier:
             logger.warning(
                 SECURITY_SAFETY_CLASSIFY_ERROR,
                 note="No provider available for safety classification",
+                provider_count=len(self._registry.list_providers()),
             )
             return SafetyClassifierResult(
                 classification=SafetyClassification.SUSPICIOUS,

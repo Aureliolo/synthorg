@@ -175,8 +175,9 @@ _r.register(
             "Provider + model the LLM supersession proposer calls when"
             " enabled, selected through the model picker (a `{provider,"
             " model_id}` reference). Empty falls back to the no-op proposer"
-            " (operator selection unchanged); an empty ref provider selects"
-            " the first registered provider."
+            " (operator selection unchanged); an empty ref provider resolves"
+            " via the explicit default system provider (unwired when"
+            " ambiguous)."
         ),
         group="Intervention",
         level=SettingLevel.ADVANCED,

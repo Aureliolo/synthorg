@@ -13,7 +13,6 @@ approval without a panel review (a greenlight is never blocked on the panel).
 """
 
 import asyncio
-from collections.abc import Callable
 from typing import override
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -53,19 +52,11 @@ from synthorg.observability.events.plan_review import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import ProviderSelector
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
-
-type ProviderSelector = Callable[[AgentIdentity], CompletionProvider]
-"""Resolve the completion client for an agent's own ``(provider, model)`` pair.
-
-Each panellist runs on the provider its identity is bound to, never a shared
-default, so an overlapping model id never dispatches a reviewer to the wrong
-gateway. The wiring layer supplies ``registry.get(identity.model.provider)``.
-"""
 
 
 class AgentSessionPlanReviewPanel(PlanReviewPanel):
