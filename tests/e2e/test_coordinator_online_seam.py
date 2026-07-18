@@ -57,7 +57,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, make_app_state
+from tests._shared import FakeClock, make_app_state, wire_decomposition_model
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -215,6 +215,7 @@ async def test_coordinator_runs_decomposable_task_end_to_end(
         agent_workspace_root=tmp_path,
     )
 
+    await wire_decomposition_model(settings_service)
     runtime = await build_runtime_services(
         app_state,
         workspace_root=tmp_path,
@@ -347,6 +348,7 @@ async def test_coordinator_records_coordination_metrics_end_to_end(
         coordination_metrics_store=metrics_store,
     )
 
+    await wire_decomposition_model(settings_service)
     runtime = await build_runtime_services(
         app_state,
         workspace_root=tmp_path,

@@ -33,7 +33,7 @@ async def test_no_provider_installs_backstop_not_lazy_default(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
 ) -> None:
-    app = build_runtime_app(
+    app = await build_runtime_app(
         fake_persistence,
         fake_message_bus,
         with_provider=False,
@@ -54,7 +54,7 @@ async def test_provider_installs_agent_engine_service_and_coordinator(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
 ) -> None:
-    app = build_runtime_app(
+    app = await build_runtime_app(
         fake_persistence,
         fake_message_bus,
         with_provider=True,
@@ -83,7 +83,7 @@ async def test_injected_coordinator_wins_over_autowired(
     injection-over-autowire convention), even with a provider present.
     """
     injected = mock_of[MultiAgentCoordinator]()
-    app = build_runtime_app(
+    app = await build_runtime_app(
         fake_persistence,
         fake_message_bus,
         with_provider=True,

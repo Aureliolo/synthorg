@@ -74,7 +74,14 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.tools.structure_map.query_structure_map import QueryStructureMapTool
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, as_uuid, make_app_state, mock_of, sid
+from tests._shared import (
+    FakeClock,
+    as_uuid,
+    make_app_state,
+    mock_of,
+    sid,
+    wire_decomposition_model,
+)
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -213,6 +220,7 @@ async def _build_pipeline(
         repository=persistence.settings, registry=get_registry()
     )
     await settings_service.set("coordination", "routing_policy", "leaf-threshold")
+    await wire_decomposition_model(settings_service)
     config_resolver = ConfigResolver(
         settings_service=settings_service, config=root_config
     )

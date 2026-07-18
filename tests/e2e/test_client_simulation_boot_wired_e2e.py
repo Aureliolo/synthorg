@@ -39,6 +39,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.providers.drivers.scripted import ScriptedDriver, SingleResponseStrategy
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from tests._shared import LoopAsyncClient, make_app_state
 from tests._shared import build_test_app as create_app
 from tests.unit.api.conftest import (
@@ -226,7 +227,9 @@ class TestBootWiredAgentIntakeHarness:
             app_state,
             env={
                 "SYNTHORG_SIMULATIONS_INTAKE_STRATEGY": "agent",
-                "SYNTHORG_SIMULATIONS_INTAKE_MODEL": "test-model-001",
+                "SYNTHORG_SIMULATIONS_INTAKE_MODEL": serialize_model_ref(
+                    ModelRef(provider="test-provider", model_id="test-model-001")
+                ),
             },
         )
         assert state.intake_engine is not None

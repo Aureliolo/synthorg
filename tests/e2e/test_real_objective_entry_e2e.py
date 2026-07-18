@@ -59,7 +59,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, make_app_state
+from tests._shared import FakeClock, make_app_state, wire_decomposition_model
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -194,6 +194,7 @@ async def _build_objective_adapter(
         registry=get_registry(),
     )
     await settings_service.set("coordination", "routing_policy", routing_policy)
+    await wire_decomposition_model(settings_service)
     config_resolver = ConfigResolver(
         settings_service=settings_service,
         config=root_config,

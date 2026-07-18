@@ -26,6 +26,7 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests._shared import build_test_app as create_app
+from tests._shared import wire_decomposition_model
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 TEST_JWT_SECRET = "integration-test-secret-at-least-32-characters"
@@ -54,7 +55,7 @@ async def fake_message_bus() -> AsyncGenerator[FakeMessageBus]:
     await bus.stop()
 
 
-def build_runtime_app(
+async def build_runtime_app(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     *,
@@ -88,6 +89,10 @@ def build_runtime_app(
         if with_provider
         else None
     )
+    if with_provider:
+        # The provider-present switch builds the coordinator eagerly, which
+        # needs an explicit coordination.decomposition_model binding.
+        await wire_decomposition_model(settings_service)
     return create_app(
         config=root_config,
         persistence=fake_persistence,

@@ -215,6 +215,18 @@ class TestDefaultProvider:
         assert registry.default_provider() is None
         assert registry.default_provider_resolved_name() is None
 
+    def test_bound_unregistered_with_sole_provider_is_none(self) -> None:
+        only: BaseCompletionProvider = _StubDriver("only", _make_config())
+        registry = ProviderRegistry({"only": only})
+
+        registry.bind_default_provider("ghost")
+
+        # An explicit but unregistered default is a misconfiguration; it must
+        # NOT silently substitute the sole driver (the operator's explicit --
+        # if wrong -- choice is honoured or fails, never guessed around).
+        assert registry.default_provider() is None
+        assert registry.default_provider_resolved_name() is None
+
     def test_blank_and_none_bind_normalises_to_unset(self) -> None:
         a: BaseCompletionProvider = _StubDriver("provider-a", _make_config())
         b: BaseCompletionProvider = _StubDriver("provider-b", _make_config())

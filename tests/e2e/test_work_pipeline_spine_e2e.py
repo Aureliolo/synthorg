@@ -67,7 +67,13 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, make_app_state, mock_of, sid
+from tests._shared import (
+    FakeClock,
+    make_app_state,
+    mock_of,
+    sid,
+    wire_decomposition_model,
+)
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -230,6 +236,7 @@ async def _build_pipeline(  # noqa: PLR0913 -- test builder with keyword-only kn
         registry=get_registry(),
     )
     await settings_service.set("coordination", "routing_policy", routing_policy)
+    await wire_decomposition_model(settings_service)
     config_resolver = ConfigResolver(
         settings_service=settings_service,
         config=root_config,

@@ -51,7 +51,7 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.execution_service import AgentEngineExecutionService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import make_app_state
+from tests._shared import make_app_state, wire_decomposition_model
 from tests._shared.scripted_provider import (
     make_e2e_identity,
     make_tool_call_response,
@@ -132,6 +132,7 @@ async def test_runtime_executes_task_through_seam_with_safety_spine(
         agent_workspace_root=tmp_path,
     )
 
+    await wire_decomposition_model(settings_service)
     runtime = await build_runtime_services(
         app_state,
         workspace_root=tmp_path,

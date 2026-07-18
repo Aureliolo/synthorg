@@ -104,6 +104,17 @@ def test_wrapped_await_bound_name_index_is_flagged(tmp_path: Path) -> None:
     assert _load().main(["--repo-root", str(tmp_path)]) == 1
 
 
+def test_annotated_bound_name_index_is_flagged(tmp_path: Path) -> None:
+    # A typed binding ``names: list[str] = r.list_providers()`` then names[0]
+    # must be flagged despite the annotation (ast.AnnAssign, not ast.Assign).
+    _write(
+        tmp_path,
+        "ann.py",
+        "def f(r):\n    names: list = r.list_providers()\n    return names[0]\n",
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 1
+
+
 def test_resolve_for_model_reference_is_flagged(tmp_path: Path) -> None:
     _write(tmp_path, "d.py", "def f(r):\n    return r.resolve_for_model('m')\n")
     assert _load().main(["--repo-root", str(tmp_path)]) == 1
