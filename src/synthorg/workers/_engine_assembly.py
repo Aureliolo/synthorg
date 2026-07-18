@@ -42,6 +42,7 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 from synthorg.tools.base import BaseTool
 from synthorg.tools.factory import build_default_tools_from_config
+from synthorg.tools.mcp.sandbox import MCPSandboxConfig
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox.factory import (
@@ -335,6 +336,39 @@ async def _build_auto_review_pipeline_or_none(
     return build_review_pipeline()
 
 
+async def _resolve_mcp_sandbox_config(app_state: AppState) -> MCPSandboxConfig:
+    """Resolve the MCP sandbox policy from settings, fail-secure to defaults.
+
+    A resolve failure keeps sandboxing ON with default limits rather than
+    silently spawning MCP servers on the host: the secure default wins when
+    settings are unavailable.
+
+    Returns:
+        The resolved :class:`MCPSandboxConfig` (defaults on any resolve error).
+    """
+    resolver = config_resolver_of(app_state)
+    try:
+        return MCPSandboxConfig(
+            enabled=await resolver.get_bool("tools", "mcp_sandbox_enabled"),
+            image=await resolver.get_str("tools", "mcp_sandbox_image"),
+            memory_limit=await resolver.get_str("tools", "mcp_sandbox_memory_limit"),
+            pids_limit=await resolver.get_int("tools", "mcp_sandbox_pids_limit"),
+            cpus=await resolver.get_str("tools", "mcp_sandbox_cpus"),
+            network=await resolver.get_str("tools", "mcp_sandbox_network"),
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- fail-secure to sandbox-on defaults
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="mcp_bridge",
+            note="could not resolve MCP sandbox settings; using secure defaults",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return MCPSandboxConfig()
+
+
 async def _build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:
     """Bridge configured external MCP servers into the boot tool registry.
 
@@ -385,11 +419,13 @@ async def _build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:
             merged = merge_installed_servers(base, installations, entries_by_id)
     if not merged.servers:
         return ()
+    sandbox = await _resolve_mcp_sandbox_config(app_state)
     factory: MCPToolFactory | None = None
     try:
         factory = MCPToolFactory(
             merged,
             credential_source=connection_catalog_of(app_state),
+            sandbox=sandbox,
         )
         tools = await factory.create_tools()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

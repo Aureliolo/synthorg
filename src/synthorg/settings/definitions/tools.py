@@ -235,6 +235,107 @@ _r.register(
     )
 )
 
+# ── MCP server sandboxing ────────────────────────────────────────
+# A stdio MCP server is arbitrary third-party code; per ADR D16 every
+# execution-capable surface runs in a container. Enabled by default:
+# disabling re-exposes host execution and should only happen where Docker
+# is unavailable. Applies on the next MCP bridge rebuild (no restart).
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="mcp_sandbox_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Run stdio MCP servers inside a hardened Docker container"
+            " (cap-drop, no-new-privileges, read-only rootfs, resource"
+            " limits). Disabling re-exposes host execution; only do so where"
+            " Docker is unavailable."
+        ),
+        group="MCP",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="mcp_sandbox_image",
+        type=SettingType.STRING,
+        default="node:22-alpine",
+        description=(
+            "Container image used to run stdio MCP servers. Must provide"
+            " Node/npx so ``npx -y <package>`` can launch the server."
+        ),
+        group="MCP",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="mcp_sandbox_memory_limit",
+        type=SettingType.STRING,
+        default="512m",
+        description=(
+            "Docker --memory limit for an MCP server container (Docker size"
+            " string, e.g. '512m', '1g')."
+        ),
+        group="MCP",
+        level=SettingLevel.ADVANCED,
+        validator_pattern=r"^[1-9]\d*[bkmgBKMG]?$",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="mcp_sandbox_pids_limit",
+        type=SettingType.INTEGER,
+        default="256",
+        description=(
+            "Maximum number of processes inside an MCP server container"
+            " (PIDs cgroup limit)."
+        ),
+        group="MCP",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=4096,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="mcp_sandbox_cpus",
+        type=SettingType.STRING,
+        default="1.0",
+        description="Docker --cpus quota (in cores) for an MCP server container.",
+        group="MCP",
+        level=SettingLevel.ADVANCED,
+        validator_pattern=r"^\d+(\.\d+)?$",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="mcp_sandbox_network",
+        type=SettingType.STRING,
+        default="bridge",
+        description=(
+            "Docker --network mode for an MCP server container. MCP servers"
+            " reach external APIs, so 'bridge' by default; 'none' blocks all"
+            " egress (only for servers that need no network)."
+        ),
+        group="MCP",
+        level=SettingLevel.ADVANCED,
+        validator_pattern=r"^(bridge|none|host)$",
+    )
+)
+
 # ── Web tool HTTP request timeout ────────────────────────────────
 
 _r.register(

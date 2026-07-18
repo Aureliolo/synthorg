@@ -21,6 +21,7 @@ from synthorg.tools.mcp.cache import MCPResultCache
 from synthorg.tools.mcp.client import MCPClient, MCPCredentialResolver
 from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
 from synthorg.tools.mcp.models import MCPToolInfo
+from synthorg.tools.mcp.sandbox import MCPSandboxConfig
 
 logger = get_logger(__name__)
 
@@ -40,9 +41,11 @@ class MCPToolFactory:
         config: MCPConfig,
         *,
         credential_source: MCPCredentialResolver | None = None,
+        sandbox: MCPSandboxConfig | None = None,
     ) -> None:
         self._config = config
         self._credential_source = credential_source
+        self._sandbox = sandbox
         self._clients: list[MCPClient] = []
         self._created = False
 
@@ -174,7 +177,11 @@ class MCPToolFactory:
         Raises:
             BaseException: Raised when the relevant invariant fails.
         """
-        client = MCPClient(config, credential_source=self._credential_source)
+        client = MCPClient(
+            config,
+            credential_source=self._credential_source,
+            sandbox=self._sandbox,
+        )
         await client.connect()
         try:
             tools = await client.list_tools()

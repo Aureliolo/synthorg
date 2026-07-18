@@ -44,6 +44,7 @@ from synthorg.tools.mcp.errors import (
     MCPTimeoutError,
 )
 from synthorg.tools.mcp.models import MCPRawResult, MCPToolInfo
+from synthorg.tools.mcp.sandbox import MCPSandboxConfig, wrap_stdio_in_sandbox
 
 logger = get_logger(__name__)
 
@@ -75,6 +76,10 @@ class MCPClient:
             injected into the spawned stdio process at connect time. ``None``
             leaves a connection-bound server without credentials (it will
             likely fail to authenticate, logged loudly at connect).
+        sandbox: Container-isolation policy for stdio servers. When enabled,
+            the server runs inside ``docker run -i`` under cap-drop /
+            no-new-privileges / read-only rootfs / resource limits. ``None``
+            (or disabled) spawns on the host.
     """
 
     def __init__(
@@ -82,9 +87,11 @@ class MCPClient:
         config: MCPServerConfig,
         *,
         credential_source: MCPCredentialResolver | None = None,
+        sandbox: MCPSandboxConfig | None = None,
     ) -> None:
         self._config = config
         self._credential_source = credential_source
+        self._sandbox = sandbox
         self._session: ClientSession | None = None
         self._exit_stack: AsyncExitStack | None = None
         self._lock = asyncio.Lock()
@@ -507,8 +514,20 @@ class MCPClient:
                 context={"server": self._config.name},
             )
         args, env = await self._resolve_stdio_launch()
+        command = self._config.command
+        if self._sandbox is not None and self._sandbox.enabled:
+            command, args, sandbox_env = wrap_stdio_in_sandbox(
+                command=command,
+                args=args,
+                env=env or {},
+                sandbox=self._sandbox,
+            )
+            # Pass a dict (even empty) so the SDK merges it over
+            # get_default_environment(): the docker process keeps PATH and gains
+            # the forwarded secrets that ``--env KEY`` references by name.
+            env = sandbox_env
         params = StdioServerParameters(
-            command=self._config.command,
+            command=command,
             args=args,
             env=env,
         )
