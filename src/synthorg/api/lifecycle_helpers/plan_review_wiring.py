@@ -482,3 +482,24 @@ async def wire_plan_item_reply_service(
     if service is not None:
         app_state.wire(EngineStateSlice, plan_item_reply_service=service)
         logger.info(API_APP_STARTUP, service="plan_item_reply_service", note="wired")
+
+
+async def wire_plan_review_services(
+    app_state: AppState,
+    *,
+    provider_registry: ProviderRegistry | None,
+    cost_tracker: CostTrackerProtocol | None,
+) -> None:
+    """Wire the plan-review provider-backed services: the panel and the reply.
+
+    The stakeholder panel reviews a gated plan before the human sees it; the
+    reply service answers an operator's plan-item comment inline. Both are
+    best-effort and no-op without a provider, so this composition keeps the
+    boot dispatcher to one call.
+    """
+    await wire_plan_review_panel(
+        app_state, provider_registry=provider_registry, cost_tracker=cost_tracker
+    )
+    await wire_plan_item_reply_service(
+        app_state, provider_registry=provider_registry, cost_tracker=cost_tracker
+    )

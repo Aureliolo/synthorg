@@ -46,9 +46,8 @@ from synthorg.api.lifecycle_helpers.organization_wiring import (
     wire_organization_read_services,
 )
 from synthorg.api.lifecycle_helpers.plan_review_wiring import (
-    wire_plan_item_reply_service,
     wire_plan_review_gate,
-    wire_plan_review_panel,
+    wire_plan_review_services,
 )
 from synthorg.api.lifecycle_helpers.refinement_wiring import wire_refinement_router
 from synthorg.api.lifecycle_helpers.sprint_wiring import wire_sprint_service
@@ -634,19 +633,11 @@ async def wire_features_on_startup(
     # Opt-in human plan-approval gate: when enabled, splittable team work is
     # parked for approval before it builds. No-op unless the setting is on.
     await wire_plan_review_gate(app_state)
-    # Stakeholder review panel: reviews a gated plan before the human sees it.
-    # On by default but only runs inside the gated-plan flow when a provider is
-    # wired; a no-op otherwise.
-    await wire_plan_review_panel(
-        app_state,
-        provider_registry=provider_registry,
-        cost_tracker=cost_tracker,
-    )
-    # Conversational plan review: when a reply model is set, an operator's
-    # comment on a plan item is answered by the responsible role. Built
-    # unconditionally of the enable flag (gated live per comment); a no-op
-    # when no model/provider is available.
-    await wire_plan_item_reply_service(
+    # Plan-review provider-backed services: the stakeholder review panel (reviews
+    # a gated plan before the human sees it) and the conversational reply service
+    # (answers an operator's plan-item comment inline). Both no-op without a
+    # provider; gated live per request/comment.
+    await wire_plan_review_services(
         app_state,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,
