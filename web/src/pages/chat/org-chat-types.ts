@@ -1,5 +1,5 @@
 import type { CitedRecord } from '@/api/endpoints/meta'
-import type { ExecutedToolCall, TurnIntent } from '@/api/types'
+import type { ExecutedToolCall } from '@/api/types'
 
 /**
  * The rendered transcript model for the one unified org conversation.
@@ -122,6 +122,3 @@ export type OrgTurn =
   | OrgAgentTurn
   | OrgNoticeTurn
   | OrgEventTurn
-
-/** The intents the composer can force via an explicit override chip. */
-export type OrgIntentOverride = TurnIntent
