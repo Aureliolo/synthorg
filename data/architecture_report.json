@@ -80,8 +80,8 @@
     },
     "src/synthorg/api/controllers/_turn_dispatch.py": {
       "cap": 600,
-      "loc": 552,
-      "ratio": 0.92,
+      "loc": 553,
+      "ratio": 0.922,
       "tier": "service"
     },
     "src/synthorg/api/controllers/activities/_shared.py": {
@@ -914,8 +914,8 @@
     },
     "src/synthorg/meta/chief_of_staff/intent_router.py": {
       "cap": 600,
-      "loc": 496,
-      "ratio": 0.827,
+      "loc": 503,
+      "ratio": 0.838,
       "tier": "service"
     },
     "src/synthorg/meta/chief_of_staff/propose.py": {
@@ -1396,6 +1396,12 @@
       "cap": 500,
       "loc": 461,
       "ratio": 0.922,
+      "tier": "code"
+    },
+    "src/synthorg/settings/definitions/chief_of_staff.py": {
+      "cap": 500,
+      "loc": 405,
+      "ratio": 0.81,
       "tier": "code"
     },
     "src/synthorg/settings/definitions/tools.py": {

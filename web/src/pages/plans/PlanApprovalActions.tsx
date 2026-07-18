@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
-import { CheckCircle2, XCircle } from 'lucide-react'
+import { CheckCircle2, RefreshCw, XCircle } from 'lucide-react'
 
 import { paginateAll } from '@/api/client'
 import { listApprovals } from '@/api/endpoints/approvals'
@@ -27,7 +27,10 @@ const PENDING_REVIEW_FETCH_LIMIT = 200
 interface PlanApproval {
   approvalId: string | undefined
   submitting: boolean
+  /** True when the last approval lookup failed, so the UI can offer a retry. */
+  lookupFailed: boolean
   handleApprove: () => Promise<void>
+  retry: () => Promise<void>
   reject: RejectController
 }
 
@@ -58,23 +61,32 @@ async function findPendingPlanApproval(planId: string): Promise<string | undefin
 
 function usePlanApproval(plan: Plan): PlanApproval {
   const [approvalId, setApprovalId] = useState<string | undefined>(undefined)
-  // Monotonic lookup generation: a stale (earlier-plan or superseded) lookup
-  // must never apply, or a late response could resume the wrong plan.
-  const lookupGenerationRef = useRef(0)
+  const [lookupFailed, setLookupFailed] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  // Monotonic plan generation: bumped on every (re)lookup, i.e. whenever the
+  // plan changes. Both the lookup and the approve/reject mutations capture it
+  // and drop a completion once it no longer matches, so a late response can
+  // never resume -- or clear the controls of -- the wrong plan.
+  const generationRef = useRef(0)
 
   const resolveApproval = useCallback(async () => {
-    const generation = (lookupGenerationRef.current += 1)
-    // Invalidate the previous plan's approval immediately so stale controls
-    // never show while the new lookup is in flight.
+    const generation = (generationRef.current += 1)
+    // Invalidate the previous plan's transient state immediately so stale
+    // controls / spinners / errors never show while the new lookup is in flight.
     setApprovalId(undefined)
+    setLookupFailed(false)
+    setSubmitting(false)
     try {
       const id = await findPendingPlanApproval(plan.id)
-      if (generation !== lookupGenerationRef.current) return
+      if (generation !== generationRef.current) return
       setApprovalId(id)
     } catch (err) {
-      if (generation !== lookupGenerationRef.current) return
+      if (generation !== generationRef.current) return
       log.error('Failed to resolve the plan approval', sanitizeForLog(err))
       setApprovalId(undefined)
+      // Surface the failure so the operator gets a retry affordance rather than
+      // silently-vanished approve/reject controls on this core review flow.
+      setLookupFailed(true)
     }
   }, [plan.id])
 
@@ -83,8 +95,6 @@ function usePlanApproval(plan: Plan): PlanApproval {
   useEffect(() => {
     void resolveApproval()
   }, [resolveApproval, plan.status])
-
-  const [submitting, setSubmitting] = useState(false)
 
   const refetchPlan = useCallback(() => {
     void usePlansStore.getState().fetchPlanDetail(plan.id)
@@ -97,8 +107,12 @@ function usePlanApproval(plan: Plan): PlanApproval {
 
   const handleApprove = useCallback(async () => {
     if (approvalId === undefined) return
+    const generation = generationRef.current
     setSubmitting(true)
     const result = await useApprovalsStore.getState().approveOne(approvalId)
+    // Drop the completion if the operator has since navigated to another plan;
+    // otherwise plan A's resolve would clear plan B's controls.
+    if (generation !== generationRef.current) return
     setSubmitting(false)
     if (result) onResolved()
   }, [approvalId, onResolved])
@@ -108,9 +122,17 @@ function usePlanApproval(plan: Plan): PlanApproval {
     submitting,
     setSubmitting,
     onResolved,
+    generationRef,
   })
 
-  return { approvalId, submitting, handleApprove, reject }
+  return {
+    approvalId,
+    submitting,
+    lookupFailed,
+    handleApprove,
+    retry: resolveApproval,
+    reject,
+  }
 }
 
 /** Reason box + validation + submit for the whole-plan reject dialog. */
@@ -119,8 +141,9 @@ function useRejectController(args: {
   submitting: boolean
   setSubmitting: (value: boolean) => void
   onResolved: () => void
+  generationRef: RefObject<number>
 }): RejectController {
-  const { approvalId, setSubmitting, onResolved } = args
+  const { approvalId, setSubmitting, onResolved, generationRef } = args
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState('')
   const [reasonError, setReasonError] = useState<string | null>(null)
@@ -132,10 +155,14 @@ function useRejectController(args: {
       setReasonError('A reason is required.')
       return
     }
+    const generation = generationRef.current
     setSubmitting(true)
     const result = await useApprovalsStore
       .getState()
       .rejectOne(approvalId, { reason: trimmed })
+    // Drop the completion if the operator has navigated to another plan while
+    // the reject was in flight, so it cannot clear the new plan's controls.
+    if (generation !== generationRef.current) return
     setSubmitting(false)
     if (result) {
       setOpen(false)
@@ -143,7 +170,7 @@ function useRejectController(args: {
       setReasonError(null)
       onResolved()
     }
-  }, [approvalId, reason, setSubmitting, onResolved])
+  }, [approvalId, reason, setSubmitting, onResolved, generationRef])
 
   const setReasonClearingError = useCallback((value: string) => {
     setReason(value)
@@ -216,8 +243,20 @@ function PlanRejectDialog({
  * nothing unless the plan is under review with a pending approval.
  */
 export function PlanApprovalActions({ plan }: { plan: Plan }) {
-  const { approvalId, submitting, handleApprove, reject } = usePlanApproval(plan)
-  if (approvalId === undefined || plan.status !== 'pending_review') return null
+  const { approvalId, submitting, lookupFailed, handleApprove, retry, reject } =
+    usePlanApproval(plan)
+  if (plan.status !== 'pending_review') return null
+  if (approvalId === undefined) {
+    // A transient lookup failure would otherwise hide the approve/reject
+    // controls with no recourse; offer an explicit retry instead.
+    if (!lookupFailed) return null
+    return (
+      <Button variant="outline" size="sm" onClick={() => void retry()}>
+        <RefreshCw aria-hidden="true" />
+        Retry loading approval
+      </Button>
+    )
+  }
   return (
     <>
       <Button size="sm" onClick={() => void handleApprove()} disabled={submitting}>

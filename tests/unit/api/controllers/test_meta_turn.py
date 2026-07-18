@@ -432,3 +432,46 @@ class TestMetaTurn:
             assert args.participants == (NotBlankStr("CFO"), NotBlankStr("CTO"))
         finally:
             app_state.swap_slice(original)
+
+    async def test_override_group_with_duplicate_targets_degrades(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """An override roster of one distinct voice never opens a group.
+
+        The override path bypasses the classifier, so the dispatch gate must
+        re-apply the two-distinct-participant rule: ("CFO", "cfo") is one voice
+        and degrades to EXPLAIN rather than convening a one-member "group".
+        """
+        chat_mock = AsyncMock(spec=ChiefOfStaffChat)
+        chat_mock.ask.return_value = ChatResponse(
+            answer="Here is the budget picture.", sources=(), confidence=0.8
+        )
+        signals_mock = AsyncMock(spec=SignalsService)
+        signals_mock.get_org_snapshot.return_value = _empty_snapshot()
+        service = AsyncMock(spec=GroupChatService)
+        app_state = async_test_client.app.state.app_state
+        original = app_state.slice(MetaStateSlice)
+        app_state.wire(
+            MetaStateSlice,
+            chief_of_staff_chat=chat_mock,
+            signals_service=signals_mock,
+            group_chat_service=service,
+        )
+        try:
+            resp = await async_test_client.post(
+                _BASE,
+                headers=_HEADERS,
+                json={
+                    "message": "have the CFO and the cfo hash it out",
+                    "intent_override": "group_convene",
+                    "named_targets": ["CFO", "cfo"],
+                },
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["intent"] == "explain"
+            assert data["intent_reason"] == "group_targets_missing"
+            # The group service must never run on a one-voice roster.
+            service.converse.assert_not_awaited()
+        finally:
+            app_state.swap_slice(original)

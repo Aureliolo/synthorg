@@ -318,19 +318,20 @@ class LlmIntentClassifier:
         )
         return act_floor, charter_floor
 
-    async def _resolve_live_generation(self) -> tuple[float, int]:
-        """Resolve the live sampling temperature + token budget for one call.
+    async def _resolve_live_generation(self) -> tuple[float, int, float]:
+        """Resolve the live temperature, token budget, and timeout for one call.
 
         Re-reads the flat ``chief_of_staff.turn_intent_temperature`` /
-        ``turn_intent_max_tokens`` settings per turn so a change takes effect
-        without a restart; a missing resolver or setting falls back to the
-        build-time value.
+        ``turn_intent_max_tokens`` / ``turn_intent_timeout_seconds`` settings
+        per turn so a change takes effect without a restart; a missing resolver
+        or setting falls back to the build-time value.
 
         Returns:
-            The ``(temperature, max_tokens)`` to run this classification with.
+            The ``(temperature, max_tokens, timeout_seconds)`` to run this
+            classification with.
         """
         if self._config_resolver is None:
-            return self._temperature, self._max_tokens
+            return self._temperature, self._max_tokens, self._timeout_seconds
         temperature = await resolve_float_with_fallback(
             resolver=self._config_resolver,
             namespace=SettingNamespace.CHIEF_OF_STAFF,
@@ -343,7 +344,13 @@ class LlmIntentClassifier:
             key="turn_intent_max_tokens",
             fallback=self._max_tokens,
         )
-        return temperature, max_tokens
+        timeout_seconds = await resolve_float_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.CHIEF_OF_STAFF,
+            key="turn_intent_timeout_seconds",
+            fallback=self._timeout_seconds,
+        )
+        return temperature, max_tokens, timeout_seconds
 
     def _apply_floors(
         self,
@@ -419,7 +426,7 @@ class LlmIntentClassifier:
             ChatMessage(role=MessageRole.SYSTEM, content=TURN_INTENT_SYSTEM),
             ChatMessage(role=MessageRole.USER, content=user),
         ]
-        temperature, max_tokens = await self._resolve_live_generation()
+        temperature, max_tokens, timeout_seconds = await self._resolve_live_generation()
         completion_config = CompletionConfig(
             temperature=temperature,
             max_tokens=max_tokens,
@@ -439,7 +446,7 @@ class LlmIntentClassifier:
                         model,
                         config=completion_config,
                     ),
-                    timeout=self._timeout_seconds,
+                    timeout=timeout_seconds,
                 )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)

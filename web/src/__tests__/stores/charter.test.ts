@@ -166,8 +166,16 @@ describe('useCharterStore', () => {
     const editGate = new Promise<void>((resolve) => {
       releaseEdit = resolve
     })
+    // Signal when the PATCH handler is actually entered, so the test resets and
+    // releases only once the request is genuinely parked -- otherwise the reset
+    // could race ahead of the in-flight edit it is meant to interleave with.
+    let markRequestStarted: (() => void) | undefined
+    const requestStarted = new Promise<void>((resolve) => {
+      markRequestStarted = resolve
+    })
     server.use(
       http.patch('/api/v1/meta/charters/:id', async () => {
+        markRequestStarted?.()
         await editGate
         return HttpResponse.json(
           successFor<typeof editCharterApi>(
@@ -178,9 +186,11 @@ describe('useCharterStore', () => {
     )
     useCharterStore.setState({ draftCharter: buildCharter({ id: 'c-stale' }) })
     const editing = useCharterStore.getState().editDraft('c-stale', { brief: 'x' })
+    await requestStarted
     // Reset while the PATCH is still parked, bumping the draft generation.
     useCharterStore.getState().resetInterview()
-    releaseEdit?.()
+    if (releaseEdit === undefined) throw new Error('edit release callback missing')
+    releaseEdit()
     await editing
     const state = useCharterStore.getState()
     expect(state.draftCharter).toBeNull()

@@ -165,14 +165,19 @@ export function PlanItemComments({ comments, onSubmit }: PlanItemCommentsProps) 
   const handleSubmit = useCallback(async () => {
     const body = draft.trim()
     if (body === '') return
+    const submittedReplyId = replyTarget?.id
     setSaving(true)
     try {
-      const result = await onSubmit(body, replyTarget?.id)
+      const result = await onSubmit(body, submittedReplyId)
       // Only clear the box if the submitted text is still what's there, so a
       // draft typed while the write was in flight isn't wiped.
       if (result !== null) {
         setDraft((current) => (current.trim() === body ? '' : current))
-        setReplyTarget(null)
+        // Clear the reply banner only if it still points at the target this
+        // post answered; a target selected mid-flight must survive.
+        setReplyTarget((current) =>
+          current?.id === submittedReplyId ? null : current,
+        )
       }
     } finally {
       setSaving(false)

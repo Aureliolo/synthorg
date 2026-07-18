@@ -261,19 +261,21 @@ class LlmPlanItemReplyService:
             return self._provider, self._model
         return driver, ref.model_id
 
-    async def _resolve_live_generation(self) -> tuple[float, int]:
-        """Resolve the live sampling temperature + token budget for one reply.
+    async def _resolve_live_generation(self) -> tuple[float, int, float]:
+        """Resolve the live temperature, token budget, and timeout for a reply.
 
         Re-reads ``coordination.plan_review_reply_temperature`` /
-        ``plan_review_reply_max_tokens`` per call so an operator retunes them
-        without a restart, matching the live model resolution; a missing
-        resolver or setting falls back to the build-time value.
+        ``plan_review_reply_max_tokens`` / ``plan_review_reply_timeout_seconds``
+        per call so an operator retunes them without a restart, matching the
+        live model resolution; a missing resolver or setting falls back to the
+        build-time value.
 
         Returns:
-            The ``(temperature, max_tokens)`` to run this reply call with.
+            The ``(temperature, max_tokens, timeout_seconds)`` to run this reply
+            call with.
         """
         if self._config_resolver is None:
-            return self._temperature, self._max_tokens
+            return self._temperature, self._max_tokens, self._timeout_seconds
         temperature = await resolve_float_with_fallback(
             resolver=self._config_resolver,
             namespace=SettingNamespace.COORDINATION,
@@ -286,7 +288,13 @@ class LlmPlanItemReplyService:
             key="plan_review_reply_max_tokens",
             fallback=self._max_tokens,
         )
-        return temperature, max_tokens
+        timeout_seconds = await resolve_float_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.COORDINATION,
+            key="plan_review_reply_timeout_seconds",
+            fallback=self._timeout_seconds,
+        )
+        return temperature, max_tokens, timeout_seconds
 
     async def _request(
         self,
@@ -324,7 +332,7 @@ class LlmPlanItemReplyService:
             ),
             ChatMessage(role=MessageRole.USER, content=user),
         ]
-        temperature, max_tokens = await self._resolve_live_generation()
+        temperature, max_tokens, timeout_seconds = await self._resolve_live_generation()
         completion_config = CompletionConfig(
             temperature=temperature, max_tokens=max_tokens
         )
@@ -339,7 +347,7 @@ class LlmPlanItemReplyService:
             ):
                 response = await asyncio.wait_for(
                     provider.complete(messages, model, config=completion_config),
-                    timeout=self._timeout_seconds,
+                    timeout=timeout_seconds,
                 )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- an inline reply is a best-effort side

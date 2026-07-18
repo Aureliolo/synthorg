@@ -102,9 +102,19 @@ describe('useApprovalsData', () => {
     expect(result.current.selectedIds.size).toBe(2)
   })
 
-  it('returns total from store', () => {
-    useApprovalsStore.setState({ total: 42 })
+  it('derives total from the loaded rows, excluding plan reviews', () => {
+    // The generic inbox hides plan reviews, so its total is the filtered row
+    // count -- not the store's cross-source ``total`` field (set high here to
+    // prove it is no longer the source).
+    useApprovalsStore.setState({
+      approvals: [
+        makeApproval('1'),
+        makeApproval('2'),
+        makeApproval('3', { source: 'plan_review' }),
+      ],
+      total: 42,
+    })
     const { result } = renderHook(() => useApprovalsData())
-    expect(result.current.total).toBe(42)
+    expect(result.current.total).toBe(2)
   })
 })

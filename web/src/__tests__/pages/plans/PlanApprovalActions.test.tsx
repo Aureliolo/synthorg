@@ -52,6 +52,34 @@ describe('PlanApprovalActions', () => {
     })
   })
 
+  it('offers a retry when the approval lookup fails, then recovers', async () => {
+    // First lookup 500s: the controls must not silently vanish -- a retry
+    // affordance appears. The retry then succeeds and the approve control shows.
+    let attempt = 0
+    server.use(
+      http.get('/api/v1/approvals', () => {
+        attempt += 1
+        if (attempt === 1) {
+          return HttpResponse.json({ detail: 'boom' }, { status: 500 })
+        }
+        return HttpResponse.json(
+          paginatedFor<typeof listApprovals>({
+            ...emptyPage(),
+            data: [planReviewApproval()],
+          }),
+        )
+      }),
+    )
+    render(<PlanApprovalActions plan={PLAN} />)
+    const retryBtn = await screen.findByRole('button', {
+      name: /retry loading approval/i,
+    })
+    await userEvent.click(retryBtn)
+    expect(
+      await screen.findByRole('button', { name: /approve plan/i }),
+    ).toBeInTheDocument()
+  })
+
   it('renders nothing when no pending plan-review approval matches the plan', async () => {
     // The container is empty on the initial render, so wait for the lookup to
     // actually resolve before asserting empty -- otherwise the assertion could

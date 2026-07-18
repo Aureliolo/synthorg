@@ -329,6 +329,24 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="plan_review_reply_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="120.0",
+        description=(
+            "Wall-clock cap for one plan-item reply call. Resolved live per"
+            " reply, so a change takes effect on the next reply without a"
+            " restart."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=600.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="leaf_subtask_threshold",
         type=SettingType.INTEGER,
         default="1",

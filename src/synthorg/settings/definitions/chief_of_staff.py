@@ -402,6 +402,23 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=_NS,
+        key="turn_intent_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="120.0",
+        description=(
+            "Wall-clock cap for one turn-intent classification call. Read live"
+            " per turn, so a change takes effect without a restart."
+        ),
+        group="Chat",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=600.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
         key="narrative_model",
         type=SettingType.MODEL_REF,
         default="",

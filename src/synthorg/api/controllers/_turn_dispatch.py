@@ -73,6 +73,13 @@ logger = get_logger(__name__)
 
 _MESSAGE_MAX_LENGTH: Final[int] = 2000
 
+# A convened group needs at least two DISTINCT participants to be a group; a new
+# group naming fewer (empty, one, or case-insensitive duplicates like
+# ("CFO", "cfo")) degrades to a plain answer. Mirrors the classifier's own gate
+# so an explicit override, which bypasses classification, cannot open a group on
+# a roster the classifier would have rejected.
+_MIN_GROUP_TARGETS: Final[int] = 2
+
 # Intents that perform (or park) a side effect and therefore require org-mutation
 # permission; EXPLAIN is a read any authenticated actor may run.
 _SIDE_EFFECTING_INTENTS: Final[frozenset[TurnIntent]] = frozenset(
@@ -589,12 +596,14 @@ async def dispatch_turn(
 
     if intent is TurnIntent.ACT and not participants:
         intent, reason = TurnIntent.EXPLAIN, IntentRoutingReason.ACT_NO_TARGET
-    # A new group needs named participants to open; continuing an existing
-    # group conversation reuses its roster, so only degrade when opening.
+    # A new group needs two DISTINCT participants to open; continuing an existing
+    # group conversation reuses its roster, so only gate when opening. A raw
+    # count would let an override roster of ("CFO", "cfo") open a one-voice
+    # "group", so degrade on the distinct (case-insensitive) count.
     if (
         intent is TurnIntent.GROUP_CONVENE
-        and not participants
         and data.conversation_id is None
+        and len({p.casefold() for p in participants}) < _MIN_GROUP_TARGETS
     ):
         intent, reason = TurnIntent.EXPLAIN, IntentRoutingReason.GROUP_TARGETS_MISSING
 
