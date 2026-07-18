@@ -373,6 +373,7 @@ class MCPClient:
             server=self._config.name,
             tool=tool_name,
         )
+        invocation_error: Exception | None = None
         async with self._lock:
             session = self._require_session()
             try:
@@ -396,7 +397,7 @@ class MCPClient:
                         "timeout": self._config.timeout_seconds,
                     },
                 ) from exc
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 -- re-raised as typed error below
                 reraise_critical(exc)
                 logger.warning(
                     MCP_INVOKE_FAILED,
@@ -405,32 +406,55 @@ class MCPClient:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                msg = (
-                    f"Tool {tool_name!r} failed on {self._config.name!r}: "
-                    f"{safe_error_description(exc)}"
+                invocation_error = exc
+            else:
+                logger.info(
+                    MCP_INVOKE_SUCCESS,
+                    server=self._config.name,
+                    tool=tool_name,
                 )
-                raise MCPInvocationError(
-                    msg,
-                    context={
-                        "server": self._config.name,
-                        "tool": tool_name,
-                    },
-                ) from exc
+                return MCPRawResult(
+                    content=tuple(result.content),
+                    is_error=result.isError or False,
+                    structured_content=(
+                        copy.deepcopy(result.structuredContent)
+                        if result.structuredContent is not None
+                        else None
+                    ),
+                )
 
-        logger.info(
-            MCP_INVOKE_SUCCESS,
-            server=self._config.name,
-            tool=tool_name,
+        # A raised (non-timeout) call means the session/transport is likely
+        # dead (MCP tool-level errors come back as ``is_error``, not
+        # exceptions). Heal the connection for subsequent calls, but surface
+        # THIS call's failure rather than auto-retrying: an MCP tool may be a
+        # mutation, so a silent retry could double-execute a side effect.
+        await self._heal_after_failure()
+        msg = (
+            f"Tool {tool_name!r} failed on {self._config.name!r}: "
+            f"{safe_error_description(invocation_error)}"
         )
-        return MCPRawResult(
-            content=tuple(result.content),
-            is_error=result.isError or False,
-            structured_content=(
-                copy.deepcopy(result.structuredContent)
-                if result.structuredContent is not None
-                else None
-            ),
-        )
+        raise MCPInvocationError(
+            msg,
+            context={"server": self._config.name, "tool": tool_name},
+        ) from invocation_error
+
+    async def _heal_after_failure(self) -> None:
+        """Best-effort reconnect after a transport failure, for the next call.
+
+        Swallows reconnect errors (the current call already failed and is about
+        to raise); a still-broken server surfaces on the next invocation.
+        """
+        try:
+            await self.reconnect()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                MCP_CLIENT_RECONNECTING,
+                server=self._config.name,
+                note="heal after tool failure did not reconnect",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def reconnect(self) -> None:
         """Disconnect and reconnect to the server.

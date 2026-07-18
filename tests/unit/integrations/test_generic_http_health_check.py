@@ -19,14 +19,17 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
     ConnectionStatus,
     ConnectionType,
 )
+from synthorg.integrations.errors import SecretRetrievalError
 from synthorg.integrations.health.checks.generic_http import GenericHttpHealthCheck
 from synthorg.tools.network_validator import NetworkPolicy
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -159,6 +162,49 @@ class TestNetworkPolicyEnforcement:
         calls = respx_mock.calls  # type: ignore[attr-defined]
         assert len(calls) == 1
         assert "127.0.0.1" not in str(calls[0].request.url)
+
+
+class TestAuthenticatedProbe:
+    """When a catalog is bound the probe authenticates rather than false-greens."""
+
+    async def test_sends_auth_header_when_catalog_bound(
+        self,
+        respx_mock: object,
+    ) -> None:
+        route = respx_mock.head("https://api.example.com/v1/search").mock(  # type: ignore[attr-defined]
+            return_value=httpx.Response(200),
+        )
+        catalog = mock_of[ConnectionCatalog]()
+        catalog.get_credentials.return_value = {
+            "header_name": "X-Subscription-Token",
+            "header_value": "key-123",
+        }
+        check = GenericHttpHealthCheck(catalog=catalog)
+        conn = _make_connection("https://api.example.com/v1/search")
+        with patch(
+            "synthorg.tools.network_validator.resolve_and_check",
+            return_value=("203.0.113.10",),
+        ):
+            report = await check.check(conn)
+        assert report.status is ConnectionStatus.HEALTHY
+        request = route.calls.last.request
+        assert request.headers["X-Subscription-Token"] == "key-123"
+
+    async def test_broken_credentials_report_unhealthy(
+        self,
+        respx_mock: object,
+    ) -> None:
+        catalog = mock_of[ConnectionCatalog]()
+        catalog.get_credentials.side_effect = SecretRetrievalError("missing secret")
+        check = GenericHttpHealthCheck(catalog=catalog)
+        conn = _make_connection("https://api.example.com/v1/search")
+        with patch(
+            "synthorg.tools.network_validator.resolve_and_check",
+            return_value=("203.0.113.10",),
+        ):
+            report = await check.check(conn)
+        assert report.status is ConnectionStatus.UNHEALTHY
+        assert "credential" in (report.error_detail or "")
 
 
 class TestSecretLeakScrubbing:

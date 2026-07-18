@@ -276,6 +276,23 @@ class TestMCPClientCallTool:
         ):
             await mock_client.call_tool("bad-tool", {})
 
+    async def test_call_tool_failure_heals_connection(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        """A transport failure heals the session for the next call.
+
+        The current call still raises (no auto-retry, since an MCP tool may be
+        a mutation), but a crashed server is reconnected for subsequent calls.
+        """
+        mock_client._session.call_tool.side_effect = RuntimeError(  # type: ignore[union-attr]
+            "transport dead",
+        )
+        mock_client.reconnect = AsyncMock()  # type: ignore[method-assign]
+        with pytest.raises(MCPInvocationError):
+            await mock_client.call_tool("bad-tool", {})
+        mock_client.reconnect.assert_awaited_once()
+
 
 class TestMCPClientReconnect:
     """Reconnect behavior."""
