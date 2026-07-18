@@ -109,6 +109,19 @@
       "allowedVersions": "<1.92.0"
     },
     {
+      "description": "Block typescript >=7. TypeScript 7.0 (GA 2026-07-08) is the Go-native compiler rewrite that ships no stable programmatic Compiler API until 7.1, so openapi-typescript (which generates web/src/api/types/*.gen.ts) crashes with 'Cannot read properties of undefined (reading createKeywordTypeNode)', and typescript-eslint caps its peer at typescript <6.1.0 and marked TS7 support 'not planned' until the 7.1 API lands. Hold the web toolchain on the 6.x line so the dashboard type-check/build/lint stay green. Lift when openapi-typescript and typescript-eslint both support TS 7 (tracking typescript-eslint#10940); adopting TS7's faster compiler for builds before then would be a separate aliased setup.",
+      "matchManagers": ["npm"],
+      "matchDepNames": ["typescript"],
+      "allowedVersions": "<7"
+    },
+    {
+      "description": "Hold the js-yaml overrides pinned at 4.3.0 (the @lhci/utils and @redocly/openapi-core scoped overrides in web/ and site/ package.json). Those pin a transitive js-yaml for the CVE-affected @lhci and @redocly toolchains; the app-level js-yaml devDependency stays on 5.x and is managed normally. matchCurrentValue targets only the 4.3.0-pinned override instances so Renovate stops re-proposing 4.3.0 -> 5.x every cycle without disturbing the app-level 5.x line. Lift when @lhci/utils and @redocly/openapi-core no longer depend on the vulnerable js-yaml range.",
+      "matchManagers": ["npm"],
+      "matchDepNames": ["js-yaml"],
+      "matchCurrentValue": "4.3.0",
+      "enabled": false
+    },
+    {
       "description": "docker/compose.yml mirrors image pins whose canonical source-of-truth lives in cli/internal/config/state.go (Default*ImageTag) and cli/internal/verify/dhi.go (dhiPinnedIndexDigests) for DHI postgres + nats, and in cli/internal/compose/compose.yml.tmpl for busybox. Letting the docker-compose manager update docker/compose.yml independently produces upgrade-collision warnings when the custom regex managers land on a different newValue, which aborts the entire branch. The custom regex managers are the single update path; a Go test verifies docker/compose.yml stays in sync. Other dev compose files (overlays, dast, distributed, fine-tuning) keep the docker-compose manager.",
       "matchFileNames": ["docker/compose.yml"],
       "matchManagers": ["docker-compose"],
