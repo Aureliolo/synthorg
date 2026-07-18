@@ -412,7 +412,7 @@ runs:
       # above (which stays loud). A transient code-scanning API 401/5xx must
       # not fail the image build/publish; the SARIF re-uploads next run.
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+      uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
       with:
         sarif_file: trivy-${{ inputs.image-name }}-amd64.sarif
         category: trivy-${{ inputs.image-name }}-amd64
@@ -433,7 +433,7 @@ runs:
       if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
       # See the amd64 upload above: cosmetic, non-gating, re-uploads next run.
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+      uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
       with:
         sarif_file: trivy-${{ inputs.image-name }}-arm64.sarif
         category: trivy-${{ inputs.image-name }}-arm64
