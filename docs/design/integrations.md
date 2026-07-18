@@ -176,9 +176,33 @@ Per-type health check implementations with a background `HealthProberService`.
 ## MCP Server Catalog
 
 Static JSON catalog (`bundled.json`) with 5 curated MCP server entries:
-GitHub, Slack, PostgreSQL, SQLite, Brave Search. Each entry is
-connection-gated (it declares a `required_connection_type`); no entry runs
-without a bound connection.
+GitHub, Slack, PostgreSQL, SQLite, Brave Search (`@brave/brave-search-mcp-server`).
+Each entry is connection-gated (it declares a `required_connection_type`);
+no entry runs without a bound connection. A database entry additionally
+declares `required_dialect` so `postgres-mcp` and `sqlite-mcp` (which share
+`ConnectionType.DATABASE`) cannot be bound to the wrong dialect.
+
+### Credential injection
+
+A catalog entry declares a `credential_env_map` (credential field to
+environment variable) and/or `credential_arg_map` (credential field to
+command-line flag). The bound connection's secrets are resolved from the
+connection catalog and injected into the spawned server **at connect time**,
+never persisted into the stored `MCPServerConfig` (which only records the
+connection name and the maps). Missing credentials are logged loudly rather
+than silently producing an unauthenticated server.
+
+### Sandboxing
+
+A stdio MCP server is arbitrary third-party code (`npx -y <package>`). Per the
+Docker-only hardening decision (D16), every stdio server runs inside a
+container via `docker run -i` (`tools/mcp/sandbox.py`) under `--cap-drop=ALL`,
+`--security-opt=no-new-privileges`, a read-only rootfs, `NPM_CONFIG_IGNORE_SCRIPTS`,
+and cpu/memory/pid limits, controlled by the `tools.mcp_sandbox_*` settings
+(sandboxing is on by default, and fails secure to on if the settings cannot be
+resolved). Resolved secrets are forwarded to the container by name (`--env KEY`)
+so they never appear in host `argv`. A failed server connect is isolated so one
+broken server never blanks the tools of the others.
 
 ### API Endpoints
 
