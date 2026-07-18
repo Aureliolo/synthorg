@@ -146,4 +146,16 @@ export const SETTING_DEPENDENCIES: Readonly<Record<string, readonly string[]>> =
   'budget/auto_downgrade_enabled': ['budget/auto_downgrade_threshold'],
   'backup/enabled': ['backup/schedule_hours', 'backup/retention_days', 'backup/path'],
   'security/post_tool_scanning_enabled': ['security/output_scan_policy_type'],
+  'tools/web_search_enabled': [
+    'tools/web_search_provider',
+    'tools/web_search_connection',
+    'tools/web_search_max_results',
+  ],
+  'tools/mcp_sandbox_enabled': [
+    'tools/mcp_sandbox_image',
+    'tools/mcp_sandbox_memory_limit',
+    'tools/mcp_sandbox_pids_limit',
+    'tools/mcp_sandbox_cpus',
+    'tools/mcp_sandbox_network',
+  ],
 }

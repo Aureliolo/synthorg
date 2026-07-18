@@ -10,10 +10,13 @@ const githubEntry: McpCatalogEntry = {
   name: 'GitHub',
   description: 'desc',
   npm_package: '@modelcontextprotocol/server-github',
+  npm_version: '2025.4.8',
   required_connection_type: 'github',
+  required_dialect: null,
   transport: 'stdio',
   capabilities: ['repository_access', 'issue_management'],
   tags: ['vcs'],
+  credential_env_map: { token: 'GITHUB_PERSONAL_ACCESS_TOKEN' },
 }
 
 const filesystemEntry: McpCatalogEntry = {
@@ -21,10 +24,13 @@ const filesystemEntry: McpCatalogEntry = {
   name: 'Filesystem',
   description: 'desc',
   npm_package: '@modelcontextprotocol/server-filesystem',
+  npm_version: null,
   required_connection_type: null,
+  required_dialect: null,
   transport: 'stdio',
   capabilities: ['file_read'],
   tags: ['local'],
+  credential_env_map: {},
 }
 
 describe('useMcpCatalogStore', () => {

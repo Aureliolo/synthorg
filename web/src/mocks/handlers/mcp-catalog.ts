@@ -24,10 +24,13 @@ function buildMcpCatalogEntry(
     name: 'Default MCP',
     description: 'Default MCP catalog entry',
     npm_package: null,
+    npm_version: null,
     required_connection_type: null,
+    required_dialect: null,
     transport: 'stdio',
     capabilities: [],
     tags: [],
+    credential_env_map: {},
     ...overrides,
   }
 }

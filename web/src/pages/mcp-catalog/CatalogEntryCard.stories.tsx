@@ -9,10 +9,13 @@ const githubEntry: McpCatalogEntry = {
   description:
     'Read and write GitHub repositories, issues, pull requests, and actions',
   npm_package: '@modelcontextprotocol/server-github',
+  npm_version: '2025.4.8',
   required_connection_type: 'github',
+  required_dialect: null,
   transport: 'stdio',
   capabilities: ['repository_access', 'issue_management', 'pull_requests', 'actions'],
   tags: ['vcs', 'collaboration', 'ci'],
+  credential_env_map: { token: 'GITHUB_PERSONAL_ACCESS_TOKEN' },
 }
 
 const filesystemEntry: McpCatalogEntry = {
@@ -20,10 +23,13 @@ const filesystemEntry: McpCatalogEntry = {
   name: 'Filesystem',
   description: 'Read, write, and manage files on the local filesystem',
   npm_package: '@modelcontextprotocol/server-filesystem',
+  npm_version: null,
   required_connection_type: null,
+  required_dialect: null,
   transport: 'stdio',
   capabilities: ['file_read', 'file_write', 'directory_listing'],
   tags: ['filesystem', 'local'],
+  credential_env_map: {},
 }
 
 const meta = {

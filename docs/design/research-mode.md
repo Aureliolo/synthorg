@@ -35,10 +35,12 @@ source, produced through a recorded, replayable run.
 
 Every step is pluggable through a protocol, a default strategy, the
 `build_research_service` factory, and a `ResearchConfig` discriminator
-(`settings/definitions/research.py`). Safe defaults ship; web, academic, and
-code retrieval use vendor-agnostic provider protocols with no bundled
-implementation (mirroring `WebSearchProvider`), so a family fans out only
-once a provider is injected.
+(`settings/definitions/research.py`). Safe defaults ship. Web retrieval uses
+the vendor-agnostic `WebSearchProvider`, which the native
+`HttpWebSearchProvider` satisfies by default (boot-wired from the
+`tools.web_search_*` settings); academic and code retrieval use the same
+provider-protocol shape but ship no bundled implementation, so those families
+fan out only once a provider is injected.
 
 ## Data model
 

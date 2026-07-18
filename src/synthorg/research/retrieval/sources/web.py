@@ -1,10 +1,11 @@
 """Web retrieval source.
 
 Wraps the vendor-agnostic
-:class:`~synthorg.tools.web.web_search.WebSearchProvider` (no bundled
-implementation; injected at runtime), mapping each result into a
-:class:`RetrievedItem` with a :class:`WebSourceLocator` citation. Snippets
-are untrusted and are wrapped only where they enter a prompt (in synthesis).
+:class:`~synthorg.tools.web.web_search.WebSearchProvider` (satisfied by the
+native ``HttpWebSearchProvider`` or a custom injected provider), mapping each
+result into a :class:`RetrievedItem` with a :class:`WebSourceLocator` citation.
+Snippets are untrusted and are wrapped only where they enter a prompt (in
+synthesis).
 """
 
 from synthorg.core.clock import Clock, SystemClock

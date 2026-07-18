@@ -9,10 +9,13 @@ const githubEntry: McpCatalogEntry = {
   description:
     'Read and write GitHub repositories, issues, pull requests, and actions',
   npm_package: '@modelcontextprotocol/server-github',
+  npm_version: '2025.4.8',
   required_connection_type: 'github',
+  required_dialect: null,
   transport: 'stdio',
   capabilities: ['repository_access', 'issue_management', 'pull_requests', 'actions'],
   tags: ['vcs', 'collaboration', 'ci'],
+  credential_env_map: { token: 'GITHUB_PERSONAL_ACCESS_TOKEN' },
 }
 
 const meta = {

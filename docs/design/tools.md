@@ -119,6 +119,20 @@ individual tools additionally require a runtime dependency (e.g. image tools
 require an `ImageProvider`, notification tools require a dispatcher, analytics
 query/metric tools require a provider or sink).
 
+### MCP stdio server sandboxing
+
+`ToolCategory.MCP` is **not** routed through `resolve_sandbox_for_category`.
+A stdio MCP server is launched as a subprocess (`npx -y <package>@<version>`),
+so its isolation is a bespoke launch-rewrite (`tools/mcp/sandbox.py`,
+`wrap_stdio_in_sandbox`) that runs the server via `docker run -i`, letting the
+MCP protocol flow over the container's stdio while the server runs under
+`--cap-drop=ALL`, `--security-opt=no-new-privileges`, a read-only rootfs,
+`NPM_CONFIG_IGNORE_SCRIPTS`, and cpu/memory/pid limits. This mechanism is
+parallel to, not part of, the per-category `SandboxBackend` selection above,
+and is controlled by its own `tools.mcp_sandbox_*` settings (on by default,
+fail-secure to on). D16 classifies MCP with the high-risk Docker-required
+categories; this is how that requirement is met for the stdio transport.
+
 ### Image generation
 
 Image generation is a native provider capability, not a standalone subsystem.
