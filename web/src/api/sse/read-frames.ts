@@ -18,7 +18,11 @@ export async function readSseFrames(
   const decoder = new TextDecoder()
   let buffer = ''
   let currentEvent = ''
-  const flush = (line: string): void => {
+  const flush = (rawLine: string): void => {
+    // A server or proxy that terminates SSE lines with CRLF leaves a trailing
+    // `\r` after the `\n` split; strip it so the event name and the JSON data
+    // payload parse cleanly (per the SSE line-ending spec).
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
     if (line.startsWith('event: ')) {
       currentEvent = line.slice(7).trim()
     } else if (line.startsWith('data: ')) {

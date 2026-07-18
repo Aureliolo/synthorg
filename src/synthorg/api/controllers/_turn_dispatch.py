@@ -15,8 +15,9 @@ re-checks its own capability gate, so an ACT turn on a message while
 did, never silently downgraded to a read.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -70,7 +71,18 @@ from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
 
-_MESSAGE_MAX_LENGTH: int = 2000
+_MESSAGE_MAX_LENGTH: Final[int] = 2000
+
+# Intents that perform (or park) a side effect and therefore require org-mutation
+# permission; EXPLAIN is a read any authenticated actor may run.
+_SIDE_EFFECTING_INTENTS: Final[frozenset[TurnIntent]] = frozenset(
+    {
+        TurnIntent.PROPOSE,
+        TurnIntent.GROUP_CONVENE,
+        TurnIntent.ACT,
+        TurnIntent.CHARTER,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -91,6 +103,32 @@ class ExplainContext:
     org_state: OrgStateSnapshot | None
 
 
+@dataclass(frozen=True)
+class TurnDispatchContext:
+    """The resolved inputs every capability dispatch draws on.
+
+    Built once by :func:`dispatch_turn` after the final (post-degradation)
+    intent is known, so each ``_dispatch_*`` takes this one context instead of
+    threading the same six values through its signature.
+
+    Attributes:
+        body: The operator's message for this turn.
+        conversation_id: Existing conversation to continue, or ``None``.
+        project: Project the turn is scoped to (propose / charter), or ``None``.
+        actor_id: The authenticated actor issuing the turn.
+        reason: Why this (final) intent was chosen or degraded to.
+        confidence: Classifier confidence (0-1) when a classification ran;
+            ``None`` for an override / no-classifier turn.
+    """
+
+    body: str
+    conversation_id: NotBlankStr | None
+    project: NotBlankStr | None
+    actor_id: str
+    reason: IntentRoutingReason
+    confidence: float | None
+
+
 class TurnRequest(BaseModel):
     """Request body for one unified conversational turn."""
 
@@ -109,6 +147,14 @@ class TurnRequest(BaseModel):
         description=(
             "Force a capability instead of classifying (e.g. to continue a"
             " typed conversation). None auto-routes."
+        ),
+    )
+    named_targets: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description=(
+            "Roles/names the classifier read from the message, carried through a"
+            " deferred stream so a re-issued ACT/GROUP turn keeps its targets"
+            " instead of degrading to EXPLAIN. Only honoured with an override."
         ),
     )
     project: NotBlankStr | None = Field(
@@ -229,36 +275,47 @@ async def prepare_explain_context(app_state: AppState, *, body: str) -> ExplainC
 
 
 async def _dispatch_explain(
-    app_state: AppState, *, body: str, project: NotBlankStr | None
-) -> ChatResponse:
+    app_state: AppState, ctx: TurnDispatchContext
+) -> TurnResult:
     """Answer a read-only question about the org (the explain capability).
 
+    The default and the safe fallback for every degraded or unclassified turn;
+    also gathers any specialist chime-ins that clear the value bar.
+
     Returns:
-        The grounded chat answer.
+        The turn result carrying the grounded answer and any chime-ins.
 
     Raises:
         ServiceUnavailableError: When the chat backend or signals service is
             not configured.
     """
-    del project  # explain is not project-scoped
-    ctx = await prepare_explain_context(app_state, body=body)
-    return await resolve_chat_answer(
-        app_state, ctx.chat_backend, ctx.query, ctx.snapshot, ctx.org_state
+    explain = await prepare_explain_context(app_state, body=ctx.body)
+    answer = await resolve_chat_answer(
+        app_state,
+        explain.chat_backend,
+        explain.query,
+        explain.snapshot,
+        explain.org_state,
+    )
+    chime_ins = await resolve_chime_ins(
+        app_state, question=ctx.body, answer=answer.answer
+    )
+    return TurnResult(
+        intent=TurnIntent.EXPLAIN,
+        intent_reason=ctx.reason,
+        intent_confidence=ctx.confidence,
+        answer=answer,
+        chime_ins=chime_ins,
     )
 
 
 async def _dispatch_propose(
-    app_state: AppState,
-    *,
-    body: str,
-    conversation_id: NotBlankStr | None,
-    project: NotBlankStr | None,
-    actor_id: str,
-) -> ProposeResult:
+    app_state: AppState, ctx: TurnDispatchContext
+) -> TurnResult:
     """Clarify a request or draft a plan (the propose capability).
 
     Returns:
-        The clarify-or-propose outcome.
+        The turn result carrying the clarify-or-propose payload.
 
     Raises:
         ServiceUnavailableError: When the proposer is not configured.
@@ -282,28 +339,32 @@ async def _dispatch_propose(
             "LLM provider, and connect persistence."
         )
         raise ServiceUnavailableError(msg)
-    return await proposer.converse(
+    propose = await proposer.converse(
         ProposeArgs(
-            message=NotBlankStr(body),
-            created_by=NotBlankStr(actor_id),
-            conversation_id=conversation_id,
-            project=project,
+            message=NotBlankStr(ctx.body),
+            created_by=NotBlankStr(ctx.actor_id),
+            conversation_id=ctx.conversation_id,
+            project=ctx.project,
         )
+    )
+    return TurnResult(
+        intent=TurnIntent.PROPOSE,
+        intent_reason=ctx.reason,
+        intent_confidence=ctx.confidence,
+        conversation_id=propose.conversation_id,
+        propose=propose,
     )
 
 
 async def _dispatch_group(
     app_state: AppState,
-    *,
-    body: str,
-    conversation_id: NotBlankStr | None,
+    ctx: TurnDispatchContext,
     participants: tuple[NotBlankStr, ...],
-    actor_id: str,
-) -> GroupConverseResult:
+) -> TurnResult:
     """Run one round of a multi-agent group discussion (group capability).
 
     Returns:
-        The group-round outcome.
+        The turn result carrying the group-round payload.
 
     Raises:
         ServiceUnavailableError: When the group chat service is not configured.
@@ -327,24 +388,28 @@ async def _dispatch_group(
             "an LLM provider, configure agents, and connect persistence."
         )
         raise ServiceUnavailableError(msg)
-    return await service.converse(
+    group = await service.converse(
         GroupConverseArgs(
-            message=NotBlankStr(body),
-            created_by=NotBlankStr(actor_id),
-            conversation_id=conversation_id,
+            message=NotBlankStr(ctx.body),
+            created_by=NotBlankStr(ctx.actor_id),
+            conversation_id=ctx.conversation_id,
             participants=participants,
         )
+    )
+    return TurnResult(
+        intent=TurnIntent.GROUP_CONVENE,
+        intent_reason=ctx.reason,
+        intent_confidence=ctx.confidence,
+        conversation_id=group.conversation_id,
+        group=group,
     )
 
 
 async def _dispatch_act(
     app_state: AppState,
-    *,
-    body: str,
+    ctx: TurnDispatchContext,
     agent: NotBlankStr,
-    conversation_id: NotBlankStr | None,
-    actor_id: str,
-) -> ConversationalActResult:
+) -> TurnResult:
     """Drive a real MCP action under trust (the act capability).
 
     Fail-closed and buffered: gated live on ``direct_mcp_enabled`` and never
@@ -352,7 +417,7 @@ async def _dispatch_act(
     re-executing already-run tools.
 
     Returns:
-        The direct-acting outcome.
+        The turn result carrying the direct-acting payload.
 
     Raises:
         ServiceUnavailableError: When the actor is not configured.
@@ -380,28 +445,31 @@ async def _dispatch_act(
             "``security.mcp_self_consumer.mode`` to ``trust_scoped``."
         )
         raise ServiceUnavailableError(msg)
-    return await actor_service.act(
+    act = await actor_service.act(
         ConversationalActArgs(
-            instruction=NotBlankStr(body),
+            instruction=NotBlankStr(ctx.body),
             agent=agent,
-            conversation_id=conversation_id,
-            requested_by=actor_id,
+            conversation_id=ctx.conversation_id,
+            requested_by=ctx.actor_id,
         )
+    )
+    return TurnResult(
+        intent=TurnIntent.ACT,
+        intent_reason=ctx.reason,
+        intent_confidence=ctx.confidence,
+        conversation_id=ctx.conversation_id,
+        act=act,
     )
 
 
 async def _dispatch_charter(
-    app_state: AppState,
-    *,
-    body: str,
-    conversation_id: NotBlankStr | None,
-    project: NotBlankStr | None,
-    actor_id: str,
-) -> InterviewTurnResult:
+    app_state: AppState, ctx: TurnDispatchContext
+) -> TurnResult:
     """Run one charter-interview turn (the charter capability).
 
     Returns:
-        The interview turn outcome (a question, or the drafted charter).
+        The turn result carrying the interview payload (a question, or the
+        drafted charter).
 
     Raises:
         ServiceUnavailableError: When the charter substrate is unavailable.
@@ -421,13 +489,20 @@ async def _dispatch_charter(
             "connected persistence backend. Complete setup first."
         )
         raise ServiceUnavailableError(msg)
-    return await service.run_turn(
+    charter = await service.run_turn(
         InterviewTurnArgs(
-            message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, body)),
-            created_by=NotBlankStr(actor_id),
-            conversation_id=conversation_id,
-            project=project,
+            message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, ctx.body)),
+            created_by=NotBlankStr(ctx.actor_id),
+            conversation_id=ctx.conversation_id,
+            project=ctx.project,
         )
+    )
+    return TurnResult(
+        intent=TurnIntent.CHARTER,
+        intent_reason=ctx.reason,
+        intent_confidence=ctx.confidence,
+        conversation_id=charter.conversation_id,
+        charter=charter,
     )
 
 
@@ -476,6 +551,7 @@ async def dispatch_turn(
     *,
     data: TurnRequest,
     actor_id: str,
+    require_mutation: Callable[[], None],
 ) -> TurnResult:
     """Classify and dispatch one unified conversational turn.
 
@@ -487,6 +563,11 @@ async def dispatch_turn(
     group that names no participants, degrades to a plain answer so an
     ambiguous turn never acts or convenes on a guess.
 
+    ``require_mutation`` is invoked (and may raise ``PermissionDeniedException``)
+    once the final intent is known and is side-effecting, so a read-only actor
+    can still run EXPLAIN while only propose/group/act/charter demand mutation
+    permission.
+
     Returns:
         The unified :class:`TurnResult` carrying the resolved intent and its
         single capability payload.
@@ -497,6 +578,7 @@ async def dispatch_turn(
         body=body,
         override=data.intent_override,
         conversation_id=data.conversation_id,
+        named_targets=data.named_targets,
     )
     intent = outcome.intent
     reason = outcome.reason
@@ -516,6 +598,12 @@ async def dispatch_turn(
     ):
         intent, reason = TurnIntent.EXPLAIN, IntentRoutingReason.GROUP_TARGETS_MISSING
 
+    # Enforce mutation permission on the FINAL (post-degradation) intent: a turn
+    # that degraded to EXPLAIN is a read any authenticated actor may run, while a
+    # surviving side-effecting intent requires org-mutation permission.
+    if intent in _SIDE_EFFECTING_INTENTS:
+        require_mutation()
+
     logger.info(
         COS_TURN_DISPATCHED,
         intent=intent.value,
@@ -523,82 +611,25 @@ async def dispatch_turn(
         confidence=outcome.confidence,
     )
 
-    confidence = outcome.confidence
+    ctx = TurnDispatchContext(
+        body=body,
+        conversation_id=data.conversation_id,
+        project=data.project,
+        actor_id=actor_id,
+        reason=reason,
+        confidence=outcome.confidence,
+    )
     match intent:
         case TurnIntent.PROPOSE:
-            propose = await _dispatch_propose(
-                app_state,
-                body=body,
-                conversation_id=data.conversation_id,
-                project=data.project,
-                actor_id=actor_id,
-            )
-            return TurnResult(
-                intent=intent,
-                intent_reason=reason,
-                intent_confidence=confidence,
-                conversation_id=propose.conversation_id,
-                propose=propose,
-            )
+            return await _dispatch_propose(app_state, ctx)
         case TurnIntent.GROUP_CONVENE:
-            group = await _dispatch_group(
-                app_state,
-                body=body,
-                conversation_id=data.conversation_id,
-                participants=participants,
-                actor_id=actor_id,
-            )
-            return TurnResult(
-                intent=intent,
-                intent_reason=reason,
-                intent_confidence=confidence,
-                conversation_id=group.conversation_id,
-                group=group,
-            )
+            return await _dispatch_group(app_state, ctx, participants)
         case TurnIntent.ACT:
-            act = await _dispatch_act(
-                app_state,
-                body=body,
-                agent=participants[0],
-                conversation_id=data.conversation_id,
-                actor_id=actor_id,
-            )
-            return TurnResult(
-                intent=intent,
-                intent_reason=reason,
-                intent_confidence=confidence,
-                conversation_id=data.conversation_id,
-                act=act,
-            )
+            return await _dispatch_act(app_state, ctx, participants[0])
         case TurnIntent.CHARTER:
-            charter = await _dispatch_charter(
-                app_state,
-                body=body,
-                conversation_id=data.conversation_id,
-                project=data.project,
-                actor_id=actor_id,
-            )
-            return TurnResult(
-                intent=intent,
-                intent_reason=reason,
-                intent_confidence=confidence,
-                conversation_id=charter.conversation_id,
-                charter=charter,
-            )
+            return await _dispatch_charter(app_state, ctx)
         case _:
-            # EXPLAIN is the default and the safe fallback for every degraded
-            # or unclassified turn.
-            answer = await _dispatch_explain(app_state, body=body, project=data.project)
-            chime_ins = await resolve_chime_ins(
-                app_state, question=body, answer=answer.answer
-            )
-            return TurnResult(
-                intent=intent,
-                intent_reason=reason,
-                intent_confidence=confidence,
-                answer=answer,
-                chime_ins=chime_ins,
-            )
+            return await _dispatch_explain(app_state, ctx)
 
 
 __all__ = ["TurnRequest", "TurnResult", "dispatch_turn"]

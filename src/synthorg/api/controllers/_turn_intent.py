@@ -80,8 +80,14 @@ async def resolve_turn_intent(
     body: str,
     override: TurnIntent | None,
     conversation_id: NotBlankStr | None,
+    named_targets: tuple[NotBlankStr, ...] = (),
 ) -> IntentOutcome:
     """Resolve the turn's intent: override, fixed kind, classifier, or default.
+
+    ``named_targets`` are carried on the override path so a stream-deferred
+    ACT/GROUP turn (which classified its targets on the stream, then re-issues
+    buffered with an override) keeps those targets instead of losing them and
+    degrading to EXPLAIN.
 
     Returns:
         The resolved :class:`IntentOutcome`. Falls back to EXPLAIN when no
@@ -89,7 +95,9 @@ async def resolve_turn_intent(
     """
     if override is not None:
         return IntentOutcome(
-            intent=override, reason=IntentRoutingReason.EXPLICIT_OVERRIDE
+            intent=override,
+            reason=IntentRoutingReason.EXPLICIT_OVERRIDE,
+            named_targets=named_targets,
         )
     fixed = await _fixed_kind_intent(app_state, conversation_id)
     if fixed is not None:

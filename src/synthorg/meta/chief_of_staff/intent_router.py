@@ -54,7 +54,11 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.kill_switch import resolve_str_with_fallback
+from synthorg.settings.kill_switch import (
+    resolve_float_with_fallback,
+    resolve_int_with_fallback,
+    resolve_str_with_fallback,
+)
 from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.resolver import ConfigResolver
 
@@ -284,9 +288,69 @@ class LlmIntentClassifier:
         classification = await self._classify(history)
         if isinstance(classification, IntentRoutingReason):
             return IntentOutcome(intent=TurnIntent.EXPLAIN, reason=classification)
-        return self._apply_floors(classification)
+        act_floor, charter_floor = await self._resolve_live_floors()
+        return self._apply_floors(classification, act_floor, charter_floor)
 
-    def _apply_floors(self, classification: IntentClassification) -> IntentOutcome:
+    async def _resolve_live_floors(self) -> tuple[float, float]:
+        """Resolve the live ACT + CHARTER confidence floors for one classify.
+
+        Re-reads the flat ``chief_of_staff.{act,charter}_intent_confidence_floor``
+        settings per turn so raising a safety floor takes effect without a
+        restart; a missing resolver or setting falls back to the build-time
+        value.
+
+        Returns:
+            The ``(act_floor, charter_floor)`` to gate this classification with.
+        """
+        if self._config_resolver is None:
+            return self._act_confidence_floor, self._charter_confidence_floor
+        act_floor = await resolve_float_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.CHIEF_OF_STAFF,
+            key="act_intent_confidence_floor",
+            fallback=self._act_confidence_floor,
+        )
+        charter_floor = await resolve_float_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.CHIEF_OF_STAFF,
+            key="charter_intent_confidence_floor",
+            fallback=self._charter_confidence_floor,
+        )
+        return act_floor, charter_floor
+
+    async def _resolve_live_generation(self) -> tuple[float, int]:
+        """Resolve the live sampling temperature + token budget for one call.
+
+        Re-reads the flat ``chief_of_staff.turn_intent_temperature`` /
+        ``turn_intent_max_tokens`` settings per turn so a change takes effect
+        without a restart; a missing resolver or setting falls back to the
+        build-time value.
+
+        Returns:
+            The ``(temperature, max_tokens)`` to run this classification with.
+        """
+        if self._config_resolver is None:
+            return self._temperature, self._max_tokens
+        temperature = await resolve_float_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.CHIEF_OF_STAFF,
+            key="turn_intent_temperature",
+            fallback=self._temperature,
+        )
+        max_tokens = await resolve_int_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.CHIEF_OF_STAFF,
+            key="turn_intent_max_tokens",
+            fallback=self._max_tokens,
+        )
+        return temperature, max_tokens
+
+    def _apply_floors(
+        self,
+        classification: IntentClassification,
+        act_floor: float,
+        charter_floor: float,
+    ) -> IntentOutcome:
         """Degrade a raw classification that does not clear its gate.
 
         Returns:
@@ -296,16 +360,16 @@ class LlmIntentClassifier:
         intent = classification.intent
         confidence = classification.confidence
         degrade: IntentRoutingReason | None = None
-        if intent is TurnIntent.ACT and confidence < self._act_confidence_floor:
+        if intent is TurnIntent.ACT and confidence < act_floor:
             degrade = IntentRoutingReason.ACT_FLOOR_NOT_MET
-        elif (
-            intent is TurnIntent.CHARTER and confidence < self._charter_confidence_floor
-        ):
+        elif intent is TurnIntent.CHARTER and confidence < charter_floor:
             degrade = IntentRoutingReason.CHARTER_FLOOR_NOT_MET
-        elif (
-            intent is TurnIntent.GROUP_CONVENE
-            and len(classification.named_targets) < _MIN_GROUP_TARGETS
+        elif intent is TurnIntent.GROUP_CONVENE and (
+            len({target.casefold() for target in classification.named_targets})
+            < _MIN_GROUP_TARGETS
         ):
+            # A group needs two DISTINCT participants; ("CFO", "CFO") is one
+            # voice, not a group, so it degrades rather than convening.
             degrade = IntentRoutingReason.GROUP_TARGETS_MISSING
         if degrade is not None:
             logger.info(
@@ -355,9 +419,10 @@ class LlmIntentClassifier:
             ChatMessage(role=MessageRole.SYSTEM, content=TURN_INTENT_SYSTEM),
             ChatMessage(role=MessageRole.USER, content=user),
         ]
+        temperature, max_tokens = await self._resolve_live_generation()
         completion_config = CompletionConfig(
-            temperature=self._temperature,
-            max_tokens=self._max_tokens,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
         provider, model = await self._resolve_live_dispatch()
         try:

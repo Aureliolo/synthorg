@@ -173,11 +173,13 @@ class PlanCommentService:
         Raises:
             NotFoundError: ``reply_to_id`` names no comment on this item.
         """
-        siblings = await self._comments.query(
-            PlanItemCommentFilterSpec(plan_id=plan_id, item_id=item_id),
-            limit=MAX_THREAD,
+        matches = await self._comments.query(
+            PlanItemCommentFilterSpec(
+                plan_id=plan_id, item_id=item_id, comment_id=reply_to_id
+            ),
+            limit=1,
         )
-        parent = reply_to_id if reply_to_id in {c.id for c in siblings} else None
+        parent = reply_to_id if matches else None
         require_resource_or_404(
             parent,
             resource_type="Parent comment",

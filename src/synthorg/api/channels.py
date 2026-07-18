@@ -4,7 +4,6 @@ Defines the named channels for real-time event feeds and
 creates the Litestar ``ChannelsPlugin`` with an in-memory backend.
 """
 
-from datetime import UTC, datetime
 from typing import Final
 
 from litestar import Request
@@ -12,7 +11,9 @@ from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
 from litestar.datastructures import State
 
+from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_WS_SEND_FAILED
@@ -143,6 +144,8 @@ def publish_ws_event_with_plugin(
     event_type: WsEventType,
     channel: str,
     payload: dict[str, object],
+    *,
+    clock: Clock,
 ) -> None:
     """Best-effort publish to a channel through an already-resolved plugin.
 
@@ -158,6 +161,8 @@ def publish_ws_event_with_plugin(
         channel: Target channel name (shared channels from
             ``ALL_CHANNELS`` or dynamic ``user:{id}`` channels).
         payload: Event-specific data.
+        clock: The application ``Clock`` seam, so the event timestamp honours a
+            ``FakeClock`` under test rather than reading wall time directly.
     """
     if channels_plugin is None:
         logger.warning(
@@ -171,7 +176,7 @@ def publish_ws_event_with_plugin(
     event = WsEvent(
         event_type=event_type,
         channel=channel,
-        timestamp=datetime.now(UTC),
+        timestamp=clock.now(),
         payload=payload,
     )
     try:
@@ -208,8 +213,13 @@ def publish_ws_event(
             ``ALL_CHANNELS`` or dynamic ``user:{id}`` channels).
         payload: Event-specific data.
     """
+    app_state: AppState = request.app.state["app_state"]
     publish_ws_event_with_plugin(
-        get_channels_plugin(request), event_type, channel, payload
+        get_channels_plugin(request),
+        event_type,
+        channel,
+        payload,
+        clock=app_state.clock,
     )
 
 

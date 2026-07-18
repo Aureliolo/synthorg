@@ -6,7 +6,7 @@ proactive alerts, and the chat interface. All capabilities are
 opt-in with safe defaults (disabled).
 """
 
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -58,16 +58,16 @@ _ROUTING_CONFIDENCE_FLOOR_DEFAULT: float = 0.6
 # deterministic pass (temperature 0.0) so the intent JSON is stable; a
 # classification reply is a single small JSON object, so 200 tokens fits it
 # and 50 is the floor below which even that minimal object risks truncation.
-_TURN_INTENT_TEMPERATURE_DEFAULT: float = 0.0
-_TURN_INTENT_MAX_TOKENS_DEFAULT: int = 200
-_TURN_INTENT_MAX_TOKENS_MIN: int = 50
+_TURN_INTENT_TEMPERATURE_DEFAULT: Final[float] = 0.0
+_TURN_INTENT_MAX_TOKENS_DEFAULT: Final[int] = 200
+_TURN_INTENT_MAX_TOKENS_MIN: Final[int] = 50
 # ACT and CHARTER sit behind their own, stricter confidence floors than
 # concern routing so an uncertain classifier never escalates a read into a
 # real action or a multi-turn charter interview: below the floor the turn
 # degrades to a plain explanation. 0.85 (act) / 0.8 (charter) are well
 # above the 0.6 routing floor; the 0.0/1.0 envelope is the probability range.
-_ACT_INTENT_CONFIDENCE_FLOOR_DEFAULT: float = 0.85
-_CHARTER_INTENT_CONFIDENCE_FLOOR_DEFAULT: float = 0.8
+_ACT_INTENT_CONFIDENCE_FLOOR_DEFAULT: Final[float] = 0.85
+_CHARTER_INTENT_CONFIDENCE_FLOOR_DEFAULT: Final[float] = 0.8
 # Multi-voice: after an answer, 0..N specialists add a short, attributed
 # chime-in when their role genuinely adds a distinct, grounded perspective.
 # Default-on (opt-out): it is the core of the "talk to your organisation"
@@ -75,26 +75,26 @@ _CHARTER_INTENT_CONFIDENCE_FLOOR_DEFAULT: float = 0.8
 # questions still get one clean answer.
 # Two extra voices is a calm default; 1 keeps it minimal and 5 caps the
 # per-answer fan-out cost.
-_MULTI_VOICE_MAX_SPEAKERS_DEFAULT: int = 2
-_MULTI_VOICE_MAX_SPEAKERS_MIN: int = 1
-_MULTI_VOICE_MAX_SPEAKERS_MAX: int = 5
+_MULTI_VOICE_MAX_SPEAKERS_DEFAULT: Final[int] = 2
+_MULTI_VOICE_MAX_SPEAKERS_MIN: Final[int] = 1
+_MULTI_VOICE_MAX_SPEAKERS_MAX: Final[int] = 5
 # 0.7 is a real value bar: only a specialist genuinely confident it adds a
 # distinct angle chimes in, so the transcript never fills with filler. The
 # 0.0/1.0 envelope is the probability range.
-_MULTI_VOICE_CONFIDENCE_FLOOR_DEFAULT: float = 0.7
+_MULTI_VOICE_CONFIDENCE_FLOOR_DEFAULT: Final[float] = 0.7
 # A chime-in is short attributed prose, so a moderate temperature and a tight
 # token budget; 100 is the floor below which even one chime-in would truncate.
-_MULTI_VOICE_TEMPERATURE_DEFAULT: float = 0.5
-_MULTI_VOICE_MAX_TOKENS_DEFAULT: int = 600
-_MULTI_VOICE_MAX_TOKENS_MIN: int = 100
+_MULTI_VOICE_TEMPERATURE_DEFAULT: Final[float] = 0.5
+_MULTI_VOICE_MAX_TOKENS_DEFAULT: Final[int] = 600
+_MULTI_VOICE_MAX_TOKENS_MIN: Final[int] = 100
 # A chime-in is a best-effort enrichment the operator has not asked for, and
 # on the buffered turn path it is awaited before the answer returns. Its cap is
 # therefore tighter than a first-class agent call (45s vs 120s): a slow or hung
 # chime must not add a first-class call's worth of latency to a plain answer. 5s
 # is the floor for a legitimate short reply; 300s a ceiling for slow large models.
-_MULTI_VOICE_TIMEOUT_SECONDS_DEFAULT: float = 45.0
-_MULTI_VOICE_TIMEOUT_SECONDS_MIN: float = 5.0
-_MULTI_VOICE_TIMEOUT_SECONDS_MAX: float = 300.0
+_MULTI_VOICE_TIMEOUT_SECONDS_DEFAULT: Final[float] = 45.0
+_MULTI_VOICE_TIMEOUT_SECONDS_MIN: Final[float] = 5.0
+_MULTI_VOICE_TIMEOUT_SECONDS_MAX: Final[float] = 300.0
 # Group chat: one human, several agents, round-robin turns. The
 # defaults below bound a single human turn so it cannot drive unbounded
 # fan-out cost; all are operator-tunable.

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { CheckCircle2, XCircle } from 'lucide-react'
 
+import { paginateAll } from '@/api/client'
 import { listApprovals } from '@/api/endpoints/approvals'
+import type { ApprovalResponse } from '@/api/types/approvals'
 import type { Plan } from '@/api/types/plans'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -38,22 +40,39 @@ interface RejectController {
   confirm: () => Promise<void>
 }
 
+// Resolve the plan's parked approval from the pending plan reviews (scoped by
+// ``source``, walked in full via paginateAll), not the generic approvals page:
+// with many reviews outstanding, this plan's review could otherwise fall
+// outside a single page and the approve controls would vanish.
+async function findPendingPlanApproval(planId: string): Promise<string | undefined> {
+  const reviews = await paginateAll<ApprovalResponse>((cursor) =>
+    listApprovals({
+      source: 'plan_review',
+      status: 'pending',
+      limit: PENDING_REVIEW_FETCH_LIMIT,
+      cursor,
+    }),
+  )
+  return reviews.find((a) => a.metadata['plan_id'] === planId)?.id
+}
+
 function usePlanApproval(plan: Plan): PlanApproval {
   const [approvalId, setApprovalId] = useState<string | undefined>(undefined)
+  // Monotonic lookup generation: a stale (earlier-plan or superseded) lookup
+  // must never apply, or a late response could resume the wrong plan.
+  const lookupGenerationRef = useRef(0)
 
-  // Resolve the plan's parked approval from the small, bounded set of pending
-  // plan reviews (scoped by ``source``), not the generic approvals page: with
-  // many approvals outstanding, this plan's review can fall outside a capped
-  // page of the mixed list and the approve controls would vanish.
   const resolveApproval = useCallback(async () => {
+    const generation = (lookupGenerationRef.current += 1)
+    // Invalidate the previous plan's approval immediately so stale controls
+    // never show while the new lookup is in flight.
+    setApprovalId(undefined)
     try {
-      const page = await listApprovals({
-        source: 'plan_review',
-        status: 'pending',
-        limit: PENDING_REVIEW_FETCH_LIMIT,
-      })
-      setApprovalId(page.data.find((a) => a.metadata['plan_id'] === plan.id)?.id)
+      const id = await findPendingPlanApproval(plan.id)
+      if (generation !== lookupGenerationRef.current) return
+      setApprovalId(id)
     } catch (err) {
+      if (generation !== lookupGenerationRef.current) return
       log.error('Failed to resolve the plan approval', sanitizeForLog(err))
       setApprovalId(undefined)
     }
@@ -65,25 +84,46 @@ function usePlanApproval(plan: Plan): PlanApproval {
     void resolveApproval()
   }, [resolveApproval, plan.status])
 
-  const [open, setOpen] = useState(false)
-  const [reason, setReason] = useState('')
-  const [reasonError, setReasonError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const refetchPlan = useCallback(() => {
     void usePlansStore.getState().fetchPlanDetail(plan.id)
   }, [plan.id])
 
+  const onResolved = useCallback(() => {
+    setApprovalId(undefined)
+    refetchPlan()
+  }, [refetchPlan])
+
   const handleApprove = useCallback(async () => {
     if (approvalId === undefined) return
     setSubmitting(true)
     const result = await useApprovalsStore.getState().approveOne(approvalId)
     setSubmitting(false)
-    if (result) {
-      setApprovalId(undefined)
-      refetchPlan()
-    }
-  }, [approvalId, refetchPlan])
+    if (result) onResolved()
+  }, [approvalId, onResolved])
+
+  const reject = useRejectController({
+    approvalId,
+    submitting,
+    setSubmitting,
+    onResolved,
+  })
+
+  return { approvalId, submitting, handleApprove, reject }
+}
+
+/** Reason box + validation + submit for the whole-plan reject dialog. */
+function useRejectController(args: {
+  approvalId: string | undefined
+  submitting: boolean
+  setSubmitting: (value: boolean) => void
+  onResolved: () => void
+}): RejectController {
+  const { approvalId, setSubmitting, onResolved } = args
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const [reasonError, setReasonError] = useState<string | null>(null)
 
   const confirm = useCallback(async () => {
     if (approvalId === undefined) return
@@ -100,31 +140,33 @@ function usePlanApproval(plan: Plan): PlanApproval {
     if (result) {
       setOpen(false)
       setReason('')
-      setApprovalId(undefined)
-      refetchPlan()
+      setReasonError(null)
+      onResolved()
     }
-  }, [approvalId, reason, refetchPlan])
+  }, [approvalId, reason, setSubmitting, onResolved])
 
-  const setReasonClearingError = useCallback(
-    (value: string) => {
-      setReason(value)
-      if (value.trim()) setReasonError(null)
-    },
-    [],
-  )
+  const setReasonClearingError = useCallback((value: string) => {
+    setReason(value)
+    if (value.trim()) setReasonError(null)
+  }, [])
+
+  // Closing the dialog clears BOTH the reason and its validation error, so a
+  // dialog reopened after an empty-submit does not show a stale error.
+  const setRejectOpen = useCallback((next: boolean) => {
+    setOpen(next)
+    if (!next) {
+      setReason('')
+      setReasonError(null)
+    }
+  }, [])
 
   return {
-    approvalId,
-    submitting,
-    handleApprove,
-    reject: {
-      open,
-      reason,
-      reasonError,
-      setOpen,
-      setReason: setReasonClearingError,
-      confirm,
-    },
+    open,
+    reason,
+    reasonError,
+    setOpen: setRejectOpen,
+    setReason: setReasonClearingError,
+    confirm,
   }
 }
 
@@ -138,10 +180,7 @@ function PlanRejectDialog({
   return (
     <ConfirmDialog
       open={reject.open}
-      onOpenChange={(open) => {
-        reject.setOpen(open)
-        if (!open) reject.setReason('')
-      }}
+      onOpenChange={reject.setOpen}
       title="Reject plan"
       description="Reject this plan as a whole. Explain what is wrong so the organisation can iterate."
       confirmLabel="Reject"

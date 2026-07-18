@@ -27,8 +27,12 @@ export interface PlanItemCardProps {
   onChooseOption?: (itemId: string, optionId: string) => Promise<unknown>
   /** This item's discussion thread (omitted renders no discussion section). */
   comments?: readonly PlanItemComment[]
-  /** Post a comment on this item; enables the discussion compose box. */
-  onAddComment?: (itemId: string, body: string) => Promise<PlanItemComment | null>
+  /** Post a comment (or a reply) on this item; enables the discussion box. */
+  onAddComment?: (
+    itemId: string,
+    body: string,
+    replyToId?: string,
+  ) => Promise<PlanItemComment | null>
   className?: string
 }
 
@@ -79,7 +83,7 @@ export function PlanItemCard({
       {onAddComment !== undefined && (
         <PlanItemComments
           comments={comments ?? []}
-          onSubmit={(body) => onAddComment(item.id, body)}
+          onSubmit={(body, replyToId) => onAddComment(item.id, body, replyToId)}
         />
       )}
     </section>

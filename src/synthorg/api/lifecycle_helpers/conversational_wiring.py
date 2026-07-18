@@ -424,6 +424,24 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
 
+    # The turn-intent classifier and multi-voice router are optional and each
+    # guards its own state field idempotently, so wire them on every pass -- even
+    # once the proposer exists -- so a classifier / multi-voice model configured
+    # after the proposer was first built still wires without a restart.
+    if provider_registry is not None:
+        _wire_turn_intent_classifier(
+            app_state,
+            si_config.chief_of_staff,
+            provider_registry=provider_registry,
+            cost_tracker=cost_tracker,
+        )
+        _wire_multi_voice_router(
+            app_state,
+            si_config.chief_of_staff,
+            provider_registry=provider_registry,
+            cost_tracker=cost_tracker,
+        )
+
     if app_state.slice(MetaStateSlice).chief_of_staff_proposer is not None:
         return
     repositories = await _wire_conversational_repositories_and_reconcile(
@@ -439,18 +457,6 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
     if provider_registry is None:
         return
     role_router = _wire_role_router(
-        app_state,
-        si_config.chief_of_staff,
-        provider_registry=provider_registry,
-        cost_tracker=cost_tracker,
-    )
-    _wire_turn_intent_classifier(
-        app_state,
-        si_config.chief_of_staff,
-        provider_registry=provider_registry,
-        cost_tracker=cost_tracker,
-    )
-    _wire_multi_voice_router(
         app_state,
         si_config.chief_of_staff,
         provider_registry=provider_registry,

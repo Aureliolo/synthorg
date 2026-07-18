@@ -40,6 +40,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.services.plan_comment_service import PlanCommentService
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
+from synthorg.core.clock import Clock
 from synthorg.core.plan_comment import PlanItemComment
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import EngineStateSlice
@@ -70,7 +71,10 @@ def _service(app_state: AppState) -> PlanCommentService:
 
 
 def _publish_comment(
-    channels_plugin: ChannelsPlugin | None, comment: PlanItemComment
+    channels_plugin: ChannelsPlugin | None,
+    comment: PlanItemComment,
+    *,
+    clock: Clock,
 ) -> None:
     """Broadcast a posted comment on the shared plans WebSocket channel.
 
@@ -91,6 +95,7 @@ def _publish_comment(
             "comment_id": str(comment.id),
             "author": comment.author,
         },
+        clock=clock,
     )
 
 
@@ -171,7 +176,7 @@ async def _agent_reply(
         author_agent_id=reply.author_agent_id,
         reply_to_id=human_comment.id,
     )
-    _publish_comment(channels_plugin, agent_comment)
+    _publish_comment(channels_plugin, agent_comment, clock=app_state.clock)
 
 
 PlanCommentItemFilter = Annotated[
@@ -259,6 +264,6 @@ class PlanCommentController(Controller):
             body=data.body,
             reply_to_id=data.reply_to_id,
         )
-        _publish_comment(channels_plugin, comment)
+        _publish_comment(channels_plugin, comment, clock=app_state.clock)
         _spawn_agent_reply(app_state, channels_plugin, human_comment=comment)
         return ApiResponse(data=comment)

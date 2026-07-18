@@ -17,10 +17,10 @@ RFC 9457 handler; it is emitted as an in-stream ``error`` frame instead.
 """
 
 import asyncio
+import contextlib
 import json
 from collections.abc import AsyncIterator
 
-from synthorg.api.controllers._provider_helpers import sse_error
 from synthorg.api.controllers._turn_dispatch import (
     TurnRequest,
     TurnResult,
@@ -28,8 +28,10 @@ from synthorg.api.controllers._turn_dispatch import (
     resolve_chime_ins,
 )
 from synthorg.api.controllers._turn_intent import resolve_turn_intent
+from synthorg.api.exception_handlers import build_error_detail
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import DomainError
 from synthorg.meta.chief_of_staff.intent_router import IntentOutcome, TurnIntent
 from synthorg.meta.chief_of_staff.models import ChatAnswerComplete, ChatResponse
 from synthorg.observability import get_logger, safe_error_description
@@ -47,6 +49,28 @@ def _frame(event: str, payload: dict[str, object]) -> dict[str, str]:
     return {"event": event, "data": json.dumps(payload)}
 
 
+def _error_frame(exc: Exception) -> dict[str, str]:
+    """Build the in-stream ``error`` frame for a post-header failure.
+
+    A :class:`DomainError` carries its structured detail (``error_code``,
+    ``retryable``, ``retry_after``) so the streaming path surfaces the same
+    error UX (fail-closed 503 messaging, retry hints) as the buffered turn;
+    anything else degrades to a generic internal-error message.
+
+    Returns:
+        An ``error`` SSE frame carrying ``error`` and, for a domain error, the
+        full ``error_detail`` the client reconstructs an ``ApiRequestError``
+        from.
+    """
+    if isinstance(exc, DomainError):
+        detail = build_error_detail(exc)
+        return _frame(
+            "error",
+            {"error": detail.detail, "error_detail": detail.model_dump(mode="json")},
+        )
+    return _frame("error", {"error": f"Internal error: {type(exc).__name__}"})
+
+
 async def _explain_frames(
     app_state: AppState, *, data: TurnRequest, outcome: IntentOutcome
 ) -> AsyncIterator[dict[str, str]]:
@@ -59,25 +83,30 @@ async def _explain_frames(
     """
     ctx = await prepare_explain_context(app_state, body=data.message)
     answer: ChatResponse | None = None
-    async for event in ctx.chat_backend.ask_stream(
-        ctx.query, ctx.snapshot, org_state=ctx.org_state
-    ):
-        if isinstance(event, ChatAnswerComplete):
-            answer = ChatResponse(
-                answer=event.answer,
-                sources=event.sources,
-                cited_records=event.cited_records,
-                confidence=event.confidence,
-            )
-            result = TurnResult(
-                intent=TurnIntent.EXPLAIN,
-                intent_reason=outcome.reason,
-                intent_confidence=outcome.confidence,
-                answer=answer,
-            )
-            yield {"event": "complete", "data": result.model_dump_json()}
-        else:
-            yield _frame("delta", {"delta": event.delta})
+    # ``aclosing`` guarantees the backend generator's ``finally`` (which tears
+    # down the ``cost_recording_scope``) runs promptly when the client
+    # disconnects mid-stream, rather than being deferred to GC and skewing
+    # cost attribution.
+    async with contextlib.aclosing(
+        ctx.chat_backend.ask_stream(ctx.query, ctx.snapshot, org_state=ctx.org_state)
+    ) as stream:
+        async for event in stream:
+            if isinstance(event, ChatAnswerComplete):
+                answer = ChatResponse(
+                    answer=event.answer,
+                    sources=event.sources,
+                    cited_records=event.cited_records,
+                    confidence=event.confidence,
+                )
+                result = TurnResult(
+                    intent=TurnIntent.EXPLAIN,
+                    intent_reason=outcome.reason,
+                    intent_confidence=outcome.confidence,
+                    answer=answer,
+                )
+                yield {"event": "complete", "data": result.model_dump_json()}
+            else:
+                yield _frame("delta", {"delta": event.delta})
     if answer is not None:
         for chime in await resolve_chime_ins(
             app_state, question=data.message, answer=answer.answer
@@ -111,12 +140,16 @@ async def stream_turn_events(
             conversation_id=data.conversation_id,
         )
         if outcome.intent is not TurnIntent.EXPLAIN:
+            # Carry the classified targets so the buffered reissue keeps them:
+            # without this an ACT/GROUP turn re-issued with only the intent
+            # override loses its participants and degrades to EXPLAIN.
             yield _frame(
                 "deferred",
                 {
                     "intent": outcome.intent.value,
                     "intent_reason": outcome.reason.value,
                     "intent_confidence": outcome.confidence,
+                    "named_targets": list(outcome.named_targets),
                 },
             )
             return
@@ -132,7 +165,7 @@ async def stream_turn_events(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        yield _frame("error", sse_error(f"Internal error: {type(exc).__name__}"))
+        yield _error_frame(exc)
 
 
 __all__ = ["stream_turn_events"]

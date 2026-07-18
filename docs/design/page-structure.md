@@ -30,10 +30,10 @@ Department health is the real terminal task-outcome success rate over a rolling 
 
 #### Chat (`/chat`)
 
-One unified conversation with the organisation, Claude-Code-style: a single composer and transcript, no mode picker. The operator types anything and the org detects intent and responds inline, escalating **visibly**: a plain answer, a drafted plan handed off to Plan Review, a convened group, or a direct action. Specialists speak inline with their own attribution (transparent multi-voice, opt-out), and the Chief of Staff is the default front door. Direct acting stays fail-closed and buffered. A History drawer resumes a prior conversation; an optional charter side panel drives a charter interview. The whole surface is one call to `POST /meta/chat/turn` (intent classified server-side), so the frontend never pre-classifies the operator's intent.
+One unified conversation with the organisation, Claude-Code-style: a single composer and transcript, no mode picker. The operator types anything and the org detects intent and responds inline, escalating **visibly**: a plain answer, a drafted plan handed off to Plan Review, a convened group, or a direct action. Specialists speak inline with their own attribution (transparent multi-voice, opt-out), and the Chief of Staff is the default front door. Direct acting stays fail-closed and buffered. A History drawer resumes a prior conversation; an optional charter side panel drives a charter interview. Intent is classified server-side, so the frontend never pre-classifies the operator's intent. The surface has two transports over one classification: an `explain` turn streams its answer token-by-token over `POST /meta/chat/turn/stream` (SSE), while every side-effecting intent (`propose` / `group_convene` / `act` / `charter`) is *deferred* on the stream and re-issued against the buffered, idempotent `POST /meta/chat/turn` so an acting turn only ever runs once.
 
-**API endpoints**: `POST /meta/chat/turn`, `GET /meta/chat/conversations`, `GET /meta/chat/conversations/{id}`, `GET /agents/active`
-**WS channels**: none (buffered turn; resume via REST)
+**API endpoints**: `POST /meta/chat/turn` (buffered), `POST /meta/chat/turn/stream` (SSE for `explain`; defers other intents), `GET /meta/chat/conversations`, `GET /meta/chat/conversations/{id}`, `GET /agents/active`
+**WS channels**: none (SSE for the streamed `explain` answer; resume via REST)
 
 #### Org Chart (`/org`)
 

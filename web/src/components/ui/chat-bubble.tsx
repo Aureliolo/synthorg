@@ -122,7 +122,7 @@ function AgentHeader({
   timestamp,
 }: {
   name: string
-  role: string
+  role?: string | undefined
   topic?: string | null | undefined
   timestamp?: string | null | undefined
 }) {
@@ -153,7 +153,10 @@ function LabelHeader({
 
 function BubbleHeader(props: ChatBubbleProps) {
   const { variant, agentName, agentRole } = props
-  if (variant === 'agent' && agentName && agentRole) {
+  // Gate on the name alone so an agent bubble with no role (e.g. a
+  // direct-action turn) still shows its attribution; the optional role passes
+  // through and ResponderAttribution renders name-only when it is absent.
+  if (variant === 'agent' && agentName) {
     return (
       <AgentHeader
         name={agentName}

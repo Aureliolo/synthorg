@@ -47,12 +47,21 @@ export function ChatInputArea({
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       // ``isComposing`` guards IME candidate confirmation: a bare Enter that
       // commits a composition must edit the field, never send the message.
-      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      // The Send button's own guards (non-empty, not disabled) apply to Enter
+      // too, so the two paths cannot diverge into a whitespace/ineligible send.
+      if (
+        e.key === 'Enter' &&
+        !e.shiftKey &&
+        !e.nativeEvent.isComposing &&
+        !disabled &&
+        !inputDisabled &&
+        value.trim()
+      ) {
         e.preventDefault()
         onSend()
       }
     },
-    [onSend],
+    [disabled, inputDisabled, onSend, value],
   )
   return (
     <div className={cn('flex items-end gap-2', className)}>

@@ -166,8 +166,8 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
     return map
   }, [comments])
   const addComment = useCallback(
-    (itemId: string, body: string) =>
-      usePlanCommentsStore.getState().addComment(plan.id, itemId, body),
+    (itemId: string, body: string, replyToId?: string) =>
+      usePlanCommentsStore.getState().addComment(plan.id, itemId, body, replyToId),
     [plan.id],
   )
   const chooseOption = useCallback(

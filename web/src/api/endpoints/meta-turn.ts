@@ -10,10 +10,16 @@
 import { getCsrfToken } from '@/utils/csrf'
 import { fetchWithRetryAfter } from '@/utils/fetch-with-retry'
 import { parseRetryAfterMs, RateLimitedError } from '@/utils/retry-after'
-import { apiClient, LLM_BOUND_TIMEOUT_MS, unwrap } from '../client'
+import { ApiRequestError, apiClient, LLM_BOUND_TIMEOUT_MS, unwrap } from '../client'
 import { readSseFrames } from '../sse/read-frames'
 import type { ApiResponse } from '../types/http'
-import type { ChimeIn, TurnIntent, TurnRequest, TurnResult } from '../types'
+import type {
+  ChimeIn,
+  ErrorDetail,
+  TurnIntent,
+  TurnRequest,
+  TurnResult,
+} from '../types'
 
 import { parseCitedRecords } from './cited-records'
 
@@ -21,11 +27,13 @@ const BASE = '/meta'
 
 /** Build the wire body shared by the buffered and streaming turn calls. */
 function buildTurnRequest(message: string, options?: PostTurnOptions): TurnRequest {
+  const opts = options ?? {}
   return {
     message,
-    conversation_id: options?.conversationId ?? null,
-    intent_override: options?.intentOverride ?? null,
-    project: options?.project ?? null,
+    conversation_id: opts.conversationId ?? null,
+    intent_override: opts.intentOverride ?? null,
+    named_targets: opts.namedTargets ?? [],
+    project: opts.project ?? null,
   }
 }
 
@@ -33,6 +41,12 @@ export interface PostTurnOptions {
   conversationId?: string
   /** Force a capability instead of letting the org classify the turn. */
   intentOverride?: TurnIntent
+  /**
+   * Roles/names the stream classified for an ACT/GROUP turn, carried into the
+   * buffered reissue so those turns keep their targets instead of degrading to
+   * EXPLAIN. Only honoured alongside {@link intentOverride}.
+   */
+  namedTargets?: readonly string[]
   project?: string
   idempotencyKey?: string
   signal?: AbortSignal
@@ -94,6 +108,8 @@ export interface DeferredTurn {
   kind: 'deferred'
   /** The classified intent to re-issue with as an explicit override. */
   intent: TurnIntent
+  /** The classified ACT/GROUP targets to carry into the buffered reissue. */
+  namedTargets: string[]
 }
 
 /** An EXPLAIN turn the stream answered live via the handlers below. */
@@ -115,6 +131,26 @@ export interface StreamTurnHandlers {
 function _turnStreamUrl(): string {
   const base = apiClient.defaults.baseURL ?? ''
   return `${base}${BASE}/chat/turn/stream`
+}
+
+// Decode a non-OK stream response into a structured `ApiRequestError` so a
+// fail-closed 503 (or any domain error) surfaces its `error_code` / detail to
+// `describeConversationalError`, the same as the buffered turn path, instead of
+// a bare `Error` that loses the server's reason.
+async function _decodeStreamError(response: Response): Promise<ApiRequestError> {
+  let detail: ErrorDetail | null = null
+  let message = `Turn stream failed: HTTP ${response.status}`
+  try {
+    const parsed = (await response.json()) as {
+      error?: string
+      error_detail?: ErrorDetail | null
+    }
+    detail = parsed.error_detail ?? null
+    message = detail?.detail || parsed.error || message
+  } catch {
+    // A non-JSON body (proxy error page, empty) keeps the generic message.
+  }
+  return new ApiRequestError(message, detail)
 }
 
 async function _openTurnStream(
@@ -145,16 +181,28 @@ async function _openTurnStream(
       const retryAfter = response.headers.get('retry-after') ?? undefined
       throw new RateLimitedError(parseRetryAfterMs(retryAfter, null))
     }
-    throw new Error(`Turn stream failed: HTTP ${response.status}`)
+    throw await _decodeStreamError(response)
   }
   return response
+}
+
+// An in-stream `error` frame reconstructs an `ApiRequestError`: the server emits
+// { error, error_detail? }, and a domain error carries the structured detail so
+// the stream path surfaces the same error UX as the buffered turn (fail-closed
+// 503 messaging, retry hints) via `getErrorDetail` / `describeConversationalError`.
+function _throwStreamFrameError(payload: unknown): never {
+  const frame = payload as { error?: string; error_detail?: ErrorDetail | null }
+  throw new ApiRequestError(
+    frame.error ?? 'The org could not respond',
+    frame.error_detail ?? null,
+  )
 }
 
 function _dispatchTurnFrame(
   event: string,
   data: string,
   handlers: StreamTurnHandlers,
-  setDeferred: (intent: TurnIntent) => void,
+  setDeferred: (intent: TurnIntent, namedTargets: string[]) => void,
 ): void {
   const payload: unknown = JSON.parse(data)
   switch (event) {
@@ -167,14 +215,14 @@ function _dispatchTurnFrame(
     case 'chime':
       handlers.onChime(payload as ChimeIn)
       return
-    case 'deferred':
-      setDeferred((payload as { intent: TurnIntent }).intent)
+    case 'deferred': {
+      const frame = payload as { intent: TurnIntent; named_targets?: string[] }
+      setDeferred(frame.intent, frame.named_targets ?? [])
       return
+    }
     case 'error':
-      // The server emits an `sse_error`-shaped frame ({ error, status, ... }).
-      throw new Error(
-        (payload as { error?: string }).error ?? 'The org could not respond',
-      )
+      _throwStreamFrameError(payload)
+      break
     default:
       return
   }
@@ -200,15 +248,37 @@ export async function streamTurn(
     options?.signal,
   )
   let deferredIntent: TurnIntent | null = null
+  let deferredTargets: string[] = []
+  let completed = false
   await readSseFrames(response, (event, data) => {
-    _dispatchTurnFrame(event, data, handlers, (intent) => {
-      deferredIntent = intent
-    })
+    _dispatchTurnFrame(
+      event,
+      data,
+      {
+        ...handlers,
+        onComplete: (result) => {
+          completed = true
+          handlers.onComplete(result)
+        },
+      },
+      (intent, namedTargets) => {
+        deferredIntent = intent
+        deferredTargets = namedTargets
+      },
+    )
   })
-  // ``deferredIntent`` is set inside the ``readSseFrames`` callback, invisible
-  // to the flow analysis, which narrows it to ``null`` here.
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- mutated indirectly inside the frame callback
-  return deferredIntent !== null
-    ? { kind: 'deferred', intent: deferredIntent }
-    : { kind: 'explained' }
+  // ``deferredIntent`` / ``completed`` are set inside the ``readSseFrames``
+  // callback, invisible to the flow analysis, which narrows them here.
+  /* eslint-disable @typescript-eslint/no-unnecessary-condition -- mutated indirectly inside the frame callback */
+  if (deferredIntent !== null) {
+    return { kind: 'deferred', intent: deferredIntent, namedTargets: deferredTargets }
+  }
+  if (!completed) {
+    // A stream that ends with neither a ``complete`` nor a ``deferred`` frame
+    // was truncated (dropped connection, proxy cut); surface it rather than
+    // silently reporting a successful explained turn.
+    throw new Error('Turn stream ended before a terminal frame')
+  }
+  return { kind: 'explained' }
+  /* eslint-enable @typescript-eslint/no-unnecessary-condition */
 }

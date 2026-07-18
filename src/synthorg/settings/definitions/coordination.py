@@ -298,8 +298,9 @@ _r.register(
         type=SettingType.FLOAT,
         default="0.3",
         description=(
-            "Sampling temperature for a plan-item reply. Resolved on the next"
-            " runtime-services rebuild."
+            "Sampling temperature for a plan-item reply. Resolved live per"
+            " reply, so a change takes effect on the next reply without a"
+            " restart."
         ),
         group="Models",
         level=SettingLevel.ADVANCED,
@@ -315,8 +316,8 @@ _r.register(
         type=SettingType.INTEGER,
         default="600",
         description=(
-            "Token budget for one plan-item reply. Resolved on the next"
-            " runtime-services rebuild."
+            "Token budget for one plan-item reply. Resolved live per reply, so"
+            " a change takes effect on the next reply without a restart."
         ),
         group="Models",
         level=SettingLevel.ADVANCED,

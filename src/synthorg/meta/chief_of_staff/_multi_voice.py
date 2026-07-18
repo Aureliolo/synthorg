@@ -263,7 +263,12 @@ class LlmMultiVoiceRouter:
             )
             if len(chimes) >= self._max_speakers:
                 break
-        logger.info(COS_MULTI_VOICE_ADDED, count=len(chimes))
+        if chimes:
+            logger.info(COS_MULTI_VOICE_ADDED, count=len(chimes))
+        else:
+            # Every candidate fell below the floor or failed to resolve; record a
+            # skip so the added-event count is not inflated by empty rounds.
+            logger.info(COS_MULTI_VOICE_SKIPPED, detail="no_candidate_selected")
         return tuple(chimes)
 
     async def _request(
@@ -278,9 +283,12 @@ class LlmMultiVoiceRouter:
             The parsed response, or ``None`` on a call failure or invalid
             reply.
         """
+        # Roster roles/names are operator-controlled data; fence them like the
+        # question and answer so a crafted role or display name cannot inject
+        # instructions into the chime-in prompt.
         roster_lines = "\n".join(f"- {a.role} -- {a.name}" for a in roster)
         user = TURN_MULTI_VOICE_USER.format(
-            roster=roster_lines,
+            roster=wrap_untrusted(TAG_TASK_DATA, roster_lines),
             question=wrap_untrusted(TAG_TASK_DATA, question),
             answer=wrap_untrusted(TAG_TASK_DATA, answer),
         )

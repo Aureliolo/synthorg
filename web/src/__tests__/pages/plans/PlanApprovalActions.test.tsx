@@ -53,14 +53,18 @@ describe('PlanApprovalActions', () => {
   })
 
   it('renders nothing when no pending plan-review approval matches the plan', async () => {
+    // The container is empty on the initial render, so wait for the lookup to
+    // actually resolve before asserting empty -- otherwise the assertion could
+    // pass before the GET returns and never exercise the empty response.
+    const listSpy = vi.fn()
     server.use(
-      http.get('/api/v1/approvals', () =>
-        HttpResponse.json(paginatedFor<typeof listApprovals>(emptyPage())),
-      ),
+      http.get('/api/v1/approvals', () => {
+        listSpy()
+        return HttpResponse.json(paginatedFor<typeof listApprovals>(emptyPage()))
+      }),
     )
     const { container } = render(<PlanApprovalActions plan={PLAN} />)
-    await waitFor(() => {
-      expect(container).toBeEmptyDOMElement()
-    })
+    await waitFor(() => expect(listSpy).toHaveBeenCalled())
+    expect(container).toBeEmptyDOMElement()
   })
 })

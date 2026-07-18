@@ -61,7 +61,11 @@ export function useAutoScroll(dep: unknown): AutoScroll {
 
   useEffect(() => {
     if (!followRef.current) return
-    const frame = requestAnimationFrame(() => scrollToBottom('smooth'))
+    // Immediate ('auto') follow while content grows: 'smooth' animation emits
+    // intermediate scroll events where the viewport is briefly unpinned, which
+    // would flip followRef off and stall auto-follow mid-stream. Smooth scroll
+    // stays reserved for the explicit jump-to-latest affordance.
+    const frame = requestAnimationFrame(() => scrollToBottom('auto'))
     return () => cancelAnimationFrame(frame)
   }, [dep, scrollToBottom])
 

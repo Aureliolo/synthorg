@@ -10,6 +10,7 @@ import type {
   postTurn,
 } from '@/api/endpoints/meta'
 import { paginatedEnvelopeFor, successFor } from '@/mocks/handlers/helpers'
+import { deferredStreamBody, sseResponse } from '@/mocks/handlers/meta'
 import ChatPage from '@/pages/ChatPage'
 import { server } from '@/test-setup'
 
@@ -28,6 +29,9 @@ describe('ChatPage unified surface', () => {
     expect(
       screen.getByText('What is the organisation working on right now?'),
     ).toBeInTheDocument()
+    // The unified surface has no legacy ask/act/charter mode picker: the intent
+    // is classified server-side per turn, so no tab strip is ever rendered.
+    expect(screen.queryByRole('tablist')).toBeNull()
   })
 
   it('sends a message to the unified turn endpoint and renders the answer', async () => {
@@ -50,6 +54,11 @@ describe('ChatPage unified surface', () => {
 
   it('renders a drafted plan as an inline event card', async () => {
     server.use(
+      // A side-effecting intent never streams: the stream classifies and defers
+      // back to the buffered endpoint, which returns the drafted plan.
+      http.post('/api/v1/meta/chat/turn/stream', () =>
+        sseResponse(deferredStreamBody('propose')),
+      ),
       http.post('/api/v1/meta/chat/turn', () =>
         HttpResponse.json(
           successFor<typeof postTurn>({

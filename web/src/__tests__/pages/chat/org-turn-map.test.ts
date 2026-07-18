@@ -217,7 +217,14 @@ describe('mapTurnResult', () => {
     expect(turns).toHaveLength(1)
     expect(turns[0]).toMatchObject({
       kind: 'event',
-      event: { type: 'action', agentName: 'Casey', content: 'Done.' },
+      event: {
+        type: 'action',
+        agentName: 'Casey',
+        content: 'Done.',
+        // The tool calls must survive the mapping, or a regression that drops
+        // or corrupts them would still pass the type/agent/content checks.
+        toolCalls: [{ tool_name: 'query_metrics', is_error: false, result: 'ok' }],
+      },
     })
   })
 

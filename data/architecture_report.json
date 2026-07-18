@@ -80,8 +80,8 @@
     },
     "src/synthorg/api/controllers/_turn_dispatch.py": {
       "cap": 600,
-      "loc": 533,
-      "ratio": 0.888,
+      "loc": 552,
+      "ratio": 0.92,
       "tier": "service"
     },
     "src/synthorg/api/controllers/activities/_shared.py": {
@@ -194,8 +194,8 @@
     },
     "src/synthorg/api/exception_handlers.py": {
       "cap": 1100,
-      "loc": 988,
-      "ratio": 0.898,
+      "loc": 1013,
+      "ratio": 0.921,
       "tier": "complex_service"
     },
     "src/synthorg/api/lifecycle_helpers/config_apply.py": {
@@ -206,8 +206,8 @@
     },
     "src/synthorg/api/lifecycle_helpers/conversational_wiring.py": {
       "cap": 500,
-      "loc": 464,
-      "ratio": 0.928,
+      "loc": 465,
+      "ratio": 0.93,
       "tier": "code"
     },
     "src/synthorg/api/lifecycle_helpers/feature_wiring.py": {
@@ -912,6 +912,12 @@
       "ratio": 0.992,
       "tier": "service"
     },
+    "src/synthorg/meta/chief_of_staff/intent_router.py": {
+      "cap": 600,
+      "loc": 496,
+      "ratio": 0.827,
+      "tier": "service"
+    },
     "src/synthorg/meta/chief_of_staff/propose.py": {
       "cap": 600,
       "loc": 542,
@@ -1537,7 +1543,7 @@
     "synthorg.api.pagination": 63,
     "synthorg.api.path_params": 85,
     "synthorg.api.rate_limits": 96,
-    "synthorg.api.state": 313,
+    "synthorg.api.state": 314,
     "synthorg.api.state_slices": 34,
     "synthorg.api.ws_models": 23,
     "synthorg.approval.enums": 80,
@@ -1566,9 +1572,9 @@
     "synthorg.core.auth.roles": 32,
     "synthorg.core.autonomy_enums": 42,
     "synthorg.core.boundary": 66,
-    "synthorg.core.clock": 230,
+    "synthorg.core.clock": 232,
     "synthorg.core.critical_errors": 669,
-    "synthorg.core.domain_errors": 247,
+    "synthorg.core.domain_errors": 248,
     "synthorg.core.effective_autonomy": 24,
     "synthorg.core.error_taxonomy": 63,
     "synthorg.core.iso_datetime": 30,

@@ -9,6 +9,8 @@ import pytest
 from synthorg.api.controllers import _turn_stream
 from synthorg.api.controllers._turn_dispatch import ExplainContext, TurnRequest
 from synthorg.api.state import AppState
+from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff._multi_voice import ChimeIn
 from synthorg.meta.chief_of_staff.intent_router import (
@@ -139,4 +141,25 @@ class TestStreamTurnEvents:
         monkeypatch.setattr(_turn_stream, "resolve_turn_intent", _boom)
         frames = await _collect(_turn_stream.stream_turn_events(_APP, data=_REQUEST))
         assert [f["event"] for f in frames] == ["error"]
-        assert "error" in json.loads(frames[0]["data"])
+        data = json.loads(frames[0]["data"])
+        assert "error" in data
+        # A non-domain error carries only the generic message (no structured
+        # detail to leak).
+        assert "error_detail" not in data
+
+    async def test_domain_error_after_start_yields_structured_detail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _unavailable(app_state: object, **kwargs: object) -> IntentOutcome:
+            del app_state, kwargs
+            raise ServiceUnavailableError
+
+        monkeypatch.setattr(_turn_stream, "resolve_turn_intent", _unavailable)
+        frames = await _collect(_turn_stream.stream_turn_events(_APP, data=_REQUEST))
+        assert [f["event"] for f in frames] == ["error"]
+        data = json.loads(frames[0]["data"])
+        # A domain error restores the structured detail the buffered turn emits,
+        # so the client surfaces the same fail-closed / retry UX.
+        detail = data["error_detail"]
+        assert detail["error_code"] == ErrorCode.SERVICE_UNAVAILABLE.value
+        assert detail["retryable"] is True

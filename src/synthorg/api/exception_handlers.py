@@ -826,6 +826,35 @@ def _parse_retry_after(raw: object) -> int | None:
     return math.ceil(value)
 
 
+def build_error_detail(exc: Exception) -> ErrorDetail:
+    """Serialise a domain exception to a structured :class:`ErrorDetail`.
+
+    Mirrors :func:`handle_domain_error`'s normalisation (status, code,
+    category, retryable, retry-after, redacted message) so a caller that
+    cannot go through the RFC 9457 handler still hands the client the same
+    structured signal. The streaming turn endpoint uses this: its response
+    headers are already on the wire when a mid-stream failure happens, so it
+    emits the detail as an in-stream ``error`` frame instead of a response.
+
+    Returns:
+        A fully-populated ``ErrorDetail`` matching the buffered path.
+    """
+    status_code = _normalize_status_code(getattr(exc, "status_code", 500))
+    error_code, error_category = _normalize_error_metadata(exc)
+    retryable = _determine_retryable(exc)
+    retry_after = _parse_retry_after(getattr(exc, "retry_after", None))
+    return ErrorDetail(
+        detail=_select_message(exc, status_code),
+        error_code=error_code,
+        error_category=error_category,
+        retryable=retryable,
+        retry_after=retry_after if retryable else None,
+        instance=_get_instance_id(),
+        title=category_title(error_category),
+        type=category_type_uri(error_category),
+    )
+
+
 def handle_domain_error(
     request: Request[object, object, State],
     exc: Exception,

@@ -332,6 +332,76 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=_NS,
+        key="act_intent_confidence_floor",
+        type=SettingType.FLOAT,
+        default="0.85",
+        description=(
+            "Minimum classifier confidence before a turn may resolve to ACT;"
+            " below it the turn degrades to a plain answer. Read live per turn,"
+            " so raising this safety floor takes effect without a restart."
+        ),
+        group="Chat",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="charter_intent_confidence_floor",
+        type=SettingType.FLOAT,
+        default="0.8",
+        description=(
+            "Minimum classifier confidence before a turn may resolve to CHARTER;"
+            " below it the turn degrades to a plain answer. Read live per turn,"
+            " so a change takes effect without a restart."
+        ),
+        group="Chat",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="turn_intent_temperature",
+        type=SettingType.FLOAT,
+        default="0.0",
+        description=(
+            "Sampling temperature for the turn-intent classifier. Read live per"
+            " turn, so a change takes effect without a restart."
+        ),
+        group="Chat",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=2.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="turn_intent_max_tokens",
+        type=SettingType.INTEGER,
+        default="200",
+        description=(
+            "Token budget for one turn-intent classification reply. Read live"
+            " per turn, so a change takes effect without a restart."
+        ),
+        group="Chat",
+        level=SettingLevel.ADVANCED,
+        min_value=50,
+        max_value=4096,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
         key="narrative_model",
         type=SettingType.MODEL_REF,
         default="",

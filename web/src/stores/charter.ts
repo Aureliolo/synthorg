@@ -25,6 +25,13 @@ interface CharterState {
   draftCharter: ProjectCharter | null
   /** True while an edit / approve / cancel mutation is in flight. */
   mutating: boolean
+  /**
+   * Monotonic identity of the active draft. Bumped whenever the draft is
+   * replaced (hydrateFromTurn) or cleared (resetInterview); a mutation captures
+   * it at the start and drops its completion once it no longer matches, so an
+   * old edit/approve/cancel cannot repopulate a reset or superseded draft.
+   */
+  draftGeneration: number
 
   fetchCharters: (filters?: CharterFilters) => Promise<void>
   fetchMoreCharters: (filters?: CharterFilters) => Promise<void>
@@ -90,18 +97,29 @@ async function fetchMoreChartersImpl(
   }
 }
 
+// A mutation completion is applied only while the draft it targeted is still
+// current; once the draft was reset or replaced (generation bumped), the stale
+// completion is dropped so it cannot repopulate the new/cleared draft.
+function _draftIsCurrent(get: CharterGet, generation: number): boolean {
+  return get().draftGeneration === generation
+}
+
 async function editDraftImpl(
   set: CharterSet,
+  get: CharterGet,
   id: string,
   data: CharterEditRequest,
 ): Promise<ProjectCharter | null> {
+  const generation = get().draftGeneration
   set({ mutating: true })
   try {
     const updated = await charterApi.editCharter(id, data)
+    if (!_draftIsCurrent(get, generation)) return updated
     set({ draftCharter: updated })
     useToastStore.getState().add({ variant: 'success', title: 'Charter updated' })
     return updated
   } catch (err) {
+    if (!_draftIsCurrent(get, generation)) return null
     log.error('Charter edit failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
@@ -110,17 +128,20 @@ async function editDraftImpl(
     })
     return null
   } finally {
-    set({ mutating: false })
+    if (_draftIsCurrent(get, generation)) set({ mutating: false })
   }
 }
 
 async function approveImpl(
   set: CharterSet,
+  get: CharterGet,
   id: string,
 ): Promise<CharterApprovalResult | null> {
+  const generation = get().draftGeneration
   set({ mutating: true })
   try {
     const result = await charterApi.approveCharter(id)
+    if (!_draftIsCurrent(get, generation)) return result
     set({ draftCharter: result.charter })
     if (result.is_success) {
       useToastStore.getState().add({
@@ -142,6 +163,7 @@ async function approveImpl(
     }
     return result
   } catch (err) {
+    if (!_draftIsCurrent(get, generation)) return null
     log.error('Charter approval failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
@@ -150,18 +172,25 @@ async function approveImpl(
     })
     return null
   } finally {
-    set({ mutating: false })
+    if (_draftIsCurrent(get, generation)) set({ mutating: false })
   }
 }
 
-async function cancelImpl(set: CharterSet, id: string): Promise<boolean> {
+async function cancelImpl(
+  set: CharterSet,
+  get: CharterGet,
+  id: string,
+): Promise<boolean> {
+  const generation = get().draftGeneration
   set({ mutating: true })
   try {
     const cancelled = await charterApi.cancelCharter(id)
+    if (!_draftIsCurrent(get, generation)) return true
     set({ draftCharter: cancelled })
     useToastStore.getState().add({ variant: 'success', title: 'Charter cancelled' })
     return true
   } catch (err) {
+    if (!_draftIsCurrent(get, generation)) return false
     log.error('Charter cancel failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
@@ -170,7 +199,7 @@ async function cancelImpl(set: CharterSet, id: string): Promise<boolean> {
     })
     return false
   } finally {
-    set({ mutating: false })
+    if (_draftIsCurrent(get, generation)) set({ mutating: false })
   }
 }
 
@@ -182,17 +211,27 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
   hasMore: false,
   draftCharter: null,
   mutating: false,
+  draftGeneration: 0,
 
   fetchCharters: (filters) => fetchChartersImpl(set, filters),
   fetchMoreCharters: (filters) => fetchMoreChartersImpl(set, get, filters),
+  // Adopting a new drafted charter replaces the active draft, so bump the
+  // generation to orphan any mutation still in flight against the old one.
   hydrateFromTurn: (turn) =>
-    set({ draftCharter: turn.charter ?? get().draftCharter }),
+    set((state) => ({
+      draftCharter: turn.charter ?? state.draftCharter,
+      draftGeneration: state.draftGeneration + 1,
+    })),
 
-  editDraft: (id, data) => editDraftImpl(set, id, data),
-  approve: (id) => approveImpl(set, id),
-  cancel: (id) => cancelImpl(set, id),
+  editDraft: (id, data) => editDraftImpl(set, get, id, data),
+  approve: (id) => approveImpl(set, get, id),
+  cancel: (id) => cancelImpl(set, get, id),
 
   resetInterview: () => {
-    set({ draftCharter: null, mutating: false })
+    set((state) => ({
+      draftCharter: null,
+      mutating: false,
+      draftGeneration: state.draftGeneration + 1,
+    }))
   },
 }))

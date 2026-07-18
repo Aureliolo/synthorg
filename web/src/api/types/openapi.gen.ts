@@ -17587,6 +17587,11 @@ export type components = {
             readonly intent_override?: "explain" | "propose" | "act" | "group_convene" | "charter" | null;
             /** @description The operator's message for this turn. */
             readonly message: string;
+            /**
+             * @description Roles/names the classifier read from the message, carried through a deferred stream so a re-issued ACT/GROUP turn keeps its targets instead of degrading to EXPLAIN. Only honoured with an override.
+             * @default []
+             */
+            readonly named_targets: readonly string[];
             /** @description Project the turn is scoped to, for propose/charter turns. */
             readonly project?: string | null;
         };

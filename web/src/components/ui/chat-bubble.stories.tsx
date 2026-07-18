@@ -26,6 +26,13 @@ export const Human: Story = {
 
 export const Assistant: Story = {}
 
+export const Streaming: Story = {
+  args: {
+    content: 'The runway is **7 months**',
+    isStreaming: true,
+  },
+}
+
 export const Agent: Story = {
   args: {
     variant: 'agent',

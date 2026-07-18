@@ -59,6 +59,14 @@ export interface OrgConversationState {
   conversationClosed: boolean
   /** True while a turn is in flight. */
   sending: boolean
+  /**
+   * Monotonic conversation identity. Bumped whenever the transcript is
+   * replaced (hydrate / startNew / resetAll); a turn captures it at send time
+   * and drops every later write once it no longer matches, so an in-flight
+   * turn can never bleed its result (or a cancelled-notice) into a conversation
+   * the operator has since switched to.
+   */
+  epoch: number
   /** Approval ids whose in-context Approve/Decline is resolving. */
   resolvingInvites: ReadonlySet<string>
   sendTurn: (message: string, opts: SendOptions) => Promise<void>
@@ -290,27 +298,39 @@ async function runTurn(
   const state = get()
   if (state.sending || state.conversationClosed) return
   const iso = new Date().toISOString()
+  // Capture the conversation identity: if the operator resumes another thread
+  // (hydrate) or starts a new one (startNew / resetAll) mid-send, the epoch
+  // bumps and ``guardedSet`` drops every later write from this now-orphaned
+  // turn, so its answer, error, or cancelled-notice cannot land in the thread
+  // the operator switched to.
+  const turnEpoch = state.epoch
+  const guardedSet: Setter = (patch) => {
+    if (get().epoch !== turnEpoch) return
+    set(patch)
+  }
   set({
     sending: true,
     messages: [...state.messages, buildHumanTurn(message, opts, iso)],
   })
   const ctx: RunContext = { message, state, opts, iso }
   try {
-    const outcome = await streamExplainOrDefer(set, get, ctx)
+    const outcome = await streamExplainOrDefer(guardedSet, get, ctx)
     if (outcome.kind === 'deferred') {
       // A side-effecting intent never runs on the stream: re-issue it against
-      // the buffered, idempotent endpoint with the classified intent forced, so
-      // it executes exactly once and is never re-classified.
+      // the buffered, idempotent endpoint with the classified intent forced (and
+      // its classified targets carried through), so it executes exactly once,
+      // is never re-classified, and an ACT/GROUP turn keeps its participants.
       const result = await postTurn(message, {
         ...turnRequestOptions(state, opts),
         intentOverride: outcome.intent,
+        namedTargets: outcome.namedTargets,
       })
-      applyBufferedResult(set, get, result, iso)
+      applyBufferedResult(guardedSet, get, result, iso)
     }
   } catch (err) {
-    handleTurnError(set, get, err)
+    handleTurnError(guardedSet, get, err)
   } finally {
-    set({ sending: false })
+    guardedSet({ sending: false })
   }
 }
 
@@ -369,9 +389,12 @@ function initialState(): Pick<
 export const useOrgConversationStore = create<OrgConversationState>()(
   (set, get) => ({
     ...initialState(),
+    epoch: 0,
     sendTurn: (message, opts) => runTurn(set, get, message, opts),
     resolveInvite: (turnId, approvalId, accept) =>
       void resolveInviteImpl(set, get, turnId, approvalId, accept),
+    // Every transcript replacement bumps the epoch so an in-flight turn from
+    // the previous conversation is orphaned (its guardedSet writes are dropped).
     hydrate: (patch) =>
       set({
         messages: patch.messages,
@@ -379,11 +402,12 @@ export const useOrgConversationStore = create<OrgConversationState>()(
         activeIntent: patch.activeIntent,
         conversationClosed: patch.conversationClosed,
         sending: false,
+        epoch: get().epoch + 1,
       }),
     startNew: () => {
       useCharterStore.getState().resetInterview()
-      set(initialState())
+      set({ ...initialState(), epoch: get().epoch + 1 })
     },
-    resetAll: () => set(initialState()),
+    resetAll: () => set({ ...initialState(), epoch: get().epoch + 1 }),
   }),
 )

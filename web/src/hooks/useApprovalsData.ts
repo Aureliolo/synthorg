@@ -51,7 +51,10 @@ export function useApprovalsData(): UseApprovalsDataReturn {
     [rawApprovals],
   )
   const selectedApproval = useApprovalsStore((s) => s.selectedApproval)
-  const total = useApprovalsStore((s) => s.total)
+  // The store's ``total`` counts every source; the generic inbox excludes plan
+  // reviews, so its total is the filtered row count (the full set is loaded via
+  // paginateAll, so this is exact, not a page estimate).
+  const total = approvals.length
   const loading = useApprovalsStore((s) => s.loading)
   const loadingDetail = useApprovalsStore((s) => s.loadingDetail)
   const error = useApprovalsStore((s) => s.error)

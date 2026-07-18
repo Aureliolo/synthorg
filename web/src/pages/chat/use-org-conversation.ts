@@ -61,6 +61,12 @@ export function useOrgConversation(): OrgConversation {
   const [input, setInput] = useState('')
   const autoScroll = useAutoScroll(messages)
   const abortRef = useRef<AbortController | null>(null)
+  // `retry` reads the transcript through a ref so its identity stays stable
+  // across the per-token `messages` churn of a streaming answer; a `messages`
+  // dependency would re-create it on every delta and re-render the whole
+  // memoized transcript.
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
 
   // Abort an in-flight turn if the page unmounts mid-send, so the fetch does
   // not outlive the component.
@@ -97,7 +103,7 @@ export function useOrgConversation(): OrgConversation {
 
   const retry = useCallback(
     (beforeTurnId: number) => {
-      const target = humanTurnBefore(messages, beforeTurnId)
+      const target = humanTurnBefore(messagesRef.current, beforeTurnId)
       if (target) {
         // Reuse the original key so a turn that actually succeeded server-side
         // is deduped rather than re-run, and replay the project it was minted
@@ -105,7 +111,7 @@ export function useOrgConversation(): OrgConversation {
         send(target.content, target.idempotencyKey ?? crypto.randomUUID(), target.project)
       }
     },
-    [messages, send],
+    [send],
   )
 
   return {

@@ -48,7 +48,11 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.kill_switch import resolve_str_with_fallback
+from synthorg.settings.kill_switch import (
+    resolve_float_with_fallback,
+    resolve_int_with_fallback,
+    resolve_str_with_fallback,
+)
 from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.resolver import ConfigResolver
 
@@ -257,6 +261,33 @@ class LlmPlanItemReplyService:
             return self._provider, self._model
         return driver, ref.model_id
 
+    async def _resolve_live_generation(self) -> tuple[float, int]:
+        """Resolve the live sampling temperature + token budget for one reply.
+
+        Re-reads ``coordination.plan_review_reply_temperature`` /
+        ``plan_review_reply_max_tokens`` per call so an operator retunes them
+        without a restart, matching the live model resolution; a missing
+        resolver or setting falls back to the build-time value.
+
+        Returns:
+            The ``(temperature, max_tokens)`` to run this reply call with.
+        """
+        if self._config_resolver is None:
+            return self._temperature, self._max_tokens
+        temperature = await resolve_float_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.COORDINATION,
+            key="plan_review_reply_temperature",
+            fallback=self._temperature,
+        )
+        max_tokens = await resolve_int_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.COORDINATION,
+            key="plan_review_reply_max_tokens",
+            fallback=self._max_tokens,
+        )
+        return temperature, max_tokens
+
     async def _request(
         self,
         *,
@@ -279,15 +310,23 @@ class LlmPlanItemReplyService:
             item=wrap_untrusted(TAG_TASK_DATA, _render_item(item)),
             comment=wrap_untrusted(TAG_TASK_DATA, comment_body),
         )
+        # The responder's role and name come from operator-controlled roster
+        # data, so they are fenced as untrusted before entering the system
+        # prompt: a crafted role/display name cannot inject instructions at
+        # system priority.
         messages = [
             ChatMessage(
                 role=MessageRole.SYSTEM,
-                content=_REPLY_SYSTEM.format(role=role, name=name),
+                content=_REPLY_SYSTEM.format(
+                    role=wrap_untrusted(TAG_TASK_DATA, role),
+                    name=wrap_untrusted(TAG_TASK_DATA, name),
+                ),
             ),
             ChatMessage(role=MessageRole.USER, content=user),
         ]
+        temperature, max_tokens = await self._resolve_live_generation()
         completion_config = CompletionConfig(
-            temperature=self._temperature, max_tokens=self._max_tokens
+            temperature=temperature, max_tokens=max_tokens
         )
         provider, model = await self._resolve_live_dispatch()
         try:

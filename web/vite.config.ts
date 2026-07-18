@@ -30,7 +30,9 @@ const VENDOR_CHUNKS: Record<string, readonly string[]> = {
 function manualChunks(id: string): string | undefined {
   if (!id.includes('node_modules')) return undefined
   for (const [chunk, packages] of Object.entries(VENDOR_CHUNKS)) {
-    if (packages.some((pkg) => id.includes(`node_modules/${pkg}`))) {
+    // Match on the package-directory boundary (trailing slash) so a prefix
+    // like ``react`` cannot swallow ``react-markdown`` into ``vendor-react``.
+    if (packages.some((pkg) => id.includes(`node_modules/${pkg}/`))) {
       return chunk
     }
   }

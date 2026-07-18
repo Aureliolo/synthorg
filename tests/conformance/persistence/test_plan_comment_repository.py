@@ -74,6 +74,37 @@ class TestPlanItemCommentRepository:
         )
         assert [c.id for c in result] == [as_uuid("b")]
 
+    async def test_query_narrows_to_one_comment_by_id(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.plan_comments.append(_comment("a", minute=1))
+        await backend.plan_comments.append(_comment("b", minute=2))
+
+        result = await backend.plan_comments.query(
+            PlanItemCommentFilterSpec(
+                plan_id=NotBlankStr("plan-1"),
+                item_id=NotBlankStr("item-1"),
+                comment_id=as_uuid("b"),
+            )
+        )
+        assert [c.id for c in result] == [as_uuid("b")]
+
+    async def test_query_by_comment_id_is_scoped_to_the_item(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # A parent id on another item must not match: the reply-target guard
+        # relies on this scoping to reject a cross-item reply.
+        await backend.plan_comments.append(_comment("a", item_id="item-2"))
+
+        result = await backend.plan_comments.query(
+            PlanItemCommentFilterSpec(
+                plan_id=NotBlankStr("plan-1"),
+                item_id=NotBlankStr("item-1"),
+                comment_id=as_uuid("a"),
+            )
+        )
+        assert result == ()
+
     async def test_query_scopes_to_the_plan(self, backend: PersistenceBackend) -> None:
         await backend.plan_comments.append(_comment("a", plan_id="plan-1"))
         await backend.plan_comments.append(_comment("b", plan_id="plan-2"))

@@ -11,6 +11,8 @@ from synthorg.hr.enums import AgentStatus
 from synthorg.hr.state import agent_registry_of
 from synthorg.meta.chief_of_staff._multi_voice import ChimeIn
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
+from synthorg.meta.chief_of_staff.group_chat import GroupChatService
+from synthorg.meta.chief_of_staff.group_models import GroupConverseResult
 from synthorg.meta.chief_of_staff.intent_router import (
     IntentOutcome,
     IntentRoutingReason,
@@ -337,5 +339,96 @@ class TestMetaTurn:
             # direct_mcp_enabled is off by default: acting fails closed rather
             # than being answered as a read.
             assert resp.status_code == 503
+        finally:
+            app_state.swap_slice(original)
+
+    async def test_read_only_actor_may_explain(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """An actor without org-mutation rights can still ask a question.
+
+        Mutation permission is enforced on the FINAL intent, so a read-only
+        actor is never blanket-blocked from the read-only EXPLAIN path.
+        """
+        chat_mock = AsyncMock(spec=ChiefOfStaffChat)
+        chat_mock.ask.return_value = ChatResponse(
+            answer="Runway is fine.", sources=(), confidence=0.8
+        )
+        signals_mock = AsyncMock(spec=SignalsService)
+        signals_mock.get_org_snapshot.return_value = _empty_snapshot()
+        app_state = async_test_client.app.state.app_state
+        original = app_state.slice(MetaStateSlice)
+        app_state.wire(
+            MetaStateSlice,
+            chief_of_staff_chat=chat_mock,
+            signals_service=signals_mock,
+            turn_intent_classifier=None,
+        )
+        try:
+            # ``observer`` is seeded without any org role, so it cannot mutate.
+            resp = await async_test_client.post(
+                _BASE,
+                headers=make_auth_headers("observer"),
+                json={"message": "How are we doing?"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["data"]["intent"] == "explain"
+        finally:
+            app_state.swap_slice(original)
+
+    async def test_read_only_actor_blocked_from_side_effecting(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """A side-effecting intent from a read-only actor is denied.
+
+        The mutation check fires once the intent is known to be side-effecting,
+        before the proposer runs, so an unauthorised propose never mutates.
+        """
+        proposer = AsyncMock(spec=ChiefOfStaffProposer)
+        app_state = async_test_client.app.state.app_state
+        original = app_state.slice(MetaStateSlice)
+        app_state.wire(MetaStateSlice, chief_of_staff_proposer=proposer)
+        try:
+            resp = await async_test_client.post(
+                _BASE,
+                headers=make_auth_headers("observer"),
+                json={"message": "build a landing page", "intent_override": "propose"},
+            )
+            assert resp.status_code == 403
+            # The proposer must never be reached once permission is denied.
+            proposer.converse.assert_not_awaited()
+        finally:
+            app_state.swap_slice(original)
+
+    async def test_override_group_carries_named_targets(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """A deferred stream's named_targets reach the group roster on re-issue.
+
+        Only honoured with an override (the buffered re-issue after a stream
+        classifies a group), the request's ``named_targets`` become the group's
+        participants instead of degrading to EXPLAIN for lack of a roster.
+        """
+        service = AsyncMock(spec=GroupChatService)
+        service.converse.return_value = GroupConverseResult(
+            conversation_id=sid("conv-g")
+        )
+        app_state = async_test_client.app.state.app_state
+        original = app_state.slice(MetaStateSlice)
+        app_state.wire(MetaStateSlice, group_chat_service=service)
+        try:
+            resp = await async_test_client.post(
+                _BASE,
+                headers=_HEADERS,
+                json={
+                    "message": "have the CFO and CTO discuss the budget",
+                    "intent_override": "group_convene",
+                    "named_targets": ["CFO", "CTO"],
+                },
+            )
+            assert resp.status_code == 200
+            assert resp.json()["data"]["intent"] == "group_convene"
+            args = service.converse.await_args.args[0]
+            assert args.participants == (NotBlankStr("CFO"), NotBlankStr("CTO"))
         finally:
             app_state.swap_slice(original)

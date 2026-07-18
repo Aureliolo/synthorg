@@ -5,6 +5,7 @@ import { useToastStore } from '@/stores/toast'
 import { apiError, buildCharter, paginatedFor, successFor } from '@/mocks/handlers'
 import type {
   approveCharter as approveCharterApi,
+  editCharter as editCharterApi,
   listCharters as listChartersApi,
 } from '@/api/endpoints/charter'
 import type { CharterApprovalResult } from '@/api/types'
@@ -151,6 +152,36 @@ describe('useCharterStore', () => {
   it('resetInterview clears the active draft', () => {
     useCharterStore.setState({ draftCharter: buildCharter(), mutating: true })
     useCharterStore.getState().resetInterview()
+    const state = useCharterStore.getState()
+    expect(state.draftCharter).toBeNull()
+    expect(state.mutating).toBe(false)
+  })
+
+  it('drops a stale edit completion so it cannot repopulate a reset draft', async () => {
+    // An edit is in flight against the current draft; the operator resets the
+    // interview before it resolves. The late completion must be discarded: it
+    // must NOT re-open the (now cleared) draft panel, and must not flip the
+    // reset-state `mutating` flag back on.
+    let releaseEdit: (() => void) | undefined
+    const editGate = new Promise<void>((resolve) => {
+      releaseEdit = resolve
+    })
+    server.use(
+      http.patch('/api/v1/meta/charters/:id', async () => {
+        await editGate
+        return HttpResponse.json(
+          successFor<typeof editCharterApi>(
+            buildCharter({ id: 'c-stale', version: 9 }),
+          ),
+        )
+      }),
+    )
+    useCharterStore.setState({ draftCharter: buildCharter({ id: 'c-stale' }) })
+    const editing = useCharterStore.getState().editDraft('c-stale', { brief: 'x' })
+    // Reset while the PATCH is still parked, bumping the draft generation.
+    useCharterStore.getState().resetInterview()
+    releaseEdit?.()
+    await editing
     const state = useCharterStore.getState()
     expect(state.draftCharter).toBeNull()
     expect(state.mutating).toBe(false)

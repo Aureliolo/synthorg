@@ -145,6 +145,9 @@ class SQLitePlanItemCommentRepository:
         if filter_spec.item_id is not None:
             where += " AND item_id = ?"
             params.append(filter_spec.item_id)
+        if filter_spec.comment_id is not None:
+            where += " AND id = ?"
+            params.append(str(filter_spec.comment_id))
         params.extend((limit, offset))
         try:
             async with self._db.execute(

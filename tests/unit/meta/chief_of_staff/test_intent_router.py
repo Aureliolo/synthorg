@@ -176,6 +176,22 @@ class TestLlmIntentClassifier:
         assert outcome.reason is IntentRoutingReason.CLASSIFIED
         assert outcome.named_targets == (NotBlankStr("CFO"), NotBlankStr("CTO"))
 
+    async def test_group_convene_with_duplicate_targets_degrades(self) -> None:
+        # Two names that differ only in case are ONE voice, not a group, so the
+        # convene degrades to a plain turn rather than talking to itself.
+        provider = _scripted(
+            _intent_json(
+                intent="group_convene",
+                confidence=0.9,
+                named_targets=("CFO", "cfo"),
+            )
+        )
+        outcome = await _classifier(provider=provider).classify(
+            _user_turn("have the CFO and the cfo hash it out")
+        )
+        assert outcome.intent is TurnIntent.EXPLAIN
+        assert outcome.reason is IntentRoutingReason.GROUP_TARGETS_MISSING
+
     async def test_malformed_json_degrades_to_explain(self) -> None:
         provider = _scripted("not json at all")
         outcome = await _classifier(provider=provider).classify(_user_turn("anything"))
