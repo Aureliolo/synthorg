@@ -1534,7 +1534,7 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.92.0"
+version = "1.91.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1550,7 +1550,10 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/46/ea/5522be7e0dbcaa7c3fddfd2834f387c6e8eab47c0cc65f2a74657c815af7/litellm-1.92.0.tar.gz", hash = "sha256:773adf5503ee1793289689c899394a83df8122993760d9acd782e32aa798db9d", size = 15098143, upload-time = "2026-07-12T01:15:59.828Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/5d/2dfda0e057511ba24904c5c9af720512b1fc86893821947fa52f4cc0231b/litellm-1.91.2.tar.gz", hash = "sha256:e9aa292b95f25fa9d127e47a6e7266a2a99f7a1645f41100a411d7a8a77a6a46", size = 14872927, upload-time = "2026-07-11T06:04:18.847Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/50/54/760eb0a5ffbfdb57364963e5330abe542b1292f7163a51963e88eb649a8d/litellm-1.91.2-py3-none-any.whl", hash = "sha256:9f78f82f818bc3644ba6aec770adc6e67b063e2b1ff4ebf8b5c3b085488f711e", size = 16670494, upload-time = "2026-07-11T06:04:14.941Z" },
+]
 
 [[package]]
 name = "litestar"
@@ -4048,7 +4051,7 @@ requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "jsonschema", specifier = "==4.26.0" },
-    { name = "litellm", specifier = "==1.92.0" },
+    { name = "litellm", specifier = "==1.91.2" },
     { name = "litestar", extras = ["brotli", "prometheus", "pydantic", "standard", "structlog"], specifier = "==2.24.0" },
     { name = "logfire", marker = "extra == 'telemetry'", specifier = "==4.37.0" },
     { name = "lxml", specifier = "==6.1.1" },

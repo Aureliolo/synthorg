@@ -104,6 +104,11 @@
       "allowedVersions": "<1.41.0"
     },
     {
+      "description": "Block litellm >=1.92.0. 1.92.0 is the first release to bundle a mandatory Rust extension (litellm-rust) that vendors pyo3 0.23.5, whose maximum supported interpreter is Python 3.13. This project targets Python 3.14, for which no cp314 wheel is published, so uv source-builds the extension and the pyo3-ffi build hard-fails ('PyO3's maximum supported version (3.13)'), aborting uv.lock regeneration and every downstream job. Lift the cap when litellm publishes a cp314 wheel for its Rust extension, bumps pyo3 to a 3.14-supporting release (0.24+), or makes the Rust extension optional. Tracking: BerriAI/litellm#26343, #15504.",
+      "matchDepNames": ["litellm"],
+      "allowedVersions": "<1.92.0"
+    },
+    {
       "description": "docker/compose.yml mirrors image pins whose canonical source-of-truth lives in cli/internal/config/state.go (Default*ImageTag) and cli/internal/verify/dhi.go (dhiPinnedIndexDigests) for DHI postgres + nats, and in cli/internal/compose/compose.yml.tmpl for busybox. Letting the docker-compose manager update docker/compose.yml independently produces upgrade-collision warnings when the custom regex managers land on a different newValue, which aborts the entire branch. The custom regex managers are the single update path; a Go test verifies docker/compose.yml stays in sync. Other dev compose files (overlays, dast, distributed, fine-tuning) keep the docker-compose manager.",
       "matchFileNames": ["docker/compose.yml"],
       "matchManagers": ["docker-compose"],
