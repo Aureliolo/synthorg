@@ -6,24 +6,8 @@ from litestar import Controller, get, post
 from litestar.datastructures import State
 
 from synthorg._core.features import require_service
-from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.controllers._ab_test_serde import ab_test_to_dict
-from synthorg.api.controllers._chat_idempotency import (
-    ChatIdempotencyKeyHeader,
-    chat_request_fingerprint,
-    run_chat_idempotent,
-)
 from synthorg.api.controllers._custom_rules_helpers import rule_to_dict
-from synthorg.api.controllers._meta_chat_org_state import resolve_chat_org_state
-from synthorg.api.controllers._meta_chat_requests import (
-    ChatRequest,
-    ConversationalProposeRequest,
-)
-from synthorg.api.controllers._meta_chat_routing import (
-    chat_answer_payload,
-    resolve_chat_answer,
-)
-from synthorg.api.controllers._meta_chat_window import resolve_chat_snapshot_window
 from synthorg.api.controllers._meta_proposal_helpers import (
     PROPOSAL_ACTION_TYPES,
     proposal_to_dict,
@@ -42,12 +26,9 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.approval.state import ApprovalStateSlice
-from synthorg.core.actor_context import require_actor
-from synthorg.core.domain_errors import AbTestNotFoundError, ServiceUnavailableError
+from synthorg.core.domain_errors import AbTestNotFoundError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.state import EngineStateSlice
-from synthorg.meta.chief_of_staff.models import ChatQuery, ProposeArgs, ProposeResult
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
 from synthorg.meta.rollout.ab_models import AbTestRecord
@@ -59,7 +40,6 @@ from synthorg.meta.state import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.observability.events.meta import (
-    META_CHAT_DEPENDENCY_UNAVAILABLE,
     META_CUSTOM_RULE_LIST_FAILED,
     META_PROPOSAL_LISTED,
 )
@@ -365,196 +345,6 @@ class MetaController(Controller):
                 ],
             },
         )
-
-    @post(
-        "/chat",
-        # Query-only endpoint: routes a question to ChiefOfStaffChat
-        # and returns the computed answer.  No server resource is
-        # created, so 200 OK is the right status; without this Litestar
-        # defaults POST handlers to 201 Created.
-        status_code=200,
-        guards=[
-            require_org_mutation(),
-            per_op_rate_limit_from_policy("meta.chat", key="user"),
-        ],
-    )
-    async def chat(
-        self,
-        data: ChatRequest,
-        state: State,
-        idempotency_key: ChatIdempotencyKeyHeader = None,
-    ) -> ApiResponse[dict[str, object]]:
-        """Ask the Chief of Staff a question.
-
-        Routes to the ChiefOfStaffChat backend for LLM-powered
-        explanations of signals and proposals (see
-        ``resolve_chat_answer`` for how ``proposal_id``/``alert_id``
-        scoping is resolved). Returns 503 when the chat backend is not
-        configured (``chief_of_staff.chat_enabled`` is False or no LLM
-        provider is registered).
-
-        Args:
-            data: Chat request with question text.
-            state: Application state.
-            idempotency_key: Optional retry-safe key; replays the cached
-                answer when supplied and repeated.
-
-        Returns:
-            Chat response with answer, sources, and confidence.
-
-        Raises:
-            ServiceUnavailableError: Raised on the corresponding failure path.
-        """
-        app_state = state.app_state
-        actor = require_actor()
-        await ensure_feature_enabled(
-            app_state,
-            "chief_of_staff",
-            "explain_chat_enabled",
-            feature_label="Chief of Staff chat",
-        )
-        chat_backend = app_state.slice(MetaStateSlice).chief_of_staff_chat
-        if chat_backend is None:
-            logger.warning(
-                META_CHAT_DEPENDENCY_UNAVAILABLE,
-                dependency="chief_of_staff_chat",
-                hint="Register an LLM provider so the chat backend can be built.",
-            )
-            msg = (
-                "Chief of Staff chat is not configured. Register an LLM "
-                "provider so the chat backend can be built."
-            )
-            raise ServiceUnavailableError(msg)
-        signals_service = require_signals_service(
-            app_state,
-            "SignalsService is not configured; cannot build a snapshot.",
-        )
-
-        async def _build() -> ApiResponse[dict[str, object]]:
-            snapshot = await signals_service.get_org_snapshot(
-                since=app_state.clock.now()
-                - await resolve_chat_snapshot_window(app_state),
-            )
-            org_state = await resolve_chat_org_state(app_state)
-            query = ChatQuery(
-                question=data.question,
-                proposal_id=data.proposal_id,
-                alert_id=data.alert_id,
-            )
-            result = await resolve_chat_answer(
-                app_state, chat_backend, query, snapshot, org_state
-            )
-            return ApiResponse[dict[str, object]](data=chat_answer_payload(result))
-
-        dumped = await run_chat_idempotent(
-            app_state,
-            scope="meta.chat",
-            actor_id=actor.actor_id,
-            key=idempotency_key,
-            endpoint="/meta/chat",
-            request_fingerprint=chat_request_fingerprint(data),
-            build=_build,
-        )
-        return ApiResponse[dict[str, object]].model_validate(dumped)
-
-    @post(
-        "/chat/propose",
-        # One clarify-or-propose turn. Parking a proposal is an
-        # approval-queue write, but the HTTP response only reports the
-        # turn outcome (question or summaries); no addressable resource
-        # is created at this URL, so 200 (not 201) is correct.
-        status_code=200,
-        guards=[
-            require_org_mutation(),
-            per_op_rate_limit_from_policy("meta.chat.propose", key="user"),
-        ],
-    )
-    async def chat_propose(
-        self,
-        data: ConversationalProposeRequest,
-        state: State,
-        idempotency_key: ChatIdempotencyKeyHeader = None,
-    ) -> ApiResponse[ProposeResult]:
-        """Clarify an underspecified request, or park work for approval.
-
-        Routes to ``ChiefOfStaffProposer``. Either returns a clarifying
-        question (conversation stays open) or parks one or more work
-        items in the approval queue (a human must approve before the
-        pipeline runs -- still no autonomous acting).
-
-        Returns 503 when the propose backend is not configured
-        (``meta.chief_of_staff.propose_enabled`` is False, no LLM
-        provider is registered, or persistence / the work pipeline is
-        unavailable so an approved item could never execute).
-
-        Returns:
-            ``ApiResponse[ProposeResult]`` instance.
-
-        Raises:
-            ServiceUnavailableError: Raised on the corresponding failure path.
-        """
-        app_state = state.app_state
-        await ensure_feature_enabled(
-            app_state,
-            "chief_of_staff",
-            "propose_enabled",
-            feature_label="Chief of Staff propose",
-        )
-        proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
-        if proposer is None:
-            logger.warning(
-                META_CHAT_DEPENDENCY_UNAVAILABLE,
-                dependency="chief_of_staff_proposer",
-                hint=(
-                    "Set meta.chief_of_staff.propose_enabled, register an "
-                    "LLM provider, and connect a persistence backend."
-                ),
-            )
-            msg = (
-                "Chief of Staff propose is not configured. Enable "
-                "``meta.chief_of_staff.propose_enabled`` in settings, "
-                "register an LLM provider, and connect persistence."
-            )
-            raise ServiceUnavailableError(msg)
-        if app_state.slice(EngineStateSlice).work_pipeline is None:
-            logger.warning(
-                META_CHAT_DEPENDENCY_UNAVAILABLE,
-                dependency="work_pipeline",
-                hint="A provider-backed runtime is required to execute approved work.",
-            )
-            msg = (
-                "Work pipeline is not configured; an approved proposal "
-                "could never execute. Configure a provider-backed runtime."
-            )
-            raise ServiceUnavailableError(msg)
-        actor = require_actor()
-
-        async def _build() -> ApiResponse[ProposeResult]:
-            # The human message is persisted raw and fenced only at the LLM
-            # boundary: the propose loop wraps the windowed transcript in a
-            # ``<task-data>`` envelope (and routing does the same), so
-            # fencing here would double-fence it and store the envelope
-            # markup in the turn (and the resume view).
-            result = await proposer.converse(
-                ProposeArgs(
-                    message=data.message,
-                    created_by=NotBlankStr(actor.actor_id),
-                    conversation_id=data.conversation_id,
-                    project=data.project,
-                )
-            )
-            return ApiResponse[ProposeResult](data=result)
-
-        dumped = await run_chat_idempotent(
-            app_state,
-            scope="meta.chat.propose",
-            actor_id=actor.actor_id,
-            key=idempotency_key,
-            endpoint="/meta/chat/propose",
-            request_fingerprint=chat_request_fingerprint(data),
-            build=_build,
-        )
-        return ApiResponse[ProposeResult].model_validate(dumped)
 
     @post(
         "/cycle",

@@ -15,13 +15,6 @@ import type {
 
 const log = createLogger('charter')
 
-/** One rendered turn in the local interview transcript. */
-export interface InterviewMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-}
-
 interface CharterState {
   charters: ProjectCharter[]
   loading: boolean
@@ -29,25 +22,16 @@ interface CharterState {
   nextCursor: string | null
   hasMore: boolean
 
-  conversationId: string | null
-  messages: InterviewMessage[]
   draftCharter: ProjectCharter | null
-  sending: boolean
   /** True while an edit / approve / cancel mutation is in flight. */
   mutating: boolean
-  conversationClosed: boolean
-  // Persists the last interview-turn failure so a config error (e.g. a blank
-  // ``charter.interview_model`` 503) stays surfaced inline after the toast
-  // fades, letting the operator act on it. Cleared when a new turn starts.
-  turnError: string | null
 
   fetchCharters: (filters?: CharterFilters) => Promise<void>
   fetchMoreCharters: (filters?: CharterFilters) => Promise<void>
-  runTurn: (message: string) => Promise<void>
   /**
    * Adopt a charter-interview turn resolved through the unified org
    * conversation ({@link postTurn}), so the draft side panel renders the
-   * draft and its edit/approve/cancel actions target the right conversation.
+   * drafted charter and its edit/approve/cancel actions target it.
    */
   hydrateFromTurn: (turn: InterviewTurnResult) => void
   editDraft: (
@@ -106,53 +90,6 @@ async function fetchMoreChartersImpl(
   }
 }
 
-async function runTurnImpl(
-  set: CharterSet,
-  get: CharterGet,
-  message: string,
-): Promise<void> {
-  if (get().sending) return
-  const { conversationId, messages: previousMessages } = get()
-  set({
-    sending: true,
-    turnError: null,
-    messages: [
-      ...previousMessages,
-      { id: crypto.randomUUID(), role: 'user', content: message },
-    ],
-  })
-  try {
-    const result = await charterApi.runInterviewTurn({
-      message,
-      conversation_id: conversationId,
-      project: null,
-    })
-    const reply: InterviewMessage = {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: result.status === 'needs_more'
-        ? result.next_question ?? ''
-        : 'Charter drafted. Review and edit it, then approve to start the run.',
-    }
-    set((s) => ({
-      sending: false,
-      conversationId: result.conversation_id,
-      messages: [...s.messages, reply],
-      draftCharter: result.charter ?? s.draftCharter,
-      conversationClosed: result.conversation_closed,
-    }))
-  } catch (err) {
-    log.error('Interview turn failed', sanitizeForLog(err))
-    const description = getErrorMessage(err)
-    useToastStore.getState().add({
-      variant: 'error',
-      title: 'Could not continue the interview',
-      description,
-    })
-    set({ sending: false, messages: previousMessages, turnError: description })
-  }
-}
-
 async function editDraftImpl(
   set: CharterSet,
   id: string,
@@ -184,7 +121,7 @@ async function approveImpl(
   set({ mutating: true })
   try {
     const result = await charterApi.approveCharter(id)
-    set({ draftCharter: result.charter, conversationClosed: true })
+    set({ draftCharter: result.charter })
     if (result.is_success) {
       useToastStore.getState().add({
         variant: 'success',
@@ -221,7 +158,7 @@ async function cancelImpl(set: CharterSet, id: string): Promise<boolean> {
   set({ mutating: true })
   try {
     const cancelled = await charterApi.cancelCharter(id)
-    set({ draftCharter: cancelled, conversationClosed: true })
+    set({ draftCharter: cancelled })
     useToastStore.getState().add({ variant: 'success', title: 'Charter cancelled' })
     return true
   } catch (err) {
@@ -243,37 +180,19 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
   error: null,
   nextCursor: null,
   hasMore: false,
-  conversationId: null,
-  messages: [],
   draftCharter: null,
-  sending: false,
   mutating: false,
-  conversationClosed: false,
-  turnError: null,
 
   fetchCharters: (filters) => fetchChartersImpl(set, filters),
   fetchMoreCharters: (filters) => fetchMoreChartersImpl(set, get, filters),
-  runTurn: (message) => runTurnImpl(set, get, message),
   hydrateFromTurn: (turn) =>
-    set({
-      conversationId: turn.conversation_id,
-      draftCharter: turn.charter ?? get().draftCharter,
-      conversationClosed: turn.conversation_closed,
-    }),
+    set({ draftCharter: turn.charter ?? get().draftCharter }),
 
   editDraft: (id, data) => editDraftImpl(set, id, data),
   approve: (id) => approveImpl(set, id),
   cancel: (id) => cancelImpl(set, id),
 
   resetInterview: () => {
-    set({
-      conversationId: null,
-      messages: [],
-      draftCharter: null,
-      sending: false,
-      mutating: false,
-      conversationClosed: false,
-      turnError: null,
-    })
+    set({ draftCharter: null, mutating: false })
   },
 }))

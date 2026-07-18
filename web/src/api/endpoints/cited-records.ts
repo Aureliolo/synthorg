@@ -1,8 +1,8 @@
 /**
  * The `cited_records` wire contract and its defensive parser.
  *
- * Lives in its own module so both the buffered endpoint (`meta.ts`) and the
- * streaming consumer (`meta-stream.ts`) can share the type and the guard
+ * Lives in its own module so the turn client (`meta-turn.ts`) and the
+ * transcript mapper (`org-turn-map.ts`) can share the type and the guard
  * without importing each other (which would form a dependency cycle).
  */
 
@@ -44,8 +44,8 @@ function isCitedRecord(entry: unknown): entry is CitedRecord {
 
 /**
  * Validate a wire `cited_records` array, dropping (and warning on) any entry
- * that doesn't match the contract. Shared by the streaming complete frame and
- * the buffered `postChat` response so both enter the UI through one guard.
+ * that doesn't match the contract. Shared by every path that surfaces an
+ * explain answer so they all enter the UI through one guard.
  */
 export function parseCitedRecords(value: unknown): CitedRecord[] {
   if (!Array.isArray(value)) return []

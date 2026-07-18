@@ -51,7 +51,6 @@ from synthorg.api.controllers.connections import ConnectionsController
 from synthorg.api.controllers.conversation_history import (
     ConversationHistoryController,
 )
-from synthorg.api.controllers.conversational import ConversationalController
 from synthorg.api.controllers.coordination import CoordinationController
 from synthorg.api.controllers.coordination_metrics import (
     CoordinationMetricsController,
@@ -161,6 +160,7 @@ from synthorg.api.controllers.teams import TeamController
 from synthorg.api.controllers.template_packs import TemplatePackController
 from synthorg.api.controllers.training import TrainingController
 from synthorg.api.controllers.tunnel import TunnelController
+from synthorg.api.controllers.turn import TurnController
 from synthorg.api.controllers.users.account import UserController
 from synthorg.api.controllers.users.org_roles import UserOrgRolesController
 from synthorg.api.controllers.webhooks.activity import WebhooksActivityController
@@ -302,7 +302,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     MetaController,
     MetaEvolutionController,
     MetaAlertsController,
-    ConversationalController,
+    TurnController,
     ConversationHistoryController,
     MetaAnalyticsController,
     LearningController,
@@ -390,7 +390,6 @@ __all__ = [
     "ConnectionsController",
     "Controller",
     "ConversationHistoryController",
-    "ConversationalController",
     "CoordinationController",
     "CoordinationMetricsController",
     "CustomRuleController",
@@ -470,6 +469,7 @@ __all__ = [
     "TemplatePackController",
     "TrainingController",
     "TunnelController",
+    "TurnController",
     "UserController",
     "UserOrgRolesController",
     "WebhooksActivityController",

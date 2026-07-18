@@ -15,19 +15,9 @@ from tests._shared import LoopAsyncClient
 pytestmark = pytest.mark.unit
 
 _SERVICE_UNAVAILABLE = 503
-_BAD_REQUEST = 400
 
 
 class TestCharterControllerUnwired:
-    async def test_interview_returns_503_when_unwired(
-        self, async_test_client: LoopAsyncClient
-    ) -> None:
-        resp = await async_test_client.post(
-            "/api/v1/meta/charters/interview",
-            json={"message": "build a better memory tool"},
-        )
-        assert resp.status_code == _SERVICE_UNAVAILABLE
-
     async def test_list_returns_503_when_unwired(
         self, async_test_client: LoopAsyncClient
     ) -> None:
@@ -66,12 +56,3 @@ class TestCharterControllerUnwired:
             json={},
         )
         assert resp.status_code == _SERVICE_UNAVAILABLE
-
-    async def test_interview_rejects_blank_message(
-        self, async_test_client: LoopAsyncClient
-    ) -> None:
-        resp = await async_test_client.post(
-            "/api/v1/meta/charters/interview",
-            json={"message": "   "},
-        )
-        assert resp.status_code == _BAD_REQUEST

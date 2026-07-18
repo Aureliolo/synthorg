@@ -19,7 +19,6 @@ import { CharterDraftCard } from './CharterDraftCard'
 export function CharterSidePanel() {
   const draftCharter = useCharterStore((s) => s.draftCharter)
   const mutating = useCharterStore((s) => s.mutating)
-  const sending = useCharterStore((s) => s.sending)
   const editDraft = useCharterStore((s) => s.editDraft)
   const approve = useCharterStore((s) => s.approve)
   const cancel = useCharterStore((s) => s.cancel)
@@ -54,7 +53,7 @@ export function CharterSidePanel() {
       // refreshed prop instead of carrying stale edits across the swap.
       key={`${draftCharter.id}:${draftCharter.version}`}
       charter={draftCharter}
-      busy={mutating || sending}
+      busy={mutating}
       onSave={handleSave}
       onApprove={handleApprove}
       onCancel={handleCancel}

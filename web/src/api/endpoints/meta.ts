@@ -6,38 +6,22 @@
  */
 
 import type {
-  ChatActRequest,
-  ChatRequest,
-  ConversationalActResult,
-  ConversationalProposeRequest,
-  GroupChatRequest,
-  GroupConverseResult,
-  ProposeResult,
-} from '../types'
-import type {
   ApiResponse,
   PaginatedResponse,
   PaginationParams,
 } from '../types/http'
 import {
   apiClient,
-  LLM_BOUND_TIMEOUT_MS,
   paginateAll,
   unwrap,
   unwrapPaginated,
   type PaginatedResult,
 } from '../client'
 
-import { parseCitedRecords, type CitedRecord } from './cited-records'
-
 export type { CitedRecord } from './cited-records'
 // The unified conversational turn lives in its own module to keep this file
 // under its size budget; re-exported here so callers keep one import surface.
 export { postTurn, type PostTurnOptions } from './meta-turn'
-
-// Re-export the generated DTO under a domain name so callers stay insulated
-// from the generated barrel's layout; the source of truth is openapi.gen.ts.
-export type ConversationalProposeResponse = ProposeResult
 
 // -- Types -------------------------------------------------------------------
 
@@ -181,13 +165,6 @@ export interface MetaConfig {
   code_modification_enabled: boolean
 }
 
-export interface ChatResponse {
-  answer: string
-  sources: string[]
-  cited_records: CitedRecord[]
-  confidence: number
-}
-
 // -- API functions -----------------------------------------------------------
 
 const BASE = '/meta'
@@ -303,133 +280,6 @@ export async function getEvolutionAxisStats(): Promise<EvolutionAxisStat[]> {
   return unwrap(response).axes
 }
 
-export async function postChatPropose(
-  message: string,
-  conversationId?: string,
-  project?: string,
-  idempotencyKey?: string,
-  signal?: AbortSignal,
-): Promise<ConversationalProposeResponse> {
-  const trimmed = message.trim()
-  if (!trimmed) {
-    throw new Error('Message must not be blank')
-  }
-  // The /meta/chat/propose endpoint is rate-limited via
-  // ``per_op_rate_limit_from_policy("meta.chat.propose", key="user")``
-  // (5 req / 60 s / user). Attach an Idempotency-Key so the axios 429
-  // interceptor retries after Retry-After; server replays of the same
-  // key are no-ops, so a retry never duplicates the parked proposal. A
-  // caller-supplied key (a manual retry) reuses the original.
-  const body: ConversationalProposeRequest = {
-    message: trimmed,
-    conversation_id: conversationId ?? null,
-    project: project ?? null,
-  }
-  const response = await apiClient.post<
-    ApiResponse<ConversationalProposeResponse>
-  >(`${BASE}/chat/propose`, body, {
-    headers: {
-      'Idempotency-Key': idempotencyKey ?? crypto.randomUUID(),
-    },
-    // LLM-bound: the CoS propose turn runs a synchronous agent session that
-    // regularly exceeds the 30s client default; without the override a slow-
-    // but-successful turn aborts here while the server parks the work.
-    timeout: LLM_BOUND_TIMEOUT_MS,
-    // Caller-supplied signal lets the operator abort a long-pending turn. The
-    // server still completes and parks any work (the request is idempotent),
-    // so aborting only detaches the client's wait.
-    ...(signal && { signal }),
-  })
-  return unwrap(response)
-}
-
-export async function postChatGroup(
-  message: string,
-  agentIds: readonly string[],
-  conversationId?: string,
-  idempotencyKey?: string,
-): Promise<GroupConverseResult> {
-  const trimmed = message.trim()
-  if (!trimmed) {
-    throw new Error('Message must not be blank')
-  }
-  // The /meta/chat/group endpoint is rate-limited via
-  // ``per_op_rate_limit_from_policy("meta.chat.group", key="user")``
-  // (5 req / 60 s / user). Attach an Idempotency-Key so the axios 429
-  // interceptor retries after Retry-After; a server replay of the same
-  // key is a no-op, so a retry never double-runs a round. A caller-supplied
-  // key (a manual retry of a turn) reuses the original key so a turn that
-  // actually succeeded server-side is deduped rather than re-run.
-  const body: GroupChatRequest = {
-    message: trimmed,
-    conversation_id: conversationId ?? null,
-    // Initial roster ids (registry UUIDs from /agents/active); ignored
-    // by the server when continuing an existing conversation.
-    participants: agentIds,
-  }
-  const response = await apiClient.post<ApiResponse<GroupConverseResult>>(
-    `${BASE}/chat/group`,
-    body,
-    {
-      headers: {
-        'Idempotency-Key': idempotencyKey ?? crypto.randomUUID(),
-      },
-      // LLM-bound: a group round runs an agent session per participant and can
-      // far exceed the 30s client default.
-      timeout: LLM_BOUND_TIMEOUT_MS,
-    },
-  )
-  return unwrap(response)
-}
-
-export async function postChatAct(
-  instruction: string,
-  agent: string,
-  conversationId?: string,
-  idempotencyKey?: string,
-): Promise<ConversationalActResult> {
-  const trimmedInstruction = instruction.trim()
-  const trimmedAgent = agent.trim()
-  if (!trimmedInstruction) {
-    throw new Error('Instruction must not be blank')
-  }
-  if (!trimmedAgent) {
-    throw new Error('Agent must not be blank')
-  }
-  // The /meta/chat/act endpoint is rate-limited via
-  // ``per_op_rate_limit_from_policy("meta.chat.act", key="user")``
-  // (5 req / 60 s / user). Attach an Idempotency-Key so the axios 429
-  // interceptor retries after Retry-After; a server replay of the same
-  // key is a no-op, so a retry never double-runs an action. A caller-supplied
-  // key (a manual retry) reuses the original so a succeeded action is deduped.
-  const body: ChatActRequest = {
-    instruction: trimmedInstruction,
-    agent: trimmedAgent,
-    conversation_id: conversationId ?? null,
-  }
-  const response = await apiClient.post<ApiResponse<ConversationalActResult>>(
-    `${BASE}/chat/act`,
-    body,
-    {
-      headers: {
-        'Idempotency-Key': idempotencyKey ?? crypto.randomUUID(),
-      },
-      // LLM-bound: the acting agent runs a tool-using session that can exceed
-      // the 30s client default.
-      timeout: LLM_BOUND_TIMEOUT_MS,
-    },
-  )
-  return unwrap(response)
-}
-
-// A discriminated union, not two independent optionals: the picker UI
-// (ChatScopeValue) can only ever produce "scoped to one proposal" or
-// "scoped to one alert", never both, so the wire-adjacent type should
-// make that illegal state unrepresentable too.
-export type ChatScope =
-  | { kind: 'proposal'; id: string }
-  | { kind: 'alert'; id: string }
-
 /** One of the three conversation shapes (mirrors backend ``ConversationKind``). */
 export type ConversationKind = 'direct' | 'routed' | 'group'
 
@@ -499,43 +349,4 @@ async function fetchConversationTurnsPage(
     params: _pageParams(cursor),
   })
   return unwrapPaginated<ConversationTurnRecord>(response)
-}
-
-export async function postChat(
-  question: string,
-  scope?: ChatScope,
-  idempotencyKey?: string,
-): Promise<ChatResponse> {
-  const trimmed = question.trim()
-  if (!trimmed) {
-    throw new Error('Question must not be blank')
-  }
-  // The /meta/chat endpoint is guarded by
-  // ``per_op_rate_limit_from_policy("meta.chat", key="user")``
-  // (5 req / 60 s / user).  Attach an ``Idempotency-Key`` so the
-  // axios 429 interceptor retries after ``Retry-After`` instead of
-  // surfacing a hard failure on ratelimit bursts -- the server treats
-  // replays of the same key as a no-op, so the retry is safe. A
-  // caller-supplied key (a manual retry) reuses the original.
-  const body: ChatRequest = {
-    question: trimmed,
-    proposal_id: scope?.kind === 'proposal' ? scope.id : null,
-    alert_id: scope?.kind === 'alert' ? scope.id : null,
-  }
-  const response = await apiClient.post<ApiResponse<ChatResponse>>(
-    `${BASE}/chat`,
-    body,
-    {
-      headers: {
-        'Idempotency-Key': idempotencyKey ?? crypto.randomUUID(),
-      },
-      // LLM-bound: the explain-chat answer runs an agent session that can
-      // exceed the 30s client default.
-      timeout: LLM_BOUND_TIMEOUT_MS,
-    },
-  )
-  const result = unwrap(response)
-  // Re-validate cited_records through the shared guard so the buffered path
-  // enters the UI with the same defensively-parsed shape as the streaming one.
-  return { ...result, cited_records: parseCitedRecords(result.cited_records) }
 }

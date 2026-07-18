@@ -44,10 +44,10 @@ async def test_no_key_runs_build_once_without_idempotency_service() -> None:
     with suppress_type_checks():
         dumped = await run_chat_idempotent(
             dummy,
-            scope="meta.chat",
+            scope="meta.chat.turn",
             actor_id="user-1",
             key=None,
-            endpoint="/meta/chat",
+            endpoint="/meta/chat/turn",
             request_fingerprint="fp",
             build=_build,
         )
@@ -80,10 +80,10 @@ async def test_dump_excludes_nested_computed_fields_so_replay_revalidates() -> N
     with suppress_type_checks():
         dumped = await run_chat_idempotent(
             dummy,
-            scope="meta.chat.act",
+            scope="meta.chat.turn",
             actor_id="user-1",
             key=None,
-            endpoint="/meta/chat/act",
+            endpoint="/meta/chat/turn",
             request_fingerprint="fp",
             build=_build,
         )

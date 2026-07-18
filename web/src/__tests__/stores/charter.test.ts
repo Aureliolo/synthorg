@@ -6,9 +6,8 @@ import { apiError, buildCharter, paginatedFor, successFor } from '@/mocks/handle
 import type {
   approveCharter as approveCharterApi,
   listCharters as listChartersApi,
-  runInterviewTurn as runInterviewTurnApi,
 } from '@/api/endpoints/charter'
-import type { CharterApprovalResult, InterviewTurnResult } from '@/api/types'
+import type { CharterApprovalResult } from '@/api/types'
 import { server } from '@/test-setup'
 
 describe('useCharterStore', () => {
@@ -19,11 +18,8 @@ describe('useCharterStore', () => {
       error: null,
       nextCursor: null,
       hasMore: false,
-      conversationId: null,
-      messages: [],
       draftCharter: null,
-      sending: false,
-      conversationClosed: false,
+      mutating: false,
     })
     useToastStore.getState().dismissAll()
   })
@@ -59,43 +55,27 @@ describe('useCharterStore', () => {
     expect(useCharterStore.getState().error).not.toBeNull()
   })
 
-  it('runTurn records a clarifying question and stays open', async () => {
-    const result: InterviewTurnResult = {
+  it('hydrateFromTurn adopts a drafted charter for the side panel', () => {
+    useCharterStore.getState().hydrateFromTurn({
+      conversation_id: 'conv-9',
+      status: 'drafted',
+      next_question: null,
+      charter: buildCharter({ id: 'c-hydrated' }),
+      conversation_closed: false,
+    })
+    expect(useCharterStore.getState().draftCharter?.id).toBe('c-hydrated')
+  })
+
+  it('hydrateFromTurn keeps the prior draft when a turn carries none', () => {
+    useCharterStore.setState({ draftCharter: buildCharter({ id: 'c-keep' }) })
+    useCharterStore.getState().hydrateFromTurn({
       conversation_id: 'conv-9',
       status: 'needs_more',
       next_question: 'What is the budget?',
       charter: null,
       conversation_closed: false,
-    }
-    server.use(
-      http.post('/api/v1/meta/charters/interview', () =>
-        HttpResponse.json(successFor<typeof runInterviewTurnApi>(result)),
-      ),
-    )
-    await useCharterStore.getState().runTurn('build a memory tool')
-    const state = useCharterStore.getState()
-    expect(state.conversationId).toBe('conv-9')
-    expect(state.messages.map((m) => m.role)).toEqual(['user', 'assistant'])
-    expect(state.messages[1]!.content).toBe('What is the budget?')
-    expect(state.draftCharter).toBeNull()
-  })
-
-  it('runTurn captures a drafted charter', async () => {
-    // Default MSW handler returns a drafted charter.
-    await useCharterStore.getState().runTurn('a clear idea')
-    expect(useCharterStore.getState().draftCharter?.status).toBe('drafted')
-  })
-
-  it('runTurn toasts on failure and clears sending', async () => {
-    server.use(
-      http.post('/api/v1/meta/charters/interview', () =>
-        HttpResponse.json(apiError('nope'), { status: 502 }),
-      ),
-    )
-    await useCharterStore.getState().runTurn('idea')
-    expect(useCharterStore.getState().sending).toBe(false)
-    const toasts = useToastStore.getState().toasts
-    expect(toasts[0]!.variant).toBe('error')
+    })
+    expect(useCharterStore.getState().draftCharter?.id).toBe('c-keep')
   })
 
   it('approve returns the result and emits a success toast', async () => {
@@ -168,18 +148,11 @@ describe('useCharterStore', () => {
     expect(updated?.version).toBe(2)
   })
 
-  it('resetInterview clears the active interview', () => {
-    useCharterStore.setState({
-      conversationId: 'x',
-      messages: [{ id: 'm', role: 'user', content: 'hi' }],
-      draftCharter: buildCharter(),
-      conversationClosed: true,
-    })
+  it('resetInterview clears the active draft', () => {
+    useCharterStore.setState({ draftCharter: buildCharter(), mutating: true })
     useCharterStore.getState().resetInterview()
     const state = useCharterStore.getState()
-    expect(state.conversationId).toBeNull()
-    expect(state.messages).toEqual([])
     expect(state.draftCharter).toBeNull()
-    expect(state.conversationClosed).toBe(false)
+    expect(state.mutating).toBe(false)
   })
 })

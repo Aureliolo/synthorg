@@ -173,12 +173,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # messages
     "messages.delete": (100, 3600),
     # meta
-    "meta.chat": (5, 60),
-    "meta.chat.act": (5, 60),
-    "meta.chat.group": (5, 60),
-    "meta.chat.propose": (5, 60),
     "meta.chat.turn": (5, 60),
-    "meta.charters.interview": (10, 60),
     "meta.charters.approve": (5, 60),
     "meta.charters.edit": (20, 60),
     "meta.charters.cancel": (10, 60),

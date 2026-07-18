@@ -3,8 +3,6 @@ import type { PaginatedResult } from '../client'
 import type {
   CharterApprovalResult,
   CharterEditRequest,
-  InterviewTurnRequest,
-  InterviewTurnResult,
   ProjectCharter,
 } from '../types'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
@@ -31,17 +29,6 @@ export async function listCharters(
 export async function getCharter(id: string): Promise<ProjectCharter> {
   const response = await apiClient.get<ApiResponse<ProjectCharter>>(
     `${BASE}/${encodeURIComponent(id)}`,
-  )
-  return unwrap(response)
-}
-
-export async function runInterviewTurn(
-  data: InterviewTurnRequest,
-): Promise<InterviewTurnResult> {
-  const response = await apiClient.post<ApiResponse<InterviewTurnResult>>(
-    `${BASE}/interview`,
-    data,
-    { timeout: LLM_BOUND_TIMEOUT_MS },
   )
   return unwrap(response)
 }

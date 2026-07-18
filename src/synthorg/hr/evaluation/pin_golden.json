@@ -10,6 +10,7 @@
   "system:cos:narrative": "c9277a56f98546d73dc94b983dfb9a3713cdf3332a11dc58473073c7b7db31f4",
   "system:cos:propose": "f130dd11c6c39c6221d639000b5667c759efbcd51a2f35f4934c6d7f40169a40",
   "system:cos:routing": "b3696598e2d70e19554d335833035955f83b6494695257628a692eccf3105e66",
+  "system:cos:turn_intent": "4410cdc71b31e58c9e16dab28c15c4b5870931f54b506d9a26e1a6042f2002f5",
   "system:evolution:propose": "0cd27a261f2ac93d80721a1a195704e526ea351073690b66509653e68f99b4fb",
   "system:hr:calibration": "1cc99db7ebb2494ea235d42bb1846136f898acf9745e40c77f475521d5bce69e",
   "system:hr:eval_fix_proposal": "957533c6cdad0356ee2b61ae8b5bd5c54402c8b9bde8842883728d6702a6f1cf",

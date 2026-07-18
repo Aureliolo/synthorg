@@ -17,7 +17,6 @@ from synthorg.api.controllers.analytics.trends import AnalyticsTrendsController
 from synthorg.api.controllers.conversation_history import (
     ConversationHistoryController,
 )
-from synthorg.api.controllers.conversational import ConversationalController
 from synthorg.api.controllers.custom_rules import CustomRuleController
 from synthorg.api.controllers.experiments import ExperimentsController
 from synthorg.api.controllers.learning import LearningController
@@ -46,7 +45,6 @@ FEATURE: FeatureModule = FeatureManifest(
         MetaController,
         MetaEvolutionController,
         MetaAlertsController,
-        ConversationalController,
         TurnController,
         ConversationHistoryController,
         MetaAnalyticsController,

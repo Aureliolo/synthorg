@@ -2732,74 +2732,6 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/meta/charters/interview": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Interview */
-        readonly post: operations["ApiV1MetaChartersInterviewInterview"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/meta/chat": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Chat */
-        readonly post: operations["ApiV1MetaChatChat"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/meta/chat/act": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** ChatAct */
-        readonly post: operations["ApiV1MetaChatActChatAct"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/meta/chat/act/stream": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** ChatActStream */
-        readonly post: operations["ApiV1MetaChatActStreamChatActStream"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/meta/chat/conversations": {
         readonly parameters: {
             readonly query?: never;
@@ -2828,57 +2760,6 @@ export type paths = {
         readonly get: operations["ApiV1MetaChatConversationsConversationIdGetConversation"];
         readonly put?: never;
         readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/meta/chat/group": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** ChatGroup */
-        readonly post: operations["ApiV1MetaChatGroupChatGroup"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/meta/chat/propose": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** ChatPropose */
-        readonly post: operations["ApiV1MetaChatProposeChatPropose"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/v1/meta/chat/stream": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** ChatStream */
-        readonly post: operations["ApiV1MetaChatStreamChatStream"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -6750,14 +6631,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[ConversationalActResult] */
-        readonly ApiResponse_ConversationalActResult_: {
-            readonly data: components["schemas"]["ConversationalActResult"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[CookieSessionResponse] */
         readonly ApiResponse_CookieSessionResponse_: {
             readonly data: components["schemas"]["CookieSessionResponse"] | null;
@@ -6958,14 +6831,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[GroupConverseResult] */
-        readonly ApiResponse_GroupConverseResult_: {
-            readonly data: components["schemas"]["GroupConverseResult"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[HealthReport] */
         readonly ApiResponse_HealthReport_: {
             readonly data: components["schemas"]["HealthReport"] | null;
@@ -6985,14 +6850,6 @@ export type components = {
         /** ApiResponse[InstallEntryResponse] */
         readonly ApiResponse_InstallEntryResponse_: {
             readonly data: components["schemas"]["InstallEntryResponse"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** ApiResponse[InterviewTurnResult] */
-        readonly ApiResponse_InterviewTurnResult_: {
-            readonly data: components["schemas"]["InterviewTurnResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -7233,14 +7090,6 @@ export type components = {
         /** ApiResponse[PromptClassBreakdown] */
         readonly ApiResponse_PromptClassBreakdown_: {
             readonly data: components["schemas"]["PromptClassBreakdown"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
-        /** ApiResponse[ProposeResult] */
-        readonly ApiResponse_ProposeResult_: {
-            readonly data: components["schemas"]["ProposeResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -8924,30 +8773,6 @@ export type components = {
              */
             readonly tool_calls: readonly components["schemas"]["ExecutedToolCall"][];
         };
-        /** ChatActRequest */
-        readonly ChatActRequest: {
-            /** @description ID of the agent that should act on the instruction. */
-            readonly agent: string;
-            /** @description Existing conversation to act within; None starts a new one. */
-            readonly conversation_id?: string | null;
-            /** @description Natural-language instruction for the agent to act on. */
-            readonly instruction: string;
-        };
-        /** ChatRequest */
-        readonly ChatRequest: {
-            /**
-             * Format: uuid
-             * @description Proactive alert the question is scoped to, if any.
-             */
-            readonly alert_id?: string | null;
-            /**
-             * Format: uuid
-             * @description Improvement proposal the question is scoped to, if any.
-             */
-            readonly proposal_id?: string | null;
-            /** @description Free-text question for the Chief of Staff agent. */
-            readonly question: string;
-        };
         /** ChatResponse */
         readonly ChatResponse: {
             readonly answer: string;
@@ -8957,11 +8782,6 @@ export type components = {
             readonly confidence: number;
             /** @default [] */
             readonly sources: readonly string[];
-        };
-        /** ChatStreamRequest */
-        readonly ChatStreamRequest: {
-            /** @description Free-text question for the Chief of Staff agent. */
-            readonly question: string;
         };
         /** CheckpointRecord */
         readonly CheckpointRecord: {
@@ -9414,15 +9234,6 @@ export type components = {
             readonly agent_name: string;
             /** @description The correlated conversation id, if supplied */
             readonly conversation_id: string | null;
-        };
-        /** ConversationalProposeRequest */
-        readonly ConversationalProposeRequest: {
-            /** @description Existing conversation to append to; None starts a new one. */
-            readonly conversation_id?: string | null;
-            /** @description Human message for the clarify-and-propose turn. */
-            readonly message: string;
-            /** @description Project the proposal should be scoped to, if any. */
-            readonly project?: string | null;
         };
         /** ConversationParticipant */
         readonly ConversationParticipant: {
@@ -11486,18 +11297,6 @@ export type components = {
             /** @default [] */
             readonly scoped_departments: readonly string[];
         };
-        /** GroupChatRequest */
-        readonly GroupChatRequest: {
-            /** @description Existing conversation to append to; None starts a new one. */
-            readonly conversation_id?: string | null;
-            /** @description Human message to broadcast to the group chat. */
-            readonly message: string;
-            /**
-             * @description Agent IDs to enrol in the group chat for this turn.
-             * @default []
-             */
-            readonly participants: readonly string[];
-        };
         /**
          * GroupChatTruncationReason
          * @description Why a group-chat round stopped before every participant spoke.
@@ -11762,15 +11561,6 @@ export type components = {
          * @enum {string}
          */
         readonly InterventionKind: "pause" | "kill" | "hint" | "redirect";
-        /** InterviewTurnRequest */
-        readonly InterviewTurnRequest: {
-            /** @description Existing interview conversation to continue; None starts one. */
-            readonly conversation_id?: string | null;
-            /** @description Human message for this charter-interview turn. */
-            readonly message: string;
-            /** @description Project the interview is scoped to, if any. */
-            readonly project?: string | null;
-        };
         /** InterviewTurnResult */
         readonly InterviewTurnResult: {
             readonly charter: components["schemas"]["ProjectCharter"] | null;
@@ -24860,136 +24650,6 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
-    readonly ApiV1MetaChartersInterviewInterview: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["InterviewTurnRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_InterviewTurnResult_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1MetaChatChat: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                /** @description Optional RFC-style retry-safe key. When supplied, an identical key within the retention window returns the cached response instead of re-running the turn, so a 5xx/timeout-driven retry cannot double-fire the conversation (or, for /act, the tool calls). Durable idempotency requires a persistence backend. */
-                readonly "Idempotency-Key"?: string | null;
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ChatRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_object_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1MetaChatActChatAct: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                /** @description Optional RFC-style retry-safe key. When supplied, an identical key within the retention window returns the cached response instead of re-running the turn, so a 5xx/timeout-driven retry cannot double-fire the conversation (or, for /act, the tool calls). Durable idempotency requires a persistence backend. */
-                readonly "Idempotency-Key"?: string | null;
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ChatActRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_ConversationalActResult_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1MetaChatActStreamChatActStream: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ChatActRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "text/event-stream": unknown;
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
     readonly ApiV1MetaChatConversationsListConversations: {
         readonly parameters: {
             readonly query?: {
@@ -25051,105 +24711,6 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1MetaChatGroupChatGroup: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                /** @description Optional RFC-style retry-safe key. When supplied, an identical key within the retention window returns the cached response instead of re-running the turn, so a 5xx/timeout-driven retry cannot double-fire the conversation (or, for /act, the tool calls). Durable idempotency requires a persistence backend. */
-                readonly "Idempotency-Key"?: string | null;
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["GroupChatRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_GroupConverseResult_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1MetaChatProposeChatPropose: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: {
-                /** @description Optional RFC-style retry-safe key. When supplied, an identical key within the retention window returns the cached response instead of re-running the turn, so a 5xx/timeout-driven retry cannot double-fire the conversation (or, for /act, the tool calls). Durable idempotency requires a persistence backend. */
-                readonly "Idempotency-Key"?: string | null;
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ConversationalProposeRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Request fulfilled, document follows */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_ProposeResult_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
-    readonly ApiV1MetaChatStreamChatStream: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["ChatStreamRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "text/event-stream": unknown;
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];
