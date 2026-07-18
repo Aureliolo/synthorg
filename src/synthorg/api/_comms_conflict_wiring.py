@@ -84,42 +84,35 @@ def _build_judge_evaluator(
     provider_registry: ProviderRegistry | None,
     cost_tracker: CostTrackerProtocol | None,
 ) -> JudgeEvaluator | None:
-    """Build the LLM judge from the provider serving the pinned model.
+    """Build the LLM judge on the explicit default system provider.
 
-    The judge is a system actor, not a company agent, so it resolves its
-    provider by the pinned ``CONFLICT_JUDGE`` model through the shared
-    model-aware helper (:func:`resolve_feature_provider`). A naive
-    first-registered pick would route the call to a driver that does not serve
-    the provider-agnostic pinned model once more than one provider is
-    registered, surfacing as a request-time model-not-found error.
+    The judge is a system actor, not a company agent, and has no dedicated
+    per-feature model setting, so it dispatches on the explicit default system
+    provider (:meth:`ProviderRegistry.default_provider`) with the
+    provider-agnostic ``CONFLICT_JUDGE`` tier archetype as its model (the
+    driver maps the archetype to a real model by tier). There is no
+    first-registered fallback: when the default is ambiguous (several
+    providers, none chosen) or unset, the judge stays unwired and the
+    debate/hybrid resolvers fall back to authority.
 
     Returns:
-        A wired :class:`LlmJudgeEvaluator`, or ``None`` when no registered
-        provider serves the pinned model (the debate/hybrid resolvers then
-        fall back to authority).
+        A wired :class:`LlmJudgeEvaluator`, or ``None`` when no default
+        provider is resolvable.
     """
     if provider_registry is None:
         return None
-    from synthorg.api._feature_provider_resolution import (  # noqa: PLC0415
-        resolve_feature_provider,
-    )
     from synthorg.communication.conflict_resolution.llm_judge_evaluator import (  # noqa: PLC0415
         LlmJudgeEvaluator,
     )
     from synthorg.llm.model_pins import pin_for  # noqa: PLC0415
     from synthorg.llm.prompt_purpose import PromptPurposeId  # noqa: PLC0415
 
-    model = pin_for(PromptPurposeId.CONFLICT_JUDGE).model
-    provider = resolve_feature_provider(
-        provider_registry,
-        model,
-        feature="conflict_judge",
-    )
+    provider = provider_registry.default_provider()
     if provider is None:
         return None
     return LlmJudgeEvaluator(
         provider=provider,
-        model=model,
+        model=pin_for(PromptPurposeId.CONFLICT_JUDGE).model,
         cost_tracker=cost_tracker,
     )
 

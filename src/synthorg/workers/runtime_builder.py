@@ -257,6 +257,36 @@ def _select_active_provider(
     return registry, names
 
 
+def _no_active_provider_services(
+    app_state: AppState,
+    workspace_root: Path,
+    *,
+    oracle_enabled: bool,
+) -> RuntimeServices:
+    """Boot the no-provider mode: no usable default provider for the engine.
+
+    Reached when no provider is registered, or when several are but none is
+    the explicit ``providers.default_provider`` (the default is ambiguous and
+    there is no alphabetical fallback). The deterministic build/test gate
+    still attaches; only the provider-dependent runtimes stay off.
+
+    Returns:
+        No-provider ``RuntimeServices`` (``NoProviderExecutionService``,
+        ``coordinator=None``, ``work_pipeline=None``).
+    """
+    return RuntimeServices(
+        worker_execution_service=NoProviderExecutionService(),
+        coordinator=None,
+        work_pipeline=None,
+        completion_oracle_enabled=oracle_enabled,
+        vision_gate=_build_vision_gate_or_none(
+            app_state=app_state,
+            workspace_root=workspace_root,
+            provider=None,
+        ),
+    )
+
+
 def _degraded_no_coordinator(
     app_state: AppState,
     workspace_root: Path,
@@ -348,19 +378,35 @@ async def build_runtime_services(
     completion_oracle_config = await resolve_completion_oracle_config(app_state)
     selected = _select_active_provider(app_state)
     if selected is None:
-        return RuntimeServices(
-            worker_execution_service=NoProviderExecutionService(),
-            coordinator=None,
-            work_pipeline=None,
-            completion_oracle_enabled=completion_oracle_config.enabled,
-            vision_gate=_build_vision_gate_or_none(
-                app_state=app_state,
-                workspace_root=workspace_root,
-                provider=None,
-            ),
+        return _no_active_provider_services(
+            app_state,
+            workspace_root,
+            oracle_enabled=completion_oracle_config.enabled,
         )
     registry, names = selected
-    provider = registry.get(names[0])
+    provider = registry.default_provider()
+    if provider is None:
+        # Two or more providers are registered but none is the explicit
+        # providers.default_provider, so the default system provider is
+        # ambiguous. Refuse to auto-pick the alphabetically-first one; boot
+        # the no-provider mode until the operator names a default. Self-heals
+        # on the watched-key rebuild when the setting lands.
+        logger.warning(
+            API_APP_STARTUP,
+            service="runtime_services",
+            mode="no_default_provider",
+            note=(
+                "multiple providers registered but providers.default_provider "
+                "is unset or unregistered; system dispatch stays unwired until "
+                "an explicit default is chosen (no alphabetical fallback)"
+            ),
+            providers=list(names),
+        )
+        return _no_active_provider_services(
+            app_state,
+            workspace_root,
+            oracle_enabled=completion_oracle_config.enabled,
+        )
 
     # Cheap pre-check before the expensive engine / MCP-bridge assembly: when
     # the coordination model is unset the coordinator build would raise anyway,
@@ -441,7 +487,6 @@ async def build_runtime_services(
         ) = await _build_runtime_coordinator(
             app_state,
             engine,
-            provider,
             coordination_metrics_collector,
         )
     except CoordinationConfigError as exc:
@@ -456,11 +501,14 @@ async def build_runtime_services(
             error=exc,
         )
     security = app_state.config.security
+    # Non-None here: an ambiguous / unset default returned no-provider mode
+    # above, so the resolved name always matches the ``provider`` driver.
+    default_provider_name = registry.default_provider_resolved_name() or names[0]
     logger.info(
         API_APP_STARTUP,
         service="runtime_services",
         mode="agent_engine",
-        provider=names[0],
+        provider=default_provider_name,
         tool_count=tool_count,
         security_enabled=security.enabled,
         security_enforcement_mode=security.enforcement_mode.value,
@@ -509,13 +557,13 @@ async def build_runtime_services(
     red_team_runtime = build_red_team_runtime_or_none(
         app_state=app_state,
         engine=engine,
-        provider_name=names[0],
+        provider_name=default_provider_name,
         seed=red_team_seed,
     )
     completion_oracle_runtime = await build_completion_oracle_runtime_or_none(
         app_state=app_state,
         engine=engine,
-        provider_name=names[0],
+        provider_name=default_provider_name,
         seed=completion_oracle_seed,
         config=completion_oracle_config,
     )

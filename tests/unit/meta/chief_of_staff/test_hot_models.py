@@ -25,6 +25,7 @@ from synthorg.meta.chief_of_staff.narrative.synthesiser import NarrativeSynthesi
 from synthorg.meta.chief_of_staff.routing import LlmConcernRouter
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
@@ -38,6 +39,11 @@ from tests.unit.meta.chief_of_staff.propose_fakes import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+def _bound(model_id: str) -> str:
+    """Serialize a bound ``{provider, model_id}`` MODEL_REF for a settings write."""
+    return serialize_model_ref(ModelRef(provider="example-provider", model_id=model_id))
 
 
 @pytest.fixture
@@ -73,7 +79,7 @@ async def test_propose_model_read_live(settings: SettingsService) -> None:
 
     assert await proposer._resolve_propose_model() == "baked-prop-001"
 
-    await settings.set("chief_of_staff", "propose_model", "live-prop-001")
+    await settings.set("chief_of_staff", "propose_model", _bound("live-prop-001"))
     assert await proposer._resolve_propose_model() == "live-prop-001"
 
 
@@ -112,7 +118,7 @@ async def test_routing_model_read_live(settings: SettingsService) -> None:
     await router.route(turns)
     assert provider.complete.await_args.args[1] == "baked-route-001"
 
-    await settings.set("chief_of_staff", "routing_model", "live-route-001")
+    await settings.set("chief_of_staff", "routing_model", _bound("live-route-001"))
     await router.route(turns)
     assert provider.complete.await_args.args[1] == "live-route-001"
 
@@ -144,6 +150,6 @@ async def test_narrative_model_read_live(settings: SettingsService) -> None:
     await synth.write_prose(_reduced())
     assert provider.complete.await_args.args[1] == "baked-narr-001"
 
-    await settings.set("chief_of_staff", "narrative_model", "live-narr-001")
+    await settings.set("chief_of_staff", "narrative_model", _bound("live-narr-001"))
     await synth.write_prose(_reduced())
     assert provider.complete.await_args.args[1] == "live-narr-001"

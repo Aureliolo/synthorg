@@ -28,7 +28,6 @@ from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.providers.errors import (
     DriverFactoryNotFoundError,
     DriverNotRegisteredError,
-    ModelNotFoundError,
 )
 from synthorg.providers.registry import ProviderRegistry
 from tests._shared import mock_of
@@ -140,83 +139,6 @@ class TestRegistryListProviders:
         registry = ProviderRegistry({})
 
         assert registry.list_providers() == ()
-
-
-# ── resolve_for_model() ──────────────────────────────────────────
-
-
-class _CataloguedStubDriver(_StubDriver):
-    """Stub with a model catalogue for ``serves_model`` selection tests."""
-
-    def __init__(
-        self,
-        provider_name: str,
-        config: ProviderConfig,
-        models: frozenset[str],
-    ) -> None:
-        super().__init__(provider_name, config)
-        self._models = models
-
-    @override
-    def serves_model(self, model: str) -> bool:
-        return model in self._models
-
-
-@pytest.mark.unit
-class TestRegistryResolveForModel:
-    def test_picks_the_provider_serving_the_model(self) -> None:
-        cfg = _make_config()
-        drivers: dict[str, BaseCompletionProvider] = {
-            "provider-a": _CataloguedStubDriver(
-                "provider-a", cfg, frozenset({"model-a"})
-            ),
-            "provider-b": _CataloguedStubDriver(
-                "provider-b", cfg, frozenset({"model-b"})
-            ),
-        }
-        registry = ProviderRegistry(drivers)
-
-        name, driver = registry.resolve_for_model("model-b")
-
-        assert name == "provider-b"
-        assert driver is drivers["provider-b"]
-
-    def test_catalogue_free_driver_serves_anything(self) -> None:
-        driver: BaseCompletionProvider = _StubDriver("example-provider", _make_config())
-        registry = ProviderRegistry({"example-provider": driver})
-
-        name, resolved = registry.resolve_for_model("any-model-id")
-
-        assert name == "example-provider"
-        assert resolved is driver
-
-    def test_unserved_model_raises_with_providers_named(self) -> None:
-        cfg = _make_config()
-        registry = ProviderRegistry(
-            {
-                "provider-a": _CataloguedStubDriver(
-                    "provider-a", cfg, frozenset({"model-a"})
-                ),
-            }
-        )
-
-        with pytest.raises(
-            ModelNotFoundError,
-            match=r"not served by any registered provider.*provider-a",
-        ):
-            registry.resolve_for_model("model-x")
-
-    def test_empty_registry_raises(self) -> None:
-        with (
-            structlog.testing.capture_logs() as cap,
-            pytest.raises(DriverNotRegisteredError),
-        ):
-            ProviderRegistry({}).resolve_for_model("model-a")
-
-        # Mirrors get()'s identical-condition logging: an empty registry
-        # must not raise silently.
-        errors = [r for r in cap if r.get("log_level") == "error"]
-        assert any(r.get("event") == PROVIDER_DRIVER_NOT_REGISTERED for r in errors)
 
 
 # ── __contains__ / __len__ ───────────────────────────────────────

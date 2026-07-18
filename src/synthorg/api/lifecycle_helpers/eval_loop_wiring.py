@@ -78,38 +78,28 @@ def _resolve_hr_str(key: str) -> str:
 def _select_provider(
     provider_registry: ProviderRegistry | None,
     requested: str,
-    model: str,
 ) -> CompletionProvider | None:
-    """Pick the requested provider, else the one serving *model*.
+    """Resolve the eval loop's explicit provider from its model ref.
 
-    A pinned-but-absent ``requested`` provider resolves to ``None`` (the
-    caller then degrades to the deterministic strategy); the model-based
-    resolution applies only when no provider is pinned.
+    ``eval_loop_llm_model`` is a bound ``{provider, model_id}`` reference, so
+    the provider is named explicitly. A blank provider (no model pinned) or a
+    pinned-but-absent one resolves to ``None`` so the caller degrades to the
+    deterministic strategy rather than auto-selecting a provider for the model.
 
     Returns:
-        A completion provider, or ``None`` when none can be resolved.
+        A completion provider, or ``None`` when none is explicitly resolvable.
     """
-    if provider_registry is None:
+    if provider_registry is None or not requested:
         return None
-    if requested:
-        if requested in provider_registry:
-            return provider_registry.get(requested)
-        # An explicit-but-absent provider is a misconfiguration (a typo or
-        # stale config): return None so the caller degrades to the
-        # deterministic strategy rather than silently running the LLM
-        # strategy on a different provider than the operator named.
-        logger.warning(
-            API_APP_STARTUP,
-            service="eval_loop",
-            note="eval-loop model provider absent; degrading to deterministic",
-            requested_provider=requested,
-        )
-        return None
-    from synthorg.api._feature_provider_resolution import (  # noqa: PLC0415
-        resolve_feature_provider,
+    if requested in provider_registry:
+        return provider_registry.get(requested)
+    logger.warning(
+        API_APP_STARTUP,
+        service="eval_loop",
+        note="eval-loop model provider absent; degrading to deterministic",
+        requested_provider=requested,
     )
-
-    return resolve_feature_provider(provider_registry, model, feature="eval_loop")
+    return None
 
 
 async def _resolve_eval_loop_modes(
@@ -194,7 +184,7 @@ def _build_pattern_strategies(
             note="llm strategy requested but eval_loop_llm_model unset; deterministic",
         )
         return (None, None)
-    provider = _select_provider(provider_registry, provider_name, model)
+    provider = _select_provider(provider_registry, provider_name)
     if provider is None:
         logger.warning(
             API_APP_STARTUP,

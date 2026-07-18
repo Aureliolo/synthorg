@@ -79,20 +79,17 @@ _DEFAULT_STRATEGY = "direct"
 
 
 def _select_provider(app_state: AppState) -> CompletionProvider | None:
-    """Return the first registered provider, or ``None`` (empty company).
+    """Return the explicit default system provider, or ``None``.
 
-    Mirrors the worker-execution-service builder's provider selection:
-    ``has_active_provider`` is the single source of truth for the
-    provider-present switch, and the first registered provider backs
-    the boot agent-intake strategy when ``agent`` is selected.
+    The verification-stage grader/decomposer and the boot agent-intake
+    strategy are system actors with no dedicated per-feature model, so they
+    dispatch on the explicit ``providers.default_provider`` (a sole registered
+    provider resolves automatically; several with none chosen resolve to
+    ``None``). There is no first-registered fallback.
     """
     if not has_active_provider(app_state):
         return None
-    registry = provider_registry_of(app_state)
-    names = registry.list_providers()
-    if not names:
-        return None
-    return registry.get(names[0])
+    return provider_registry_of(app_state).default_provider()
 
 
 def _resolve_intake_settings(
@@ -354,12 +351,18 @@ def _build_simulation_components(  # noqa: PLR0913 -- keyword-only resolved choi
     # own settings, not the intake model).
     intake_ref = parse_model_ref(model or "")
     intake_model = intake_ref.model_id or None
-    intake_provider = resolve_ref_provider(
-        app_state,
-        intake_ref,
-        active=provider,
-        event=CLIENT_SIMULATION_RUNTIME_WIRED,
-        subject="intake",
+    # Only resolve a provider when an intake model is actually set: an unset
+    # model is not a misconfiguration, so it must not emit a "no provider"
+    # warning (which would otherwise mask the agent->direct degrade log).
+    intake_provider = (
+        resolve_ref_provider(
+            app_state,
+            intake_ref,
+            event=CLIENT_SIMULATION_RUNTIME_WIRED,
+            subject="intake",
+        )
+        if intake_model
+        else None
     )
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
     strategy, effective_strategy = _build_intake_with_fallback(

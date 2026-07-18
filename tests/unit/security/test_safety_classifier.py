@@ -74,8 +74,14 @@ def _make_classifier(
 
     registry = MagicMock(spec=ProviderRegistry)
     registry.get = MagicMock(side_effect=lambda name: driver_map[name])
-    registry.list_providers = MagicMock(
-        return_value=tuple(sorted(driver_map.keys())),
+    names = tuple(sorted(driver_map.keys()))
+    registry.list_providers = MagicMock(return_value=names)
+    # The classifier dispatches on the explicit default system provider; the
+    # first sorted provider stands in as the operator's chosen default.
+    default_name = names[0] if names else None
+    registry.default_provider_resolved_name = MagicMock(return_value=default_name)
+    registry.default_provider = MagicMock(
+        return_value=driver_map[default_name] if default_name else None,
     )
 
     return SafetyClassifier(
@@ -237,6 +243,8 @@ class TestErrorHandling:
     async def test_no_providers_returns_suspicious(self) -> None:
         registry = MagicMock(spec=ProviderRegistry)
         registry.list_providers = MagicMock(return_value=())
+        # No resolvable default provider -> classification cannot run.
+        registry.default_provider = MagicMock(return_value=None)
 
         config_a = MagicMock()
         config_a.family = "family-a"

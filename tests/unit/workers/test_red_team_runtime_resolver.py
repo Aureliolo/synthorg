@@ -95,7 +95,9 @@ def test_resolver_picks_up_late_wired_knowledge_service() -> None:
     assert resolve().knowledge_service is knowledge  # type: ignore[union-attr]
 
 
-def test_resolver_falls_back_to_first_provider_when_name_absent() -> None:
+def test_resolver_returns_none_when_configured_provider_absent() -> None:
+    # The configured default provider is gone (hot-swapped away): the grounding
+    # checker stays inert rather than falling back to a first-registered pick.
     provider = _provider()
     registry = ProviderRegistry({"only-provider": provider})
     app_state = _FakeAppState(registry=registry, service=None, cost_tracker=None)
@@ -104,10 +106,8 @@ def test_resolver_falls_back_to_first_provider_when_name_absent() -> None:
         app_state,  # type: ignore[arg-type]
         provider_name="missing-provider",
     )
-    context = resolve()
 
-    assert context is not None
-    assert context.provider is provider
+    assert resolve() is None
 
 
 def test_resolver_returns_none_when_registry_empty() -> None:

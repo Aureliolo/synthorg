@@ -41,6 +41,7 @@ async def reload_persisted_provider_registry(
         provider_credential_catalog_of,
     )
     from synthorg.providers.management._persistence import (  # noqa: PLC0415
+        resolve_default_provider_name,
         resolve_retry_max_attempts,
     )
 
@@ -56,6 +57,7 @@ async def reload_persisted_provider_registry(
         connection_catalog=provider_credential_catalog_of(app_state),
         retry_max_attempts=retry_max_attempts,
     )
+    registry.bind_default_provider(await resolve_default_provider_name(resolver))
     app_state.swap_provider_registry(registry)
     logger.info(
         API_APP_STARTUP,

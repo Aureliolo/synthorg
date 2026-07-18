@@ -55,12 +55,28 @@ class TestParseModelRef:
 
 
 class TestModelRefTypeValidation:
-    def test_empty_and_bare_string_accepted(self) -> None:
+    def test_empty_accepted(self) -> None:
+        # An empty value is "unset": the feature stays unwired, no dispatch.
         validate_by_type(_defn(), "")
-        validate_by_type(_defn(), "glm-5.2")
+
+    def test_bare_string_rejected(self) -> None:
+        # A bare model id names no provider; a model assignment must bind
+        # both so no dispatch can auto-select a provider for the id.
+        with pytest.raises(SettingValidationError, match="provider is required"):
+            validate_by_type(_defn(), "glm-5.2")
 
     def test_canonical_json_accepted(self) -> None:
         validate_by_type(_defn(), '{"provider": "ollama-cloud", "model_id": "glm-5.2"}')
+
+    def test_blank_field_rejected(self) -> None:
+        # A structured ref with either field blank is unbound and rejected.
+        for value in (
+            '{"provider": "", "model_id": "glm-5.2"}',
+            '{"provider": "ollama-cloud", "model_id": ""}',
+            '{"provider": "  ", "model_id": "  "}',
+        ):
+            with pytest.raises(SettingValidationError, match="bind both"):
+                validate_by_type(_defn(), value)
 
     def test_unknown_key_rejected(self) -> None:
         with pytest.raises(SettingValidationError, match="model reference"):

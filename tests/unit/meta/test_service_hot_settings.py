@@ -19,6 +19,7 @@ from synthorg.meta.appliers.config_applier import SettingsWritePort
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import ImprovementProposal, ProposalAltitude
 from synthorg.meta.service import SelfImprovementService
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
@@ -217,7 +218,13 @@ async def test_analysis_settings_model_is_live(settings: SettingsService) -> Non
     baked = await svc.resolve_analysis_settings()
     assert baked.llm_model == SelfImprovementConfig().analysis_model
 
-    await settings.set("self_improvement", "analysis_model", "live-analysis-001")
+    await settings.set(
+        "self_improvement",
+        "analysis_model",
+        serialize_model_ref(
+            ModelRef(provider="example-provider", model_id="live-analysis-001")
+        ),
+    )
     live = await svc.resolve_analysis_settings()
     assert live.llm_model == "live-analysis-001"
     # Sampling parameters stay baked (blob-only, not registered settings).

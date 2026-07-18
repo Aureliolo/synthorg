@@ -131,12 +131,15 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
         query_model = query_ref.model_id.strip()
         if query_model and has_active_provider(app_state):
             registry = provider_registry_of(app_state)
-            provider_names = registry.list_providers()
             provider_name = query_ref.provider.strip()
             provider = None
             if not provider_name:
-                # No explicit choice: default to the first registered provider.
-                provider = registry.get(provider_names[0])
+                # A bound MODEL_REF always carries its provider (the write-time
+                # validator rejects a provider-less ref), so a blank provider
+                # here means the model id was set without one: fall back to the
+                # explicit default system provider, never a first-registered
+                # pick (``None`` when the default is ambiguous/unset).
+                provider = registry.default_provider()
             elif provider_name in registry:
                 provider = registry.get(provider_name)
             else:

@@ -33,9 +33,9 @@ from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
-from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.bridge_configs import EngineBridgeConfig
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import config_resolver_of
 from synthorg.workers._coordinator_assembly import _build_runtime_coordinator
@@ -66,18 +66,26 @@ class _AcceptingIntakeStrategy:
         )
 
 
+#: Provider the boot-test registries bind as their explicit default.
+_DEFAULT_PROVIDER = "test-provider"
+
+
 async def _get_str(_namespace: str, key: str) -> str:
     """Key-aware ``config_resolver.get_str`` stub.
 
     ``routing_policy`` selects the work pipeline policy and
-    ``decomposition_strategy`` selects the decomposer; every other key
-    (``decomposition_model``) yields a model id.
+    ``decomposition_strategy`` selects the decomposer; ``decomposition_model``
+    yields a bound ``{provider, model_id}`` reference (a bare id would be
+    rejected as unbound and leave the coordinator unable to resolve a
+    provider).
     """
     if key == "routing_policy":
         return "leaf-threshold"
     if key == "decomposition_strategy":
         return "agent-session"
-    return "example-medium-001"
+    return serialize_model_ref(
+        ModelRef(provider=_DEFAULT_PROVIDER, model_id="example-medium-001")
+    )
 
 
 def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knobs
@@ -92,6 +100,7 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
     cost_tracker: CostTracker | None = None,
     coordination_metrics_store: CoordinationMetricsStore | None = None,
     simulation_runtime: bool = False,
+    default_provider_name: str | None = _DEFAULT_PROVIDER,
 ) -> AppState:
     """Build a mocked AppState for the provider-present path.
 
@@ -106,6 +115,9 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
     drive the coordination-metrics collector wiring: absent, the
     collector is not constructed (mirrors the empty/degraded path).
     """
+    # The boot active provider is the explicit default: bind it so a
+    # single- or multi-provider registry resolves one (no alphabetical pick).
+    registry.bind_default_provider(default_provider_name)
     if bridge_config_error is None:
         bridge_mock = AsyncMock(return_value=bridge_config or EngineBridgeConfig())
     else:
@@ -452,7 +464,7 @@ class TestProviderPresentSwitch:
         )
         assert isinstance(result.coordinator, MultiAgentCoordinator)
 
-    async def test_multiple_providers_warns_and_selects_first(
+    async def test_multiple_providers_use_explicit_default(
         self,
         tmp_path: Path,
     ) -> None:
@@ -466,9 +478,9 @@ class TestProviderPresentSwitch:
                 ),
             }
         )
+        # With an explicit providers.default_provider bound the >1-provider
+        # boot builds a live runtime on that default (no alphabetical pick).
         app_state = _provider_app_state(registry, tmp_path)
-        # Exercises the >1-provider branch (warning + first-provider
-        # selection); it must still build a live runtime, not reject.
         result = await build_runtime_services(
             app_state,
             workspace_root=tmp_path,
@@ -478,6 +490,37 @@ class TestProviderPresentSwitch:
             AgentEngineExecutionService,
         )
         assert isinstance(result.coordinator, MultiAgentCoordinator)
+
+    async def test_multiple_providers_without_default_is_no_provider_mode(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        registry = ProviderRegistry.from_config(
+            {
+                "test-provider": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                ),
+                "test-provider-2": ProviderConfig(
+                    driver="scripted", connection_name="conn-scripted"
+                ),
+            }
+        )
+        # Two providers and NO explicit default: the default system provider is
+        # ambiguous, so the boot refuses to auto-pick and returns no-provider
+        # mode rather than routing to whichever provider sorts first.
+        app_state = _provider_app_state(registry, tmp_path, default_provider_name=None)
+        with capture_logs() as logs:
+            result = await build_runtime_services(app_state, workspace_root=tmp_path)
+
+        assert isinstance(result.worker_execution_service, NoProviderExecutionService)
+        assert result.coordinator is None
+        ambiguous = [
+            entry
+            for entry in logs
+            if entry.get("event") == API_APP_STARTUP
+            and entry.get("mode") == "no_default_provider"
+        ]
+        assert len(ambiguous) == 1
 
     async def test_builds_nonexistent_deep_workspace_path(
         self,
@@ -634,7 +677,6 @@ class TestRuntimeCoordinatorResolveFailure:
             await _build_runtime_coordinator(
                 app_state,
                 mock_of[AgentEngine](),
-                mock_of[CompletionProvider](),
                 None,
             )
         # TaskGroup collapses task failures into a BaseExceptionGroup

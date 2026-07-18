@@ -26,6 +26,7 @@ from synthorg.persistence.conversational_factory import (
     ConversationalRepositories,
     build_conversational_repositories,
 )
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from tests._shared import as_uuid, mock_of, sid
 from tests._shared.scripted_provider import ScriptedProvider
 from tests.unit.meta.chief_of_staff.group_chat_fakes import FakeInviteRepo
@@ -81,16 +82,6 @@ class _FakeRegistry:
         del name
         return self._provider
 
-    def resolve_for_model(self, model: str) -> tuple[str, ScriptedProvider]:
-        """The lone fake provider serves every model (no catalogue)."""
-        del model
-        if not self._providers:
-            from synthorg.providers.errors import DriverNotRegisteredError
-
-            msg = "No providers registered"
-            raise DriverNotRegisteredError(msg)
-        return self._providers[0], self._provider
-
 
 def _repos() -> ConversationalRepositories:
     # The builder only stores these references; behaviour is covered by
@@ -135,11 +126,14 @@ class TestBuildChiefOfStaffProposer:
         assert result is None
 
     def test_builds_when_all_present(self) -> None:
+        # A bound {provider, model_id} propose_model: the provider resolves
+        # explicitly (a bare id would leave the feature unwired).
+        propose_model = serialize_model_ref(
+            ModelRef(provider="p", model_id="example-small-001")
+        )
         with suppress_type_checks():
             result = build_chief_of_staff_proposer(
-                ChiefOfStaffConfig(
-                    propose_enabled=True, propose_model="example-small-001"
-                ),
+                ChiefOfStaffConfig(propose_enabled=True, propose_model=propose_model),
                 provider_registry=_FakeRegistry(providers=["p"]),  # type: ignore[arg-type]
                 approval_store=ApprovalStore(),
                 repositories=_repos(),

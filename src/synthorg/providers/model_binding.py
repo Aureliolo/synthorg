@@ -2,11 +2,11 @@
 """Shared MODEL_REF provider resolution for boot / runtime wiring.
 
 A model-assignment setting stores a :class:`~synthorg.settings.model_ref.ModelRef`
-(``{provider, model_id}``). This resolves the ref's provider against the live
-registry, honouring an explicit provider and falling back to a caller-supplied
-active provider when the ref names none or an unregistered one -- so a model
-binds to the provider it was selected on, not the first that happens to serve
-the id.
+(``{provider, model_id}``). This resolves the ref's *explicit* provider against
+the live registry. A model assignment is always an explicit ``(provider, model)``
+pair: a ref with no provider (or an unregistered one) resolves to ``None`` so the
+caller fails loud rather than silently binding to whichever provider happens to
+be the boot default.
 """
 
 from typing import TYPE_CHECKING
@@ -27,30 +27,34 @@ def resolve_ref_provider(
     app_state: AppState,
     ref: ModelRef,
     *,
-    active: CompletionProvider | None,
     event: str,
     subject: str,
 ) -> CompletionProvider | None:
-    """Resolve a ``ModelRef`` provider, falling back to *active*.
+    """Resolve a ``ModelRef``'s explicit provider against the registry.
 
-    An explicit ``ref.provider`` binds to that registered driver; an empty
-    provider, or one that is not registered, falls back to *active* (the
-    first-registered / boot provider), logging the fallback under *event*
-    and naming *subject* (the feature).
+    A model assignment must name its provider: an empty or unregistered
+    provider is never auto-resolved to a default, because with two gateways
+    advertising an overlapping id that pick is ambiguous. Both cases log
+    under *event* naming *subject* (the feature) and return ``None`` so the
+    caller fails loud or leaves the feature unwired.
 
     Returns:
-        The provider the model resolves against, or *active* (which may be
-        ``None`` when the caller has no active provider).
+        The driver for the ref's explicit provider, or ``None`` when the ref
+        names no provider or an unregistered one.
     """
     if not ref.provider.strip():
-        return active
+        logger.warning(
+            event,
+            note=f"{subject} model ref has no provider; a (provider, model) pair"
+            " is required",
+        )
+        return None
     try:
         return provider_registry_of(app_state).get(ref.provider)
     except DriverNotRegisteredError:
         logger.warning(
             event,
-            note=f"{subject} model's selected provider is not registered;"
-            " falling back to the active provider",
+            note=f"{subject} model's selected provider is not registered",
             provider=ref.provider,
         )
-        return active
+        return None

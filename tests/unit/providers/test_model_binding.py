@@ -23,36 +23,29 @@ def _app_state() -> tuple[AppState, BaseCompletionProvider, BaseCompletionProvid
 
 
 def test_explicit_provider_binds_to_that_driver() -> None:
-    app_state, cloud, local = _app_state()
+    app_state, _cloud, local = _app_state()
     ref = ModelRef(provider="ollama", model_id="glm-5.2")
     resolved = resolve_ref_provider(
-        app_state, ref, active=cloud, event=_EVENT, subject="decomposition"
+        app_state, ref, event=_EVENT, subject="decomposition"
     )
     assert resolved is local
 
 
-def test_empty_provider_falls_back_to_active() -> None:
-    app_state, cloud, _local = _app_state()
-    ref = ModelRef(provider="", model_id="glm-5.2")
-    resolved = resolve_ref_provider(
-        app_state, ref, active=cloud, event=_EVENT, subject="decomposition"
-    )
-    assert resolved is cloud
-
-
-def test_unregistered_provider_falls_back_to_active() -> None:
-    app_state, cloud, _local = _app_state()
-    ref = ModelRef(provider="absent-provider", model_id="glm-5.2")
-    resolved = resolve_ref_provider(
-        app_state, ref, active=cloud, event=_EVENT, subject="decomposition"
-    )
-    assert resolved is cloud
-
-
-def test_no_active_and_empty_provider_returns_none() -> None:
+def test_empty_provider_returns_none() -> None:
+    # A provider-less ref is never auto-resolved to a default: a model
+    # assignment must name its provider explicitly.
     app_state, _cloud, _local = _app_state()
     ref = ModelRef(provider="", model_id="glm-5.2")
     resolved = resolve_ref_provider(
-        app_state, ref, active=None, event=_EVENT, subject="intake"
+        app_state, ref, event=_EVENT, subject="decomposition"
+    )
+    assert resolved is None
+
+
+def test_unregistered_provider_returns_none() -> None:
+    app_state, _cloud, _local = _app_state()
+    ref = ModelRef(provider="absent-provider", model_id="glm-5.2")
+    resolved = resolve_ref_provider(
+        app_state, ref, event=_EVENT, subject="decomposition"
     )
     assert resolved is None

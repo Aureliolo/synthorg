@@ -95,16 +95,27 @@ async def build_image_provider_or_none(
             error=safe_error_description(exc),
         )
         return None
-    model_id = model_id_raw.strip()
-    if not model_id:
+    from synthorg.settings.model_ref import parse_model_ref  # noqa: PLC0415
+
+    ref = parse_model_ref(model_id_raw)
+    if not ref.model_id:
         logger.error(
             API_APP_STARTUP,
             service="design_image",
             note="image generation enabled but no design.image_model is selected",
         )
         return None
+    if not ref.provider:
+        logger.error(
+            API_APP_STARTUP,
+            service="design_image",
+            note="design.image_model must name an explicit (provider, model) pair;"
+            " tool off",
+            model=ref.model_id,
+        )
+        return None
 
-    provider = await _resolve_serving_provider(registry, model_id)
+    provider = await _resolve_serving_provider(registry, ref.provider, ref.model_id)
     if provider is None:
         return None
 
@@ -116,19 +127,20 @@ async def build_image_provider_or_none(
         DESIGN_IMAGE_PROVIDER_BOUND,
         service="design_image",
         note="wired",
-        model=model_id,
+        model=ref.model_id,
     )
-    return ProviderImageProvider(provider=provider, model=model_id)
+    return ProviderImageProvider(provider=provider, model=ref.model_id)
 
 
 async def _resolve_serving_provider(
     registry: ProviderRegistry,
+    provider_name: str,
     model_id: str,
 ) -> ImageGenerationProvider | None:
-    """Resolve ``model_id`` to an image-capable serving provider, or ``None``.
+    """Resolve the explicit ``(provider_name, model_id)`` to an image provider.
 
-    Returns ``None`` (logging the reason) when the model is not served by a
-    connected provider, is not image-capable, or the serving driver cannot
+    Returns ``None`` (logging the reason) when the named provider is not
+    registered, the model is not image-capable, or the serving driver cannot
     structurally generate images. Every miss after the feature was enabled
     is a misconfiguration, so it logs at ERROR.
 
@@ -136,7 +148,7 @@ async def _resolve_serving_provider(
         The image-capable serving provider, or ``None`` when unbuildable.
     """
     try:
-        _, provider = registry.resolve_for_model(model_id)
+        provider = registry.get(provider_name)
         capabilities = await provider.get_model_capabilities(model_id)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- degrade-to-None wiring

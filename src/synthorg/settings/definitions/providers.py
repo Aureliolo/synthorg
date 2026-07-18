@@ -54,6 +54,28 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
+        key="default_provider",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Name of the provider that system / infra LLM calls dispatch on"
+            " when they carry no dedicated per-feature model: the boot agent"
+            " engine, red-team grounding, vision verify, the completion-oracle"
+            " reviewer, the conflict judge, and the security evaluators. Must"
+            " name a registered provider. There is no automatic fallback: when"
+            " unset (or naming an unregistered provider) those system calls"
+            " stay unwired rather than routing to whichever provider sorts"
+            " first, so a model assignment is always an explicit choice."
+            " Set automatically to the sole provider during setup when exactly"
+            " one is configured; pick it explicitly when several are."
+        ),
+        group="General",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
         key="discovery_allowlist",
         type=SettingType.JSON,
         default=None,

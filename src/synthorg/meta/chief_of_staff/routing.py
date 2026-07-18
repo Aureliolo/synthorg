@@ -498,32 +498,38 @@ class KeywordRoleRouter:
 def _resolve_router_provider(
     provider_registry: ProviderRegistry, model: str
 ) -> CompletionProvider | None:
-    """Resolve the provider that serves the concern-routing *model*.
+    """Resolve the provider the concern-routing model ref is bound to.
 
-    The routing model is provider-agnostic, so a first-registered pick can
-    hand the classifier a driver that does not serve the model, surfacing as
-    a request-time model-not-found error instead of a clean unbuilt router.
+    The routing model is an explicit ``(provider, model)`` ref: a bare id is
+    never auto-resolved against "whichever provider serves it", so a
+    provider-less setting leaves the router unbuilt (routing degrades to the
+    generic responder) rather than binding to an arbitrary gateway.
 
     Returns:
-        The serving provider, or ``None`` when no registered provider serves
-        the model (the router then stays unbuilt and routing degrades to the
-        generic responder).
+        The driver for the ref's explicit provider, or ``None`` when the ref
+        names no provider or an unregistered one.
     """
-    from synthorg.providers.errors import (  # noqa: PLC0415
-        DriverNotRegisteredError,
-        ModelNotFoundError,
-    )
+    from synthorg.providers.errors import DriverNotRegisteredError  # noqa: PLC0415
+    from synthorg.settings.model_ref import parse_model_ref  # noqa: PLC0415
 
+    ref = parse_model_ref(model)
+    if not ref.provider:
+        logger.warning(
+            COS_ROUTING_FALLBACK,
+            detail="routing_model_has_no_provider",
+            model=ref.model_id,
+        )
+        return None
     try:
-        _name, driver = provider_registry.resolve_for_model(model)
-    except DriverNotRegisteredError, ModelNotFoundError:
+        return provider_registry.get(ref.provider)
+    except DriverNotRegisteredError:
         logger.warning(
             COS_ROUTING_FALLBACK,
             detail="no_provider_for_routing_model",
-            model=model,
+            model=ref.model_id,
+            provider=ref.provider,
         )
         return None
-    return driver
 
 
 def build_role_router(
@@ -564,16 +570,21 @@ def build_role_router(
             default_role=config.routing_default_role,
             keyword_map=keyword_map,
         )
+    from synthorg.settings.model_ref import parse_model_ref  # noqa: PLC0415
+
     routing_model = config.routing_model
     if not routing_model:
         logger.info(COS_ROUTING_FALLBACK, detail="routing_model_not_configured")
         return None
     provider = _resolve_router_provider(provider_registry, routing_model)
-    if provider is None:
+    # The baked model is the ref's model id, never the raw ``{provider,
+    # model_id}`` JSON (the router re-reads the live ref via the resolver).
+    model_id = parse_model_ref(routing_model).model_id
+    if provider is None or not model_id:
         return None
     return LlmConcernRouter(
         provider=provider,
-        model=NotBlankStr(routing_model),
+        model=NotBlankStr(model_id),
         agent_registry=agent_registry,
         confidence_floor=config.routing_confidence_floor,
         default_role=config.routing_default_role,

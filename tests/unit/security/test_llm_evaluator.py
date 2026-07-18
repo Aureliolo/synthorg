@@ -123,11 +123,17 @@ def _make_evaluator(
         driver_b.complete = AsyncMock(return_value=_make_completion_response())
         driver_map = {"provider-a": driver_a, "provider-b": driver_b}
 
+    names = tuple(sorted(driver_map.keys()))
+    default_name = names[0] if names else None
     registry = mock_of[ProviderRegistry](
         get=MagicMock(side_effect=lambda name: driver_map[name]),
-        list_providers=MagicMock(
-            return_value=tuple(sorted(driver_map.keys())),
+        list_providers=MagicMock(return_value=names),
+        # When no cross-family alternative exists the evaluator falls back to
+        # the explicit default system provider (the first sorted provider here).
+        default_provider=MagicMock(
+            return_value=driver_map[default_name] if default_name else None,
         ),
+        default_provider_resolved_name=MagicMock(return_value=default_name),
     )
 
     return LlmSecurityEvaluator(

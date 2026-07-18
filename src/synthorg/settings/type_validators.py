@@ -159,19 +159,29 @@ def _validate_json(definition: SettingDefinition, value: str) -> None:
 def _validate_model_ref(definition: SettingDefinition, value: str) -> None:
     """Validate a model-reference value's shape.
 
-    Accepts an empty value (unset) or a bare model string (provider-less);
-    a structured value must be ``{"provider": str, "model_id": str}`` JSON.
-    Catalogue resolution (does the model exist on the provider) is enforced
-    at the picker (only offers real pairs) and at boot, not here, since this
-    static validator has no provider-catalogue access.
+    Accepts only an empty value (unset, leaves the feature unwired) or a
+    bound ``{"provider": str, "model_id": str}`` JSON with both fields
+    non-blank. A model assignment always names both its provider and its
+    model: a bare model string (provider-less) is rejected here so no
+    dispatch can ever fall back to auto-selecting whichever provider
+    happens to serve the id. Catalogue resolution (does the model exist on
+    the provider) is enforced at the picker and at boot, not here, since
+    this static validator has no provider-catalogue access.
 
     Raises:
-        SettingValidationError: If a structured value is not the canonical
-            ``{provider, model_id}`` shape.
+        SettingValidationError: If a non-empty value is not the canonical
+            ``{provider, model_id}`` shape, or either field is blank.
     """
     text = value.strip()
-    if not text or not text.startswith("{"):
+    if not text:
         return
+    if not text.startswith("{"):
+        msg = (
+            "A model reference must name both provider and model as"
+            ' {"provider": str, "model_id": str}; a bare model id is not'
+            " accepted (a provider is required)"
+        )
+        raise SettingValidationError(msg)
     try:
         reject_raw_json_over_depth(value)
         data = json.loads(value)
@@ -189,6 +199,11 @@ def _validate_model_ref(definition: SettingDefinition, value: str) -> None:
         or not isinstance(data["model_id"], str)
     ):
         msg = 'A model reference must be {"provider": str, "model_id": str}'
+        raise SettingValidationError(msg)
+    if not data["provider"].strip() or not data["model_id"].strip():
+        msg = (
+            "A model reference must bind both provider and model; neither may be blank"
+        )
         raise SettingValidationError(msg)
 
 

@@ -231,14 +231,6 @@ def _resolve_synthesis_provider(
     Returns:
         The selected provider, or ``None`` when none is usable.
     """
-    provider_names = provider_registry.list_providers()
-    if not provider_names:
-        logger.warning(
-            API_APP_STARTUP,
-            service="knowledge_engine",
-            note="synthesis enabled but no providers registered; retrieval-only",
-        )
-        return None
     if provider_name and provider_name not in provider_registry:
         logger.warning(
             API_APP_STARTUP,
@@ -247,4 +239,19 @@ def _resolve_synthesis_provider(
             synthesis_provider=provider_name,
         )
         return None
-    return provider_registry.get(provider_name or provider_names[0])
+    if provider_name:
+        return provider_registry.get(provider_name)
+    # No explicit synthesis provider on the model ref: dispatch on the explicit
+    # default system provider, never a first-registered pick. Retrieval-only
+    # when the default is ambiguous (several providers, none chosen) or unset.
+    provider = provider_registry.default_provider()
+    if provider is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="knowledge_engine",
+            note=(
+                "synthesis enabled but no default system provider is resolvable;"
+                " retrieval-only until providers.default_provider is set"
+            ),
+        )
+    return provider

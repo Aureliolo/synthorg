@@ -70,22 +70,19 @@ def _build_grounding_substrate_resolver(
         registry = app_state.slice(ProvidersStateSlice).registry
         if registry is None:
             return None
-        available = registry.list_providers()
-        if not available:
-            return None
-        if provider_name in available:
-            name = provider_name
-        else:
-            name = available[0]
+        if provider_name not in registry.list_providers():
+            # The configured default provider is gone (hot-swapped away). Do
+            # NOT fall back to a first-registered pick: the grounding checker
+            # simply stays inert until a valid default provider is bound.
             logger.warning(
                 RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED,
                 reason="configured_provider_absent",
                 configured_provider=provider_name,
-                fallback_provider=name,
             )
+            return None
         return GroundingSubstrateContext(
             knowledge_service=app_state.slice(KnowledgeStateSlice).service,
-            provider=registry.get(name),
+            provider=registry.get(provider_name),
             model_id=NotBlankStr(_GROUNDING_MODEL_ID),
             cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
         )

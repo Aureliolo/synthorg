@@ -2,12 +2,13 @@
 
 Shared by every feature builder that resolves a per-feature model
 setting (LLM judge, chief-of-staff chat/propose/narrator, charter
-interview, eval loop) to a concrete provider driver. Picking "the
-first registered provider" is wrong once more than one provider is
-registered: the per-feature model setting is provider-agnostic, so a
-naive first pick can route the call to a driver that does not serve
-the configured model, surfacing as a request-time model-not-found
-error instead of a clear wiring-time failure.
+interview, eval loop) to a concrete provider driver. A model assignment
+is always an explicit ``(provider, model)`` pair: there is no
+"resolve the model id against whichever provider happens to serve it"
+path, because with two gateways advertising an overlapping id that pick
+is ambiguous (and silently routed calls to the alphabetically-first
+provider). A provider-less setting leaves the feature unwired rather
+than auto-selecting a gateway.
 """
 
 from typing import TYPE_CHECKING
@@ -31,18 +32,16 @@ def resolve_feature_provider(
     *,
     feature: str,
 ) -> BaseCompletionProvider | None:
-    """Resolve the provider serving *model* for a boot-wired feature.
+    """Resolve the provider a feature's explicit model ref is bound to.
 
     Returns:
-        The serving driver, or ``None`` -- the feature stays unwired --
-        when the model is not configured, the registry is empty, or no
-        provider serves the model. Each case logs an actionable note
-        naming the model and the registered providers.
+        The driver for the ref's explicit provider, or ``None`` -- the
+        feature stays unwired -- when the model is not configured, the
+        ref carries no provider (a bare model id is never auto-resolved),
+        or the named provider is not registered. Each case logs an
+        actionable note naming the model and the registered providers.
     """
-    from synthorg.providers.errors import (  # noqa: PLC0415
-        DriverNotRegisteredError,
-        ModelNotFoundError,
-    )
+    from synthorg.providers.errors import DriverNotRegisteredError  # noqa: PLC0415
     from synthorg.settings.model_ref import parse_model_ref  # noqa: PLC0415
 
     if not model:
@@ -53,10 +52,6 @@ def resolve_feature_provider(
         )
         return None
 
-    # A model-assignment setting stores a ``ModelRef``: an explicit provider
-    # binds the model to *that* driver's catalogue rather than the first that
-    # happens to serve the model id. A legacy bare string parses to a
-    # provider-less ref and keeps the historic resolve-by-model behaviour.
     ref = parse_model_ref(model)
     if not ref.model_id:
         logger.info(
@@ -66,38 +61,28 @@ def resolve_feature_provider(
         )
         return None
 
-    if ref.provider:
-        try:
-            driver = provider_registry.get(ref.provider)
-        except DriverNotRegisteredError as exc:
-            logger.warning(
-                API_APP_STARTUP,
-                note="feature provider (from model ref) not registered;"
-                " feature stays unwired",
-                feature=feature,
-                provider=ref.provider,
-                model=ref.model_id,
-                available=list(provider_registry.list_providers()),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return None
-        logger.info(
-            API_APP_STARTUP,
-            note="feature provider resolved",
-            feature=feature,
-            provider=ref.provider,
-            model=ref.model_id,
-        )
-        return driver
-
-    try:
-        name, driver = provider_registry.resolve_for_model(ref.model_id)
-    except (DriverNotRegisteredError, ModelNotFoundError) as exc:
+    if not ref.provider:
+        # A model assignment must name its provider explicitly; a bare id is
+        # never resolved against "whichever provider serves it" because that
+        # pick is ambiguous across gateways with an overlapping id.
         logger.warning(
             API_APP_STARTUP,
-            note="feature provider resolution failed; feature stays unwired",
+            note="feature model ref has no provider; a (provider, model) pair is"
+            " required, feature stays unwired",
             feature=feature,
+            model=ref.model_id,
+        )
+        return None
+
+    try:
+        driver = provider_registry.get(ref.provider)
+    except DriverNotRegisteredError as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            note="feature provider (from model ref) not registered;"
+            " feature stays unwired",
+            feature=feature,
+            provider=ref.provider,
             model=ref.model_id,
             available=list(provider_registry.list_providers()),
             error_type=type(exc).__name__,
@@ -108,7 +93,7 @@ def resolve_feature_provider(
         API_APP_STARTUP,
         note="feature provider resolved",
         feature=feature,
-        provider=name,
+        provider=ref.provider,
         model=ref.model_id,
     )
     return driver

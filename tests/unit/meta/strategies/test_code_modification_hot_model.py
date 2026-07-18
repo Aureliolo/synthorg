@@ -16,6 +16,7 @@ from synthorg.meta.config import CodeModificationConfig, SelfImprovementConfig
 from synthorg.meta.strategies.code_modification import CodeModificationStrategy
 from synthorg.meta.validation.scope_validator import ScopeValidator
 from synthorg.providers.base import BaseCompletionProvider
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
@@ -63,6 +64,9 @@ async def test_code_modification_model_read_live(settings: SettingsService) -> N
     await strategy._call_llm("prompt")
     assert provider.complete.await_args.kwargs["model"] == "baked-codemod-001"
 
-    await settings.set("self_improvement", "code_modification_model", "live-codemod")
+    live = serialize_model_ref(
+        ModelRef(provider="example-provider", model_id="live-codemod")
+    )
+    await settings.set("self_improvement", "code_modification_model", live)
     await strategy._call_llm("prompt")
     assert provider.complete.await_args.kwargs["model"] == "live-codemod"

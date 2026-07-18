@@ -203,7 +203,6 @@ async def build_tier_recommender(app_state: AppState) -> LlmTierRecommender:
     provider = resolve_ref_provider(
         app_state,
         ref,
-        active=None,
         event=PROVIDER_TIER_LLM_RECOMMENDED,
         subject="tier classifier",
     )

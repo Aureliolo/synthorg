@@ -17,6 +17,7 @@ from synthorg.meta._config_overlay import (
     overlay_feature_settings,
 )
 from synthorg.meta.config import SelfImprovementConfig, load_self_improvement_config
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests.unit.api.fakes import FakePersistenceBackend
@@ -94,9 +95,12 @@ async def test_blank_model_keeps_builtin_default(
 
 async def test_model_setting_lands(settings_service: SettingsService) -> None:
     """A non-blank model setting overrides the built-in default."""
-    await settings_service.set("chief_of_staff", "chat_model", "example-large-001")
+    ref = serialize_model_ref(
+        ModelRef(provider="example-provider", model_id="example-large-001")
+    )
+    await settings_service.set("chief_of_staff", "chat_model", ref)
     config = await load_self_improvement_config(settings_service)
-    assert config.chief_of_staff.chat_model == "example-large-001"
+    assert config.chief_of_staff.chat_model == ref
 
 
 async def test_structural_blob_field_survives_overlay(

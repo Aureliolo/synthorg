@@ -41,6 +41,11 @@ from synthorg.observability import (
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import persistence_of
 from synthorg.providers.model_binding import resolve_ref_provider
+
+# Module-level (not TYPE_CHECKING): the ``_owner_provider_selector`` closure
+# carries a runtime-evaluated ``-> CompletionProvider`` annotation that typeguard
+# resolves in this module's globals when the coordinator calls the selector.
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import config_resolver_of
 from synthorg.workers.execution_service import WorkerExecutionService
@@ -52,7 +57,6 @@ if TYPE_CHECKING:
         CoordinationMiddlewareChain,
     )
     from synthorg.engine.pipeline.protocol import WorkPipeline
-    from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 
@@ -308,7 +312,6 @@ def _build_coordination_chain(
 async def _build_runtime_coordinator(
     app_state: AppState,
     engine: AgentEngine,
-    provider: CompletionProvider,
     coordination_metrics_collector: CoordinationMetricsCollector | None,
 ) -> tuple[MultiAgentCoordinator, AgentTaskScorer, CompletionProvider, str]:
     """Build the coordinator and the shared scorer + decomposition binding.
@@ -346,23 +349,20 @@ async def _build_runtime_coordinator(
         (workspace_strategy, workspace_config),
         middleware_enabled,
     ) = await _resolve_coordinator_dependencies(app_state)
-    # ``decomposition_model`` is a MODEL_REF: the provider travels with the
-    # model, so it binds to the provider it was selected on rather than the
-    # first registered one. An empty / unregistered ref provider falls back to
-    # the active *provider*.
+    # ``decomposition_model`` is a MODEL_REF: it must name an explicit
+    # ``(provider, model_id)`` pair. It is never auto-bound to a default
+    # provider, so a bare / unregistered ref resolves to ``None`` and fails
+    # loud below (the single-shot fallback decomposer + the llm-judged routing
+    # policy both dispatch on this binding).
     decomp_ref = parse_model_ref(raw_decomposition_ref)
     decomposition_model = decomp_ref.model_id
-    decomp_provider = (
-        resolve_ref_provider(
-            app_state,
-            decomp_ref,
-            active=provider,
-            event=API_APP_STARTUP,
-            subject="decomposition",
-        )
-        or provider
+    decomp_provider = resolve_ref_provider(
+        app_state,
+        decomp_ref,
+        event=API_APP_STARTUP,
+        subject="decomposition",
     )
-    if not decomposition_model.strip():
+    if not decomposition_model.strip() or decomp_provider is None:
         # Fail soft, not hard: raise a typed error so the runtime builder can
         # boot in the degraded no-coordinator mode (task execution rejected at
         # the seam) instead of crashing the whole reload. Logging happens once,
@@ -370,10 +370,11 @@ async def _build_runtime_coordinator(
         # failure yields a single WARNING rather than one line per boot hook it
         # would propagate through.
         msg = (
-            "coordination.decomposition_model must select a model from your"
-            " provider catalogue when a provider is configured: the"
-            " coordinator builds eagerly at boot and its decomposition"
-            " strategy requires a non-blank model."
+            "coordination.decomposition_model must select an explicit"
+            " (provider, model) pair from your provider catalogue: the"
+            " coordinator builds eagerly at boot and its fallback decomposer +"
+            " routing judge dispatch on that binding, which is never"
+            " auto-resolved to a default provider."
         )
         raise CoordinationConfigError(msg)
     performance_tracker = app_state.slice(HrStateSlice).performance_tracker

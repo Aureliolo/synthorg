@@ -18,6 +18,7 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         ("providers", "routing_strategy"),
         ("providers", "retry_max_attempts"),
+        ("providers", "default_provider"),
     }
 )
 
@@ -93,7 +94,10 @@ class ProviderSettingsSubscriber:
         """
         if namespace == "providers" and key == "routing_strategy":
             await self._rebuild_router()
-        elif namespace == "providers" and key == "retry_max_attempts":
+        elif namespace == "providers" and key in (
+            "retry_max_attempts",
+            "default_provider",
+        ):
             await self._rebuild_registry()
         else:
             logger.info(
@@ -162,6 +166,7 @@ class ProviderSettingsSubscriber:
             provider_credential_catalog_of,
         )
         from synthorg.providers.management._persistence import (  # noqa: PLC0415
+            resolve_default_provider_name,
             resolve_retry_max_attempts,
         )
         from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
@@ -180,12 +185,14 @@ class ProviderSettingsSubscriber:
                 return
             resolver = config_resolver_of(self._app_state)
             retry_max_attempts = await resolve_retry_max_attempts(resolver)
+            default_provider = await resolve_default_provider_name(resolver)
             provider_configs = dict(await resolver.get_provider_configs())
             new_registry = ProviderRegistry.from_config(
                 provider_configs,
                 connection_catalog=provider_credential_catalog_of(self._app_state),
                 retry_max_attempts=retry_max_attempts,
             )
+            new_registry.bind_default_provider(default_provider)
             # Re-read after the awaits: a concurrent setup-complete reinit may
             # have installed a cassette-bound registry while we were resolving
             # configs. Swapping over it would silently route recorded-LLM
