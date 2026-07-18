@@ -11,22 +11,32 @@ from enum import Enum, StrEnum
 class ConversationKind(StrEnum):
     """Shape of a conversation, fixed at creation.
 
-    Discriminates the three conversational surfaces that share the
-    ``conversations`` / ``conversation_turns`` tables.
+    Discriminates the conversational surfaces that share the
+    ``conversations`` / ``conversation_turns`` tables. A conversation's
+    kind is set when it opens and never re-classified mid-thread, so the
+    unified turn orchestrator dispatches an in-flight ``GROUP``/``CHARTER``
+    thread straight to its owning service rather than re-running intent
+    classification.
 
     Attributes:
-        DIRECT: The v1 1:1 clarify-and-propose thread with the generic
-            Chief of Staff persona. Default.
+        DIRECT: A 1:1 clarify-and-propose (or explain) thread with the
+            generic Chief of Staff persona. Default.
         ROUTED: A 1:1 thread whose turns are routed to a role agent by
             concern (budget to CFO, strategy to CEO, ...). The
             responding agent is recorded per assistant turn.
         GROUP: A multi-agent group conversation: one human, several
             participant agents, attributed ``AGENT`` turns.
+        CHARTER: A charter-interview thread: the operator is interviewed
+            to draft a company charter, with a live draft alongside.
+        ACT: A direct-MCP acting thread: a chat instruction drives a real
+            MCP action under the acting agent's trust level.
     """
 
     DIRECT = "direct"
     ROUTED = "routed"
     GROUP = "group"
+    CHARTER = "charter"
+    ACT = "act"
 
 
 class ConversationParticipantStatus(StrEnum):

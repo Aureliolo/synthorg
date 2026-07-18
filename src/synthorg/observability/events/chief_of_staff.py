@@ -71,6 +71,13 @@ COS_ROUTING_ROUTED: Final[str] = "chief_of_staff.routing.routed"
 COS_ROUTING_FALLBACK: Final[str] = "chief_of_staff.routing.fallback"
 COS_ROUTING_RESPONSE_INVALID: Final[str] = "chief_of_staff.routing.response_invalid"
 
+# -- Unified turn routing ----------------------------------------------
+
+COS_INTENT_CLASSIFIED: Final[str] = "chief_of_staff.intent.classified"
+COS_INTENT_FALLBACK: Final[str] = "chief_of_staff.intent.fallback"
+COS_INTENT_RESPONSE_INVALID: Final[str] = "chief_of_staff.intent.response_invalid"
+COS_TURN_DISPATCHED: Final[str] = "chief_of_staff.turn.dispatched"
+
 # -- Multi-agent group chat --------------------------------------------
 
 COS_GROUP_ROUND_STARTED: Final[str] = "chief_of_staff.group_chat.round_started"

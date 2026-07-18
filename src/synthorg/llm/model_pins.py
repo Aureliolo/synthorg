@@ -124,6 +124,7 @@ _PIN_SPEC_ROWS: Final[tuple[tuple[PromptPurposeId, PinSpec], ...]] = (
     (PromptPurposeId.RESEARCH_TRIAGE, PinSpec()),
     (PromptPurposeId.RESEARCH_SYNTHESIS, PinSpec()),
     (PromptPurposeId.RESEARCH_PLANNING, PinSpec()),
+    (PromptPurposeId.COS_TURN_INTENT, PinSpec()),
     (PromptPurposeId.COS_ROUTING, PinSpec()),
     (PromptPurposeId.COS_PROPOSE, PinSpec(temperature=0.3)),
     (PromptPurposeId.COS_CHAT, PinSpec(temperature=0.7)),

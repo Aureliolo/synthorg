@@ -53,6 +53,21 @@ _ROUTING_MAX_TOKENS_MIN: int = 50
 # Chief of Staff rather than routing to a possibly-wrong role; the
 # 0.0/1.0 envelope is the natural probability range.
 _ROUTING_CONFIDENCE_FLOOR_DEFAULT: float = 0.6
+# Unified turn routing: one endpoint classifies the operator's intent and
+# dispatches to the right capability. The intent classifier runs a
+# deterministic pass (temperature 0.0) so the intent JSON is stable; a
+# classification reply is a single small JSON object, so 200 tokens fits it
+# and 50 is the floor below which even that minimal object risks truncation.
+_TURN_INTENT_TEMPERATURE_DEFAULT: float = 0.0
+_TURN_INTENT_MAX_TOKENS_DEFAULT: int = 200
+_TURN_INTENT_MAX_TOKENS_MIN: int = 50
+# ACT and CHARTER sit behind their own, stricter confidence floors than
+# concern routing so an uncertain classifier never escalates a read into a
+# real action or a multi-turn charter interview: below the floor the turn
+# degrades to a plain explanation. 0.85 (act) / 0.8 (charter) are well
+# above the 0.6 routing floor; the 0.0/1.0 envelope is the probability range.
+_ACT_INTENT_CONFIDENCE_FLOOR_DEFAULT: float = 0.85
+_CHARTER_INTENT_CONFIDENCE_FLOOR_DEFAULT: float = 0.8
 # Group chat: one human, several agents, round-robin turns. The
 # defaults below bound a single human turn so it cannot drive unbounded
 # fan-out cost; all are operator-tunable.
@@ -219,6 +234,20 @@ class ChiefOfStaffConfig(BaseModel):
         routing_keyword_rules: Operator override for the keyword
             strategy's keyword-to-role map. Empty (default) uses the
             built-in C-Suite map; supply rules to cover bespoke roles.
+        turn_router_enabled: Enable the unified ``/meta/chat/turn`` surface
+            that classifies each operator turn to a capability. When off,
+            the endpoint 503s. Each dispatched capability still enforces
+            its own gate.
+        turn_intent_model: LLM model identifier for the turn-intent
+            classifier.
+        turn_intent_temperature: Sampling temperature for the classifier.
+        turn_intent_max_tokens: Token budget for one classification reply.
+        act_intent_confidence_floor: Minimum classifier confidence (0-1)
+            before a turn may resolve to ACT; below it the turn degrades
+            to a plain explanation rather than acting.
+        charter_intent_confidence_floor: Minimum classifier confidence
+            (0-1) before a turn may resolve to CHARTER; below it the turn
+            degrades to a plain explanation.
         group_chat_enabled: Enable the multi-agent group chat
             (``/meta/chat/group``). When off, the controller 503s.
         group_chat_max_participants: Maximum agents in one group
@@ -350,6 +379,34 @@ class ChiefOfStaffConfig(BaseModel):
         "a role with no active agent",
     )
     routing_keyword_rules: tuple[KeywordRoleRule, ...] = ()
+
+    # ── Unified turn routing ──────────────────────────────
+
+    turn_router_enabled: bool = True
+    turn_intent_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model for the turn-intent classifier LLM calls; unset "
+        "until an operator or setup selects one (never a placeholder default)",
+    )
+    turn_intent_temperature: float = Field(
+        default=_TURN_INTENT_TEMPERATURE_DEFAULT,
+        ge=_PROPOSE_TEMPERATURE_MIN,
+        le=_PROPOSE_TEMPERATURE_MAX,
+    )
+    turn_intent_max_tokens: int = Field(
+        default=_TURN_INTENT_MAX_TOKENS_DEFAULT,
+        ge=_TURN_INTENT_MAX_TOKENS_MIN,
+    )
+    act_intent_confidence_floor: float = Field(
+        default=_ACT_INTENT_CONFIDENCE_FLOOR_DEFAULT,
+        ge=0.0,
+        le=1.0,
+    )
+    charter_intent_confidence_floor: float = Field(
+        default=_CHARTER_INTENT_CONFIDENCE_FLOOR_DEFAULT,
+        ge=0.0,
+        le=1.0,
+    )
 
     # ── Multi-agent group chat ────────────────────────────
 

@@ -89,6 +89,7 @@ class PromptPurposeId(StrEnum):
     RESEARCH_SYNTHESIS = "system:research:synthesis"
     RESEARCH_PLANNING = "system:research:planning"
 
+    COS_TURN_INTENT = "system:cos:turn_intent"
     COS_ROUTING = "system:cos:routing"
     COS_PROPOSE = "system:cos:propose"
     COS_CHAT = "system:cos:chat"
@@ -330,6 +331,11 @@ _PROMPT_PURPOSE_SPECS: Final[
         PromptPurposeId.RESEARCH_PLANNING,
         PromptPurposeCategory.RESEARCH,
         "Plan the steps to answer a research brief.",
+    ),
+    (
+        PromptPurposeId.COS_TURN_INTENT,
+        PromptPurposeCategory.META,
+        "Classify an operator turn to the org capability that handles it.",
     ),
     (
         PromptPurposeId.COS_ROUTING,

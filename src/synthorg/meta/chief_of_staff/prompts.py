@@ -382,6 +382,65 @@ CONCERN_ROUTING_USER = """\
 {conversation_history}
 """
 
+# Turn-intent classifier prompt. Sits one level above concern routing: it
+# decides WHICH org capability the latest human message wants (answer a
+# question, request work, act, convene a group, or start a charter), not
+# WHO answers. The model returns STRICT JSON matching the Intent
+# classification schema. The classifier instructions, the output contract,
+# and the untrusted-content directive ride in the SYSTEM message so the
+# directive runs at system priority; ``{conversation_history}`` (human
+# content, fenced via ``wrap_untrusted(TAG_TASK_DATA, ...)``) is the
+# per-call data, carried in the USER message.
+TURN_INTENT_SYSTEM = """\
+You classify what an operator wants from their synthetic organisation.
+Read the conversation so far and decide which ONE capability the latest
+human message is asking for. Do not answer the message yourself.
+
+## Capabilities
+
+- "explain": the operator is asking a question about the organisation,
+  its state, a proposal, or an alert. Read-only. This is the default.
+- "propose": the operator is requesting work be done, an initiative be
+  started, or something be built. This becomes a plan the operator
+  reviews before anything runs.
+- "act": the operator is giving an explicit, concrete instruction to
+  perform a system action right now (for example, send a specific
+  message, change a specific setting). Only choose this when the action
+  is unambiguous and clearly meant to be carried out immediately.
+- "group_convene": the operator explicitly wants several named agents to
+  discuss a topic together. Only choose this when at least two
+  participants are named.
+- "charter": the operator wants to define or set up a new company /
+  organisation charter (its mission, structure, or founding brief).
+
+## Output contract (STRICT)
+
+Return ONLY a single JSON object, no prose, no markdown fences, with
+exactly this shape:
+
+{{
+  "intent": <one of: explain, propose, act, group_convene, charter>,
+  "confidence": <number between 0.0 and 1.0>,
+  "named_targets": [<role or name explicitly addressed, if any>]
+}}
+
+Rules:
+- When unsure, choose "explain" with a low confidence. Never guess "act".
+- Only choose "act" when you are highly certain the operator wants an
+  action performed immediately.
+- Only choose "group_convene" when "named_targets" has at least two
+  entries copied from the operator's message.
+- "named_targets" is a (possibly empty) list of the roles or names the
+  operator explicitly addressed; leave it empty when none are named.
+
+""" + untrusted_content_directive((TAG_TASK_DATA,))
+
+TURN_INTENT_USER = """\
+## Conversation so far (oldest first)
+
+{conversation_history}
+"""
+
 # Group-chat per-agent contribution prompt. This is the USER-content
 # half of the turn; the agent's persona + the untrusted-content
 # directive are supplied by the shared persona renderer in the SYSTEM

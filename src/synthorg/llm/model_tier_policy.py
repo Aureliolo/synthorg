@@ -111,6 +111,7 @@ _TIER_POLICY_SPECS: Final[tuple[tuple[PromptPurposeId, PromptTierKind], ...]] = 
     (PromptPurposeId.RESEARCH_TRIAGE, _S),
     (PromptPurposeId.RESEARCH_SYNTHESIS, _L),
     (PromptPurposeId.RESEARCH_PLANNING, _L),
+    (PromptPurposeId.COS_TURN_INTENT, _S),
     (PromptPurposeId.COS_ROUTING, _S),
     (PromptPurposeId.COS_PROPOSE, _L),
     (PromptPurposeId.COS_CHAT, _M),
