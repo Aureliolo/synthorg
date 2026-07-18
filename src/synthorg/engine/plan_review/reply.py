@@ -303,6 +303,8 @@ class LlmPlanItemReplyService:
                     timeout=self._timeout_seconds,
                 )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- an inline reply is a best-effort side
+            # channel; a failed reply must never fail the operator's comment.
             reraise_critical(exc)
             logger.warning(
                 PLAN_REVIEW_REPLY_FAILED,
