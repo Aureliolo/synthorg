@@ -53,8 +53,9 @@ from synthorg.observability.events.decomposition import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
+from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider, ProviderSelector
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
@@ -195,7 +196,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         "_config",
         "_cost_tracker",
         "_fallback",
-        "_provider",
+        "_provider_selector",
         "_shutdown_checker",
         "_tool_provider",
     )
@@ -203,7 +204,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
     def __init__(  # noqa: PLR0913 -- keyword-only dependency injection
         self,
         *,
-        provider: CompletionProvider,
+        provider_selector: ProviderSelector,
         fallback: DecompositionStrategy,
         tool_provider: DecompositionToolProvider | None = None,
         config: AgentSessionDecompositionConfig | None = None,
@@ -213,10 +214,12 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         """Initialise the agent-session decomposition strategy.
 
         Args:
-            provider: LLM completion provider driving the planning loop.
-            fallback: Single-shot strategy used when no owner is staffed or
-                the session submits no usable plan (a greenlight is never
-                blocked on the session).
+            provider_selector: Resolves the completion client for the owner's
+                own ``identity.model.provider``, so the planning session runs on
+                the provider the owner is bound to rather than a shared default.
+            fallback: Single-shot strategy used when no owner is staffed, the
+                owner's provider is unresolvable, or the session submits no
+                usable plan (a greenlight is never blocked on the session).
             tool_provider: Optional builder of the owner's read/research
                 planning tools; ``None`` runs the session with only the
                 terminal submit tool. Any non-read-only tool it returns is
@@ -229,7 +232,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 graceful shutdown is in progress; the planning loop halts at
                 the next turn boundary when it fires.
         """
-        self._provider = provider
+        self._provider_selector = provider_selector
         self._fallback = fallback
         self._tool_provider = tool_provider
         self._config = config or AgentSessionDecompositionConfig()
@@ -268,8 +271,25 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             )
             return await self._fallback.decompose(task, context)
 
+        try:
+            provider = self._provider_selector(owner)
+        except DriverNotRegisteredError as exc:
+            # The owner is pinned to a provider the registry does not know;
+            # fall back rather than dispatch to a default gateway. Only this
+            # expected miss degrades to the single-shot decomposer -- any other
+            # selector failure (a programming, state, or wiring bug) propagates.
+            logger.warning(
+                DECOMPOSITION_SESSION_FALLBACK,
+                task_id=str(task.id),
+                owner_id=str(owner.id),
+                reason="owner_provider_unresolved",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return await self._fallback.decompose(task, context)
+
         capture = _PlanCapture()
-        result = await self._run_session(task, context, owner, capture)
+        result = await self._run_session(task, context, owner, provider, capture)
         plan = capture.plan
         if plan is not None and len(plan.subtasks) <= context.max_subtasks:
             logger.info(
@@ -295,9 +315,17 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         task: Task,
         context: DecompositionContext,
         owner: AgentIdentity,
+        provider: CompletionProvider,
         capture: _PlanCapture,
     ) -> ExecutionResult:
         """Run the bounded planning loop as *owner*, capturing the plan.
+
+        Args:
+            task: The task being decomposed.
+            context: The decomposition context (depth, owner, limits).
+            owner: The staffed owner running the planning session.
+            provider: The completion client for the owner's bound provider.
+            capture: Sink the terminal submit tool writes the plan into.
 
         Returns:
             The loop's execution result (termination reason + error detail
@@ -323,7 +351,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         ):
             return await loop.execute(
                 context=ctx,
-                provider=self._provider,
+                provider=provider,
                 tool_invoker=invoker,
                 budget_checker=self._budget_checker(),
                 shutdown_checker=self._shutdown_checker,

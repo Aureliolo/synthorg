@@ -52,7 +52,7 @@ from synthorg.observability.events.plan_review import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import ProviderSelector
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
 
@@ -71,14 +71,14 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         "_clock",
         "_config",
         "_cost_tracker",
-        "_provider",
+        "_provider_selector",
         "_shutdown_checker",
     )
 
     def __init__(
         self,
         *,
-        provider: CompletionProvider,
+        provider_selector: ProviderSelector,
         config: PlanReviewPanelConfig | None = None,
         cost_tracker: CostTrackerProtocol | None = None,
         shutdown_checker: ShutdownChecker | None = None,
@@ -87,7 +87,9 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         """Initialise the agent-session plan-review panel.
 
         Args:
-            provider: LLM completion provider driving each review session.
+            provider_selector: Resolves the completion client for a panellist's
+                own ``identity.model.provider``, so each reviewer runs on the
+                provider it is bound to rather than a shared default.
             config: Optional panel configuration (size, turn cap, temperature,
                 cost ceiling). Uses defaults when omitted.
             cost_tracker: Optional cost tracker; when wired each review
@@ -97,7 +99,7 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
                 next turn boundary when it fires.
             clock: Injectable time source (defaults to the system clock).
         """
-        self._provider = provider
+        self._provider_selector = provider_selector
         self._config = config or PlanReviewPanelConfig()
         self._cost_tracker = cost_tracker
         self._shutdown_checker = shutdown_checker
@@ -169,6 +171,11 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
         """
         capture = VerdictCapture()
         try:
+            # Dispatch on the panellist's own bound provider, never a shared
+            # default: an unregistered provider raises here and degrades this
+            # panellist to "no verdict" rather than dispatching to the wrong
+            # gateway (a greenlight is never blocked on the panel).
+            provider = self._provider_selector(reviewer)
             invoker = self._build_invoker(reviewer, capture)
             ctx = self._build_context(reviewer, task, rendered_plan)
             logger.info(
@@ -188,7 +195,7 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             ):
                 result = await loop.execute(
                     context=ctx,
-                    provider=self._provider,
+                    provider=provider,
                     tool_invoker=invoker,
                     budget_checker=self._budget_checker(),
                     shutdown_checker=self._shutdown_checker,

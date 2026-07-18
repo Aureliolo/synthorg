@@ -31,6 +31,7 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from tests._shared import as_uuid, mock_of, sid
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.meta.chief_of_staff.propose_fakes import (
@@ -43,6 +44,13 @@ from tests.unit.meta.chief_of_staff.propose_fakes import (
 pytestmark = pytest.mark.unit
 
 _START = datetime(2026, 5, 19, 9, 0, 0, tzinfo=UTC)
+
+
+def _routing_ref(
+    provider: str = "example-provider", model_id: str = "example-small-001"
+) -> str:
+    """A bound ``{provider, model_id}`` routing model ref bound to *provider*."""
+    return serialize_model_ref(ModelRef(provider=provider, model_id=model_id))
 
 
 def _user_turn(text: str) -> tuple[ConversationTurn, ...]:
@@ -323,10 +331,10 @@ class TestBuildRoleRouter:
         registry = await _registry(_identity(name="Casey", role="CFO"))
         router = build_role_router(
             config=ChiefOfStaffConfig(
-                routing_enabled=False, routing_model="example-small-001"
+                routing_enabled=False, routing_model=_routing_ref()
             ),
             provider_registry=ProviderRegistry(
-                {"p": mock_of[BaseCompletionProvider]()}
+                {"example-provider": mock_of[BaseCompletionProvider]()}
             ),
             agent_registry=registry,
         )
@@ -375,10 +383,10 @@ class TestBuildRoleRouter:
             config=ChiefOfStaffConfig(
                 routing_enabled=True,
                 routing_strategy="llm",
-                routing_model="example-small-001",
+                routing_model=_routing_ref(),
             ),
             provider_registry=ProviderRegistry(
-                {"p": mock_of[BaseCompletionProvider]()}
+                {"example-provider": mock_of[BaseCompletionProvider]()}
             ),
             agent_registry=registry,
         )
@@ -389,6 +397,53 @@ class TestBuildRoleRouter:
         router = build_role_router(
             config=ChiefOfStaffConfig(routing_enabled=True, routing_strategy="llm"),
             provider_registry=ProviderRegistry({}),
+            agent_registry=registry,
+        )
+        assert router is None
+
+    async def test_llm_strategy_provider_less_ref_returns_none(self) -> None:
+        # A bare ref (no provider) is never auto-resolved to a gateway.
+        registry = await _registry(_identity(name="Casey", role="CFO"))
+        router = build_role_router(
+            config=ChiefOfStaffConfig(
+                routing_enabled=True,
+                routing_strategy="llm",
+                routing_model=_routing_ref(provider=""),
+            ),
+            provider_registry=ProviderRegistry(
+                {"example-provider": mock_of[BaseCompletionProvider]()}
+            ),
+            agent_registry=registry,
+        )
+        assert router is None
+
+    async def test_llm_strategy_unregistered_provider_returns_none(self) -> None:
+        registry = await _registry(_identity(name="Casey", role="CFO"))
+        router = build_role_router(
+            config=ChiefOfStaffConfig(
+                routing_enabled=True,
+                routing_strategy="llm",
+                routing_model=_routing_ref(provider="ghost-provider"),
+            ),
+            provider_registry=ProviderRegistry(
+                {"example-provider": mock_of[BaseCompletionProvider]()}
+            ),
+            agent_registry=registry,
+        )
+        assert router is None
+
+    async def test_llm_strategy_blank_model_id_returns_none(self) -> None:
+        # A registered provider but an empty model id -> unbuildable router.
+        registry = await _registry(_identity(name="Casey", role="CFO"))
+        router = build_role_router(
+            config=ChiefOfStaffConfig(
+                routing_enabled=True,
+                routing_strategy="llm",
+                routing_model=_routing_ref(model_id=""),
+            ),
+            provider_registry=ProviderRegistry(
+                {"example-provider": mock_of[BaseCompletionProvider]()}
+            ),
             agent_registry=registry,
         )
         assert router is None

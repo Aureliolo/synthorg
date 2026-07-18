@@ -25,9 +25,8 @@ Settings live in the `cockpit` namespace (`src/synthorg/settings/definitions/coc
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `cockpit.steering_proposer_enabled` | bool | `false` | Enable the LLM-backed propose-mode proposer. |
-| `cockpit.steering_proposer_model` | str | `""` | Model id for the proposer; empty falls back to a no-op proposer. |
-| `cockpit.steering_proposer_provider` | str | `""` | Provider for the proposer; empty uses the first registered provider. |
+| `cockpit.steering_proposer_enabled` | bool | `true` | Enable the LLM-backed propose-mode proposer. |
+| `cockpit.steering_proposer_model` | str | `""` | Provider+model reference (`MODEL_REF`, carries both); empty falls back to the no-op proposer. A non-empty value must bind both provider and model. |
 | `cockpit.steering_max_active_directives` | int | `100` | Cap on directives returned by the list endpoint. |
 | `cockpit.steering_propose_candidate_limit` | int | `100` | Per-status cap on in-flight candidate tasks sent to the proposer. |
 

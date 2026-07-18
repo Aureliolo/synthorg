@@ -37,6 +37,7 @@ from synthorg.observability.events.setup import (
 )
 from synthorg.persistence.state import persistence_of
 from synthorg.providers.state import provider_management_of
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.service_protocol import SettingsServiceProtocol
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 from synthorg.templates.loader import LoadedTemplate
@@ -176,17 +177,84 @@ async def auto_create_template_agents(
     return agents_to_summaries(agents)
 
 
+def _agent_model(agent: dict[str, object]) -> dict[str, object] | None:
+    """Return an agent's assigned model dict when it carries a non-blank id.
+
+    Returns:
+        The ``model`` sub-dict, or ``None`` when no model is assigned.
+    """
+    model = agent.get("model")
+    if isinstance(model, dict):
+        model_id = model.get("model_id")
+        if isinstance(model_id, str) and model_id.strip():
+            return model
+    return None
+
+
 def _agent_model_id(agent: dict[str, object]) -> str | None:
     """Return an agent's assigned model id, or ``None`` when unset.
 
     Returns:
         The non-blank ``model.model_id`` string, or ``None``.
     """
-    model = agent.get("model")
-    if isinstance(model, dict):
-        model_id = model.get("model_id")
-        if isinstance(model_id, str) and model_id.strip():
-            return model_id
+    model = _agent_model(agent)
+    model_id = model.get("model_id") if model else None
+    return model_id if isinstance(model_id, str) else None
+
+
+def _agent_model_ref(agent: dict[str, object]) -> str | None:
+    """Return an agent's model as a bound ``{provider, model_id}`` MODEL_REF.
+
+    A settings write derived from a roster agent must carry the agent's own
+    provider so no auto-resolution against "whichever provider serves the id"
+    is ever possible. Returns ``None`` unless BOTH provider and model id are
+    non-blank on the agent's assignment.
+
+    Returns:
+        A serialized bound model reference, or ``None``.
+    """
+    model = _agent_model(agent)
+    if model is None:
+        return None
+    provider = model.get("provider")
+    model_id = model.get("model_id")
+    if (
+        isinstance(provider, str)
+        and provider.strip()
+        and isinstance(model_id, str)
+        and model_id.strip()
+    ):
+        return serialize_model_ref(ModelRef(provider=provider, model_id=model_id))
+    return None
+
+
+def _first_agent_with_model(
+    agents: list[dict[str, object]],
+    *,
+    tier: str | None,
+    require_provider: bool = False,
+) -> dict[str, object] | None:
+    """First agent carrying a model, preferring one matched to *tier*.
+
+    Args:
+        agents: Roster agent dicts to search.
+        tier: Preferred tier; matched agents are considered first.
+        require_provider: When ``True``, skip agents whose model carries no
+            bound provider, so a ref-returning caller does not stop at a
+            provider-less agent when a later agent has a bound assignment.
+
+    Returns:
+        The chosen agent dict, or ``None`` when none carries a (bound) model.
+    """
+    preferred = [a for a in agents if a.get("tier") == tier] if tier else []
+    for pool in (preferred, agents):
+        for agent in pool:
+            model = _agent_model(agent)
+            if model is None:
+                continue
+            provider = model.get("provider")
+            if not require_provider or (isinstance(provider, str) and provider.strip()):
+                return agent
     return None
 
 
@@ -195,20 +263,26 @@ def pick_model_for_tier(agents: list[dict[str, object]], tier: str) -> str | Non
 
     Prefers an agent already matched to *tier* (so a per-feature model
     tracks the declared tier policy), falling back to any agent that
-    carries a model assignment. Shared by the setup auto-provision and the
-    wizard's model-recommendations endpoint so both derive a per-feature
-    model from a single source (the tier policy), never a placeholder.
+    carries a model assignment. The bare-id form feeds the wizard's
+    model-recommendations endpoint (a UI highlight); settings writes use the
+    ``_ref`` twin so the persisted value carries the provider.
 
     Returns:
         A model id, or ``None`` when no agent carries a model.
     """
-    preferred = [a for a in agents if a.get("tier") == tier]
-    for pool in (preferred, agents):
-        for agent in pool:
-            model_id = _agent_model_id(agent)
-            if model_id is not None:
-                return model_id
-    return None
+    agent = _first_agent_with_model(agents, tier=tier)
+    return _agent_model_id(agent) if agent else None
+
+
+def pick_model_ref_for_tier(agents: list[dict[str, object]], tier: str) -> str | None:
+    """Choose a bound ``{provider, model_id}`` ref for *tier*, then any agent.
+
+    Returns:
+        A serialized bound model reference, or ``None`` when no agent carries
+        a bound (provider + model) assignment.
+    """
+    agent = _first_agent_with_model(agents, tier=tier, require_provider=True)
+    return _agent_model_ref(agent) if agent else None
 
 
 def pick_decomposition_model(agents: list[dict[str, object]]) -> str | None:
@@ -216,23 +290,28 @@ def pick_decomposition_model(agents: list[dict[str, object]]) -> str | None:
 
     Prefers a top-tier (``large``) agent's model -- the strongest the catalogue
     supports -- so the coordinator decomposes work with a capable model,
-    falling back to any agent that carries a model assignment. Shared by the
-    completion auto-select and the wizard's model-recommendations endpoint.
+    falling back to any agent that carries a model assignment. Bare-id form for
+    the wizard's model-recommendations endpoint (a UI highlight).
 
     Returns:
         A model id, or ``None`` when no agent carries a model.
     """
-    large = [a for a in agents if a.get("tier") == "large"]
-    for pool in (large, agents):
-        for agent in pool:
-            model_id = _agent_model_id(agent)
-            if model_id is not None:
-                return model_id
-    return None
+    agent = _first_agent_with_model(agents, tier="large")
+    return _agent_model_id(agent) if agent else None
+
+
+def pick_decomposition_model_ref(agents: list[dict[str, object]]) -> str | None:
+    """Choose a bound ``{provider, model_id}`` ref for the decomposition model.
+
+    Returns:
+        A serialized bound model reference, or ``None`` when no agent carries a
+        bound assignment.
+    """
+    agent = _first_agent_with_model(agents, tier="large", require_provider=True)
+    return _agent_model_ref(agent) if agent else None
 
 
 async def ensure_per_feature_models(
-    app_state: AppState,
     settings_svc: SettingsServiceProtocol,
 ) -> None:
     """Auto-fill the research + Chief-of-Staff + charter models when unset.
@@ -243,31 +322,24 @@ async def ensure_per_feature_models(
     this provisions a model from the matched roster before the runtime
     rebuild on ``/setup/complete``. The tier for each feature comes from the
     single tier policy (``tier_for_purpose``): research/charter/propose take
-    a large model, chat/narrator a medium one, routing a small one. Only
-    blank settings are written, so an operator's explicit choice is
-    preserved.
+    a large model, chat/narrator a medium one, routing a small one. The
+    persisted value is always a bound ``{provider, model_id}`` reference
+    taken from the roster agent's own assignment: there is no bare-model
+    fallback, so a feature stays unset (rather than auto-resolving a
+    provider) when no agent carries a bound model. Only blank settings are
+    written, so an operator's explicit choice is preserved.
     """
     from synthorg.api.controllers.setup_agents import (  # noqa: PLC0415
         get_existing_agents,
     )
 
     try:
-        # The roster read and the provider-model resolution are independent,
-        # so fan them out concurrently (matching this module's TaskGroup use
-        # in auto_create_template_agents).
-        async with asyncio.TaskGroup() as tg:
-            agents_task = tg.create_task(get_existing_agents(settings_svc))
-            available_task = tg.create_task(collect_model_ids(app_state))
-        agents = agents_task.result()
-        available = available_task.result()
-        fallback = available[0] if available else None
-        research_model = pick_decomposition_model(agents) or fallback
-        await _set_model_if_blank(settings_svc, "research", "model", research_model)
+        agents = await get_existing_agents(settings_svc)
+        research_ref = pick_decomposition_model_ref(agents)
+        await _set_model_if_blank(settings_svc, "research", "model", research_ref)
         for namespace, key, purpose in _PER_FEATURE_MODEL_SETTINGS:
-            model_id = (
-                pick_model_for_tier(agents, tier_for_purpose(purpose)) or fallback
-            )
-            await _set_model_if_blank(settings_svc, namespace, key, model_id)
+            model_ref = pick_model_ref_for_tier(agents, tier_for_purpose(purpose))
+            await _set_model_if_blank(settings_svc, namespace, key, model_ref)
     except* Exception as eg:
         # reraise_critical unwraps an ExceptionGroup recursively, so hand it
         # the whole group: a MemoryError/RecursionError leaf at any nesting
@@ -287,20 +359,20 @@ async def _set_model_if_blank(
     settings_svc: SettingsServiceProtocol,
     namespace: str,
     key: str,
-    model_id: str | None,
+    model_ref: str | None,
 ) -> None:
-    """Persist *model_id* under ``namespace/key`` only when currently blank."""
-    if model_id is None:
+    """Persist bound ref *model_ref* under ``namespace/key`` when blank."""
+    if model_ref is None:
         return
     entry = await settings_svc.get(namespace, key)
     if isinstance(entry.value, str) and entry.value.strip():
         return
-    await settings_svc.set(namespace, key, model_id)
+    await settings_svc.set(namespace, key, model_ref)
     logger.info(
         SETUP_FEATURE_MODEL_SELECTED,
         namespace=namespace,
         key=key,
-        model_id=model_id,
+        model_ref=model_ref,
     )
 
 

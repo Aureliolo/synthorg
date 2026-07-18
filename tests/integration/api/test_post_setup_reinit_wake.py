@@ -19,12 +19,13 @@ from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.errors import RuntimeServicesBuildError
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import has_active_provider
+from synthorg.settings.state import SettingsStateSlice
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
 )
 from synthorg.workers.state import RuntimeStateSlice
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, wire_decomposition_model
 from tests.integration.api.conftest import build_runtime_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -37,7 +38,7 @@ async def test_reinit_wakes_worker_and_coordinator_on_provider_config(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
 ) -> None:
-    app = build_runtime_app(
+    app = await build_runtime_app(
         fake_persistence,
         fake_message_bus,
         with_provider=False,
@@ -68,6 +69,11 @@ async def test_reinit_wakes_worker_and_coordinator_on_provider_config(
                 },
             ),
         )
+        # The reinit rebuilds the coordinator eagerly, which needs an explicit
+        # coordination.decomposition_model binding.
+        await wire_decomposition_model(
+            app_state.slice(SettingsStateSlice).settings_service
+        )
 
         await post_setup_reinit(app_state)
 
@@ -93,7 +99,7 @@ async def test_reinit_raises_when_coordinator_swap_fails(
     ``post_setup_reinit``'s caller keeps ``setup_complete=false`` rather
     than presenting a half-configured runtime as complete.
     """
-    app = build_runtime_app(
+    app = await build_runtime_app(
         fake_persistence,
         fake_message_bus,
         with_provider=False,
@@ -109,6 +115,11 @@ async def test_reinit_raises_when_coordinator_swap_fails(
                     )
                 },
             ),
+        )
+        # The reinit rebuilds the coordinator eagerly, which needs an explicit
+        # coordination.decomposition_model binding.
+        await wire_decomposition_model(
+            app_state.slice(SettingsStateSlice).settings_service
         )
 
         def _boom(_coordinator: object) -> None:

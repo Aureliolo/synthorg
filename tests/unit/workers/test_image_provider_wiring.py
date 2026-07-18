@@ -7,7 +7,9 @@ import pytest
 
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.scripted import ScriptedDriver
+from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.design.provider_image_provider import ProviderImageProvider
 from synthorg.workers._image_provider_wiring import build_image_provider_or_none
@@ -18,12 +20,14 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.unit
 
-_MODEL = "example-image-001"
+_MODEL_ID = "example-image-001"
+# design.image_model is an explicit (provider, model) MODEL_REF.
+_MODEL = serialize_model_ref(ModelRef(provider="example-provider", model_id=_MODEL_ID))
 
 
 def _caps(*, image: bool) -> ModelCapabilities:
     return ModelCapabilities(
-        model_id=_MODEL,
+        model_id=_MODEL_ID,
         provider="example-provider",
         max_context_tokens=1,
         max_output_tokens=1,
@@ -48,7 +52,7 @@ def _resolver(*, enabled: bool, model: str) -> ConfigResolver:
 def _registry(*, image: bool) -> ProviderRegistry:
     provider = ScriptedDriver(capabilities=_caps(image=image))
     registry = mock_of[ProviderRegistry]()
-    registry.resolve_for_model.return_value = ("example-provider", provider)
+    registry.get.return_value = provider
     return cast("ProviderRegistry", registry)
 
 
@@ -110,7 +114,9 @@ async def test_returns_none_when_model_resolve_raises(
 ) -> None:
     _patch_resolver(monkeypatch, _resolver(enabled=True, model=_MODEL))
     registry = mock_of[ProviderRegistry]()
-    registry.resolve_for_model.side_effect = KeyError(_MODEL)
+    registry.get.side_effect = DriverNotRegisteredError(
+        "not registered", context={"provider": "example-provider"}
+    )
     result = await build_image_provider_or_none(
         _app_state(cast("ProviderRegistry", registry))
     )
@@ -129,7 +135,7 @@ async def test_returns_none_when_provider_not_image_generation_protocol(
 
     non_image_provider = SimpleNamespace(get_model_capabilities=_caps_call)
     registry = mock_of[ProviderRegistry]()
-    registry.resolve_for_model.return_value = ("example-provider", non_image_provider)
+    registry.get.return_value = non_image_provider
     result = await build_image_provider_or_none(
         _app_state(cast("ProviderRegistry", registry))
     )

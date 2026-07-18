@@ -387,17 +387,24 @@ model's provider (`AgentEngine._resolve_provider_instance`), so the API actually
 called and the `CostRecord.provider` name are always the same provider (attribution
 parity). If the routed provider cannot be resolved from the registry, the engine keeps
 the pre-routing provider + identity together so a routing miss is never a
-mis-attribution. `names[0]` stays the labelled default/bootstrap provider, and
-auxiliary services (decomposition, evolution, compaction, red-team, vision, the work
-pipeline) stay on that default provider in v1.
+mis-attribution. System / infra services that carry no dedicated per-feature
+model (decomposition, evolution, compaction, red-team, vision, the conflict
+judge, the security evaluators, the work pipeline) dispatch on the explicit
+operator-set `providers.default_provider`, resolved through
+`ProviderRegistry.default_provider()`: a sole registered provider is that
+default automatically, but with two or more providers the operator must name
+one and there is NO alphabetical / first-registered fallback (an ambiguous
+default leaves those services unwired rather than silently routing to whichever
+provider sorts first). Enforced by `check_no_provider_auto_pick.py`.
 
 ### Multi-Provider Model Resolution
 
 An agent binds an **exclusive `(provider, model)` pair**: `ModelConfig` requires
 both a `provider` and a `model_id`, and the agent's own model always resolves to
-that provider, never re-derived across providers. Two OpenAI-compatible gateways
-can legitimately advertise an overlapping model id (each live-discovers its own
-`/v1/models`), so a bare id can map to more than one provider; the resolver keeps
+that provider, never re-derived across providers. Two gateways speaking the same
+wire protocol can legitimately advertise an overlapping model id (each
+live-discovers its own `/v1/models`), so a bare id can map to more than one
+provider; the resolver keeps
 all variants as a candidate tuple rather than raising a collision error, and the
 binding decides which one an agent uses.
 
@@ -408,11 +415,19 @@ binding decides which one an agent uses.
   moves the agent onto a different provider. The run-time client is resolved from
   `identity.model.provider` directly (`AgentEngine._dispatch_client_for`), so the
   API called and the `CostRecord.provider` always match the agent's binding.
-- **Eligibility-first selection.** When the provider-agnostic selector *does* run
-  (feature calls, the config-selected routing strategies), it prefers
-  `agent_eligible` candidates: a provider kept out of agent work wins only when it
-  is the sole provider for the ref. Stakes routing (`models_at_or_above_tier`) and
-  agent seeding exclude ineligible providers outright.
+- **No bare-ref auto-resolution.** There is no "resolve this model id against
+  whichever provider happens to serve it" path. A model assignment always names
+  its provider: a MODEL_REF setting rejects an unbound (provider-less) value at
+  write-time, and feature builders resolve the ref's explicit provider (or the
+  explicit default system provider), never a first-registered pick. The
+  provider-agnostic tier archetype (`example-<tier>-001`) a pin records is still
+  vendor-neutral; it is the *provider* that must be explicit, resolved once at
+  dispatch, never auto-selected across gateways.
+- **Eligibility-first selection.** When the config-selected routing strategies
+  run over their explicit provider set, they prefer `agent_eligible` candidates:
+  a provider kept out of agent work wins only when it is the sole provider for
+  the ref. Stakes routing (`models_at_or_above_tier`) and agent seeding exclude
+  ineligible providers outright.
 
 Two built-in selectors are provided:
 

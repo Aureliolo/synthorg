@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.provider import PROVIDER_TIER_LLM_RECOMMENDED
+from synthorg.observability.events.provider import PROVIDER_TIER_CLASSIFIER_UNAVAILABLE
 from synthorg.observability.events.settings import (
     SETTINGS_FETCH_FAILED,
     SETTINGS_SET_FAILED,
@@ -178,14 +178,14 @@ async def build_tier_recommender(app_state: AppState) -> LlmTierRecommender:
     resolver = app_state.slice(SettingsStateSlice).config_resolver
     if resolver is None:
         logger.warning(
-            PROVIDER_TIER_LLM_RECOMMENDED,
+            PROVIDER_TIER_CLASSIFIER_UNAVAILABLE,
             namespace=_NAMESPACE,
             reason="classifier_no_settings_backend",
         )
         raise TierClassifierModelUnsetError
     if not await resolver.get_bool(_NAMESPACE, _CLASSIFIER_ENABLED_KEY):
         logger.warning(
-            PROVIDER_TIER_LLM_RECOMMENDED,
+            PROVIDER_TIER_CLASSIFIER_UNAVAILABLE,
             namespace=_NAMESPACE,
             key=_CLASSIFIER_ENABLED_KEY,
             reason="classifier_disabled",
@@ -194,7 +194,7 @@ async def build_tier_recommender(app_state: AppState) -> LlmTierRecommender:
     ref = parse_model_ref(await resolver.get_str(_NAMESPACE, _CLASSIFIER_MODEL_KEY))
     if not ref.model_id.strip():
         logger.warning(
-            PROVIDER_TIER_LLM_RECOMMENDED,
+            PROVIDER_TIER_CLASSIFIER_UNAVAILABLE,
             namespace=_NAMESPACE,
             key=_CLASSIFIER_MODEL_KEY,
             reason="classifier_model_unset",
@@ -203,13 +203,12 @@ async def build_tier_recommender(app_state: AppState) -> LlmTierRecommender:
     provider = resolve_ref_provider(
         app_state,
         ref,
-        active=None,
-        event=PROVIDER_TIER_LLM_RECOMMENDED,
+        event=PROVIDER_TIER_CLASSIFIER_UNAVAILABLE,
         subject="tier classifier",
     )
     if provider is None:
         logger.warning(
-            PROVIDER_TIER_LLM_RECOMMENDED,
+            PROVIDER_TIER_CLASSIFIER_UNAVAILABLE,
             namespace=_NAMESPACE,
             key=_CLASSIFIER_MODEL_KEY,
             provider=ref.provider,

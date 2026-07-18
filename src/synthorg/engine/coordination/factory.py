@@ -30,7 +30,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
     COORDINATION_FACTORY_BUILT,
 )
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider, ProviderSelector
 
 if TYPE_CHECKING:
     # config.schema would cycle here (it pulls api -> engine); the concrete
@@ -135,6 +135,7 @@ def build_coordinator(  # noqa: PLR0913
     task_assignment_config: TaskAssignmentConfig,
     provider: CompletionProvider | None = None,
     decomposition_model: str | None = None,
+    provider_selector: ProviderSelector | None = None,
     decomposition_strategy: str = "agent-session",
     decomposition_tool_provider: DecompositionToolProvider | None = None,
     decomposition_cost_tracker: CostTrackerProtocol | None = None,
@@ -178,6 +179,11 @@ def build_coordinator(  # noqa: PLR0913
             fallback when ``routing_scorer_config`` is not provided).
         provider: Optional LLM provider for decomposition.
         decomposition_model: Optional model ID for decomposition.
+        provider_selector: Resolves the completion client for an owner's own
+            ``identity.model.provider``; required only for the ``agent-session``
+            strategy when *provider* is given, so the owner-run session
+            dispatches on the owner's bound provider rather than the boot
+            default. The single-shot ``llm`` strategy needs no selector.
         decomposition_strategy: Which decomposer to build -- ``"agent-session"``
             (default; owner-run planning loop) or ``"llm"`` (single-shot). Read
             from ``coordination.decomposition_strategy`` at boot.
@@ -245,6 +251,7 @@ def build_coordinator(  # noqa: PLR0913
         decomposition_model,
         strategy_name=decomposition_strategy,
         tool_provider=decomposition_tool_provider,
+        provider_selector=provider_selector,
         cost_tracker=decomposition_cost_tracker,
         shutdown_checker=session_shutdown_checker,
         agent_session_max_turns=agent_session_max_turns,

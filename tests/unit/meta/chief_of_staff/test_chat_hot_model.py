@@ -16,6 +16,7 @@ from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import ChatQuery
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
@@ -48,6 +49,9 @@ async def test_chat_model_read_live(settings: SettingsService) -> None:
     await chat.ask(query, _snap())
     assert provider.complete.await_args.args[1] == "baked-chat-001"
 
-    await settings.set("chief_of_staff", "chat_model", "live-chat-001")
+    live = serialize_model_ref(
+        ModelRef(provider="example-provider", model_id="live-chat-001")
+    )
+    await settings.set("chief_of_staff", "chat_model", live)
     await chat.ask(query, _snap())
     assert provider.complete.await_args.args[1] == "live-chat-001"

@@ -25,7 +25,7 @@ from synthorg.api.controllers.setup._embedder_setup import (
     ensure_per_feature_models as _ensure_per_feature_models,
 )
 from synthorg.api.controllers.setup._embedder_setup import (
-    pick_decomposition_model as _pick_decomposition_model,
+    pick_decomposition_model_ref as _pick_decomposition_model_ref,
 )
 from synthorg.api.controllers.setup._runtime_wiring import (
     COMPLETE_LOCK as _COMPLETE_LOCK,
@@ -189,10 +189,18 @@ async def _run_embedder_auto_select(
     # hint -- mirroring the same allowance in ``_validate_completion_prereqs``.
     provider_registry = app_state.slice(ProvidersStateSlice).registry
     if provider_registry is not None:
-        provider_names: list[str] = list(provider_registry.list_providers())
+        provider_preset_name = provider_registry.default_provider_resolved_name()
     else:
-        provider_names = list(await provider_management_of(app_state).list_providers())
-    provider_preset_name = provider_names[0] if provider_names else None
+        # Empty-company boot: no runtime registry / bound default exists yet, so
+        # the embedder's tier-inference hint (NOT an LLM dispatch binding) falls
+        # back to the first persisted provider -- exempt from the no-auto-pick
+        # gate because it is a tier hint, not a dispatch binding.
+        persisted = list(await provider_management_of(app_state).list_providers())
+        provider_preset_name = (
+            persisted[0]  # lint-allow: provider-auto-pick -- tier hint
+            if persisted
+            else None
+        )
     has_gpu = await _read_has_gpu_setting(settings_svc)
     try:
         model_ids = await _collect_model_ids(app_state)
@@ -214,7 +222,6 @@ async def _run_embedder_auto_select(
 
 
 async def _ensure_decomposition_model(
-    app_state: AppState,
     settings_svc: SettingsServiceProtocol,
 ) -> None:
     """Auto-select the coordinator's decomposition model as a safety net.
@@ -223,32 +230,31 @@ async def _ensure_decomposition_model(
     non-blank ``coordination.decomposition_model``. The wizard's model-selection
     panel prefills a recommendation, but the operator can advance without
     choosing one, so this fills a sensible default from the matched agent roster
-    (a top-cost-tier agent's model, falling back to any catalogue model) before
+    (a top-cost-tier agent's bound ``{provider, model_id}`` assignment) before
     the runtime rebuild on ``/setup/complete`` -- a blank model would otherwise
-    fail the rebuild.
+    fail the rebuild. There is no bare-catalogue fallback: when no roster agent
+    carries a bound assignment the setting stays blank (the operator must pick),
+    since a provider-less value could not be dispatched anyway.
     """
     entry = await settings_svc.get("coordination", "decomposition_model")
     current = entry.value
     if isinstance(current, str) and current.strip():
         return
-    model_id = _pick_decomposition_model(await get_existing_agents(settings_svc))
-    if model_id is None:
-        available = await _collect_model_ids(app_state)
-        model_id = available[0] if available else None
-    if model_id is None:
+    model_ref = _pick_decomposition_model_ref(await get_existing_agents(settings_svc))
+    if model_ref is None:
         logger.warning(
             SETUP_COMPLETE_CHECK_ERROR,
             check="auto_select_decomposition_model",
-            error_type="NoModelAvailable",
+            error_type="NoBoundModelAvailable",
             error=(
-                "no catalogue model available for the decomposition model; "
-                "the coordinator rebuild on /setup/complete will require a "
-                "model to be configured first"
+                "no roster agent carries a bound (provider, model) assignment "
+                "for the decomposition model; the coordinator rebuild on "
+                "/setup/complete will require a model to be configured first"
             ),
         )
         return
-    await settings_svc.set("coordination", "decomposition_model", model_id)
-    logger.info(SETUP_DECOMPOSITION_MODEL_SELECTED, model_id=model_id)
+    await settings_svc.set("coordination", "decomposition_model", model_ref)
+    logger.info(SETUP_DECOMPOSITION_MODEL_SELECTED, model_ref=model_ref)
 
 
 async def _read_has_gpu_setting(settings_svc: SettingsServiceProtocol) -> bool | None:
@@ -361,11 +367,11 @@ async def _finalize_completion(
     # The coordinator builds eagerly during reinit and requires a non-blank
     # decomposition model; the wizard's picker is optional, so fill a sensible
     # default from the matched roster before the rebuild.
-    await _ensure_decomposition_model(app_state, settings_svc)
+    await _ensure_decomposition_model(settings_svc)
     # On-by-default research + Chief-of-Staff chat read their own models;
     # fill sensible defaults from the roster before the rebuild so the
     # post-setup feature rewire can bring research online live.
-    await _ensure_per_feature_models(app_state, settings_svc)
+    await _ensure_per_feature_models(settings_svc)
     # Reload providers + bootstrap agents BEFORE persisting the completion flag.
     # ``_post_setup_reinit`` propagates failures so a broken provider config or
     # bootstrap error leaves the flag at ``false``; the operator fixes the

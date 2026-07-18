@@ -13,6 +13,7 @@ import pytest
 from synthorg.knowledge.constants import KNOWLEDGE_SYNTHESIS_DEFAULT_MAX_CHUNKS
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.settings import definitions as _settings_definitions  # noqa: F401
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests._shared import mock_of
@@ -60,9 +61,12 @@ async def test_synthesis_model_resolves_through_env(
 
 async def test_synthesis_model_set_succeeds(service: SettingsService) -> None:
     repo: AsyncMock = service._repository  # type: ignore[assignment]
-    await service.set("knowledge", "synthesis_model", "example-large-001")
+    ref = serialize_model_ref(
+        ModelRef(provider="example-provider", model_id="example-large-001")
+    )
+    await service.set("knowledge", "synthesis_model", ref)
     repo.save.assert_awaited_once()
     (saved_row,) = repo.save.await_args.args
     assert saved_row.namespace == "knowledge"
     assert saved_row.key == "synthesis_model"
-    assert saved_row.value == "example-large-001"
+    assert saved_row.value == ref

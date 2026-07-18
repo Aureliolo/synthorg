@@ -358,8 +358,9 @@ async def _build_and_wire_research(
     from synthorg.settings.model_ref import parse_model_ref  # noqa: PLC0415
 
     # ``research.model`` is a model-assignment setting storing a ``ModelRef``:
-    # the provider travels with the model (the picker writes both). An empty
-    # ref provider still means "first registered provider".
+    # the provider travels with the model (the picker writes both). A blank
+    # ref provider falls back to the explicit default system provider, never
+    # a first-registered pick.
     ref = parse_model_ref((await runtime_settings.get("research", "model")).value)
     model = ref.model_id.strip()
     if not model:
@@ -369,20 +370,30 @@ async def _build_and_wire_research(
             note="research model unset; wiring skipped",
         )
         return
-    provider_names = provider_registry.list_providers()
-    if not provider_names:
-        logger.info(
+    provider_name = ref.provider.strip()
+    if provider_name and provider_name not in provider_registry:
+        logger.warning(
             API_APP_STARTUP,
             service="research_engine",
-            note="no providers registered; wiring skipped",
+            note="configured research provider not registered; wiring skipped",
+            provider_name=provider_name,
         )
         return
-    provider_name = ref.provider.strip()
     provider = (
         provider_registry.get(provider_name)
-        if provider_name and provider_name in provider_registry
-        else provider_registry.get(provider_names[0])
+        if provider_name
+        else provider_registry.default_provider()
     )
+    if provider is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="research_engine",
+            note=(
+                "no default system provider resolvable for research; wiring "
+                "skipped until providers.default_provider is set"
+            ),
+        )
+        return
     service = build_research_service(
         runs_repo=persistence_of(app_state).research_runs,
         provider=provider,

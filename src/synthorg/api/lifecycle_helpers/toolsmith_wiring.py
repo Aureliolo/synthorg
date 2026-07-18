@@ -106,10 +106,21 @@ def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith r
         SandboxingConfig,
     )
 
-    provider_names = provider_registry.list_providers()
-    if not provider_names:
+    # The toolsmith is a system actor with no dedicated per-feature model, so
+    # it dispatches on the explicit default system provider. When the default
+    # is ambiguous (several providers, none chosen) it stays unwired rather
+    # than routing to whichever provider sorts first.
+    provider = provider_registry.default_provider()
+    if provider is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="toolsmith",
+            note=(
+                "no default system provider resolvable; toolsmith stays unwired "
+                "until providers.default_provider is set"
+            ),
+        )
         return None
-    provider = provider_registry.get(provider_names[0])
     repo = _build_dynamic_tool_repo(persistence)
 
     sandboxing = SandboxingConfig()

@@ -20,7 +20,6 @@ Design invariants:
 
 import asyncio
 import html
-import secrets
 from collections.abc import Mapping
 from enum import StrEnum
 from typing import TYPE_CHECKING, ClassVar, Final
@@ -65,7 +64,6 @@ from synthorg.providers.base import BaseCompletionProvider
 # first package walked at boot (covered by
 # ``tests/unit/security/test_safety_classifier_circular_boot.py``).
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.family import get_family, providers_excluding_family
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -253,7 +251,9 @@ class SafetyClassifier:
 
     Stage 1: strip PII, secrets, and internal IDs via
     ``InformationStripper``.  Stage 2: classify the stripped action
-    via an LLM from a different provider family.
+    via an LLM on the explicitly resolved default system provider
+    (``ProviderRegistry.default_provider``); there is no cross-family or
+    first-available auto-pick.
 
     Args:
         provider_registry: Registry of provider drivers.
@@ -384,6 +384,7 @@ class SafetyClassifier:
             logger.warning(
                 SECURITY_SAFETY_CLASSIFY_ERROR,
                 note="No provider available for safety classification",
+                provider_count=len(self._registry.list_providers()),
             )
             return SafetyClassifierResult(
                 classification=SafetyClassification.SUSPICIOUS,
@@ -438,30 +439,19 @@ class SafetyClassifier:
     ) -> tuple[str | None, BaseCompletionProvider | None]:
         """Select a provider for safety classification.
 
-        Prefers a cross-family provider.  Falls back to the first
-        available provider if no cross-family option exists.
+        Dispatches on the explicit default system provider. There is no
+        random / first-available pick: the classifier evaluates untrusted
+        input (not an agent's own output), so it needs no cross-family
+        boundary, and it must not silently route to whichever provider sorts
+        first when several are registered.
 
         Returns:
-            A ``(name, driver)`` pair, or ``(None, None)`` when no
-            provider is registered.
+            A ``(name, driver)`` pair, or ``(None, None)`` when no default
+            provider is resolvable (unregistered, or ambiguous among several).
         """
-        available = self._registry.list_providers()
-        if not available:
+        name = self._registry.default_provider_resolved_name()
+        if name is None:
             return None, None
-
-        # Try cross-family selection with randomization to avoid
-        # always hitting the same external provider.
-        all_cross: list[str] = []
-        for name in available:
-            family = get_family(name, self._configs)
-            candidates = providers_excluding_family(family, self._configs)
-            all_cross.extend(p for p in candidates if p in available)
-        if all_cross:
-            selected = secrets.choice(list(set(all_cross)))
-            return selected, self._registry.get(selected)
-
-        # Fallback: use first available (same-family).
-        name = available[0]
         return name, self._registry.get(name)
 
     def _select_model(self, provider_name: str) -> str:

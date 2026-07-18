@@ -29,10 +29,10 @@ def test_explicit_provider_ref_binds_to_that_driver() -> None:
     assert local is not cloud
 
 
-def test_bare_string_resolves_by_model() -> None:
-    """A provider-less (legacy bare) value keeps resolve-by-model behaviour."""
-    registry, cloud, _local = _registry()
-    assert resolve_feature_provider(registry, "glm-5.2", feature="charter") is cloud
+def test_bare_string_stays_unwired() -> None:
+    """A provider-less (bare) value is never auto-resolved -> ``None``."""
+    registry, _cloud, _local = _registry()
+    assert resolve_feature_provider(registry, "glm-5.2", feature="charter") is None
 
 
 def test_explicit_provider_absent_stays_unwired() -> None:

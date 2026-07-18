@@ -401,17 +401,36 @@ async def _build_steering_proposer(
         )
         # ``steering_proposer_model`` is a model-assignment setting storing a
         # ``ModelRef``: the provider travels with the model (the picker writes
-        # both). An empty ref provider still means "first registered provider".
+        # both). A blank ref provider falls back to the explicit default system
+        # provider, never a first-registered pick.
         ref = parse_model_ref(
             (await settings.get("cockpit", "steering_proposer_model")).value
         )
         model = ref.model_id.strip() or None
-        names = provider_registry.list_providers()
         configured = ref.provider.strip()
-        if configured and configured in names:
+        if configured and configured in provider_registry:
             provider = provider_registry.get(configured)
-        elif names:
-            provider = provider_registry.get(names[0])
+        elif configured:
+            logger.warning(
+                API_APP_STARTUP,
+                service="steering_proposer",
+                note=(
+                    "configured steering-proposer provider not registered; "
+                    "no-op proposer wired"
+                ),
+                provider_name=configured,
+            )
+        else:
+            provider = provider_registry.default_provider()
+            if provider is None:
+                logger.warning(
+                    API_APP_STARTUP,
+                    service="steering_proposer",
+                    note=(
+                        "no default system provider resolvable; no-op proposer "
+                        "wired until providers.default_provider is set"
+                    ),
+                )
     return build_supersession_proposer(provider, model=model, enabled=enabled)
 
 

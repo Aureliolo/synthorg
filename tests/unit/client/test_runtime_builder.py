@@ -26,6 +26,7 @@ from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import as_uuid, make_app_state, mock_of
 
@@ -208,11 +209,16 @@ class TestBuildClientSimulationRuntime:
             task_engine=task_engine,
             provider_registry=registry,
         )
+        # A bound {provider, model_id} intake model: the agent intake honours
+        # the ref's explicit provider (a bare id would leave it unresolved).
+        intake_model = serialize_model_ref(
+            ModelRef(provider="test-provider", model_id="test-model-001")
+        )
         state = build_client_simulation_runtime(
             app_state,
             env={
                 "SYNTHORG_SIMULATIONS_INTAKE_STRATEGY": "agent",
-                "SYNTHORG_SIMULATIONS_INTAKE_MODEL": "test-model-001",
+                "SYNTHORG_SIMULATIONS_INTAKE_MODEL": intake_model,
             },
         )
         assert state.intake_engine is not None

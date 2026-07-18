@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
+import pydantic
 import pytest
 
 from synthorg.approval.enums import ApprovalRiskLevel
@@ -19,6 +20,7 @@ from synthorg.security.safety_classifier import (
     SafetyClassifier,
     SafetyClassifierResult,
 )
+from tests._shared import mock_of
 
 # ── Helpers ───────────────────────────────────────────────────────
 
@@ -55,8 +57,14 @@ def _make_classifier(
     config: SafetyClassifierConfig | None = None,
     completion: CompletionResponse | None = None,
     driver_map: dict[str, AsyncMock] | None = None,
+    bound_default: str | None = "provider-a",
 ) -> SafetyClassifier:
-    """Build a classifier with mock providers."""
+    """Build a classifier with mock providers.
+
+    ``bound_default`` models the operator's explicit ``providers.default_provider``
+    choice; pass ``None`` to model the ambiguous "2+ providers, none chosen"
+    state where the real registry resolves no default.
+    """
     config_a = MagicMock()
     config_a.family = "family-a"
     config_a.models = (MagicMock(id="model-a-1", alias="small"),)
@@ -72,10 +80,24 @@ def _make_classifier(
         )
         driver_map = {"provider-a": mock_driver, "provider-b": mock_driver}
 
-    registry = MagicMock(spec=ProviderRegistry)
-    registry.get = MagicMock(side_effect=lambda name: driver_map[name])
-    registry.list_providers = MagicMock(
-        return_value=tuple(sorted(driver_map.keys())),
+    names = tuple(sorted(driver_map.keys()))
+    # Faithfully mirror ProviderRegistry.default_provider_resolved_name(): an
+    # explicit bound name resolves only when registered -- an invalid one is
+    # None even with a sole provider (never silently substituted). Otherwise a
+    # SOLE provider resolves; 2+ with no valid bound default is ambiguous None.
+    if bound_default is not None:
+        resolved: str | None = bound_default if bound_default in driver_map else None
+    elif len(names) == 1:
+        resolved = names[0]
+    else:
+        resolved = None
+    registry = mock_of[ProviderRegistry](
+        get=MagicMock(side_effect=lambda name: driver_map[name]),
+        list_providers=MagicMock(return_value=names),
+        default_provider=MagicMock(
+            return_value=driver_map[resolved] if resolved else None,
+        ),
+        default_provider_resolved_name=MagicMock(return_value=resolved),
     )
 
     return SafetyClassifier(
@@ -211,6 +233,29 @@ class TestErrorHandling:
         assert result.classification == SafetyClassification.SUSPICIOUS
         assert "fail-safe" in result.reason.lower() or "failed" in result.reason.lower()
 
+    async def test_ambiguous_default_returns_suspicious_without_dispatch(
+        self,
+    ) -> None:
+        mock_driver = AsyncMock()
+        mock_driver.complete = AsyncMock(return_value=_make_completion())
+        # 2+ providers, no bound default: the real registry resolves no default,
+        # so the classifier must fail safe (SUSPICIOUS) rather than dispatch on
+        # a first-registered pick.
+        classifier = _make_classifier(
+            driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
+            bound_default=None,
+        )
+
+        result = await classifier.classify(
+            "Some action",
+            "code:write",
+            "file-tool",
+            ApprovalRiskLevel.MEDIUM,
+        )
+
+        assert result.classification == SafetyClassification.SUSPICIOUS
+        mock_driver.complete.assert_not_awaited()
+
     async def test_timeout_returns_suspicious(self) -> None:
         async def slow_complete(*args: object, **kwargs: object) -> None:
             await asyncio.Event().wait()
@@ -237,6 +282,8 @@ class TestErrorHandling:
     async def test_no_providers_returns_suspicious(self) -> None:
         registry = MagicMock(spec=ProviderRegistry)
         registry.list_providers = MagicMock(return_value=())
+        # No resolvable default provider -> classification cannot run.
+        registry.default_provider_resolved_name = MagicMock(return_value=None)
 
         config_a = MagicMock()
         config_a.family = "family-a"
@@ -307,7 +354,7 @@ class TestConfigAndModel:
             reason="safe",
             classification_duration_ms=1.0,
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(pydantic.ValidationError):
             result.classification = SafetyClassification.BLOCKED  # type: ignore[misc]
 
     def test_classification_enum_values(self) -> None:

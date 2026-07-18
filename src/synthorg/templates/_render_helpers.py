@@ -266,7 +266,7 @@ def validate_as_root_config(
         TemplateValidationError: If validation fails.
     """
     try:
-        return RootConfig.model_validate(merged)
+        config = RootConfig.model_validate(merged)
     except ValidationError as exc:
         field_errors: list[tuple[str, str]] = []
         locations: list[ConfigLocation] = []
@@ -291,3 +291,43 @@ def validate_as_root_config(
             locations=tuple(locations),
             field_errors=tuple(field_errors),
         ) from exc
+    _validate_staffing(config, source_name)
+    return config
+
+
+def _validate_staffing(config: RootConfig, source_name: str) -> None:
+    """Reject a rendered org that declares a department with no agents.
+
+    Every declared department must be staffed by at least one agent: an empty
+    department renders into the org chart with no one in it (no work can be
+    routed to it), so this fails the render rather than shipping a hollow
+    structure. The stronger "at least one of each required department and at
+    least one agent" standard is held against the shipped builtin templates by
+    :func:`synthorg.templates.staffing.assert_builtin_templates_staffed` (a
+    minimal rendered fixture may legitimately declare no departments).
+
+    Raises:
+        TemplateValidationError: When a declared department has no agent.
+    """
+    staffed = {agent.department for agent in config.agents}
+    unstaffed = tuple(
+        (f"departments.{department.name}", "department has no agent assigned to it")
+        for department in config.departments
+        if department.name not in staffed
+    )
+    if not unstaffed:
+        return
+    logger.warning(
+        TEMPLATE_RENDER_VALIDATION_ERROR,
+        source_name=source_name,
+        error_count=len(unstaffed),
+        check="staffing",
+    )
+    msg = f"Rendered template has unstaffed departments: {source_name}"
+    raise TemplateValidationError(
+        msg,
+        locations=tuple(
+            ConfigLocation(file_path=source_name, key_path=key) for key, _ in unstaffed
+        ),
+        field_errors=unstaffed,
+    )

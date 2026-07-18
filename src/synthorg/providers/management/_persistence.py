@@ -17,6 +17,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CONFIG_PERSIST_FAILED,
     PROVIDER_CONFIG_SERIALIZE_FAILED,
+    PROVIDER_DEFAULT_RESOLVE_FAILED,
     PROVIDER_HOT_RELOAD_FAILED,
     PROVIDER_RETRY_RESOLVE_FAILED,
     PROVIDER_VALIDATION_FAILED,
@@ -68,8 +69,9 @@ async def apply_provider_change(
             rollback) fails.
     """
     retry_max_attempts = await resolve_retry_max_attempts(config_resolver)
+    default_provider = await resolve_default_provider_name(config_resolver)
     registry, router = _build_registry_and_router(
-        new_providers, build_router, retry_max_attempts
+        new_providers, build_router, retry_max_attempts, default_provider
     )
     serialized = _serialize_envelope(new_providers)
     had_db_row, prior_providers = await _snapshot_and_persist(
@@ -134,10 +136,43 @@ async def resolve_retry_max_attempts(
         return None
 
 
+async def resolve_default_provider_name(
+    config_resolver: ConfigResolver,
+) -> str | None:
+    """Resolve ``providers.default_provider`` via the live resolver.
+
+    Returns the explicit operator-set default system provider name verbatim
+    so a registry rebuild re-binds it. There is no alphabetical fallback:
+    registration is validated downstream by the registry, which leaves the
+    default unbound (system / infra LLM calls stay unwired) when the name
+    names no registered provider, rather than routing to whichever provider
+    sorts first.
+
+    Returns:
+        The non-blank default provider name, or ``None`` when unset / blank or
+        resolution fails (logged WARNING). A non-blank but unregistered name is
+        returned as-is; the registry then resolves it to no default.
+    """
+    try:
+        value = await config_resolver.get_str("providers", "default_provider")
+    except SettingNotFoundError:
+        return None
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            PROVIDER_DEFAULT_RESOLVE_FAILED,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+    return value.strip() or None if isinstance(value, str) else None
+
+
 def _build_registry_and_router(
     new_providers: dict[str, ProviderConfig],
     build_router: Callable[[dict[str, ProviderConfig]], ModelRouter],
     retry_max_attempts: int | None = None,
+    default_provider: str | None = None,
 ) -> tuple[ProviderRegistry, ModelRouter]:
     """Build the registry + router (validation) before any I/O.
 
@@ -151,6 +186,7 @@ def _build_registry_and_router(
         registry = ProviderRegistry.from_config(
             new_providers, retry_max_attempts=retry_max_attempts
         )
+        registry.bind_default_provider(default_provider)
         router = build_router(new_providers)
     except Exception as exc:
         reraise_critical(exc)

@@ -23,7 +23,6 @@ from synthorg.observability.events.provider import (
     PROVIDER_DRIVER_FACTORY_MISSING,
     PROVIDER_DRIVER_INSTANTIATED,
     PROVIDER_DRIVER_NOT_REGISTERED,
-    PROVIDER_MODEL_NOT_FOUND,
     PROVIDER_REGISTRY_BUILT,
 )
 
@@ -32,7 +31,6 @@ from .cassette import CassetteConfig, CassetteSession
 from .errors import (
     DriverFactoryNotFoundError,
     DriverNotRegisteredError,
-    ModelNotFoundError,
 )
 
 logger = get_logger(__name__)
@@ -80,11 +78,76 @@ class ProviderRegistry:
             dict(drivers)
         )
         self._cassette_session = cassette_session
+        self._default_provider_name: str | None = None
 
     @property
     def cassette_session(self) -> CassetteSession | None:
         """The active cassette session, or ``None`` when inert."""
         return self._cassette_session
+
+    def bind_default_provider(self, name: str | None) -> None:
+        """Bind the explicit operator-set default system provider name.
+
+        System / infra LLM calls that carry no dedicated per-feature model
+        (the boot ``AgentEngine``, red-team grounding, vision verify, the
+        completion-oracle reviewer, the conflict judge, the security
+        evaluators) dispatch on this provider. It is bound once at boot from
+        ``providers.default_provider``. There is deliberately NO alphabetical
+        / first-registered fallback: an unset (or unregistered) default
+        leaves those calls unwired rather than silently routing to whichever
+        provider happens to sort first, which is the ambiguity that made a
+        second gateway hijack every system call. Idempotent.
+
+        Args:
+            name: The default provider name, or ``None`` / blank to unset.
+        """
+        self._default_provider_name = name.strip() if name and name.strip() else None
+
+    def default_provider_name(self) -> str | None:
+        """Return the bound default provider name, or ``None`` when unset."""
+        return self._default_provider_name
+
+    def default_provider_resolved_name(self) -> str | None:
+        """Return the name of the provider :meth:`default_provider` resolves to.
+
+        Mirrors :meth:`default_provider` exactly (explicit bound name, else a
+        sole registered provider, else ``None``) so a caller that has the
+        resolved driver can also name it for a downstream ``get`` without
+        reintroducing a first-registered pick.
+
+        Returns:
+            The resolved default provider name, or ``None`` when ambiguous.
+        """
+        name = self._default_provider_name
+        if name is not None:
+            # An explicitly configured default is honoured only when it is
+            # registered; a set-but-unregistered name is a misconfiguration and
+            # resolves to None (never silently substitute the sole driver, which
+            # would ignore the operator's explicit -- if wrong -- choice).
+            return name if name in self._drivers else None
+        if len(self._drivers) == 1:
+            return next(iter(self._drivers))
+        return None
+
+    def default_provider(self) -> BaseCompletionProvider | None:
+        """Return the driver for the explicit default system provider.
+
+        Resolution is deliberately unambiguous:
+
+        - an explicit bound name that is registered wins;
+        - otherwise, a SOLE registered provider is the default (with one
+          provider there is no choice to make, so this is not the
+          alphabetical auto-pick the explicit binding exists to remove);
+        - with two or more providers and no valid bound default, returns
+          ``None`` -- the operator must choose, and there is NO
+          first-registered fallback.
+
+        Returns:
+            The default provider's driver, or ``None`` when the choice is
+            ambiguous and unresolved.
+        """
+        name = self.default_provider_resolved_name()
+        return self._drivers[name] if name is not None else None
 
     def bind_credential_catalog(self, catalog: ConnectionCatalog | None) -> None:
         """(Re)bind the credential catalog onto every registered driver.
@@ -136,54 +199,6 @@ class ProviderRegistry:
             A sorted tuple of all registered provider name strings.
         """
         return tuple(sorted(self._drivers))
-
-    def resolve_for_model(self, model: str) -> tuple[str, BaseCompletionProvider]:
-        """Pick the provider that serves *model*.
-
-        The per-feature model settings (chat / propose / narrative /
-        judge / charter models) are provider-agnostic strings, so the
-        consuming builders cannot assume the first registered provider
-        serves them: with more than one provider registered, a naive
-        first pick routes the call to a driver that rejects the model at
-        request time. A model no registered provider serves is a
-        configuration error and raises here, so the consuming feature
-        fails loudly at wiring time with the offending model named
-        instead of surfacing baffling per-call failures.
-
-        Returns:
-            The ``(name, driver)`` pair for the first provider (sorted
-            order) whose driver serves *model*.
-
-        Raises:
-            DriverNotRegisteredError: When the registry is empty.
-            ModelNotFoundError: When no registered provider serves
-                *model*.
-        """
-        names = self.list_providers()
-        if not names:
-            logger.error(
-                PROVIDER_DRIVER_NOT_REGISTERED,
-                name=None,
-                available=["(none)"],
-                model=model,
-            )
-            msg = "No providers registered"
-            raise DriverNotRegisteredError(msg, context={"model": model})
-        for name in names:
-            driver = self._drivers[name]
-            if driver.serves_model(model):
-                return name, driver
-        logger.error(
-            PROVIDER_MODEL_NOT_FOUND,
-            model=model,
-            available=list(names),
-        )
-        msg = (
-            f"Model {model!r} is not served by any registered provider"
-            f" (providers: {', '.join(names)}); fix the model setting"
-            f" or register a provider that serves it"
-        )
-        raise ModelNotFoundError(msg, context={"model": model})
 
     def __contains__(self, name: object) -> bool:
         """Check whether a provider name is registered.

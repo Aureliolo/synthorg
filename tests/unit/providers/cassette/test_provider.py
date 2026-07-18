@@ -362,10 +362,10 @@ class TestSequencedReplayOrder:
 class TestServesModel:
     """Pure-replay ``serves_model`` must discriminate by declared models.
 
-    Without this, every replay-mode wrapper accepted every model, and
-    ``ProviderRegistry.resolve_for_model`` always picked the
-    alphabetically-first registered provider regardless of which
-    model was actually requested.
+    Without this, every replay-mode wrapper accepts every model, so the
+    registry's provider-scoped ``resolve_for_pair`` catalogue validation
+    could no longer confirm a provider actually serves the requested
+    model.
     """
 
     async def test_no_inner_and_no_declared_models_accepts_any(

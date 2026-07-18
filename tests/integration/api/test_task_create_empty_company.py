@@ -57,7 +57,7 @@ async def empty_company_client(
     fake_message_bus: FakeMessageBus,
 ) -> AsyncGenerator[LoopAsyncClient]:
     async for client in _authed(
-        build_runtime_app(
+        await build_runtime_app(
             fake_persistence,
             fake_message_bus,
             with_provider=False,
@@ -73,7 +73,7 @@ async def provider_company_client(
     fake_message_bus: FakeMessageBus,
 ) -> AsyncGenerator[LoopAsyncClient]:
     async for client in _authed(
-        build_runtime_app(
+        await build_runtime_app(
             fake_persistence,
             fake_message_bus,
             with_provider=True,

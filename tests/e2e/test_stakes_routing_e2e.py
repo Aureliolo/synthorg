@@ -73,6 +73,7 @@ from tests._shared import (
     make_app_state,
     mock_of,
     sid,
+    wire_decomposition_model,
 )
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -302,6 +303,7 @@ async def _build_pipeline(
         registry=get_registry(),
     )
     await settings_service.set("coordination", "routing_policy", "always-team")
+    await wire_decomposition_model(settings_service)
     config_resolver = ConfigResolver(
         settings_service=settings_service,
         config=root_config,

@@ -79,10 +79,10 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             its ``ProviderConfig`` (may be empty). Backs
             :meth:`serves_model` in pure-replay mode, when there is no
             inner driver to delegate the catalogue check to -- without
-            it, every replay-mode wrapper would accept every model,
-            and ``ProviderRegistry.resolve_for_model`` would always
-            pick the alphabetically-first registered provider
-            regardless of which model was actually requested.
+            it, every replay-mode wrapper would accept every model, so
+            the registry's provider-scoped ``resolve_for_pair`` catalogue
+            validation could no longer tell which provider actually
+            serves the requested model.
     """
 
     def __init__(

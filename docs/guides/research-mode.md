@@ -22,13 +22,12 @@ The implementation lives under `src/synthorg/research/`. See the [research mode 
 
 The master toggle is `research.enabled` (default `true`, hot: no restart). The service is ghost-wired at boot and live-gated per request at the MCP handlers, which return `503` while it is disabled.
 
-Settings live in the `research` namespace (`src/synthorg/settings/definitions/research.py`); all keys are hot-reloadable (the model / provider / strategy / threshold keys rebuild and swap the service via `ResearchSettingsSubscriber`):
+Settings live in the `research` namespace (`src/synthorg/settings/definitions/research.py`); all keys are hot-reloadable (the model / strategy / threshold keys rebuild and swap the service via `ResearchSettingsSubscriber`):
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
 | `research.enabled` | bool | `true` | Master switch. |
-| `research.provider` | str | `""` | LLM provider for pipeline calls (empty uses the first registered provider). |
-| `research.model` | str | `""` | LLM model id (must be set for research to wire). |
+| `research.model` | str | `""` | Provider+model reference (`MODEL_REF`, carries both) for pipeline calls; empty leaves research unwired, and a non-empty value must bind both provider and model. |
 | `research.query_planner` | str | `llm` | Query-planning strategy. |
 | `research.credibility_triage` | str | `hybrid` | Triage strategy (`hybrid`, `heuristic`, `llm`). |
 | `research.deduplicator` | str | `lexical` | Deduplication strategy (`lexical`, `embedding`). |

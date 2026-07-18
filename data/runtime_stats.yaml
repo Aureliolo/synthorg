@@ -1,6 +1,6 @@
 schema_version: 1
-last_generated_utc: '2026-07-16T21:26:23Z'
-generator_revision: 8123ebf23
+last_generated_utc: '2026-07-18T07:50:48Z'
+generator_revision: 9627bcd7b
 stats:
   tests:
     raw: 40008
@@ -16,8 +16,8 @@ stats:
     raw: 26
     display: '26'
   convention_gates:
-    raw: 91
-    display: '91'
+    raw: 92
+    display: '92'
   mcp_tools:
     raw: 245
     display: '245'

@@ -184,10 +184,9 @@ async def _maybe_build_knowledge_synthesizer(
             note="settings service or provider registry unavailable; retrieval-only",
         )
         return None
-    # ``synthesis_model`` is a model-assignment setting storing a ``ModelRef``:
-    # the provider travels with the model (the picker writes both), so the
-    # separate provider read is gone; an empty ref provider still means
-    # "first registered provider".
+    # ``synthesis_model`` is a model-assignment setting storing a ``ModelRef``,
+    # so the model id and its provider are read together; a blank ref provider
+    # resolves via the explicit default system provider (never first-registered).
     ref = parse_model_ref(
         (await runtime_settings.get("knowledge", "synthesis_model")).value
     )
@@ -231,14 +230,6 @@ def _resolve_synthesis_provider(
     Returns:
         The selected provider, or ``None`` when none is usable.
     """
-    provider_names = provider_registry.list_providers()
-    if not provider_names:
-        logger.warning(
-            API_APP_STARTUP,
-            service="knowledge_engine",
-            note="synthesis enabled but no providers registered; retrieval-only",
-        )
-        return None
     if provider_name and provider_name not in provider_registry:
         logger.warning(
             API_APP_STARTUP,
@@ -247,4 +238,19 @@ def _resolve_synthesis_provider(
             synthesis_provider=provider_name,
         )
         return None
-    return provider_registry.get(provider_name or provider_names[0])
+    if provider_name:
+        return provider_registry.get(provider_name)
+    # No explicit synthesis provider on the model ref: dispatch on the explicit
+    # default system provider, never a first-registered pick. Retrieval-only
+    # when the default is ambiguous (several providers, none chosen) or unset.
+    provider = provider_registry.default_provider()
+    if provider is None:
+        logger.warning(
+            API_APP_STARTUP,
+            service="knowledge_engine",
+            note=(
+                "synthesis enabled but no default system provider is resolvable;"
+                " retrieval-only until providers.default_provider is set"
+            ),
+        )
+    return provider

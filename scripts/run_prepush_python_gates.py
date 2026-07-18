@@ -102,6 +102,7 @@ _GATES: tuple[str, ...] = (
     "check_no_engine_worker_swallow",
     "check_no_ghost_wiring",
     "check_no_hardcoded_model_default",
+    "check_no_provider_auto_pick",
     "check_mcp_capability_gap_documented",
     "check_runtime_reachability",
     "check_no_raw_playwright_imports",

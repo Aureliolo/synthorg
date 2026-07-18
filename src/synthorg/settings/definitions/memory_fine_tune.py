@@ -44,8 +44,8 @@ _r.register(
             " during embedding fine-tune data generation, selected through the"
             " model picker (a `{provider, model_id}` reference). Empty (default)"
             " uses the dependency-free extractive generator, so no LLM cost is"
-            " incurred unless an operator opts in; an empty ref provider selects"
-            " the first registered provider."
+            " incurred unless an operator opts in; a non-empty value must bind"
+            " both provider and model."
         ),
         group="Fine-Tune",
         level=SettingLevel.ADVANCED,

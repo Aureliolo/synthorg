@@ -122,8 +122,7 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
         # cost). Directory mode needs no memory backend, so resolve this
         # regardless of the trajectory source above.
         # ``fine_tune_query_model`` is a model-assignment setting storing a
-        # ``ModelRef``: the provider travels with the model (the picker writes
-        # both), so the separate provider read is gone.
+        # ``ModelRef``, so the model id and its provider are read together.
         query_generator = None
         query_ref = parse_model_ref(
             await resolver.get_str(SettingNamespace.MEMORY, "fine_tune_query_model")
@@ -131,20 +130,36 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
         query_model = query_ref.model_id.strip()
         if query_model and has_active_provider(app_state):
             registry = provider_registry_of(app_state)
-            provider_names = registry.list_providers()
             provider_name = query_ref.provider.strip()
             provider = None
             if not provider_name:
-                # No explicit choice: default to the first registered provider.
-                provider = registry.get(provider_names[0])
+                # A bound MODEL_REF always carries its provider (the write-time
+                # validator rejects a provider-less ref), so a blank provider
+                # here means the model id was set without one: fall back to the
+                # explicit default system provider, never a first-registered
+                # pick (``None`` when the default is ambiguous/unset).
+                provider = registry.default_provider()
+                if provider is None:
+                    logger.warning(
+                        API_APP_STARTUP,
+                        service="fine_tune_orchestrator",
+                        note=(
+                            "fine_tune_query_model has no provider and "
+                            "providers.default_provider is ambiguous/unset; "
+                            "using the extractive query generator"
+                        ),
+                        fine_tune_query_model=query_model,
+                    )
             elif provider_name in registry:
                 provider = registry.get(provider_name)
             else:
                 # The operator named a provider that is not registered.
                 # Surface the misconfiguration rather than silently
                 # substituting a different provider; fall back to the
-                # extractive query generator (provider stays None).
-                logger.error(
+                # extractive query generator (provider stays None). A clean
+                # degrade, so WARNING (matching the sibling wiring helpers),
+                # not ERROR.
+                logger.warning(
                     API_APP_STARTUP,
                     service="fine_tune_orchestrator",
                     note=(

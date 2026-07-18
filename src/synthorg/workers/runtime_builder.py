@@ -29,34 +29,22 @@ Engine-side construction helpers live in
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from synthorg.api.state import AppState
-from synthorg.budget.baseline_store import BaselineStore
-from synthorg.budget.coordination_collector import CoordinationMetricsCollector
-from synthorg.budget.state import BudgetStateSlice, cost_tracker_of
-from synthorg.communication.state import CommunicationStateSlice
-from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceError
 from synthorg.engine.completion_oracle.builder import (
     build_completion_oracle_tool_seed,
 )
 from synthorg.engine.errors import CoordinationConfigError
-from synthorg.engine.health import (
-    HealthJudge,
-    HealthMonitoringPipeline,
-    TriageFilter,
-)
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.hr.state import agent_registry_of
 from synthorg.integrations.state import provider_credential_catalog_of
-from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.workers import (
@@ -75,9 +63,7 @@ from synthorg.security.redteam.builder import (
     build_red_team_tool_seed,
 )
 from synthorg.settings.bridge_configs import EngineBridgeConfig
-from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingsError
-from synthorg.settings.mirrors import resolve_init_int
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.sandbox.factory import resolve_sandbox_for_category
 from synthorg.workers._agent_engine_collaborators import (
@@ -101,6 +87,10 @@ from synthorg.workers._engine_assembly import (
     _construct_agent_engine,
 )
 from synthorg.workers._red_team_runtime import build_red_team_runtime_or_none
+from synthorg.workers._runtime_aux_wiring import (
+    _build_health_runtime,
+    _construct_coordination_collector,
+)
 from synthorg.workers._runtime_services import RuntimeServices
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
@@ -108,97 +98,6 @@ from synthorg.workers.execution_service import (
 )
 
 logger = get_logger(__name__)
-
-_BASELINE_WINDOW_KEY: str = "baseline_window_size"
-
-
-def _resolve_baseline_window_size() -> int:
-    """Resolve ``budget.baseline_window_size`` at boot.
-
-    Cat-2 boot knob (``read_only_post_init``): the ``BaselineStore``
-    sliding window is sized once at construction, so the value is
-    sourced env > registered default via the bootstrap resolver (a
-    runtime change requires a restart).
-
-    Returns:
-        The resolved baseline sliding-window size.
-    """
-    return resolve_init_int(SettingNamespace.BUDGET, _BASELINE_WINDOW_KEY)
-
-
-def _construct_coordination_collector(
-    app_state: AppState,
-) -> CoordinationMetricsCollector | None:
-    """Build the shared coordination-metrics collector, or ``None``.
-
-    Requires a live ``CostTracker`` (the collector's only non-optional
-    dependency). Without one - the empty/degraded path - no collector
-    is built and the metrics pipeline stays a no-op, mirroring the
-    ``_construct_agent_engine`` optional-dependency guards. The single
-    instance returned is threaded into both the single-agent
-    ``AgentEngine`` and the multi-agent coordinator so one
-    ``BaselineStore`` accumulates the single-agent baselines the
-    multi-agent metrics compare against.
-
-    Returns:
-        The shared ``CoordinationMetricsCollector``, or ``None`` when no
-        ``CostTracker`` is wired (empty / degraded path).
-    """
-    if app_state.slice(BudgetStateSlice).cost_tracker is None:
-        return None
-    baseline_store = BaselineStore(window_size=_resolve_baseline_window_size())
-    return CoordinationMetricsCollector(
-        config=app_state.config.coordination_metrics,
-        cost_tracker=cost_tracker_of(app_state),
-        message_bus=app_state.slice(CommunicationStateSlice).message_bus,
-        baseline_store=baseline_store,
-        metrics_store=app_state.slice(CoordinationStateSlice).metrics_store,
-        clock=app_state.clock,
-    )
-
-
-def _build_health_runtime(
-    app_state: AppState,
-    *,
-    quality_degradation_threshold: int,
-) -> tuple[HealthMonitoringPipeline | None, Callable[[], Awaitable[bool]] | None]:
-    """Build the post-run agent-health pipeline + its live enabled check.
-
-    The pipeline composes the sensitive :class:`HealthJudge`, the
-    conservative :class:`TriageFilter`, and the notification dispatcher as
-    the escalation sink. Without a wired dispatcher there is nowhere to
-    deliver escalations, so ``(None, None)`` is returned. The enabled
-    check re-reads ``engine.health_monitoring_enabled`` per run so the
-    monitor can be toggled without a restart.
-
-    Args:
-        app_state: The live application state.
-        quality_degradation_threshold: Bridged
-            ``engine.health_quality_degradation_threshold`` (minimum
-            consecutive INCORRECT step signals before the judge escalates).
-
-    Returns:
-        A ``(pipeline, enabled_check)`` pair, or ``(None, None)`` when no
-        notification dispatcher is wired.
-    """
-    dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
-    if dispatcher is None:
-        return None, None
-    pipeline = HealthMonitoringPipeline(
-        judge=HealthJudge(
-            quality_degradation_threshold=quality_degradation_threshold,
-        ),
-        triage=TriageFilter(),
-        notification_dispatcher=dispatcher,
-    )
-    resolver = config_resolver_of(app_state)
-
-    async def _enabled() -> bool:
-        return await resolver.get_bool(
-            SettingNamespace.ENGINE, "health_monitoring_enabled"
-        )
-
-    return pipeline, _enabled
 
 
 def _select_active_provider(
@@ -247,14 +146,44 @@ def _select_active_provider(
             API_APP_STARTUP,
             service="runtime_services",
             note=(
-                "multiple providers registered; the first is the labelled "
-                "default and stakes routing picks the cheapest model per tier "
-                "across providers per task"
+                "multiple providers registered; system dispatch uses the "
+                "explicit providers.default_provider (no alphabetical default) "
+                "and stakes routing picks the cheapest model per tier per task"
             ),
-            default_provider=names[0],
+            default_provider=registry.default_provider_resolved_name(),
             providers=list(names),
         )
     return registry, names
+
+
+def _no_active_provider_services(
+    app_state: AppState,
+    workspace_root: Path,
+    *,
+    oracle_enabled: bool,
+) -> RuntimeServices:
+    """Boot the no-provider mode: no usable default provider for the engine.
+
+    Reached when no provider is registered, or when several are but none is
+    the explicit ``providers.default_provider`` (the default is ambiguous and
+    there is no alphabetical fallback). The deterministic build/test gate
+    still attaches; only the provider-dependent runtimes stay off.
+
+    Returns:
+        No-provider ``RuntimeServices`` (``NoProviderExecutionService``,
+        ``coordinator=None``, ``work_pipeline=None``).
+    """
+    return RuntimeServices(
+        worker_execution_service=NoProviderExecutionService(),
+        coordinator=None,
+        work_pipeline=None,
+        completion_oracle_enabled=oracle_enabled,
+        vision_gate=_build_vision_gate_or_none(
+            app_state=app_state,
+            workspace_root=workspace_root,
+            provider=None,
+        ),
+    )
 
 
 def _degraded_no_coordinator(
@@ -348,19 +277,40 @@ async def build_runtime_services(
     completion_oracle_config = await resolve_completion_oracle_config(app_state)
     selected = _select_active_provider(app_state)
     if selected is None:
-        return RuntimeServices(
-            worker_execution_service=NoProviderExecutionService(),
-            coordinator=None,
-            work_pipeline=None,
-            completion_oracle_enabled=completion_oracle_config.enabled,
-            vision_gate=_build_vision_gate_or_none(
-                app_state=app_state,
-                workspace_root=workspace_root,
-                provider=None,
-            ),
+        return _no_active_provider_services(
+            app_state,
+            workspace_root,
+            oracle_enabled=completion_oracle_config.enabled,
         )
     registry, names = selected
-    provider = registry.get(names[0])
+    # Resolve the default provider by name once (the single source of the
+    # explicit-bound / sole-provider / ambiguous-None branch logic), then take
+    # its driver -- no separate default_provider() call that re-runs the same
+    # resolution and leaves an unreachable guard behind.
+    default_provider_name = registry.default_provider_resolved_name()
+    if default_provider_name is None:
+        # Two or more providers are registered but none is the explicit
+        # providers.default_provider, so the default system provider is
+        # ambiguous. Refuse to auto-pick the alphabetically-first one; boot
+        # the no-provider mode until the operator names a default. Self-heals
+        # on the watched-key rebuild when the setting lands.
+        logger.warning(
+            API_APP_STARTUP,
+            service="runtime_services",
+            mode="no_default_provider",
+            note=(
+                "multiple providers registered but providers.default_provider "
+                "is unset or unregistered; system dispatch stays unwired until "
+                "an explicit default is chosen (no alphabetical fallback)"
+            ),
+            providers=list(names),
+        )
+        return _no_active_provider_services(
+            app_state,
+            workspace_root,
+            oracle_enabled=completion_oracle_config.enabled,
+        )
+    provider = registry.get(default_provider_name)
 
     # Cheap pre-check before the expensive engine / MCP-bridge assembly: when
     # the coordination model is unset the coordinator build would raise anyway,
@@ -441,7 +391,6 @@ async def build_runtime_services(
         ) = await _build_runtime_coordinator(
             app_state,
             engine,
-            provider,
             coordination_metrics_collector,
         )
     except CoordinationConfigError as exc:
@@ -460,7 +409,7 @@ async def build_runtime_services(
         API_APP_STARTUP,
         service="runtime_services",
         mode="agent_engine",
-        provider=names[0],
+        provider=default_provider_name,
         tool_count=tool_count,
         security_enabled=security.enabled,
         security_enforcement_mode=security.enforcement_mode.value,
@@ -509,13 +458,13 @@ async def build_runtime_services(
     red_team_runtime = build_red_team_runtime_or_none(
         app_state=app_state,
         engine=engine,
-        provider_name=names[0],
+        provider_name=default_provider_name,
         seed=red_team_seed,
     )
     completion_oracle_runtime = await build_completion_oracle_runtime_or_none(
         app_state=app_state,
         engine=engine,
-        provider_name=names[0],
+        provider_name=default_provider_name,
         seed=completion_oracle_seed,
         config=completion_oracle_config,
     )

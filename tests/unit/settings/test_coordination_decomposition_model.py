@@ -14,6 +14,7 @@ import pytest
 
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.settings import definitions as _settings_definitions  # noqa: F401
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 
@@ -80,5 +81,19 @@ async def test_decomposition_model_set_succeeds(
     service: SettingsService,
 ) -> None:
     repo: AsyncMock = service._repository  # type: ignore[assignment]
-    await service.set("coordination", "decomposition_model", "example-large-001")
+    # A model assignment must bind both provider and model; a bare id is
+    # rejected at write-time.
+    ref = serialize_model_ref(
+        ModelRef(provider="example-provider", model_id="example-large-001")
+    )
+    await service.set("coordination", "decomposition_model", ref)
     repo.save.assert_awaited_once()
+
+
+async def test_decomposition_model_set_rejects_bare_id(
+    service: SettingsService,
+) -> None:
+    from synthorg.settings.errors import SettingValidationError
+
+    with pytest.raises(SettingValidationError, match="provider is required"):
+        await service.set("coordination", "decomposition_model", "example-large-001")
