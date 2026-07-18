@@ -63,6 +63,40 @@ class TestNetworkConstraint:
         assert result.constraint == "network"
 
     @pytest.mark.unit
+    def test_none_blocks_mcp_tools(self) -> None:
+        """MCP tools make external calls, so network=NONE must gate them.
+
+        Regression for the audit finding that MCP defaulted to CODE_WRITE and
+        was invisible to the network sub-constraint (silent egress).
+        """
+        enforcer = SubConstraintEnforcer(
+            ToolSubConstraints(network=NetworkMode.NONE),
+        )
+        result = enforcer.check(
+            "mcp_github-mcp_create_issue",
+            ToolCategory.MCP,
+            ActionType.COMMS_EXTERNAL,
+            {},
+        )
+        assert result is not None
+        assert result.constraint == "network"
+
+    @pytest.mark.unit
+    def test_none_blocks_external_data_tools(self) -> None:
+        """web_search (EXTERNAL_DATA_REQUEST) egress is gated by network=NONE."""
+        enforcer = SubConstraintEnforcer(
+            ToolSubConstraints(network=NetworkMode.NONE),
+        )
+        result = enforcer.check(
+            "web_search",
+            ToolCategory.WEB,
+            ActionType.EXTERNAL_DATA_REQUEST,
+            {},
+        )
+        assert result is not None
+        assert result.constraint == "network"
+
+    @pytest.mark.unit
     def test_none_allows_non_network_tools(self) -> None:
         enforcer = SubConstraintEnforcer(
             ToolSubConstraints(network=NetworkMode.NONE),
