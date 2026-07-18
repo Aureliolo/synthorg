@@ -163,6 +163,9 @@ class CatalogService:
                         transport=s.get("transport", "stdio"),
                         capabilities=tuple(s.get("capabilities", ())),
                         tags=tuple(s.get("tags", ())),
+                        credential_env_map=dict(s.get("credential_env_map", {})),
+                        credential_arg_map=dict(s.get("credential_arg_map", {})),
+                        required_dialect=s.get("required_dialect"),
                     ),
                 )
         except (json.JSONDecodeError, KeyError, FileNotFoundError) as exc:
@@ -326,6 +329,24 @@ class CatalogService:
                     reason=msg,
                 )
                 raise InvalidConnectionAuthError(msg)
+            if entry.required_dialect is not None:
+                # postgres-mcp and sqlite-mcp share ConnectionType.DATABASE, so
+                # the type check above cannot tell them apart; the dialect does.
+                creds = await connection_catalog.get_credentials(connection_name)
+                dialect = creds.get("dialect")
+                if dialect != entry.required_dialect:
+                    msg = (
+                        f"Connection '{connection_name}' has dialect "
+                        f"{dialect!r}, but catalog entry '{entry_id}' requires "
+                        f"{entry.required_dialect!r}"
+                    )
+                    logger.warning(
+                        MCP_SERVER_INSTALL_VALIDATION_FAILED,
+                        entry_id=entry_id,
+                        connection_name=connection_name,
+                        reason=msg,
+                    )
+                    raise InvalidConnectionAuthError(msg)
             resolved_connection_name = conn.name
         elif connection_name:
             # Entry does not require a connection; ignore and warn.

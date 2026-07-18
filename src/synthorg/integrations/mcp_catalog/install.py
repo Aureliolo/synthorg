@@ -19,8 +19,6 @@ from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
 
 logger = get_logger(__name__)
 
-_CONNECTION_ENV_KEY = "SYNTHORG_CONNECTION"
-
 
 def installation_to_server_config(
     entry: CatalogEntry,
@@ -29,9 +27,10 @@ def installation_to_server_config(
     """Materialize a catalog entry + optional connection into a server config.
 
     For ``stdio`` transport the returned config runs ``npx -y <npm_package>``
-    and stores the bound connection name in ``env[SYNTHORG_CONNECTION]``
-    so the bridge's tool runtime can resolve credentials at invocation
-    time via the connection catalog.
+    and records the bound ``connection_name`` plus the entry's credential
+    field-to-env-var / field-to-arg maps, so the MCP client resolves the
+    connection's secrets from the catalog and injects them into the spawned
+    process at connect time (never persisting them here).
 
     Args:
         entry: The catalog entry being installed.
@@ -45,10 +44,6 @@ def installation_to_server_config(
         ValueError: If the catalog entry lacks the fields required for
             its transport (``npm_package`` for stdio).
     """
-    env: dict[str, str] = {}
-    if connection_name is not None:
-        env[_CONNECTION_ENV_KEY] = connection_name
-
     if entry.transport == "stdio":
         if not entry.npm_package:
             msg = (
@@ -66,7 +61,9 @@ def installation_to_server_config(
             transport="stdio",
             command="npx",
             args=("-y", entry.npm_package),
-            env=env,
+            connection_name=connection_name,
+            credential_env_map=dict(entry.credential_env_map),
+            credential_arg_map=dict(entry.credential_arg_map),
         )
 
     msg = (

@@ -278,7 +278,11 @@ class TestInstallMerge:
         assert server.command == "npx"
         assert "-y" in server.args
         assert entry.npm_package in server.args
-        assert server.env["SYNTHORG_CONNECTION"] == "primary-gh"
+        # The connection name is recorded on an explicit field (secrets are
+        # resolved and injected at connect time, never persisted here).
+        assert server.connection_name == "primary-gh"
+        assert server.credential_env_map == {"token": "GITHUB_PERSONAL_ACCESS_TOKEN"}
+        assert "SYNTHORG_CONNECTION" not in server.env
 
     async def test_installation_to_server_connectionless(self, tmp_path: Path) -> None:
         service = _connectionless_catalog(tmp_path)

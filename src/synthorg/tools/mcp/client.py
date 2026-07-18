@@ -8,7 +8,7 @@ import asyncio
 import copy
 from contextlib import AsyncExitStack
 from types import TracebackType
-from typing import NoReturn, Self
+from typing import NoReturn, Protocol, Self, runtime_checkable
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -24,6 +24,8 @@ from synthorg.observability.events.mcp import (
     MCP_CLIENT_DISCONNECT_FAILED,
     MCP_CLIENT_DISCONNECTED,
     MCP_CLIENT_RECONNECTING,
+    MCP_CREDENTIAL_SOURCE_MISSING,
+    MCP_CREDENTIALS_INJECTED,
     MCP_DISCOVERY_COMPLETE,
     MCP_DISCOVERY_FAILED,
     MCP_DISCOVERY_FILTERED,
@@ -46,6 +48,15 @@ from synthorg.tools.mcp.models import MCPRawResult, MCPToolInfo
 logger = get_logger(__name__)
 
 
+@runtime_checkable
+class MCPCredentialResolver(Protocol):
+    """Resolves a bound connection's decrypted credentials by name."""
+
+    async def get_credentials(self, name: str) -> dict[str, str]:
+        """Return the decrypted credential fields for connection ``name``."""
+        ...
+
+
 class MCPClient:
     """Async client for a single MCP server.
 
@@ -55,10 +66,20 @@ class MCPClient:
 
     Args:
         config: Server connection configuration.
+        credential_source: Resolver for the bound connection's secrets,
+            injected into the spawned stdio process at connect time. ``None``
+            leaves a connection-bound server without credentials (it will
+            likely fail to authenticate, logged loudly at connect).
     """
 
-    def __init__(self, config: MCPServerConfig) -> None:
+    def __init__(
+        self,
+        config: MCPServerConfig,
+        *,
+        credential_source: MCPCredentialResolver | None = None,
+    ) -> None:
         self._config = config
+        self._credential_source = credential_source
         self._session: ClientSession | None = None
         self._exit_stack: AsyncExitStack | None = None
         self._lock = asyncio.Lock()
@@ -466,10 +487,11 @@ class MCPClient:
                 msg,
                 context={"server": self._config.name},
             )
+        args, env = await self._resolve_stdio_launch()
         params = StdioServerParameters(
             command=self._config.command,
-            args=list(self._config.args),
-            env=(dict(self._config.env) if self._config.env else None),
+            args=args,
+            env=env,
         )
         read_stream, write_stream = await stack.enter_async_context(
             stdio_client(params),
@@ -477,6 +499,53 @@ class MCPClient:
         return await stack.enter_async_context(
             ClientSession(read_stream, write_stream),
         )
+
+    async def _resolve_stdio_launch(self) -> tuple[list[str], dict[str, str] | None]:
+        """Resolve the launch args + env, injecting bound-connection secrets.
+
+        The connection's decrypted credentials are mapped into the environment
+        variables (``credential_env_map``) and command-line flags
+        (``credential_arg_map``) the target server expects, at connect time so
+        secrets are never persisted in the stored config. A connection-bound
+        server with no resolver is spawned without its secret and logged
+        loudly, rather than silently pretending it is configured.
+
+        Returns:
+            The final ``(args, env)`` pair for ``StdioServerParameters``.
+        """
+        args = list(self._config.args)
+        env = dict(self._config.env)
+        name = self._config.connection_name
+        maps = self._config.credential_env_map or self._config.credential_arg_map
+        if name is None or not maps:
+            return args, (env or None)
+        if self._credential_source is None:
+            logger.warning(
+                MCP_CREDENTIAL_SOURCE_MISSING,
+                server=self._config.name,
+                connection=name,
+                note="connection bound but no credential source; unauthenticated",
+            )
+            return args, (env or None)
+        creds = await self._credential_source.get_credentials(name)
+        injected = 0
+        for field, env_var in self._config.credential_env_map.items():
+            value = creds.get(field)
+            if value:
+                env[env_var] = value
+                injected += 1
+        for field, flag in self._config.credential_arg_map.items():
+            value = creds.get(field)
+            if value:
+                args.extend((flag, value))
+                injected += 1
+        logger.info(
+            MCP_CREDENTIALS_INJECTED,
+            server=self._config.name,
+            connection=name,
+            injected_fields=injected,
+        )
+        return args, (env or None)
 
     async def _connect_http(
         self,

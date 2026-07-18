@@ -19,7 +19,7 @@ from synthorg.observability.events.mcp import (
 )
 from synthorg.tools.mcp.bridge_tool import MCPBridgeTool
 from synthorg.tools.mcp.cache import MCPResultCache
-from synthorg.tools.mcp.client import MCPClient
+from synthorg.tools.mcp.client import MCPClient, MCPCredentialResolver
 from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
 from synthorg.tools.mcp.models import MCPToolInfo
 
@@ -36,8 +36,14 @@ class MCPToolFactory:
         config: MCP bridge configuration.
     """
 
-    def __init__(self, config: MCPConfig) -> None:
+    def __init__(
+        self,
+        config: MCPConfig,
+        *,
+        credential_source: MCPCredentialResolver | None = None,
+    ) -> None:
         self._config = config
+        self._credential_source = credential_source
         self._clients: list[MCPClient] = []
         self._created = False
 
@@ -155,8 +161,8 @@ class MCPToolFactory:
 
     # ── Private helpers ──────────────────────────────────────────
 
-    @staticmethod
     async def _connect_and_discover(
+        self,
         config: MCPServerConfig,
     ) -> tuple[MCPClient, tuple[MCPToolInfo, ...]]:
         """Connect to a server and discover its tools.
@@ -173,7 +179,7 @@ class MCPToolFactory:
         Raises:
             BaseException: Raised when the relevant invariant fails.
         """
-        client = MCPClient(config)
+        client = MCPClient(config, credential_source=self._credential_source)
         await client.connect()
         try:
             tools = await client.list_tools()

@@ -36,6 +36,14 @@ class MCPServerConfig(BaseModel):
         command: Command to launch a stdio server.
         args: Command-line arguments for stdio server.
         env: Environment variables for stdio server.
+        connection_name: Bound connection whose credentials are injected at
+            spawn (never persisted here); ``None`` for connectionless servers.
+        credential_env_map: Map of connection credential field name to the
+            environment variable the server reads it from (e.g.
+            ``{"token": "GITHUB_PERSONAL_ACCESS_TOKEN"}``).
+        credential_arg_map: Map of connection credential field name to a
+            command-line flag the value is appended under (e.g.
+            ``{"database": "--db-path"}`` for a file-path argument).
         url: URL for streamable HTTP server.
         headers: HTTP headers for streamable HTTP server.
         enabled_tools: Allowlist of tool names (``None`` = all).
@@ -65,6 +73,18 @@ class MCPServerConfig(BaseModel):
     env: dict[str, str] = Field(
         default_factory=dict,
         description="Environment variables for stdio server",
+    )
+    connection_name: str | None = Field(
+        default=None,
+        description="Bound connection whose credentials are injected at spawn",
+    )
+    credential_env_map: dict[str, str] = Field(
+        default_factory=dict,
+        description="Credential field name to environment variable name",
+    )
+    credential_arg_map: dict[str, str] = Field(
+        default_factory=dict,
+        description="Credential field name to command-line flag",
     )
     # streamable_http fields
     url: NotBlankStr | None = Field(

@@ -387,6 +387,13 @@ class CatalogEntry(BaseModel):
         transport: MCP transport type (stdio or streamable_http).
         capabilities: List of capability tags.
         tags: Searchable tags.
+        credential_env_map: Map of bound-connection credential field name to
+            the environment variable the spawned server reads it from.
+        credential_arg_map: Map of bound-connection credential field name to a
+            command-line flag the value is appended under.
+        required_dialect: For a database-typed entry, the connection dialect
+            it requires (e.g. ``"postgres"``/``"sqlite"``), since several
+            entries share ``ConnectionType.DATABASE``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -399,3 +406,6 @@ class CatalogEntry(BaseModel):
     transport: Literal["stdio", "streamable_http"] = "stdio"
     capabilities: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
+    credential_env_map: dict[str, str] = Field(default_factory=dict)
+    credential_arg_map: dict[str, str] = Field(default_factory=dict)
+    required_dialect: str | None = None

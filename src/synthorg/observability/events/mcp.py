@@ -3,6 +3,8 @@
 from typing import Final, LiteralString
 
 MCP_CLIENT_CONNECTING: Final[str] = "mcp.client.connecting"
+MCP_CREDENTIALS_INJECTED: Final[str] = "mcp.client.credentials_injected"
+MCP_CREDENTIAL_SOURCE_MISSING: Final[str] = "mcp.client.credential_source_missing"
 MCP_CLIENT_CONNECTED: Final[str] = "mcp.client.connected"
 MCP_CLIENT_DISCONNECTED: Final[str] = "mcp.client.disconnected"
 MCP_CLIENT_RECONNECTING: Final[str] = "mcp.client.reconnecting"

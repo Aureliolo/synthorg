@@ -8,7 +8,8 @@
       "required_connection_type": "github",
       "transport": "stdio",
       "capabilities": ["repository_access", "issue_management", "pull_requests", "actions"],
-      "tags": ["vcs", "collaboration", "ci"]
+      "tags": ["vcs", "collaboration", "ci"],
+      "credential_env_map": {"token": "GITHUB_PERSONAL_ACCESS_TOKEN"}
     },
     {
       "id": "slack-mcp",
@@ -18,7 +19,8 @@
       "required_connection_type": "slack",
       "transport": "stdio",
       "capabilities": ["messaging", "channel_management", "user_lookup"],
-      "tags": ["communication", "team"]
+      "tags": ["communication", "team"],
+      "credential_env_map": {"token": "SLACK_BOT_TOKEN", "team_id": "SLACK_TEAM_ID"}
     },
     {
       "id": "postgres-mcp",
@@ -26,9 +28,17 @@
       "description": "Query and manage PostgreSQL databases",
       "npm_package": "@modelcontextprotocol/server-postgres",
       "required_connection_type": "database",
+      "required_dialect": "postgres",
       "transport": "stdio",
       "capabilities": ["sql_query", "schema_inspect", "data_mutation"],
-      "tags": ["database", "sql"]
+      "tags": ["database", "sql"],
+      "credential_env_map": {
+        "host": "PGHOST",
+        "port": "PGPORT",
+        "database": "PGDATABASE",
+        "username": "PGUSER",
+        "password": "PGPASSWORD"
+      }
     },
     {
       "id": "sqlite-mcp",
@@ -36,19 +46,22 @@
       "description": "Query and manage SQLite databases",
       "npm_package": "@modelcontextprotocol/server-sqlite",
       "required_connection_type": "database",
+      "required_dialect": "sqlite",
       "transport": "stdio",
       "capabilities": ["sql_query", "schema_inspect"],
-      "tags": ["database", "sql", "local"]
+      "tags": ["database", "sql", "local"],
+      "credential_arg_map": {"database": "--db-path"}
     },
     {
       "id": "brave-search-mcp",
       "name": "Brave Search",
       "description": "Web and local search via the Brave Search API",
-      "npm_package": "@modelcontextprotocol/server-brave-search",
+      "npm_package": "@brave/brave-search-mcp-server",
       "required_connection_type": "generic_http",
       "transport": "stdio",
       "capabilities": ["web_search", "local_search"],
-      "tags": ["search", "web"]
+      "tags": ["search", "web"],
+      "credential_env_map": {"api_key": "BRAVE_API_KEY"}
     }
   ]
 }

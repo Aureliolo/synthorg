@@ -387,7 +387,10 @@ async def _build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:
         return ()
     factory: MCPToolFactory | None = None
     try:
-        factory = MCPToolFactory(merged)
+        factory = MCPToolFactory(
+            merged,
+            credential_source=connection_catalog_of(app_state),
+        )
         tools = await factory.create_tools()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- degrade-to-None wiring
