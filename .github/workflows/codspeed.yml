@@ -201,9 +201,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
-    # 30 (was 15): headroom for the 3-attempt CodSpeed ladder below, each
-    # attempt running two instruments (simulation + memory); see the
-    # codspeed-python job for the rationale.
+    # 30: headroom for the 3-attempt CodSpeed ladder below. Web runs a
+    # single instrument (simulation only, see the mode-rationale comment
+    # above), so this is budgeted generously relative to the codspeed-python
+    # job, which runs two instruments per attempt.
     timeout-minutes: 30
     permissions:
       contents: read
