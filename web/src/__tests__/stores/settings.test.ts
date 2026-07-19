@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ErrorCategory, ErrorCode } from '@/api/types/errors'
 import type { SettingEntry } from '@/api/types/settings'
 import { buildSettingEntry } from '@/mocks/handlers/settings'
 import { apiError, apiSuccess, paginatedFor, voidSuccess } from '@/mocks/handlers'
@@ -389,6 +390,67 @@ describe('useSettingsStore', () => {
       await p2
       // Both drained: key is removed entirely.
       expect(useSettingsStore.getState().savingKeys.has('api/host')).toBe(false)
+    })
+
+    it('drops a stale confirm-required response: does not stage pendingConfirm for a superseded mutation', async () => {
+      // The OLDER call is a guarded key needing confirm; it is parked until the
+      // NEWER call has already applied. When the stale confirm-required response
+      // finally returns, the store must drop it (token <= lastApplied) rather
+      // than staging pendingConfirm with the outdated value.
+      const olderGate = deferred()
+      const firstCallEntered = deferred()
+      let callCount = 0
+      server.use(
+        http.put('/api/v1/settings/api/host', async ({ request }) => {
+          const body = (await request.json()) as { value: string }
+          callCount += 1
+          if (callCount === 1) {
+            // Signal that the older request has claimed the first slot before
+            // the newer request is sent, so the ordering is deterministic.
+            firstCallEntered.resolve()
+            await olderGate.promise
+            return HttpResponse.json(
+              apiError('Confirmation required', {
+                error_code: ErrorCode.SECURITY_TOGGLE_CONFIRM_REQUIRED,
+                error_category: ErrorCategory.AUTH,
+              }),
+              { status: 400 },
+            )
+          }
+          return HttpResponse.json(
+            apiSuccess(
+              buildSettingEntry({
+                value: body.value,
+                source: 'db',
+                definition: { namespace: 'api', key: 'host' },
+              }),
+            ),
+          )
+        }),
+      )
+
+      const olderPromise = useSettingsStore
+        .getState()
+        .updateSetting('api', 'host', 'older-value')
+      // Wait until the older request is parked in the first-call branch, so the
+      // newer request deterministically lands as the second call.
+      await firstCallEntered.promise
+      const newerResult = await useSettingsStore
+        .getState()
+        .updateSetting('api', 'host', 'newer-value')
+      expect(newerResult?.value).toBe('newer-value')
+
+      olderGate.resolve()
+      const olderResult = await olderPromise
+      expect(olderResult).toBeNull()
+      // The superseded confirm-required response must not stage a pending
+      // confirm, nor disturb the newer value.
+      expect(useSettingsStore.getState().pendingConfirm).toBeNull()
+      expect(
+        useSettingsStore
+          .getState()
+          .entries.find((e) => e.definition.key === 'host')?.value,
+      ).toBe('newer-value')
     })
   })
 

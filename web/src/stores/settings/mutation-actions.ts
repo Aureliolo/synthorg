@@ -1,11 +1,13 @@
 import * as settingsApi from '@/api/endpoints/settings'
+import { ErrorCode } from '@/api/types/errors'
 import { useToastStore } from '@/stores/toast'
-import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorCode, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
   SettingEntry,
   SettingNamespace,
+  UpdateSettingRequest,
 } from '@/api/types'
 import {
   DEFAULT_CURRENCY,
@@ -81,21 +83,35 @@ function emitOutOfOrderDrop(
   }
 }
 
+interface ConfirmOptions {
+  confirm: boolean
+  reason: string
+}
+
+interface UpdateSettingArgs {
+  ns: SettingNamespace
+  key: string
+  value: string
+  confirmOptions?: ConfirmOptions
+}
+
 async function updateSettingImpl(
   set: SettingsSet,
   get: SettingsGet,
-  ns: SettingNamespace,
-  key: string,
-  value: string,
+  args: UpdateSettingArgs,
 ): Promise<SettingEntry | null> {
+  const { ns, key, value, confirmOptions } = args
   const compositeKey = `${ns}/${key}`
   const mutationToken = nextMutationToken()
   set((state) => ({
     savingKeys: incrementSavingKey(state.savingKeys, compositeKey),
     saveError: null,
   }))
+  const request: UpdateSettingRequest = confirmOptions
+    ? { value, confirm: confirmOptions.confirm, reason: confirmOptions.reason }
+    : { value }
   try {
-    const updated = await settingsApi.updateSetting(ns, key, { value })
+    const updated = await settingsApi.updateSetting(ns, key, request)
     let applied = false
     set((state) => {
       const lastApplied = state.appliedMutationTokens.get(compositeKey) ?? 0
@@ -119,17 +135,58 @@ async function updateSettingImpl(
     })
     return updated
   } catch (error) {
-    return handleUpdateError(set, get, error, compositeKey, mutationToken)
+    return handleUpdateError(set, get, {
+      error,
+      ns,
+      key,
+      value,
+      compositeKey,
+      mutationToken,
+      isConfirmRetry: confirmOptions !== undefined,
+    })
   }
+}
+
+interface UpdateErrorArgs {
+  error: unknown
+  ns: SettingNamespace
+  key: string
+  value: string
+  compositeKey: string
+  mutationToken: number
+  isConfirmRetry: boolean
 }
 
 function handleUpdateError(
   set: SettingsSet,
   get: SettingsGet,
-  error: unknown,
-  compositeKey: string,
-  mutationToken: number,
+  args: UpdateErrorArgs,
 ): null {
+  const { error, ns, key, value, compositeKey, mutationToken, isConfirmRetry } =
+    args
+  // A guarded key rejected pending confirm + reason is not a failure to toast:
+  // stage it so the settings page can collect a reason and retry. A retry that
+  // is itself rejected falls through to the normal error path.
+  if (
+    !isConfirmRetry
+    && getErrorCode(error) === ErrorCode.SECURITY_TOGGLE_CONFIRM_REQUIRED
+  ) {
+    // Drop a stale confirm-required response: if a newer mutation for this key
+    // has already landed, staging its old ns/key/value would confirm an
+    // outdated write. Mirrors the success-path out-of-order drop below.
+    const lastApplied = get().appliedMutationTokens.get(compositeKey) ?? 0
+    if (mutationToken <= lastApplied) {
+      set((state) => ({
+        savingKeys: decrementSavingKey(state.savingKeys, compositeKey),
+      }))
+      return null
+    }
+    set((state) => ({
+      savingKeys: decrementSavingKey(state.savingKeys, compositeKey),
+      pendingConfirm: { ns, key, value },
+    }))
+    return null
+  }
   const errorMessage = getErrorMessage(error)
   // Symmetric to the success-path drop: if a newer mutation has
   // already landed for this composite key, an older (failed)
@@ -305,11 +362,35 @@ async function resetSettingImpl(
   return !localViewStale
 }
 
+async function confirmPendingUpdateImpl(
+  set: SettingsSet,
+  get: SettingsGet,
+  reason: string,
+): Promise<SettingEntry | null> {
+  const pending = get().pendingConfirm
+  if (!pending) return null
+  set({ pendingConfirm: null })
+  return updateSettingImpl(set, get, {
+    ns: pending.ns,
+    key: pending.key,
+    value: pending.value,
+    confirmOptions: {
+      confirm: true,
+      reason: reason.trim() || 'Confirmed via the settings dashboard',
+    },
+  })
+}
+
 export function createMutationActions(set: SettingsSet, get: SettingsGet) {
   return {
     updateSetting: (ns: SettingNamespace, key: string, value: string) =>
-      updateSettingImpl(set, get, ns, key, value),
+      updateSettingImpl(set, get, { ns, key, value }),
     resetSetting: (ns: SettingNamespace, key: string) =>
       resetSettingImpl(set, get, ns, key),
+    confirmPendingUpdate: (reason: string) =>
+      confirmPendingUpdateImpl(set, get, reason),
+    dismissPendingConfirm: () => {
+      set({ pendingConfirm: null })
+    },
   }
 }

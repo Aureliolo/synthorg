@@ -90,6 +90,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_no_synthorg_any_override.py` | commit+push | `pyproject.toml` | full | no | none | keep |
 | `check_openapi_liveness.py` | CI (`ci.yml`) | exported OpenAPI schema | n/a | n/a | none | keep |
 | `check_orphan_fixtures.py` | push | `tests/` | full | no | none | harden |
+| `check_output_boundaries_guarded.py` | push | the output-style boundary files | full | no | none | add |
 | `check_otlp_span_redaction.py` | commit+push | `src/synthorg/` | staged | yes | none | keep |
 | `check_persistence_boundary.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
 | `check_persistence_protocol_return_types.py` | push | persistence protocols + backends | full | no | none | keep |

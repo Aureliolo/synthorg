@@ -19,6 +19,7 @@ import {
   MessagesSquare,
   Monitor,
   Network,
+  Paintbrush,
   Palette,
   Plug,
   RefreshCw,
@@ -27,6 +28,7 @@ import {
   Shield,
   TestTubes,
   TrendingUp,
+  Type,
   Users,
   Wallet,
   Waypoints,
@@ -43,6 +45,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { NAMESPACE_DISPLAY_NAMES, NAMESPACE_ORDER } from '@/pages/settings/settings-constants'
 import { AdvancedModeBanner } from './settings/AdvancedModeBanner'
+import { GuardedWriteConfirmDialog } from './settings/GuardedWriteConfirmDialog'
 import { NotificationsSection } from './settings/NotificationsSection'
 import { SecurityConfigSection } from './settings/SecurityConfigSection'
 import { CodeEditorPanel } from './settings/CodeEditorPanel'
@@ -108,6 +111,8 @@ const NAMESPACE_ICONS: Partial<Record<SettingNamespace, React.ReactNode>> = {
   appearance: <Palette className="size-4" />,
   org_chart: <Workflow className="size-4" />,
   dashboard: <LayoutDashboard className="size-4" />,
+  design: <Paintbrush className="size-4" />,
+  output_style: <Type className="size-4" />,
 }
 
 function getFooterAction(ns: SettingNamespace): React.ReactNode {
@@ -376,6 +381,7 @@ export default function SettingsPage() {
         <SettingsGuiView ctrl={ctrl} />
       )}
       <SettingsDialogs ctrl={ctrl} />
+      <GuardedWriteConfirmDialog />
     </div>
   )
 }

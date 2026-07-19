@@ -1,5 +1,6 @@
 """Per-agent messenger facade over the message bus (see Communication design page)."""
 
+from synthorg.communication._output_guard import guard_message_output
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.dispatcher import DispatchResult, MessageDispatcher
 from synthorg.communication.enums import MessagePriority, MessageType
@@ -178,6 +179,7 @@ class AgentMessenger:
             channel=channel,
             parts=resolved,
         )
+        msg = guard_message_output(msg, agent_id=self._agent_id)
         await self._bus.publish(msg)
         logger.info(
             COMM_MESSAGE_SENT,
@@ -228,6 +230,7 @@ class AgentMessenger:
             channel=channel,
             parts=resolved,
         )
+        msg = guard_message_output(msg, agent_id=self._agent_id)
         await self._bus.send_direct(msg, recipient=to)
         logger.info(
             COMM_MESSAGE_SENT,
@@ -278,6 +281,7 @@ class AgentMessenger:
             channel=channel,
             parts=resolved,
         )
+        msg = guard_message_output(msg, agent_id=self._agent_id)
         await self._bus.publish(msg)
         logger.info(
             COMM_MESSAGE_BROADCAST,

@@ -31,11 +31,10 @@ logger = get_logger(__name__)
 MAX_EDIT_FILE_SIZE_BYTES: Final[int] = 1_048_576  # 1 MB
 
 
-def _edit_sync(resolved: Path, old_text: str, new_text: str) -> int:
-    """Perform search-and-replace synchronously.
-
-    Uses an atomic write pattern (temp file + replace) so that a crash
-    or disk-full during the write does not corrupt the original file.
+def _plan_edit_sync(
+    resolved: Path, old_text: str, new_text: str
+) -> tuple[str, str, int]:
+    """Read the file and compute the post-edit content without writing.
 
     Args:
         resolved: Resolved file path within the workspace.
@@ -43,33 +42,42 @@ def _edit_sync(resolved: Path, old_text: str, new_text: str) -> int:
         new_text: Replacement text (may be empty to delete).
 
     Returns:
-        Number of occurrences of *old_text* found in the file.
+        ``(original, resulting, count)`` where *resulting* is the content after
+        replacing the first occurrence (equal to *original* when *count* is 0)
+        and *count* is the number of occurrences found.
 
     Raises:
         UnicodeDecodeError: If the file contains non-UTF-8 bytes.
         FileNotFoundError: If the file does not exist.
         PermissionError: If the process lacks read/write permission.
         OSError: For other OS-level I/O failures.
-        BaseException: Raised when the relevant invariant fails.
     """
     content = resolved.read_text(encoding="utf-8")
     count = content.count(old_text)
-    if count > 0:
-        new_content = content.replace(old_text, new_text, 1)
-        fd, tmp_path = tempfile.mkstemp(
-            dir=str(resolved.parent),
-            suffix=".tmp",
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(new_content)
-                fh.flush()
-                os.fsync(fh.fileno())
-            pathlib.Path(tmp_path).replace(resolved)
-        except BaseException:
-            pathlib.Path(tmp_path).unlink(missing_ok=True)
-            raise
-    return count
+    resulting = content.replace(old_text, new_text, 1) if count > 0 else content
+    return content, resulting, count
+
+
+def _write_sync(resolved: Path, new_content: str) -> None:
+    """Write *new_content* atomically (temp file + replace).
+
+    The atomic pattern ensures a crash or disk-full during the write does not
+    corrupt the original file.
+
+    Raises:
+        OSError: For OS-level I/O failures.
+        BaseException: Re-raised after unlinking the temp file on any failure.
+    """
+    fd, tmp_path = tempfile.mkstemp(dir=str(resolved.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(new_content)
+            fh.flush()
+            os.fsync(fh.fileno())
+        pathlib.Path(tmp_path).replace(resolved)
+    except BaseException:
+        pathlib.Path(tmp_path).unlink(missing_ok=True)
+        raise
 
 
 class EditFileTool(BaseFileSystemTool):
@@ -109,6 +117,44 @@ class EditFileTool(BaseFileSystemTool):
             ),
             parameters_schema=EditFileArgs.model_json_schema(),
         )
+
+    def _guard_output_policy(
+        self,
+        user_path: str,
+        original: str,
+        resulting: str,
+    ) -> ToolExecutionResult | None:
+        """Enforce the output-style policy on the post-edit file content.
+
+        Evaluates the complete candidate content (existing file with the first
+        ``old_text`` occurrence replaced), not just the replacement fragment, so
+        a violation formed at the boundary between the edit and its surroundings
+        is caught. Only a violation the edit *introduces* blocks: an edit
+        elsewhere in a file that already violated stays editable. Code-channel
+        (reject, never auto-rewrite), unless an operator-sanctioned PATH
+        exemption covers this file.
+
+        Returns:
+            An error result when the edit introduces a hard-rule violation, else
+            ``None``.
+        """
+        from synthorg.engine.output_style import (  # noqa: PLC0415
+            OutputChannel,
+            OutputContext,
+            evaluate_output_policy,
+        )
+
+        ctx = OutputContext(
+            channel=OutputChannel.CODE_FILE,
+            file_path=user_path or None,
+        )
+        after = evaluate_output_policy(resulting, ctx)
+        if after is None or not after.blocked:
+            return None
+        before = evaluate_output_policy(original, ctx)
+        if before is not None and before.blocked:
+            return None
+        return ToolExecutionResult(content=after.summary, is_error=True)
 
     def _validate_edit_args(
         self,
@@ -194,8 +240,8 @@ class EditFileTool(BaseFileSystemTool):
             Result of type ``ToolExecutionResult``.
         """
         try:
-            count = await asyncio.to_thread(
-                _edit_sync,
+            original, resulting, count = await asyncio.to_thread(
+                _plan_edit_sync,
                 resolved,
                 old_text,
                 new_text,
@@ -225,6 +271,14 @@ class EditFileTool(BaseFileSystemTool):
                     "occurrences_replaced": 0,
                 },
             )
+        if guard_err := self._guard_output_policy(user_path, original, resulting):
+            return guard_err
+        try:
+            await asyncio.to_thread(_write_sync, resolved, resulting)
+        except (FileNotFoundError, IsADirectoryError, PermissionError, OSError) as exc:
+            log_key, msg = _map_os_error(exc, user_path, "editing")
+            logger.warning(TOOL_FS_ERROR, path=user_path, error=log_key)
+            return ToolExecutionResult(content=msg, is_error=True)
         msg = f"Replaced 1 occurrence in {user_path}"
         if count > 1:
             msg += f" (warning: {count} total occurrences found, only first replaced)"

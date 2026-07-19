@@ -28,6 +28,9 @@ from synthorg.api.lifecycle_helpers.feature_lifecycle import (
     build_feature_lifecycle_runner,
 )
 from synthorg.api.lifecycle_helpers.feature_wiring import wire_features_on_startup
+from synthorg.api.lifecycle_helpers.output_style_wiring import (
+    wire_output_style_policy,
+)
 from synthorg.api.lifecycle_helpers.provider_registry_reload import (
     reload_persisted_provider_registry,
 )
@@ -207,6 +210,7 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
             cost_tracker=cost_tracker,
             effective_approval_store=approval_store,
         )
+        await wire_output_style_policy(app_state)
 
     # ``_compose_feature_slices`` runs FIRST so every feature's empty state
     # slice exists before any wiring hook (including the persistence-phase

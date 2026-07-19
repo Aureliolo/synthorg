@@ -50,6 +50,7 @@ const SETTING_NAMESPACE_TABLE: Record<SettingNamespace, true> = {
   org_chart: true,
   dashboard: true,
   design: true,
+  output_style: true,
 }
 
 /**

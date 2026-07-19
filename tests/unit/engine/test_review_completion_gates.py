@@ -7,6 +7,7 @@ short-circuit, and the "gate attached but input builder unwired" path
 rather than fail-closed and block every completion.
 """
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -41,6 +42,28 @@ from synthorg.security.redteam.protocol import RedTeamGate
 from tests._shared import as_uuid, mock_of
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _reset_output_policy_ambient() -> Iterator[None]:
+    """Reset the process-global output-policy service around every test.
+
+    The completion backstop builds a deliverable whenever the policy is active,
+    so a service another test (e.g. the session-scoped API app on the same
+    xdist worker) left bound would otherwise make the stakes-gating assertions
+    non-deterministic. Reset to unbound, restoring whatever was bound before.
+    """
+    from synthorg.engine.output_style import (
+        current_output_policy_service,
+        set_output_policy_service,
+    )
+
+    previous = current_output_policy_service()
+    set_output_policy_service(None)
+    try:
+        yield
+    finally:
+        set_output_policy_service(previous)
 
 
 def _task(*, stakes: Stakes = Stakes.NORMAL) -> Task:
@@ -160,7 +183,7 @@ async def test_at_or_above_stakes_threshold_runs_red_team_gate(
         evaluate=AsyncMock(return_value=SimpleNamespace(verdict=RedTeamVerdict.PASS)),
     )
     builder = mock_of[DeliverableReviewInputBuilder](
-        build=AsyncMock(return_value=SimpleNamespace(execution_id="exec-1")),
+        build=AsyncMock(return_value=_deliverable()),
     )
 
     target, _reason, _event, approved = await run_completion_gates(
@@ -182,11 +205,53 @@ async def test_at_or_above_stakes_threshold_runs_red_team_gate(
     builder.build.assert_awaited_once()
 
 
-def _deliverable() -> RedTeamReviewInput:
+async def test_output_policy_checks_low_stakes_deliverable() -> None:
+    """A blocking output policy reworks a low-stakes completion.
+
+    The output-style backstop is stakes-independent, so the deliverable is
+    built and policy-checked even when neither the oracle nor the red-team gate
+    fires for a below-threshold task; a hard-rule violation must still route the
+    task back to rework rather than reaching COMPLETED unchecked.
+    """
+    from synthorg.engine.output_style import (
+        OutputStyleConfig,
+        OutputStylePolicyService,
+        current_output_policy_service,
+        set_output_policy_service,
+    )
+
+    em_dash = chr(0x2014)
+    builder = mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=_deliverable(f"ship {em_dash} now")),
+    )
+    previous = current_output_policy_service()
+    set_output_policy_service(OutputStylePolicyService.from_config(OutputStyleConfig()))
+    try:
+        target, _reason, _event, approved = await run_completion_gates(
+            red_team_gate=None,
+            vision_gate=None,
+            deliverable_input_builder=builder,
+            on_missing_deliverable="block",
+            task=_task(stakes=Stakes.NORMAL),
+            target=TaskStatus.COMPLETED,
+            transition_reason="approved",
+            event=APPROVAL_GATE_REVIEW_COMPLETED,
+            approved=True,
+            vision_input=None,
+            red_team_min_stakes=Stakes.HIGH,
+        )
+    finally:
+        set_output_policy_service(previous)
+
+    assert (target, approved) == (TaskStatus.IN_PROGRESS, False)
+    builder.build.assert_awaited_once()
+
+
+def _deliverable(content: str = "the deliverable") -> RedTeamReviewInput:
     return RedTeamReviewInput(
         task_id="task-1",
         execution_id="exec-1",
-        deliverable_content="the deliverable",
+        deliverable_content=content,
         acceptance_criteria=("Login endpoint exposed.",),
         assigned_agent_id="agent-backend",
         autonomy=AutonomyLevel.SUPERVISED,

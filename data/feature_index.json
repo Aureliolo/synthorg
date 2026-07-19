@@ -1086,6 +1086,22 @@
     {
       "controllers": [],
       "depends_on": [],
+      "directory": "src/synthorg/engine/output_style",
+      "ghost_wired_symbols": [
+        "rebuild_and_bind_output_style",
+        "OutputStyleSettingsSubscriber"
+      ],
+      "mcp_tool_names": [],
+      "name": "output_style",
+      "protocol_exports": [
+        "HouseStyleProvider"
+      ],
+      "settings_namespace": "output_style",
+      "state_slice_fields": []
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
       "directory": "src/synthorg/persistence",
       "ghost_wired_symbols": [],
       "mcp_tool_names": [],
@@ -1408,6 +1424,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-19T11:46:41.508729Z",
+  "generated_at": "2026-07-19T18:41:17.493018Z",
   "schema_version": 1
 }

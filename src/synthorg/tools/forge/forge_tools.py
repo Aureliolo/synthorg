@@ -10,7 +10,7 @@ call to another host. The shared resolve / gate / dispatch / error-map
 machinery lives in :mod:`synthorg.tools.forge._base`.
 """
 
-from typing import ClassVar, override
+from typing import ClassVar, NamedTuple, override
 
 from pydantic import BaseModel
 
@@ -29,6 +29,58 @@ from synthorg.tools.forge._base import (
     _json_result,
 )
 from synthorg.tools.forge._runtime import ForgeToolDeps
+
+
+class _ForgeGuard(NamedTuple):
+    """Outcome of guarding forge text: an error, or the approved title/body.
+
+    ``error`` is set on a hard block; otherwise ``title`` / ``body`` carry the
+    policy-approved text (rewritten when an AUTO_REWRITE rule fired, else the
+    original). An empty field passes through unchanged.
+    """
+
+    error: ToolExecutionResult | None
+    title: str
+    body: str
+
+
+def _guard_forge_text(*, title: str, body: str, is_commit: bool = False) -> _ForgeGuard:
+    """Enforce the output-style policy on agent-authored forge text.
+
+    Issue and PR titles/bodies are a ``PR_BODY`` (prose) boundary; a merge
+    commit title is a ``COMMIT_MESSAGE`` (code, reject-only) boundary. A
+    hard-rule violation (an em-dash) is rejected before the write; an
+    AUTO_REWRITE rule's fixed prose is applied so the approved text, never the
+    original violating text, reaches the forge. An empty field is skipped.
+    Deferred import breaks the tools/engine cold-import cycle.
+
+    Returns:
+        A guard carrying an ``error`` on a hard block, else the approved
+        (possibly rewritten) ``title`` and ``body``.
+    """
+    from synthorg.engine.output_style import (  # noqa: PLC0415
+        OutputChannel,
+        OutputContext,
+        evaluate_output_policy,
+    )
+
+    channel = OutputChannel.COMMIT_MESSAGE if is_commit else OutputChannel.PR_BODY
+    ctx = OutputContext(channel=channel)
+    approved: list[str] = []
+    for text in (title, body):
+        if not text:
+            approved.append(text)
+            continue
+        verdict = evaluate_output_policy(text, ctx)
+        if verdict is not None and verdict.blocked:
+            return _ForgeGuard(
+                ToolExecutionResult(content=verdict.summary, is_error=True), "", ""
+            )
+        if verdict is not None and verdict.rewritten_text is not None:
+            approved.append(verdict.rewritten_text)
+        else:
+            approved.append(text)
+    return _ForgeGuard(None, approved[0], approved[1])
 
 
 class ForgeRepoTool(_BaseForgeTool):
@@ -111,16 +163,22 @@ class ForgeIssueTool(_BaseForgeTool):
             )
             return _json_result([i.model_dump(mode="json") for i in issues])
         if args.action == "open":
+            guard = _guard_forge_text(title=args.title, body=args.body)
+            if guard.error is not None:
+                return guard.error
             issue = await client.create_issue(
                 owner=owner,
                 repo=repo,
-                title=NotBlankStr(args.title),
-                body=args.body,
+                title=NotBlankStr(guard.title),
+                body=guard.body,
                 labels=args.labels,
             )
             return _json_result(issue.model_dump(mode="json"))
+        guard = _guard_forge_text(title="", body=args.body)
+        if guard.error is not None:
+            return guard.error
         comment = await client.comment_issue(
-            owner=owner, repo=repo, number=args.number, body=NotBlankStr(args.body)
+            owner=owner, repo=repo, number=args.number, body=NotBlankStr(guard.body)
         )
         return _json_result(comment.model_dump(mode="json"))
 
@@ -161,36 +219,48 @@ class ForgePullRequestTool(_BaseForgeTool):
             )
             return _json_result([p.model_dump(mode="json") for p in pulls])
         if args.action == "open":
+            guard = _guard_forge_text(title=args.title, body=args.body)
+            if guard.error is not None:
+                return guard.error
             pull = await client.create_pull_request(
                 owner=owner,
                 repo=repo,
-                title=NotBlankStr(args.title),
+                title=NotBlankStr(guard.title),
                 source_branch=NotBlankStr(args.source_branch),
                 target_branch=NotBlankStr(args.target_branch),
-                body=args.body,
+                body=guard.body,
                 draft=args.draft,
             )
             return _json_result(pull.model_dump(mode="json"))
         if args.action == "comment":
+            guard = _guard_forge_text(title="", body=args.body)
+            if guard.error is not None:
+                return guard.error
             comment = await client.comment_pull_request(
-                owner=owner, repo=repo, number=args.number, body=NotBlankStr(args.body)
+                owner=owner, repo=repo, number=args.number, body=NotBlankStr(guard.body)
             )
             return _json_result(comment.model_dump(mode="json"))
         if args.action == "review":
+            guard = _guard_forge_text(title="", body=args.body)
+            if guard.error is not None:
+                return guard.error
             review = await client.review_pull_request(
                 owner=owner,
                 repo=repo,
                 number=args.number,
                 decision=args.decision,
-                body=args.body,
+                body=guard.body,
             )
             return _json_result(review.model_dump(mode="json"))
+        guard = _guard_forge_text(title=args.commit_title, body="", is_commit=True)
+        if guard.error is not None:
+            return guard.error
         result = await client.merge_pull_request(
             owner=owner,
             repo=repo,
             number=args.number,
             method=args.method,
-            commit_title=args.commit_title,
+            commit_title=guard.title,
         )
         return _json_result(result.model_dump(mode="json"))
 

@@ -108,11 +108,26 @@ vi.mock('@/hooks/useSettingsData', () => {
   return { [hookName]: () => getSettingsData() }
 })
 
-// Mock the settings store for savingKeys
+// Mock the settings store. Mirrors the real store shape the page reads:
+// `savingKeys` plus the guarded-write-confirm slice (`pendingConfirm` is
+// `null` when no write is awaiting confirmation, so GuardedWriteConfirmDialog
+// stays closed).
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: vi.fn(
-    (selector: (s: { savingKeys: ReadonlyMap<string, number> }) => unknown) =>
-      selector({ savingKeys: new Map() }),
+    (
+      selector: (s: {
+        savingKeys: ReadonlyMap<string, number>
+        pendingConfirm: null
+        confirmPendingUpdate: ReturnType<typeof vi.fn>
+        dismissPendingConfirm: ReturnType<typeof vi.fn>
+      }) => unknown,
+    ) =>
+      selector({
+        savingKeys: new Map(),
+        pendingConfirm: null,
+        confirmPendingUpdate: vi.fn(),
+        dismissPendingConfirm: vi.fn(),
+      }),
   ),
 }))
 

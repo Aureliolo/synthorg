@@ -23,6 +23,7 @@ from synthorg.engine._review_oracle_gates import (
     GateOutcome,
     apply_build_test_gate,
     apply_oracle_review_stage,
+    apply_output_policy_gate,
 )
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
@@ -111,9 +112,16 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
             return target, transition_reason, event, approved
 
     # Resolve the shared deliverable and run the peer-review gate as one stage.
-    # The deliverable is built once and returned so the red-team gate below
-    # reuses it: a completion where both gates are active pays a single
-    # retrieval, and a below-threshold completion pays none.
+    # The deliverable is built once and reused by the red-team gate and the
+    # output-policy backstop: a completion where several consumers are active
+    # pays a single retrieval. The output-policy backstop is stakes-independent,
+    # so it forces a build even for a below-threshold task, keeping low-stakes
+    # deliverables policy-checked; a completion with no active consumer pays
+    # none.
+    from synthorg.engine.output_style import (  # noqa: PLC0415
+        output_policy_active as _output_policy_active,
+    )
+
     red_team_active = (
         red_team_gate is not None
         and deliverable_input_builder is not None
@@ -128,8 +136,23 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         completion_oracle_min_stakes=completion_oracle_min_stakes,
         deliverable_input_builder=deliverable_input_builder,
         red_team_active=red_team_active,
+        output_policy_active=_output_policy_active(),
         task=task,
         outcome=(target, transition_reason, event, approved),
+    )
+    if not approved:
+        return target, transition_reason, event, approved
+
+    # Deterministic output-style backstop on the deliverable prose, reusing the
+    # already-built deliverable input. Runs before the adversarial gates: it is
+    # the cheapest, most objective deliverable check and needs no LLM.
+    target, transition_reason, event, approved = apply_output_policy_gate(
+        deliverable=deliverable_input,
+        task=task,
+        target=target,
+        transition_reason=transition_reason,
+        event=event,
+        approved=approved,
     )
     if not approved:
         return target, transition_reason, event, approved

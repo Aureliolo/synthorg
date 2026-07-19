@@ -114,6 +114,18 @@ in the {{ agent_department }} department.
 
 ## Personality
 {{ personality_section }}
+{% if house_style %}
+
+## House Writing Style
+
+Write in this house style on everything you produce (deliverables, messages,
+commit messages, PR and issue text, code comments). The em-dash ban is
+hard-enforced: output containing an em-dash (U+2014) is rejected at the
+boundary and returned to you to rewrite, so never emit one. The remaining
+directives are expected and monitored.
+
+{{ house_style_section }}
+{% endif %}
 
 ## Skills
 {% if primary_skills %}

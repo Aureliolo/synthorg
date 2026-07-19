@@ -59,6 +59,7 @@ The design specification has been split into focused documentation pages for bet
 | [Ceremony Scheduling](design/ceremony-scheduling.md) | Strategies, Protocols, Velocity | Pluggable ceremony scheduling, 8 strategies, velocity calculation |
 | [Client Simulation](design/client-simulation.md) | Client Types, Intake, Review Pipeline, Simulation | Synthetic client framework for workload generation and evaluation |
 | [Strategy & Trendslop Mitigation](design/strategy.md) | Lenses, Principles, Confidence, Impact | Anti-trendslop mitigation for strategic agents |
+| [Output-Style Policy](design/output-style-policy.md) | House writing style, hard guardrail, enforcement modes, sanctioned exemptions | Configurable house style injected into agent prompts, plus a deterministic hard guardrail that rejects or rewrites agent output violating a hard rule (the no-em-dash ban) at every output boundary |
 | [Self-Improvement](design/self-improvement.md) | Meta-Loop, Signals, Rules, Proposals, Rollout | Self-improving company: signal aggregation, rule engine, improvement proposals, staged rollout |
 | [Internationalization](design/internationalization.md) | Locale Resolution, UI Text, Translation Scope | British English UI default, locale-aware Intl-based display formatting, no planned translation framework |
 

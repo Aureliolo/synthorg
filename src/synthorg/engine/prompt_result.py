@@ -29,6 +29,7 @@ from synthorg.providers.models import ToolDefinition
 
 if TYPE_CHECKING:
     from synthorg.core.company import Company
+    from synthorg.engine.output_style.provider import HouseStyleProvider
 
 
 class SystemPrompt(BaseModel):
@@ -91,6 +92,7 @@ def build_prompt_result(  # noqa: PLR0913
     profile: PromptProfile | None = None,
     personality_trim_info: PersonalityTrimInfo | None = None,
     strategy_config: StrategyConfig | None = None,
+    house_style_provider: HouseStyleProvider | None = None,
 ) -> SystemPrompt:
     """Assemble the final ``SystemPrompt`` from rendered content.
 
@@ -99,6 +101,9 @@ def build_prompt_result(  # noqa: PLR0913
         estimate, template version, and optional personality-trim
         info populated.
     """
+    from synthorg.engine.output_style.adapter import (  # noqa: PLC0415
+        should_inject_house_style,
+    )
     from synthorg.engine.strategy.prompt_injection import (  # noqa: PLC0415
         should_inject_strategy,
     )
@@ -112,6 +117,7 @@ def build_prompt_result(  # noqa: PLR0913
         context_budget=context_budget,
         profile=profile,
         has_strategy=should_inject_strategy(agent, strategy_config),
+        has_house_style=should_inject_house_style(agent, provider=house_style_provider),
     )
     metadata = _build_metadata(agent)
     if profile is not None:

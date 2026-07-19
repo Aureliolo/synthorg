@@ -98,6 +98,37 @@ class WriteFileTool(BaseFileSystemTool):
             parameters_schema=WriteFileArgs.model_json_schema(),
         )
 
+    def _guard_output_policy(
+        self,
+        user_path: str,
+        content: str,
+    ) -> ToolExecutionResult | None:
+        """Enforce the output-style policy on agent-written file content.
+
+        Code files are a hard-rule boundary: a banned literal (an em-dash) in a
+        code comment or string is rejected before it lands on disk, unless an
+        operator-sanctioned PATH exemption covers this file. The check is
+        code-channel (reject, never auto-rewrite), so a violation returns an
+        error result with the rule, giving the agent instant rework feedback.
+
+        Returns:
+            An error result when a hard rule blocks, else ``None``.
+        """
+        from synthorg.engine.output_style import (  # noqa: PLC0415
+            OutputChannel,
+            OutputContext,
+            evaluate_output_policy,
+        )
+
+        ctx = OutputContext(
+            channel=OutputChannel.CODE_FILE,
+            file_path=user_path or None,
+        )
+        verdict = evaluate_output_policy(content, ctx)
+        if verdict is None or not verdict.blocked:
+            return None
+        return ToolExecutionResult(content=verdict.summary, is_error=True)
+
     def _validate_write_args(
         self,
         user_path: str,
@@ -246,6 +277,9 @@ class WriteFileTool(BaseFileSystemTool):
 
         if err := self._validate_write_args(user_path, content):
             return err
+
+        if guard_err := self._guard_output_policy(user_path, content):
+            return guard_err
 
         resolved_or_err = self._resolve_write_path(
             user_path,

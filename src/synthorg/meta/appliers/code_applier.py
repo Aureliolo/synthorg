@@ -286,10 +286,23 @@ class CodeApplier:
                 branch,
                 proposal,
             )
+            # Enforce the output-style policy on the agent-authored PR title and
+            # body before the PR is opened. A hard violation raises (handled by
+            # the branch-cleanup path below); an auto-rewrite (off by default)
+            # substitutes the fixed text.
+            from synthorg.engine.output_style import (  # noqa: PLC0415
+                OutputChannel,
+                OutputContext,
+                enforce_output_policy,
+            )
+
+            pr_ctx = OutputContext(channel=OutputChannel.PR_BODY)
+            pr_title = enforce_output_policy(proposal.title, pr_ctx)
+            pr_body = enforce_output_policy(_build_pr_body(proposal), pr_ctx)
             pr_url = await self._github.create_draft_pr(
                 head=branch,
-                title=proposal.title,
-                body=_build_pr_body(proposal),
+                title=pr_title,
+                body=pr_body,
             )
         except Exception as exc:
             reraise_critical(exc)

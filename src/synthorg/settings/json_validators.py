@@ -227,10 +227,40 @@ def _validate_company_agents(value: object) -> None:
                 raise ValueError(msg)
 
 
+def _validate_output_style_exemptions(value: object) -> None:
+    """Reject an ``output_style.exemptions`` payload of the wrong shape.
+
+    A sanctioned exemption weakens the guardrail, so a malformed entry must be
+    rejected at write time (visible to the operator) rather than silently
+    dropped at the next pack rebuild. Each entry is re-validated as the same
+    :class:`~synthorg.engine.output_style.models.SanctionedExemption` the
+    enforcement path parses, so write-time and runtime contracts cannot drift.
+
+    Raises:
+        ValueError: If the payload is not a JSON array, or any entry fails
+            ``SanctionedExemption`` validation (unknown ``scope_kind``, blank
+            field, etc.).
+    """
+    from synthorg.engine.output_style.models import (  # noqa: PLC0415
+        SanctionedExemption,
+    )
+
+    if not isinstance(value, list):
+        msg = "output_style/exemptions must be a JSON array of exemption objects"
+        raise ValueError(msg)  # noqa: TRY004 -- dispatcher contract requires ValueError
+    for idx, entry in enumerate(value):
+        try:
+            SanctionedExemption.model_validate(entry)
+        except (ValueError, TypeError) as exc:
+            msg = f"output_style/exemptions[{idx}] is not a valid exemption: {exc}"
+            raise ValueError(msg) from exc
+
+
 _JSON_VALIDATORS: Final[dict[tuple[str, str], Callable[[object], None]]] = {
     ("api", "csp_docs_external_origins"): _validate_csp_docs_external_origins,
     ("company", "departments"): _validate_company_departments,
     ("company", "agents"): _validate_company_agents,
+    ("output_style", "exemptions"): _validate_output_style_exemptions,
 }
 
 

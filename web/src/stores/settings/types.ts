@@ -6,6 +6,18 @@ import type {
   WsEvent,
 } from '@/api/types'
 
+/**
+ * A guarded-key write the backend rejected pending a confirm + reason (the
+ * ``SECURITY_TOGGLE_CONFIRM_REQUIRED`` security-write governance response). The
+ * dashboard stages it here so a dialog can collect the operator's reason and
+ * retry, instead of dead-ending on a generic error toast.
+ */
+export interface PendingConfirm {
+  ns: SettingNamespace
+  key: string
+  value: string
+}
+
 export interface SettingsState {
   /** ISO 4217 currency code for display formatting. */
   currency: string
@@ -49,6 +61,12 @@ export interface SettingsState {
   entriesGeneration: number
   /** Error from the most recent save attempt. */
   saveError: string | null
+  /**
+   * A guarded-key write awaiting operator confirm + reason, or ``null``. Set
+   * when the backend returns ``SECURITY_TOGGLE_CONFIRM_REQUIRED``; the settings
+   * page renders a confirm dialog off this and clears it on confirm / dismiss.
+   */
+  pendingConfirm: PendingConfirm | null
 
   /** Fetch the configured currency from the budget settings namespace. */
   fetchCurrency: () => Promise<void>
@@ -72,6 +90,13 @@ export interface SettingsState {
    * applied to ``state.entries``.
    */
   resetSetting: (ns: SettingNamespace, key: string) => Promise<boolean>
+  /**
+   * Retry the staged :attr:`pendingConfirm` write with ``confirm: true`` and
+   * the operator's *reason*. No-op returning ``null`` when nothing is staged.
+   */
+  confirmPendingUpdate: (reason: string) => Promise<SettingEntry | null>
+  /** Discard the staged guarded-key write without applying it. */
+  dismissPendingConfirm: () => void
   /** Handle a WebSocket event on the system channel. */
   updateFromWsEvent: (event: WsEvent) => void
 }

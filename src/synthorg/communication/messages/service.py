@@ -118,13 +118,28 @@ class MessageService:
         cannot spoof ``sender`` in the log.  The payload-side
         ``message.sender`` is still logged as ``sender`` for
         observability but is never treated as the authenticated actor.
+
+        Agent-authored message text is enforced against the output-style policy
+        before publish: a hard violation raises ``OutputPolicyViolationError``
+        so the sender is told the rule and reworks, and an auto-rewrite is
+        applied back onto the message (via the shared message guard both send
+        boundaries use). The rejection is logged with the actor context.
+
+        Raises:
+            OutputPolicyViolationError: When the message text violates a hard
+                output-style rule.
         """
-        await self._bus.publish(message)
+        from synthorg.communication._output_guard import (  # noqa: PLC0415
+            guard_message_output,
+        )
+
+        guarded = guard_message_output(message, agent_id=actor_id)
+        await self._bus.publish(guarded)
         logger.info(
             COMMUNICATION_MESSAGE_SENT_VIA_MCP,
-            channel=message.channel,
+            channel=guarded.channel,
             actor_id=actor_id,
-            sender=message.sender,
+            sender=guarded.sender,
         )
 
     async def delete_message(
