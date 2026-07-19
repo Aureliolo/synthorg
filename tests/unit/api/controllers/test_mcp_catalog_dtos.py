@@ -55,10 +55,10 @@ class TestInstallEntryRequest:
 
     def test_accepts_full_valid_payload(self) -> None:
         req = InstallEntryRequest(
-            catalog_entry_id="brave-search-mcp",
+            catalog_entry_id="example-search-mcp",
             connection_name="my-search",
         )
-        assert req.catalog_entry_id == "brave-search-mcp"
+        assert req.catalog_entry_id == "example-search-mcp"
         assert req.connection_name == "my-search"
 
     def test_is_frozen(self) -> None:

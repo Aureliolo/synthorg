@@ -3,7 +3,10 @@
 import pytest
 import structlog
 
-from synthorg.observability.events.mcp import MCP_SANDBOX_NETWORK_UNSAFE
+from synthorg.observability.events.mcp import (
+    MCP_SANDBOX_NETWORK_UNSAFE,
+    MCP_SANDBOX_RESERVED_ENV_DROPPED,
+)
 from synthorg.tools.mcp.sandbox import MCPSandboxConfig, wrap_stdio_in_sandbox
 
 pytestmark = pytest.mark.unit
@@ -85,6 +88,31 @@ class TestWrap:
             "-y",
             _EXAMPLE_PACKAGE,
         ]
+
+    def test_reserved_env_key_not_forwarded(self) -> None:
+        """A supplied key colliding with a sandbox control must not override it.
+
+        Forwarding ``NPM_CONFIG_IGNORE_SCRIPTS`` by name after the trusted
+        ``--env=NPM_CONFIG_IGNORE_SCRIPTS=true`` flag would let Docker's
+        last-wins re-enable install scripts. The reserved key is dropped.
+        """
+        with structlog.testing.capture_logs() as cap:
+            _, args, _ = _wrap({"NPM_CONFIG_IGNORE_SCRIPTS": "false"})
+        # The trusted control flag is present exactly once, unshadowed.
+        assert "--env=NPM_CONFIG_IGNORE_SCRIPTS=true" in args
+        # The supplied key is never forwarded by name.
+        assert "NPM_CONFIG_IGNORE_SCRIPTS" not in args
+        events = [e for e in cap if e.get("event") == MCP_SANDBOX_RESERVED_ENV_DROPPED]
+        assert events
+        assert events[0].get("log_level") == "warning"
+
+    def test_non_reserved_env_still_forwarded(self) -> None:
+        _, args, _ = _wrap({"HOME": "/evil", _EXAMPLE_ENV_VAR: "x"})
+        # HOME is reserved -> dropped; the trusted HOME stands.
+        assert "--env=HOME=/tmp" in args
+        assert "HOME" not in args
+        # A non-reserved key still forwards by name.
+        assert _EXAMPLE_ENV_VAR in args
 
     def test_secret_forwarded_by_name_never_in_argv(self) -> None:
         _, args, env = _wrap({_EXAMPLE_ENV_VAR: "super-secret-value"})

@@ -176,7 +176,7 @@ mcp:
     - name: "brave-search"
       transport: stdio
       command: "npx"
-      args: ["-y", "@brave/brave-search-mcp-server"]
+      args: ["-y", "@brave/brave-search-mcp-server@2.1.0"]
       env:
         BRAVE_API_KEY: "..."
     - name: "remote-analytics"
@@ -195,7 +195,7 @@ mcp:
     - name: "brave-search"
       transport: stdio
       command: "npx"
-      args: ["-y", "@brave/brave-search-mcp-server"]
+      args: ["-y", "@brave/brave-search-mcp-server@2.1.0"]
       enabled: false  # temporarily disabled
 ```
 

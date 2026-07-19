@@ -38,15 +38,15 @@ function buildMcpCatalogEntry(
 // ── Storybook-facing named export (preserve populated catalog). ──
 const mockCatalogEntries: McpCatalogEntry[] = [
   buildMcpCatalogEntry({
-    id: 'brave-search-mcp',
-    name: 'Brave Search',
-    description: 'Web and local search via the Brave Search API',
-    npm_package: '@brave/brave-search-mcp-server',
-    npm_version: '2.1.0',
+    id: 'example-search-mcp',
+    name: 'Example Search',
+    description: 'Web and local search via an example search API',
+    npm_package: '@example-org/example-search-mcp-server',
+    npm_version: '1.0.0',
     required_connection_type: 'generic_http',
     capabilities: ['web_search', 'local_search'],
     tags: ['search', 'web'],
-    credential_env_map: { api_key: 'BRAVE_API_KEY' },
+    credential_env_map: { api_key: 'EXAMPLE_API_KEY' },
   }),
   buildMcpCatalogEntry({
     id: 'filesystem-mcp',

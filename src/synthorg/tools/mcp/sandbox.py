@@ -15,17 +15,30 @@ the MCP SDK seeds via ``get_default_environment()`` plus the returned env) and
 Docker passes it into the container, so no secret ever appears in host ``argv``.
 """
 
-from typing import Literal, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_SANDBOX_NETWORK_UNSAFE
+from synthorg.observability.events.mcp import (
+    MCP_SANDBOX_NETWORK_UNSAFE,
+    MCP_SANDBOX_RESERVED_ENV_DROPPED,
+)
 
 logger = get_logger(__name__)
 
 SandboxNetwork = Literal["bridge", "none", "host"]
+
+# Env keys the sandbox sets as trusted controls. A supplied env key that
+# collides with one of these, forwarded after the fixed ``--env=KEY=value``
+# flag, would let Docker's last-wins semantics override the control (e.g.
+# ``NPM_CONFIG_IGNORE_SCRIPTS=false`` re-enabling install scripts, the primary
+# npm RCE vector, or ``HOME`` redirecting writes off the tmpfs). They are never
+# forwarded; the trusted values stand.
+_RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
+    {"HOME", "NPM_CONFIG_CACHE", "NPM_CONFIG_IGNORE_SCRIPTS"}
+)
 
 
 class MCPSandboxConfig(BaseModel):
@@ -118,6 +131,14 @@ def wrap_stdio_in_sandbox(
         "--env=NPM_CONFIG_IGNORE_SCRIPTS=true",
     ]
     for key in env:
+        if key in _RESERVED_ENV_KEYS:
+            # Forwarding this would override a trusted sandbox control.
+            logger.warning(
+                MCP_SANDBOX_RESERVED_ENV_DROPPED,
+                key=key,
+                note="supplied env key collides with a sandbox control; dropped",
+            )
+            continue
         # Forward by name so the value never lands in host argv.
         docker_args.extend(("--env", key))
     docker_args.append(sandbox.image)
