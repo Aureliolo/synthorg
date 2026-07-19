@@ -157,6 +157,9 @@ async def rebuild_and_bind_output_style(
     try:
         config = await build_output_style_config(settings_service)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised; else fail-closed
+        # lint-allow: swallow-ok -- a recoverable settings-read failure must
+        # bind the in-code em-dash ban, never propagate and leave the output
+        # boundaries unbound; criticals are re-raised by reraise_critical.
         reraise_critical(exc)
         logger.error(
             OUTPUT_STYLE_PACK_INVALID,
@@ -198,6 +201,9 @@ async def rebuild_and_bind_output_style(
                 pack=minimal_failclosed_pack(), config=config
             )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised; else fail-closed
+        # lint-allow: swallow-ok -- an unexpected pack-build failure must bind
+        # the in-code em-dash ban, never propagate and leave the output
+        # boundaries unbound; criticals are re-raised by reraise_critical.
         reraise_critical(exc)
         logger.error(
             OUTPUT_STYLE_PACK_INVALID,
