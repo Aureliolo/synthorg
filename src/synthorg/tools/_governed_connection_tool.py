@@ -47,14 +47,20 @@ _ACTION_TYPE = ActionType.COMMS_EXTERNAL.value
 
 
 class _AsyncCloseable(Protocol):
+    """A per-call client that releases its transport via ``aclose()``."""
+
     async def aclose(self) -> None: ...
 
 
 class _RetryAfterCarrier(Protocol):
+    """A rate-limit error carrying the upstream-advertised cooldown."""
+
     retry_after_seconds: float | None
 
 
 class _ConnectionToolRuntime(Protocol):
+    """The boot-scoped runtime bits the shared pipeline reads."""
+
     @property
     def connection_catalog(self) -> ConnectionCatalog: ...
     @property
@@ -64,6 +70,8 @@ class _ConnectionToolRuntime(Protocol):
 
 
 class _GateDeps(Protocol):
+    """The per-run collaborators the approval gate is built from."""
+
     @property
     def approval_store(self) -> ApprovalStoreProtocol: ...
     @property
