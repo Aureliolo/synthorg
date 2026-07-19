@@ -383,7 +383,7 @@ class TestMetaTurn:
                 _BASE,
                 headers=make_auth_headers("observer"),
                 json={
-                    "message": "connect our GitHub organisation",
+                    "message": "connect our issue tracker",
                     "intent_override": "configure",
                 },
             )

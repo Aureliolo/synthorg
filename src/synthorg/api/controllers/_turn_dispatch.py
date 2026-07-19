@@ -19,6 +19,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Final
 
+from litestar.exceptions import ValidationException
+from pydantic import ValidationError
+
 from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.controllers._meta_chat_org_state import resolve_chat_org_state
 from synthorg.api.controllers._meta_chat_routing import resolve_chat_answer
@@ -390,6 +393,8 @@ async def _dispatch_configure(
 
     Raises:
         ServiceUnavailableError: When the console is not configured.
+        ValidationException: When a malformed connection draft id or capture
+            handle is supplied (surfaced as a 400).
     """
     await ensure_feature_enabled(
         app_state,
@@ -419,15 +424,22 @@ async def _dispatch_configure(
     # credential-shaped value first: secrets are meant to be captured out of
     # band (masked field -> handle), so a pasted token must never reach the
     # prompt or a parked-context persist. A clean flow never trips this.
-    configure = await console.configure(
-        ConsoleTurnArgs(
+    try:
+        console_args = ConsoleTurnArgs(
             instruction=NotBlankStr(redact_turn_content(ctx.body)),
             conversation_id=ctx.conversation_id,
             requested_by=NotBlankStr(ctx.actor_id) if ctx.actor_id else None,
             connection_draft_id=ctx.connection_draft_id,
             provided_credential_handles=ctx.provided_credential_handles,
         )
-    )
+    except ValidationError as exc:
+        # A malformed draft id or capture handle (a would-be prompt-injection
+        # token) is a bad request, not a server fault: surface it as a 400. The
+        # detail is generic so a crafted value is never echoed back.
+        raise ValidationException(
+            detail="Invalid configure turn: malformed connection draft id or handle"
+        ) from exc
+    configure = await console.configure(console_args)
     return TurnResult(
         intent=TurnIntent.CONFIGURE,
         intent_reason=ctx.reason,

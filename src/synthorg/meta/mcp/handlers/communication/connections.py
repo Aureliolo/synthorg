@@ -70,6 +70,22 @@ _TY_DRAFT_ID_REQUIRED = "required when credential_handles are supplied"
 _ARG_FIELD_NAME = "field_name"
 
 
+def _resolve_connection_type(value: str) -> ConnectionType:
+    """Parse a connection-type string into its enum, or raise the arg error.
+
+    Returns:
+        The resolved :class:`ConnectionType`.
+
+    Raises:
+        ArgumentValidationError: When ``value`` is not a known connection type.
+    """
+    try:
+        return ConnectionType(value)
+    except ValueError as exc:
+        bad = ArgumentValidationError(_ARG_CONNECTION_TYPE, _TY_CONNECTION_TYPE)
+        raise bad from exc
+
+
 async def _connections_list(
     *,
     app_state: AppState,
@@ -180,11 +196,7 @@ async def _connections_create(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         args = typed_args(arguments, ConnectionsCreateArgs)
-        try:
-            connection_type = ConnectionType(args.connection_type)
-        except ValueError as exc:
-            bad = ArgumentValidationError(_ARG_CONNECTION_TYPE, _TY_CONNECTION_TYPE)
-            raise bad from exc
+        connection_type = _resolve_connection_type(args.connection_type)
         actor_id = require_actor_id(resolved_actor)
         credentials = await _resolve_credentials(app_state, args)
         connection = await connection_service_of(app_state).create_connection(
@@ -349,11 +361,7 @@ async def _connections_request_secret_capture(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         args = typed_args(arguments, ConnectionsRequestSecretCaptureArgs)
-        try:
-            connection_type = ConnectionType(args.connection_type)
-        except ValueError as exc:
-            bad = ArgumentValidationError(_ARG_CONNECTION_TYPE, _TY_CONNECTION_TYPE)
-            raise bad from exc
+        connection_type = _resolve_connection_type(args.connection_type)
         metadata = get_connection_type_metadata(connection_type)
         field = next(
             (f for f in metadata.fields if f.name == args.field_name and f.secret),

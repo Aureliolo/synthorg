@@ -1,4 +1,4 @@
-import { useCallback, useState, type SyntheticEvent } from 'react'
+import { useCallback, useRef, useState, type SyntheticEvent } from 'react'
 import {
   connectionTypeUsesWebhookReceipts,
   type Connection,
@@ -252,41 +252,51 @@ export function useConnectionSubmit(args: UseSubmitArgs): {
   const { form, spec, mode, connection, onClose, setSubmitted, setErrors } = args
   const { createConnection, updateConnection, captureSecret } = args
   const [submitting, setSubmitting] = useState(false)
+  // Synchronous guard against a double-fire: `submitting` state updates async,
+  // so two rapid submit events could both pass a state-based check before the
+  // re-render. The ref flips synchronously, blocking the second event; the
+  // `submitting` state is kept only to drive the disabled UI.
+  const inFlightRef = useRef(false)
   const handleSubmit = useCallback(
     async (event: SyntheticEvent) => {
       event.preventDefault()
-      if (submitting) return
-      setSubmitted(true)
-      if (!spec || !form.type) return
-      const prep = prepareConnectionSubmit(form, spec, mode)
-      setErrors(
-        prep.retentionError
-          ? { ...prep.errors, webhook_receipt_retention_days: prep.retentionError }
-          : prep.errors,
-      )
-      if (!prep.proceed) return
-      setSubmitting(true)
+      if (inFlightRef.current) return
+      inFlightRef.current = true
       try {
-        const shouldClose = await submitConnection({
-          form,
-          // Narrowed to ConnectionType by the guard above; pass explicitly so
-          // the create body needs no `as` cast downstream.
-          connectionType: form.type,
-          spec,
-          mode,
-          connection,
-          // Fresh capture-binding namespace per submit, generated in the event
-          // handler (never during render), so handles can't be replayed.
-          draftId: crypto.randomUUID(),
-          supportsWebhook: prep.supportsWebhook,
-          retentionValue: prep.retentionValue,
-          createConnection,
-          updateConnection,
-          captureSecret,
-        })
-        if (shouldClose) onClose()
+        setSubmitted(true)
+        if (!spec || !form.type) return
+        const prep = prepareConnectionSubmit(form, spec, mode)
+        setErrors(
+          prep.retentionError
+            ? { ...prep.errors, webhook_receipt_retention_days: prep.retentionError }
+            : prep.errors,
+        )
+        if (!prep.proceed) return
+        setSubmitting(true)
+        try {
+          const shouldClose = await submitConnection({
+            form,
+            // Narrowed to ConnectionType by the guard above; pass explicitly so
+            // the create body needs no `as` cast downstream.
+            connectionType: form.type,
+            spec,
+            mode,
+            connection,
+            // Fresh capture-binding namespace per submit, generated in the event
+            // handler (never during render), so handles can't be replayed.
+            draftId: crypto.randomUUID(),
+            supportsWebhook: prep.supportsWebhook,
+            retentionValue: prep.retentionValue,
+            createConnection,
+            updateConnection,
+            captureSecret,
+          })
+          if (shouldClose) onClose()
+        } finally {
+          setSubmitting(false)
+        }
       } finally {
-        setSubmitting(false)
+        inFlightRef.current = false
       }
     },
     [
@@ -298,7 +308,6 @@ export function useConnectionSubmit(args: UseSubmitArgs): {
       updateConnection,
       captureSecret,
       onClose,
-      submitting,
       setSubmitted,
       setErrors,
     ],

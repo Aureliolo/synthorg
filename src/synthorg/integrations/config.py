@@ -38,7 +38,10 @@ class ConnectionsConfig(BaseModel):
     )
 
     max_connections_per_type: int = Field(default=100, ge=1)
-    secret_capture_ttl_seconds: int = Field(default=600, gt=0)
+    # Bounds mirror the INTEGRATIONS.secret_capture_ttl_seconds setting
+    # definition (30s..3600s) so the typed config and the settings registry
+    # agree on the accepted range.
+    secret_capture_ttl_seconds: int = Field(default=600, ge=30, le=3600)
 
     @model_validator(mode="before")
     @classmethod

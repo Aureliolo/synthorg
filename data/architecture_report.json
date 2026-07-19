@@ -80,8 +80,8 @@
     },
     "src/synthorg/api/controllers/_turn_dispatch.py": {
       "cap": 600,
-      "loc": 528,
-      "ratio": 0.88,
+      "loc": 536,
+      "ratio": 0.893,
       "tier": "service"
     },
     "src/synthorg/api/controllers/activities/_shared.py": {
@@ -464,8 +464,8 @@
     },
     "src/synthorg/engine/context.py": {
       "cap": 500,
-      "loc": 520,
-      "ratio": 1.04,
+      "loc": 500,
+      "ratio": 1.0,
       "tier": "code"
     },
     "src/synthorg/engine/evolution/factory.py": {

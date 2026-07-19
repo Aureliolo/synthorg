@@ -254,6 +254,15 @@ describe('mapTurnResult', () => {
     }
     const turns = mapTurnResult(baseResult({ intent: 'configure', configure }))
     expect(turns).toHaveLength(2)
+    // turns[0] is the console's action card, turns[1] the masked capture card.
+    expect(turns[0]).toMatchObject({
+      kind: 'event',
+      event: {
+        type: 'action',
+        agentName: 'Operator Console',
+        content: 'I need the database password.',
+      },
+    })
     expect(turns[1]).toMatchObject({
       kind: 'event',
       event: {

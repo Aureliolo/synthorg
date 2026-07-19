@@ -287,7 +287,8 @@ class TestRunChatAction:
         # The public method must forward cost_ceiling INTO the loop's context so
         # the budget gate binds; a regression to post-hoc wiring would run the
         # loop against an unbounded context even though the caller passed one.
-        engine, _ = _build_engine(responses=[_final("noop")])
+        # Two responses: one per run_chat_action call below.
+        engine, _ = _build_engine(responses=[_final("noop"), _final("noop")])
         seen: list[float | None] = []
         original = engine._budget_checker_for
 

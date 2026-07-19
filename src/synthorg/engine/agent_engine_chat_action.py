@@ -174,16 +174,15 @@ class AgentEngineChatActionMixin:
         else:
             # Continue the prior conversation: keep its messages but reset the
             # per-turn budget (turn count + accumulated cost) so an earlier
-            # turn's usage does not throttle this one; the cost ceiling rides on
-            # the context unchanged. Then re-inject the per-turn brief (the
-            # persona prompt is already carried in the prior context) so fresh
-            # guidance such as newly provided capture handles is seen this turn.
+            # turn's usage does not throttle this one. Only unconstrained fields
+            # are reset here; ``max_turns`` (a ``gt=0`` field) and the cost
+            # ceiling ride unchanged on the prior context, already validated when
+            # it was first built, so no unvalidated value can slip past the
+            # field constraint via ``model_copy``. Then re-inject the per-turn
+            # brief (the persona prompt is already carried in the prior context)
+            # so fresh guidance such as newly provided capture handles is seen.
             ctx = prior_context.model_copy(
-                update={
-                    "turn_count": 0,
-                    "accumulated_cost": ZERO_TOKEN_USAGE,
-                    "max_turns": max_turns,
-                }
+                update={"turn_count": 0, "accumulated_cost": ZERO_TOKEN_USAGE},
             )
             if system_prompt_addendum:
                 ctx = ctx.with_message(
