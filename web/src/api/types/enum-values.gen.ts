@@ -417,6 +417,22 @@ export const EVALUATION_CONFIDENCE_VALUES = [
 ] as const
 export type EvaluationConfidence = (typeof EVALUATION_CONFIDENCE_VALUES)[number]
 
+export const FIELD_INPUT_TYPE_VALUES = [
+    'text',
+    'password',
+    'number',
+    'url',
+    'select',
+] as const
+export type FieldInputType = (typeof FIELD_INPUT_TYPE_VALUES)[number]
+
+export const FIELD_PLACEMENT_VALUES = [
+    'base_url',
+    'credential',
+    'metadata',
+] as const
+export type FieldPlacement = (typeof FIELD_PLACEMENT_VALUES)[number]
+
 export const FILE_SYSTEM_SCOPE_VALUES = [
     'workspace_only',
     'project_directory',
@@ -884,6 +900,12 @@ export const RUN_OUTCOME_VALUES = [
     'failed',
 ] as const
 export type RunOutcome = (typeof RUN_OUTCOME_VALUES)[number]
+
+export const SECRET_CAPTURE_MODE_VALUES = [
+    'masked_field',
+    'oauth_redirect',
+] as const
+export type SecretCaptureMode = (typeof SECRET_CAPTURE_MODE_VALUES)[number]
 
 export const SETTING_LEVEL_VALUES = [
     'basic',

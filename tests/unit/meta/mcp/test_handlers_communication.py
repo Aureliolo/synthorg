@@ -491,6 +491,19 @@ class TestConnectionsHandlers:
         )
         assert json.loads(response)["status"] == "ok"
 
+    async def test_field_metadata(
+        self,
+        fake_app_state: AppState,
+    ) -> None:
+        handler = COMMUNICATION_HANDLERS["synthorg_connections_field_metadata"]
+        response = await handler(app_state=fake_app_state, arguments={})
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        types = {entry["connection_type"] for entry in payload["data"]}
+        assert "github" in types
+        github = next(e for e in payload["data"] if e["connection_type"] == "github")
+        assert github["secret_field_names"] == ["token"]
+
 
 # ── Webhooks ────────────────────────────────────────────────────────
 

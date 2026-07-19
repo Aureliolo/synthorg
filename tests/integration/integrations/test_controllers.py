@@ -93,6 +93,15 @@ class TestConnectionsController:
         with pytest.raises(NotFoundError):
             await ctrl.get_connection.fn(ctrl, state=state, name="missing")
 
+    async def test_list_connection_types_returns_metadata(self) -> None:
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.models import ConnectionType
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        response = await ctrl.list_connection_types.fn(ctrl)
+        got = {metadata.connection_type for metadata in response.data}
+        assert got == set(ConnectionType)
+
     async def test_create_validates_missing_name(self) -> None:
         # Pydantic validation on ``CreateConnectionRequest`` rejects the
         # missing required ``name`` before the controller is reached;

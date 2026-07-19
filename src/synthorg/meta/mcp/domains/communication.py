@@ -10,6 +10,7 @@ from synthorg.meta.mcp.domains._remaining_args import (
     ConnectionsCheckHealthArgs,
     ConnectionsCreateArgs,
     ConnectionsDeleteArgs,
+    ConnectionsFieldMetadataArgs,
     ConnectionsGetArgs,
     ConnectionsListArgs,
     MeetingsCreateArgs,
@@ -169,6 +170,13 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         "List external connections.",
         PAGINATION_PROPERTIES,
         args_model=ConnectionsListArgs,
+    ),
+    read_tool(
+        "connections",
+        "field_metadata",
+        "List connection-type + credential-field metadata (labels, types, "
+        "required/secret flags, capture mode) for guided setup.",
+        args_model=ConnectionsFieldMetadataArgs,
     ),
     read_tool(
         "connections",

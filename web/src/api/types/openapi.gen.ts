@@ -1822,6 +1822,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/connections/types": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Connection-type field metadata registry */
+        readonly get: operations["ApiV1ConnectionsTypesListConnectionTypes"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/coordination/metrics": {
         readonly parameters: {
             readonly query?: never;
@@ -6920,6 +6937,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[list[ConnectionTypeMetadata]] */
+        readonly ApiResponse_list_ConnectionTypeMetadata_: {
+            readonly data: readonly components["schemas"]["ConnectionTypeMetadata"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[list[PlanItemComment]] */
         readonly ApiResponse_list_PlanItemComment_: {
             readonly data: readonly components["schemas"]["PlanItemComment"][] | null;
@@ -9225,6 +9250,25 @@ export type components = {
             /** @description Per-connection override for webhook-receipt retention (days). None = use the global default; 0 = never sweep this connection's receipts. */
             readonly webhook_receipt_retention_days: number | null;
         };
+        /** ConnectionFieldMetadata */
+        readonly ConnectionFieldMetadata: {
+            /** @enum {string|null} */
+            readonly capture_mode: "masked_field" | "oauth_redirect" | null;
+            /** @default  */
+            readonly help_text: string;
+            readonly input_type: components["schemas"]["FieldInputType"];
+            readonly label: string;
+            readonly name: string;
+            /** @default [] */
+            readonly options: readonly string[];
+            /** @default  */
+            readonly placeholder: string;
+            readonly placement: components["schemas"]["FieldPlacement"];
+            /** @default false */
+            readonly required: boolean;
+            /** @default false */
+            readonly secret: boolean;
+        };
         /** ConnectionHealth */
         readonly ConnectionHealth: {
             /**
@@ -9247,6 +9291,19 @@ export type components = {
          * @enum {string}
          */
         readonly ConnectionType: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | "llm_provider" | "tunnel";
+        /** ConnectionTypeMetadata */
+        readonly ConnectionTypeMetadata: {
+            readonly connection_type: components["schemas"]["ConnectionType"];
+            readonly default_auth_method: components["schemas"]["AuthMethod"];
+            /** @default  */
+            readonly description: string;
+            readonly fields: readonly components["schemas"]["ConnectionFieldMetadata"][];
+            readonly label: string;
+            /** @description Names of fields flagged required (a prompting hint, not the rule). */
+            readonly required_field_names: readonly string[];
+            /** @description Names of fields whose value is a secret captured out of band. */
+            readonly secret_field_names: readonly string[];
+        };
         /**
          * ContentType
          * @description Content types available for training extraction.
@@ -10895,6 +10952,18 @@ export type components = {
             /** @description Relative selection weight */
             readonly weight: number;
         };
+        /**
+         * FieldInputType
+         * @description How a field is rendered / typed at the input boundary.
+         * @enum {string}
+         */
+        readonly FieldInputType: "text" | "password" | "number" | "url" | "select";
+        /**
+         * FieldPlacement
+         * @description Where a field's value goes in a ``connections.create`` call.
+         * @enum {string}
+         */
+        readonly FieldPlacement: "base_url" | "credential" | "metadata";
         /** FilePart */
         readonly FilePart: {
             /** @description Optional MIME type */
@@ -15906,6 +15975,12 @@ export type components = {
             readonly refined_description?: string | null;
             readonly refined_title?: string | null;
         };
+        /**
+         * SecretCaptureMode
+         * @description How a secret field's value is captured out of band.
+         * @enum {string}
+         */
+        readonly SecretCaptureMode: "masked_field" | "oauth_redirect";
         /** SecretRef */
         readonly SecretRef: {
             readonly backend: string;
@@ -22760,6 +22835,31 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ConnectionsTypesListConnectionTypes: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_list_ConnectionTypeMetadata_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

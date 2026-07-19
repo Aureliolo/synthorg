@@ -7,12 +7,16 @@ from typing import TYPE_CHECKING
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.integrations.connections.field_metadata import (
+    list_connection_type_metadata,
+)
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.state import connection_service_of
 from synthorg.meta.mcp.domains._remaining_args import (
     ConnectionsCheckHealthArgs,
     ConnectionsCreateArgs,
     ConnectionsDeleteArgs,
+    ConnectionsFieldMetadataArgs,
     ConnectionsGetArgs,
     ConnectionsListArgs,
 )
@@ -240,9 +244,42 @@ async def _connections_check_health(
     return ok(connection.model_dump(mode="json"))
 
 
+async def _connections_field_metadata(
+    *,
+    app_state: AppState,  # noqa: ARG001 -- static registry, no app state needed
+    arguments: dict[str, object],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    """Return the connection-type + credential-field metadata registry.
+
+    Returns:
+        Resulting string. The payload is the ordered per-type metadata the
+        setup flow prompts from and the dashboard form renders, so a
+        conversational caller can discover a connection type's fields without
+        hard-coding them.
+    """
+    tool = "synthorg_connections_field_metadata"
+    try:
+        typed_args(arguments, ConnectionsFieldMetadataArgs)
+        entries = [
+            metadata.model_dump(mode="json")
+            for metadata in list_connection_type_metadata()
+        ]
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
+        log_handler_invoke_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(entries)
+
+
 CONNECTIONS_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {
         "synthorg_connections_list": _connections_list,
+        "synthorg_connections_field_metadata": _connections_field_metadata,
         "synthorg_connections_get": _connections_get,
         "synthorg_connections_create": _connections_create,
         "synthorg_connections_delete": _connections_delete,

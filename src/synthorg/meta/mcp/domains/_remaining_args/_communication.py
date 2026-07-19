@@ -87,6 +87,10 @@ class ConnectionsListArgs(PaginationFields):
     """Args for ``connections.list``."""
 
 
+class ConnectionsFieldMetadataArgs(_ArgsBase):
+    """Args for ``connections.field_metadata``: no fields."""
+
+
 class ConnectionsGetArgs(_ArgsBase):
     """Args for ``connections.get``."""
 

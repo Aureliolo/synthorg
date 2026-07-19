@@ -28,6 +28,10 @@ from synthorg.api.path_params import PathField, PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.integrations.connections.catalog import _UNSET, _UnsetType
+from synthorg.integrations.connections.field_metadata import (
+    ConnectionTypeMetadata,
+    list_connection_type_metadata,
+)
 from synthorg.integrations.connections.models import (
     Connection,
     HealthReport,
@@ -109,6 +113,26 @@ class ConnectionsController(Controller):
             secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse[Connection](data=page, pagination=meta)
+
+    @get(
+        "/types",
+        guards=[require_read_access],
+        summary="Connection-type field metadata registry",
+    )
+    async def list_connection_types(
+        self,
+    ) -> ApiResponse[list[ConnectionTypeMetadata]]:
+        """Return the connection-type + credential-field metadata registry.
+
+        The single source of truth (`connections/field_metadata.py`) the
+        operator-console setup flow prompts from and the dashboard connection
+        form renders, so both agree on labels, types, required/secret flags,
+        capture mode, and field ordering without per-type UI code.
+
+        Returns:
+            ``ApiResponse`` wrapping the ordered per-type field metadata.
+        """
+        return ApiResponse(data=list(list_connection_type_metadata()))
 
     @get(
         "/{name:str}",

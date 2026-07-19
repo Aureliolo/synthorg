@@ -116,11 +116,13 @@ abandoned draft's handle expires and its backend entry is swept. As
 defence-in-depth, a deterministic rule blocks any tool result from echoing a
 bound secret value back into a turn, and every persisted turn is scanned and
 credential-redacted before write (the backstop should never fire; if it does,
-it signals a boundary leak). Providers that support it (GitHub App, Slack) use
-a hosted **OAuth redirect** instead of a masked field, so the app server only
-ever receives a short-lived authorization code exchanged server-side; the
-masked-field path is reserved for static-key types (SMTP, Postgres, generic
-API key).
+it signals a boundary leak). Each field's `capture_mode` in the metadata
+registry selects how the value is obtained: static-secret types (a personal
+access token, a bot token, an SMTP or Postgres password, a generic API key) use
+the masked-field capture above, while a connection type backed by a configured
+OAuth app can mark a field `oauth_redirect`, so the value comes from a hosted
+authorize flow (the app server only ever receives a short-lived code exchanged
+server-side) rather than being pasted.
 
 ### Guided flow (hybrid)
 
