@@ -60,10 +60,29 @@ class TestSegmenter:
             "a `b` c",
             "before\n```\ncode\n```\nafter\n",
             "line with ` unbalanced backtick",
+            "line with \\` escaped backtick",
             "multi\nline\nprose\n",
         ],
     )
     def test_segments_cover_input(self, text: str) -> None:
+        assert _covers(text, OutputChannel.DELIVERABLE)
+
+    @pytest.mark.unit
+    def test_escaped_backtick_in_prose_does_not_open_code(self) -> None:
+        # A backslash-escaped backtick is literal text under CommonMark, so it
+        # must not toggle an inline-code span: the whole line stays prose.
+        text = "a \\` b then more prose"
+        segs = segment(text, OutputChannel.DELIVERABLE)
+        assert all(s.kind is SegmentKind.PROSE for s in segs)
+        assert _covers(text, OutputChannel.DELIVERABLE)
+
+    @pytest.mark.unit
+    def test_escaped_backtick_does_not_disturb_a_later_code_span(self) -> None:
+        # The escape is inert; a genuine inline-code span after it still parses.
+        text = "lit \\` then `code` here"
+        segs = segment(text, OutputChannel.DELIVERABLE)
+        code = [s for s in segs if s.kind is SegmentKind.CODE]
+        assert any("code" in s.text for s in code)
         assert _covers(text, OutputChannel.DELIVERABLE)
 
     @pytest.mark.unit

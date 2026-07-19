@@ -24,6 +24,30 @@ from synthorg.engine.output_style.models import (
 
 _FENCE_MARKERS: tuple[str, ...] = ("```", "~~~")
 _BACKTICK: str = "`"
+_BACKSLASH: str = "\\"
+
+
+def _is_escaped(line: str, index: int, lower: int) -> bool:
+    """Return whether an odd backslash run immediately precedes ``index``.
+
+    An odd number of backslashes escapes the following character under
+    CommonMark backslash escaping; ``lower`` bounds the scan to the current
+    unsegmented run so a backslash in an already-emitted span is not counted.
+
+    Args:
+        line: The line being scanned.
+        index: Offset of the character whose escaping is in question.
+        lower: Inclusive lower bound for the backslash scan.
+
+    Returns:
+        ``True`` when the character at ``index`` is backslash-escaped.
+    """
+    count = 0
+    j = index - 1
+    while j >= lower and line[j] == _BACKSLASH:
+        count += 1
+        j -= 1
+    return count % 2 == 1
 
 
 class Segment(BaseModel):
@@ -81,7 +105,11 @@ def _scan_inline_code(line: str, base: int) -> list[Segment]:
     in_code = False
     i = 0
     while i < len(line):
-        if line[i] == _BACKTICK:
+        # A backslash-escaped backtick in prose is literal text, not a span
+        # delimiter (CommonMark backslash escaping). Escapes are inert inside a
+        # code span, so the guard only applies while scanning prose.
+        escaped = not in_code and _is_escaped(line, i, run_start)
+        if line[i] == _BACKTICK and not escaped:
             if i > run_start:
                 segments.append(
                     Segment(
