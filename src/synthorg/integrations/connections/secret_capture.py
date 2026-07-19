@@ -192,12 +192,13 @@ class SecretCaptureService:
             The opaque handle id the caller passes to ``connections.create``.
         """
         secret_id = NotBlankStr(f"seccap-{uuid4()}")
-        await self._store_value(secret_id, value)
-        # The value is now durable; a cancellation before the handle is
-        # registered would orphan it, so roll the stored secret back on any
-        # exit that fails to register (shielded so the cleanup itself is not
-        # cancelled).
+        # The store itself sits inside the rollback scope: a cancellation
+        # *during* the write can still leave the value durable in the backend,
+        # so only a rollback that also covers the write closes the orphan
+        # window. Deleting a never-written secret is a no-op (the backend
+        # reports a miss rather than raising), so covering it is free.
         try:
+            await self._store_value(secret_id, value)
             now = self._clock.now()
             handle = SecretCaptureHandle(
                 handle_id=NotBlankStr(
@@ -290,11 +291,19 @@ class SecretCaptureService:
             for handle in expired:
                 self._handles.pop(handle.handle_id, None)
         self._sweep_pending(now)
-        for handle in expired:
-            await self._delete_secret(handle.secret_id)
+        # The handles are already out of the registry, so nothing else will
+        # ever retry these deletions: a cancellation part-way through the pass
+        # would orphan every secret after the cancellation point. Shield the
+        # whole pass so it runs to completion once started.
+        await asyncio.shield(self._delete_secrets(expired))
         if expired:
             logger.info(SECRET_CAPTURE_PURGED, count=len(expired))
         return len(expired)
+
+    async def _delete_secrets(self, handles: tuple[SecretCaptureHandle, ...]) -> None:
+        """Delete every backing secret for ``handles`` (each best-effort)."""
+        for handle in handles:
+            await self._delete_secret(handle.secret_id)
 
     def _sweep_pending(self, now: datetime) -> None:
         """Drop pending capture requests older than the TTL (and empty drafts).

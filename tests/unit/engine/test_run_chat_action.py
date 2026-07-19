@@ -308,6 +308,54 @@ class TestRunChatAction:
         # First run forwards the validated ceiling; the second leaves it unbounded.
         assert seen == [0.5, None]
 
+    async def test_continued_turn_keeps_session_cost_against_the_ceiling(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ``cost_ceiling`` bounds the SESSION, so a continued turn must carry
+        # the cost already spent. Zeroing the counter each turn would let an
+        # unbounded number of turns each spend up to the ceiling while the
+        # checker only ever saw a single turn's usage. The turn counter, by
+        # contrast, is a per-turn loop budget and does reset.
+        engine, _ = _build_engine(responses=[_final("one"), _final("two")])
+        seen: list[AgentContext] = []
+        original = engine._budget_checker_for
+
+        def _spy(ctx: AgentContext) -> BudgetChecker | None:
+            seen.append(ctx)
+            return original(ctx)
+
+        monkeypatch.setattr(engine, "_budget_checker_for", _spy)
+
+        _, first_ctx = await engine.run_chat_action_session(
+            identity=_acting_identity(), instruction="turn one", cost_ceiling=0.5
+        )
+        # The mock provider reports no usage, so stamp the spend (and the loop
+        # iterations) the first turn would have accrued before continuing.
+        spent = first_ctx.model_copy(
+            update={
+                "accumulated_cost": ZERO_TOKEN_USAGE.model_copy(update={"cost": 0.4}),
+                "turn_count": 3,
+            },
+        )
+
+        await engine.run_chat_action_session(
+            identity=_acting_identity(),
+            instruction="turn two",
+            prior_context=spent,
+        )
+
+        continued = seen[-1]
+        assert continued.accumulated_cost.cost == 0.4
+        assert continued.turn_count == 0
+        assert continued.cost_ceiling == 0.5
+        # A further 0.1 of spend is far under the 0.5 ceiling on its own; it
+        # halts the turn only because the session's earlier 0.4 still counts.
+        checker = original(continued)
+        assert checker is not None
+        at_ceiling = ZERO_TOKEN_USAGE.model_copy(update={"cost": 0.5})
+        session_total = continued.model_copy(update={"accumulated_cost": at_ceiling})
+        assert checker(session_total) is True
+
     @pytest.mark.parametrize("bad_ceiling", [0.0, -1.0, math.nan])
     def test_invalid_cost_ceiling_is_rejected_at_construction(
         self, bad_ceiling: float

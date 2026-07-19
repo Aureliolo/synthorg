@@ -38,7 +38,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_CHAT_ACTION_STARTED,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ZERO_TOKEN_USAGE, ChatMessage
+from synthorg.providers.models import ChatMessage
 
 if TYPE_CHECKING:
     from synthorg.core.clock import Clock
@@ -130,23 +130,25 @@ class AgentEngineChatActionMixin:
         (persona ``system`` prompt plus the untrusted-content-fenced
         instruction) and runs the governed ReAct loop. When ``prior_context`` is
         supplied the run *continues that conversation*: its accumulated messages
-        (the memory) carry forward while the per-turn budget resets, so a
-        multi-turn operator-console session keeps its context across turns
-        instead of starting cold each time. A permitted tool executes; a
-        sensitive tool escalates and parks (``PARKED_CONTEXT``).
+        (the memory) and its accumulated cost carry forward while the per-turn
+        loop budget resets, so a multi-turn operator-console session keeps its
+        context across turns instead of starting cold each time, and its cost
+        ceiling bounds the session rather than each turn. A permitted tool
+        executes; a sensitive tool escalates and parks (``PARKED_CONTEXT``).
 
         Args:
             identity: The acting agent.
             instruction: The human instruction (wrapped untrusted).
             effective_autonomy: Autonomy tier governing the invoker.
             max_turns: Hard turn cap, applied when building a FRESH context. A
-                continued turn resets its turn/cost counters to a fresh budget
+                continued turn resets its turn counter to a fresh loop budget
                 but keeps the cap set when ``prior_context`` was first built, so
                 this argument does not re-cap an in-flight conversation.
             turn_observer: Optional per-turn progress callback.
             cost_ceiling: Optional per-session cost ceiling (used only when
-                building a fresh context; a continued turn keeps the ceiling
-                already on ``prior_context``).
+                building a fresh context; a continued turn keeps both the
+                ceiling and the cost accumulated so far on ``prior_context``,
+                so the ceiling bounds the session, not the single turn).
             system_prompt_addendum: Optional trusted operating brief appended
                 to the persona prompt (fresh context) or injected as a fresh
                 per-turn ``system`` message (continued context), so a per-turn
@@ -175,17 +177,18 @@ class AgentEngineChatActionMixin:
             )
         else:
             # Continue the prior conversation: keep its messages but reset the
-            # per-turn budget (turn count + accumulated cost) so an earlier
-            # turn's usage does not throttle this one. Only unconstrained fields
-            # are reset here; ``max_turns`` (a ``gt=0`` field) and the cost
-            # ceiling ride unchanged on the prior context, already validated when
-            # it was first built, so no unvalidated value can slip past the
-            # field constraint via ``model_copy``. Then re-inject the per-turn
-            # brief (the persona prompt is already carried in the prior context)
-            # so fresh guidance such as newly provided capture handles is seen.
-            ctx = prior_context.model_copy(
-                update={"turn_count": 0, "accumulated_cost": ZERO_TOKEN_USAGE},
-            )
+            # turn count so an earlier turn's ReAct iterations do not consume
+            # this turn's loop budget. ``accumulated_cost`` deliberately does
+            # NOT reset: ``cost_ceiling`` bounds the whole session, so zeroing
+            # the counter each turn would let an unbounded number of turns each
+            # spend up to the ceiling. Only an unconstrained field is reset
+            # here; ``max_turns`` (a ``gt=0`` field) and the ceiling ride
+            # unchanged on the prior context, already validated when it was
+            # first built, so no unvalidated value can slip past the field
+            # constraint via ``model_copy``. Then re-inject the per-turn brief
+            # (the persona prompt is already carried in the prior context) so
+            # fresh guidance such as newly provided capture handles is seen.
+            ctx = prior_context.model_copy(update={"turn_count": 0})
             if system_prompt_addendum:
                 ctx = ctx.with_message(
                     ChatMessage(
