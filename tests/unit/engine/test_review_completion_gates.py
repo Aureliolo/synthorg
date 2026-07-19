@@ -160,7 +160,7 @@ async def test_at_or_above_stakes_threshold_runs_red_team_gate(
         evaluate=AsyncMock(return_value=SimpleNamespace(verdict=RedTeamVerdict.PASS)),
     )
     builder = mock_of[DeliverableReviewInputBuilder](
-        build=AsyncMock(return_value=SimpleNamespace(execution_id="exec-1")),
+        build=AsyncMock(return_value=_deliverable()),
     )
 
     target, _reason, _event, approved = await run_completion_gates(
