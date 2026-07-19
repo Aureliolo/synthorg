@@ -125,10 +125,14 @@ def get_search_preset(provider_id: str) -> SearchProviderPreset | None:
         provider_id: The provider discriminator to resolve.
 
     Returns:
-        The matching :class:`SearchProviderPreset`, or ``None`` if no
-        preset is registered under ``provider_id``.
+        A deep copy of the matching :class:`SearchProviderPreset`, or ``None``
+        if no preset is registered under ``provider_id``. Copying isolates the
+        shared singleton: ``frozen=True`` blocks field reassignment but not
+        in-place mutation of the ``extra`` dict, so returning the registry
+        object directly would let one caller corrupt it for every other.
     """
-    return SEARCH_PROVIDER_PRESETS.get(provider_id)
+    preset = SEARCH_PROVIDER_PRESETS.get(provider_id)
+    return preset.model_copy(deep=True) if preset is not None else None
 
 
 __all__ = [

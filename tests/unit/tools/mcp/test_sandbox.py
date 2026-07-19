@@ -1,7 +1,9 @@
 """Tests for Docker sandboxing of stdio MCP servers."""
 
 import pytest
+import structlog
 
+from synthorg.observability.events.mcp import MCP_SANDBOX_NETWORK_UNSAFE
 from synthorg.tools.mcp.sandbox import MCPSandboxConfig, wrap_stdio_in_sandbox
 
 pytestmark = pytest.mark.unit
@@ -34,6 +36,19 @@ class TestSandboxConfig:
     def test_network_accepts_known_modes(self, mode: str) -> None:
         assert MCPSandboxConfig(network=mode).network == mode  # type: ignore[arg-type]
 
+    def test_host_network_warns(self) -> None:
+        """``host`` defeats isolation, so selecting it is surfaced loudly."""
+        with structlog.testing.capture_logs() as cap:
+            MCPSandboxConfig(network="host")
+        events = [e for e in cap if e.get("event") == MCP_SANDBOX_NETWORK_UNSAFE]
+        assert events
+        assert events[0].get("log_level") == "warning"
+
+    def test_bridge_network_does_not_warn(self) -> None:
+        with structlog.testing.capture_logs() as cap:
+            MCPSandboxConfig(network="bridge")
+        assert not [e for e in cap if e.get("event") == MCP_SANDBOX_NETWORK_UNSAFE]
+
 
 class TestWrap:
     def test_runs_via_docker(self) -> None:
@@ -47,6 +62,7 @@ class TestWrap:
         _, args, _ = _wrap({})
         assert "--cap-drop=ALL" in args
         assert "--security-opt=no-new-privileges" in args
+        assert "--user=node" in args
         assert "--read-only" in args
         assert any(a.startswith("--pids-limit=") for a in args)
         assert any(a.startswith("--memory=") for a in args)

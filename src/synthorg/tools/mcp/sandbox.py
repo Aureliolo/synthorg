@@ -15,11 +15,15 @@ the MCP SDK seeds via ``get_default_environment()`` plus the returned env) and
 Docker passes it into the container, so no secret ever appears in host ``argv``.
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_SANDBOX_NETWORK_UNSAFE
+
+logger = get_logger(__name__)
 
 SandboxNetwork = Literal["bridge", "none", "host"]
 
@@ -46,6 +50,26 @@ class MCPSandboxConfig(BaseModel):
     pids_limit: int = Field(default=256, gt=0)
     cpus: NotBlankStr = "1.0"
     network: SandboxNetwork = "bridge"
+
+    @model_validator(mode="after")
+    def _warn_on_host_network(self) -> Self:
+        """Surface the ``host`` network mode as an isolation-defeating choice.
+
+        ``host`` shares the host network namespace, so the container can reach
+        loopback services and the cloud metadata endpoint -- it defeats the
+        very isolation the sandbox exists to provide. It stays selectable for
+        the rare operator who needs it, but never silently.
+
+        Returns:
+            Result of type ``Self``.
+        """
+        if self.network == "host":
+            logger.warning(
+                MCP_SANDBOX_NETWORK_UNSAFE,
+                network=self.network,
+                note="host network shares the host namespace; isolation is off",
+            )
+        return self
 
 
 def wrap_stdio_in_sandbox(
@@ -76,6 +100,10 @@ def wrap_stdio_in_sandbox(
         "-i",
         "--cap-drop=ALL",
         "--security-opt=no-new-privileges",
+        # Drop root inside the container: the official node image ships a
+        # non-root ``node`` user (uid 1000), which can still write the tmpfs
+        # ``HOME``/npm cache below under the read-only rootfs.
+        "--user=node",
         "--read-only",
         "--tmpfs=/tmp:rw,nosuid,size=128m",
         f"--memory={sandbox.memory_limit}",

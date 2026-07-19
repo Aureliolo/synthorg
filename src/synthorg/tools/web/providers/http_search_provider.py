@@ -96,6 +96,10 @@ class HttpWebSearchProvider:
         retry_handler: Bounded retry for transient failures; ``None`` builds a
             default exponential-backoff handler that honours a ``Retry-After``.
         timeout_seconds: Per-request timeout.
+        max_results_ceiling: Hard upper bound on the result count requested
+            from the provider, clamping the per-call ``max_results`` so a
+            caller cannot exceed it; ``None`` applies no extra ceiling beyond
+            the preset's own ``max_results_cap``.
         rate_limiter: Per-connection rate-limit ceiling; ``None`` uses the
             decorator's default so a runaway agent loop still cannot exceed a
             bounded request rate against a paid provider.

@@ -7,19 +7,18 @@ import { useConnectionsStore } from '@/stores/connections'
 import { useMcpCatalogStore } from '@/stores/mcp-catalog'
 import { McpInstallWizard } from './McpInstallWizard'
 
-const githubEntry: McpCatalogEntry = {
-  id: 'github-mcp',
-  name: 'GitHub',
-  description:
-    'Read and write GitHub repositories, issues, pull requests, and actions',
-  npm_package: '@modelcontextprotocol/server-github',
-  npm_version: '2025.4.8',
-  required_connection_type: 'github',
+const braveEntry: McpCatalogEntry = {
+  id: 'brave-search-mcp',
+  name: 'Brave Search',
+  description: 'Web and local search via the Brave Search API',
+  npm_package: '@brave/brave-search-mcp-server',
+  npm_version: '2.1.0',
+  required_connection_type: 'generic_http',
   required_dialect: null,
   transport: 'stdio',
-  capabilities: ['repository_access', 'issue_management', 'pull_requests', 'actions'],
-  tags: ['vcs', 'collaboration', 'ci'],
-  credential_env_map: { token: 'GITHUB_PERSONAL_ACCESS_TOKEN' },
+  capabilities: ['web_search', 'local_search'],
+  tags: ['search', 'web'],
+  credential_env_map: { api_key: 'BRAVE_API_KEY' },
 }
 
 const meta = {
@@ -34,14 +33,14 @@ const meta = {
   },
   decorators: [
     (Story) => {
-      useMcpCatalogStore.setState({ entries: [githubEntry] })
+      useMcpCatalogStore.setState({ entries: [braveEntry] })
       useConnectionsStore.setState({
         connections: [
           {
-            id: 'conn-primary-github',
-            name: 'primary-github',
-            connection_type: 'github',
-            auth_method: 'bearer_token',
+            id: 'conn-primary-search',
+            name: 'primary-search',
+            connection_type: 'generic_http',
+            auth_method: 'api_key',
             base_url: null,
             health_check_enabled: true,
             health: { status: 'healthy', last_check_at: null },
@@ -69,7 +68,7 @@ export const PickingConnection: Story = {
       useMcpCatalogStore.setState({
         installFlow: 'picking-connection',
         installContext: {
-          entryId: 'github-mcp',
+          entryId: 'brave-search-mcp',
           connectionName: null,
           errorMessage: null,
           result: null,
@@ -86,8 +85,8 @@ export const Installing: Story = {
       useMcpCatalogStore.setState({
         installFlow: 'installing',
         installContext: {
-          entryId: 'github-mcp',
-          connectionName: 'primary-github',
+          entryId: 'brave-search-mcp',
+          connectionName: 'primary-search',
           errorMessage: null,
           result: null,
         },
@@ -103,13 +102,13 @@ export const Done: Story = {
       useMcpCatalogStore.setState({
         installFlow: 'done',
         installContext: {
-          entryId: 'github-mcp',
-          connectionName: 'primary-github',
+          entryId: 'brave-search-mcp',
+          connectionName: 'primary-search',
           errorMessage: null,
           result: {
             status: 'installed',
             server_name: 'GitHub',
-            catalog_entry_id: 'github-mcp',
+            catalog_entry_id: 'brave-search-mcp',
             tool_count: 4,
           },
         },
@@ -125,8 +124,8 @@ export const ErrorState: Story = {
       useMcpCatalogStore.setState({
         installFlow: 'error',
         installContext: {
-          entryId: 'github-mcp',
-          connectionName: 'primary-github',
+          entryId: 'brave-search-mcp',
+          connectionName: 'primary-search',
           errorMessage: 'Connection type mismatch',
           result: null,
         },

@@ -186,10 +186,12 @@ child that died after boot surfaces as unhealthy without re-spawning it.
 
 ## MCP Server Catalog
 
-Static JSON catalog (`bundled.json`) of curated MCP server entries: GitHub,
-Slack, and Brave Search (`@brave/brave-search-mcp-server`). Each bundled entry
-is connection-gated (it declares a `required_connection_type`); no entry runs
-without a bound connection. Every stdio entry pins an exact `npm_version` (an
+Static JSON catalog (`bundled.json`) of curated MCP server entries. It ships the
+maintained Brave Search server (`@brave/brave-search-mcp-server`); a first-party
+GitHub and Slack agent-tool path (reusing the native connection + forge plumbing
+rather than an unmaintained third-party MCP server) is tracked as follow-up work.
+Each bundled entry is connection-gated (it declares a `required_connection_type`);
+no entry runs without a bound connection. Every stdio entry pins an exact `npm_version` (an
 unpinned `npx` spec would resolve `latest` on every reconnect, defeating the
 supply-chain pin). A database-typed entry additionally declares
 `required_dialect` so entries sharing `ConnectionType.DATABASE` cannot be bound

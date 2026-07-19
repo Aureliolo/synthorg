@@ -5,18 +5,18 @@ import { apiError, apiSuccess, paginatedFor, voidSuccess } from '@/mocks/handler
 import type { browseMcpCatalog } from '@/api/endpoints/mcp-catalog'
 import { server } from '@/test-setup'
 
-const githubEntry: McpCatalogEntry = {
-  id: 'github-mcp',
-  name: 'GitHub',
+const braveEntry: McpCatalogEntry = {
+  id: 'brave-search-mcp',
+  name: 'Brave Search',
   description: 'desc',
-  npm_package: '@modelcontextprotocol/server-github',
-  npm_version: '2025.4.8',
-  required_connection_type: 'github',
+  npm_package: '@brave/brave-search-mcp-server',
+  npm_version: '2.1.0',
+  required_connection_type: 'generic_http',
   required_dialect: null,
   transport: 'stdio',
-  capabilities: ['repository_access', 'issue_management'],
-  tags: ['vcs'],
-  credential_env_map: { token: 'GITHUB_PERSONAL_ACCESS_TOKEN' },
+  capabilities: ['web_search', 'local_search'],
+  tags: ['search'],
+  credential_env_map: { api_key: 'BRAVE_API_KEY' },
 }
 
 const filesystemEntry: McpCatalogEntry = {
@@ -39,7 +39,7 @@ describe('useMcpCatalogStore', () => {
   })
 
   it('loads the catalog on fetchCatalog', async () => {
-    const entries = [githubEntry, filesystemEntry]
+    const entries = [braveEntry, filesystemEntry]
     server.use(
       http.get('/api/v1/integrations/mcp/catalog', () =>
         HttpResponse.json(
@@ -62,10 +62,10 @@ describe('useMcpCatalogStore', () => {
   })
 
   it('startInstall moves the wizard to picking-connection for entries that need one', () => {
-    useMcpCatalogStore.setState({ entries: [githubEntry] })
-    useMcpCatalogStore.getState().startInstall('github-mcp')
+    useMcpCatalogStore.setState({ entries: [braveEntry] })
+    useMcpCatalogStore.getState().startInstall('brave-search-mcp')
     expect(useMcpCatalogStore.getState().installFlow).toBe('picking-connection')
-    expect(useMcpCatalogStore.getState().installContext.entryId).toBe('github-mcp')
+    expect(useMcpCatalogStore.getState().installContext.entryId).toBe('brave-search-mcp')
   })
 
   it('startInstall skips straight to installing for connectionless entries', () => {
@@ -115,7 +115,7 @@ describe('useMcpCatalogStore', () => {
 
   it('uninstall clears the installed marker on success', async () => {
     useMcpCatalogStore.setState({
-      installedEntryIds: new Set(['github-mcp']),
+      installedEntryIds: new Set(['brave-search-mcp']),
     })
     server.use(
       http.delete('/api/v1/integrations/mcp/catalog/install/:id', () =>
@@ -125,11 +125,11 @@ describe('useMcpCatalogStore', () => {
 
     const result = await useMcpCatalogStore
       .getState()
-      .uninstall('github-mcp')
+      .uninstall('brave-search-mcp')
 
     expect(result).toBe(true)
     expect(
-      useMcpCatalogStore.getState().installedEntryIds.has('github-mcp'),
+      useMcpCatalogStore.getState().installedEntryIds.has('brave-search-mcp'),
     ).toBe(false)
   })
 

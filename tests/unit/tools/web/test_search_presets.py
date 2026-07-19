@@ -47,6 +47,20 @@ class TestSearchPresets:
             preset.endpoint = "https://evil.example"  # type: ignore[misc]
 
     @pytest.mark.unit
+    def test_preset_extra_mutation_does_not_leak(self) -> None:
+        """A caller mutating ``extra`` must not corrupt the shared singleton.
+
+        ``frozen=True`` blocks field reassignment but not in-place mutation of
+        the ``extra`` dict, so ``get_search_preset`` returns an isolated copy.
+        """
+        preset = get_search_preset("exa")
+        assert preset is not None
+        preset.extra["injected"] = "y"
+        fresh = get_search_preset("exa")
+        assert fresh is not None
+        assert "injected" not in fresh.extra
+
+    @pytest.mark.unit
     def test_provider_setting_enum_matches_presets(self) -> None:
         """The tools.web_search_provider enum must not drift from the registry.
 

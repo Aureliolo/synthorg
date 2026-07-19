@@ -3,19 +3,18 @@ import { fn } from 'storybook/test'
 import type { McpCatalogEntry } from '@/api/types/integrations'
 import { CatalogDetailDrawer } from './CatalogDetailDrawer'
 
-const githubEntry: McpCatalogEntry = {
-  id: 'github-mcp',
-  name: 'GitHub',
-  description:
-    'Read and write GitHub repositories, issues, pull requests, and actions',
-  npm_package: '@modelcontextprotocol/server-github',
-  npm_version: '2025.4.8',
-  required_connection_type: 'github',
+const braveEntry: McpCatalogEntry = {
+  id: 'brave-search-mcp',
+  name: 'Brave Search',
+  description: 'Web and local search via the Brave Search API',
+  npm_package: '@brave/brave-search-mcp-server',
+  npm_version: '2.1.0',
+  required_connection_type: 'generic_http',
   required_dialect: null,
   transport: 'stdio',
-  capabilities: ['repository_access', 'issue_management', 'pull_requests', 'actions'],
-  tags: ['vcs', 'collaboration', 'ci'],
-  credential_env_map: { token: 'GITHUB_PERSONAL_ACCESS_TOKEN' },
+  capabilities: ['web_search', 'local_search'],
+  tags: ['search', 'web'],
+  credential_env_map: { api_key: 'BRAVE_API_KEY' },
 }
 
 const meta = {
@@ -33,9 +32,9 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const NotInstalled: Story = {
-  args: { entry: githubEntry, installed: false },
+  args: { entry: braveEntry, installed: false },
 }
 
 export const Installed: Story = {
-  args: { entry: githubEntry, installed: true },
+  args: { entry: braveEntry, installed: true },
 }

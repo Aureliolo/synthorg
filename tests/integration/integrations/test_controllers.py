@@ -700,9 +700,9 @@ class TestMCPCatalogController:
             limit=50,
             cursor=None,
         )
-        # Bundled catalog ships the connection-gated integrations; cursor
+        # Bundled catalog ships the maintained Brave Search entry; cursor
         # pagination returns the first page plus pagination metadata.
-        assert len(response.data) == 3
+        assert len(response.data) == 1
 
     async def test_browse_rejects_tampered_cursor(self) -> None:
         from synthorg.api.controllers.mcp_catalog import MCPCatalogController
@@ -923,8 +923,8 @@ class TestMCPCatalogController:
                 ctrl,
                 state=state,
                 data=InstallEntryRequest(
-                    catalog_entry_id="github-mcp",
-                    connection_name="slacky",
+                    catalog_entry_id="brave-search-mcp",
+                    connection_name="wrong-conn",
                 ),
             )
         assert exc_info.value.status_code == 422

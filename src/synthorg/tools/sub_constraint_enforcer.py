@@ -150,9 +150,9 @@ class SubConstraintEnforcer:
         """Enforce network mode constraint.
 
         ``NONE`` blocks tools that perform outbound network requests
-        (``COMMS_EXTERNAL`` action type) and git clone (external fetch).
-        Local-only tools like ``HtmlParserTool`` (``CODE_READ``) are
-        allowed even under ``NONE``.
+        (the ``COMMS_EXTERNAL`` and ``EXTERNAL_DATA_REQUEST`` action types)
+        and git clone (external fetch). Local-only tools like
+        ``HtmlParserTool`` (``CODE_READ``) are allowed even under ``NONE``.
 
         Returns:
             A ``SubConstraintViolation`` if the constraint is breached,

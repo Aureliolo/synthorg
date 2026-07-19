@@ -102,7 +102,7 @@ class TestCatalogService:
     async def test_browse_returns_entries(self) -> None:
         service = CatalogService()
         entries = await service.browse()
-        assert len(entries) == 3
+        assert len(entries) == 1
 
     async def test_browse_entries_have_required_fields(self) -> None:
         service = CatalogService()
@@ -114,9 +114,9 @@ class TestCatalogService:
 
     async def test_search_by_name(self) -> None:
         service = CatalogService()
-        results = await service.search("github")
+        results = await service.search("brave")
         assert len(results) >= 1
-        assert any(e.id == "github-mcp" for e in results)
+        assert any(e.id == "brave-search-mcp" for e in results)
 
     async def test_search_by_tag(self) -> None:
         service = CatalogService()
@@ -125,7 +125,7 @@ class TestCatalogService:
 
     async def test_search_case_insensitive(self) -> None:
         service = CatalogService()
-        results = await service.search("SLACK")
+        results = await service.search("BRAVE")
         assert len(results) >= 1
 
     async def test_search_no_results(self) -> None:
@@ -135,8 +135,8 @@ class TestCatalogService:
 
     async def test_get_entry_found(self) -> None:
         service = CatalogService()
-        entry = await service.get_entry("github-mcp")
-        assert entry.name == "GitHub"
+        entry = await service.get_entry("brave-search-mcp")
+        assert entry.name == "Brave Search"
 
     async def test_get_entry_not_found(self) -> None:
         service = CatalogService()
@@ -294,18 +294,18 @@ class TestCatalogInstall:
         service = CatalogService()
         repo = InMemoryMcpInstallationRepository()
         catalog = FakeConnectionCatalog()
-        catalog.add(_make_connection("primary-gh", ConnectionType.GITHUB))
+        catalog.add(_make_connection("primary-search", ConnectionType.GENERIC_HTTP))
 
         result = await service.install(
-            "github-mcp",
-            "primary-gh",
+            "brave-search-mcp",
+            "primary-search",
             connection_catalog=catalog,  # type: ignore[arg-type]
             installations_repo=repo,
         )
-        assert result.connection_name == "primary-gh"
-        stored = await repo.get(NotBlankStr("github-mcp"))
+        assert result.connection_name == "primary-search"
+        stored = await repo.get(NotBlankStr("brave-search-mcp"))
         assert stored is not None
-        assert stored.connection_name == "primary-gh"
+        assert stored.connection_name == "primary-search"
 
     async def test_install_idempotent(self, tmp_path: Path) -> None:
         service = _connectionless_catalog(tmp_path)
@@ -343,7 +343,7 @@ class TestCatalogInstall:
         repo = InMemoryMcpInstallationRepository()
         with pytest.raises(InvalidConnectionAuthError):
             await service.install(
-                "github-mcp",
+                "brave-search-mcp",
                 None,
                 connection_catalog=None,
                 installations_repo=repo,
@@ -355,7 +355,7 @@ class TestCatalogInstall:
         catalog = FakeConnectionCatalog()
         with pytest.raises(ConnectionNotFoundError):
             await service.install(
-                "github-mcp",
+                "brave-search-mcp",
                 "missing",
                 connection_catalog=catalog,  # type: ignore[arg-type]
                 installations_repo=repo,
@@ -365,10 +365,10 @@ class TestCatalogInstall:
         service = CatalogService()
         repo = InMemoryMcpInstallationRepository()
         catalog = FakeConnectionCatalog()
-        catalog.add(_make_connection("wrong-type", ConnectionType.SLACK))
+        catalog.add(_make_connection("wrong-type", ConnectionType.GITHUB))
         with pytest.raises(InvalidConnectionAuthError):
             await service.install(
-                "github-mcp",
+                "brave-search-mcp",
                 "wrong-type",
                 connection_catalog=catalog,  # type: ignore[arg-type]
                 installations_repo=repo,
@@ -459,9 +459,9 @@ class TestInstallMerge:
 
     async def test_installation_to_server_stdio(self) -> None:
         service = CatalogService()
-        entry = await service.get_entry("github-mcp")
-        server = installation_to_server_config(entry, "primary-gh")
-        assert server.name == "github-mcp"
+        entry = await service.get_entry("brave-search-mcp")
+        server = installation_to_server_config(entry, "primary-search")
+        assert server.name == "brave-search-mcp"
         assert server.transport == "stdio"
         assert server.command == "npx"
         assert "-y" in server.args
@@ -470,8 +470,8 @@ class TestInstallMerge:
         assert f"{entry.npm_package}@{entry.npm_version}" in server.args
         # The connection name is recorded on an explicit field (secrets are
         # resolved and injected at connect time, never persisted here).
-        assert server.connection_name == "primary-gh"
-        assert server.credential_env_map == {"token": "GITHUB_PERSONAL_ACCESS_TOKEN"}
+        assert server.connection_name == "primary-search"
+        assert server.credential_env_map == {"api_key": "BRAVE_API_KEY"}
         assert "SYNTHORG_CONNECTION" not in server.env
 
     async def test_installation_to_server_connectionless(self, tmp_path: Path) -> None:
@@ -488,7 +488,7 @@ class TestInstallMerge:
         base = MCPConfig(
             servers=(
                 MCPServerConfig(
-                    name="github-mcp",
+                    name="brave-search-mcp",
                     transport="stdio",
                     command="custom-command",
                     args=("--existing",),
@@ -496,8 +496,8 @@ class TestInstallMerge:
             ),
         )
         install = McpInstallation(
-            catalog_entry_id=NotBlankStr("github-mcp"),
-            connection_name=NotBlankStr("primary-gh"),
+            catalog_entry_id=NotBlankStr("brave-search-mcp"),
+            connection_name=NotBlankStr("primary-search"),
             installed_at=datetime.now(UTC),
         )
         merged = merge_installed_servers(base, (install,), entries_by_id)

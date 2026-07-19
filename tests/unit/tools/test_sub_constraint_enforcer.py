@@ -73,7 +73,7 @@ class TestNetworkConstraint:
             ToolSubConstraints(network=NetworkMode.NONE),
         )
         result = enforcer.check(
-            "mcp_github-mcp_create_issue",
+            "mcp_brave-search-mcp_web_search",
             ToolCategory.MCP,
             ActionType.COMMS_EXTERNAL,
             {},

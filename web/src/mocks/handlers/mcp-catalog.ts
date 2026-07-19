@@ -38,22 +38,15 @@ function buildMcpCatalogEntry(
 // ── Storybook-facing named export (preserve populated catalog). ──
 const mockCatalogEntries: McpCatalogEntry[] = [
   buildMcpCatalogEntry({
-    id: 'github-mcp',
-    name: 'GitHub',
-    description: 'Read and write GitHub repositories, issues, pull requests, and actions',
-    npm_package: '@modelcontextprotocol/server-github',
-    required_connection_type: 'github',
-    capabilities: ['repository_access', 'issue_management'],
-    tags: ['vcs'],
-  }),
-  buildMcpCatalogEntry({
-    id: 'slack-mcp',
-    name: 'Slack',
-    description: 'Send and receive Slack messages, manage channels and users',
-    npm_package: '@modelcontextprotocol/server-slack',
-    required_connection_type: 'slack',
-    capabilities: ['messaging'],
-    tags: ['communication'],
+    id: 'brave-search-mcp',
+    name: 'Brave Search',
+    description: 'Web and local search via the Brave Search API',
+    npm_package: '@brave/brave-search-mcp-server',
+    npm_version: '2.1.0',
+    required_connection_type: 'generic_http',
+    capabilities: ['web_search', 'local_search'],
+    tags: ['search', 'web'],
+    credential_env_map: { api_key: 'BRAVE_API_KEY' },
   }),
   buildMcpCatalogEntry({
     id: 'filesystem-mcp',
