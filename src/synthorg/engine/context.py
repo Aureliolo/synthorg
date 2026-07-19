@@ -216,6 +216,7 @@ class AgentContext(BaseModel):
         task: Task | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
         context_capacity_tokens: int | None = None,
+        cost_ceiling: float | None = None,
     ) -> AgentContext:
         """Create a fresh execution context from an agent identity.
 
@@ -225,6 +226,9 @@ class AgentContext(BaseModel):
             max_turns: Maximum number of LLM turns allowed.
             context_capacity_tokens: Model's max context window
                 tokens, or ``None`` when unknown.
+            cost_ceiling: Optional per-session cost ceiling. Passed through
+                the constructor (not a post-hoc ``model_copy``) so the
+                ``gt=0`` / no-NaN field constraint actually validates it.
 
         Returns:
             New ``AgentContext`` ready for execution.
@@ -237,6 +241,7 @@ class AgentContext(BaseModel):
             max_turns=max_turns,
             started_at=datetime.now(UTC),
             context_capacity_tokens=context_capacity_tokens,
+            cost_ceiling=cost_ceiling,
         )
         logger.debug(
             EXECUTION_CONTEXT_CREATED,

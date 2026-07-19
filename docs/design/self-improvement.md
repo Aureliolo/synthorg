@@ -404,8 +404,8 @@ system's job, not the user's, so there is no mode picker.
   (task/workflow mutations, coordination, self-improvement launchers) stay out
   of the grant, and `memory.*` fine-tune tools sit behind a stricter tier. A
   risky write escalates to the approval inbox and parks/resumes exactly like an
-  `act` turn (Flow 1, `PARKED_CONTEXT`). The console ships at the **Standard /
-  auto** autonomy tier by default (reads flow; risky writes escalate). The
+  `act` turn (Flow 1, `PARKED_CONTEXT`). The console ships at the **`semi`**
+  autonomy tier by default (reads flow; risky writes escalate). The
   guardrail `reason` is **synthesised** from flow context, so the operator sees
   a structured confirm (tool, risk, target), never a mandatory free-text box.
   Integration setup is the first guided flow. It runs as a **governed agent

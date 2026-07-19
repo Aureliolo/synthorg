@@ -19,12 +19,13 @@ re-escalate a re-issued autonomy-gated tool).
 """
 
 import asyncio
+import math
 from datetime import date
 from typing import cast
 from uuid import uuid4
 
 import pytest
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig, ToolPermissions
@@ -279,6 +280,17 @@ class TestRunChatAction:
         engine, _ = _build_engine(responses=[_final("noop")])
         ctx = AgentContext.from_identity(_acting_identity())
         assert engine._budget_checker_for(ctx) is None
+
+    @pytest.mark.parametrize("bad_ceiling", [0.0, -1.0, math.nan])
+    def test_invalid_cost_ceiling_is_rejected_at_construction(
+        self, bad_ceiling: float
+    ) -> None:
+        # The ceiling flows through from_identity (the constructor) rather than a
+        # post-hoc model_copy so the ``gt=0`` / no-NaN field constraint actually
+        # validates it; a non-positive or NaN ceiling would otherwise silently
+        # bypass the budget gate.
+        with pytest.raises(ValidationError):
+            AgentContext.from_identity(_acting_identity(), cost_ceiling=bad_ceiling)
 
     async def test_system_prompt_addendum_is_appended(self) -> None:
         engine, _ = _build_engine(responses=[_final("Acknowledged.")])

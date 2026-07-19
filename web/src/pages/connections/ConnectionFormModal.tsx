@@ -120,7 +120,7 @@ function TypePicker({ onSelect }: { onSelect: (type: ConnectionType) => void }) 
     if (typesError !== null) {
       return (
         <div className="flex flex-col items-start gap-2 p-card text-sm">
-          <p className="text-danger">Couldn&apos;t load connection types.</p>
+          <p className="text-danger">Could not load connection types.</p>
           <Button
             variant="outline"
             size="sm"

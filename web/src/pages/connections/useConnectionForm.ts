@@ -1,31 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  connectionTypeUsesWebhookReceipts,
-  type Connection,
-  type ConnectionType,
-  type CreateConnectionRequest,
-  type UpdateConnectionRequest,
-} from '@/api/types/integrations'
+import { type Connection, type ConnectionType } from '@/api/types/integrations'
 import { useConnectionsStore } from '@/stores/connections'
-import {
-  type ConnectionFieldSpec,
-  type ResolvedConnectionSpec,
-  resolveConnectionSpec,
-  validateA2APeerCredentials,
-  validateConnectionField,
-  validateConnectionName,
-} from './connection-fields'
+import { type ResolvedConnectionSpec, resolveConnectionSpec } from './connection-fields'
+import { type ConnectionFormState, type Mode } from './connection-form-state'
+import { useConnectionSubmit } from './connection-submit'
 
-export type Mode = 'create' | 'edit'
-
-export interface ConnectionFormState {
-  name: string
-  type: ConnectionType | null
-  topLevel: Record<string, string>
-  credentials: Record<string, string>
-  webhookRetention: string
-  sensitive: boolean
-}
+export type { ConnectionFormState, Mode } from './connection-form-state'
 
 const EMPTY_STATE: ConnectionFormState = {
   name: '',
@@ -57,141 +37,6 @@ function makeInitialState(
   return { ...EMPTY_STATE, type: initialType ?? null }
 }
 
-type RetentionResult = { ok: true; value: number | null } | { ok: false; error: string }
-
-function parseRetentionDays(raw: string): RetentionResult {
-  const trimmed = raw.trim()
-  if (trimmed === '') return { ok: true, value: null }
-  if (!/^\d+$/.test(trimmed)) return { ok: false, error: 'Must be a non-negative integer or blank' }
-  const parsed = Number.parseInt(trimmed, 10)
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return { ok: false, error: 'Must be a non-negative integer or blank' }
-  }
-  return { ok: true, value: parsed }
-}
-
-function applyA2APeerErrors(form: ConnectionFormState, next: Record<string, string | null>): void {
-  const scheme = form.credentials['auth_scheme'] ?? 'api_key'
-  const schemeErrors = validateA2APeerCredentials(scheme, form.credentials)
-  for (const [key, msg] of Object.entries(schemeErrors)) {
-    const errorKey = key === '_scheme' ? 'auth_scheme' : key
-    if (!next[errorKey]) next[errorKey] = msg
-  }
-}
-
-function collectFieldErrors(
-  fields: readonly ConnectionFieldSpec[],
-  values: Record<string, string>,
-  dialect: string | undefined,
-  into: Record<string, string | null>,
-): void {
-  for (const field of fields) {
-    into[field.key] = validateConnectionField(field, values[field.key] ?? '', dialect)
-  }
-}
-
-function validateConnectionForm(
-  form: ConnectionFormState,
-  spec: ResolvedConnectionSpec,
-  mode: Mode,
-): Record<string, string | null> {
-  const dialect = form.type === 'database' ? (form.credentials['dialect'] ?? '') : undefined
-  const next: Record<string, string | null> = {}
-  if (mode === 'create') next['name'] = validateConnectionName(form.name)
-  collectFieldErrors(spec.topLevelFields, form.topLevel, dialect, next)
-  if (mode === 'create') {
-    collectFieldErrors(spec.credentialFields, form.credentials, dialect, next)
-    if (form.type === 'a2a_peer') applyA2APeerErrors(form, next)
-  }
-  return next
-}
-
-interface ResolvedCredentials {
-  /** Non-secret credential fields sent inline. */
-  readonly credentials: Record<string, string>
-  /** Secret credential fields, captured out of band, as field -> handle. */
-  readonly handles: Record<string, string>
-}
-
-type CaptureSecret = (
-  draftId: string,
-  field: string,
-  value: string,
-  secretKind: string,
-) => Promise<string | null>
-
-/**
- * Split credential fields into inline non-secret values and secret handles.
- * Each secret value is captured out of band (its raw form never enters the
- * create body); a capture failure toasts and aborts the submit (``null``).
- */
-async function resolveCredentials(
-  form: ConnectionFormState,
-  spec: ResolvedConnectionSpec,
-  draftId: string,
-  captureSecret: CaptureSecret,
-): Promise<ResolvedCredentials | null> {
-  const credentials: Record<string, string> = {}
-  const handles: Record<string, string> = {}
-  for (const field of spec.credentialFields) {
-    const raw = form.credentials[field.key]
-    if (raw === undefined || raw === '') continue
-    if (field.secret) {
-      const handle = await captureSecret(draftId, field.key, raw, field.key)
-      if (handle === null) return null
-      handles[field.key] = handle
-    } else {
-      credentials[field.key] = raw
-    }
-  }
-  return { credentials, handles }
-}
-
-interface WebhookRetention {
-  readonly supportsWebhook: boolean
-  readonly retentionValue: number | null
-}
-
-interface CreateBodyContext extends WebhookRetention {
-  readonly draftId: string
-}
-
-function buildCreateBody(
-  form: ConnectionFormState,
-  connectionType: ConnectionType,
-  spec: ResolvedConnectionSpec,
-  resolved: ResolvedCredentials,
-  ctx: CreateBodyContext,
-): CreateConnectionRequest {
-  const hasHandles = Object.keys(resolved.handles).length > 0
-  return {
-    name: form.name.trim(),
-    connection_type: connectionType,
-    auth_method: spec.defaultAuthMethod,
-    credentials: resolved.credentials,
-    credential_handles: resolved.handles,
-    base_url: form.topLevel['base_url']?.trim() || null,
-    health_check_enabled: true,
-    sensitive: form.sensitive,
-    ...(hasHandles ? { connection_draft_id: ctx.draftId } : {}),
-    ...(ctx.supportsWebhook
-      ? { webhook_receipt_retention_days: ctx.retentionValue }
-      : {}),
-  }
-}
-
-function buildUpdateBody(
-  form: ConnectionFormState,
-  supportsWebhook: boolean,
-  retentionValue: number | null,
-): UpdateConnectionRequest {
-  return {
-    base_url: form.topLevel['base_url']?.trim() || null,
-    sensitive: form.sensitive,
-    ...(supportsWebhook ? { webhook_receipt_retention_days: retentionValue } : {}),
-  }
-}
-
 interface ResetSnapshot {
   open: boolean
   connectionKey: string | null
@@ -206,75 +51,6 @@ function resetSnapshotChanged(prev: ResetSnapshot, next: ResetSnapshot): boolean
     prev.initialType !== next.initialType ||
     prev.mode !== next.mode
   )
-}
-
-interface SubmitDeps {
-  form: ConnectionFormState
-  connectionType: ConnectionType
-  spec: ResolvedConnectionSpec
-  mode: Mode
-  connection: Connection | null | undefined
-  draftId: string
-  supportsWebhook: boolean
-  retentionValue: number | null
-  createConnection: (body: CreateConnectionRequest) => Promise<unknown>
-  updateConnection: (name: string, body: UpdateConnectionRequest) => Promise<unknown>
-  captureSecret: CaptureSecret
-}
-
-/** Persist via create or update; returns true when the dialog should close. */
-async function submitConnection(deps: SubmitDeps): Promise<boolean> {
-  if (deps.mode === 'create') {
-    const resolved = await resolveCredentials(
-      deps.form,
-      deps.spec,
-      deps.draftId,
-      deps.captureSecret,
-    )
-    // A capture failure already toasted; keep the dialog open so the operator
-    // can retry without losing the rest of the form.
-    if (resolved === null) return false
-    return Boolean(
-      await deps.createConnection(
-        buildCreateBody(deps.form, deps.connectionType, deps.spec, resolved, {
-          draftId: deps.draftId,
-          supportsWebhook: deps.supportsWebhook,
-          retentionValue: deps.retentionValue,
-        }),
-      ),
-    )
-  }
-  if (deps.connection) {
-    return Boolean(
-      await deps.updateConnection(deps.connection.name, buildUpdateBody(deps.form, deps.supportsWebhook, deps.retentionValue)),
-    )
-  }
-  return false
-}
-
-interface PreparedSubmit {
-  errors: Record<string, string | null>
-  proceed: boolean
-  supportsWebhook: boolean
-  retentionValue: number | null
-  retentionError: string | null
-}
-
-/** Validate the form and resolve webhook retention without touching state. */
-function prepareConnectionSubmit(
-  form: ConnectionFormState,
-  spec: ResolvedConnectionSpec,
-  mode: Mode,
-): PreparedSubmit {
-  const errors = validateConnectionForm(form, spec, mode)
-  const base = { errors, proceed: false, supportsWebhook: false, retentionValue: null, retentionError: null }
-  if (!Object.values(errors).every((v) => v === null)) return base
-  const supportsWebhook = form.type ? connectionTypeUsesWebhookReceipts(form.type) : false
-  const retention: RetentionResult = supportsWebhook
-    ? parseRetentionDays(form.webhookRetention)
-    : { ok: true, value: null }
-  if (!retention.ok) return { ...base, supportsWebhook, retentionError: retention.error }
-  return { errors, proceed: true, supportsWebhook, retentionValue: retention.value, retentionError: null }
 }
 
 export interface ConnectionFormModalArgs {
@@ -393,56 +169,28 @@ export function useConnectionForm(props: ConnectionFormModalArgs): ConnectionFor
   }, [form.type, connectionTypes])
   const setters = useConnectionFieldSetters(setForm, setErrors)
 
-  const handleSubmit = useCallback(
-    async (event: React.SyntheticEvent) => {
-      event.preventDefault()
-      setSubmitted(true)
-      if (!spec || !form.type) return
-      const prep = prepareConnectionSubmit(form, spec, mode)
-      setErrors(
-        prep.retentionError
-          ? { ...prep.errors, webhook_receipt_retention_days: prep.retentionError }
-          : prep.errors,
-      )
-      if (!prep.proceed) return
-      const shouldClose = await submitConnection({
-        form,
-        // `form.type` is narrowed to ConnectionType by the guard above; pass
-        // it explicitly so the create body needs no `as` cast downstream.
-        connectionType: form.type,
-        spec,
-        mode,
-        connection,
-        // A fresh capture-binding namespace per submit, generated in this
-        // event handler (never during render), so secret handles cannot be
-        // replayed across connection-setup attempts.
-        draftId: crypto.randomUUID(),
-        supportsWebhook: prep.supportsWebhook,
-        retentionValue: prep.retentionValue,
-        createConnection,
-        updateConnection,
-        captureSecret,
-      })
-      if (shouldClose) onClose()
-    },
-    [
-      form,
-      spec,
-      mode,
-      connection,
-      createConnection,
-      updateConnection,
-      captureSecret,
-      onClose,
-    ],
-  )
+  const { handleSubmit, submitting } = useConnectionSubmit({
+    form,
+    spec,
+    mode,
+    connection,
+    createConnection,
+    updateConnection,
+    captureSecret,
+    onClose,
+    setSubmitted,
+    setErrors,
+  })
 
   return {
     form,
     errors,
     submitted,
     spec,
-    mutating,
+    // Surface the capture phase through the same flag the submit button already
+    // reads, so it stays disabled across the whole submit (capture + create),
+    // not just the store's create/update window.
+    mutating: mutating || submitting,
     ...setters,
     handleSubmit,
   }

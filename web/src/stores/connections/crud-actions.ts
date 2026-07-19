@@ -11,7 +11,7 @@ import type {
 } from '@/api/types/integrations'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorCode, getErrorMessage } from '@/utils/errors'
 import type { ConnectionsGet, ConnectionsSet, ConnectionsState } from './types'
 
 const log = createLogger('connections-crud')
@@ -128,7 +128,17 @@ async function captureSecretImpl(
     })
     return handle
   } catch (err) {
-    emitCrudError(err, 'Failed to capture secret', 'Capture secret failed')
+    // The request body carries the raw secret, so an upstream validation /
+    // proxy error can reflect credential material in its message. Never route
+    // it through emitCrudError (which logs + toasts the raw server message):
+    // log only the structured error code and toast a fixed, content-free
+    // message.
+    log.error('Capture secret failed', { field, code: getErrorCode(err) })
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Capture secret failed',
+      description: 'The credential could not be captured. Check the value and try again.',
+    })
     return null
   }
 }

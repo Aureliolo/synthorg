@@ -46,7 +46,7 @@ methods.
 | `llm_provider` | `api_key` | N/A |
 | `tunnel` | `auth_token` | N/A |
 
-The authoritative per-field metadata (label, input type, required/secret flags, capture mode, placement) for every type lives in the backend registry `integrations/connections/field_metadata.py`, exposed read-only via `GET /connections/types` and the `connections.field_metadata` MCP tool; the dashboard form and the operator console both render from it.
+The authoritative per-field metadata (label, input type, required/secret flags, capture mode, placement) for every type lives in the backend registry `integrations/connections/field_metadata.py`, exposed read-only via `GET /api/v1/connections/types` and the `connections.field_metadata` MCP tool; the dashboard form and the operator console both render from it.
 
 ### Secret Storage
 
@@ -96,7 +96,7 @@ A single backend-owned declarative registry
 *what a connection type needs*: per `ConnectionType`, an ordered list of fields
 each carrying `name`, `label`, `type`, `required`, `secret`, `capture_mode`
 (`masked_field` or `oauth_redirect`), `help_text`, and the `connections.create`
-argument it maps to. It is exposed read-only via `GET /connections/types` and
+argument it maps to. It is exposed read-only via `GET /api/v1/connections/types` and
 the `connections.field_metadata` MCP tool, and the dashboard connection form
 renders purely from it (no hand-authored per-type UI), so the console prompts,
 the form, and the create call all agree from one definition. The registry stays
@@ -107,7 +107,7 @@ in parity with the `required_fields()` each authenticator declares.
 A credential (a token, a password, an API key) **never** enters the chat turn,
 the persisted transcript, or an LLM prompt. Instead the masked field posts the
 raw value straight to
-`POST /connections/drafts/{draft_id}/fields/{field}/capture`, whose route
+`POST /api/v1/connections/drafts/{draft_id}/fields/{field}/capture`, whose route
 excludes the request body from logging; the value is written immediately into
 the existing `SecretBackend` and the endpoint returns an opaque **single-use,
 short-TTL handle** bound to `(conversation_id, draft_id, field, secret_kind)`.
@@ -146,7 +146,7 @@ what is submitted is exactly what the form assembled.
 `configure` intent as a governed agent loop: it reads the metadata registry,
 guides the operator, and calls `connections.create`. Determinism does not come
 from a separate step controller; it comes from the platform's governance. Under
-the console's default `SEMI` autonomy a sensitive `connections.create`
+the console's default `semi` autonomy a sensitive `connections.create`
 escalates through the merged auto-gate to the approval inbox with a structured
 preview of the exact resolved arguments (secrets masked), so **apply happens
 only after an explicit confirm**, enforced by the `ApprovalGate` rather than by

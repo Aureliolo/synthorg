@@ -20,6 +20,18 @@ import type {
 const log = createLogger('connections')
 
 let _listRequestId = 0
+let _typesRequestId = 0
+
+/**
+ * Invalidate any in-flight connections/type fetch so a late response cannot
+ * repopulate a cleared store. ``reset()`` calls this before wiping state, so a
+ * fetch that resolves after a reset (or a newer session's fetch) drops its
+ * write instead of resurrecting stale data.
+ */
+export function invalidateInFlightConnectionRequests(): void {
+  _listRequestId += 1
+  _typesRequestId += 1
+}
 
 async function fetchConnectionTypesImpl(
   set: ConnectionsSet,
@@ -30,15 +42,21 @@ async function fetchConnectionTypesImpl(
   // Still a pure API consumer: nothing is persisted client-side, so a reload
   // re-hydrates it.
   if (get().connectionTypes.length > 0 || get().typesLoading) return
+  const requestId = ++_typesRequestId
+  const isLatest = () => requestId === _typesRequestId
   set({ typesLoading: true, typesError: null })
   try {
     const connectionTypes = await getConnectionTypes()
+    // A reset (or a newer fetch) mid-flight bumps the id; drop the write so it
+    // can't repopulate a cleared registry.
+    if (!isLatest()) return
     set({ connectionTypes })
   } catch (err) {
+    if (!isLatest()) return
     log.error('Failed to fetch connection types:', getErrorMessage(err))
     set({ typesError: getErrorMessage(err) })
   } finally {
-    set({ typesLoading: false })
+    if (isLatest()) set({ typesLoading: false })
   }
 }
 

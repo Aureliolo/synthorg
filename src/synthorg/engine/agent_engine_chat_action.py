@@ -114,9 +114,13 @@ class AgentEngineChatActionMixin:
         system_prompt = render_agent_system_prompt(identity)
         if system_prompt_addendum:
             system_prompt = f"{system_prompt}\n\n{system_prompt_addendum}"
-        ctx = AgentContext.from_identity(identity, max_turns=max_turns)
-        if cost_ceiling is not None:
-            ctx = ctx.model_copy(update={"cost_ceiling": cost_ceiling})
+        # Pass the ceiling through from_identity (the constructor) rather than a
+        # post-hoc model_copy: model_copy skips validation, so a non-positive or
+        # NaN ceiling would otherwise bypass the field constraint and defeat the
+        # budget gate.
+        ctx = AgentContext.from_identity(
+            identity, max_turns=max_turns, cost_ceiling=cost_ceiling
+        )
         ctx = ctx.with_message(
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
         )

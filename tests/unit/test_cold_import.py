@@ -29,6 +29,7 @@ documentation-grade backstop. See
 """
 
 import concurrent.futures
+import os
 import subprocess
 import sys
 from typing import Final, NamedTuple
@@ -40,11 +41,28 @@ import pytest
 # os.abort the pytest-timeout patch triggers at 30s.
 _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
 
+# Fallback concurrency when the core count is unknowable.
+_COLD_IMPORT_FALLBACK_CONCURRENCY: Final[int] = 4
+
 # Upper bound on concurrent fresh interpreters. Cold-import lands on a single
-# xdist worker (``--dist=loadfile`` keeps a file together), so this caps the
-# transient memory/process spike from spawning every leaf at once while still
-# running enough in parallel to hide the serial startup cost.
-_MAX_CONCURRENT_COLD_IMPORTS: Final[int] = 16
+# xdist worker (``--dist=loadfile`` keeps a file together) that already shares
+# the box with the other xdist workers, so this MUST track the core count
+# rather than a fixed high fan-out: spawning 16 heavy interpreters at once
+# oversubscribes a CI runner (4 vCPU) both on memory (each cold import of a
+# heavy package peaks a few hundred MB, so a dozen at once OOMs) and on CPU (a
+# CPU-bound import under that much contention blows the per-import timeout).
+# Bounding to the core count keeps the transient spike proportional to the box
+# on CI while still fanning out fully on a many-core dev machine.
+_MAX_CONCURRENT_COLD_IMPORTS: Final[int] = (
+    os.cpu_count() or _COLD_IMPORT_FALLBACK_CONCURRENCY
+)
+
+# The module-scoped fixture concentrates every leaf's cold import into one
+# test's setup, so under a CPU-saturated CI runner that aggregate can exceed the
+# 30s global pytest-timeout even though each individual import is well under its
+# own 20s bound. A generous per-test override gives the concentrated sweep
+# headroom without weakening the global wall for ordinary tests.
+_COLD_IMPORT_FIXTURE_TIMEOUT_SECONDS: Final[int] = 120
 
 # Leaves that must import cold. The first two are the primary regression
 # targets (the original cold-import failure points). The rest pin each
@@ -169,6 +187,7 @@ def cold_import_outcomes() -> dict[str, _ColdImportOutcome]:
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(_COLD_IMPORT_FIXTURE_TIMEOUT_SECONDS)
 @pytest.mark.parametrize("module_name", COLD_IMPORT_LEAVES)
 def test_leaf_imports_from_cold_interpreter(
     module_name: str, cold_import_outcomes: dict[str, _ColdImportOutcome]

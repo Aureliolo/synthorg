@@ -51,6 +51,7 @@ from tests._shared import (
     InMemorySecretBackend,
     LoopAsyncClient,
     make_app_state,
+    mock_of,
 )
 
 
@@ -944,7 +945,7 @@ class TestMCPCatalogController:
         )
         from synthorg.integrations.mcp_catalog.service import CatalogService
 
-        catalog = MagicMock(spec=ConnectionCatalog)
+        catalog = mock_of[ConnectionCatalog]()
         wrong_type_conn = Connection(
             name=NotBlankStr("slacky"),
             connection_type=ConnectionType.SLACK,
@@ -1133,7 +1134,7 @@ class TestMCPCatalogController:
                 installed_at=now,
             ),
         )
-        repo = MagicMock(spec=InMemoryMcpInstallationRepository)
+        repo = mock_of[InMemoryMcpInstallationRepository]()
         repo.list_items = AsyncMock(side_effect=[first_page, second_page])
 
         state = State(

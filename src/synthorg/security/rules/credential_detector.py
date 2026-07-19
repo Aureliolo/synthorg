@@ -65,6 +65,25 @@ CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
 
 
 _CREDENTIAL_REDACTED: Final[str] = "[REDACTED]"
+_QUOTE_CHARS: Final[str] = "'\""
+
+
+def _redact_match(match: re.Match[str]) -> str:
+    """Replace a credential match, preserving any quote it swallowed.
+
+    Some patterns match an optional surrounding quote, so a naive replace of
+    the whole span strips the quotes off a value. When the credential sits
+    inside a serialised JSON string that turns ``"secret"`` into ``[REDACTED]``
+    and breaks the document, so a parked context can no longer be resumed.
+    Re-attaching a leading/trailing quote keeps the boundary intact.
+
+    Returns:
+        ``[REDACTED]`` with any leading/trailing quote of the match preserved.
+    """
+    matched = match.group(0)
+    prefix = matched[:1] if matched[:1] in _QUOTE_CHARS else ""
+    suffix = matched[-1:] if matched[-1:] in _QUOTE_CHARS else ""
+    return f"{prefix}{_CREDENTIAL_REDACTED}{suffix}"
 
 
 def _scan_value(value: str) -> str | None:
@@ -96,7 +115,7 @@ def redact_credentials(text: str) -> tuple[str, tuple[str, ...]]:
     for pattern_name, pattern in CREDENTIAL_PATTERNS:
         if pattern.search(redacted):
             findings.append(pattern_name)
-            redacted = pattern.sub(_CREDENTIAL_REDACTED, redacted)
+            redacted = pattern.sub(_redact_match, redacted)
     return redacted, tuple(sorted(set(findings)))
 
 

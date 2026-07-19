@@ -5,6 +5,8 @@ content while leaving legitimate operator prose untouched. It is the
 defence-in-depth complement to out-of-band capture.
 """
 
+import json
+
 import pytest
 
 from synthorg.security.rules.credential_detector import redact_credentials
@@ -42,8 +44,31 @@ def test_clean_prose_is_untouched() -> None:
 
 
 def test_only_the_secret_substring_is_masked() -> None:
-    """Surrounding text survives; only the secret-shaped run is masked."""
-    text = "token=ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD end"
+    """Surrounding text survives exactly; only the secret run is masked."""
+    text = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345 trailing"
     redacted, _ = redact_credentials(text)
-    assert redacted.endswith("end")
+    assert redacted == "Authorization: [REDACTED] trailing"
+
+
+def test_redaction_keeps_a_json_document_parseable() -> None:
+    """A secret at a JSON string boundary is masked without breaking the JSON.
+
+    ``park_service`` redacts the *serialised* context, so a value whose match
+    swallows the surrounding quote must keep the quote intact; otherwise the
+    parked context can no longer be json-loaded and the run cannot resume.
+    """
+    doc = json.dumps(
+        {
+            "note": "connect the github integration",
+            "token": "ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD",
+            "keep": "ordinary value",
+        }
+    )
+    redacted, findings = redact_credentials(doc)
+    assert findings
+    # Must not raise: the redacted document stays valid JSON.
+    reparsed = json.loads(redacted)
     assert "ghp_" not in redacted
+    assert reparsed["keep"] == "ordinary value"
+    assert reparsed["note"] == "connect the github integration"
+    assert _REDACTED in reparsed["token"]
