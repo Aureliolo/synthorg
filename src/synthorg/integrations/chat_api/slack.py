@@ -28,7 +28,10 @@ from synthorg.integrations.errors import (
     ChatApiRateLimitError,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.integrations import CHAT_API_MESSAGE_SENT
+from synthorg.observability.events.integrations import (
+    CHAT_API_ENVELOPE_FAILED,
+    CHAT_API_MESSAGE_SENT,
+)
 
 logger = get_logger(__name__)
 
@@ -224,11 +227,15 @@ def _require_ok(data: object, *, action: str) -> Mapping[str, object]:
         ChatApiError: On a malformed response or any other ``ok=false``.
     """
     if not isinstance(data, Mapping):
+        logger.warning(CHAT_API_ENVELOPE_FAILED, action=action, reason="malformed")
         msg = f"malformed Slack response while attempting to {action}"
         raise ChatApiError(msg)
     if data.get("ok") is True:
         return data
+    # The Slack ``error`` code is a small enum-like token (never the raw
+    # body), safe to log for operator triage of the primary failure mode.
     error = _str(data.get("error")) or "unknown"
+    logger.warning(CHAT_API_ENVELOPE_FAILED, action=action, slack_error=error)
     if error in _AUTH_ERRORS:
         msg = f"Slack rejected the token while attempting to {action}: {error}"
         raise ChatApiAuthError(msg)
@@ -251,6 +258,7 @@ def _parse[M: BaseModel](data: object, model: type[M], *, what: str) -> M:
     try:
         return model.model_validate(data)
     except ValidationError as exc:
+        logger.warning(CHAT_API_ENVELOPE_FAILED, what=what, reason="parse_failed")
         msg = f"malformed Slack {what} response"
         raise ChatApiError(msg) from exc
 

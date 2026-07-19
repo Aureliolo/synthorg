@@ -8,16 +8,19 @@ the ``extra="ignore"`` payload-parsing models internal to each client.
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
 
 # Request-side closed sets shared by the protocol and the tool args.
+# ``all`` is a list-filter value; a returned issue/PR is only ever open
+# or closed (see the result-side ``_OpenClosed`` below).
 ForgeIssueState = Literal["open", "closed", "all"]
 ForgePullState = Literal["open", "closed", "all"]
 ForgeReviewDecision = Literal["approve", "request_changes", "comment"]
 ForgeMergeMethod = Literal["merge", "squash", "rebase"]
 ForgeEntryKind = Literal["file", "dir"]
+ForgeOpenClosedState = Literal["open", "closed"]
 
 
 class _ForgeResult(BaseModel):
@@ -32,7 +35,7 @@ class ForgeFileContent(_ForgeResult):
     path: NotBlankStr
     ref: str
     content: str
-    size: int
+    size: int = Field(ge=0)
     sha: str
 
 
@@ -42,16 +45,16 @@ class ForgeDirEntry(_ForgeResult):
     name: NotBlankStr
     path: NotBlankStr
     kind: ForgeEntryKind
-    size: int
+    size: int = Field(ge=0)
     sha: str
 
 
 class ForgeIssue(_ForgeResult):
     """A repository issue."""
 
-    number: int
+    number: int = Field(gt=0)
     title: str
-    state: str
+    state: ForgeOpenClosedState
     body: str
     author: str
     url: str
@@ -61,7 +64,7 @@ class ForgeIssue(_ForgeResult):
 class ForgeComment(_ForgeResult):
     """A comment on an issue or pull request."""
 
-    id: int
+    id: int = Field(gt=0)
     author: str
     body: str
     url: str
@@ -70,9 +73,9 @@ class ForgeComment(_ForgeResult):
 class ForgePullRequest(_ForgeResult):
     """A pull / merge request."""
 
-    number: int
+    number: int = Field(gt=0)
     title: str
-    state: str
+    state: ForgeOpenClosedState
     body: str
     author: str
     url: str
@@ -85,7 +88,7 @@ class ForgePullRequest(_ForgeResult):
 class ForgeReview(_ForgeResult):
     """A submitted pull-request review."""
 
-    id: int
+    id: int = Field(gt=0)
     state: str
     author: str
     body: str
@@ -103,7 +106,7 @@ class ForgeMergeResult(_ForgeResult):
 class ForgeCiRun(_ForgeResult):
     """A continuous-integration run for a repository."""
 
-    id: int
+    id: int = Field(gt=0)
     name: str
     status: str
     conclusion: str
@@ -122,6 +125,7 @@ __all__ = [
     "ForgeIssueState",
     "ForgeMergeMethod",
     "ForgeMergeResult",
+    "ForgeOpenClosedState",
     "ForgePullRequest",
     "ForgePullState",
     "ForgeReview",

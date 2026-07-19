@@ -23,6 +23,7 @@ from synthorg.integrations.connections.models import (
     Connection,
     ConnectionType,
 )
+from synthorg.integrations.errors import ChatApiError, SecretRetrievalError
 from synthorg.notifications.adapters.slack import SlackNotificationSink, _format_message
 from synthorg.notifications.models import (
     Notification,
@@ -84,14 +85,21 @@ def _connection() -> Connection:
 
 
 def _catalog(
-    *, conn: Connection | None, credentials: dict[str, str] | None = None
+    *,
+    conn: Connection | None,
+    credentials: dict[str, str] | None = None,
+    credentials_error: Exception | None = None,
 ) -> ConnectionCatalog:
+    get_credentials = AsyncMock(spec=ConnectionCatalog.get_credentials)
+    if credentials_error is not None:
+        get_credentials.side_effect = credentials_error
+    else:
+        get_credentials.return_value = (
+            credentials if credentials is not None else {"token": "xoxb"}
+        )
     catalog: ConnectionCatalog = mock_of[ConnectionCatalog](
         get=AsyncMock(spec=ConnectionCatalog.get, return_value=conn),
-        get_credentials=AsyncMock(
-            spec=ConnectionCatalog.get_credentials,
-            return_value=credentials if credentials is not None else {"token": "xoxb"},
-        ),
+        get_credentials=get_credentials,
     )
     return catalog
 
@@ -162,6 +170,49 @@ class TestSlackSink:
     async def test_close_before_send_is_no_op(self) -> None:
         sink = _sink(_catalog(conn=_connection()))
         await sink.close()
+        assert sink._client is None
+
+    async def test_client_build_failure_degrades_to_no_op(self) -> None:
+        sink = _sink(_catalog(conn=_connection()))
+        with patch(_PATCH_TARGET, side_effect=ChatApiError("egress not pinned")):
+            await sink.send(_notification())  # must not raise
+        assert sink._client is None
+
+    async def test_credential_resolution_failure_is_no_op(self) -> None:
+        sink = _sink(
+            _catalog(
+                conn=_connection(),
+                credentials_error=SecretRetrievalError("backend down"),
+            )
+        )
+        with patch(_PATCH_TARGET) as build:
+            await sink.send(_notification())
+        build.assert_not_called()
+        assert sink._client is None
+
+    async def test_send_reraises_on_client_error(self) -> None:
+        fake = _FakeChatClient()
+        fake.send_message = AsyncMock(  # type: ignore[method-assign]
+            side_effect=ChatApiError("post failed")
+        )
+        sink = _sink(_catalog(conn=_connection()))
+        with (
+            patch(_PATCH_TARGET, return_value=fake),
+            pytest.raises(ChatApiError, match="post failed"),
+        ):
+            await sink.send(_notification())
+
+    async def test_close_reraises_and_clears_on_aclose_error(self) -> None:
+        fake = _FakeChatClient()
+        fake.aclose = AsyncMock(  # type: ignore[method-assign]
+            side_effect=ChatApiError("close failed")
+        )
+        sink = _sink(_catalog(conn=_connection()))
+        with patch(_PATCH_TARGET, return_value=fake):
+            await sink.send(_notification())
+        with pytest.raises(ChatApiError, match="close failed"):
+            await sink.close()
+        # The broken client is not left cached for the next send.
         assert sink._client is None
 
     async def test_aenter_aexit(self) -> None:

@@ -61,7 +61,8 @@ notifications:
     - type: slack
       enabled: true
       params:
-        webhook_url: https://hooks.slack.com/services/.../...
+        connection: ops-slack   # a bound SLACK connection holding the bot token
+        channel: C0123456789
   min_severity: warning
 ```
 

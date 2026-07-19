@@ -83,7 +83,7 @@ class ForgeAgentApiClient(Protocol):
         state: ForgeIssueState = "open",
         limit: int,
     ) -> tuple[ForgeIssue, ...]:
-        """List issues, most-recent first."""
+        """List issues (ordered as the forge returns them by default)."""
         ...
 
     async def create_issue(
@@ -123,7 +123,7 @@ class ForgeAgentApiClient(Protocol):
         state: ForgePullState = "open",
         limit: int,
     ) -> tuple[ForgePullRequest, ...]:
-        """List pull requests, most-recent first."""
+        """List pull requests (ordered as the forge returns them by default)."""
         ...
 
     async def create_pull_request(  # noqa: PLR0913 -- forge PR fields

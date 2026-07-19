@@ -153,30 +153,28 @@ class TestSlackLookupUser:
             user = await client.lookup_user(email="bob@example.com")
         assert str(user.id) == "U9"
 
-    async def test_lookup_without_selector_fails(self) -> None:
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {},  # neither selector
+            {"user_id": "U1", "email": "a@example.com"},  # both selectors
+        ],
+    )
+    async def test_lookup_bad_selector_fails(self, kwargs: dict[str, str]) -> None:
+        # The "exactly one of id/email" precondition is enforced by the
+        # client itself, not only the tool arg validator, so any other
+        # caller of the Protocol is protected too.
         async with _client() as client:
             with pytest.raises(ChatApiError):
-                await client.lookup_user()
+                await client.lookup_user(**kwargs)
 
 
 class TestSlackEnvelopeMapping:
     @respx.mock
-    async def test_invalid_auth_maps_to_auth_error(self) -> None:
+    @pytest.mark.parametrize("error", ["invalid_auth", "missing_scope", "not_authed"])
+    async def test_auth_errors_map_to_auth_error(self, error: str) -> None:
         respx.get(f"{_API}/conversations.list").mock(
-            return_value=httpx.Response(
-                200, json={"ok": False, "error": "invalid_auth"}
-            ),
-        )
-        async with _client() as client:
-            with pytest.raises(ChatApiAuthError):
-                await client.list_channels(limit=10)
-
-    @respx.mock
-    async def test_missing_scope_maps_to_auth_error(self) -> None:
-        respx.get(f"{_API}/conversations.list").mock(
-            return_value=httpx.Response(
-                200, json={"ok": False, "error": "missing_scope"}
-            ),
+            return_value=httpx.Response(200, json={"ok": False, "error": error}),
         )
         async with _client() as client:
             with pytest.raises(ChatApiAuthError):

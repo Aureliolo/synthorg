@@ -39,6 +39,8 @@ from synthorg.settings.models import SettingValue
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service_protocol import SettingsServiceProtocol
 
+pytestmark = pytest.mark.unit
+
 
 class _FakeRootConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -350,7 +352,6 @@ _HAPPY_CASES: tuple[
 )
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize(
     ("method_name", "expected_cls", "mapping", "expected_attrs"),
     _HAPPY_CASES,
@@ -386,7 +387,6 @@ async def test_bridge_config_happy_path(  # noqa: PLR0913
 # ── Classifier-bridge defaults ──────────────────────────────────
 
 
-@pytest.mark.unit
 def test_engine_bridge_classifier_defaults_match_classifier_module() -> None:
     """``EngineBridgeConfig`` classifier defaults mirror the classifier module.
 
@@ -411,7 +411,6 @@ def test_engine_bridge_classifier_defaults_match_classifier_module() -> None:
 # ── Validation-failure cases ────────────────────────────────────
 
 
-@pytest.mark.unit
 async def test_get_api_bridge_config_rejects_out_of_range(
     resolver: ConfigResolver, mock_settings: AsyncMock
 ) -> None:
@@ -457,7 +456,6 @@ async def test_get_api_bridge_config_rejects_out_of_range(
         await resolver.get_api_bridge_config()
 
 
-@pytest.mark.unit
 async def test_get_tools_bridge_config_rejects_bad_memory_literal(
     resolver: ConfigResolver, mock_settings: AsyncMock
 ) -> None:
@@ -478,7 +476,6 @@ async def test_get_tools_bridge_config_rejects_bad_memory_literal(
         await resolver.get_tools_bridge_config()
 
 
-@pytest.mark.unit
 class TestApprovalUrgencyThresholdInvariant:
     """``critical_seconds`` must be strictly less than ``high_seconds``.
 

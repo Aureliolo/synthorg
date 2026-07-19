@@ -11,23 +11,35 @@ from typing import Final, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
+    ForgeIssueState,
+    ForgeMergeMethod,
+    ForgePullState,
+    ForgeReviewDecision,
+)
 
 _DEFAULT_LIST_LIMIT: Final[int] = 30
 _MAX_LIST_LIMIT: Final[int] = 100
 
-_SEGMENT_FORBIDDEN: Final[frozenset[str]] = frozenset({"/", "\\"})
 _CONTROL_CHAR_THRESHOLD: Final[int] = 0x20
+# Characters that must never appear in a value destined for a forge REST
+# URL path segment: the backslash separator plus the URL-structure
+# characters (query / fragment / userinfo) that could smuggle a different
+# request shape. ``/`` is added for non-path segments. Values are also
+# percent-quoted at the client, so this is defence-in-depth.
+_SEGMENT_FORBIDDEN: Final[frozenset[str]] = frozenset({"\\", "?", "#", "@"})
 
 
 def _reject_traversal(value: str, *, field: str, allow_slash: bool) -> str:
-    """Reject path-traversal / separator / control characters.
+    """Reject path-traversal / separator / URL-structure / control chars.
 
     Returns:
         The validated value.
 
     Raises:
-        ValueError: When ``value`` contains a ``..`` segment, a
-            disallowed separator, a leading slash, or a control char.
+        ValueError: When ``value`` contains a ``..`` segment, a leading
+            slash, a disallowed separator / URL-structure character, or a
+            control char.
     """
     if ".." in value:
         msg = f"{field} must not contain '..'"
@@ -35,8 +47,13 @@ def _reject_traversal(value: str, *, field: str, allow_slash: bool) -> str:
     if value.startswith("/"):
         msg = f"{field} must not start with '/'"
         raise ValueError(msg)
-    if any(ch in value for ch in _SEGMENT_FORBIDDEN if not (allow_slash and ch == "/")):
-        msg = f"{field} contains a disallowed separator"
+    # owner / repo (no slash) additionally reject ``/`` and ``%``: a raw
+    # ``%`` would let a pre-percent-encoded ``%2e%2e`` smuggle traversal
+    # (httpx does not re-encode an already-encoded segment). ``path`` is
+    # percent-quoted at the client, so it may legitimately carry ``%``.
+    forbidden = _SEGMENT_FORBIDDEN if allow_slash else _SEGMENT_FORBIDDEN | {"/", "%"}
+    if any(ch in value for ch in forbidden):
+        msg = f"{field} contains a disallowed character"
         raise ValueError(msg)
     if any(ord(ch) < _CONTROL_CHAR_THRESHOLD for ch in value):
         msg = f"{field} contains a control character"
@@ -89,7 +106,7 @@ class ForgeIssueArgs(_ForgeArgsBase):
     title: str = ""
     body: str = ""
     labels: tuple[str, ...] = ()
-    state: Literal["open", "closed", "all"] = "open"
+    state: ForgeIssueState = "open"
     limit: int = Field(default=_DEFAULT_LIST_LIMIT, ge=1, le=_MAX_LIST_LIMIT)
 
     @property
@@ -121,10 +138,10 @@ class ForgePullRequestArgs(_ForgeArgsBase):
     source_branch: str = ""
     target_branch: str = ""
     draft: bool = False
-    decision: Literal["approve", "request_changes", "comment"] = "comment"
-    method: Literal["merge", "squash", "rebase"] = "merge"
+    decision: ForgeReviewDecision = "comment"
+    method: ForgeMergeMethod = "merge"
     commit_title: str = ""
-    state: Literal["open", "closed", "all"] = "open"
+    state: ForgePullState = "open"
     limit: int = Field(default=_DEFAULT_LIST_LIMIT, ge=1, le=_MAX_LIST_LIMIT)
 
     @property

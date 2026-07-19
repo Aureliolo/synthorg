@@ -1,12 +1,12 @@
 """Slack notification sink: bot-token Web API (chat.postMessage).
 
-Unified onto the same bound-connection Slack Web API the agent chat tools
+Shares the bound-connection Slack Web API client the agent chat tools
 use: the sink resolves a ``SLACK`` connection's bot token from the
 connection catalog and posts to a configured channel via
 ``chat.postMessage``. The connection + client are resolved lazily on the
 first send, so a Slack connection created after boot starts working on
 the next notification without a restart. Egress is pinned to slack.com by
-the chat client factory (no separate SSRF policy needed).
+the chat client factory, so no separate SSRF policy is needed here.
 """
 
 import asyncio
@@ -15,9 +15,11 @@ from types import TracebackType
 from typing import Final, Self
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.chat_api import ChatApiClient, build_chat_api_client
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.errors import ChatApiError
 from synthorg.notifications.models import Notification
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
@@ -118,6 +120,9 @@ class SlackNotificationSink:
             if self._client is None:
                 return
             client = self._client
+            # Drop the reference first: a failed aclose() must not leave a
+            # half-closed client cached for the next send() to reuse.
+            self._client = None
             try:
                 await client.aclose()
             except Exception as exc:
@@ -129,7 +134,6 @@ class SlackNotificationSink:
                     detail="close_failed",
                 )
                 raise
-            self._client = None
 
     async def __aenter__(self) -> Self:
         """Start the sink; return self for ``async with`` callers.
@@ -216,10 +220,23 @@ class SlackNotificationSink:
                     connection=self._connection_name,
                 )
                 return None
-            self._client = build_chat_api_client(
-                connection_type=conn.connection_type,
-                base_url=str(conn.base_url or ""),
-                token=token,
-                timeout=self._timeout_seconds,
-            )
+            try:
+                self._client = build_chat_api_client(
+                    connection_type=conn.connection_type,
+                    base_url=str(conn.base_url or ""),
+                    token=token,
+                    timeout=self._timeout_seconds,
+                )
+            except (ChatApiError, StrategyFactoryNotFoundError) as exc:
+                # A misconfigured base_url or a non-chat connection type
+                # degrades to a no-op like the other branches, keeping the
+                # sink's documented contract (never crash the dispatcher).
+                logger.warning(
+                    NOTIFICATION_SLACK_FAILED,
+                    detail="client_build_failed",
+                    connection=self._connection_name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                return None
             return self._client

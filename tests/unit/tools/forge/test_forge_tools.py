@@ -11,7 +11,7 @@ layer tests.
 import base64
 import json
 from typing import cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -21,12 +21,15 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.approval.enums import ApprovalStatus
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.effective_autonomy import EffectiveAutonomy
+from synthorg.engine.errors import GitBackendConfigError
+from synthorg.engine.workspace.git_backend.forge_api import ForgeAgentApiClient
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
     ConnectionType,
 )
+from synthorg.integrations.errors import SecretRetrievalError
 from synthorg.tools.forge._runtime import ForgeToolDeps, ForgeToolsRuntime
 from synthorg.tools.forge.forge_tools import (
     ForgeCiTool,
@@ -64,20 +67,23 @@ def _connection(
     )
 
 
-def _deps(
+def _deps(  # noqa: PLR0913 -- test helper mirrors the tool's collaborators
     *,
     conn: Connection | None,
     store: ApprovalStore | None = None,
     autonomy: EffectiveAutonomy | None = None,
     credentials: dict[str, str] | None = None,
+    credentials_error: Exception | None = None,
     max_read_chars: int = 1000,
 ) -> ForgeToolDeps:
+    get_credentials = AsyncMock(spec=ConnectionCatalog.get_credentials)
+    if credentials_error is not None:
+        get_credentials.side_effect = credentials_error
+    else:
+        get_credentials.return_value = credentials or {"token": "t0ken"}
     catalog = mock_of[ConnectionCatalog](
         get=AsyncMock(spec=ConnectionCatalog.get, return_value=conn),
-        get_credentials=AsyncMock(
-            spec=ConnectionCatalog.get_credentials,
-            return_value=credentials or {"token": "t0ken"},
-        ),
+        get_credentials=get_credentials,
     )
     runtime = ForgeToolsRuntime(
         connection_catalog=catalog,
@@ -326,10 +332,118 @@ class TestForgeToolGuards:
         assert result.is_error is True
         assert "invalid arguments" in result.content.lower()
 
-    async def test_owner_traversal_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "../../etc",
+            "..",
+            "a/b",
+            "a%2e%2e",
+            "a?x",
+            "a#x",
+            "a@x",
+            "a%00",
+            "a\\b",
+        ],
+    )
+    async def test_owner_traversal_rejected(self, bad: str) -> None:
         tool = ForgeRepoTool(deps=_deps(conn=_connection()))
         result = await tool.execute(
-            arguments={"action": "get_repo", "owner": "../../etc", "repo": "proj-1"}
+            arguments={"action": "get_repo", "owner": bad, "repo": "proj-1"}
         )
         assert result.is_error is True
         assert "invalid arguments" in result.content.lower()
+
+    @pytest.mark.parametrize("bad", ["../../etc", "a/b", "a%2e%2e", "a?x", "a#x"])
+    async def test_repo_traversal_rejected(self, bad: str) -> None:
+        tool = ForgeRepoTool(deps=_deps(conn=_connection()))
+        result = await tool.execute(
+            arguments={"action": "get_repo", "owner": "acme", "repo": bad}
+        )
+        assert result.is_error is True
+        assert "invalid arguments" in result.content.lower()
+
+
+class TestForgeToolErrorMapping:
+    async def test_credential_retrieval_failure_no_egress(self) -> None:
+        tool = ForgeRepoTool(
+            deps=_deps(
+                conn=_connection(),
+                credentials_error=SecretRetrievalError("backend down"),
+            )
+        )
+        result = await tool.execute(
+            arguments={"action": "get_repo", "owner": "acme", "repo": "proj-1"}
+        )
+        assert result.is_error is True
+
+    async def test_missing_token_errors(self) -> None:
+        tool = ForgeRepoTool(deps=_deps(conn=_connection(), credentials={"nope": "x"}))
+        result = await tool.execute(
+            arguments={"action": "get_repo", "owner": "acme", "repo": "proj-1"}
+        )
+        assert result.is_error is True
+        assert "token" in result.content.lower()
+
+    @respx.mock
+    async def test_auth_401_maps_to_error(self) -> None:
+        respx.get(f"{_FJ}/repos/acme/proj-1").mock(
+            return_value=httpx.Response(401, json={"message": "bad creds"})
+        )
+        tool = ForgeRepoTool(deps=_deps(conn=_connection()))
+        result = await tool.execute(
+            arguments={"action": "get_repo", "owner": "acme", "repo": "proj-1"}
+        )
+        assert result.is_error is True
+
+    @respx.mock
+    async def test_upstream_500_maps_to_error(self) -> None:
+        respx.get(f"{_FJ}/repos/acme/proj-1").mock(
+            return_value=httpx.Response(500, json={"message": "boom"})
+        )
+        tool = ForgeRepoTool(deps=_deps(conn=_connection()))
+        result = await tool.execute(
+            arguments={"action": "get_repo", "owner": "acme", "repo": "proj-1"}
+        )
+        assert result.is_error is True
+
+    @respx.mock
+    async def test_rate_limit_surfaces_retry_after(self) -> None:
+        respx.get(f"{_FJ}/repos/acme/proj-1").mock(
+            return_value=httpx.Response(
+                429, headers={"Retry-After": "17"}, json={"message": "slow"}
+            )
+        )
+        tool = ForgeRepoTool(deps=_deps(conn=_connection()))
+        result = await tool.execute(
+            arguments={"action": "get_repo", "owner": "acme", "repo": "proj-1"}
+        )
+        assert result.is_error is True
+        assert result.metadata["retry_after_seconds"] == 17.0
+
+    async def test_build_config_error_maps_to_argument_error(self) -> None:
+        target = "synthorg.tools.forge._base.build_forge_agent_api_client"
+        with patch(target, side_effect=GitBackendConfigError("bad url")):
+            tool = ForgeRepoTool(deps=_deps(conn=_connection()))
+            result = await tool.execute(
+                arguments={"action": "get_repo", "owner": "acme", "repo": "proj-1"}
+            )
+        assert result.is_error is True
+
+    async def test_aclose_runs_in_finally(self) -> None:
+        client = mock_of[ForgeAgentApiClient](
+            get_repo=AsyncMock(side_effect=RuntimeError("upstream blew up")),
+            aclose=AsyncMock(),
+        )
+        target = "synthorg.tools.forge._base.build_forge_agent_api_client"
+        with patch(target, return_value=client):
+            tool = ForgeRepoTool(deps=_deps(conn=_connection()))
+            with pytest.raises(RuntimeError, match="upstream blew up"):
+                await tool.execute(
+                    arguments={
+                        "action": "get_repo",
+                        "owner": "acme",
+                        "repo": "proj-1",
+                    }
+                )
+        client.aclose.assert_awaited_once()

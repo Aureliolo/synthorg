@@ -15,7 +15,11 @@ import respx
 from synthorg.core.domain_errors import FeatureNotImplementedError
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.errors import GitBackendForgeApiError, GitBackendForgeAuthError
+from synthorg.engine.errors import (
+    GitBackendForgeApiError,
+    GitBackendForgeAuthError,
+    GitBackendRateLimitError,
+)
 from synthorg.engine.workspace.git_backend.forge_api import (
     build_forge_agent_api_client,
     forge_agent_api_supported,
@@ -299,6 +303,36 @@ class TestGitHubCi:
         async with _github() as client:
             with pytest.raises(GitBackendForgeAuthError):
                 await client.get_ci_run(owner=_OWNER, repo=_REPO, run_id=11)
+
+    @respx.mock
+    async def test_rate_limit_429_maps_with_retry_after(self) -> None:
+        respx.get(f"{_GH}/repos/acme/proj-1").mock(
+            return_value=httpx.Response(429, headers={"Retry-After": "13"}),
+        )
+        async with _github() as client:
+            with pytest.raises(GitBackendRateLimitError) as exc_info:
+                await client.get_repo(owner=_OWNER, repo=_REPO)
+        assert exc_info.value.retry_after == 13.0
+
+    @respx.mock
+    async def test_primary_rate_limit_403_maps(self) -> None:
+        respx.get(f"{_GH}/repos/acme/proj-1").mock(
+            return_value=httpx.Response(
+                403, headers={"X-RateLimit-Remaining": "0"}, json={"message": "limit"}
+            ),
+        )
+        async with _github() as client:
+            with pytest.raises(GitBackendRateLimitError):
+                await client.get_repo(owner=_OWNER, repo=_REPO)
+
+    @respx.mock
+    async def test_server_5xx_maps_to_api_error(self) -> None:
+        respx.get(f"{_GH}/repos/acme/proj-1").mock(
+            return_value=httpx.Response(503, json={"message": "unavailable"}),
+        )
+        async with _github() as client:
+            with pytest.raises(GitBackendForgeApiError):
+                await client.get_repo(owner=_OWNER, repo=_REPO)
 
 
 class TestForgejoDivergences:

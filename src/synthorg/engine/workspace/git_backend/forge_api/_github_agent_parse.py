@@ -11,6 +11,7 @@ malformed payload surfaces as :class:`GitBackendForgeApiError` via
 import base64
 import binascii
 from collections.abc import Mapping
+from typing import cast
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -24,6 +25,7 @@ from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
     ForgeFileContent,
     ForgeIssue,
     ForgeMergeResult,
+    ForgeOpenClosedState,
     ForgePullRequest,
     ForgeReview,
 )
@@ -218,10 +220,13 @@ def dir_entry_from(model: GhContentEntry) -> ForgeDirEntry:
 
 
 def issue_from(model: GhIssue) -> ForgeIssue:
+    # ``state`` is a documented open/closed enum on GitHub; the Literal on
+    # ForgeIssue makes Pydantic validate it, so an impossible value fails
+    # loud at construction rather than propagating a bad string.
     return ForgeIssue(
         number=model.number,
         title=model.title,
-        state=model.state,
+        state=cast("ForgeOpenClosedState", model.state),
         body=model.body or "",
         author=_login(model.user),
         url=model.html_url,
@@ -242,7 +247,7 @@ def pull_from(model: GhPull) -> ForgePullRequest:
     return ForgePullRequest(
         number=model.number,
         title=model.title,
-        state=model.state,
+        state=cast("ForgeOpenClosedState", model.state),
         body=model.body or "",
         author=_login(model.user),
         url=model.html_url,

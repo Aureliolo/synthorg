@@ -121,19 +121,22 @@ on resolution.
 ### Notification Security
 
 Notification adapter configuration may contain credentials (SMTP passwords,
-ntfy tokens, Slack webhook URLs). These values are stored in the ``params``
-dict of each ``NotificationSinkConfig`` entry in the YAML config.
+ntfy tokens). These values are stored in the ``params`` dict of each
+``NotificationSinkConfig`` entry in the YAML config. The Slack sink holds no
+credential in its params: it names a bound ``SLACK`` connection whose bot
+token is brokered from the connection catalog at send time.
 
-- **Credentials in params**: Treat ``password``, ``token``, and ``webhook_url``
-  params as sensitive. Use environment variable substitution in YAML
+- **Credentials in params**: Treat ``password`` and ``token`` params as
+  sensitive. Use environment variable substitution in YAML
   (``${SMTP_PASSWORD}``) rather than embedding plain-text secrets.
 - **Log redaction**: The observability pipeline's ``sanitize_sensitive_fields``
   processor automatically redacts keys matching ``password``, ``token``, and
   ``secret`` at all nesting depths, so adapter params are not leaked in logs.
 - **Transport security**: The email adapter enforces STARTTLS when
-  ``use_tls=true`` (default). The ntfy and Slack adapters validate that their
-  target URLs use HTTPS before sending (SSRF-safe: private/loopback IPs are
-  rejected).
+  ``use_tls=true`` (default). The ntfy adapter validates that its target URL
+  uses HTTPS before sending (SSRF-safe: private/loopback IPs are rejected).
+  The Slack sink posts via ``chat.postMessage`` with egress pinned to
+  ``slack.com`` by the chat client factory.
 
 ### Frontend Security
 

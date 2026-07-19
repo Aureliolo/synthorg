@@ -210,3 +210,5 @@ ARTIFACT_DELETE_INDEX_MISS: Final[str] = "integrations.artifact.delete_index_mis
 CHAT_API_MESSAGE_SENT: Final[str] = "integrations.chat_api.message_sent"
 CHAT_API_REQUEST_FAILED: Final[str] = "integrations.chat_api.request_failed"
 CHAT_API_RATE_LIMITED: Final[str] = "integrations.chat_api.rate_limited"
+CHAT_API_ENVELOPE_FAILED: Final[str] = "integrations.chat_api.envelope_failed"
+CHAT_API_CONFIG_INVALID: Final[str] = "integrations.chat_api.config_invalid"

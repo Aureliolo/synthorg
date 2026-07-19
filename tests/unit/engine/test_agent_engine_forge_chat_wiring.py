@@ -36,7 +36,7 @@ _FORGE_TOOL_NAMES = frozenset(
 _CHAT_TOOL_NAMES = frozenset({"chat_messages", "chat_directory"})
 
 
-class _StubSecretBackend:
+class _FakeSecretBackend:
     """Minimal ``SecretBackend`` so the catalog constructs."""
 
     @property
@@ -70,7 +70,7 @@ class _StubTool(BaseTool):
 
 
 def _catalog() -> ConnectionCatalog:
-    return ConnectionCatalog(InMemoryConnectionRepository(), _StubSecretBackend())
+    return ConnectionCatalog(InMemoryConnectionRepository(), _FakeSecretBackend())
 
 
 def _forge_runtime() -> ForgeToolsRuntime:

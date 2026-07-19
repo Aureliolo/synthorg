@@ -1,11 +1,10 @@
 """Chat Web API client factory keyed on the connection type.
 
 Selects the per-platform client via a
-:class:`~synthorg.core.registry.StrategyRegistry`. Slack is the first
-platform; others slot in by registering a builder, so the agent-facing
-chat tools stay vendor-neutral. The Slack builder pins egress to
-``slack.com`` (rejecting any other host) so a mis-set base_url cannot
-exfiltrate the bot token.
+:class:`~synthorg.core.registry.StrategyRegistry`, keyed on the bound
+connection's type, so the agent-facing chat tools stay vendor-neutral.
+The Slack builder pins egress to ``slack.com`` (rejecting any other host)
+so a mis-set base_url cannot exfiltrate the bot token.
 """
 
 import re
@@ -16,6 +15,10 @@ from synthorg.integrations.chat_api.protocol import ChatApiClient
 from synthorg.integrations.chat_api.slack import SlackChatClient
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.errors import ChatApiError
+from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import CHAT_API_CONFIG_INVALID
+
+logger = get_logger(__name__)
 
 _DEFAULT_SLACK_BASE_URL: Final[str] = "https://slack.com"
 _SLACK_ALLOWED_BASE_URL: Final[re.Pattern[str]] = re.compile(
@@ -35,6 +38,10 @@ def _slack_api_base(base_url: str) -> str:
     """
     origin = base_url or _DEFAULT_SLACK_BASE_URL
     if not _SLACK_ALLOWED_BASE_URL.fullmatch(origin):
+        # The base_url is operator-configured but a non-slack.com host
+        # would leak the bot token, so reject it loudly (never log the
+        # value itself, which could carry embedded credentials).
+        logger.warning(CHAT_API_CONFIG_INVALID, reason="base_url_not_slack")
         msg = "Slack base_url must match https://[<subdomain>.]slack.com"
         raise ChatApiError(msg)
     return f"{origin}/api"

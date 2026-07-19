@@ -9,6 +9,7 @@ names are resolved first), pull-request drafts and Actions/CI reads are
 not exposed by this client and fail loud.
 """
 
+from collections.abc import Mapping
 from typing import Final, override
 
 from pydantic import BaseModel, ConfigDict
@@ -40,7 +41,7 @@ from synthorg.observability.events.workspace import (
 logger = get_logger(__name__)
 
 _LABEL_PAGE_LIMIT: Final[int] = 100
-_REVIEW_EVENTS: Final[dict[str, str]] = {
+_REVIEW_EVENTS: Final[Mapping[str, str]] = {
     "approve": "APPROVED",
     "request_changes": "REQUEST_CHANGES",
     "comment": "COMMENT",
@@ -239,24 +240,9 @@ class GiteaAgentForgeClient(GiteaForgeClient, ForgeAgentBase):
         """
         if not labels:
             return []
-        action = f"resolve labels for {owner}/{repo}"
-        resp = await self._request(
-            "GET",
-            f"/repos/{owner}/{repo}/labels",
-            action=action,
-            params={"limit": _LABEL_PAGE_LIMIT},
+        by_name = await self._fetch_label_ids(
+            owner=owner, repo=repo, wanted=set(labels)
         )
-        raise_for_forge_status(resp, action=action)
-        data = resp.json()
-        if not isinstance(data, list):
-            msg = "malformed Gitea labels response"
-            raise GitBackendForgeApiError(msg)
-        by_name = {
-            label.name: label.id
-            for label in (
-                gh.parse_github(item, _GiteaLabel, what="label") for item in data
-            )
-        }
         resolved: list[int] = []
         for name in labels:
             label_id = by_name.get(name)
@@ -265,6 +251,46 @@ class GiteaAgentForgeClient(GiteaForgeClient, ForgeAgentBase):
                 raise GitBackendForgeApiError(msg)
             resolved.append(label_id)
         return resolved
+
+    async def _fetch_label_ids(
+        self, *, owner: NotBlankStr, repo: NotBlankStr, wanted: set[str]
+    ) -> dict[str, int]:
+        """Page the repo's labels into a name->id map, stopping when done.
+
+        Pages until every wanted name is found or the forge runs out of
+        labels, so a repo with more than one page of labels still resolves
+        (a single fixed-page request would silently miss later-page names).
+
+        Returns:
+            The name->id map covering (at least) every found wanted label.
+
+        Raises:
+            GitBackendForgeApiError: On a malformed labels response.
+        """
+        action = f"resolve labels for {owner}/{repo}"
+        by_name: dict[str, int] = {}
+        page = 1
+        # Bounded label pagination: stops on a short page or once every wanted
+        # label is resolved, never an unbounded consumer.
+        # lint-allow: long-running-loop-kill-switch -- bounded label pagination
+        while True:
+            resp = await self._request(
+                "GET",
+                f"/repos/{owner}/{repo}/labels",
+                action=action,
+                params={"limit": _LABEL_PAGE_LIMIT, "page": page},
+            )
+            raise_for_forge_status(resp, action=action)
+            data = resp.json()
+            if not isinstance(data, list):
+                msg = "malformed Gitea labels response"
+                raise GitBackendForgeApiError(msg)
+            for item in data:
+                label = gh.parse_github(item, _GiteaLabel, what="label")
+                by_name[label.name] = label.id
+            if len(data) < _LABEL_PAGE_LIMIT or wanted <= by_name.keys():
+                return by_name
+            page += 1
 
 
 class ForgejoAgentForgeClient(GiteaAgentForgeClient):

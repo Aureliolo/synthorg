@@ -96,3 +96,7 @@ TOOL_MEMORY_AUGMENTATION_FAILED: Final[str] = "tool.memory.augmentation_failed"
 # ── Forge / chat tool events ──────────────────────────────────────
 FORGE_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.forge.credential_failed"
 CHAT_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.chat.credential_failed"
+FORGE_TOOL_CONNECTION_FAILED: Final[str] = "tool.forge.connection_failed"
+CHAT_TOOL_CONNECTION_FAILED: Final[str] = "tool.chat.connection_failed"
+FORGE_TOOL_GRANTED: Final[str] = "tool.forge.granted"
+CHAT_TOOL_GRANTED: Final[str] = "tool.chat.granted"

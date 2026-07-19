@@ -81,6 +81,17 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 - `src/synthorg/settings/dispatcher.py` `SettingsChangeDispatcher._poll_loop`: polls the settings-change channel; a poll error backs off `_ERROR_BACKOFF` and continues, breaking only when `consecutive_errors` hits the channel-dead ceiling.
 - `src/synthorg/api/bus_bridge.py` the per-channel bridge poll loop: polls a bus channel to fan WebSocket events out; a poll error backs off `poll_timeout` and continues, breaking on the same consecutive-error ceiling.
 
+## Pattern E -- Deliberate no-retry (governed one-shot)
+
+**When**: an agent-facing tool call that routes through the identity-bound approval flow and egresses to a bound connection exactly once per invocation. The `forge_*` and `chat_*` tools (`src/synthorg/tools/forge/`, `src/synthorg/tools/chat/`) fall here, as does the `external_api` tool they mirror. A transient upstream failure is surfaced to the agent, not retried inside the tool.
+
+**How**: no loop at all. The tool dispatches once and lets the error propagate as a typed `ToolError` (rate-limit failures carry `retry_after_seconds` in the result metadata so the agent, not the tool, decides whether to try again). This is deliberate, not an omission: a write consumes a one-shot approval token bound to `agent_id`+`task_id`, so a silent in-tool retry would either re-egress an already-approved side effect or re-park a fresh approval the operator never sanctioned; a read is a single fast-allow egress whose failure the agent should see rather than have masked. Provider-layer resilience (`BaseCompletionProvider`) does not apply because these are direct connection calls, not LLM dispatches. The bounded-attempt budget of Pattern A is therefore the wrong shape: the correct budget is one.
+
+**Sites**:
+
+- `src/synthorg/tools/forge/forge_tools.py`, `src/synthorg/tools/chat/chat_tools.py`: each `_dispatch_guarded` call egresses once; a `ForgeRateLimitedError` / `ChatRateLimitedError` surfaces `retry_after_seconds` to the caller instead of sleeping.
+- `src/synthorg/tools/external_api/`: the pre-existing governed tool this pattern generalises.
+
 ## Decision tree
 
 | If your loop is...                                                  | Reach for                            |
@@ -90,14 +101,15 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 | CAS / version-race retry that branches on driver constraint name    | Inline loop (Pattern C/CAS)          |
 | Sync code in a stdlib `logging.Handler` thread, or a `scripts/` CI gate that cannot import `synthorg.core` | Inline loop (Pattern C/Sync)         |
 | Unbounded background consumer polling a bus channel for the process lifetime | Inline poll loop (Pattern D)         |
-| None of the above                                                   | Stop and ask before adding a fifth family |
+| A governed one-shot agent tool routed through the approval flow     | No loop; surface the error (Pattern E) |
+| None of the above                                                   | Stop and ask before adding a sixth family |
 
 ## Adding a new retry site
 
-1. Classify the new site against the four cells in the decision tree above.
+1. Classify the new site against the cells in the decision tree above.
 2. If it lands in Pattern A, use `GeneralRetryHandler` and pass a `retryable` predicate plus your backoff parameters. Add a comment of the form `# See docs/reference/retry-patterns.md: Pattern A` if the site is not obviously a transient-I/O retry.
 3. If it lands in Pattern B or C, add the comment so the next reader can match the inline loop to the rationale on this page.
-4. If it does not fit any of the four cells, the page is wrong. Update this page first, get the new family agreed, then add the loop.
+4. If it does not fit any of the cells, the page is wrong. Update this page first, get the new family agreed, then add the loop.
 5. **Update the per-pattern Sites lists above** so this page stays synchronised with the codebase. A stale list teaches the next reader the wrong assumption (e.g. "there are only 2 Pattern A sites") and the doc-link comments at each site only point back here, so the page is the single source of truth for the inventory.
 
 ## See also

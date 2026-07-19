@@ -13,7 +13,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from datetime import UTC
-from typing import ClassVar
+from typing import ClassVar, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, JsonValue
@@ -40,6 +40,62 @@ from synthorg.tools.errors import ToolError
 logger = get_logger(__name__)
 
 _SIGNATURE_METADATA_KEY = "governed_action_signature"
+
+
+@runtime_checkable
+class GovernedToolArgs(Protocol):
+    """Contract every governed tool's parsed args model must satisfy.
+
+    ``action`` selects the operation to dispatch; ``is_write`` reports
+    whether it mutates (and so must route through the approval gate). The
+    gate and signature helpers narrow a parsed model to this Protocol so a
+    model that forgets either member fails loud, never silently skipping
+    the gate.
+    """
+
+    action: str
+
+    @property
+    def is_write(self) -> bool:
+        """Whether this action mutates state (and needs approval)."""
+        ...
+
+
+def require_governed_args(args: BaseModel) -> GovernedToolArgs:
+    """Narrow a parsed args model to the governed-tool contract.
+
+    Returns:
+        *args* typed as :class:`GovernedToolArgs`.
+
+    Raises:
+        TypeError: When *args* lacks ``action`` / ``is_write`` (a tool
+            wiring bug that must never silently skip approval gating).
+    """
+    if not isinstance(args, GovernedToolArgs):
+        msg = (
+            f"{type(args).__name__} is not a governed tool args model "
+            "(missing action / is_write)"
+        )
+        raise TypeError(msg)
+    return args
+
+
+def signature_for(
+    *, namespace: str, connection: str, args: BaseModel
+) -> ActionSignature:
+    """Build the approval signature for a governed tool call.
+
+    Returns:
+        The content-addressed :class:`ActionSignature` over the tool's
+        namespace, bound connection, action, and full argument payload.
+    """
+    governed = require_governed_args(args)
+    return ActionSignature.build(
+        namespace=namespace,
+        connection=connection,
+        operation=governed.action,
+        payload=args.model_dump(mode="json"),
+    )
 
 
 class GovernedApprovalMismatchError(ToolError):
@@ -312,4 +368,7 @@ __all__ = [
     "ActionSignature",
     "ConnectionApprovalGate",
     "GovernedApprovalMismatchError",
+    "GovernedToolArgs",
+    "require_governed_args",
+    "signature_for",
 ]

@@ -49,6 +49,27 @@ def sanitize_body(text: str) -> str:
     return _TOKEN_PATTERNS.sub("[REDACTED]", text[:_MAX_BODY_SNIPPET])
 
 
+def _error_detail(resp: httpx.Response) -> str:
+    """Extract just the chat error field for a log line.
+
+    A raw body can echo request field values, so only the parsed
+    ``error`` / ``message`` field is logged, sanitised. Falls back to a
+    generic status marker when the body carries neither.
+
+    Returns:
+        The sanitised error detail, or a generic status marker.
+    """
+    try:
+        payload = resp.json()
+    except ValueError:
+        return f"(non-JSON body, status {resp.status_code})"
+    if isinstance(payload, dict):
+        detail = payload.get("error") or payload.get("message")
+        if isinstance(detail, str) and detail:
+            return sanitize_body(detail)
+    return f"(no error field, status {resp.status_code})"
+
+
 def parse_retry_after(headers: httpx.Headers) -> float | None:
     """Parse a ``Retry-After`` header to finite non-negative seconds.
 
@@ -76,7 +97,6 @@ def raise_for_chat_status(resp: httpx.Response, *, action: str) -> None:
     """
     if resp.is_success:
         return
-    body = sanitize_body(resp.text) if resp.text else "(empty)"
     if resp.status_code == _RATE_LIMIT_STATUS:
         retry_after = parse_retry_after(resp.headers)
         logger.warning(
@@ -91,7 +111,7 @@ def raise_for_chat_status(resp: httpx.Response, *, action: str) -> None:
         CHAT_API_REQUEST_FAILED,
         action=action,
         status_code=resp.status_code,
-        response_body=body,
+        detail=_error_detail(resp),
     )
     if resp.status_code in _AUTH_STATUS:
         msg = f"chat authentication failed while attempting to {action}"

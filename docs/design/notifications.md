@@ -15,7 +15,7 @@ All notification adapters implement the `NotificationSink` protocol:
 
 - ``async start() -> None``: open external resources (HTTP clients, sockets). Idempotent: a second call is a no-op. Stateless adapters (`Console`, `Email`) implement this as a no-op for protocol uniformity.
 - ``async close() -> None``: release resources. Idempotent.
-- ``async send(notification: Notification) -> None``: deliver a single notification. Adapters that hold state (`Slack`, `Ntfy`) raise `RuntimeError` if `send()` is called before `start()`.
+- ``async send(notification: Notification) -> None``: deliver a single notification. `Ntfy` raises `RuntimeError` if `send()` is called before `start()`. `Slack` builds its client lazily on the first `send()` (its `start()` is a no-op) and fails soft: a missing connection, missing token, or invalid `base_url` is logged and the send degrades to a no-op rather than raising.
 - ``async __aenter__() / __aexit__(...)``: async context-manager pair that wraps `start()` / `close()`, so a sink instance can be driven directly via `async with sink:` outside the dispatcher (useful in scripts and tests).
 
 The lifecycle is guarded by an `asyncio.Lock` on stateful adapters so concurrent `start()` / `close()` calls collapse to a single open / close. The protocol is intentionally minimal so new adapters (PagerDuty, Teams, Discord, etc.) can be added without modifying dispatcher logic.

@@ -63,6 +63,28 @@ def sanitize_body(text: str) -> str:
     return _TOKEN_PATTERNS.sub("[REDACTED]", text[:_MAX_BODY_SNIPPET])
 
 
+def _error_detail(resp: httpx.Response) -> str:
+    """Extract just the forge error ``message`` for a log line.
+
+    A raw body can echo request field values (issue titles, emails), so
+    only the parsed ``message`` / ``error`` field is logged, sanitised.
+    Falls back to the status reason when the body is not a JSON object
+    carrying one.
+
+    Returns:
+        The sanitised error message, or a generic status marker.
+    """
+    try:
+        payload = resp.json()
+    except ValueError:
+        return f"(non-JSON body, status {resp.status_code})"
+    if isinstance(payload, dict):
+        detail = payload.get("message") or payload.get("error")
+        if isinstance(detail, str) and detail:
+            return sanitize_body(detail)
+    return f"(no error field, status {resp.status_code})"
+
+
 def parse_retry_after(headers: httpx.Headers) -> float | None:
     """Parse a ``Retry-After`` header if present.
 
@@ -114,7 +136,6 @@ def raise_for_forge_status(resp: httpx.Response, *, action: str) -> None:
     """
     if resp.is_success:
         return
-    body = sanitize_body(resp.text) if resp.text else "(empty)"
     if _is_rate_limited(resp):
         retry_after = parse_retry_after(resp.headers)
         logger.warning(
@@ -129,7 +150,7 @@ def raise_for_forge_status(resp: httpx.Response, *, action: str) -> None:
         FORGE_API_REQUEST_FAILED,
         action=action,
         status_code=resp.status_code,
-        response_body=body,
+        detail=_error_detail(resp),
     )
     if resp.status_code in _AUTH_STATUS:
         msg = f"forge authentication failed while attempting to {action}"

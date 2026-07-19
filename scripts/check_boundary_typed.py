@@ -70,7 +70,7 @@ _TOOL_EXECUTE_SITES: tuple[tuple[str, str], ...] = (
     # concrete leaves (forge_repo / forge_issue / ..., chat_messages /
     # chat_directory) inherit it, so the typed boundary is registered once
     # on each base.
-    ("src/synthorg/tools/forge/forge_tools.py", "_BaseForgeTool"),
+    ("src/synthorg/tools/forge/_base.py", "_BaseForgeTool"),
     ("src/synthorg/tools/chat/chat_tools.py", "_BaseChatTool"),
 )
 

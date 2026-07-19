@@ -14,7 +14,12 @@ from typing import TYPE_CHECKING
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
+from synthorg.observability import get_logger
 from synthorg.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
+from synthorg.observability.events.tool import (
+    CHAT_TOOL_GRANTED,
+    FORGE_TOOL_GRANTED,
+)
 from synthorg.security.risk_map import default_risk_classifier
 from synthorg.tools.base import BaseTool
 from synthorg.tools.chat._runtime import ChatToolsRuntime
@@ -23,6 +28,8 @@ from synthorg.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
+
+logger = get_logger(__name__)
 
 
 def registry_with_forge_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
@@ -66,6 +73,13 @@ def registry_with_forge_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
         ForgePullRequestTool(deps=deps),
         ForgeCiTool(deps=deps),
     ]
+    logger.debug(
+        FORGE_TOOL_GRANTED,
+        agent_id=str(identity.id),
+        task_id=task_id,
+        connection=runtime.connection_name,
+        tools=[tool.name for tool in forge_tools],
+    )
     existing = list(tool_registry.all_tools())
     return ToolRegistry([*existing, *forge_tools])
 
@@ -106,6 +120,13 @@ def registry_with_chat_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
         ChatMessagesTool(deps=deps),
         ChatDirectoryTool(deps=deps),
     ]
+    logger.debug(
+        CHAT_TOOL_GRANTED,
+        agent_id=str(identity.id),
+        task_id=task_id,
+        connection=runtime.connection_name,
+        tools=[tool.name for tool in chat_tools],
+    )
     existing = list(tool_registry.all_tools())
     return ToolRegistry([*existing, *chat_tools])
 
