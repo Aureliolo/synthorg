@@ -562,7 +562,8 @@
         "objective_entry_adapter",
         "brownfield_entry_adapter",
         "task_board_entry_adapter",
-        "structure_map_tool_factory"
+        "structure_map_tool_factory",
+        "plan_item_reply_service"
       ]
     },
     {
@@ -878,7 +879,7 @@
         "MetaController",
         "MetaEvolutionController",
         "MetaAlertsController",
-        "ConversationalController",
+        "TurnController",
         "ConversationHistoryController",
         "MetaAnalyticsController",
         "AnalyticsOverviewController",
@@ -948,6 +949,8 @@
         "conversation_participant_repo",
         "conversational_resume_service",
         "role_router",
+        "turn_intent_classifier",
+        "multi_voice_router",
         "group_chat_service",
         "conversational_actor",
         "custom_rules_service",
@@ -1399,6 +1402,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-18T23:32:46.310646Z",
+  "generated_at": "2026-07-19T07:27:30.802137Z",
   "schema_version": 1
 }
