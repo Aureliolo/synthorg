@@ -194,7 +194,9 @@ def file_content_from(model: GhContentFile, *, ref: str) -> ForgeFileContent:
 
     Raises:
         GitBackendForgeApiError: When the payload is not a decodable
-            base64 file (e.g. the path is a directory or a submodule).
+            base64 file (e.g. the path is a directory or a submodule), or
+            carries fields that fail the ``ForgeFileContent`` constraints
+            (e.g. a negative ``size``).
     """
     if model.encoding != "base64":
         msg = f"GitHub content at {model.path!r} is not a readable file"
@@ -204,13 +206,17 @@ def file_content_from(model: GhContentFile, *, ref: str) -> ForgeFileContent:
     except (binascii.Error, ValueError) as exc:
         msg = f"GitHub content at {model.path!r} is not valid base64"
         raise GitBackendForgeApiError(msg) from exc
-    return ForgeFileContent(
-        path=NotBlankStr(model.path or "unknown"),
-        ref=ref,
-        content=raw.decode("utf-8", errors="replace"),
-        size=model.size,
-        sha=model.sha,
-    )
+    try:
+        return ForgeFileContent(
+            path=NotBlankStr(model.path or "unknown"),
+            ref=ref,
+            content=raw.decode("utf-8", errors="replace"),
+            size=model.size,
+            sha=model.sha,
+        )
+    except ValidationError as exc:
+        msg = f"GitHub content at {model.path!r} has malformed fields"
+        raise GitBackendForgeApiError(msg) from exc
 
 
 def dir_entry_from(model: GhContentEntry) -> ForgeDirEntry:

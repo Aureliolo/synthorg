@@ -102,6 +102,27 @@ class TestGitHubReadSurface:
                 )
 
     @respx.mock
+    async def test_read_file_malformed_size_maps_to_api_error(self) -> None:
+        encoded = base64.b64encode(b"x").decode()
+        respx.get(f"{_GH}/repos/acme/proj-1/contents/bad.py").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "path": "bad.py",
+                    "encoding": "base64",
+                    "content": encoded,
+                    "sha": "abc",
+                    "size": -1,
+                },
+            ),
+        )
+        async with _github() as client:
+            with pytest.raises(GitBackendForgeApiError):
+                await client.read_file(
+                    owner=_OWNER, repo=_REPO, path=NotBlankStr("bad.py")
+                )
+
+    @respx.mock
     async def test_list_dir(self) -> None:
         respx.get(f"{_GH}/repos/acme/proj-1/contents/src").mock(
             return_value=httpx.Response(
