@@ -40,6 +40,7 @@ from synthorg.observability.events.mcp import (
 from synthorg.observability.metrics_hub import record_client_disconnect
 from synthorg.tools.mcp.config import MCPServerConfig
 from synthorg.tools.mcp.errors import (
+    MCPClientUnrestartableError,
     MCPConnectionError,
     MCPDiscoveryError,
     MCPInvocationError,
@@ -107,10 +108,14 @@ class MCPClient:
         # abandoned one. Latch the client closed instead (lifecycle convention:
         # a timed-out stop is unrestartable).
         self._unrestartable = False
-        # Bounded backoff so a transient reconnect blip self-heals without
-        # an unbounded stall while the session lock is held.
+        # Bounded backoff so a transient reconnect blip self-heals. A latched
+        # unrestartable client is a permanent failure, so it is excluded from
+        # retries and fails fast instead of burning the backoff budget.
         self._reconnect_retry = GeneralRetryHandler(
-            retryable=lambda exc: isinstance(exc, MCPConnectionError),
+            retryable=lambda exc: (
+                isinstance(exc, MCPConnectionError)
+                and not isinstance(exc, MCPClientUnrestartableError)
+            ),
             max_attempts=_RECONNECT_MAX_ATTEMPTS,
             base=_RECONNECT_BACKOFF_BASE_SECONDS,
             cap=_RECONNECT_BACKOFF_CAP_SECONDS,
@@ -155,8 +160,9 @@ class MCPClient:
         re-acquiring between the two and racing a concurrent healer.
 
         Raises:
-            MCPConnectionError: If the connection fails, or the client was
-                latched unrestartable by a prior disconnect timeout.
+            MCPClientUnrestartableError: If the client was latched unrestartable
+                by a prior disconnect timeout.
+            MCPConnectionError: If the connection fails.
             RuntimeError: If already connected.
         """
         if self._unrestartable:
@@ -169,7 +175,7 @@ class MCPClient:
                 server=self._config.name,
                 error=msg,
             )
-            raise MCPConnectionError(
+            raise MCPClientUnrestartableError(
                 msg,
                 context={"server": self._config.name},
             )
@@ -513,7 +519,7 @@ class MCPClient:
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
-                MCP_CLIENT_RECONNECTING,
+                MCP_CLIENT_CONNECTION_FAILED,
                 server=self._config.name,
                 note="heal after tool failure did not reconnect",
                 error_type=type(exc).__name__,
@@ -521,13 +527,14 @@ class MCPClient:
             )
 
     async def reconnect(self) -> None:
-        """Disconnect and reconnect to the server, atomically.
+        """Disconnect and reconnect to the server.
 
-        Runs disconnect+connect under a single lock acquisition so two
-        concurrent healers cannot interleave a disconnect against the other's
-        fresh connect (which would either tear down a healthy session or raise
-        a spurious "already connected"). A transient connect failure retries
-        with bounded backoff.
+        Each retry attempt acquires the session lock for its own atomic
+        disconnect+connect cycle, so a concurrent healer cannot interleave a
+        disconnect against another's fresh connect within an attempt. The lock
+        is released between attempts, so the retry handler's backoff sleeps do
+        not stall other ``call_tool`` callers on this server for the full
+        backoff duration during an outage.
 
         Raises:
             MCPConnectionError: If the reconnection fails after retries.
@@ -536,16 +543,16 @@ class MCPClient:
             MCP_CLIENT_RECONNECTING,
             server=self._config.name,
         )
-        async with self._lock:
-            await self._reconnect_retry.execute(
-                self._reconnect_once,
-                server=self._config.name,
-            )
+        await self._reconnect_retry.execute(
+            self._reconnect_once,
+            server=self._config.name,
+        )
 
     async def _reconnect_once(self) -> None:
-        """One atomic disconnect+connect cycle (lock already held)."""
-        await self._disconnect_locked()
-        await self._connect_locked()
+        """One atomic disconnect+connect cycle, lock scoped to this attempt."""
+        async with self._lock:
+            await self._disconnect_locked()
+            await self._connect_locked()
 
     async def __aenter__(self) -> Self:
         """Enter async context: connect to server.

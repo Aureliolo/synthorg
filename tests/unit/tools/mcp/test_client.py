@@ -9,6 +9,7 @@ import pytest
 from synthorg.tools.mcp.client import MCPClient
 from synthorg.tools.mcp.config import MCPServerConfig
 from synthorg.tools.mcp.errors import (
+    MCPClientUnrestartableError,
     MCPConnectionError,
     MCPDiscoveryError,
     MCPInvocationError,
@@ -356,11 +357,11 @@ class TestMCPClientReconnect:
             await mock_client.reconnect()
         assert calls == ["disconnect", "connect"]
 
-    async def test_reconnect_holds_lock_across_cycle(
+    async def test_reconnect_holds_lock_within_an_attempt(
         self,
         mock_client: MCPClient,
     ) -> None:
-        """The session lock is held for the whole disconnect+connect cycle."""
+        """The session lock is held for a single disconnect+connect attempt."""
         locked_during_disconnect = False
 
         async def _check_locked() -> None:
@@ -382,6 +383,53 @@ class TestMCPClientReconnect:
         ):
             await mock_client.reconnect()
         assert locked_during_disconnect is True
+
+    async def test_reconnect_releases_lock_across_retry_loop(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        """The lock is NOT held across the retry+backoff loop.
+
+        Holding it there would stall every concurrent ``call_tool`` on this
+        server for the full backoff during an outage; the lock is scoped to a
+        single attempt instead.
+        """
+        locked_during_execute: bool | None = None
+
+        async def _sample(_fn: object, **_kwargs: object) -> None:
+            nonlocal locked_during_execute
+            locked_during_execute = mock_client._lock.locked()
+
+        mock_client._reconnect_retry.execute = AsyncMock(  # type: ignore[method-assign]
+            side_effect=_sample,
+        )
+        await mock_client.reconnect()
+        assert locked_during_execute is False
+
+    async def test_reconnect_on_unrestartable_client_fails_fast(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        """A latched-unrestartable client must not burn the retry budget."""
+        mock_client._unrestartable = True
+        disconnect_calls = 0
+
+        async def _count_disconnect() -> None:
+            nonlocal disconnect_calls
+            disconnect_calls += 1
+
+        with (
+            patch.object(
+                mock_client,
+                "_disconnect_locked",
+                new_callable=AsyncMock,
+                side_effect=_count_disconnect,
+            ),
+            pytest.raises(MCPClientUnrestartableError),
+        ):
+            await mock_client.reconnect()
+        # Exactly one attempt: the unrestartable error is non-retryable.
+        assert disconnect_calls == 1
 
 
 class TestMCPClientContextManager:

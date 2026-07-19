@@ -15,6 +15,14 @@ class MCPConnectionError(MCPError):
     """Failed to connect to an MCP server."""
 
 
+class MCPClientUnrestartableError(MCPConnectionError):
+    """The client is latched closed (e.g. after a disconnect timeout).
+
+    A permanent, non-retryable ``MCPConnectionError``: reconnecting cannot
+    succeed, so the retry handler must not back-off-and-retry it.
+    """
+
+
 class MCPTimeoutError(MCPError):
     """MCP operation timed out."""
 
