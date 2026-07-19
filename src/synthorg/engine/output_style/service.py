@@ -136,9 +136,23 @@ def current_output_policy_service() -> OutputStylePolicyService | None:
     return _AMBIENT_SERVICE
 
 
+def output_policy_active() -> bool:
+    """Whether an enabled output-policy service is bound.
+
+    Lets a caller decide to retrieve a deliverable for the completion backstop
+    without importing the service internals: ``True`` only when the ambient
+    service is set and enabled, so the hard guardrail would actually evaluate.
+
+    Returns:
+        ``True`` when the ambient service is bound and enabled, else ``False``.
+    """
+    return _AMBIENT_SERVICE is not None and _AMBIENT_SERVICE.enabled
+
+
 __all__ = [
     "OutputChannel",
     "OutputStylePolicyService",
     "current_output_policy_service",
+    "output_policy_active",
     "set_output_policy_service",
 ]

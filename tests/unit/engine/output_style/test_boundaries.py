@@ -296,18 +296,30 @@ class TestCodeFileBoundary:
 class TestForgeBodyBoundary:
     @pytest.mark.unit
     def test_forge_body_blocks_emdash(self) -> None:
-        err = _guard_forge_text(title="Add feature", body=f"why {_EM_DASH} because")
-        assert err is not None
-        assert err.is_error is True
+        guard = _guard_forge_text(title="Add feature", body=f"why {_EM_DASH} because")
+        assert guard.error is not None
+        assert guard.error.is_error is True
 
     @pytest.mark.unit
     def test_forge_title_blocks_emdash(self) -> None:
-        err = _guard_forge_text(title=f"Add {_EM_DASH} feature", body="clean body")
-        assert err is not None
+        guard = _guard_forge_text(title=f"Add {_EM_DASH} feature", body="clean body")
+        assert guard.error is not None
 
     @pytest.mark.unit
     def test_forge_clean_passes(self) -> None:
-        assert _guard_forge_text(title="Add feature", body="clean body") is None
+        guard = _guard_forge_text(title="Add feature", body="clean body")
+        assert guard.error is None
+        assert guard.title == "Add feature"
+        assert guard.body == "clean body"
+
+    @pytest.mark.unit
+    def test_forge_commit_title_blocks_emdash_on_commit_channel(self) -> None:
+        # A merge commit title is a COMMIT_MESSAGE (code) boundary, reject-only.
+        guard = _guard_forge_text(
+            title=f"merge {_EM_DASH} done", body="", is_commit=True
+        )
+        assert guard.error is not None
+        assert guard.error.is_error is True
 
 
 class TestDeliverableGate:

@@ -59,6 +59,7 @@ _OUTPUT_STYLE_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
     }
 )
 _OUTPUT_STYLE_ENABLED_DEFAULT: Final[str] = "true"
+_OUTPUT_STYLE_PACK_DEFAULT: Final[str] = "default"
 
 # Boolean security toggles whose ``true -> false`` transition weakens posture.
 _WEAKENING_BOOL_KEYS: Final[frozenset[str]] = frozenset(
@@ -201,8 +202,13 @@ def _is_output_style_weakening(key: str, *, current: str | None, new: str) -> bo
     if key == _OUTPUT_STYLE_PACK_KEY:
         # A pack swap can replace the whole rule set; without loading both packs
         # the write path cannot prove the new pack is not more permissive, so any
-        # actual change to the active pack is treated as weakening.
-        return current is not None and not compare_ci(current, new)
+        # actual change to the active pack is treated as weakening. An unset
+        # current value resolves to the default pack, so the first switch away
+        # from it is guarded too.
+        effective_current = (
+            current if current is not None else _OUTPUT_STYLE_PACK_DEFAULT
+        )
+        return not compare_ci(effective_current, new)
     return False
 
 

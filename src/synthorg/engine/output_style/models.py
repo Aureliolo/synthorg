@@ -29,8 +29,9 @@ from synthorg.engine.strategy.active_principle import ALL_SCOPE, ScopeKind
 #: Bound on operator-authored free text injected into prompts or echoed to agents.
 _MAX_DIRECTIVE_LEN: Final[int] = 2000
 
-#: Allowed shape of a pack name (mirrors the loader's on-disk lookup constraint).
-_PACK_NAME_RE: Final[str] = r"^[a-z0-9][a-z0-9_-]*$"
+#: Allowed shape of a pack name; the single source the loader compiles for its
+#: on-disk lookup and this module uses as the ``pack`` field's ``pattern``.
+PACK_NAME_PATTERN: Final[str] = r"^[a-z0-9][a-z0-9_-]*$"
 
 # ── Enums ──────────────────────────────────────────────────────
 
@@ -349,7 +350,7 @@ class OutputStyleConfig(BaseModel):
 
     enabled: bool = True
     shadow_mode: bool = False
-    pack: NotBlankStr = Field(default="default", pattern=_PACK_NAME_RE)
+    pack: NotBlankStr = Field(default="default", pattern=PACK_NAME_PATTERN)
     house_style_enabled: bool = True
     exemptions: tuple[SanctionedExemption, ...] = ()
 
@@ -466,6 +467,7 @@ __all__ = [
     "ALL_RULES",
     "ALL_SCOPE",
     "CODE_CHANNELS",
+    "PACK_NAME_PATTERN",
     "EnforcementMode",
     "ExemptionScopeKind",
     "HouseStyleDirective",

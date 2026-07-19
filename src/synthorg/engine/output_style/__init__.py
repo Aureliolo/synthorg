@@ -55,6 +55,7 @@ from synthorg.engine.output_style.provider import (
 from synthorg.engine.output_style.service import (
     OutputStylePolicyService,
     current_output_policy_service,
+    output_policy_active,
     set_output_policy_service,
 )
 
@@ -93,6 +94,7 @@ __all__ = [
     "list_builtin_packs",
     "load_pack",
     "merge_exemptions",
+    "output_policy_active",
     "parse_exemption_markers",
     "set_house_style_provider",
     "set_output_policy_service",

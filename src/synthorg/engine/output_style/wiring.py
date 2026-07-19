@@ -13,6 +13,7 @@ import asyncio
 import json
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.output_style.models import OutputStyleConfig, SanctionedExemption
 from synthorg.engine.output_style.pack_loader import minimal_failclosed_pack
 from synthorg.engine.output_style.provider import set_house_style_provider
@@ -114,6 +115,21 @@ async def build_output_style_config(
     return config
 
 
+def _bind(service: OutputStylePolicyService) -> OutputStylePolicyService:
+    """Bind *service* as the ambient output-policy + house-style provider.
+
+    Returns:
+        The bound service, so callers can ``return _bind(...)``.
+    """
+    set_output_policy_service(service)
+    set_house_style_provider(service.build_house_style_provider())
+    logger.info(
+        OUTPUT_STYLE_SERVICE_REBUILT, pack=service.pack.name, enabled=service.enabled
+    )
+    logger.debug(OUTPUT_STYLE_SNAPSHOT_REFRESHED, pack=service.pack.name)
+    return service
+
+
 async def rebuild_and_bind_output_style(
     settings_service: SettingsService,
 ) -> OutputStylePolicyService:
@@ -122,20 +138,39 @@ async def rebuild_and_bind_output_style(
     Loads the configured pack, compiles the evaluator, and binds the ambient
     output-policy service (for the boundaries) and the house-style provider
     (for the prompt build). Pack loading is blocking file I/O, so it runs off
-    the event loop. A bad pack name / invalid pack falls back to the built-in
-    default; if even the default pack cannot be loaded (a corrupted resource),
-    it falls back CLOSED to the in-code em-dash ban rather than leaving the
-    guardrail unbound, so enforcement never silently disables.
+    the event loop. Enforcement must never silently disable, so every
+    recoverable failure still binds a service rather than leaving the
+    guardrail unbound: a malformed settings read binds the in-code em-dash ban
+    on safe defaults; a bad pack name / invalid pack falls back to the built-in
+    default; a corrupted default resource or any unexpected error binds the
+    in-code fail-closed pack. Only a critical error propagates.
 
     Returns:
-        The freshly built and bound service.
+        The freshly built and bound service (always bound, fail-closed on any
+        recoverable error).
     """
     from synthorg.engine.output_style.errors import (  # noqa: PLC0415
         OutputStyleError,
         OutputStylePackNotFoundError,
     )
 
-    config = await build_output_style_config(settings_service)
+    try:
+        config = await build_output_style_config(settings_service)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised; else fail-closed
+        reraise_critical(exc)
+        logger.error(
+            OUTPUT_STYLE_PACK_INVALID,
+            source="config",
+            action="fail_closed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return _bind(
+            OutputStylePolicyService(
+                pack=minimal_failclosed_pack(), config=OutputStyleConfig()
+            )
+        )
+
     try:
         service = await asyncio.to_thread(OutputStylePolicyService.from_config, config)
     except (OutputStyleError, OutputStylePackNotFoundError) as exc:
@@ -162,13 +197,19 @@ async def rebuild_and_bind_output_style(
             service = OutputStylePolicyService(
                 pack=minimal_failclosed_pack(), config=config
             )
-    set_output_policy_service(service)
-    set_house_style_provider(service.build_house_style_provider())
-    logger.info(
-        OUTPUT_STYLE_SERVICE_REBUILT, pack=service.pack.name, enabled=service.enabled
-    )
-    logger.debug(OUTPUT_STYLE_SNAPSHOT_REFRESHED, pack=service.pack.name)
-    return service
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised; else fail-closed
+        reraise_critical(exc)
+        logger.error(
+            OUTPUT_STYLE_PACK_INVALID,
+            pack_name=config.pack,
+            action="fail_closed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        service = OutputStylePolicyService(
+            pack=minimal_failclosed_pack(), config=config
+        )
+    return _bind(service)
 
 
 __all__ = [

@@ -171,6 +171,16 @@ function handleUpdateError(
     !isConfirmRetry
     && getErrorCode(error) === ErrorCode.SECURITY_TOGGLE_CONFIRM_REQUIRED
   ) {
+    // Drop a stale confirm-required response: if a newer mutation for this key
+    // has already landed, staging its old ns/key/value would confirm an
+    // outdated write. Mirrors the success-path out-of-order drop below.
+    const lastApplied = get().appliedMutationTokens.get(compositeKey) ?? 0
+    if (mutationToken <= lastApplied) {
+      set((state) => ({
+        savingKeys: decrementSavingKey(state.savingKeys, compositeKey),
+      }))
+      return null
+    }
     set((state) => ({
       savingKeys: decrementSavingKey(state.savingKeys, compositeKey),
       pendingConfirm: { ns, key, value },

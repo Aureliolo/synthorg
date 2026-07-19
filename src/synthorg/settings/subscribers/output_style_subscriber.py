@@ -9,7 +9,6 @@ next output boundary and prompt build with no restart.
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.output_style import OUTPUT_STYLE_SERVICE_REBUILT
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
@@ -72,7 +71,9 @@ class OutputStyleSettingsSubscriber:
         )
 
         try:
-            service = await rebuild_and_bind_output_style(self._settings_service)
+            # rebuild_and_bind_output_style emits OUTPUT_STYLE_SERVICE_REBUILT
+            # once the new service is bound; no second emission here.
+            await rebuild_and_bind_output_style(self._settings_service)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -84,9 +85,3 @@ class OutputStyleSettingsSubscriber:
                 error=safe_error_description(exc),
             )
             raise
-        logger.info(
-            OUTPUT_STYLE_SERVICE_REBUILT,
-            pack=service.config.pack,
-            enabled=service.config.enabled,
-            shadow_mode=service.config.shadow_mode,
-        )

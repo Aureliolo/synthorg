@@ -75,11 +75,24 @@ def apply_output_policy_gate(  # noqa: PLR0913 -- gate inputs, all required
         project_id=task.project,
     )
     verdict = evaluate_output_policy(deliverable.deliverable_content, ctx)
-    if verdict is None or not verdict.blocked:
+    if verdict is None:
         return target, transition_reason, event, approved
+    # This backstop returns a transition, not content, so it cannot persist an
+    # AUTO_REWRITE fix. A verdict that blocks, or that would rewrite the stored
+    # deliverable, routes to rework so the agent regenerates compliant output
+    # rather than shipping the original violating text.
+    needs_rework = verdict.blocked or (
+        verdict.rewritten_text is not None
+        and verdict.rewritten_text != deliverable.deliverable_content
+    )
+    if not needs_rework:
+        return target, transition_reason, event, approved
+    reason = verdict.summary or (
+        "Output-style policy requires a compliant rewrite of the deliverable"
+    )
     return (
         TaskStatus.IN_PROGRESS,
-        f"Output-style policy blocked completion: {verdict.summary}",
+        f"Output-style policy blocked completion: {reason}",
         APPROVAL_GATE_REVIEW_REWORK,
         False,
     )
@@ -224,26 +237,30 @@ async def apply_oracle_review_stage(  # noqa: PLR0913 -- stage inputs, all requi
     completion_oracle_min_stakes: Stakes,
     deliverable_input_builder: DeliverableReviewInputBuilder | None,
     red_team_active: bool,
+    output_policy_active: bool,
     task: Task,
     outcome: GateOutcome,
 ) -> tuple[GateOutcome, RedTeamReviewInput | None]:
     """Run the peer-review gate and hand back the shared deliverable input.
 
     Resolves the reviewable deliverable ONCE (shared with the downstream
-    red-team gate, so a completion where both gates are active pays a single
-    retrieval) whenever the oracle is active at this task's stakes or the
-    red-team gate will consume it. An ENFORCED (non-shadow) oracle fails CLOSED
-    whenever no deliverable is retrievable -- whether the builder returned
-    ``None`` or none is wired -- because the peer-review gate would otherwise
-    receive a ``None`` input and silently preserve approval, letting the task
-    reach COMPLETED without the independent review the oracle promises. Shadow
-    mode only observes, so it never blocks. Then applies the stakes-gated
-    peer-review gate.
+    red-team gate and the output-policy backstop, so a completion where several
+    consumers are active pays a single retrieval) whenever the oracle is active
+    at this task's stakes, the red-team gate will consume it, or the
+    output-policy backstop is enabled (the last is stakes-independent, so a
+    low-stakes deliverable is still policy-checked). An ENFORCED (non-shadow)
+    oracle fails CLOSED whenever no deliverable is retrievable -- whether the
+    builder returned ``None`` or none is wired -- because the peer-review gate
+    would otherwise receive a ``None`` input and silently preserve approval,
+    letting the task reach COMPLETED without the independent review the oracle
+    promises. Shadow mode only observes, so it never blocks. Then applies the
+    stakes-gated peer-review gate.
 
     Returns:
         The (possibly rerouted) ``(target, reason, event, approved)`` tuple and
-        the built deliverable input (``None`` when neither gate needed it), so
-        the caller's red-team gate can reuse it without a second retrieval.
+        the built deliverable input (``None`` when no consumer needed it), so
+        the caller's red-team gate and output-policy backstop can reuse it
+        without a second retrieval.
     """
     target, transition_reason, event, approved = outcome
     oracle_active = (
@@ -252,7 +269,8 @@ async def apply_oracle_review_stage(  # noqa: PLR0913 -- stage inputs, all requi
     )
     deliverable_input = (
         await deliverable_input_builder.build(task)
-        if deliverable_input_builder is not None and (oracle_active or red_team_active)
+        if deliverable_input_builder is not None
+        and (oracle_active or red_team_active or output_policy_active)
         else None
     )
     if (

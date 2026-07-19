@@ -1579,7 +1579,7 @@
     "synthorg.core.autonomy_enums": 42,
     "synthorg.core.boundary": 67,
     "synthorg.core.clock": 237,
-    "synthorg.core.critical_errors": 677,
+    "synthorg.core.critical_errors": 678,
     "synthorg.core.domain_errors": 251,
     "synthorg.core.effective_autonomy": 29,
     "synthorg.core.error_taxonomy": 68,

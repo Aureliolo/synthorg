@@ -22,6 +22,7 @@ from synthorg.engine.output_style.errors import (
 )
 from synthorg.engine.output_style.models import (
     ALL_RULES,
+    PACK_NAME_PATTERN,
     EnforcementMode,
     HouseStyleDirective,
     OutputStyleConfig,
@@ -42,7 +43,7 @@ logger = get_logger(__name__)
 
 _USER_PACKS_DIR = Path.home() / ".synthorg" / "output-style-packs"
 
-_PACK_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_\-]*$")
+_PACK_NAME_RE = re.compile(PACK_NAME_PATTERN)
 
 BUILTIN_PACKS: MappingProxyType[str, str] = MappingProxyType(
     {

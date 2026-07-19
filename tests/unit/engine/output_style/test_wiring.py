@@ -50,7 +50,7 @@ def _settings(**overrides: str) -> SettingsService:
         "exemptions": "[]",
     }
     values.update(overrides)
-    return cast(SettingsService, _FakeSettings(values))
+    return cast("SettingsService", _FakeSettings(values))
 
 
 @pytest.fixture

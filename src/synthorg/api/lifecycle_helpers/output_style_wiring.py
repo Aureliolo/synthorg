@@ -18,9 +18,10 @@ logger = get_logger(__name__)
 async def wire_output_style_policy(app_state: AppState) -> None:
     """Build + bind the output-style policy service from settings at boot.
 
-    A no-op when the settings service is not yet available; failures are logged
-    and skipped so a bad pack never breaks boot (the ambient service simply
-    stays unbound and the boundaries pass through).
+    A no-op when the settings service is not yet available. ``rebuild_and_bind``
+    always binds a service (fail-closed to the in-code em-dash ban on any
+    recoverable error), so a bad pack never breaks boot yet enforcement stays
+    active at every boundary; only a critical error propagates and is re-raised.
     """
     from synthorg.settings.state import (  # noqa: PLC0415
         SettingsStateSlice,
