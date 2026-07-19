@@ -506,6 +506,7 @@ export const INTENT_ROUTING_REASON_VALUES = [
     'no_intent_classifier',
     'act_floor_not_met',
     'charter_floor_not_met',
+    'configure_floor_not_met',
     'group_targets_missing',
     'act_no_target',
     'classify_call_failed',
@@ -1184,6 +1185,7 @@ export const TURN_INTENT_VALUES = [
     'act',
     'group_convene',
     'charter',
+    'configure',
 ] as const
 export type TurnIntent = (typeof TURN_INTENT_VALUES)[number]
 

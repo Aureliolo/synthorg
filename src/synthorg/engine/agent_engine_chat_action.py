@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import MakeToolInvoker
     from synthorg.engine.approval_gate import ApprovalGate
+    from synthorg.engine.loop_protocol import BudgetChecker, ShutdownChecker
     from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
@@ -62,8 +63,9 @@ class AgentEngineChatActionMixin:
     _provider: CompletionProvider
     _approval_gate: ApprovalGate | None
     _make_tool_invoker: MakeToolInvoker
+    _shutdown_checker: ShutdownChecker | None
 
-    async def run_chat_action(
+    async def run_chat_action(  # noqa: PLR0913 -- keyword-only run knobs
         self,
         *,
         identity: AgentIdentity,
@@ -71,6 +73,8 @@ class AgentEngineChatActionMixin:
         effective_autonomy: EffectiveAutonomy | None = None,
         max_turns: int = DEFAULT_CHAT_ACTION_MAX_TURNS,
         turn_observer: TurnObserver | None = None,
+        budget_checker: BudgetChecker | None = None,
+        system_prompt_addendum: str | None = None,
     ) -> ChatActionResult:
         """Drive a real MCP action from a chat instruction under trust.
 
@@ -90,6 +94,16 @@ class AgentEngineChatActionMixin:
             turn_observer: Optional per-turn progress callback, invoked
                 after each turn with the tools it requested; used by the
                 streaming ``/act`` endpoint to emit incremental progress.
+            budget_checker: Optional per-turn budget-exhaustion callback;
+                the operator console passes one closing over its cost
+                ceiling so a runaway session halts the moment accumulated
+                cost crosses it. ``None`` leaves the loop bounded only by
+                ``max_turns``.
+            system_prompt_addendum: Optional trusted operating brief
+                appended to the persona ``system`` prompt (after the
+                untrusted-content directive); the operator console uses it
+                to state its console-operator brief. ``None`` leaves the
+                bare persona prompt.
 
         Returns:
             A :class:`ChatActionResult` reporting the executed tools and
@@ -97,6 +111,8 @@ class AgentEngineChatActionMixin:
         """
         agent_id = str(identity.id)
         system_prompt = render_agent_system_prompt(identity)
+        if system_prompt_addendum:
+            system_prompt = f"{system_prompt}\n\n{system_prompt_addendum}"
         ctx = AgentContext.from_identity(identity, max_turns=max_turns)
         ctx = ctx.with_message(
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
@@ -114,7 +130,10 @@ class AgentEngineChatActionMixin:
                 max_turns=max_turns,
             )
             result = await self._run_chat_loop(
-                ctx, effective_autonomy, turn_observer=turn_observer
+                ctx,
+                effective_autonomy,
+                turn_observer=turn_observer,
+                budget_checker=budget_checker,
             )
         return self._to_chat_action_result(result, agent_id=agent_id)
 
@@ -181,14 +200,19 @@ class AgentEngineChatActionMixin:
         effective_autonomy: EffectiveAutonomy | None,
         *,
         turn_observer: TurnObserver | None = None,
+        budget_checker: BudgetChecker | None = None,
     ) -> ExecutionResult:
         """Run the governed ReAct loop over a chat-action context.
 
         Builds the trust-scoped tool invoker (``task_id=None``) and a
         fresh :class:`ReactLoop` wired to the engine's SHARED approval
         gate, so a parked chat action resumes on the same gate the
-        ``/approvals`` controller drives. No checkpoint / stagnation /
-        compaction callbacks: a chat action is short and taskless.
+        ``/approvals`` controller drives. The engine's shared
+        ``shutdown_checker`` is always passed so a chat action halts at a
+        safe boundary on graceful shutdown, exactly as a task run does;
+        ``budget_checker`` is optional and bounds a session's spend. No
+        checkpoint / stagnation / compaction callbacks: a chat action is
+        short and taskless.
 
         Returns:
             The loop's :class:`ExecutionResult`.
@@ -206,6 +230,8 @@ class AgentEngineChatActionMixin:
             context=ctx,
             provider=self._provider,
             tool_invoker=tool_invoker,
+            budget_checker=budget_checker,
+            shutdown_checker=self._shutdown_checker,
         )
 
     def _to_chat_action_result(

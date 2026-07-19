@@ -69,6 +69,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_group_chat_service",
         "GroupInviteCoordinator",
         "build_conversational_actor",
+        "build_operator_console",
         "build_chief_of_staff_narrator",
         "ConversationalPlanDispatcher",
     ),

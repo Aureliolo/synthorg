@@ -17,9 +17,7 @@ did, never silently downgraded to a read.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final, Self
-
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Final
 
 from synthorg.api._feature_gate import ensure_feature_enabled
 from synthorg.api.controllers._meta_chat_org_state import resolve_chat_org_state
@@ -27,23 +25,22 @@ from synthorg.api.controllers._meta_chat_routing import resolve_chat_answer
 from synthorg.api.controllers._meta_chat_window import resolve_chat_snapshot_window
 from synthorg.api.controllers._meta_signals_helpers import require_signals_service
 from synthorg.api.controllers._turn_intent import resolve_turn_intent
+from synthorg.api.controllers._turn_models import TurnRequest, TurnResult
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.hr.state import agent_registry_of
-from synthorg.meta.charter.models import InterviewTurnArgs, InterviewTurnResult
+from synthorg.meta.charter.models import InterviewTurnArgs
 from synthorg.meta.charter.state import CharterStateSlice
 from synthorg.meta.chief_of_staff._multi_voice import ChimeIn
 from synthorg.meta.chief_of_staff.actor import (
     ConversationalActArgs,
-    ConversationalActResult,
 )
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.group_models import (
     GroupConverseArgs,
-    GroupConverseResult,
 )
 from synthorg.meta.chief_of_staff.intent_router import (
     IntentRoutingReason,
@@ -51,9 +48,10 @@ from synthorg.meta.chief_of_staff.intent_router import (
 )
 from synthorg.meta.chief_of_staff.models import (
     ChatQuery,
-    ChatResponse,
     ProposeArgs,
-    ProposeResult,
+)
+from synthorg.meta.chief_of_staff.operator_console import (
+    ConsoleTurnArgs,
 )
 from synthorg.meta.chief_of_staff.org_state import OrgStateSnapshot
 from synthorg.meta.signal_models import OrgSignalSnapshot
@@ -71,8 +69,6 @@ from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
 
-_MESSAGE_MAX_LENGTH: Final[int] = 2000
-
 # A convened group needs at least two DISTINCT participants to be a group; a new
 # group naming fewer (empty, one, or case-insensitive duplicates like
 # ("CFO", "cfo")) degrades to a plain answer. Mirrors the classifier's own gate
@@ -88,6 +84,7 @@ _SIDE_EFFECTING_INTENTS: Final[frozenset[TurnIntent]] = frozenset(
         TurnIntent.GROUP_CONVENE,
         TurnIntent.ACT,
         TurnIntent.CHARTER,
+        TurnIntent.CONFIGURE,
     }
 )
 
@@ -134,109 +131,6 @@ class TurnDispatchContext:
     actor_id: str
     reason: IntentRoutingReason
     confidence: float | None
-
-
-class TurnRequest(BaseModel):
-    """Request body for one unified conversational turn."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    message: NotBlankStr = Field(
-        max_length=_MESSAGE_MAX_LENGTH,
-        description="The operator's message for this turn.",
-    )
-    conversation_id: NotBlankStr | None = Field(
-        default=None,
-        description="Existing conversation to continue; None starts a new one.",
-    )
-    intent_override: TurnIntent | None = Field(
-        default=None,
-        description=(
-            "Force a capability instead of classifying (e.g. to continue a"
-            " typed conversation). None auto-routes."
-        ),
-    )
-    named_targets: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description=(
-            "Roles/names the classifier read from the message, carried through a"
-            " deferred stream so a re-issued ACT/GROUP turn keeps its targets"
-            " instead of degrading to EXPLAIN. Only honoured with an override."
-        ),
-    )
-    project: NotBlankStr | None = Field(
-        default=None,
-        description="Project the turn is scoped to, for propose/charter turns.",
-    )
-
-
-class TurnResult(BaseModel):
-    """Outcome of one unified turn: the resolved intent plus its payload.
-
-    Exactly one capability payload is set, matching :attr:`intent` (a degraded
-    or explain turn carries :attr:`answer`).
-
-    Attributes:
-        intent: The capability the turn dispatched to.
-        intent_reason: Why this intent was chosen or degraded to.
-        intent_confidence: Classifier confidence (0-1) when a classification
-            ran; ``None`` for an override / no-classifier turn.
-        conversation_id: The conversation this turn belongs to; ``None`` for
-            the stateless explain path.
-        answer: The explain answer (set iff ``intent`` is EXPLAIN).
-        propose: The clarify-or-propose outcome (set iff PROPOSE).
-        group: The group-round outcome (set iff GROUP_CONVENE).
-        act: The direct-acting outcome (set iff ACT).
-        charter: The charter-interview outcome (set iff CHARTER).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    intent: TurnIntent
-    intent_reason: IntentRoutingReason
-    intent_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
-    conversation_id: NotBlankStr | None = None
-    answer: ChatResponse | None = None
-    propose: ProposeResult | None = None
-    group: GroupConverseResult | None = None
-    act: ConversationalActResult | None = None
-    charter: InterviewTurnResult | None = None
-    chime_ins: tuple[ChimeIn, ...] = Field(
-        default=(),
-        description=(
-            "Specialists who added a short attributed perspective to an "
-            "explain answer; empty for every other intent."
-        ),
-    )
-
-    @model_validator(mode="after")
-    def _validate_single_payload(self) -> Self:
-        """Enforce exactly-one payload set, matching ``intent``.
-
-        Returns:
-            ``Self`` instance.
-
-        Raises:
-            ValueError: When the set payload does not match ``intent``, or a
-                turn carries zero or several payloads.
-        """
-        payloads = {
-            TurnIntent.EXPLAIN: self.answer,
-            TurnIntent.PROPOSE: self.propose,
-            TurnIntent.GROUP_CONVENE: self.group,
-            TurnIntent.ACT: self.act,
-            TurnIntent.CHARTER: self.charter,
-        }
-        present = [
-            intent for intent, payload in payloads.items() if payload is not None
-        ]
-        if present != [self.intent]:
-            msg = (
-                f"exactly the {self.intent.value!r} payload must be set; "
-                f"got {[i.value for i in present]}"
-            )
-            raise ValueError(msg)
-        return self
 
 
 async def prepare_explain_context(app_state: AppState, *, body: str) -> ExplainContext:
@@ -469,6 +363,63 @@ async def _dispatch_act(
     )
 
 
+async def _dispatch_configure(
+    app_state: AppState, ctx: TurnDispatchContext
+) -> TurnResult:
+    """Configure the control plane via the operator console (configure capability).
+
+    Fail-closed and buffered: gated live on ``operator_console_enabled`` and
+    never streamed, so a mid-run failure replays the cached result rather than
+    re-executing already-run tools. Acts as the shared system console identity,
+    with every tool call governed per-action by the same SecOps gate + approval
+    inbox the direct-acting path uses.
+
+    Returns:
+        The turn result carrying the operator-console payload.
+
+    Raises:
+        ServiceUnavailableError: When the console is not configured.
+    """
+    await ensure_feature_enabled(
+        app_state,
+        "chief_of_staff",
+        "operator_console_enabled",
+        feature_label="Operator console",
+    )
+    console = app_state.slice(MetaStateSlice).operator_console
+    if console is None:
+        logger.warning(
+            META_CHAT_DEPENDENCY_UNAVAILABLE,
+            dependency="operator_console",
+            hint=(
+                "Enable operator_console_enabled, select an operator_console_model,"
+                " register an LLM provider, and wire security governance + the MCP"
+                " self-consumer."
+            ),
+        )
+        msg = (
+            "Operator console is not configured. Enable "
+            "``meta.chief_of_staff.operator_console_enabled`` in settings, select "
+            "an ``operator_console_model``, register an LLM provider, and wire "
+            "security governance so the console fails closed."
+        )
+        raise ServiceUnavailableError(msg)
+    configure = await console.configure(
+        ConsoleTurnArgs(
+            instruction=NotBlankStr(ctx.body),
+            conversation_id=ctx.conversation_id,
+            requested_by=NotBlankStr(ctx.actor_id) if ctx.actor_id else None,
+        )
+    )
+    return TurnResult(
+        intent=TurnIntent.CONFIGURE,
+        intent_reason=ctx.reason,
+        intent_confidence=ctx.confidence,
+        conversation_id=ctx.conversation_id,
+        configure=configure,
+    )
+
+
 async def _dispatch_charter(
     app_state: AppState, ctx: TurnDispatchContext
 ) -> TurnResult:
@@ -635,6 +586,8 @@ async def dispatch_turn(
             return await _dispatch_group(app_state, ctx, participants)
         case TurnIntent.ACT:
             return await _dispatch_act(app_state, ctx, participants[0])
+        case TurnIntent.CONFIGURE:
+            return await _dispatch_configure(app_state, ctx)
         case TurnIntent.CHARTER:
             return await _dispatch_charter(app_state, ctx)
         case _:

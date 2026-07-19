@@ -9333,6 +9333,16 @@ export type components = {
             /** @description Names of fields whose value is a secret captured out of band. */
             readonly secret_field_names: readonly string[];
         };
+        /** ConsoleTurnResult */
+        readonly ConsoleTurnResult: {
+            readonly action: components["schemas"]["ChatActionResult"];
+            /** @description Id of the system console identity */
+            readonly console_id: string;
+            /** @description Name of the console identity */
+            readonly console_name: string;
+            /** @description The correlated conversation id, if supplied */
+            readonly conversation_id: string | null;
+        };
         /**
          * ContentType
          * @description Content types available for training extraction.
@@ -11643,6 +11653,8 @@ export type components = {
          *             to EXPLAIN.
          *         CHARTER_FLOOR_NOT_MET: A confident-enough CHARTER was not reached;
          *             degraded to EXPLAIN.
+         *         CONFIGURE_FLOOR_NOT_MET: A confident-enough CONFIGURE was not
+         *             reached; degraded to EXPLAIN.
          *         GROUP_TARGETS_MISSING: A group was requested without enough named
          *             participants; degraded to EXPLAIN.
          *         ACT_NO_TARGET: An act was requested without naming an acting agent;
@@ -11653,7 +11665,7 @@ export type components = {
          *             defaulted to EXPLAIN.
          * @enum {string}
          */
-        readonly IntentRoutingReason: "classified" | "explicit_override" | "conversation_kind_fixed" | "no_intent_classifier" | "act_floor_not_met" | "charter_floor_not_met" | "group_targets_missing" | "act_no_target" | "classify_call_failed" | "response_invalid";
+        readonly IntentRoutingReason: "classified" | "explicit_override" | "conversation_kind_fixed" | "no_intent_classifier" | "act_floor_not_met" | "charter_floor_not_met" | "configure_floor_not_met" | "group_targets_missing" | "act_no_target" | "classify_call_failed" | "response_invalid";
         /** InterruptResponse */
         readonly InterruptResponse: {
             readonly agent_id: string;
@@ -17701,9 +17713,13 @@ export type components = {
          *             acting agent's trust level. Gated behind a stricter floor.
          *         GROUP_CONVENE: Convene several named agents in a group discussion.
          *         CHARTER: Interview the operator to draft a company charter.
+         *         CONFIGURE: Configure or operate the control plane through the
+         *             operator console (connect an integration, change a setting,
+         *             call a control-plane tool). Gated behind a stricter floor and
+         *             its own default-off toggle.
          * @enum {string}
          */
-        readonly TurnIntent: "explain" | "propose" | "act" | "group_convene" | "charter";
+        readonly TurnIntent: "explain" | "propose" | "act" | "group_convene" | "charter" | "configure";
         /** TurnRequest */
         readonly TurnRequest: {
             /** @description Existing conversation to continue; None starts a new one. */
@@ -17712,7 +17728,7 @@ export type components = {
              * @description Force a capability instead of classifying (e.g. to continue a typed conversation). None auto-routes.
              * @enum {string|null}
              */
-            readonly intent_override?: "explain" | "propose" | "act" | "group_convene" | "charter" | null;
+            readonly intent_override?: "explain" | "propose" | "act" | "group_convene" | "charter" | "configure" | null;
             /** @description The operator's message for this turn. */
             readonly message: string;
             /**
@@ -17733,6 +17749,7 @@ export type components = {
              * @default []
              */
             readonly chime_ins: readonly components["schemas"]["ChimeIn"][];
+            readonly configure: components["schemas"]["ConsoleTurnResult"] | null;
             readonly conversation_id: string | null;
             readonly group: components["schemas"]["GroupConverseResult"] | null;
             readonly intent: components["schemas"]["TurnIntent"];

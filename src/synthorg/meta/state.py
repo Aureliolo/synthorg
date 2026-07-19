@@ -20,6 +20,7 @@ from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.group_chat import GroupChatService
 from synthorg.meta.chief_of_staff.intent_router import IntentClassifier
 from synthorg.meta.chief_of_staff.monitor import OrgInflectionMonitor
+from synthorg.meta.chief_of_staff.operator_console import OperatorConsoleService
 from synthorg.meta.chief_of_staff.propose import (
     ChiefOfStaffProposer,
 )
@@ -65,6 +66,7 @@ class MetaStateSlice(BaseFeatureStateSlice):
     multi_voice_router: MultiVoiceRouter | None = None
     group_chat_service: GroupChatService | None = None
     conversational_actor: ConversationalActor | None = None
+    operator_console: OperatorConsoleService | None = None
     custom_rules_service: CustomRulesService | None = None
     self_improvement_config: SelfImprovementConfig | None = None
     evolution_outcome_store: EvolutionOutcomeStore | None = None

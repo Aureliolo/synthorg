@@ -33,6 +33,7 @@ FEATURE: FeatureModule = FeatureManifest(
     ghost_wired_symbols=(
         "CosCharterModelSettingsSubscriber",
         "DirectMcpActorSettingsSubscriber",
+        "OperatorConsoleSettingsSubscriber",
     ),
     depends_on=(),
 )

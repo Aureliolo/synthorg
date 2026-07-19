@@ -61,6 +61,7 @@ def _classifier(
     provider: ScriptedProvider,
     act_floor: float = 0.85,
     charter_floor: float = 0.8,
+    configure_floor: float = 0.85,
     timeout_seconds: float = 120.0,
 ) -> LlmIntentClassifier:
     return LlmIntentClassifier(
@@ -68,6 +69,7 @@ def _classifier(
         model=NotBlankStr("test-model-001"),
         act_confidence_floor=act_floor,
         charter_confidence_floor=charter_floor,
+        configure_confidence_floor=configure_floor,
         temperature=0.0,
         max_tokens=200,
         timeout_seconds=timeout_seconds,
@@ -191,6 +193,24 @@ class TestLlmIntentClassifier:
         )
         assert outcome.intent is TurnIntent.EXPLAIN
         assert outcome.reason is IntentRoutingReason.GROUP_TARGETS_MISSING
+
+    async def test_confident_configure_resolves_configure(self) -> None:
+        provider = _scripted(_intent_json(intent="configure", confidence=0.95))
+        outcome = await _classifier(provider=provider).classify(
+            _user_turn("Connect our GitHub organisation")
+        )
+        assert outcome.intent is TurnIntent.CONFIGURE
+        assert outcome.reason is IntentRoutingReason.CLASSIFIED
+
+    async def test_low_confidence_configure_degrades_to_explain(self) -> None:
+        # Below the 0.85 configure floor: an uncertain classifier must never
+        # drive the control plane.
+        provider = _scripted(_intent_json(intent="configure", confidence=0.7))
+        outcome = await _classifier(provider=provider).classify(
+            _user_turn("maybe set up something")
+        )
+        assert outcome.intent is TurnIntent.EXPLAIN
+        assert outcome.reason is IntentRoutingReason.CONFIGURE_FLOOR_NOT_MET
 
     async def test_malformed_json_degrades_to_explain(self) -> None:
         provider = _scripted("not json at all")

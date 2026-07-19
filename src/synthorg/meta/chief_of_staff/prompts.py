@@ -412,6 +412,14 @@ human message is asking for. Do not answer the message yourself.
   participants are named.
 - "charter": the operator wants to define or set up a new company /
   organisation charter (its mission, structure, or founding brief).
+- "configure": the operator wants to configure or operate the control
+  plane itself: connect or set up an integration (GitHub, Slack, SMTP,
+  a database, web search), change a system setting, install a catalogue
+  entry, or otherwise call a control-plane tool to administer the
+  platform. This is the operator's console over the platform, distinct
+  from "act" (which directs a business agent to do work) and from
+  "propose" (which plans org work). Choose it only when the operator is
+  clearly administering the platform, not asking about it.
 
 ## Output contract (STRICT)
 
@@ -419,15 +427,19 @@ Return ONLY a single JSON object, no prose, no markdown fences, with
 exactly this shape:
 
 {{
-  "intent": <one of: explain, propose, act, group_convene, charter>,
+  "intent": <one of: explain, propose, act, group_convene, charter,
+    configure>,
   "confidence": <number between 0.0 and 1.0>,
   "named_targets": [<role or name explicitly addressed, if any>]
 }}
 
 Rules:
-- When unsure, choose "explain" with a low confidence. Never guess "act".
+- When unsure, choose "explain" with a low confidence. Never guess "act"
+  or "configure".
 - Only choose "act" when you are highly certain the operator wants an
   action performed immediately.
+- Only choose "configure" when you are highly certain the operator wants
+  to set up, connect, or change part of the platform itself.
 - Only choose "group_convene" when "named_targets" has at least two
   entries copied from the operator's message.
 - "named_targets" is a (possibly empty) list of the roles or names the

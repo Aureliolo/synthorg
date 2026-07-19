@@ -8,7 +8,10 @@ from typeguard import suppress_type_checks
 
 from synthorg.api.app_builders import build_chief_of_staff_proposer
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.conversational_builders import build_conversational_actor
+from synthorg.api.conversational_builders import (
+    build_conversational_actor,
+    build_operator_console,
+)
 from synthorg.api.lifecycle_helpers.conversational_reconcile import (
     reconcile_orphaned_conversational_invites,
 )
@@ -20,6 +23,7 @@ from synthorg.meta.chief_of_staff.actor import ConversationalActor
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.enums import ConversationInviteStatus
 from synthorg.meta.chief_of_staff.group_models import ConversationInvite
+from synthorg.meta.chief_of_staff.operator_console import OperatorConsoleService
 from synthorg.meta.chief_of_staff.propose import ChiefOfStaffProposer
 from synthorg.persistence.approval_protocol import ApprovalRepository
 from synthorg.persistence.conversational_factory import (
@@ -27,7 +31,7 @@ from synthorg.persistence.conversational_factory import (
     build_conversational_repositories,
 )
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
-from tests._shared import as_uuid, mock_of, sid
+from tests._shared import FakeClock, as_uuid, mock_of, sid
 from tests._shared.scripted_provider import ScriptedProvider
 from tests.unit.meta.chief_of_staff.group_chat_fakes import FakeInviteRepo
 
@@ -180,6 +184,68 @@ class TestBuildConversationalActor:
             autonomy_resolver=None,
         )
         assert isinstance(result, ConversationalActor)
+
+
+_CONSOLE_MODEL = serialize_model_ref(
+    ModelRef(provider="p", model_id="example-small-001")
+)
+
+
+class TestBuildOperatorConsole:
+    def test_none_when_disabled(self) -> None:
+        result = build_operator_console(
+            ChiefOfStaffConfig(operator_console_enabled=False),
+            engine=_engine(has_mcp=True, has_governance=True),
+            autonomy_resolver=None,
+            clock=FakeClock(),
+        )
+        assert result is None
+
+    def test_none_when_no_mcp_self_consumer(self) -> None:
+        result = build_operator_console(
+            ChiefOfStaffConfig(
+                operator_console_enabled=True, operator_console_model=_CONSOLE_MODEL
+            ),
+            engine=_engine(has_mcp=False, has_governance=True),
+            autonomy_resolver=None,
+            clock=FakeClock(),
+        )
+        assert result is None
+
+    def test_none_when_governance_inactive(self) -> None:
+        # Fail-closed: an ungated console would run permitted write/admin
+        # actions with no escalate-and-park step.
+        result = build_operator_console(
+            ChiefOfStaffConfig(
+                operator_console_enabled=True, operator_console_model=_CONSOLE_MODEL
+            ),
+            engine=_engine(has_mcp=True, has_governance=False),
+            autonomy_resolver=None,
+            clock=FakeClock(),
+        )
+        assert result is None
+
+    def test_none_when_no_model_bound(self) -> None:
+        # Fail-closed: the console cannot dispatch without an explicit
+        # (provider, model) pair, so an unset model leaves it inert.
+        result = build_operator_console(
+            ChiefOfStaffConfig(operator_console_enabled=True),
+            engine=_engine(has_mcp=True, has_governance=True),
+            autonomy_resolver=None,
+            clock=FakeClock(),
+        )
+        assert result is None
+
+    def test_builds_when_governed_and_model_bound(self) -> None:
+        result = build_operator_console(
+            ChiefOfStaffConfig(
+                operator_console_enabled=True, operator_console_model=_CONSOLE_MODEL
+            ),
+            engine=_engine(has_mcp=True, has_governance=True),
+            autonomy_resolver=None,
+            clock=FakeClock(),
+        )
+        assert isinstance(result, OperatorConsoleService)
 
 
 class TestReconcileOrphanedConversationalInvites:

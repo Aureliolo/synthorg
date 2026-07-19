@@ -146,6 +146,13 @@ COS_ACT_COMPLETED: Final[str] = "chief_of_staff.act.completed"
 COS_ACT_PARKED: Final[str] = "chief_of_staff.act.parked"
 COS_ACT_FAILED: Final[str] = "chief_of_staff.act.failed"
 
+# -- Operator console (CONFIGURE turns) --------------------------------
+
+COS_CONSOLE_REQUESTED: Final[str] = "chief_of_staff.console.requested"
+COS_CONSOLE_COMPLETED: Final[str] = "chief_of_staff.console.completed"
+COS_CONSOLE_PARKED: Final[str] = "chief_of_staff.console.parked"
+COS_CONSOLE_FAILED: Final[str] = "chief_of_staff.console.failed"
+
 # -- Run narrative (documentary mode) ----------------------------------
 
 COS_NARRATIVE_GENERATION_STARTED: Final[str] = (

@@ -37,6 +37,7 @@ from synthorg.settings.subscribers import (
     NotificationsBridgeSettingsSubscriber,
     ObservabilityBridgeSettingsSubscriber,
     ObservabilitySettingsSubscriber,
+    OperatorConsoleSettingsSubscriber,
     OutputStyleSettingsSubscriber,
     PerOpRateLimitSettingsSubscriber,
     ProviderSettingsSubscriber,
@@ -183,6 +184,10 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
             settings_service=settings_service,
         ),
         DirectMcpActorSettingsSubscriber(
+            app_state=app_state,
+            settings_service=settings_service,
+        ),
+        OperatorConsoleSettingsSubscriber(
             app_state=app_state,
             settings_service=settings_service,
         ),

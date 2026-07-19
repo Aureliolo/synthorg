@@ -245,6 +245,44 @@ class TestRunChatAction:
                 turn_observer=_cancel,
             )
 
+    async def test_budget_checker_halts_before_any_tool(self) -> None:
+        # The operator console passes a budget_checker closing over its cost
+        # ceiling; run_chat_action must thread it into the loop so an
+        # exhausted budget halts the session before any tool runs.
+        tool = QueryTool()
+        engine, _ = _build_engine(
+            responses=[
+                _tool_call("query_metrics", window="7d"),
+                _final("unreached"),
+            ],
+            tool=tool,
+        )
+
+        result = await engine.run_chat_action(
+            identity=_acting_identity(),
+            instruction="Do a lot of expensive work.",
+            budget_checker=lambda _ctx: True,
+        )
+
+        assert result.termination_reason == TerminationReason.BUDGET_EXHAUSTED
+        assert tool.calls == []
+
+    async def test_system_prompt_addendum_is_appended(self) -> None:
+        engine, _ = _build_engine(responses=[_final("Acknowledged.")])
+
+        await engine.run_chat_action(
+            identity=_acting_identity(),
+            instruction="hello",
+            system_prompt_addendum="CONSOLE-BRIEF-SENTINEL",
+        )
+
+        provider = engine._provider
+        assert isinstance(provider, MockCompletionProvider)
+        first_turn = provider.recorded_messages[0]
+        system_msg = next(m for m in first_turn if m.role == MessageRole.SYSTEM)
+        assert system_msg.content is not None
+        assert "CONSOLE-BRIEF-SENTINEL" in system_msg.content
+
     async def test_instruction_is_untrusted_fenced(self) -> None:
         engine, _ = _build_engine(responses=[_final("Acknowledged.")])
 

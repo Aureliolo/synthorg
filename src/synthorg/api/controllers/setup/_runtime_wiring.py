@@ -134,8 +134,8 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
     )
     from synthorg.api.lifecycle_helpers.conversational_wiring import (  # noqa: PLC0415
         wire_chief_of_staff_proposer,
-        wire_conversational_actor,
         wire_conversational_plan_dispatcher,
+        wire_conversational_write_path,
     )
     from synthorg.api.lifecycle_helpers.feature_wiring import (  # noqa: PLC0415
         _wire_chief_of_staff_chat,
@@ -212,7 +212,7 @@ async def _rewire_post_setup_features(app_state: AppState) -> None:
                 si_config=si_config,
             )
             await wire_refinement_router(app_state)
-            await wire_conversational_actor(app_state, si_config=si_config)
+            await wire_conversational_write_path(app_state, si_config=si_config)
         await wire_plan_review_gate(app_state)
         await wire_plan_review_panel(
             app_state,
