@@ -222,32 +222,22 @@ async def _run_shutdown(  # noqa: PLR0913
         timeout=_SIMULATION_TASK_DRAIN_OUTER_SECONDS,
         service="simulation_task_drain",
     )
-    # Disconnect training memory backend if auto-wired.
-    if tasks.training_memory_backend is not None:
-        # If this backend was published to the memory slice at startup, clear
-        # the field before disconnecting so a subsequent re-entry of the
-        # lifespan can wire a fresh connected backend without a stale handle
-        # lingering on the slice.
-        shared = app_state.slice(MemoryStateSlice).backend
-        if shared is tasks.training_memory_backend:
-            app_state.swap_slice(
-                app_state.slice(MemoryStateSlice).model_copy(update={"backend": None})
-            )
-        disconnect = getattr(tasks.training_memory_backend, "disconnect", None)
-        if callable(disconnect):
-            # getattr + callable narrow statically only to ``object`` and
-            # "something callable", so the return type isn't inferable.
-            # Backends that expose a ``disconnect`` method always return
-            # ``Awaitable[None]`` by contract (see ``MemoryBackend.disconnect``
-            # in training/memory).
-            await _try_stop(
-                cast("Awaitable[None]", disconnect()),
-                API_APP_SHUTDOWN,
-                "Failed to disconnect training memory backend",
-                timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
-                service="training_memory_backend",
-            )
-        tasks.training_memory_backend = None
+    # Disconnect the shared agent-memory backend. The field is cleared before
+    # disconnecting so a lifespan re-entry can wire a fresh connected backend
+    # (``wire_memory_backend`` is idempotent and skips when the slice is
+    # already set) without a stale handle lingering on the slice.
+    memory_backend = app_state.slice(MemoryStateSlice).backend
+    if memory_backend is not None:
+        app_state.swap_slice(
+            app_state.slice(MemoryStateSlice).model_copy(update={"backend": None})
+        )
+        await _try_stop(
+            cast("Awaitable[None]", memory_backend.disconnect()),
+            API_APP_SHUTDOWN,
+            "Failed to disconnect agent memory backend",
+            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="memory_backend",
+        )
     # Disconnect + unwire the hybrid org-memory backend published to the memory
     # slice at startup, mirroring the training-backend teardown above: clear the
     # field before disconnecting so a lifespan re-entry can wire a fresh backend

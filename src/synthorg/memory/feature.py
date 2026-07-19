@@ -52,6 +52,11 @@ FEATURE: FeatureModule = FeatureManifest(
         ),
     ),
     lifecycle_hooks=(),
-    ghost_wired_symbols=("FineTuneOrchestrator",),
+    ghost_wired_symbols=(
+        "FineTuneOrchestrator",
+        "ProviderTextEmbedder",
+        "create_memory_backend",
+        "resolve_embedder_config",
+    ),
     depends_on=(),
 )

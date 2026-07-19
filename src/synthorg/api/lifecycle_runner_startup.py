@@ -540,11 +540,21 @@ async def _run_startup(  # noqa: PLR0913
         if injected_backend is not None:
             app_state.wire(MemoryStateSlice, backend=injected_backend)
 
+    # Wire durable agent memory before anything downstream reads it. This
+    # used to be a side effect of the training-service auto-wire below,
+    # which published an ephemeral in-process store as the shared backend
+    # and so silently gave every consumer keyword-only recall that died on
+    # restart. Memory now has its own hook and its own failure reporting.
+    from synthorg.api.lifecycle_helpers.memory_backend_wiring import (  # noqa: PLC0415
+        wire_memory_backend,
+    )
+
+    await wire_memory_backend(app_state)
+
     # On-startup auto-wire: TrainingService.
     # Needs agent_registry, tool_invocation_tracker, and performance_tracker
-    # (all wired at construction time).  Uses InMemoryBackend for the memory
-    # layer; production callers inject a real Mem0 backend via the
-    # training_service param.
+    # (all wired at construction time). It shares the durable memory backend
+    # wired above rather than owning a private one.
     if (
         app_state.slice(HrStateSlice).training_service is None
         and effective_config is not None
@@ -556,44 +566,26 @@ async def _run_startup(  # noqa: PLR0913
             from synthorg.hr.training.factory import (  # noqa: PLC0415
                 build_training_service,
             )
-            from synthorg.memory.factory import (  # noqa: PLC0415
-                build_in_memory_backend,
-            )
 
             _perf = app_state.slice(HrStateSlice).performance_tracker
-            if _perf is not None:
-                _mem = build_in_memory_backend()
-                await _mem.connect()
+            _mem = app_state.slice(MemoryStateSlice).backend
+            if _perf is not None and _mem is not None:
                 from synthorg._core.features import (  # noqa: PLC0415
                     require_service,
                 )
 
-                try:
-                    _ts = build_training_service(
-                        config=effective_config.training,
-                        memory_backend=_mem,
-                        tracker=_perf,
-                        registry=agent_registry_of(app_state),
-                        approval_store=require_service(
-                            app_state.slice(ApprovalStateSlice).store,
-                            "Approval Store",
-                        ),
-                        tool_tracker=tool_invocation_tracker_of(app_state),
-                    )
-                    app_state.wire(HrStateSlice, training_service=_ts)
-                    # Expose the same backend to admin paths so
-                    # ``DELETE /agents/{id}/memories/{id}`` and the
-                    # ``delete_memory`` MCP tool can route through one connected
-                    # backend instance per process.
-                    if app_state.slice(MemoryStateSlice).backend is None:
-                        app_state.wire(MemoryStateSlice, backend=_mem)
-                except MemoryError, RecursionError:
-                    await _mem.disconnect()
-                    raise
-                except Exception:
-                    await _mem.disconnect()
-                    raise
-                tasks.training_memory_backend = _mem
+                _ts = build_training_service(
+                    config=effective_config.training,
+                    memory_backend=_mem,
+                    tracker=_perf,
+                    registry=agent_registry_of(app_state),
+                    approval_store=require_service(
+                        app_state.slice(ApprovalStateSlice).store,
+                        "Approval Store",
+                    ),
+                    tool_tracker=tool_invocation_tracker_of(app_state),
+                )
+                app_state.wire(HrStateSlice, training_service=_ts)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(

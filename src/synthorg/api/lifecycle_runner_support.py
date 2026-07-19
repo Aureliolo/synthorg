@@ -108,7 +108,6 @@ class _LifecycleTasks:
     webhook_cleanup_task: asyncio.Task[None] | None = None
     auto_wired_dispatcher: SettingsChangeDispatcher | None = None
     health_prober: ProviderHealthProber | None = None
-    training_memory_backend: object | None = None
 
 
 async def _cancel_with_timeout(

@@ -38,6 +38,9 @@ MEMORY_ENTRY_FETCH_FAILED: Final[str] = "memory.entry.fetch_failed"
 MEMORY_ENTRY_COUNTED: Final[str] = "memory.entry.counted"
 MEMORY_ENTRY_COUNT_FAILED: Final[str] = "memory.entry.count_failed"
 
+MEMORY_EMBEDDING_FAILED: Final[str] = "memory.embedding.failed"
+"""Emitted at WARNING when an embedding call fails for a batch."""
+
 MEMORY_DENSE_INDEX_READY: Final[str] = "memory.dense_index.ready"
 """Emitted at INFO once the dense vector index is loaded and usable."""
 
