@@ -113,7 +113,7 @@ func waitBackoff(ctx context.Context, delay time.Duration) error {
 // can return its connection to the keep-alive pool, tolerating a nil
 // response for call-site convenience.
 func drainAndClose(resp *http.Response) {
-	if resp == nil {
+	if resp == nil || resp.Body == nil {
 		return
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)

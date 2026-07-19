@@ -29,6 +29,12 @@ var (
 	updateCheck         bool
 )
 
+// checkForChannel is the update-check entrypoint, indirected through a
+// package var so tests can drive the failure/abort path: the real
+// selfupdate.CheckForChannel hits the GitHub API with no injection seam
+// of its own.
+var checkForChannel = selfupdate.CheckForChannel
+
 var updateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Update CLI, refresh compose template, and pull new container images",
@@ -398,7 +404,7 @@ func updateCLI(cmd *cobra.Command, autoAcceptCLI bool) error {
 		out.Warn("Running a dev build but update channel is \"stable\". Dev releases will not appear. Run 'synthorg config set channel dev' to receive dev updates.")
 	}
 
-	result, err := selfupdate.CheckForChannel(ctx, channel)
+	result, err := checkForChannel(ctx, channel)
 	if err != nil {
 		// A failed check means we cannot tell whether the CLI is current,
 		// so abort rather than continue blindly into the compose/image
@@ -408,7 +414,7 @@ func updateCLI(cmd *cobra.Command, autoAcceptCLI bool) error {
 		// an ExitError so Execute() surfaces this styled message + hint as
 		// the sole output (a plain error would be re-printed on top).
 		errUI.Error(fmt.Sprintf("Could not check for updates: %v", err))
-		errUI.HintNextStep("GitHub may be having a transient issue -- re-run 'synthorg update' shortly, " +
+		errUI.HintError("GitHub may be having a transient issue -- re-run 'synthorg update' shortly, " +
 			"or 'synthorg update --images-only' to refresh container images without the CLI check.")
 		return NewExitError(ExitRuntime, fmt.Errorf("checking for updates: %w", err))
 	}
