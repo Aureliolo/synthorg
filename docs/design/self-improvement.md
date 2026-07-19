@@ -327,17 +327,18 @@ system's job, not the user's, so there is no mode picker.
   `meta.chat.turn`): a replay with the same key and body returns the cached
   response, the same key with a different body is a `409`. An `IntentClassifier`
   (`meta/chief_of_staff/intent_router.py`) first classifies the message to a
-  `TurnIntent` (`explain` / `propose` / `act` / `group_convene` / `charter`),
-  then `dispatch_turn` (`api/controllers/_turn_dispatch.py`) routes to the same
-  capability *service* the deleted per-mode endpoints used to call directly:
-  `ChiefOfStaffChat.ask`, `ChiefOfStaffProposer.converse`,
-  `GroupChatService.converse`, `ConversationalActor.act`, or the charter
-  interview. The surface collapses; the downstream state machines do not. The
-  response (`TurnResult`) carries the classified `intent`, an `intent_reason`
-  (why it landed there or degraded), `intent_confidence`, the `conversation_id`,
+  `TurnIntent` (`explain` / `propose` / `act` / `group_convene` / `charter` /
+  `configure`), then `dispatch_turn` (`api/controllers/_turn_dispatch.py`)
+  routes to the same capability *service* the deleted per-mode endpoints used
+  to call directly: `ChiefOfStaffChat.ask`, `ChiefOfStaffProposer.converse`,
+  `GroupChatService.converse`, `ConversationalActor.act`, the charter
+  interview, or `OperatorConsoleService` (the operator console, below). The
+  surface collapses; the downstream state machines do not. The response
+  (`TurnResult`) carries the classified `intent`, an `intent_reason` (why it
+  landed there or degraded), `intent_confidence`, the `conversation_id`,
   exactly one capability payload matching the intent (`answer` / `propose` /
-  `group` / `act` / `charter`), and any specialist `chime_ins` (multi-voice,
-  below).
+  `group` / `act` / `charter` / `configure`), and any specialist `chime_ins`
+  (multi-voice, below).
 
 - **`POST /meta/chat/turn/stream`** (streamed EXPLAIN): the same classification,
   but an `explain` turn streams token-by-token as SSE `delta` frames, then a
@@ -375,6 +376,40 @@ system's job, not the user's, so there is no mode picker.
   runs the round-robin multi-agent conversation (per-round token budgeting, a
   participant cap, `agent_call_timeout_seconds` per call, `<peer-contribution>`
   untrusted-content fences, human-consented `CONVERSATIONAL_INVITE`).
+
+- **`configure` is the operator console.** A classified `configure` turn routes
+  to `OperatorConsoleService` (`meta/chief_of_staff/operator_console.py`), the
+  operator's conversational cockpit *over* the control plane (configure
+  settings/connections/integrations/catalog/providers, call control-plane
+  tools, ask and get options), distinct from the synthetic-org work loop. It is
+  a bounded tool-using agent session reusing `AgentEngine.run_chat_action`
+  (never a single completion), acting as one shared system **`console`**
+  identity at `ToolAccessLevel.ELEVATED`, with the authenticated operator
+  recorded in each audit event. Gated live per request by its own default-off
+  `chief_of_staff.operator_console_enabled` (fail-closed 503 when off or when
+  security governance is inactive); it does **not** require
+  `direct_mcp_enabled`. The grant is **broad** (control + read capability tags,
+  not a hardcoded allowlist) and every individual tool call is gated
+  per-action-in-context by the same SecOps auto-gate the worker uses (a
+  deterministic hard-deny floor for `deploy:production` / `db:admin` /
+  `org:fire` that survives every autonomy tier, a fast-allow for reads/config,
+  and the LLM classifier only for the ambiguous middle), plus the existing
+  admin confirm + role + actor-audit guardrails; agent-orchestration internals
+  (task/workflow mutations, coordination, self-improvement launchers) stay out
+  of the grant, and `memory.*` fine-tune tools sit behind a stricter tier. A
+  risky write escalates to the approval inbox and parks/resumes exactly like an
+  `act` turn (Flow 1, `PARKED_CONTEXT`). The console ships at the **Standard /
+  auto** autonomy tier by default (reads flow; risky writes escalate). The
+  guardrail `reason` is **synthesised** from flow context, so the operator sees
+  a structured confirm (tool, risk, target), never a mandatory free-text box.
+  Integration setup is the first guided flow: a deterministic controller
+  (`meta/chief_of_staff/setup/`) sequences pick-type -> collect-fields ->
+  validate -> preview -> confirm -> apply -> health-verify from the backend
+  connection-type metadata registry, with an agent session per interpretation
+  step; secrets are captured **out of band** (never in the transcript or LLM
+  context, see [Integrations: conversational setup](integrations.md#conversational-setup))
+  and the preview reflects the exact resolved `connections.create` arguments so
+  what applies is what was reviewed.
 
 - **Two levels of routing.** The intent classifier picks *which capability*;
   the existing concern router (`routing.py`) still picks *who answers* one level
@@ -467,6 +502,13 @@ self_improvement:
     # Act turns (direct MCP under trust). All opt-in, fail-closed.
     direct_mcp_enabled: false                # Master switch (fail-closed without SecurityConfig)
     direct_mcp_max_turns: 6                  # Hard turn cap for one chat-driven action loop
+    # Operator console (configure turns). All opt-in, fail-closed; independent of direct_mcp.
+    operator_console_enabled: false          # Master switch (fail-closed without SecurityConfig)
+    operator_console_model: example-small-001  # Console session model id (explicit provider,model)
+    configure_intent_confidence_floor: 0.85  # Write-capable floor: below it degrades to explain
+    operator_console_max_turns: 12           # Hard turn cap for one console action loop
+    operator_console_cost_ceiling_usd: 1.0   # Spend ceiling for one console turn (budget_checker)
+    operator_console_autonomy_level: standard  # Default tier: reads flow, risky writes escalate
     # Documentary mode: post-run run narrative. All opt-in.
     narrative_enabled: false                 # Master switch
     narrative_model: example-small-001       # LLM model id (connective prose only)

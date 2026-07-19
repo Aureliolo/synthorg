@@ -73,6 +73,68 @@ At-rest protection of the *rest* of the database (non-secret rows, full-text bac
 | `DELETE` | `/api/v1/connections/{name}` | Delete a connection |
 | `GET` | `/api/v1/connections/{name}/health` | On-demand health check |
 | `GET` | `/api/v1/connections/{name}/secrets/{field}` | Scoped reveal of a single credential field (audit-logged; returns a generic 404 on any failure to avoid side-channel leakage) |
+| `GET` | `/api/v1/connections/types` | Connection-type + credential-field metadata registry (label, type, required, secret, capture mode, help, order) |
+| `POST` | `/api/v1/connections/drafts/{draft_id}/fields/{field}/capture` | Out-of-band write-only secret capture; returns an opaque single-use handle (request body is excluded from access/request logs) |
+
+---
+
+## Conversational setup
+
+The operator can stand up a connection-bound integration by talking to the
+unified chat's operator console (`configure` intent, see
+[Self-Improving Company: the operator console](self-improvement.md#interactive-endpoint-one-unified-turn)).
+Three backend pieces make this vendor-generic and secret-safe.
+
+### Connection-type metadata registry
+
+A single backend-owned declarative registry
+(`integrations/connections/field_metadata.py`) is the sole source of truth for
+*what a connection type needs*: per `ConnectionType`, an ordered list of fields
+each carrying `name`, `label`, `type`, `required`, `secret`, `capture_mode`
+(`masked_field` or `oauth_redirect`), `help_text`, and the `connections.create`
+argument it maps to. It is exposed read-only via `GET /connections/types` and
+the `connections.field_metadata` MCP tool, and the dashboard connection form
+renders purely from it (no hand-authored per-type UI), so the console prompts,
+the form, and the create call all agree from one definition. The registry stays
+in parity with the `required_fields()` each authenticator declares.
+
+### Out-of-band secret capture
+
+A credential (a token, a password, an API key) **never** enters the chat turn,
+the persisted transcript, or an LLM prompt. Instead the masked field posts the
+raw value straight to
+`POST /connections/drafts/{draft_id}/fields/{field}/capture`, whose route
+excludes the request body from logging; the value is written immediately into
+the existing `SecretBackend` and the endpoint returns an opaque **single-use,
+short-TTL handle** bound to `(conversation_id, draft_id, field, secret_kind)`.
+The console references only the handle. `connections.create` (and
+`oauth.configure_provider`) accept **handle references, not inline credential
+strings**; create resolves and consumes the handle, verifies the binding
+(replay protection), and moves the value to permanent per-connection storage
+under its own `secret_id` for the normal rotate/retrieve/delete lifecycle. An
+abandoned draft's handle expires and its backend entry is swept. As
+defence-in-depth, a deterministic rule blocks any tool result from echoing a
+bound secret value back into a turn, and every persisted turn is scanned and
+credential-redacted before write (the backstop should never fire; if it does,
+it signals a boundary leak). Providers that support it (GitHub App, Slack) use
+a hosted **OAuth redirect** instead of a masked field, so the app server only
+ever receives a short-lived authorization code exchanged server-side; the
+masked-field path is reserved for static-key types (SMTP, Postgres, generic
+API key).
+
+### Guided flow (hybrid)
+
+A deterministic step controller (`meta/chief_of_staff/setup/`) owns the
+sequence: pick type -> collect each field (an agent session per interpretation
+step, e.g. "reuse my existing GitHub connection" vs a new one) -> validate in
+code against the registry -> capture secrets out of band -> assemble a
+**preview** from the exact resolved `connections.create` arguments (secrets
+masked) -> **confirm** through the existing `ApprovalGate` -> **apply** the
+typed create -> **verify** via a live `connections.check_health` probe, leaving
+the connection unverified until health passes. Sequencing, preview, apply, and
+verify are deterministic; only interpretation is delegated to a bounded agent
+session, so what applies is always what was reviewed and no secret is ever at
+the LLM's discretion.
 
 ---
 
