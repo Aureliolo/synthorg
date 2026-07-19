@@ -6,8 +6,13 @@ x-logging: &logging
 
 services:
   postgres:
-    # renovate: datasource=docker depName=dhi.io/postgres
-    image: dhi.io/postgres:18-debian13@sha256:a807e832c1fc9ded731956abcb53dc98ed003fd82e27275eaef8dcf52fb90236
+    # pgvector variant of the same hardened Postgres image: agent memory
+    # stores embeddings in this database, so the vector extension must be
+    # present. Staying inside the DHI family keeps the hardened posture
+    # (zero known CVEs, signed provenance, SBOM) rather than trading it
+    # away for a community image or a hand-built one.
+    # renovate: datasource=docker depName=dhi.io/pgvector
+    image: dhi.io/pgvector:0.8-pg18-debian13@sha256:374f7b2b39fd75d559013f44dd24781d187686c6ea708dc1c8f54c7fae05f958
     ports:
       - "${POSTGRES_PORT:-3002}:5432"
     volumes:

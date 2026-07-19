@@ -2506,8 +2506,6 @@ CREATE INDEX idx_plan_item_comments_reply
 ON plan_item_comments (reply_to_id)
 WHERE reply_to_id IS NOT NULL;
 
-CREATE EXTENSION IF NOT EXISTS vector;
-
 CREATE TABLE memory_entries (
     memory_id TEXT NOT NULL PRIMARY KEY,
     agent_id TEXT NOT NULL,

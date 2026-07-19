@@ -77,7 +77,7 @@ Fxa4333s1KsL9ISjtmRzGNih9lNRsqfRVjgFgJIdL6EQ9dohdanvn7r2cg==
 // intentional: overriding dhiRegistry invalidates the lookup (verification
 // is skipped for non-default registries; see the dhiRegistry doc comment).
 var dhiPinnedIndexDigests = map[string]string{
-	"dhi.io/postgres:" + config.DefaultPostgresImageTag: config.DefaultPostgresImageDigest,
+	"dhi.io/pgvector:" + config.DefaultPostgresImageTag: config.DefaultPostgresImageDigest,
 	"dhi.io/nats:" + config.DefaultNATSImageTag:         config.DefaultNATSImageDigest,
 }
 

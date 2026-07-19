@@ -8,12 +8,16 @@
 -- Note on the licence policy: ParadeDB's pg_search, the usual answer for BM25 on
 -- Postgres, is AGPL-3.0 and must never be introduced here.
 --
--- The dense index is NOT declared here: vector width is operator-configurable,
--- so the repository adds the pgvector column and its HNSW index at runtime once
--- the embedder dimension is known, mirroring the dimension-suffixed vec0 table
--- on SQLite.
-
-CREATE EXTENSION IF NOT EXISTS vector;
+-- Neither the pgvector extension nor the dense column is declared here. Vector
+-- width is operator-configurable, so the repository adds the column and its HNSW
+-- index at runtime once the embedder dimension is known, mirroring the
+-- dimension-suffixed vec0 table on SQLite. Creating the extension is part of
+-- that same runtime step.
+--
+-- Keeping CREATE EXTENSION out of the migration matters: it makes the declared
+-- schema apply cleanly to any Postgres, including the plain images CI and the
+-- drift gate run against. Where pgvector is absent, dense search reports itself
+-- unavailable instead of failing the migration for every unrelated feature.
 
 CREATE TABLE memory_entries (
     memory_id TEXT NOT NULL PRIMARY KEY,
