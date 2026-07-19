@@ -400,8 +400,17 @@ func updateCLI(cmd *cobra.Command, autoAcceptCLI bool) error {
 
 	result, err := selfupdate.CheckForChannel(ctx, channel)
 	if err != nil {
-		errUI.Warn(fmt.Sprintf("Could not check for updates: %v", err))
-		return nil
+		// A failed check means we cannot tell whether the CLI is current,
+		// so abort rather than continue blindly into the compose/image
+		// pull -- those images live on ghcr.io (GitHub), so a genuine
+		// GitHub outage would fail the pull too. --images-only bypasses
+		// this check entirely for a deliberate image-only refresh. Wrap in
+		// an ExitError so Execute() surfaces this styled message + hint as
+		// the sole output (a plain error would be re-printed on top).
+		errUI.Error(fmt.Sprintf("Could not check for updates: %v", err))
+		errUI.HintNextStep("GitHub may be having a transient issue -- re-run 'synthorg update' shortly, " +
+			"or 'synthorg update --images-only' to refresh container images without the CLI check.")
+		return NewExitError(ExitRuntime, fmt.Errorf("checking for updates: %w", err))
 	}
 
 	if !result.UpdateAvail {
@@ -409,6 +418,8 @@ func updateCLI(cmd *cobra.Command, autoAcceptCLI bool) error {
 		return nil
 	}
 
+	// Failure is non-fatal here: an unreadable config only degrades the
+	// changelog walk to its offline fallback, and the update proceeds.
 	state, _ := config.Load(opts.DataDir)
 	runChangelogWalk(ctx, cmd, result, state)
 
@@ -691,8 +702,8 @@ func confirmUpdateWithDefault(ctx context.Context, title string, defaultVal bool
 // when set (operator intent for this invocation), otherwise the resolved
 // Tunables.ImageVerifyTimeout applies. This is kept SEPARATE from --timeout,
 // which governs only the post-restart health check: the two budgets have
-// different defaults (verification 120s vs health 90s) and conflating them
-// silently shortened the verification deadline to the health value. The
+// different defaults (verification 120s vs health 90s), so conflating them
+// would silently shorten the verification deadline to the health value. The
 // tunable is validated at PersistentPreRunE so an unparseable override fails
 // fast upstream; --verify-timeout is validated in validateUpdateFlags.
 func verifyAndPinForUpdate(ctx context.Context, info docker.Info, state config.State, tag, safeDir string, preserveCompose bool, out *ui.UI, errOut *ui.UI) (map[string]string, error) {
