@@ -455,7 +455,15 @@ class HttpWebSearchProvider:
                 continue
             url = item.get(self._preset.url_key)
             title = item.get(self._preset.title_key)
-            if not (isinstance(url, str) and url and isinstance(title, str) and title):
+            # Skip whitespace-only values too: ``SearchResult.title``/``url`` are
+            # NotBlankStr, so a "   " row would abort the whole search at model
+            # construction (outside this per-item filter) rather than drop.
+            if not (
+                isinstance(url, str)
+                and url.strip()
+                and isinstance(title, str)
+                and title.strip()
+            ):
                 continue
             snippet_raw = item.get(self._preset.snippet_key)
             snippet = snippet_raw if isinstance(snippet_raw, str) else ""

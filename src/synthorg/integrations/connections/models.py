@@ -6,9 +6,10 @@ at runtime via the configured ``SecretBackend``.
 """
 
 import copy
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Final, Literal, Self
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -26,6 +27,13 @@ from synthorg.core.types import NotBlankStr
 # connections package) so both the database authenticator and the catalog
 # entry validate against one source rather than drifting copies.
 VALID_DIALECTS: frozenset[str] = frozenset({"postgres", "mysql", "sqlite", "mariadb"})
+
+# An exact published version (MAJOR.MINOR.PATCH with optional pre-release/build),
+# NOT an npm dist-tag (``latest``) or a semver range (``^1.0.0`` / ``~1`` / ``1.x``).
+# A range or tag still resolves to a mutable version at launch, defeating the pin.
+_EXACT_NPM_VERSION: Final[re.Pattern[str]] = re.compile(
+    r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
+)
 
 # Per-connection webhook-receipt retention window in days. Tri-state:
 #   None    -- fall back to the global
@@ -420,21 +428,32 @@ class CatalogEntry(BaseModel):
 
     @model_validator(mode="after")
     def _validate_required_dialect(self) -> Self:
-        """Reject a ``required_dialect`` outside the known dialect set.
+        """Confine ``required_dialect`` to a known-dialect database entry.
 
-        Guards against a misspelled dialect in a hand-authored or
-        DB-installed entry that would silently never match a real
-        connection's dialect and leave the entry uninstallable.
+        The dialect only disambiguates entries sharing
+        ``ConnectionType.DATABASE``, so declaring one on a non-database entry
+        makes it permanently uninstallable (no connection would ever carry a
+        matching dialect). A misspelled dialect on a database entry is the same
+        trap. Reject both at construction rather than silently ship an
+        uninstallable entry.
 
         Returns:
             Result of type ``Self``.
 
         Raises:
-            ValueError: If ``required_dialect`` is not a known dialect.
+            ValueError: If ``required_dialect`` is set on a non-database entry
+                or is not a known dialect.
         """
-        if self.required_dialect is not None and self.required_dialect not in (
-            VALID_DIALECTS
-        ):
+        if self.required_dialect is None:
+            return self
+        if self.required_connection_type is not ConnectionType.DATABASE:
+            msg = (
+                f"Catalog entry {self.id!r}: required_dialect "
+                f"{self.required_dialect!r} is only valid on a database entry "
+                f"(required_connection_type={self.required_connection_type})"
+            )
+            raise ValueError(msg)
+        if self.required_dialect not in VALID_DIALECTS:
             msg = (
                 f"Catalog entry {self.id!r}: required_dialect "
                 f"{self.required_dialect!r} is not one of {sorted(VALID_DIALECTS)}"
@@ -444,19 +463,22 @@ class CatalogEntry(BaseModel):
 
     @model_validator(mode="after")
     def _validate_stdio_is_version_pinned(self) -> Self:
-        """Require a pinned ``npm_version`` on every launchable stdio entry.
+        """Require an exact pinned ``npm_version`` on every launchable stdio entry.
 
-        An unpinned ``npx`` spec resolves ``latest`` on every reconnect, so a
-        newly-published (potentially compromised) release would be pulled
-        silently. Pinning is the supply-chain guard, enforced at the model so a
-        hand-authored or DB-installed stdio entry cannot bypass it.
+        An unpinned ``npx`` spec resolves ``latest`` on every reconnect, and a
+        dist-tag or semver range (``^1.0.0`` / ``1.x``) still resolves to a
+        mutable version, so a newly-published (potentially compromised) release
+        could be pulled silently. Requiring an exact version is the
+        supply-chain guard, enforced at the model so a hand-authored or
+        DB-installed stdio entry cannot bypass it.
 
         Returns:
             Result of type ``Self``.
 
         Raises:
-            ValueError: If a stdio entry names an ``npm_package`` without a
-                pinned ``npm_version``.
+            ValueError: If a stdio entry names an ``npm_package`` without an
+                ``npm_version``, or the version is not an exact published
+                version (a dist-tag or range).
         """
         if (
             self.transport == "stdio"
@@ -466,6 +488,15 @@ class CatalogEntry(BaseModel):
             msg = (
                 f"Catalog entry {self.id!r}: stdio entries must pin npm_version "
                 f"(npm_package {self.npm_package!r} would resolve 'latest')"
+            )
+            raise ValueError(msg)
+        if self.npm_version is not None and not _EXACT_NPM_VERSION.fullmatch(
+            self.npm_version
+        ):
+            msg = (
+                f"Catalog entry {self.id!r}: npm_version {self.npm_version!r} must "
+                f"be an exact published version (e.g. '1.2.3'), not a dist-tag or "
+                f"range"
             )
             raise ValueError(msg)
         return self

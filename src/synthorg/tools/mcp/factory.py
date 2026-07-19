@@ -67,11 +67,9 @@ class MCPToolFactory:
         Returns:
             A per-server :class:`MCPServerStatus` snapshot taken just now.
         """
-        pings = await asyncio.gather(
-            *(self._ping_one(client) for client in self._clients),
-            return_exceptions=False,
-        )
-        return tuple(pings)
+        async with asyncio.TaskGroup() as tg:
+            tasks = [tg.create_task(self._ping_one(client)) for client in self._clients]
+        return tuple(task.result() for task in tasks)
 
     async def _ping_one(self, client: MCPClient) -> MCPServerStatus:
         """Ping a single client via ``list_tools``, mapping failure to a status.
@@ -151,11 +149,12 @@ class MCPToolFactory:
 
         Failure isolation is the point: a single broken server (a missing
         credential, an npm outage, a crashed child) must NOT take down every
-        other server's tools. ``gather(return_exceptions=True)`` lets each
-        connect resolve independently; a failed one is logged with its server
-        name and dropped, and only the servers that connected are returned.
-        Interpreter-critical exceptions still propagate via
-        :func:`reraise_critical`.
+        other server's tools. Each connect runs in a ``TaskGroup`` task whose
+        wrapper (:meth:`_connect_one_isolated`) catches an expected failure and
+        returns it rather than raising, so it cannot cancel the group; only an
+        interpreter-critical exception escapes (and correctly tears the group
+        down). A failed server is logged with its name and dropped; only the
+        servers that connected are returned.
 
         Args:
             servers: Enabled server configurations.
@@ -163,14 +162,15 @@ class MCPToolFactory:
         Returns:
             List of (client, tools) tuples for the servers that connected.
         """
-        outcomes = await asyncio.gather(
-            *(self._connect_and_discover(cfg) for cfg in servers),
-            return_exceptions=True,
-        )
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                (cfg, tg.create_task(self._connect_one_isolated(cfg)))
+                for cfg in servers
+            ]
         results: list[tuple[MCPClient, tuple[MCPToolInfo, ...]]] = []
-        for cfg, outcome in zip(servers, outcomes, strict=True):
+        for cfg, task in tasks:
+            outcome = task.result()
             if isinstance(outcome, BaseException):
-                reraise_critical(outcome)
                 self._record_failure(cfg, outcome)
                 continue
             client, tools = outcome
@@ -184,6 +184,27 @@ class MCPToolFactory:
             )
             results.append((client, tools))
         return results
+
+    async def _connect_one_isolated(
+        self,
+        config: MCPServerConfig,
+    ) -> tuple[MCPClient, tuple[MCPToolInfo, ...]] | BaseException:
+        """Connect + discover one server, returning an expected failure.
+
+        Catching here (rather than raising) is what keeps a broken server from
+        cancelling the sibling connects in the :meth:`_connect_all` TaskGroup;
+        an interpreter-critical error is re-raised so it still tears the group
+        down.
+
+        Returns:
+            The ``(client, tools)`` pair on success, or the caught expected
+            exception for the caller to record as a per-server failure.
+        """
+        try:
+            return await self._connect_and_discover(config)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            return exc
 
     def _record_failure(
         self,
@@ -216,20 +237,19 @@ class MCPToolFactory:
 
         Fan out like ``_connect_all`` so one hung server's bounded
         disconnect timeout cannot serialise behind the others' (turning an
-        N-server shutdown into N x the per-client timeout).
+        N-server shutdown into N x the per-client timeout). ``_disconnect_one``
+        catches an expected disconnect failure (logs it) so it cannot cancel
+        the group; an interpreter-critical error it re-raises tears the group
+        down, which the ``TaskGroup`` surfaces rather than swallows.
         """
         try:
-            outcomes = await asyncio.gather(
-                *(self._disconnect_one(client) for client in self._clients),
-                return_exceptions=True,
-            )
-            # ``return_exceptions=True`` also captures interpreter-critical
-            # exceptions (MemoryError/RecursionError) that ``_disconnect_one``
-            # re-raises past its broad handler; surface them rather than let
-            # gather bury them as inspected-but-discarded results.
-            for outcome in outcomes:
-                if isinstance(outcome, BaseException):
-                    reraise_critical(outcome)
+            async with asyncio.TaskGroup() as tg:
+                # Results are unused (disconnect returns None); the TaskGroup
+                # awaits them and surfaces any interpreter-critical error.
+                _ = [
+                    tg.create_task(self._disconnect_one(client))
+                    for client in self._clients
+                ]
         finally:
             self._clients.clear()
 

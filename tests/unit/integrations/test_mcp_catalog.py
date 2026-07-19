@@ -5,10 +5,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
     AuthMethod,
+    CatalogEntry,
     Connection,
     ConnectionType,
 )
@@ -140,6 +142,66 @@ class TestCatalogService:
         service = CatalogService()
         with pytest.raises(CatalogEntryNotFoundError):
             await service.get_entry("nonexistent")
+
+
+@pytest.mark.unit
+class TestCatalogEntryValidation:
+    """Model invariants on ``CatalogEntry``."""
+
+    def test_stdio_requires_npm_version(self) -> None:
+        with pytest.raises(ValidationError, match="npm_version"):
+            CatalogEntry(
+                id="x",
+                name="X",
+                npm_package="@example/server-x",
+                transport="stdio",
+            )
+
+    @pytest.mark.parametrize("version", ["latest", "^1.0.0", "~1.2", "1.x", "1.2"])
+    def test_npm_version_must_be_exact(self, version: str) -> None:
+        with pytest.raises(ValidationError, match="exact published version"):
+            CatalogEntry(
+                id="x",
+                name="X",
+                npm_package="@example/server-x",
+                npm_version=version,
+                transport="stdio",
+            )
+
+    @pytest.mark.parametrize("version", ["1.2.3", "2025.4.8", "1.2.3-beta.1"])
+    def test_exact_npm_version_accepted(self, version: str) -> None:
+        entry = CatalogEntry(
+            id="x",
+            name="X",
+            npm_package="@example/server-x",
+            npm_version=version,
+            transport="stdio",
+        )
+        assert entry.npm_version == version
+
+    def test_required_dialect_rejected_on_non_database_entry(self) -> None:
+        with pytest.raises(ValidationError, match="only valid on a database entry"):
+            CatalogEntry(
+                id="x",
+                name="X",
+                npm_package="@example/server-x",
+                npm_version="1.0.0",
+                transport="stdio",
+                required_connection_type=ConnectionType.GITHUB,
+                required_dialect="postgres",
+            )
+
+    def test_required_dialect_allowed_on_database_entry(self) -> None:
+        entry = CatalogEntry(
+            id="x",
+            name="X",
+            npm_package="@example/server-x",
+            npm_version="1.0.0",
+            transport="stdio",
+            required_connection_type=ConnectionType.DATABASE,
+            required_dialect="postgres",
+        )
+        assert entry.required_dialect == "postgres"
 
 
 class FakeConnectionCatalog:

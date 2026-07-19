@@ -301,6 +301,30 @@ class TestFailureModes:
         assert excinfo.value.retry_after_seconds == 12.0
 
 
+class TestMalformedRows:
+    @pytest.mark.unit
+    @respx.mock
+    async def test_whitespace_only_fields_skipped_not_aborting(self) -> None:
+        """A whitespace-only title/url row is dropped, not aborting the search.
+
+        ``SearchResult.title``/``url`` are ``NotBlankStr``; without the strip
+        guard a "   " row would raise a validation error outside the per-item
+        filter and blank the whole page.
+        """
+        rows = [
+            {"title": "   ", "url": "https://blank.example", "description": "x"},
+            {"title": "Good", "url": "   ", "description": "y"},
+            {"title": "Real", "url": "https://real.example", "description": "z"},
+        ]
+        respx.get(url__startswith=_GET_PRESET.endpoint).mock(
+            return_value=httpx.Response(200, json={"web": {"results": rows}})
+        )
+        results = await _provider(_GET_PRESET).search("q", max_results=5)
+        assert results == [
+            SearchResult(title="Real", url="https://real.example", snippet="z")
+        ]
+
+
 class TestResultCeiling:
     @pytest.mark.unit
     @respx.mock

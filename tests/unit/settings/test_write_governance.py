@@ -211,6 +211,8 @@ async def test_engine_oracle_strengthening_or_unguarded_key_is_unguarded(
     [
         ("mcp_sandbox_enabled", "true", "false"),  # disable sandbox
         ("mcp_sandbox_network", "bridge", "host"),  # share host network
+        ("mcp_sandbox_network", "none", "bridge"),  # add egress (none is stronger)
+        ("mcp_sandbox_network", "none", "host"),  # none straight to host
         ("mcp_sandbox_cpus", "1.0", "0"),  # lift CPU quota
         ("mcp_sandbox_cpus", "1.0", "0.0"),
     ],

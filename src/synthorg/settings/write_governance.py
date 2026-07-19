@@ -20,7 +20,7 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.normalization import compare_ci
+from synthorg.core.normalization import compare_ci, normalize_identifier
 from synthorg.core.task_enums import Stakes, compare_stakes
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
@@ -79,9 +79,21 @@ _MCP_SANDBOX_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
     }
 )
 _MCP_SANDBOX_ENABLED_DEFAULT: Final[str] = "true"
-# Docker ``--network host`` shares the host network namespace, removing egress
-# isolation; ``--cpus 0`` lifts the CPU quota entirely.
-_MCP_SANDBOX_HOST_NETWORK: Final[str] = "host"
+_MCP_SANDBOX_NETWORK_DEFAULT: Final[str] = "bridge"
+# Network isolation strength, most-isolated first: ``none`` blocks all egress,
+# ``bridge`` allows egress through a NAT'd interface, ``host`` shares the host
+# network namespace. A move toward a lower rank (e.g. none -> bridge, or
+# bridge -> host) relaxes isolation and is guarded; the reverse strengthens it.
+_MCP_SANDBOX_NETWORK_ISOLATION: Final[dict[str, int]] = {
+    "none": 2,
+    "bridge": 1,
+    "host": 0,
+}
+
+
+def _network_isolation_rank(value: str) -> int | None:
+    """Return the isolation rank of a sandbox network value, or ``None``."""
+    return _MCP_SANDBOX_NETWORK_ISOLATION.get(normalize_identifier(value))
 
 
 def _is_unlimited_cpus(value: str) -> bool:
@@ -102,11 +114,16 @@ def _is_mcp_sandbox_weakening(key: str, *, current: str | None, new: str) -> boo
         )
         return currently_on and not compare_ci(new, "true")
     if key == _MCP_SANDBOX_NETWORK_KEY:
-        new_host = compare_ci(new, _MCP_SANDBOX_HOST_NETWORK)
-        current_host = current is not None and compare_ci(
-            current, _MCP_SANDBOX_HOST_NETWORK
-        )
-        return new_host and not current_host
+        current_value = current if current is not None else _MCP_SANDBOX_NETWORK_DEFAULT
+        new_rank = _network_isolation_rank(new)
+        current_rank = _network_isolation_rank(current_value)
+        if new_rank is None or current_rank is None:
+            # An unrecognised value is rejected downstream by the validator; do
+            # not treat it as a weakening transition here.
+            return False
+        # Any move toward less isolation (none -> bridge, none/bridge -> host)
+        # is a weakening; the reverse (bridge -> none, host -> bridge) is not.
+        return new_rank < current_rank
     if key == _MCP_SANDBOX_CPUS_KEY:
         current_unlimited = current is not None and _is_unlimited_cpus(current)
         return _is_unlimited_cpus(new) and not current_unlimited
