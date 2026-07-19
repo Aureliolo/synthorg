@@ -26,7 +26,12 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.compaction.models import CompressionMetadata
-from synthorg.engine.context_disclosure import validate_tool_disclosure
+from synthorg.engine.context_disclosure import (
+    resource_loaded_update,
+    tool_loaded_update,
+    tool_unloaded_update,
+    validate_tool_disclosure,
+)
 from synthorg.engine.context_snapshot import AgentContextSnapshot
 from synthorg.engine.errors import ExecutionStateError, MaxTurnsExceededError
 from synthorg.engine.task_execution import TaskExecution
@@ -511,16 +516,8 @@ class AgentContext(BaseModel):
         Returns:
             New ``AgentContext`` with the tool marked as loaded.
         """
-        if tool_name in self.loaded_tools:
-            return self
-        new_loaded = self.loaded_tools | {tool_name}
-        new_order = (*self.tool_load_order, tool_name)
-        return self.model_copy(
-            update={
-                "loaded_tools": new_loaded,
-                "tool_load_order": new_order,
-            },
-        )
+        update = tool_loaded_update(self.loaded_tools, self.tool_load_order, tool_name)
+        return self if update is None else self.model_copy(update=update)
 
     def with_tool_unloaded(self, tool_name: str) -> AgentContext:
         """Mark a tool's L2 body as unloaded.
@@ -534,20 +531,10 @@ class AgentContext(BaseModel):
         Returns:
             New ``AgentContext`` with the tool removed.
         """
-        if tool_name not in self.loaded_tools:
-            return self
-        new_loaded = self.loaded_tools - {tool_name}
-        new_order = tuple(t for t in self.tool_load_order if t != tool_name)
-        new_resources = frozenset(
-            (t, r) for t, r in self.loaded_resources if t != tool_name
+        update = tool_unloaded_update(
+            self.loaded_tools, self.tool_load_order, self.loaded_resources, tool_name
         )
-        return self.model_copy(
-            update={
-                "loaded_tools": new_loaded,
-                "tool_load_order": new_order,
-                "loaded_resources": new_resources,
-            },
-        )
+        return self if update is None else self.model_copy(update=update)
 
     def with_resource_loaded(
         self,
@@ -565,13 +552,8 @@ class AgentContext(BaseModel):
         Returns:
             New ``AgentContext`` with the resource marked as loaded.
         """
-        pair = (tool_name, resource_id)
-        if pair in self.loaded_resources:
-            return self
-        new_resources = self.loaded_resources | {pair}
-        return self.model_copy(
-            update={"loaded_resources": new_resources},
-        )
+        update = resource_loaded_update(self.loaded_resources, tool_name, resource_id)
+        return self if update is None else self.model_copy(update=update)
 
     @property
     def has_turns_remaining(self) -> bool:

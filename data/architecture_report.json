@@ -464,8 +464,8 @@
     },
     "src/synthorg/engine/context.py": {
       "cap": 500,
-      "loc": 500,
-      "ratio": 1.0,
+      "loc": 482,
+      "ratio": 0.964,
       "tier": "code"
     },
     "src/synthorg/engine/evolution/factory.py": {
@@ -1660,7 +1660,7 @@
     "synthorg.observability.events.evolution": 24,
     "synthorg.observability.events.execution": 42,
     "synthorg.observability.events.hr": 39,
-    "synthorg.observability.events.integrations": 79,
+    "synthorg.observability.events.integrations": 78,
     "synthorg.observability.events.mcp": 67,
     "synthorg.observability.events.memory": 57,
     "synthorg.observability.events.meta": 70,

@@ -139,8 +139,10 @@ class AgentEngineChatActionMixin:
             identity: The acting agent.
             instruction: The human instruction (wrapped untrusted).
             effective_autonomy: Autonomy tier governing the invoker.
-            max_turns: Hard turn cap for this turn's loop (a continued turn
-                resets to a fresh budget of this size).
+            max_turns: Hard turn cap, applied when building a FRESH context. A
+                continued turn resets its turn/cost counters to a fresh budget
+                but keeps the cap set when ``prior_context`` was first built, so
+                this argument does not re-cap an in-flight conversation.
             turn_observer: Optional per-turn progress callback.
             cost_ceiling: Optional per-session cost ceiling (used only when
                 building a fresh context; a continued turn keeps the ceiling
@@ -200,7 +202,9 @@ class AgentEngineChatActionMixin:
             logger.info(
                 EXECUTION_CHAT_ACTION_STARTED,
                 agent_id=agent_id,
-                max_turns=max_turns,
+                # The cap actually in force: a continued turn keeps the cap from
+                # its prior context, which can differ from the argument.
+                max_turns=ctx.max_turns,
             )
             result = await self._run_chat_loop(
                 ctx,

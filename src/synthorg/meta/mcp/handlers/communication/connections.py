@@ -52,7 +52,6 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.integrations import SECRET_CAPTURE_REQUESTED
 from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
@@ -68,6 +67,11 @@ _TY_CONNECTION_TYPE = "ConnectionType string"
 _ARG_DRAFT_ID = "connection_draft_id"
 _TY_DRAFT_ID_REQUIRED = "required when credential_handles are supplied"
 _ARG_FIELD_NAME = "field_name"
+_CAPTURE_REQUESTED_MESSAGE = (
+    "Masked capture requested for {label!r}. Wait for the operator to provide "
+    "it out of band; the handle arrives on a later turn. Do not call "
+    "connections.create until then."
+)
 
 
 def _resolve_connection_type(value: str) -> ConnectionType:
@@ -362,10 +366,9 @@ async def _connections_request_secret_capture(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         args = typed_args(arguments, ConnectionsRequestSecretCaptureArgs)
         connection_type = _resolve_connection_type(args.connection_type)
-        metadata = get_connection_type_metadata(connection_type)
+        fields = get_connection_type_metadata(connection_type).fields
         field = next(
-            (f for f in metadata.fields if f.name == args.field_name and f.secret),
-            None,
+            (f for f in fields if f.name == args.field_name and f.secret), None
         )
         if field is None:
             not_secret = f"a secret field of connection type {connection_type.value!r}"
@@ -390,6 +393,7 @@ async def _connections_request_secret_capture(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    # SECRET_CAPTURE_REQUESTED is emitted by register_pending, with its siblings.
     logger.info(
         MCP_ADMIN_OP_EXECUTED,
         tool_name=tool,
@@ -398,22 +402,12 @@ async def _connections_request_secret_capture(
         draft_id=args.draft_id,
         field=field.name,
     )
-    logger.info(
-        SECRET_CAPTURE_REQUESTED,
-        draft_id=args.draft_id,
-        field=field.name,
-        connection_type=connection_type.value,
-    )
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(
         {
             "status": "capture_requested",
             "field": field.name,
-            "message": (
-                f"Masked capture requested for {field.label!r}. Wait for the "
-                "operator to provide it out of band; the handle arrives on a "
-                "later turn. Do not call connections.create until then."
-            ),
+            "message": _CAPTURE_REQUESTED_MESSAGE.format(label=field.label),
         }
     )
 

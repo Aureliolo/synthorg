@@ -38,6 +38,7 @@ from synthorg.observability.events.integrations import (
     SECRET_CAPTURE_ORPHANED,
     SECRET_CAPTURE_PURGED,
     SECRET_CAPTURE_REJECTED,
+    SECRET_CAPTURE_REQUESTED,
     SECRET_CAPTURE_STORED,
 )
 from synthorg.persistence.secret_backends.protocol import SecretBackend
@@ -323,6 +324,12 @@ class SecretCaptureService:
         """
         entry = _PendingEntry(capture=pending, registered_at=self._clock.now())
         self._pending.setdefault(pending.draft_id, {})[pending.field_name] = entry
+        logger.info(
+            SECRET_CAPTURE_REQUESTED,
+            draft_id=pending.draft_id,
+            field=pending.field_name,
+            connection_type=pending.connection_type,
+        )
 
     def take_pending(self, draft_id: str) -> tuple[PendingSecretCapture, ...]:
         """Return and clear the pending capture requests for a draft.
