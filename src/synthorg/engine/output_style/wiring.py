@@ -189,7 +189,12 @@ async def rebuild_and_bind_output_style(
                 OutputStylePolicyService.from_config,
                 config.model_copy(update={"pack": "default"}),
             )
-        except (OutputStyleError, OutputStylePackNotFoundError) as exc2:
+        except Exception as exc2:  # noqa: BLE001 -- criticals re-raised; fail-closed
+            # lint-allow: swallow-ok -- the default-pack retry failing for any
+            # recoverable reason (a corrupt resource, an OSError) must bind the
+            # in-code em-dash ban, never propagate and leave boundaries unbound;
+            # criticals are re-raised by reraise_critical.
+            reraise_critical(exc2)
             logger.error(
                 OUTPUT_STYLE_PACK_INVALID,
                 pack_name="default",

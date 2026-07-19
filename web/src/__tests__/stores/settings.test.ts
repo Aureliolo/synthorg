@@ -398,12 +398,16 @@ describe('useSettingsStore', () => {
       // finally returns, the store must drop it (token <= lastApplied) rather
       // than staging pendingConfirm with the outdated value.
       const olderGate = deferred()
+      const firstCallEntered = deferred()
       let callCount = 0
       server.use(
         http.put('/api/v1/settings/api/host', async ({ request }) => {
           const body = (await request.json()) as { value: string }
           callCount += 1
           if (callCount === 1) {
+            // Signal that the older request has claimed the first slot before
+            // the newer request is sent, so the ordering is deterministic.
+            firstCallEntered.resolve()
             await olderGate.promise
             return HttpResponse.json(
               apiError('Confirmation required', {
@@ -428,6 +432,9 @@ describe('useSettingsStore', () => {
       const olderPromise = useSettingsStore
         .getState()
         .updateSetting('api', 'host', 'older-value')
+      // Wait until the older request is parked in the first-call branch, so the
+      // newer request deterministically lands as the second call.
+      await firstCallEntered.promise
       const newerResult = await useSettingsStore
         .getState()
         .updateSetting('api', 'host', 'newer-value')

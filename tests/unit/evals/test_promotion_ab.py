@@ -119,9 +119,33 @@ def _curve_judge() -> ScriptedJudge:
     return ScriptedJudge(responses=responses, default_scores={"correctness": 0.0})
 
 
+def _gain_driving_brief_suite(tmp_path: Path) -> Path:
+    """Build a one-brief suite holding only the checkout-resilience brief.
+
+    The whole A/B gain comes from that single brief: the memory-warmed
+    candidate recalls its lesson and scores the good deliverable while the base
+    scores the naive one; the other ten golden briefs score identically for
+    both embedders and add only cost. Scoring just the gain-driving brief keeps
+    the promotion proof exact while running a fraction of the full suite, so the
+    repeated candidate/base/warm-up rounds stay well within the per-test
+    wall-clock budget under parallel load.
+
+    Returns:
+        A directory containing only ``checkout_resilience.yaml``.
+    """
+    suite = tmp_path / "gain-brief"
+    suite.mkdir()
+    brief_name = "checkout_resilience.yaml"
+    (suite / brief_name).write_text(
+        (_BRIEFS / brief_name).read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    return suite
+
+
 async def _run_round(
     out_dir: Path,
     *,
+    brief_suite: Path,
     memory_backend: InMemoryBackend | None,
     procedural_config: ProceduralMemoryConfig,
 ) -> int:
@@ -132,7 +156,7 @@ async def _run_round(
     """
     scorecard = await run_benchmark_async(
         company_config=_REFERENCE,
-        brief_suite=_BRIEFS,
+        brief_suite=brief_suite,
         out_dir=out_dir,
         anchors_dir=_ANCHORS,
         provider=ScriptedDriver("benchmark-provider", strategy=_CurveStrategy()),
@@ -143,7 +167,7 @@ async def _run_round(
     return scorecard.total
 
 
-async def _score_candidate_embedder(tmp_path: Path) -> int:
+async def _score_candidate_embedder(tmp_path: Path, *, brief_suite: Path) -> int:
     """Benchmark a fine-tuned embedder that recalls the org's lesson.
 
     Returns:
@@ -155,17 +179,19 @@ async def _score_candidate_embedder(tmp_path: Path) -> int:
     for index in range(_WARMUP_ROUNDS):
         await _run_round(
             tmp_path / f"warmup-{index}",
+            brief_suite=brief_suite,
             memory_backend=backend,
             procedural_config=config,
         )
     return await _run_round(
         tmp_path / "candidate",
+        brief_suite=brief_suite,
         memory_backend=backend,
         procedural_config=config,
     )
 
 
-async def _score_base_embedder(tmp_path: Path) -> int:
+async def _score_base_embedder(tmp_path: Path, *, brief_suite: Path) -> int:
     """Benchmark the incumbent embedder that does not recall the lesson.
 
     Returns:
@@ -173,6 +199,7 @@ async def _score_base_embedder(tmp_path: Path) -> int:
     """
     return await _run_round(
         tmp_path / "base",
+        brief_suite=brief_suite,
         memory_backend=None,
         procedural_config=ProceduralMemoryConfig(
             model="test-small-001",
@@ -185,8 +212,9 @@ async def test_promotion_gate_decides_on_golden_benchmark_ab(
     tmp_path: Path,
 ) -> None:
     """A measured benchmark win promotes; a tie or regression does not."""
-    candidate_total = await _score_candidate_embedder(tmp_path)
-    base_total = await _score_base_embedder(tmp_path)
+    brief_suite = _gain_driving_brief_suite(tmp_path)
+    candidate_total = await _score_candidate_embedder(tmp_path, brief_suite=brief_suite)
+    base_total = await _score_base_embedder(tmp_path, brief_suite=brief_suite)
 
     gain = candidate_total - base_total
     assert gain > 0, (

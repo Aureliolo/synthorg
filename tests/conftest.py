@@ -729,12 +729,6 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    stays off this list. ``test_meetings.py`` is listed for the single
 #    ``test_auto_wired_meetings_returns_200`` build; its other tests use the
 #    shared client.
-#  - ``test_promotion_ab.py``: its sole test runs the whole golden-company
-#    benchmark suite several times over (warm-up rounds plus a candidate and a
-#    base scoring pass) to prove the finetune gate only promotes on a measured
-#    A/B win. Running the full 11-brief suite repeatedly is inherently near the
-#    budget and tips past it under ``--dist=loadfile`` contention -- the
-#    repeated whole-suite scoring is the test's whole point, not a fixture leak.
 # pytest nodeids always use ``/`` separators on every platform, so these
 # fragments match on Windows too.
 _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
@@ -754,7 +748,6 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/api/controllers/test_provider_health.py",
     "unit/api/controllers/test_meetings.py::test_auto_wired_meetings_returns_200",
     "unit/api/controllers/test_learning.py",
-    "unit/evals/test_promotion_ab.py",
 )
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 # pytest-repeat's ``--count`` flag is no longer produced by any automated
