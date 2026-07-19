@@ -28,12 +28,24 @@ name: CodSpeed
 # Mode rationale: CPU Simulation (cachegrind / valgrind), instruction-count
 # variance under 1% across runners. Walltime would need Macro Runners
 # (CodSpeed's bare-metal pool) to match that variance, which we have
-# explicitly scoped out to keep the gate free-tier. The memory instrument
-# rides alongside simulation in the same invocation (mode: simulation,memory):
-# as of CodSpeed runner 4.17 memtrack runs sudo-less via file capabilities on
-# standard GitHub-hosted runners, so heap-allocation regressions surface next
-# to CPU in the same PR report at no extra job. Both surfaces meet the floor
-# (pytest-codspeed 5.0.3 >= 4.3.0, @codspeed/vitest-plugin 5.6.0 >= 5.2.0).
+# explicitly scoped out to keep the gate free-tier.
+#
+# Python rides the memory instrument alongside simulation (mode:
+# simulation,memory): as of CodSpeed runner 4.17 memtrack runs sudo-less
+# via file capabilities on standard GitHub-hosted runners, and the Python
+# benchmarks touch large enough, deterministic allocations for heap
+# regressions to surface next to CPU in the same report at no extra job
+# (pytest-codspeed 5.0.3 >= 4.3.0).
+#
+# Web runs simulation only. Every dashboard benchmark is a sub-kilobyte
+# pure helper (locale, format, csrf, sanitize, pagination), where memtrack
+# measures a few hundred bytes dominated by V8 allocator internals (Intl
+# temporaries, exception objects on fall-through paths). That figure shifts
+# with the CI runner's CPU vendor on identical source, so the memory
+# instrument produced phantom regressions there with no real signal; the
+# deterministic simulation instruction count (variance under 1% across
+# runners) is the trustworthy guard for these micro helpers
+# (@codspeed/vitest-plugin 5.6.0 >= 5.2.0).
 
 on:
   push:
@@ -189,9 +201,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
-    # 30 (was 15): headroom for the 3-attempt CodSpeed ladder below, each
-    # attempt running two instruments (simulation + memory); see the
-    # codspeed-python job for the rationale.
+    # 30: headroom for the 3-attempt CodSpeed ladder below. Web runs a
+    # single instrument (simulation only, see the mode-rationale comment
+    # above), so this is budgeted generously relative to the codspeed-python
+    # job, which runs two instruments per attempt.
     timeout-minutes: 30
     permissions:
       contents: read
@@ -225,7 +238,7 @@ jobs:
         continue-on-error: true
         uses: CodSpeedHQ/action@f99becdce5e5d51fd556489ebef684f4ecfd6286 # v4.18.5
         with:
-          mode: simulation,memory
+          mode: simulation
           run: npm --prefix web run bench
       - name: Backoff before CodSpeed Web attempt 2
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' }}
@@ -238,7 +251,7 @@ jobs:
         continue-on-error: true
         uses: CodSpeedHQ/action@f99becdce5e5d51fd556489ebef684f4ecfd6286 # v4.18.5
         with:
-          mode: simulation,memory
+          mode: simulation
           run: npm --prefix web run bench
       - name: Backoff before CodSpeed Web attempt 3
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
@@ -249,7 +262,7 @@ jobs:
         if: ${{ !cancelled() && steps.codspeed-web-1.outcome == 'failure' && steps.codspeed-web-2.outcome == 'failure' }}
         uses: CodSpeedHQ/action@f99becdce5e5d51fd556489ebef684f4ecfd6286 # v4.18.5
         with:
-          mode: simulation,memory
+          mode: simulation
           run: npm --prefix web run bench
 
   # ── Branch-protection-friendly aggregators ──
