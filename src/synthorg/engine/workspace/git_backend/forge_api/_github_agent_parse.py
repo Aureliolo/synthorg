@@ -168,17 +168,22 @@ def repo_from(model: GhRepo) -> ForgeRepo:
 
     Raises:
         GitBackendForgeApiError: When the payload lacks the identifying
-            ``full_name`` / ``clone_url`` fields.
+            ``full_name`` / ``clone_url`` fields, or carries blank fields
+            that fail the ``NotBlankStr`` constraint.
     """
     if not model.full_name or not model.clone_url:
         msg = "GitHub repo response missing 'full_name'/'clone_url'"
         raise GitBackendForgeApiError(msg)
-    return ForgeRepo(
-        full_name=NotBlankStr(model.full_name),
-        default_branch=NotBlankStr(model.default_branch or "main"),
-        private=model.private,
-        clone_url=NotBlankStr(model.clone_url),
-    )
+    try:
+        return ForgeRepo(
+            full_name=NotBlankStr(model.full_name),
+            default_branch=NotBlankStr(model.default_branch or "main"),
+            private=model.private,
+            clone_url=NotBlankStr(model.clone_url),
+        )
+    except ValidationError as exc:
+        msg = "malformed GitHub repo response fields"
+        raise GitBackendForgeApiError(msg) from exc
 
 
 def file_content_from(model: GhContentFile, *, ref: str) -> ForgeFileContent:
@@ -222,16 +227,21 @@ def dir_entry_from(model: GhContentEntry) -> ForgeDirEntry:
 def issue_from(model: GhIssue) -> ForgeIssue:
     # ``state`` is a documented open/closed enum on GitHub; the Literal on
     # ForgeIssue makes Pydantic validate it, so an impossible value fails
-    # loud at construction rather than propagating a bad string.
-    return ForgeIssue(
-        number=model.number,
-        title=model.title,
-        state=cast("ForgeOpenClosedState", model.state),
-        body=model.body or "",
-        author=_login(model.user),
-        url=model.html_url,
-        labels=tuple(label.name for label in model.labels if label.name),
-    )
+    # loud at construction. Map that to the typed forge error the client
+    # contract promises rather than leaking a raw ValidationError.
+    try:
+        return ForgeIssue(
+            number=model.number,
+            title=model.title,
+            state=cast("ForgeOpenClosedState", model.state),
+            body=model.body or "",
+            author=_login(model.user),
+            url=model.html_url,
+            labels=tuple(label.name for label in model.labels if label.name),
+        )
+    except ValidationError as exc:
+        msg = f"GitHub issue #{model.number} has an unexpected state {model.state!r}"
+        raise GitBackendForgeApiError(msg) from exc
 
 
 def comment_from(model: GhComment) -> ForgeComment:
@@ -244,18 +254,22 @@ def comment_from(model: GhComment) -> ForgeComment:
 
 
 def pull_from(model: GhPull) -> ForgePullRequest:
-    return ForgePullRequest(
-        number=model.number,
-        title=model.title,
-        state=cast("ForgeOpenClosedState", model.state),
-        body=model.body or "",
-        author=_login(model.user),
-        url=model.html_url,
-        source_branch=model.head.ref if model.head is not None else "",
-        target_branch=model.base.ref if model.base is not None else "",
-        draft=model.draft,
-        merged=model.merged,
-    )
+    try:
+        return ForgePullRequest(
+            number=model.number,
+            title=model.title,
+            state=cast("ForgeOpenClosedState", model.state),
+            body=model.body or "",
+            author=_login(model.user),
+            url=model.html_url,
+            source_branch=model.head.ref if model.head is not None else "",
+            target_branch=model.base.ref if model.base is not None else "",
+            draft=model.draft,
+            merged=model.merged,
+        )
+    except ValidationError as exc:
+        msg = f"GitHub pull #{model.number} has an unexpected state {model.state!r}"
+        raise GitBackendForgeApiError(msg) from exc
 
 
 def review_from(model: GhReview) -> ForgeReview:

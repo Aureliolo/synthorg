@@ -139,6 +139,61 @@ class TestGitHubReadSurface:
                 await client.list_dir(owner=_OWNER, repo=_REPO, path="f.py")
 
     @respx.mock
+    async def test_list_dir_root_omits_trailing_slash(self) -> None:
+        route = respx.get(f"{_GH}/repos/acme/proj-1/contents").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "name": "README.md",
+                        "path": "README.md",
+                        "type": "file",
+                        "size": 3,
+                        "sha": "a",
+                    },
+                ],
+            ),
+        )
+        async with _github() as client:
+            entries = await client.list_dir(owner=_OWNER, repo=_REPO, path="")
+        assert route.called
+        assert [str(e.name) for e in entries] == ["README.md"]
+
+    @respx.mock
+    async def test_get_repo_blank_field_maps_to_api_error(self) -> None:
+        respx.get(f"{_GH}/repos/acme/proj-1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "full_name": "   ",
+                    "default_branch": "main",
+                    "private": False,
+                    "clone_url": "https://github.com/acme/proj-1.git",
+                },
+            ),
+        )
+        async with _github() as client:
+            with pytest.raises(GitBackendForgeApiError):
+                await client.get_repo(owner=_OWNER, repo=_REPO)
+
+    @respx.mock
+    async def test_get_issue_unexpected_state_maps_to_api_error(self) -> None:
+        respx.get(f"{_GH}/repos/acme/proj-1/issues/5").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "number": 5,
+                    "title": "weird",
+                    "state": "escalated",
+                    "user": {"login": "a"},
+                },
+            ),
+        )
+        async with _github() as client:
+            with pytest.raises(GitBackendForgeApiError):
+                await client.get_issue(owner=_OWNER, repo=_REPO, number=5)
+
+    @respx.mock
     async def test_list_issues_filters_pull_requests(self) -> None:
         respx.get(f"{_GH}/repos/acme/proj-1/issues").mock(
             return_value=httpx.Response(

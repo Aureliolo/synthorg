@@ -14,7 +14,7 @@ stays within its size budget.
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.integrations.state import IntegrationsStateSlice, connection_catalog_of
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -106,8 +106,11 @@ async def build_forge_tools_runtime_or_none(
         return None
     if not connection_name:
         return None
+    connection_catalog = app_state.slice(IntegrationsStateSlice).connection_catalog
+    if connection_catalog is None:
+        return None
     return ForgeToolsRuntime(
-        connection_catalog=connection_catalog_of(app_state),
+        connection_catalog=connection_catalog,
         connection_name=connection_name,
         timeout_seconds=timeout_seconds,
         max_read_chars=max_read_chars,
@@ -154,8 +157,11 @@ async def build_chat_tools_runtime_or_none(
         return None
     if not connection_name:
         return None
+    connection_catalog = app_state.slice(IntegrationsStateSlice).connection_catalog
+    if connection_catalog is None:
+        return None
     return ChatToolsRuntime(
-        connection_catalog=connection_catalog_of(app_state),
+        connection_catalog=connection_catalog,
         connection_name=connection_name,
         timeout_seconds=timeout_seconds,
     )

@@ -47,6 +47,7 @@ class TestSlackSendMessage:
         assert ref.channel == "C123"
         assert ref.ts == "1.2"
         assert b'"text":"hello"' in route.calls.last.request.content
+        assert b'"thread_ts"' not in route.calls.last.request.content
 
     @respx.mock
     async def test_send_message_in_thread(self) -> None:

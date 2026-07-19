@@ -44,8 +44,11 @@ Four built-in adapters are provided:
 The Slack adapter is unified onto the same bot-token Web API the agent chat tools
 use: it resolves the bound `SLACK` connection's token from the connection catalog
 (lazily, on the first send, so a connection created after boot works without a
-restart) and posts via `chat.postMessage`; egress is pinned to `slack.com` by the
-chat client factory. The legacy incoming-webhook path has been retired. The ntfy
+restart) and posts via `chat.postMessage`; egress is pinned to the bound
+connection's host by the chat client factory, which the factory constrains to a
+`slack.com` host (defaulting to `slack.com` when the connection sets no base URL)
+so a mis-set base URL cannot exfiltrate the bot token. The legacy incoming-webhook
+path has been retired. The ntfy
 adapter validates target URLs against SSRF (private/loopback IP rejection). The
 email adapter enforces STARTTLS when `use_tls` is enabled and rejects partial
 credentials (username without password or vice versa).

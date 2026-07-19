@@ -85,9 +85,10 @@ class ForgeAgentBase(BaseForgeClient, ABC):
         ref: str | None = None,
     ) -> tuple[ForgeDirEntry, ...]:
         action = f"list dir {owner}/{repo}/{path}"
+        subpath = f"/{quote(path, safe='/')}" if path else ""
         resp = await self._request(
             "GET",
-            f"/repos/{owner}/{repo}/contents/{quote(path, safe='/')}",
+            f"/repos/{owner}/{repo}/contents{subpath}",
             action=action,
             params={"ref": ref} if ref else None,
         )

@@ -53,7 +53,7 @@ notifications:
 | Slack | `chat.postMessage` via the Slack Web API | `connection` (required, a bound `SLACK` connection holding the bot token), `channel` (required) |
 | Email | SMTP with STARTTLS | `host`, `to_addrs` (required), `port`, `username`, `password`, `from_addr`, `use_tls` |
 
-The Slack sink posts through the bound `SLACK` connection's bot token (`chat.postMessage`), egress pinned to `slack.com`; the legacy incoming-webhook path has been retired. The ntfy adapter validates its URL against SSRF (private / loopback / link-local IPs rejected). The email adapter enforces STARTTLS when `use_tls` is true.
+The Slack sink posts through the bound `SLACK` connection's bot token (`chat.postMessage`), egress pinned to the bound connection's host (a `slack.com` host, defaulting to `slack.com` when unset); the legacy incoming-webhook path has been retired. The ntfy adapter validates its URL against SSRF (private / loopback / link-local IPs rejected). The email adapter enforces STARTTLS when `use_tls` is true.
 
 ### Severity Filtering
 

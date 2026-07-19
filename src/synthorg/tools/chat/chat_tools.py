@@ -1,70 +1,74 @@
 """Resource-grouped chat agent tools.
 
-Vendor-neutral tools (``chat_messages`` / ``chat_directory``) that
-resolve a bound chat connection, dispatch through the
-connection-type-keyed ``chat_api`` client registry, and route sending a
-message through the shared approval gate (``COMMS_EXTERNAL``). The
-concrete platform is selected by the bound connection's type, so the
-agent never depends on which platform the operator connected.
+Vendor-neutral tools (``chat_messages`` / ``chat_directory``) that resolve a
+bound chat connection, dispatch through the connection-type-keyed ``chat_api``
+client registry, and route sending a message through the shared approval gate
+(``COMMS_EXTERNAL``). The concrete platform is selected by the bound
+connection's type, so the agent never depends on which platform the operator
+connected. The shared resolve / gate / dispatch / error-map pipeline lives in
+:mod:`synthorg.tools._governed_connection_tool`; this module supplies only the
+chat-specific hooks and the per-resource dispatch.
 """
 
-import json
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import ClassVar, override
 
-from pydantic import BaseModel, JsonValue
-from pydantic import ValidationError as PydanticValidationError
+from pydantic import BaseModel
 
-from synthorg.core.boundary import parse_typed
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.chat_api import (
     ChatApiClient,
     build_chat_api_client,
     chat_api_supported,
 )
-from synthorg.integrations.connections.catalog import ConnectionCatalog
-from synthorg.integrations.connections.models import Connection
+from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.errors import (
     ChatApiAuthError,
     ChatApiError,
     ChatApiRateLimitError,
-    SecretRetrievalError,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import safe_error_description
 from synthorg.observability.events.tool import (
     CHAT_TOOL_CONNECTION_FAILED,
     CHAT_TOOL_CREDENTIAL_FAILED,
 )
-from synthorg.security.autonomy.enums import ActionType, ToolCategory
-from synthorg.tools._governed_action import (
-    ConnectionApprovalGate,
-    GovernedApprovalMismatchError,
-    require_governed_args,
-    signature_for,
+from synthorg.tools._governed_connection_tool import (
+    GovernedConnectionTool,
+    build_connection_gate,
 )
-from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools._governed_connection_tool import json_result as _json_result
+from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.chat._args import ChatDirectoryArgs, ChatMessagesArgs
-from synthorg.tools.chat._runtime import ChatToolDeps
+from synthorg.tools.chat._runtime import ChatToolDeps, ChatToolsRuntime
 from synthorg.tools.chat.errors import (
     ChatConnectionNotFoundError,
     ChatCredentialError,
     ChatRateLimitedError,
     ChatToolArgumentError,
-    ChatToolError,
     ChatUnsupportedError,
     ChatUpstreamError,
 )
-
-logger = get_logger(__name__)
-
-_ACTION_TYPE = ActionType.COMMS_EXTERNAL.value
+from synthorg.tools.errors import ToolError
 
 
-class _BaseChatTool(BaseTool, ABC):
-    """Shared connection-resolution + approval gating for the chat tools."""
+class _BaseChatTool(GovernedConnectionTool[ChatApiClient, ChatToolsRuntime], ABC):
+    """Chat bindings for the shared governed-connection tool pipeline."""
 
-    args_model: ClassVar[type[BaseModel] | None] = None
+    _KIND: ClassVar[str] = "Chat"
+    _CONNECTION_FAILED_EVENT: ClassVar[str] = CHAT_TOOL_CONNECTION_FAILED
+    _CREDENTIAL_FAILED_EVENT: ClassVar[str] = CHAT_TOOL_CREDENTIAL_FAILED
+    # A chat platform (e.g. Slack) has a default host, so an empty base_url
+    # is valid; the client factory pins egress to the platform's host.
+    _REQUIRE_BASE_URL: ClassVar[bool] = False
+    _UNSUPPORTED_MSG: ClassVar[str] = (
+        "Connection type {ctype!r} has no chat Web API client wired"
+    )
+    _UNSUPPORTED_REASON: ClassVar[str] = "unsupported_platform"
+    _not_found_error: ClassVar[type[ToolError]] = ChatConnectionNotFoundError
+    _unsupported_error: ClassVar[type[ToolError]] = ChatUnsupportedError
+    _argument_error: ClassVar[type[ToolError]] = ChatToolArgumentError
+    _credential_error: ClassVar[type[ToolError]] = ChatCredentialError
+    _rate_limited_error: ClassVar[type[ToolError]] = ChatRateLimitedError
 
     def __init__(
         self,
@@ -77,119 +81,35 @@ class _BaseChatTool(BaseTool, ABC):
         super().__init__(
             name=name,
             description=description,
-            # EXTERNAL_DATA (not COMMUNICATION): a chat tool is external-API
-            # access of the same shape as the forge / external_api tools
-            # (bound connection, credential-brokered, approval-gated egress),
-            # so it belongs to the same access tier. Governance is the
-            # COMMS_EXTERNAL action_type plus the approval gate, not the
-            # category.
-            category=ToolCategory.EXTERNAL_DATA,
-            action_type=_ACTION_TYPE,
-            parameters_schema=args_model.model_json_schema(),
-        )
-        self._runtime = deps.runtime
-        self._gate = ConnectionApprovalGate(
-            approval_store=deps.approval_store,
-            agent_id=deps.agent_id,
-            task_id=deps.task_id,
-            action_type=_ACTION_TYPE,
-            effective_autonomy=deps.effective_autonomy,
-            risk_classifier=deps.risk_classifier,
-            clock=deps.clock,
+            args_model=args_model,
+            runtime=deps.runtime,
+            gate=build_connection_gate(deps),
         )
 
-    @property
-    def _catalog(self) -> ConnectionCatalog:
-        return self._runtime.connection_catalog
+    @override
+    def _supported(self, connection_type: ConnectionType) -> bool:
+        return chat_api_supported(connection_type)
 
-    async def _run(self, args: BaseModel) -> ToolExecutionResult:
-        """Resolve the connection, gate writes, then dispatch.
-
-        Returns:
-            The tool result, or an approval-parking result.
-
-        Raises:
-            ChatToolArgumentError: When the bound connection's base_url
-                fails validation. Other connection / credential /
-                upstream failures propagate as other ``ChatToolError``
-                leaves.
-        """
-        conn = await self._resolve_connection()
-        governed = require_governed_args(args)
-        # A connection the operator marked sensitive gates every call
-        # (read or write), matching the external_api tool; otherwise only
-        # mutating actions park for approval.
-        if conn.sensitive or governed.is_write:
-            parked = await self._gate.gate(
-                signature_for(
-                    namespace=self.name,
-                    connection=self._runtime.connection_name,
-                    args=args,
-                ),
-                connection=self._runtime.connection_name,
-                approval_id=None,
-                title=f"Chat {self.name} on {self._runtime.connection_name!r}",
-                description=f"Agent requests a chat {self.name} call.",
-            )
-            if parked is not None:
-                return parked
-        token = await self._resolve_token(conn)
+    @override
+    def _build_client(
+        self,
+        *,
+        connection_type: ConnectionType,
+        base_url: str,
+        token: str,
+        timeout: float,
+    ) -> ChatApiClient:
         try:
-            client = build_chat_api_client(
-                connection_type=conn.connection_type,
-                base_url=str(conn.base_url or ""),
+            return build_chat_api_client(
+                connection_type=connection_type,
+                base_url=base_url,
                 token=token,
-                timeout=self._runtime.timeout_seconds,
+                timeout=timeout,
             )
         except ChatApiError as exc:
             raise ChatToolArgumentError(safe_error_description(exc)) from exc
-        try:
-            return await self._dispatch_guarded(client, args)
-        finally:
-            await _safe_aclose(client)
 
-    async def _resolve_connection(self) -> Connection:
-        conn = await self._catalog.get(self._runtime.connection_name)
-        if conn is None:
-            logger.warning(
-                CHAT_TOOL_CONNECTION_FAILED,
-                connection=self._runtime.connection_name,
-                reason="connection_not_found",
-            )
-            msg = f"Chat connection {self._runtime.connection_name!r} not found"
-            raise ChatConnectionNotFoundError(msg)
-        if not chat_api_supported(conn.connection_type):
-            logger.warning(
-                CHAT_TOOL_CONNECTION_FAILED,
-                connection=conn.name,
-                connection_type=conn.connection_type.value,
-                reason="unsupported_platform",
-            )
-            msg = (
-                f"Connection type {conn.connection_type.value!r} has no chat Web API"
-                " client wired"
-            )
-            raise ChatUnsupportedError(msg)
-        return conn
-
-    async def _resolve_token(self, conn: Connection) -> str:
-        try:
-            credentials = await self._catalog.get_credentials(conn.name)
-        except SecretRetrievalError as exc:
-            logger.warning(
-                CHAT_TOOL_CREDENTIAL_FAILED,
-                connection=conn.name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = "Failed to broker credentials for chat connection"
-            raise ChatCredentialError(msg) from exc
-        token = credentials.get("token")
-        if not token:
-            msg = f"Chat connection {conn.name!r} has no token"
-            raise ChatCredentialError(msg)
-        return token
-
+    @override
     async def _dispatch_guarded(
         self, client: ChatApiClient, args: BaseModel
     ) -> ToolExecutionResult:
@@ -214,40 +134,6 @@ class _BaseChatTool(BaseTool, ABC):
             raise ChatUpstreamError(msg) from exc
         except ChatApiError as exc:
             raise ChatUpstreamError(safe_error_description(exc)) from exc
-
-    @abstractmethod
-    async def _dispatch(
-        self, client: ChatApiClient, args: BaseModel
-    ) -> ToolExecutionResult:
-        """Map the parsed action onto a client call and format the result."""
-
-    @override
-    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
-        """Run the chat tool.
-
-        Returns:
-            The tool result (or an approval-parking result).
-        """
-        model = self.args_model
-        assert model is not None  # noqa: S101 -- set by every subclass
-        try:
-            args = parse_typed("tool.execute", arguments, model)
-        except PydanticValidationError as exc:
-            return ToolExecutionResult(
-                content=f"Invalid arguments: {safe_error_description(exc)}",
-                is_error=True,
-            )
-        try:
-            return await self._run(args)
-        except ChatRateLimitedError as exc:
-            metadata: dict[str, JsonValue] = {}
-            if exc.retry_after_seconds is not None:
-                metadata["retry_after_seconds"] = exc.retry_after_seconds
-            return ToolExecutionResult(
-                content=str(exc), is_error=True, metadata=metadata
-            )
-        except (ChatToolError, GovernedApprovalMismatchError) as exc:
-            return ToolExecutionResult(content=str(exc), is_error=True)
 
 
 class ChatMessagesTool(_BaseChatTool):
@@ -319,28 +205,6 @@ class ChatDirectoryTool(_BaseChatTool):
             user_id=args.user_id or None, email=args.email or None
         )
         return _json_result(user.model_dump(mode="json"))
-
-
-async def _safe_aclose(client: ChatApiClient) -> None:
-    """Release the client without letting cleanup mask the real error.
-
-    A failing ``aclose()`` in a ``finally`` would otherwise replace the
-    in-flight exception (or ``CancelledError``) with its own.
-    """
-    try:
-        await client.aclose()
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            CHAT_TOOL_CONNECTION_FAILED,
-            reason="client_close_failed",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-
-
-def _json_result(data: object) -> ToolExecutionResult:
-    return ToolExecutionResult(content=json.dumps(data, ensure_ascii=False))
 
 
 __all__ = ["ChatDirectoryTool", "ChatMessagesTool"]
