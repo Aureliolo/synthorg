@@ -124,19 +124,33 @@ OAuth app can mark a field `oauth_redirect`, so the value comes from a hosted
 authorize flow (the app server only ever receives a short-lived code exchanged
 server-side) rather than being pasted.
 
-### Guided flow (hybrid)
+### Guided flow
 
-A deterministic step controller (`meta/chief_of_staff/setup/`) owns the
-sequence: pick type -> collect each field (an agent session per interpretation
-step, e.g. "reuse my existing GitHub connection" vs a new one) -> validate in
-code against the registry -> capture secrets out of band -> assemble a
-**preview** from the exact resolved `connections.create` arguments (secrets
-masked) -> **confirm** through the existing `ApprovalGate` -> **apply** the
-typed create -> **verify** via a live `connections.check_health` probe, leaving
-the connection unverified until health passes. Sequencing, preview, apply, and
-verify are deterministic; only interpretation is delegated to a bounded agent
-session, so what applies is always what was reviewed and no secret is ever at
-the LLM's discretion.
+There are two equivalent surfaces, and both are secret-safe by the pieces above
+rather than by a bespoke wizard.
+
+**Dashboard form (deterministic).** The connection form renders purely from the
+metadata registry, captures each `secret` field out of band as it is entered
+(masked field -> capture endpoint -> handle), then submits one typed
+`connections.create` carrying the non-secret fields inline and the secrets as
+`credential_handles` bound to a per-submit `connection_draft_id`. The create is
+a single validated call, and the live `connections.check_health` probe leaves
+the connection unverified until health passes. This is the deterministic path:
+what is submitted is exactly what the form assembled.
+
+**Operator console (conversational).** The same setup runs through the console
+`configure` intent as a governed agent loop: it reads the metadata registry,
+guides the operator, and calls `connections.create`. Determinism does not come
+from a separate step controller; it comes from the platform's governance. Under
+the console's default `SEMI` autonomy a sensitive `connections.create`
+escalates through the merged auto-gate to the approval inbox with a structured
+preview of the exact resolved arguments (secrets masked), so **apply happens
+only after an explicit confirm**, enforced by the `ApprovalGate` rather than by
+the agent. Secrets are captured out of band by the dashboard's masked field and
+referenced only by handle, so no secret is ever at the LLM's discretion, and
+`connections.check_health` verifies the result. A dedicated deterministic setup
+controller was considered and deliberately not built: it would duplicate the
+governed create/confirm/verify path the console + approval gate already provide.
 
 ---
 

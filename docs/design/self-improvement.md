@@ -504,11 +504,11 @@ self_improvement:
     direct_mcp_max_turns: 6                  # Hard turn cap for one chat-driven action loop
     # Operator console (configure turns). All opt-in, fail-closed; independent of direct_mcp.
     operator_console_enabled: false          # Master switch (fail-closed without SecurityConfig)
-    operator_console_model: example-small-001  # Console session model id (explicit provider,model)
+    operator_console_model: example-provider:example-small-001  # Console model ref (explicit provider,model)
     configure_intent_confidence_floor: 0.85  # Write-capable floor: below it degrades to explain
     operator_console_max_turns: 12           # Hard turn cap for one console action loop
-    operator_console_cost_ceiling_usd: 1.0   # Spend ceiling for one console turn (budget_checker)
-    operator_console_autonomy_level: standard  # Default tier: reads flow, risky writes escalate
+    operator_console_cost_ceiling_usd: 1.0   # Spend ceiling for one console session (budget_checker)
+    operator_console_autonomy_level: semi    # Default tier: reads flow, risky writes escalate
     # Documentary mode: post-run run narrative. All opt-in.
     narrative_enabled: false                 # Master switch
     narrative_model: example-small-001       # LLM model id (connective prose only)
