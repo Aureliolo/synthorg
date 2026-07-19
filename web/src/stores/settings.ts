@@ -23,6 +23,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   appliedMutationTokens: new Map(),
   entriesGeneration: 0,
   saveError: null,
+  pendingConfirm: null,
 
   ...createFetchActions(set, get),
   ...createMutationActions(set, get),

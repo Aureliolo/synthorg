@@ -49,7 +49,7 @@ def apply_output_policy_gate(  # noqa: PLR0913 -- gate inputs, all required
     """Enforce the output-style policy on a completing deliverable (backstop).
 
     A deterministic, LLM-free defence-in-depth check on the deliverable prose
-    that runs first among the deliverable-consuming gates. It complements the
+    that runs before the adversarial red-team / vision gates. It complements the
     per-tool interceptors: even a deliverable that reached completion by a path
     that skipped a guarded tool cannot ship with a hard-rule violation. A
     blocking verdict reroutes the task to IN_PROGRESS rework; a shadow or exempt
@@ -61,9 +61,6 @@ def apply_output_policy_gate(  # noqa: PLR0913 -- gate inputs, all required
         The (possibly rerouted) ``(target, reason, event, approved)`` tuple.
     """
     if not approved or deliverable is None:
-        return target, transition_reason, event, approved
-    content = getattr(deliverable, "deliverable_content", None)
-    if not content:
         return target, transition_reason, event, approved
 
     from synthorg.engine.output_style import (  # noqa: PLC0415
@@ -77,7 +74,7 @@ def apply_output_policy_gate(  # noqa: PLR0913 -- gate inputs, all required
         task_type=task.type.value,
         project_id=task.project,
     )
-    verdict = evaluate_output_policy(content, ctx)
+    verdict = evaluate_output_policy(deliverable.deliverable_content, ctx)
     if verdict is None or not verdict.blocked:
         return target, transition_reason, event, approved
     return (

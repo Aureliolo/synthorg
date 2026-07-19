@@ -45,6 +45,7 @@ from synthorg.providers.models import ToolDefinition
 if TYPE_CHECKING:
     from synthorg.core.company import Company
     from synthorg.core.effective_autonomy import EffectiveAutonomy
+    from synthorg.engine.output_style.provider import HouseStyleProvider
 
 
 def build_template_context(  # noqa: PLR0913
@@ -63,6 +64,7 @@ def build_template_context(  # noqa: PLR0913
     trimming_enabled: bool = True,
     estimator: PromptTokenEstimator | None = None,
     strategy_config: StrategyConfig | None = None,
+    house_style_provider: HouseStyleProvider | None = None,
 ) -> tuple[dict[str, object], PersonalityTrimInfo | None]:
     """Assemble the full Jinja2 template context from agent and optional inputs.
 
@@ -81,6 +83,8 @@ def build_template_context(  # noqa: PLR0913
         trimming_enabled: Whether personality trimming is active.
         estimator: Token estimator for personality trimming.
         strategy_config: Strategy config for trendslop mitigation.
+        house_style_provider: Explicit house-style provider snapshot (resolved
+            once per prompt build); falls back to the ambient provider.
 
     Returns:
         Tuple of (template variables dict, personality trim info or None).
@@ -120,7 +124,7 @@ def build_template_context(  # noqa: PLR0913
         inject_house_style_context,
     )
 
-    inject_house_style_context(context, agent)
+    inject_house_style_context(context, agent, provider=house_style_provider)
 
     if task is not None:
         # Title / description / acceptance criteria are client-supplied
@@ -191,6 +195,7 @@ def trim_sections(  # noqa: PLR0913
     profile: PromptProfile | None = None,
     trimming_enabled: bool = True,
     strategy_config: StrategyConfig | None = None,
+    house_style_provider: HouseStyleProvider | None = None,
 ) -> tuple[
     str,
     int,
@@ -229,6 +234,7 @@ def trim_sections(  # noqa: PLR0913
             profile=profile,
             trimming_enabled=trimming_enabled,
             strategy_config=strategy_config,
+            house_style_provider=house_style_provider,
         )
         if estimated <= max_tokens:
             break
@@ -267,6 +273,7 @@ def trim_sections(  # noqa: PLR0913
             profile=profile,
             trimming_enabled=trimming_enabled,
             strategy_config=strategy_config,
+            house_style_provider=house_style_provider,
         )
 
     log_trim_results(agent, max_tokens, estimated, trimmed_sections)
@@ -300,6 +307,15 @@ def render_with_trimming(  # noqa: PLR0913
         in ``trimmed_sections`` when the initial render was over
         budget).
     """
+    # Snapshot the ambient house-style provider ONCE so the injected section
+    # and the sections manifest agree even if an operator hot-swaps the pack
+    # mid-build; every downstream read uses this same immutable snapshot.
+    from synthorg.engine.output_style.provider import (  # noqa: PLC0415
+        current_house_style_provider,
+    )
+
+    house_style_provider = current_house_style_provider()
+
     content, estimated, trim_info = render_and_estimate(
         template_str,
         agent,
@@ -316,6 +332,7 @@ def render_with_trimming(  # noqa: PLR0913
         profile=profile,
         trimming_enabled=trimming_enabled,
         strategy_config=strategy_config,
+        house_style_provider=house_style_provider,
     )
 
     if max_tokens is not None and estimated > max_tokens:
@@ -337,6 +354,7 @@ def render_with_trimming(  # noqa: PLR0913
                 profile=profile,
                 trimming_enabled=trimming_enabled,
                 strategy_config=strategy_config,
+                house_style_provider=house_style_provider,
             )
         )
 
@@ -353,6 +371,7 @@ def render_with_trimming(  # noqa: PLR0913
         profile=profile,
         personality_trim_info=trim_info,
         strategy_config=strategy_config,
+        house_style_provider=house_style_provider,
     )
 
 
@@ -373,6 +392,7 @@ def render_and_estimate(  # noqa: PLR0913
     profile: PromptProfile | None = None,
     trimming_enabled: bool = True,
     strategy_config: StrategyConfig | None = None,
+    house_style_provider: HouseStyleProvider | None = None,
 ) -> tuple[str, int, PersonalityTrimInfo | None]:
     """Render the template and estimate its token count.
 
@@ -392,6 +412,8 @@ def render_and_estimate(  # noqa: PLR0913
         profile: Prompt profile controlling rendering verbosity.
         trimming_enabled: Whether personality trimming is active.
         strategy_config: Strategy config for trendslop mitigation.
+        house_style_provider: Explicit house-style provider snapshot (resolved
+            once per prompt build); falls back to the ambient provider.
 
     Returns:
         Tuple of (rendered content, estimated token count,
@@ -412,6 +434,7 @@ def render_and_estimate(  # noqa: PLR0913
         trimming_enabled=trimming_enabled,
         estimator=estimator,
         strategy_config=strategy_config,
+        house_style_provider=house_style_provider,
     )
     content = render_template(template_str, context)
     return content, estimator.estimate_tokens(content), trim_info

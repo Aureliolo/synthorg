@@ -1,8 +1,8 @@
 """Unit tests for the deterministic output-policy evaluator."""
 
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 
-from synthorg.engine.output_style.errors import OutputStylePackValidationError
 from synthorg.engine.output_style.evaluator import OutputPolicyEvaluator
 from synthorg.engine.output_style.exemptions import OutputContext
 from synthorg.engine.output_style.models import (
@@ -192,12 +192,23 @@ class TestExemptions:
 
 class TestCompilation:
     @pytest.mark.unit
-    def test_invalid_regex_raises_at_construction(self) -> None:
-        rule = OutputStyleRule(
-            id="bad",
-            type=RuleType.REGEX_BAN,
-            patterns=("(unclosed",),
-            message="bad regex",
-        )
-        with pytest.raises(OutputStylePackValidationError):
-            OutputPolicyEvaluator(rules=(rule,))
+    def test_invalid_regex_rejected_at_rule_construction(self) -> None:
+        # An invalid regex fails when the rule is built (where the pack loads),
+        # not later at first evaluation, so a bad pack fails loudly at its source.
+        with pytest.raises(PydanticValidationError):
+            OutputStyleRule(
+                id="bad",
+                type=RuleType.REGEX_BAN,
+                patterns=("(unclosed",),
+                message="bad regex",
+            )
+
+    @pytest.mark.unit
+    def test_catastrophic_regex_rejected_at_rule_construction(self) -> None:
+        with pytest.raises(PydanticValidationError):
+            OutputStyleRule(
+                id="redos",
+                type=RuleType.REGEX_BAN,
+                patterns=("(a+)+b",),
+                message="catastrophic",
+            )

@@ -18,12 +18,19 @@ convenience flag, expanded to literals in the loader, so the repo's
 """
 
 from enum import StrEnum
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.output_style._regex_safety import compile_checked
 from synthorg.engine.strategy.active_principle import ALL_SCOPE, ScopeKind
+
+#: Bound on operator-authored free text injected into prompts or echoed to agents.
+_MAX_DIRECTIVE_LEN: Final[int] = 2000
+
+#: Allowed shape of a pack name (mirrors the loader's on-disk lookup constraint).
+_PACK_NAME_RE: Final[str] = r"^[a-z0-9][a-z0-9_-]*$"
 
 # ── Enums ──────────────────────────────────────────────────────
 
@@ -120,7 +127,10 @@ class HouseStyleDirective(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: NotBlankStr = Field(description="Unique directive identifier")
-    text: NotBlankStr = Field(description="Directive text injected into prompts")
+    text: NotBlankStr = Field(
+        max_length=_MAX_DIRECTIVE_LEN,
+        description="Directive text injected into prompts",
+    )
     scope: NotBlankStr = Field(default=ALL_SCOPE, description="'all' or role/dept name")
     scope_kind: ScopeKind = Field(
         default=ScopeKind.ALL,
@@ -162,7 +172,8 @@ class OutputStyleRule(BaseModel):
         message: Agent-facing reason surfaced on rejection.
         mode: Enforcement mode for this rule.
         severity: Audit / display severity (does not drive blocking).
-        rewrite: Deterministic replacement used only in ``AUTO_REWRITE`` mode.
+        rewrite: Deterministic replacement used only in ``AUTO_REWRITE`` mode. An
+            empty string is a valid replacement meaning "delete the match".
         scan_code: Whether this rule fires inside code segments (fuzzy prose
             tells set this false to avoid false positives on identifiers).
         case_insensitive: Whether matching ignores case.
@@ -173,7 +184,10 @@ class OutputStyleRule(BaseModel):
     id: NotBlankStr = Field(description="Unique rule identifier")
     type: RuleType = Field(description="Literal or regex matching")
     patterns: tuple[NotBlankStr, ...] = Field(description="Literals or regexes")
-    message: NotBlankStr = Field(description="Agent-facing rejection reason")
+    message: NotBlankStr = Field(
+        max_length=_MAX_DIRECTIVE_LEN,
+        description="Agent-facing rejection reason",
+    )
     mode: EnforcementMode = Field(
         default=EnforcementMode.REJECT_REWORK,
         description="Enforcement mode for this rule",
@@ -197,14 +211,19 @@ class OutputStyleRule(BaseModel):
 
     @model_validator(mode="after")
     def _validate_patterns_and_mode(self) -> Self:
-        """Require at least one pattern, and a rewrite string in rewrite mode.
+        """Validate patterns, mode, and (for regex rules) matcher safety.
+
+        A ``REGEX_BAN`` pattern is compiled and screened for catastrophic
+        backtracking here, at construction, so a bad pack fails loudly where it
+        is loaded rather than crashing later at the first boundary check.
 
         Returns:
             The validated instance.
 
         Raises:
-            ValueError: If ``patterns`` is empty, or ``AUTO_REWRITE`` mode is
-                declared without a ``rewrite`` replacement.
+            ValueError: If ``patterns`` is empty, ``AUTO_REWRITE`` mode is
+                declared without a ``rewrite`` replacement, or a ``REGEX_BAN``
+                pattern is unsafe or fails to compile.
         """
         if not self.patterns:
             msg = f"Rule {self.id!r} must declare at least one pattern"
@@ -212,6 +231,13 @@ class OutputStyleRule(BaseModel):
         if self.mode is EnforcementMode.AUTO_REWRITE and self.rewrite is None:
             msg = f"Rule {self.id!r} is AUTO_REWRITE but declares no rewrite value"
             raise ValueError(msg)
+        if self.type is RuleType.REGEX_BAN:
+            for pattern in self.patterns:
+                try:
+                    compile_checked(pattern, case_insensitive=self.case_insensitive)
+                except ValueError as exc:
+                    msg = f"Rule {self.id!r} pattern {pattern!r}: {exc}"
+                    raise ValueError(msg) from exc
         return self
 
 
@@ -241,7 +267,7 @@ class RulePack(BaseModel):
 
     Attributes:
         name: Pack identifier.
-        version: Semantic version string.
+        version: Free-form pack version label (not parsed or ordered).
         description: Human-readable pack description.
         house_style: Soft directives injected into agent prompts.
         rules: Hard deterministic rules enforced at output boundaries.
@@ -252,7 +278,7 @@ class RulePack(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     name: NotBlankStr = Field(description="Pack identifier")
-    version: NotBlankStr = Field(description="Semantic version string")
+    version: NotBlankStr = Field(description="Free-form pack version label")
     description: str = Field(default="", description="Pack description")
     house_style: tuple[HouseStyleDirective, ...] = Field(
         default=(),
@@ -268,14 +294,19 @@ class RulePack(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_unique_ids(self) -> Self:
-        """Ensure rule ids and directive ids are each unique within the pack.
+    def _validate_ids(self) -> Self:
+        """Ensure ids are unique and every exemption targets a real rule.
+
+        A ``SanctionedExemption`` whose ``rule_id`` matches no rule (and is not
+        the ``"*"`` all-rules sentinel) would silently never fire, so an
+        operator's typo becomes an inert exemption; reject it here instead.
 
         Returns:
             The validated instance.
 
         Raises:
-            ValueError: If any rule id or directive id repeats.
+            ValueError: If any rule id or directive id repeats, or an exemption
+                names a rule the pack does not define.
         """
         rule_ids = [r.id for r in self.rules]
         if len(rule_ids) != len(set(rule_ids)):
@@ -288,6 +319,11 @@ class RulePack(BaseModel):
                 {did for did in directive_ids if directive_ids.count(did) > 1}
             )
             msg = f"Duplicate directive ids in pack {self.name!r}: {dupes}"
+            raise ValueError(msg)
+        known = set(rule_ids) | {ALL_RULES}
+        unknown = sorted({e.rule_id for e in self.exemptions if e.rule_id not in known})
+        if unknown:
+            msg = f"Pack {self.name!r} has exemptions for undefined rule ids: {unknown}"
             raise ValueError(msg)
         return self
 
@@ -313,7 +349,7 @@ class OutputStyleConfig(BaseModel):
 
     enabled: bool = True
     shadow_mode: bool = False
-    pack: NotBlankStr = "default"
+    pack: NotBlankStr = Field(default="default", pattern=_PACK_NAME_RE)
     house_style_enabled: bool = True
     exemptions: tuple[SanctionedExemption, ...] = ()
 
@@ -349,6 +385,25 @@ class OutputPolicyFinding(BaseModel):
     exempted: bool = False
     exemption_reason: str | None = None
 
+    @model_validator(mode="after")
+    def _validate_exemption_pairing(self) -> Self:
+        """Keep ``exempted`` and ``exemption_reason`` mutually consistent.
+
+        Returns:
+            The validated instance.
+
+        Raises:
+            ValueError: If a finding is exempt without a reason or carries a
+                reason while not exempt.
+        """
+        if self.exempted and self.exemption_reason is None:
+            msg = "An exempted finding must carry an exemption_reason"
+            raise ValueError(msg)
+        if not self.exempted and self.exemption_reason is not None:
+            msg = "A non-exempt finding must not carry an exemption_reason"
+            raise ValueError(msg)
+        return self
+
     @computed_field
     @property
     def blocks(self) -> bool:
@@ -369,7 +424,6 @@ class OutputPolicyVerdict(BaseModel):
         findings: Every rule match (blocking, shadowed, or exempt).
         rewritten_text: The auto-rewritten text when an AUTO_REWRITE rule
             resolved a prose match, else ``None``.
-        summary: Aggregated agent-facing reason for a blocked verdict.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -377,7 +431,6 @@ class OutputPolicyVerdict(BaseModel):
     channel: OutputChannel
     findings: tuple[OutputPolicyFinding, ...] = ()
     rewritten_text: str | None = None
-    summary: str = ""
 
     @computed_field
     @property
@@ -390,6 +443,23 @@ class OutputPolicyVerdict(BaseModel):
     def clean(self) -> bool:
         """Whether the output has no findings at all."""
         return not self.findings
+
+    @computed_field
+    @property
+    def summary(self) -> str:
+        """Aggregated agent-facing reason for a blocked verdict.
+
+        Derived from the findings so it can never disagree with ``blocked``:
+        the distinct messages of the blocking rules, or an empty string when
+        nothing blocks.
+        """
+        messages: list[str] = []
+        for finding in self.findings:
+            if finding.blocks and finding.message not in messages:
+                messages.append(finding.message)
+        if not messages:
+            return ""
+        return "Output-style policy rejected this output: " + "; ".join(messages)
 
 
 __all__ = [

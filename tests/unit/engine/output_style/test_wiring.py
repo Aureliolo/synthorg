@@ -19,6 +19,7 @@ from synthorg.engine.output_style.wiring import (
     rebuild_and_bind_output_style,
 )
 from synthorg.settings.service import SettingsService
+from synthorg.settings.subscribers.output_style_subscriber import _WATCHED
 
 _EXEMPTION = (
     '[{"rule_id": "emdash_literal", "scope_kind": "path", '
@@ -114,3 +115,19 @@ class TestRebuildAndBind:
         provider = current_house_style_provider()
         assert provider is not None
         assert provider.list_directives(role="Dev", department="Engineering") == ()
+
+
+class TestSubscriberWatchedKeys:
+    @pytest.mark.unit
+    def test_watched_keys_cover_all_output_style_keys(self) -> None:
+        # The subscriber only drives a rebuild for these keys; the rebuild +
+        # rebind path itself is covered by TestRebuildAndBind and exercised
+        # end to end (through the real dispatcher) by the API lifecycle tests.
+        keys = {key for ns, key in _WATCHED if ns == "output_style"}
+        assert keys == {
+            "enabled",
+            "shadow_mode",
+            "pack",
+            "house_style_enabled",
+            "exemptions",
+        }

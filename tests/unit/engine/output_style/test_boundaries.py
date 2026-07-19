@@ -2,7 +2,9 @@
 
 The em-dash is built at runtime (``chr(0x2014)``) so no literal U+2014 lands in
 committed test source. Each test proves the hard ban blocks or reworks the
-output before it can be emitted or completed.
+output before it can be emitted or completed, at every guarded boundary
+(messages, commits, deliverables, code files, issue/PR bodies) and exercises the
+shadow and auto-rewrite modes at a boundary, not just at the evaluator.
 """
 
 from collections.abc import Iterator
@@ -11,24 +13,34 @@ from pathlib import Path
 
 import pytest
 
+from synthorg.communication._output_guard import guard_message_output
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.communication.message import Message, TextPart
 from synthorg.communication.messages.service import MessageService
-from synthorg.communication.messenger import AgentMessenger, _guard_outbound
+from synthorg.communication.messenger import AgentMessenger
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import RedTeamReviewInput
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.engine._review_oracle_gates import apply_output_policy_gate
 from synthorg.engine.output_style.errors import OutputPolicyViolationError
-from synthorg.engine.output_style.models import OutputStyleConfig
+from synthorg.engine.output_style.models import (
+    EnforcementMode,
+    OutputStyleConfig,
+    OutputStyleRule,
+    RulePack,
+    RuleType,
+)
 from synthorg.engine.output_style.service import (
     OutputStylePolicyService,
     current_output_policy_service,
     set_output_policy_service,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.tools.file_system.edit_file import EditFileTool
+from synthorg.tools.file_system.write_file import WriteFileTool
+from synthorg.tools.forge.forge_tools import _guard_forge_text
 from synthorg.tools.git_tools import GitCommitTool
 from tests._shared import mock_of
 
@@ -43,6 +55,16 @@ def _wired_service() -> Iterator[None]:
         yield
     finally:
         set_output_policy_service(previous)
+
+
+def _wire(rule: OutputStyleRule, *, shadow_mode: bool = False) -> None:
+    """Bind a service whose only rule is *rule* (for mode-at-boundary tests)."""
+    pack = RulePack(name="test", version="1", rules=(rule,))
+    set_output_policy_service(
+        OutputStylePolicyService(
+            pack=pack, config=OutputStyleConfig(shadow_mode=shadow_mode)
+        )
+    )
 
 
 def _task() -> Task:
@@ -85,12 +107,31 @@ class TestMessageGuard:
     @pytest.mark.unit
     def test_guard_blocks_emdash(self) -> None:
         with pytest.raises(OutputPolicyViolationError):
-            _guard_outbound(_message(f"shipping {_EM_DASH} done"))
+            guard_message_output(
+                _message(f"shipping {_EM_DASH} done"), agent_id="agent-1"
+            )
 
     @pytest.mark.unit
     def test_guard_passes_clean(self) -> None:
         message = _message("shipping: done")
-        assert _guard_outbound(message) is message
+        assert guard_message_output(message, agent_id="agent-1") is message
+
+    @pytest.mark.unit
+    def test_multi_part_blocks_on_later_part(self) -> None:
+        message = Message(
+            timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+            sender="agent-1",
+            to="#eng",
+            type=MessageType.STATUS_REPORT,
+            priority=MessagePriority.NORMAL,
+            channel="#eng",
+            parts=(
+                TextPart(text="clean first part"),
+                TextPart(text=f"second part {_EM_DASH} bad"),
+            ),
+        )
+        with pytest.raises(OutputPolicyViolationError):
+            guard_message_output(message, agent_id="agent-1")
 
 
 @pytest.mark.usefixtures("_wired_service")
@@ -107,6 +148,18 @@ class TestMessengerBoundary:
                 message_type=MessageType.STATUS_REPORT,
             )
         bus.publish.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_send_direct_blocks_emdash(self) -> None:
+        bus = mock_of[MessageBus]()
+        messenger = AgentMessenger("agent-1", "Agent One", bus)
+        with pytest.raises(OutputPolicyViolationError):
+            await messenger.send_direct(
+                to="agent-2",
+                content=f"psst {_EM_DASH} secret",
+                message_type=MessageType.STATUS_REPORT,
+            )
+        bus.send_direct.assert_not_awaited()
 
     @pytest.mark.unit
     async def test_broadcast_blocks_emdash(self) -> None:
@@ -142,6 +195,54 @@ class TestMessengerBoundary:
         bus.publish.assert_not_awaited()
 
 
+class TestModesAtBoundary:
+    @pytest.mark.unit
+    async def test_shadow_rule_publishes(self) -> None:
+        _wire(
+            OutputStyleRule(
+                id="shadow_word",
+                type=RuleType.LITERAL_BAN,
+                patterns=("badword",),
+                message="no badword",
+                mode=EnforcementMode.SHADOW,
+            )
+        )
+        bus = mock_of[MessageBus]()
+        messenger = AgentMessenger("agent-1", "Agent One", bus)
+        await messenger.send_message(
+            to="team",
+            channel="#eng",
+            content="this has badword in it",
+            message_type=MessageType.STATUS_REPORT,
+        )
+        bus.publish.assert_awaited_once()
+
+    @pytest.mark.unit
+    async def test_auto_rewrite_rewrites_before_publish(self) -> None:
+        _wire(
+            OutputStyleRule(
+                id="rw",
+                type=RuleType.LITERAL_BAN,
+                patterns=("badword",),
+                message="no badword",
+                mode=EnforcementMode.AUTO_REWRITE,
+                rewrite="okword",
+            )
+        )
+        bus = mock_of[MessageBus]()
+        messenger = AgentMessenger("agent-1", "Agent One", bus)
+        await messenger.send_message(
+            to="team",
+            channel="#eng",
+            content="this has badword in it",
+            message_type=MessageType.STATUS_REPORT,
+        )
+        bus.publish.assert_awaited_once()
+        published = bus.publish.await_args.args[0]
+        assert "okword" in published.parts[0].text
+        assert "badword" not in published.parts[0].text
+
+
 @pytest.mark.usefixtures("_wired_service")
 class TestCommitBoundary:
     @pytest.mark.unit
@@ -152,6 +253,61 @@ class TestCommitBoundary:
         )
         assert result.is_error is True
         assert "Em-dash" in result.content
+
+
+@pytest.mark.usefixtures("_wired_service")
+class TestCodeFileBoundary:
+    @pytest.mark.unit
+    async def test_write_file_blocks_emdash(self, tmp_path: Path) -> None:
+        tool = WriteFileTool(workspace_root=tmp_path)
+        result = await tool.execute(
+            arguments={"path": "mod.py", "content": f"# tidy {_EM_DASH} code\n"}
+        )
+        assert result.is_error is True
+        assert "Em-dash" in result.content
+        assert not (tmp_path / "mod.py").exists()
+
+    @pytest.mark.unit
+    async def test_write_file_clean_writes(self, tmp_path: Path) -> None:
+        tool = WriteFileTool(workspace_root=tmp_path)
+        result = await tool.execute(
+            arguments={"path": "mod.py", "content": "# tidy: code\n"}
+        )
+        assert result.is_error is False
+        assert (tmp_path / "mod.py").exists()
+
+    @pytest.mark.unit
+    async def test_edit_file_blocks_emdash_replacement(self, tmp_path: Path) -> None:
+        target = tmp_path / "mod.py"
+        target.write_text("x = 1\n", encoding="utf-8")
+        tool = EditFileTool(workspace_root=tmp_path)
+        result = await tool.execute(
+            arguments={
+                "path": "mod.py",
+                "old_text": "x = 1",
+                "new_text": f"x = 1  # done {_EM_DASH} yes",
+            }
+        )
+        assert result.is_error is True
+        assert target.read_text(encoding="utf-8") == "x = 1\n"
+
+
+@pytest.mark.usefixtures("_wired_service")
+class TestForgeBodyBoundary:
+    @pytest.mark.unit
+    def test_forge_body_blocks_emdash(self) -> None:
+        err = _guard_forge_text(title="Add feature", body=f"why {_EM_DASH} because")
+        assert err is not None
+        assert err.is_error is True
+
+    @pytest.mark.unit
+    def test_forge_title_blocks_emdash(self) -> None:
+        err = _guard_forge_text(title=f"Add {_EM_DASH} feature", body="clean body")
+        assert err is not None
+
+    @pytest.mark.unit
+    def test_forge_clean_passes(self) -> None:
+        assert _guard_forge_text(title="Add feature", body="clean body") is None
 
 
 class TestDeliverableGate:

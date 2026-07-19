@@ -13,6 +13,7 @@ from fnmatch import fnmatchcase
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.output_style.models import (
     ALL_RULES,
     ExemptionScopeKind,
@@ -47,12 +48,12 @@ class OutputContext(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     channel: OutputChannel
-    file_path: str | None = None
-    task_type: str | None = None
-    project_id: str | None = None
-    department: str | None = None
-    role: str | None = None
-    deliverable_tags: tuple[str, ...] = Field(default=())
+    file_path: NotBlankStr | None = None
+    task_type: NotBlankStr | None = None
+    project_id: NotBlankStr | None = None
+    department: NotBlankStr | None = None
+    role: NotBlankStr | None = None
+    deliverable_tags: tuple[NotBlankStr, ...] = Field(default=())
 
 
 class ExemptionRequest(BaseModel):
@@ -65,8 +66,8 @@ class ExemptionRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    rule_id: str
-    reason: str
+    rule_id: NotBlankStr
+    reason: NotBlankStr
 
 
 def parse_exemption_markers(text: str) -> tuple[ExemptionRequest, ...]:

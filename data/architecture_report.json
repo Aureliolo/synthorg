@@ -372,12 +372,6 @@
       "ratio": 0.866,
       "tier": "code"
     },
-    "src/synthorg/communication/messenger.py": {
-      "cap": 500,
-      "loc": 404,
-      "ratio": 0.808,
-      "tier": "code"
-    },
     "src/synthorg/config/loader.py": {
       "cap": 500,
       "loc": 458,
@@ -1574,7 +1568,7 @@
     "synthorg.communication.enums": 33,
     "synthorg.communication.errors": 24,
     "synthorg.communication.mcp_errors": 27,
-    "synthorg.communication.message": 29,
+    "synthorg.communication.message": 30,
     "synthorg.communication.state": 26,
     "synthorg.config.provider_schema": 29,
     "synthorg.config.schema": 63,
@@ -1600,7 +1594,7 @@
     "synthorg.core.role": 22,
     "synthorg.core.task": 132,
     "synthorg.core.task_enums": 122,
-    "synthorg.core.types": 1281,
+    "synthorg.core.types": 1282,
     "synthorg.engine.context": 44,
     "synthorg.engine.decomposition.models": 38,
     "synthorg.engine.errors": 99,
@@ -1655,7 +1649,7 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 23,
     "synthorg.notifications.models": 24,
-    "synthorg.observability": 1860,
+    "synthorg.observability": 1863,
     "synthorg.observability.background_tasks": 28,
     "synthorg.observability.events.api": 223,
     "synthorg.observability.events.approval_gate": 26,

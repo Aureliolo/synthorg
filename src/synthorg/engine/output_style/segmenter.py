@@ -12,7 +12,9 @@ blocks and inline-code spans are code; everything else is prose. Segments cover
 the input contiguously so the rewriter can reconstruct the text by concatenation.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.engine.output_style.models import (
     CODE_CHANNELS,
@@ -40,6 +42,28 @@ class Segment(BaseModel):
     kind: SegmentKind
     start: int = Field(ge=0)
     end: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _validate_span(self) -> Self:
+        """Reject a span whose bounds or length are inconsistent.
+
+        Returns:
+            The validated instance.
+
+        Raises:
+            ValueError: If ``end`` precedes ``start`` or ``text`` length does
+                not equal ``end - start``.
+        """
+        if self.end < self.start:
+            msg = f"Segment end ({self.end}) precedes start ({self.start})"
+            raise ValueError(msg)
+        if len(self.text) != self.end - self.start:
+            msg = (
+                f"Segment text length ({len(self.text)}) does not match span "
+                f"{self.end - self.start} ([{self.start}, {self.end}))"
+            )
+            raise ValueError(msg)
+        return self
 
 
 def _scan_inline_code(line: str, base: int) -> list[Segment]:

@@ -9,17 +9,24 @@ settings subscriber so a config change re-binds both on the next boundary check
 and prompt build without a restart.
 """
 
+import asyncio
 import json
 from typing import TYPE_CHECKING
 
 from synthorg.engine.output_style.models import OutputStyleConfig, SanctionedExemption
+from synthorg.engine.output_style.pack_loader import minimal_failclosed_pack
 from synthorg.engine.output_style.provider import set_house_style_provider
 from synthorg.engine.output_style.service import (
     OutputStylePolicyService,
     set_output_policy_service,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.output_style import OUTPUT_STYLE_PACK_INVALID
+from synthorg.observability.events.output_style import (
+    OUTPUT_STYLE_CONFIG_VALIDATED,
+    OUTPUT_STYLE_PACK_INVALID,
+    OUTPUT_STYLE_SERVICE_REBUILT,
+    OUTPUT_STYLE_SNAPSHOT_REFRESHED,
+)
 
 if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
@@ -56,6 +63,12 @@ def _parse_exemptions(raw: str | None) -> tuple[SanctionedExemption, ...]:
         logger.warning(OUTPUT_STYLE_PACK_INVALID, source="exemptions", note="not json")
         return ()
     if not isinstance(parsed, list):
+        logger.warning(
+            OUTPUT_STYLE_PACK_INVALID,
+            source="exemptions",
+            note="not a list; ignored",
+            actual_type=type(parsed).__name__,
+        )
         return ()
     result: list[SanctionedExemption] = []
     for entry in parsed:
@@ -84,13 +97,21 @@ async def build_output_style_config(
         for entry in await settings_service.get_namespace("output_style")
     }
     pack = (values.get("pack") or "default").strip() or "default"
-    return OutputStyleConfig(
+    config = OutputStyleConfig(
         enabled=_as_bool(values.get("enabled"), default=True),
         shadow_mode=_as_bool(values.get("shadow_mode"), default=False),
         pack=pack,
         house_style_enabled=_as_bool(values.get("house_style_enabled"), default=True),
         exemptions=_parse_exemptions(values.get("exemptions")),
     )
+    logger.debug(
+        OUTPUT_STYLE_CONFIG_VALIDATED,
+        pack=config.pack,
+        enabled=config.enabled,
+        shadow_mode=config.shadow_mode,
+        exemption_count=len(config.exemptions),
+    )
+    return config
 
 
 async def rebuild_and_bind_output_style(
@@ -100,8 +121,11 @@ async def rebuild_and_bind_output_style(
 
     Loads the configured pack, compiles the evaluator, and binds the ambient
     output-policy service (for the boundaries) and the house-style provider
-    (for the prompt build). A bad pack name / invalid pack falls back to the
-    built-in default so a typo never disables enforcement.
+    (for the prompt build). Pack loading is blocking file I/O, so it runs off
+    the event loop. A bad pack name / invalid pack falls back to the built-in
+    default; if even the default pack cannot be loaded (a corrupted resource),
+    it falls back CLOSED to the in-code em-dash ban rather than leaving the
+    guardrail unbound, so enforcement never silently disables.
 
     Returns:
         The freshly built and bound service.
@@ -113,7 +137,7 @@ async def rebuild_and_bind_output_style(
 
     config = await build_output_style_config(settings_service)
     try:
-        service = OutputStylePolicyService.from_config(config)
+        service = await asyncio.to_thread(OutputStylePolicyService.from_config, config)
     except (OutputStyleError, OutputStylePackNotFoundError) as exc:
         logger.warning(
             OUTPUT_STYLE_PACK_INVALID,
@@ -122,11 +146,28 @@ async def rebuild_and_bind_output_style(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        service = OutputStylePolicyService.from_config(
-            config.model_copy(update={"pack": "default"})
-        )
+        try:
+            service = await asyncio.to_thread(
+                OutputStylePolicyService.from_config,
+                config.model_copy(update={"pack": "default"}),
+            )
+        except (OutputStyleError, OutputStylePackNotFoundError) as exc2:
+            logger.error(
+                OUTPUT_STYLE_PACK_INVALID,
+                pack_name="default",
+                action="fail_closed",
+                error_type=type(exc2).__name__,
+                error=safe_error_description(exc2),
+            )
+            service = OutputStylePolicyService(
+                pack=minimal_failclosed_pack(), config=config
+            )
     set_output_policy_service(service)
     set_house_style_provider(service.build_house_style_provider())
+    logger.info(
+        OUTPUT_STYLE_SERVICE_REBUILT, pack=service.pack.name, enabled=service.enabled
+    )
+    logger.debug(OUTPUT_STYLE_SNAPSHOT_REFRESHED, pack=service.pack.name)
     return service
 
 

@@ -48,9 +48,11 @@ mechanism the strategy module uses for constitutional principles: an agent sees
 every `ALL` directive plus the `ROLE` and `DEPARTMENT` directives that match it.
 
 The provider is a process-global ambient snapshot (`provider.py`), set at boot
-and refreshed by the settings subscriber, so the synchronous prompt-build path
-reads it without threading a provider through every signature. The section
-survives token trimming, because the hard gate enforces the same rules anyway.
+and refreshed by the settings subscriber. The prompt build resolves it once and
+threads that single snapshot through both the injection and the section-manifest
+read, so the two agree even if an operator hot-swaps the pack mid-build. Even if
+a future token-trimming pass were to drop this section under budget pressure,
+enforcement is unaffected, because the hard gate is independent of the prompt.
 
 The prompt states which directives are hard-enforced (the em-dash ban is
 rejected at the boundary) versus expected-and-monitored (the fuzzy tells), so an
@@ -82,10 +84,17 @@ boundary before the output escapes:
 
 | Boundary | Site | Channel |
 |----------|------|---------|
-| Inter-agent message | `communication/messenger.py`, `communication/messages/service.py` | `message` |
+| Inter-agent message | `communication/messenger.py` + `communication/messages/service.py`, via the shared `communication/_output_guard.py` `guard_message_output` (which applies any auto-rewrite back onto the message) | `message` |
 | Commit message | `tools/git_tools.py` `GitCommitTool.execute` | `commit_message` |
-| PR and issue body | `meta/appliers/code_applier.py` | `pr_body` |
-| Completing deliverable | `engine/_review_oracle_gates.py` `apply_output_policy_gate`, first among the deliverable-consuming completion gates | `deliverable` |
+| Code file write | `tools/file_system/write_file.py` (whole content) + `edit_file.py` (the replacement text) | `code_file` |
+| Issue / PR body | `tools/forge/forge_tools.py` (`ForgeIssueTool` / `ForgePullRequestTool` open / comment / review), and `meta/appliers/code_applier.py` for the self-improvement PR title / body | `pr_body` |
+| Completing deliverable | `engine/_review_oracle_gates.py` `apply_output_policy_gate`, run before the adversarial red-team / vision gates | `deliverable` |
+
+The message boundaries share one helper so an auto-rewrite is applied
+consistently at both. The code-file and forge boundaries are code-channel
+(reject, never auto-rewrite): a banned literal in agent-written code or an
+issue/PR body is rejected before it lands, unless a matching operator-sanctioned
+scope (a `path` exemption for code files) covers it.
 
 The per-tool interceptors give the producing agent instant feedback, like a
 pre-tool-use hook denial: the tool call fails with the specific rule and the
@@ -111,8 +120,14 @@ exemptions:
 
 An agent is granted an exemption only when its output context matches a
 sanctioned scope for the offending rule. An inline `output-style-allow` marker
-is parsed for the audit trail but never grants a pass on its own, so a lazy or
-adversarial model cannot bypass a hard ban by emitting the marker.
+is parsed at the boundary and logged as an `OUTPUT_STYLE_EXEMPTION_REQUESTED`
+audit event, but never grants a pass on its own, so a lazy or adversarial model
+cannot bypass a hard ban by emitting the marker.
+
+Every operator-authored regex rule is validated at pack load: it must compile
+and must not contain a nested unbounded-quantifier construct, so a
+catastrophic-backtracking pattern cannot reach the hot path and DoS every
+boundary. An invalid rule fails loudly where the pack is loaded.
 
 ## Pluggable pack
 
@@ -121,7 +136,8 @@ exemptions. The loader (`pack_loader.py`) reads a built-in pack or a user pack
 from `~/.synthorg/output-style-packs/`, mirroring the strategy principle-pack
 loader. The default pack ships the em-dash hard ban in `reject_rework` mode and
 the fuzzy AI-writing tells (sycophancy, puffery, filler transitions, the word
-"delve", the rule-of-three construction, over-hedging) in `shadow` mode.
+"delve", the "it's not just X, it's Y" contrastive construction, over-hedging)
+in `shadow` mode.
 
 Banned literals never appear verbatim in committed source. The em-dash character
 is expressed by its integer code point and its HTML entities by a convenience
@@ -136,11 +152,19 @@ Settings live in the `output_style` namespace (`settings/definitions/output_styl
 array). All are Category-1 and hot-reloadable: `OutputStyleSettingsSubscriber`
 rebuilds the `OutputStylePolicyService` and re-binds the ambient service and
 house-style provider on any change, so a pack swap or a toggle takes effect on
-the next boundary check and prompt build with no restart.
+the next boundary check and prompt build with no restart. Pack loading is
+blocking file I/O, so the rebuild runs it off the event loop. If a bad pack name
+or an invalid pack cannot load, it falls back to the built-in default; if even
+the default cannot load (a corrupted resource), it falls back CLOSED to an
+in-code em-dash ban rather than leaving the guardrail unbound, so enforcement
+never silently disables.
 
-Disabling `enabled`, enabling `shadow_mode`, or adding an exemption weakens the
-guardrail, so those writes route through the security-write governance guardrail
-(confirm, reason, actor) in `settings/write_governance.py`.
+Disabling `enabled`, enabling `shadow_mode`, adding an exemption, or swapping the
+active `pack` weakens the guardrail (a different pack can drop every hard rule),
+so those writes route through the security-write governance guardrail (confirm,
+reason, actor) in `settings/write_governance.py`. The `exemptions` payload is
+also shape-validated at write time (`settings/json_validators.py`) so a
+malformed entry is rejected then, not silently dropped at the next rebuild.
 
 The service is bound at boot by `api/lifecycle_helpers/output_style_wiring.py`
 `wire_output_style_policy` (invoked from `api/lifecycle_assembly.py` after the

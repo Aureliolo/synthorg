@@ -169,4 +169,9 @@ export const SETTING_DEPENDENCIES: Readonly<Record<string, readonly string[]>> =
     'tools/chat_tools_connection',
     'tools/chat_tools_timeout_seconds',
   ],
+  'output_style/enabled': [
+    'output_style/shadow_mode',
+    'output_style/pack',
+    'output_style/exemptions',
+  ],
 }

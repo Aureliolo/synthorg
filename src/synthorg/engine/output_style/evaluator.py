@@ -16,8 +16,11 @@ to the original text for reporting and rewriting.
 """
 
 import re
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Final
 
+from synthorg.engine.output_style._regex_safety import compile_checked
 from synthorg.engine.output_style.errors import OutputStylePackValidationError
 from synthorg.engine.output_style.exemptions import ExemptionResolver, OutputContext
 from synthorg.engine.output_style.models import (
@@ -30,10 +33,15 @@ from synthorg.engine.output_style.models import (
     SegmentKind,
 )
 from synthorg.engine.output_style.rewriter import RewriteOp, apply_rewrites
-from synthorg.engine.output_style.segmenter import segment
+from synthorg.engine.output_style.segmenter import Segment, segment
+from synthorg.observability import get_logger
+from synthorg.observability.events.output_style import OUTPUT_STYLE_FINDINGS_TRUNCATED
+
+logger = get_logger(__name__)
 
 #: Upper bound on findings retained per evaluation (defends against a
-#: pathological input producing an unbounded finding list).
+#: pathological input producing an unbounded finding list). Scanning stops once
+#: the cap is reached, so the cap bounds compute cost, not just list size.
 MAX_FINDINGS: Final[int] = 100
 
 #: Bound on the offending snippet recorded on each finding.
@@ -58,25 +66,33 @@ class OutputPolicyEvaluator:
             shadow_mode: When true, every rule is forced to SHADOW.
 
         Raises:
-            OutputStylePackValidationError: If a regex rule fails to compile.
+            OutputStylePackValidationError: If a regex rule fails to compile or
+                is rejected as unsafe.
         """
         self._rules = rules
         self._shadow_mode = shadow_mode
         self._resolver = ExemptionResolver(exemptions)
-        self._compiled: dict[str, tuple[re.Pattern[str], ...]] = {}
+        compiled_map: dict[str, tuple[re.Pattern[str], ...]] = {}
         for rule in rules:
-            flags = re.IGNORECASE if rule.case_insensitive else 0
             compiled: list[re.Pattern[str]] = []
             for pattern in rule.patterns:
-                source = (
-                    re.escape(pattern) if rule.type is RuleType.LITERAL_BAN else pattern
-                )
                 try:
-                    compiled.append(re.compile(source, flags))
-                except re.error as exc:
+                    if rule.type is RuleType.LITERAL_BAN:
+                        flags = re.IGNORECASE if rule.case_insensitive else 0
+                        compiled.append(re.compile(re.escape(pattern), flags))
+                    else:
+                        compiled.append(
+                            compile_checked(
+                                pattern, case_insensitive=rule.case_insensitive
+                            )
+                        )
+                except (re.error, ValueError) as exc:
                     msg = f"Rule {rule.id!r} has an invalid regex pattern {pattern!r}"
                     raise OutputStylePackValidationError(msg) from exc
-            self._compiled[rule.id] = tuple(compiled)
+            compiled_map[rule.id] = tuple(compiled)
+        self._compiled: Mapping[str, tuple[re.Pattern[str], ...]] = MappingProxyType(
+            compiled_map
+        )
 
     def evaluate(self, text: str, ctx: OutputContext) -> OutputPolicyVerdict:
         """Evaluate one piece of agent output.
@@ -86,60 +102,90 @@ class OutputPolicyEvaluator:
             ctx: The output context (channel + exemption-scope fields).
 
         Returns:
-            The verdict: findings, an optional rewritten text, and a summary.
+            The verdict: findings and an optional rewritten text.
         """
         segments = segment(text, ctx.channel)
         findings: list[OutputPolicyFinding] = []
         rewrite_ops: list[RewriteOp] = []
 
         for rule in self._rules:
+            budget = MAX_FINDINGS - len(findings)
+            if budget <= 0:
+                break
             exemption = self._resolver.resolve(rule.id, ctx)
-            for seg in segments:
-                if seg.kind is SegmentKind.CODE and not rule.scan_code:
-                    continue
-                for compiled in self._compiled[rule.id]:
-                    for match in compiled.finditer(seg.text):
-                        if match.start() == match.end():
-                            continue
-                        if len(findings) >= MAX_FINDINGS:
-                            break
-                        mode = self._effective_mode(rule.mode, seg.kind)
-                        findings.append(
-                            OutputPolicyFinding(
-                                rule_id=rule.id,
-                                rule_type=rule.type,
-                                severity=rule.severity,
-                                mode=mode,
-                                message=rule.message,
-                                match_text=match.group(0)[:_MATCH_SNIPPET_LIMIT],
-                                segment_kind=seg.kind,
-                                exempted=exemption is not None,
-                                exemption_reason=(
-                                    exemption.reason if exemption is not None else None
-                                ),
-                            )
-                        )
-                        if (
-                            mode is EnforcementMode.AUTO_REWRITE
-                            and exemption is None
-                            and seg.kind is SegmentKind.PROSE
-                            and rule.rewrite is not None
-                        ):
-                            rewrite_ops.append(
-                                RewriteOp(
-                                    start=seg.start + match.start(),
-                                    end=seg.start + match.end(),
-                                    replacement=rule.rewrite,
-                                )
-                            )
+            rule_findings, rule_ops = self._scan_rule(rule, exemption, segments, budget)
+            findings.extend(rule_findings)
+            rewrite_ops.extend(rule_ops)
+
+        if len(findings) >= MAX_FINDINGS:
+            logger.warning(
+                OUTPUT_STYLE_FINDINGS_TRUNCATED,
+                channel=ctx.channel.value,
+                cap=MAX_FINDINGS,
+            )
 
         rewritten = apply_rewrites(text, rewrite_ops) if rewrite_ops else None
         return OutputPolicyVerdict(
             channel=ctx.channel,
             findings=tuple(findings),
             rewritten_text=rewritten,
-            summary=self._summary(findings),
         )
+
+    def _scan_rule(
+        self,
+        rule: OutputStyleRule,
+        exemption: SanctionedExemption | None,
+        segments: tuple[Segment, ...],
+        budget: int,
+    ) -> tuple[list[OutputPolicyFinding], list[RewriteOp]]:
+        """Scan one rule over the segments, up to ``budget`` findings.
+
+        Returns:
+            The findings and any auto-rewrite ops produced by this rule;
+            scanning stops as soon as ``budget`` findings accumulate so a
+            pathological input is bounded in compute, not just list size.
+        """
+        findings: list[OutputPolicyFinding] = []
+        ops: list[RewriteOp] = []
+        for seg in segments:
+            if seg.kind is SegmentKind.CODE and not rule.scan_code:
+                continue
+            for compiled in self._compiled[rule.id]:
+                for match in compiled.finditer(seg.text):
+                    if match.start() == match.end():
+                        continue
+                    if len(findings) >= budget:
+                        return findings, ops
+                    mode = self._effective_mode(rule.mode, seg.kind)
+                    findings.append(
+                        OutputPolicyFinding(
+                            rule_id=rule.id,
+                            rule_type=rule.type,
+                            severity=rule.severity,
+                            mode=mode,
+                            message=rule.message,
+                            match_text=match.group(0)[:_MATCH_SNIPPET_LIMIT],
+                            segment_kind=seg.kind,
+                            exempted=exemption is not None,
+                            exemption_reason=(
+                                exemption.reason if exemption is not None else None
+                            ),
+                        )
+                    )
+                    if (
+                        mode is EnforcementMode.AUTO_REWRITE
+                        and exemption is None
+                        and seg.kind is SegmentKind.PROSE
+                        and rule.rewrite is not None
+                    ):
+                        ops.append(
+                            RewriteOp(
+                                start=seg.start + match.start(),
+                                end=seg.start + match.end(),
+                                replacement=rule.rewrite,
+                            )
+                        )
+        return findings, ops
 
     def _effective_mode(
         self, declared: EnforcementMode, seg_kind: SegmentKind
@@ -156,22 +202,6 @@ class OutputPolicyEvaluator:
         if declared is EnforcementMode.AUTO_REWRITE and seg_kind is SegmentKind.CODE:
             return EnforcementMode.REJECT_REWORK
         return declared
-
-    @staticmethod
-    def _summary(findings: list[OutputPolicyFinding]) -> str:
-        """Build the agent-facing reason for a blocked verdict.
-
-        Returns:
-            A one-line summary of the distinct blocking rule messages, or an
-            empty string when nothing blocks.
-        """
-        messages: list[str] = []
-        for finding in findings:
-            if finding.blocks and finding.message not in messages:
-                messages.append(finding.message)
-        if not messages:
-            return ""
-        return "Output-style policy rejected this output: " + "; ".join(messages)
 
 
 __all__ = ["MAX_FINDINGS", "OutputPolicyEvaluator"]

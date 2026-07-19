@@ -47,8 +47,18 @@ class TestWeakeningDirection:
         assert _is_weakening(_NS, "exemptions", current=current, new=new) is False
 
     @pytest.mark.unit
-    def test_pack_change_not_guarded(self) -> None:
-        assert _is_guarded(_NS, "pack") is False
+    def test_pack_is_guarded(self) -> None:
+        # A pack swap can replace the whole rule set, so it routes through the
+        # same confirm+reason+actor guardrail as disabling the policy.
+        assert _is_guarded(_NS, "pack") is True
+
+    @pytest.mark.unit
+    def test_changing_pack_is_weakening(self) -> None:
+        assert _is_weakening(_NS, "pack", current="default", new="permissive") is True
+
+    @pytest.mark.unit
+    def test_unchanged_pack_is_not_weakening(self) -> None:
+        assert _is_weakening(_NS, "pack", current="default", new="default") is False
 
 
 class TestEnforcement:

@@ -13,12 +13,17 @@ rather than raising.
 """
 
 from synthorg.engine.output_style.errors import OutputPolicyViolationError
-from synthorg.engine.output_style.exemptions import OutputContext
+from synthorg.engine.output_style.exemptions import (
+    OutputContext,
+    parse_exemption_markers,
+)
 from synthorg.engine.output_style.models import EnforcementMode, OutputPolicyVerdict
 from synthorg.engine.output_style.service import current_output_policy_service
 from synthorg.observability import get_logger
 from synthorg.observability.events.output_style import (
     OUTPUT_STYLE_EXEMPTION_GRANTED,
+    OUTPUT_STYLE_EXEMPTION_REQUESTED,
+    OUTPUT_STYLE_GATE_PASSED,
     OUTPUT_STYLE_GATE_REJECTED,
     OUTPUT_STYLE_VIOLATION_REWRITTEN,
     OUTPUT_STYLE_VIOLATION_SHADOWED,
@@ -29,8 +34,21 @@ logger = get_logger(__name__)
 _DEFAULT_MESSAGE = "Output violates a hard output-style rule"
 
 
-def _audit(verdict: OutputPolicyVerdict, ctx: OutputContext) -> None:
-    """Emit structured audit events for a verdict's non-clean findings."""
+def _audit(text: str, verdict: OutputPolicyVerdict, ctx: OutputContext) -> None:
+    """Emit structured audit events for a verdict and any exemption markers.
+
+    An inline ``output-style-allow`` marker never grants a bypass, but it is
+    recorded here so an operator can see that an agent *requested* one; the
+    grant decision is independent (a sanctioned scope), so a request without a
+    matching scope is visible but ineffective.
+    """
+    for request in parse_exemption_markers(text):
+        logger.info(
+            OUTPUT_STYLE_EXEMPTION_REQUESTED,
+            channel=ctx.channel.value,
+            rule_id=request.rule_id,
+            reason=request.reason,
+        )
     for finding in verdict.findings:
         if finding.exempted:
             logger.info(
@@ -54,6 +72,8 @@ def _audit(verdict: OutputPolicyVerdict, ctx: OutputContext) -> None:
         )
     elif verdict.rewritten_text is not None:
         logger.info(OUTPUT_STYLE_VIOLATION_REWRITTEN, channel=ctx.channel.value)
+    elif verdict.clean:
+        logger.debug(OUTPUT_STYLE_GATE_PASSED, channel=ctx.channel.value)
 
 
 def evaluate_output_policy(text: str, ctx: OutputContext) -> OutputPolicyVerdict | None:
@@ -71,7 +91,7 @@ def evaluate_output_policy(text: str, ctx: OutputContext) -> OutputPolicyVerdict
     if service is None or not service.enabled:
         return None
     verdict = service.evaluate(text, ctx)
-    _audit(verdict, ctx)
+    _audit(text, verdict, ctx)
     return verdict
 
 

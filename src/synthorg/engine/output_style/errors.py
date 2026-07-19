@@ -25,9 +25,9 @@ class OutputStyleError(ValidationError):
 class OutputPolicyViolationError(OutputStyleError):
     """Raised when agent output violates a hard rule and is rejected.
 
-    Carries the structured verdict so a caller (the send tool, the git-commit
-    tool, the PR builder) can surface the specific rule and reason to the
-    producing agent for rework.
+    The message is the verdict's aggregated summary (the distinct blocking-rule
+    reasons), so the producing agent sees which rules it violated and can
+    rework; the structured verdict itself is not attached to the error.
     """
 
     default_message: ClassVar[str] = "Output violates a hard output-style rule"

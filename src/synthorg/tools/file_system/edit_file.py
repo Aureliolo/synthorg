@@ -110,6 +110,35 @@ class EditFileTool(BaseFileSystemTool):
             parameters_schema=EditFileArgs.model_json_schema(),
         )
 
+    def _guard_output_policy(
+        self,
+        user_path: str,
+        new_text: str,
+    ) -> ToolExecutionResult | None:
+        """Enforce the output-style policy on the agent-authored replacement.
+
+        The replacement text is agent-authored code, so a banned literal in it
+        is rejected before the edit lands, unless an operator-sanctioned PATH
+        exemption covers this file. Code-channel (reject, never auto-rewrite).
+
+        Returns:
+            An error result when a hard rule blocks, else ``None``.
+        """
+        from synthorg.engine.output_style import (  # noqa: PLC0415
+            OutputChannel,
+            OutputContext,
+            evaluate_output_policy,
+        )
+
+        ctx = OutputContext(
+            channel=OutputChannel.CODE_FILE,
+            file_path=user_path or None,
+        )
+        verdict = evaluate_output_policy(new_text, ctx)
+        if verdict is None or not verdict.blocked:
+            return None
+        return ToolExecutionResult(content=verdict.summary, is_error=True)
+
     def _validate_edit_args(
         self,
         user_path: str,
@@ -264,6 +293,9 @@ class EditFileTool(BaseFileSystemTool):
 
         if err := self._validate_edit_args(user_path, old_text, new_text):
             return err
+
+        if guard_err := self._guard_output_policy(user_path, new_text):
+            return guard_err
 
         try:
             resolved = self.path_validator.validate(user_path)

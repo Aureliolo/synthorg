@@ -73,6 +73,12 @@ This page is the developer-oriented reference for the problem-type URIs and the 
 | 2023 | `WORKFLOW_DEFINITION_VALIDATION_FAILED` | Workflow definition failed structural checks on create/update |
 | 2024 | `WORKFLOW_YAML_EXPORT_FAILED` | Workflow definition could not be serialised to YAML |
 | 2025 | `RED_TEAM_REPORT_INVALID` | Red-team report payload failed structural validation |
+| 2026 | `KANBAN_INVALID_MOVE` | Kanban card move violates the board's column rules |
+| 2027 | `SPRINT_TASK_NOT_IN_BACKLOG` | Task cannot be added to a sprint from its current state |
+| 2028 | `COMPLETION_ORACLE_VERDICT_INVALID` | Completion-oracle verdict payload failed validation |
+| 2029 | `OUTPUT_STYLE_VIOLATION` | Agent output violates a hard output-style rule |
+| 2030 | `OUTPUT_STYLE_PACK_INVALID` | Output-style rule pack failed schema validation |
+| 2031 | `OUTPUT_STYLE_EXEMPTION_INVALID` | Sanctioned-exemption definition is malformed |
 
 ## Not Found (3xxx)
 
@@ -112,6 +118,8 @@ The NotFound hierarchy is rooted at `NotFoundError`. Each resource has a dedicat
 | 3029 | `AGENT_NOT_FOUND` | Registered agent |
 | 3030 | `PERSONALITY_NOT_FOUND` | Agent personality |
 | 3031 | `TRAINING_SESSION_NOT_FOUND` | Training session record |
+| 3032 | `SPRINT_NOT_FOUND` | Sprint record |
+| 3033 | `OUTPUT_STYLE_PACK_NOT_FOUND` | Output-style rule pack |
 
 All share the same `type` URI; the numeric code is the discriminator.
 

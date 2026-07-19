@@ -21,10 +21,14 @@ from synthorg.engine.output_style.errors import (
     OutputStylePackValidationError,
 )
 from synthorg.engine.output_style.models import (
+    ALL_RULES,
+    EnforcementMode,
     HouseStyleDirective,
     OutputStyleConfig,
     OutputStyleRule,
     RulePack,
+    RuleSeverity,
+    RuleType,
     SanctionedExemption,
 )
 from synthorg.observability import get_logger, safe_error_description
@@ -281,10 +285,41 @@ def load_pack(name: str) -> RulePack:
     raise OutputStylePackNotFoundError(msg)
 
 
+def minimal_failclosed_pack() -> RulePack:
+    """Build the in-code fail-closed pack (the em-dash hard ban only).
+
+    Used as the ultimate fallback when even the built-in default pack cannot be
+    loaded (a corrupted packaged resource), so the load-bearing em-dash ban
+    keeps enforcing rather than the guardrail silently disabling. Built from the
+    codepoint at runtime so no literal em-dash sits in committed source.
+
+    Returns:
+        A one-rule pack rejecting the em-dash and its HTML entity forms.
+    """
+    rule = OutputStyleRule(
+        id="emdash_literal",
+        type=RuleType.LITERAL_BAN,
+        patterns=(chr(0x2014), *_EMDASH_ENTITIES),
+        message="Em-dash (U+2014) is banned; use a comma, colon, or period.",
+        mode=EnforcementMode.REJECT_REWORK,
+        severity=RuleSeverity.CRITICAL,
+    )
+    return RulePack(
+        name="failclosed",
+        version="builtin",
+        description="In-code fail-closed pack: em-dash hard ban only.",
+        rules=(rule,),
+    )
+
+
 def merge_exemptions(
     pack: RulePack, config: OutputStyleConfig
 ) -> tuple[SanctionedExemption, ...]:
     """Return the pack's default exemptions plus the operator's exemptions.
+
+    An operator exemption naming a rule the active pack does not define can
+    never fire; it is kept (packs are swappable) but logged so a typo is
+    visible rather than silently inert.
 
     Args:
         pack: The loaded rule pack.
@@ -293,6 +328,16 @@ def merge_exemptions(
     Returns:
         All sanctioned exemptions in effect (pack first, operator second).
     """
+    known = {rule.id for rule in pack.rules} | {ALL_RULES}
+    for exemption in config.exemptions:
+        if exemption.rule_id not in known:
+            logger.warning(
+                OUTPUT_STYLE_PACK_INVALID,
+                source="operator_exemption",
+                note="exemption targets a rule the active pack does not define",
+                rule_id=exemption.rule_id,
+                pack_name=pack.name,
+            )
     return (*pack.exemptions, *config.exemptions)
 
 
@@ -310,4 +355,5 @@ __all__ = [
     "list_builtin_packs",
     "load_pack",
     "merge_exemptions",
+    "minimal_failclosed_pack",
 ]

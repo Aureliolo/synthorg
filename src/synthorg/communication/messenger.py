@@ -1,5 +1,6 @@
 """Per-agent messenger facade over the message bus (see Communication design page)."""
 
+from synthorg.communication._output_guard import guard_message_output
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.dispatcher import DispatchResult, MessageDispatcher
 from synthorg.communication.enums import MessagePriority, MessageType
@@ -79,46 +80,6 @@ def _resolve_parts(
         return parts
     msg = "Either 'content' or 'parts' must be provided"
     raise ValueError(msg)
-
-
-def _guard_outbound(message: Message) -> Message:
-    """Enforce the output-style policy on an outbound message before publish.
-
-    Evaluates each text part at the ``MESSAGE`` boundary. A hard violation
-    raises ``OutputPolicyViolationError`` so the sending agent is told the
-    specific rule and reworks; an auto-rewrite (off by default) rebuilds the
-    offending part. Deferred import breaks the engine/communication cold-import
-    cycle.
-
-    Args:
-        message: The constructed message about to be published.
-
-    Returns:
-        The message, with any auto-rewritten text parts substituted.
-
-    Raises:
-        OutputPolicyViolationError: When a non-exempt hard rule blocks.
-    """
-    from synthorg.engine.output_style import (  # noqa: PLC0415
-        OutputChannel,
-        OutputContext,
-        enforce_output_policy,
-    )
-
-    ctx = OutputContext(channel=OutputChannel.MESSAGE)
-    changed = False
-    new_parts: list[Part] = []
-    for part in message.parts:
-        if isinstance(part, TextPart):
-            guarded = enforce_output_policy(part.text, ctx)
-            if guarded != part.text:
-                new_parts.append(part.model_copy(update={"text": guarded}))
-                changed = True
-                continue
-        new_parts.append(part)
-    if not changed:
-        return message
-    return message.model_copy(update={"parts": tuple(new_parts)})
 
 
 class AgentMessenger:
@@ -218,7 +179,7 @@ class AgentMessenger:
             channel=channel,
             parts=resolved,
         )
-        msg = _guard_outbound(msg)
+        msg = guard_message_output(msg, agent_id=self._agent_id)
         await self._bus.publish(msg)
         logger.info(
             COMM_MESSAGE_SENT,
@@ -269,7 +230,7 @@ class AgentMessenger:
             channel=channel,
             parts=resolved,
         )
-        msg = _guard_outbound(msg)
+        msg = guard_message_output(msg, agent_id=self._agent_id)
         await self._bus.send_direct(msg, recipient=to)
         logger.info(
             COMM_MESSAGE_SENT,
@@ -320,7 +281,7 @@ class AgentMessenger:
             channel=channel,
             parts=resolved,
         )
-        msg = _guard_outbound(msg)
+        msg = guard_message_output(msg, agent_id=self._agent_id)
         await self._bus.publish(msg)
         logger.info(
             COMM_MESSAGE_BROADCAST,

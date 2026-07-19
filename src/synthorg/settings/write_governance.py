@@ -40,18 +40,22 @@ _TOOLS_NS: Final[str] = SettingNamespace.TOOLS.value
 _OUTPUT_STYLE_NS: Final[str] = SettingNamespace.OUTPUT_STYLE.value
 
 # Output-style keys whose change relaxes the running guardrail: disabling the
-# whole policy, switching every rule to shadow (surface but never block), or
-# adding a sanctioned exemption (which lets an agent legitimately emit an
-# otherwise-banned literal in a matching scope). Each routes through the same
+# whole policy, switching every rule to shadow (surface but never block), adding
+# a sanctioned exemption (which lets an agent legitimately emit an
+# otherwise-banned literal in a matching scope), or swapping the active rule pack
+# (a different pack can drop or soften every hard rule, so a pack swap can gut
+# the guardrail as fully as disabling it). Each routes through the same
 # deliberate confirm+reason+actor guardrail.
 _OUTPUT_STYLE_ENABLED_KEY: Final[str] = "enabled"
 _OUTPUT_STYLE_SHADOW_KEY: Final[str] = "shadow_mode"
 _OUTPUT_STYLE_EXEMPTIONS_KEY: Final[str] = "exemptions"
+_OUTPUT_STYLE_PACK_KEY: Final[str] = "pack"
 _OUTPUT_STYLE_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
     {
         _OUTPUT_STYLE_ENABLED_KEY,
         _OUTPUT_STYLE_SHADOW_KEY,
         _OUTPUT_STYLE_EXEMPTIONS_KEY,
+        _OUTPUT_STYLE_PACK_KEY,
     }
 )
 _OUTPUT_STYLE_ENABLED_DEFAULT: Final[str] = "true"
@@ -194,6 +198,11 @@ def _is_output_style_weakening(key: str, *, current: str | None, new: str) -> bo
         # Adding a sanctioned scope broadens what agents may legitimately emit;
         # removing / narrowing tightens and is unguarded.
         return bool(_exemption_keys(new) - _exemption_keys(current))
+    if key == _OUTPUT_STYLE_PACK_KEY:
+        # A pack swap can replace the whole rule set; without loading both packs
+        # the write path cannot prove the new pack is not more permissive, so any
+        # actual change to the active pack is treated as weakening.
+        return current is not None and not compare_ci(current, new)
     return False
 
 

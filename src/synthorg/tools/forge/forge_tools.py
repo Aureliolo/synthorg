@@ -31,6 +31,35 @@ from synthorg.tools.forge._base import (
 from synthorg.tools.forge._runtime import ForgeToolDeps
 
 
+def _guard_forge_text(
+    *, title: str | None, body: str | None
+) -> ToolExecutionResult | None:
+    """Enforce the output-style policy on agent-authored issue/PR text.
+
+    Issue and PR titles/bodies an agent writes are a ``PR_BODY`` boundary: a
+    hard-rule violation (an em-dash) is rejected before the write, giving the
+    agent instant rework feedback. Deferred import breaks the tools/engine
+    cold-import cycle.
+
+    Returns:
+        An error result when a hard rule blocks either field, else ``None``.
+    """
+    from synthorg.engine.output_style import (  # noqa: PLC0415
+        OutputChannel,
+        OutputContext,
+        evaluate_output_policy,
+    )
+
+    ctx = OutputContext(channel=OutputChannel.PR_BODY)
+    for text in (title, body):
+        if not text:
+            continue
+        verdict = evaluate_output_policy(text, ctx)
+        if verdict is not None and verdict.blocked:
+            return ToolExecutionResult(content=verdict.summary, is_error=True)
+    return None
+
+
 class ForgeRepoTool(_BaseForgeTool):
     """Read repository metadata, a file, or a directory listing."""
 
@@ -111,6 +140,8 @@ class ForgeIssueTool(_BaseForgeTool):
             )
             return _json_result([i.model_dump(mode="json") for i in issues])
         if args.action == "open":
+            if err := _guard_forge_text(title=args.title, body=args.body):
+                return err
             issue = await client.create_issue(
                 owner=owner,
                 repo=repo,
@@ -119,6 +150,8 @@ class ForgeIssueTool(_BaseForgeTool):
                 labels=args.labels,
             )
             return _json_result(issue.model_dump(mode="json"))
+        if err := _guard_forge_text(title=None, body=args.body):
+            return err
         comment = await client.comment_issue(
             owner=owner, repo=repo, number=args.number, body=NotBlankStr(args.body)
         )
@@ -161,6 +194,8 @@ class ForgePullRequestTool(_BaseForgeTool):
             )
             return _json_result([p.model_dump(mode="json") for p in pulls])
         if args.action == "open":
+            if err := _guard_forge_text(title=args.title, body=args.body):
+                return err
             pull = await client.create_pull_request(
                 owner=owner,
                 repo=repo,
@@ -172,11 +207,15 @@ class ForgePullRequestTool(_BaseForgeTool):
             )
             return _json_result(pull.model_dump(mode="json"))
         if args.action == "comment":
+            if err := _guard_forge_text(title=None, body=args.body):
+                return err
             comment = await client.comment_pull_request(
                 owner=owner, repo=repo, number=args.number, body=NotBlankStr(args.body)
             )
             return _json_result(comment.model_dump(mode="json"))
         if args.action == "review":
+            if err := _guard_forge_text(title=None, body=args.body):
+                return err
             review = await client.review_pull_request(
                 owner=owner,
                 repo=repo,
@@ -185,6 +224,8 @@ class ForgePullRequestTool(_BaseForgeTool):
                 body=args.body,
             )
             return _json_result(review.model_dump(mode="json"))
+        if err := _guard_forge_text(title=args.commit_title, body=None):
+            return err
         result = await client.merge_pull_request(
             owner=owner,
             repo=repo,

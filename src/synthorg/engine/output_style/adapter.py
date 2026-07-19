@@ -12,22 +12,31 @@ from synthorg.engine.output_style.provider import (
     HouseStyleProvider,
     current_house_style_provider,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.output_style import OUTPUT_STYLE_PROMPT_INJECTED
+
+logger = get_logger(__name__)
 
 
-def should_inject_house_style(agent: AgentIdentity) -> bool:
+def should_inject_house_style(
+    agent: AgentIdentity, *, provider: HouseStyleProvider | None = None
+) -> bool:
     """Whether an agent's prompt gets a house-style section.
 
     Args:
         agent: The agent whose prompt is being built.
+        provider: An explicit provider snapshot (resolved once per prompt build
+            so this and :func:`inject_house_style_context` agree even if the
+            ambient provider is hot-swapped mid-build); falls back to ambient.
 
     Returns:
         ``True`` when a provider is bound and yields at least one directive in
         scope for the agent.
     """
-    provider = current_house_style_provider()
-    if provider is None:
+    resolved = provider if provider is not None else current_house_style_provider()
+    if resolved is None:
         return False
-    return bool(provider.list_directives(role=agent.role, department=agent.department))
+    return bool(resolved.list_directives(role=agent.role, department=agent.department))
 
 
 def inject_house_style_context(
@@ -59,6 +68,12 @@ def inject_house_style_context(
         return
     context["house_style"] = True
     context["house_style_section"] = build_house_style_section(directives)
+    logger.debug(
+        OUTPUT_STYLE_PROMPT_INJECTED,
+        agent_role=agent.role,
+        agent_department=agent.department,
+        directive_count=len(directives),
+    )
 
 
 __all__ = ["inject_house_style_context", "should_inject_house_style"]

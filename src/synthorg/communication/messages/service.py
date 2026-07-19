@@ -121,30 +121,25 @@ class MessageService:
 
         Agent-authored message text is enforced against the output-style policy
         before publish: a hard violation raises ``OutputPolicyViolationError``
-        so the sender is told the rule and reworks. Deferred import breaks the
-        engine/communication cold-import cycle.
+        so the sender is told the rule and reworks, and an auto-rewrite is
+        applied back onto the message (via the shared message guard both send
+        boundaries use). The rejection is logged with the actor context.
 
         Raises:
             OutputPolicyViolationError: When the message text violates a hard
                 output-style rule.
         """
-        from synthorg.engine.output_style import (  # noqa: PLC0415
-            OutputChannel,
-            OutputContext,
-            enforce_output_policy,
+        from synthorg.communication._output_guard import (  # noqa: PLC0415
+            guard_message_output,
         )
 
-        ctx = OutputContext(channel=OutputChannel.MESSAGE)
-        for part in message.parts:
-            text = getattr(part, "text", None)
-            if isinstance(text, str):
-                enforce_output_policy(text, ctx)
-        await self._bus.publish(message)
+        guarded = guard_message_output(message, agent_id=actor_id)
+        await self._bus.publish(guarded)
         logger.info(
             COMMUNICATION_MESSAGE_SENT_VIA_MCP,
-            channel=message.channel,
+            channel=guarded.channel,
             actor_id=actor_id,
-            sender=message.sender,
+            sender=guarded.sender,
         )
 
     async def delete_message(
