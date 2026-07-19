@@ -20,7 +20,10 @@ _RULE_NAME: Final[str] = "credential_detector"
 CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     (
         "AWS access key",
-        re.compile(r"(?:^|[^A-Za-z0-9])(AKIA[0-9A-Z]{16})(?:[^A-Za-z0-9]|$)"),
+        # Non-consuming boundaries so no adjacent character is swallowed (a
+        # consumed brace/comma/space would not be restored by _redact_match,
+        # which only re-attaches quotes, breaking a surrounding document).
+        re.compile(r"(?<![A-Za-z0-9])AKIA[0-9A-Z]{16}(?![A-Za-z0-9])"),
     ),
     (
         "AWS secret key",
@@ -51,7 +54,7 @@ CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     ),
     (
         "GitHub personal access token",
-        re.compile(r"(?:^|[^A-Za-z0-9])(ghp_[A-Za-z0-9]{36,})"),
+        re.compile(r"(?<![A-Za-z0-9])ghp_[A-Za-z0-9]{36,}"),
     ),
     (
         "Generic secret assignment",

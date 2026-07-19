@@ -36,7 +36,7 @@ from synthorg.integrations.webhooks.models import (
     WebhookVerifierKind,
 )
 from synthorg.meta.mcp.handlers.communication import COMMUNICATION_HANDLERS
-from tests._shared import InMemorySecretBackend, make_app_state
+from tests._shared import FakeClock, InMemorySecretBackend, make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -507,7 +507,9 @@ class TestConnectionsHandlers:
 
     @staticmethod
     def _capture_app_state() -> tuple[AppState, SecretCaptureService]:
-        capture = SecretCaptureService(secret_backend=InMemorySecretBackend())
+        capture = SecretCaptureService(
+            secret_backend=InMemorySecretBackend(), clock=FakeClock()
+        )
         app_state = make_app_state(
             slices={IntegrationsStateSlice: {"secret_capture_service": capture}},
         )
@@ -522,7 +524,10 @@ class TestConnectionsHandlers:
                 "connection_type": "database",
                 "field_name": "password",
                 "draft_id": "draft-xyz",
+                "confirm": True,
+                "reason": "operator database setup",
             },
+            actor=make_test_actor(),
         )
         payload = json.loads(response)
         assert payload["status"] == "ok"
@@ -531,6 +536,23 @@ class TestConnectionsHandlers:
         assert [p.field_name for p in pending] == ["password"]
         # Kind + label come from the registry, never the caller.
         assert pending[0].secret_kind == "password"
+
+    async def test_request_secret_capture_requires_confirm(self) -> None:
+        app_state, capture = self._capture_app_state()
+        handler = COMMUNICATION_HANDLERS["synthorg_connections_request_secret_capture"]
+        response = await handler(
+            app_state=app_state,
+            arguments={
+                "connection_type": "database",
+                "field_name": "password",
+                "draft_id": "draft-xyz",
+                "reason": "operator database setup",
+            },
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["status"] == "error"
+        # The guardrail runs before any state mutation, so nothing is registered.
+        assert capture.take_pending("draft-xyz") == ()
 
     async def test_request_secret_capture_rejects_non_secret_field(self) -> None:
         app_state, capture = self._capture_app_state()
@@ -541,7 +563,10 @@ class TestConnectionsHandlers:
                 "connection_type": "database",
                 "field_name": "host",
                 "draft_id": "draft-xyz",
+                "confirm": True,
+                "reason": "operator database setup",
             },
+            actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "error"
         assert capture.take_pending("draft-xyz") == ()
@@ -555,7 +580,10 @@ class TestConnectionsHandlers:
                 "connection_type": "not_a_type",
                 "field_name": "token",
                 "draft_id": "draft-xyz",
+                "confirm": True,
+                "reason": "operator database setup",
             },
+            actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "error"
 

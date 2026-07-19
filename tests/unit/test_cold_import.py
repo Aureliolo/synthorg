@@ -12,12 +12,12 @@ primed (see the prime in ``tests/conftest.py``), so an in-process import would
 not exercise the cold path. A non-zero exit most likely means a package-level
 circular import has regressed.
 
-The per-leaf imports are independent and dominated by interpreter startup plus
-a one-off cold import of heavy transitive dependencies, so they are spawned
-concurrently in a bounded pool (each still in its own pristine interpreter).
-That collapses the file's wall-clock from the serial sum of every leaf to the
-slowest single import, without weakening the guarantee that each leaf loads on
-an unprimed graph.
+Each leaf is one parametrized test that spawns exactly one fresh interpreter, so
+the file fans out no wider than a single subprocess at a time and every case
+finishes well inside the 30s global timeout (the heaviest cold import is a few
+seconds). Keeping one import per test is what lets the guard stay under the
+global timeout without a per-test override and without oversubscribing a shared
+CI runner with a burst of concurrent interpreters.
 
 The cycle is driven by eager re-export side effects in package ``__init__``
 hubs, not by simple module-to-module edges, so a ``grimp`` / import-linter
@@ -28,8 +28,6 @@ documentation-grade backstop. See
 ``docs/decisions/0012-cold-import-cycle-break.md``.
 """
 
-import concurrent.futures
-import os
 import subprocess
 import sys
 from typing import Final, NamedTuple
@@ -40,29 +38,6 @@ import pytest
 # surfaces here as a clear pytest.fail rather than as the worker-level
 # os.abort the pytest-timeout patch triggers at 30s.
 _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
-
-# Fallback concurrency when the core count is unknowable.
-_COLD_IMPORT_FALLBACK_CONCURRENCY: Final[int] = 4
-
-# Upper bound on concurrent fresh interpreters. Cold-import lands on a single
-# xdist worker (``--dist=loadfile`` keeps a file together) that already shares
-# the box with the other xdist workers, so this MUST track the core count
-# rather than a fixed high fan-out: spawning 16 heavy interpreters at once
-# oversubscribes a CI runner (4 vCPU) both on memory (each cold import of a
-# heavy package peaks a few hundred MB, so a dozen at once OOMs) and on CPU (a
-# CPU-bound import under that much contention blows the per-import timeout).
-# Bounding to the core count keeps the transient spike proportional to the box
-# on CI while still fanning out fully on a many-core dev machine.
-_MAX_CONCURRENT_COLD_IMPORTS: Final[int] = (
-    os.cpu_count() or _COLD_IMPORT_FALLBACK_CONCURRENCY
-)
-
-# The module-scoped fixture concentrates every leaf's cold import into one
-# test's setup, so under a CPU-saturated CI runner that aggregate can exceed the
-# 30s global pytest-timeout even though each individual import is well under its
-# own 20s bound. A generous per-test override gives the concentrated sweep
-# headroom without weakening the global wall for ordinary tests.
-_COLD_IMPORT_FIXTURE_TIMEOUT_SECONDS: Final[int] = 120
 
 # Leaves that must import cold. The first two are the primary regression
 # targets (the original cold-import failure points). The rest pin each
@@ -166,34 +141,16 @@ def _import_leaf_cold(module_name: str) -> _ColdImportOutcome:
     )
 
 
-@pytest.fixture(scope="module")
-def cold_import_outcomes() -> dict[str, _ColdImportOutcome]:
-    """Import every leaf concurrently, each in its own fresh interpreter.
-
-    Module-scoped so the concurrent sweep runs once per worker; each
-    parametrized test then asserts on its own leaf's cached outcome, keeping
-    per-leaf failure reporting while paying the wall-clock of only the slowest
-    single import.
-    """
-    max_workers = min(len(COLD_IMPORT_LEAVES), _MAX_CONCURRENT_COLD_IMPORTS)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-        return dict(
-            zip(
-                COLD_IMPORT_LEAVES,
-                pool.map(_import_leaf_cold, COLD_IMPORT_LEAVES),
-                strict=True,
-            )
-        )
-
-
 @pytest.mark.unit
-@pytest.mark.timeout(_COLD_IMPORT_FIXTURE_TIMEOUT_SECONDS)
 @pytest.mark.parametrize("module_name", COLD_IMPORT_LEAVES)
-def test_leaf_imports_from_cold_interpreter(
-    module_name: str, cold_import_outcomes: dict[str, _ColdImportOutcome]
-) -> None:
-    """Each leaf imports successfully from a fresh, unprimed interpreter."""
-    outcome = cold_import_outcomes[module_name]
+def test_leaf_imports_from_cold_interpreter(module_name: str) -> None:
+    """Each leaf imports successfully from a fresh, unprimed interpreter.
+
+    One import per test (its own subprocess), so the case finishes inside the
+    30s global timeout and no burst of concurrent interpreters oversubscribes
+    the runner. The 20s subprocess timeout still fails a hung import fast.
+    """
+    outcome = _import_leaf_cold(module_name)
     if outcome.timed_out:
         pytest.fail(
             f"Cold import of {module_name!r} did not finish within "

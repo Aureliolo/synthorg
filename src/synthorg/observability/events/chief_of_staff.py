@@ -157,6 +157,9 @@ COS_CONSOLE_FAILED: Final[str] = "chief_of_staff.console.failed"
 # governance. ERROR-level so a persistent misconfiguration surfaces in
 # alerting rather than as a routine per-turn warning.
 COS_CONSOLE_AUTONOMY_DEGRADED: Final[str] = "chief_of_staff.console.autonomy_degraded"
+# Idle console conversation contexts swept from the process-local store past
+# their TTL (the multi-turn memory a CONFIGURE session accumulates).
+COS_CONSOLE_CONTEXT_PURGED: Final[str] = "chief_of_staff.console.context_purged"
 
 # -- Run narrative (documentary mode) ----------------------------------
 

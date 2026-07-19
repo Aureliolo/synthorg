@@ -17,7 +17,12 @@ import { isAbortError } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 import { nextMessageId } from '@/pages/chat/message-id'
-import type { OrgAssistantTurn, OrgTurn } from '@/pages/chat/org-chat-types'
+import type {
+  OrgAssistantTurn,
+  OrgEventTurn,
+  OrgTurn,
+  SecretCaptureEvent,
+} from '@/pages/chat/org-chat-types'
 import { intentDegradeNotice, mapTurnResult } from '@/pages/chat/org-turn-map'
 
 const log = createLogger('org-conversation')
@@ -393,15 +398,28 @@ async function submitSecretCapturesImpl(
     if (get().epoch !== turnEpoch) return
     set(patch)
   }
-  // Freeze the card into its submitted state and mark the thread busy so the
-  // input and any other capture card can't race a second turn.
+  const isThisCard = (
+    turn: OrgTurn,
+  ): turn is OrgEventTurn & { event: SecretCaptureEvent } =>
+    turn.id === turnId &&
+    turn.kind === 'event' &&
+    turn.event.type === 'secret-capture'
+  // Reuse the card's idempotency key across retries (mint one on first attempt)
+  // so a lost response cannot drive a duplicate side effect: the server dedups
+  // the identical request rather than creating a second connection.
+  const card = state.messages.find(isThisCard)
+  const idempotencyKey = card?.event.idempotencyKey ?? crypto.randomUUID()
+  // Freeze the card into its submitted state (retaining the key) and mark the
+  // thread busy so the input and any other capture card can't race a second turn.
+  const setCard = (patch: Partial<SecretCaptureEvent>): OrgTurn[] =>
+    get().messages.map((turn) =>
+      isThisCard(turn) ? { ...turn, event: { ...turn.event, ...patch } } : turn,
+    )
   set({
     sending: true,
     messages: state.messages.map((turn) =>
-      turn.id === turnId &&
-      turn.kind === 'event' &&
-      turn.event.type === 'secret-capture'
-        ? { ...turn, event: { ...turn.event, resolved: 'submitted' } }
+      isThisCard(turn)
+        ? { ...turn, event: { ...turn.event, resolved: 'submitted', idempotencyKey } }
         : turn,
     ),
   })
@@ -411,10 +429,13 @@ async function submitSecretCapturesImpl(
       intentOverride: 'configure',
       connectionDraftId: draftId,
       providedCredentialHandles: handles,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey,
     })
     applyBufferedResult(guardedSet, get, result, iso)
   } catch (err) {
+    // Restore the card to a retryable state (keeping its stable key) so a
+    // failed submit can be re-sent instead of leaving setup stuck.
+    guardedSet({ messages: setCard({ resolved: undefined }) })
     handleTurnError(guardedSet, get, err)
   } finally {
     guardedSet({ sending: false })

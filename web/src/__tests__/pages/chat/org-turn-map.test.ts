@@ -260,7 +260,12 @@ describe('mapTurnResult', () => {
         type: 'secret-capture',
         draftId: 'draft-9',
         captures: [
-          { connectionType: 'database', fieldName: 'password', label: 'Password' },
+          {
+            connectionType: 'database',
+            fieldName: 'password',
+            secretKind: 'password',
+            label: 'Password',
+          },
         ],
       },
     })

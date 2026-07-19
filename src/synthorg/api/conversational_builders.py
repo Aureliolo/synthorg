@@ -24,6 +24,9 @@ if TYPE_CHECKING:
     from synthorg.integrations.connections.secret_capture import SecretCaptureService
     from synthorg.meta.chief_of_staff.actor import ConversationalActor
     from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+    from synthorg.meta.chief_of_staff.console_conversation_store import (
+        ConsoleConversationStore,
+    )
     from synthorg.meta.chief_of_staff.group_chat import GroupChatService
     from synthorg.meta.chief_of_staff.group_invite import GroupInviteCoordinator
     from synthorg.meta.chief_of_staff.operator_console import OperatorConsoleService
@@ -221,13 +224,14 @@ def build_conversational_actor(
     )
 
 
-def build_operator_console(
+def build_operator_console(  # noqa: PLR0913 -- injected console dependencies
     chief_of_staff_config: ChiefOfStaffConfig,
     *,
     engine: AgentEngine,
     autonomy_resolver: AutonomyResolver | None,
     clock: Clock,
     secret_capture: SecretCaptureService | None = None,
+    conversations: ConsoleConversationStore | None = None,
 ) -> OperatorConsoleService | None:
     """Resolve an OperatorConsoleService from config + the boot engine.
 
@@ -296,6 +300,7 @@ def build_operator_console(
         autonomy_resolver=autonomy_resolver,
         config=chief_of_staff_config,
         secret_capture=secret_capture,
+        conversations=conversations,
     )
 
 

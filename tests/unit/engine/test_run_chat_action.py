@@ -36,7 +36,7 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
-from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.loop_protocol import BudgetChecker, TerminationReason
 from synthorg.engine.park_service import ParkService
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -252,10 +252,10 @@ class TestRunChatAction:
         # closure), so the engine derives the same per-turn budget checker on
         # the initial run AND after a park/resume round-trip. Losing the bound
         # on the resumed continuation is exactly the regression this guards.
+        # Built through the validated constructor (not a post-hoc model_copy) so
+        # the ceiling is the same value the public run path forwards.
         engine, _ = _build_engine(responses=[_final("noop")])
-        ctx = AgentContext.from_identity(_acting_identity()).model_copy(
-            update={"cost_ceiling": 0.5}
-        )
+        ctx = AgentContext.from_identity(_acting_identity(), cost_ceiling=0.5)
 
         checker = engine._budget_checker_for(ctx)
         assert checker is not None
@@ -280,6 +280,32 @@ class TestRunChatAction:
         engine, _ = _build_engine(responses=[_final("noop")])
         ctx = AgentContext.from_identity(_acting_identity())
         assert engine._budget_checker_for(ctx) is None
+
+    async def test_run_chat_action_forwards_cost_ceiling_to_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The public method must forward cost_ceiling INTO the loop's context so
+        # the budget gate binds; a regression to post-hoc wiring would run the
+        # loop against an unbounded context even though the caller passed one.
+        engine, _ = _build_engine(responses=[_final("noop")])
+        seen: list[float | None] = []
+        original = engine._budget_checker_for
+
+        def _spy(ctx: AgentContext) -> BudgetChecker | None:
+            seen.append(ctx.cost_ceiling)
+            return original(ctx)
+
+        monkeypatch.setattr(engine, "_budget_checker_for", _spy)
+
+        await engine.run_chat_action(
+            identity=_acting_identity(), instruction="do work", cost_ceiling=0.5
+        )
+        await engine.run_chat_action(
+            identity=_acting_identity(), instruction="more work"
+        )
+
+        # First run forwards the validated ceiling; the second leaves it unbounded.
+        assert seen == [0.5, None]
 
     @pytest.mark.parametrize("bad_ceiling", [0.0, -1.0, math.nan])
     def test_invalid_cost_ceiling_is_rejected_at_construction(

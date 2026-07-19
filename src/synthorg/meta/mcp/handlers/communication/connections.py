@@ -325,7 +325,7 @@ async def _connections_request_secret_capture(
     *,
     app_state: AppState,
     arguments: dict[str, object],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,
 ) -> str:
     """Register a masked secret-capture request for the in-chat setup flow.
 
@@ -333,7 +333,9 @@ async def _connections_request_secret_capture(
     it records a *pending* capture the dashboard renders as a masked input and
     posts out of band under ``draft_id``. The request carries no value, and the
     field's kind and label come from the metadata registry, not the caller, so
-    nothing sensitive enters the turn.
+    nothing sensitive enters the turn. Admin op: it triggers a credential-entry
+    prompt, so it enforces the same confirm + role + actor-audit guardrails as
+    ``connections.create`` before mutating pending state.
 
     Returns:
         Resulting string acknowledging the pending capture.
@@ -345,6 +347,7 @@ async def _connections_request_secret_capture(
     """
     tool = "synthorg_connections_request_secret_capture"
     try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
         args = typed_args(arguments, ConnectionsRequestSecretCaptureArgs)
         try:
             connection_type = ConnectionType(args.connection_type)
@@ -359,6 +362,7 @@ async def _connections_request_secret_capture(
         if field is None:
             not_secret = f"a secret field of connection type {connection_type.value!r}"
             raise ArgumentValidationError(_ARG_FIELD_NAME, not_secret)
+        actor_id = require_actor_id(resolved_actor)
         secret_capture_service_of(app_state).register_pending(
             PendingSecretCapture(
                 draft_id=args.draft_id,
@@ -368,6 +372,9 @@ async def _connections_request_secret_capture(
                 label=field.label,
             )
         )
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -375,6 +382,14 @@ async def _connections_request_secret_capture(
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
+    logger.info(
+        MCP_ADMIN_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_id,
+        reason=reason,
+        draft_id=args.draft_id,
+        field=field.name,
+    )
     logger.info(
         SECRET_CAPTURE_REQUESTED,
         draft_id=args.draft_id,

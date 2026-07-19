@@ -23,7 +23,7 @@ prefix scan to reclaim it, and the operator re-enters the value).
 import asyncio
 import secrets
 from datetime import datetime, timedelta
-from typing import Final, NoReturn, Self
+from typing import Final, NamedTuple, NoReturn, Self
 from uuid import uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, model_validator
@@ -122,6 +122,13 @@ class PendingSecretCapture(BaseModel):
     label: NotBlankStr | None = None
 
 
+class _PendingEntry(NamedTuple):
+    """A pending capture with the time it was registered, for TTL sweeping."""
+
+    capture: PendingSecretCapture
+    registered_at: datetime
+
+
 class SecretCaptureService:
     """Process-local, single-use, TTL-bounded secret-capture store.
 
@@ -150,7 +157,10 @@ class SecretCaptureService:
         # Per-draft pending capture requests, deduplicated by field name so a
         # re-asked field replaces rather than stacks. Process-local and
         # consume-on-read: read within the same turn the console raised them.
-        self._pending: dict[str, dict[str, PendingSecretCapture]] = {}
+        # Each entry carries its registration time so an abandoned draft (the
+        # console raised a capture but the turn errored before ``take_pending``)
+        # is swept on the same TTL as ``_handles`` rather than lingering.
+        self._pending: dict[str, dict[str, _PendingEntry]] = {}
         # Constructed lazily on first async use so the lock binds to the
         # running loop then, not to whichever loop happened to be current at
         # construction (which breaks across pytest-asyncio per-test loops and
@@ -278,20 +288,41 @@ class SecretCaptureService:
             )
             for handle in expired:
                 self._handles.pop(handle.handle_id, None)
+        self._sweep_pending(now)
         for handle in expired:
             await self._delete_secret(handle.secret_id)
         if expired:
             logger.info(SECRET_CAPTURE_PURGED, count=len(expired))
         return len(expired)
 
+    def _sweep_pending(self, now: datetime) -> None:
+        """Drop pending capture requests older than the TTL (and empty drafts).
+
+        The pending queue is value-free (only field metadata), so an abandoned
+        draft leaks no secret, but without a sweep it grows unboundedly under
+        repeated turn failures in a long-lived process. Consume-on-read, so a
+        completed flow clears itself; this only reclaims drafts the operator
+        never finished.
+        """
+        cutoff = now - timedelta(seconds=self._ttl_seconds)
+        for draft_id in tuple(self._pending):
+            fields = self._pending[draft_id]
+            for field_name in tuple(fields):
+                if fields[field_name].registered_at <= cutoff:
+                    del fields[field_name]
+            if not fields:
+                del self._pending[draft_id]
+
     def register_pending(self, pending: PendingSecretCapture) -> None:
         """Record a masked-field capture the console still needs this turn.
 
         Deduplicated by ``(draft_id, field_name)`` so a field the console asks
         for twice is surfaced once. Synchronous (no I/O), so it is atomic under
-        the event loop and needs no lock.
+        the event loop and needs no lock. The registration time is stamped so
+        :meth:`purge_expired` can sweep a draft the operator never completed.
         """
-        self._pending.setdefault(pending.draft_id, {})[pending.field_name] = pending
+        entry = _PendingEntry(capture=pending, registered_at=self._clock.now())
+        self._pending.setdefault(pending.draft_id, {})[pending.field_name] = entry
 
     def take_pending(self, draft_id: str) -> tuple[PendingSecretCapture, ...]:
         """Return and clear the pending capture requests for a draft.
@@ -304,7 +335,9 @@ class SecretCaptureService:
             The pending requests for ``draft_id`` in field-registration order,
             empty when none are pending.
         """
-        return tuple(self._pending.pop(draft_id, {}).values())
+        return tuple(
+            entry.capture for entry in self._pending.pop(draft_id, {}).values()
+        )
 
     def _reject(self, reason: str, draft_id: str, field_name: str) -> NoReturn:
         """Log a uniform rejection and raise the opaque handle error.

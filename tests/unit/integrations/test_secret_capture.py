@@ -204,9 +204,20 @@ def test_take_pending_consumes_registered_requests() -> None:
 def test_register_pending_dedupes_by_field() -> None:
     service = _service(InMemorySecretBackend(), FakeClock())
     service.register_pending(_pending("password"))
-    service.register_pending(_pending("password"))
+    replacement = PendingSecretCapture(
+        draft_id=_DRAFT,
+        connection_type=NotBlankStr("database"),
+        field_name=NotBlankStr("password"),
+        secret_kind=NotBlankStr("password"),
+        label=NotBlankStr("Database password (re-asked)"),
+    )
+    service.register_pending(replacement)
 
-    assert len(service.take_pending(_DRAFT)) == 1
+    pending = service.take_pending(_DRAFT)
+    assert len(pending) == 1
+    # Last write wins: the re-asked field replaces the earlier one rather than
+    # stacking, so a first-write-wins implementation would fail this.
+    assert pending[0].label == replacement.label
 
 
 def test_take_pending_is_scoped_by_draft() -> None:

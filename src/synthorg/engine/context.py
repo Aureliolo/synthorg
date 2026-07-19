@@ -262,6 +262,30 @@ class AgentContext(BaseModel):
         """
         return self.model_copy(update={"conversation": (*self.conversation, msg)})
 
+    def continued_for_new_turn(self, *, max_turns: int) -> AgentContext:
+        """Return a copy that keeps the conversation but resets the turn budget.
+
+        A multi-turn console conversation carries its accumulated messages (the
+        memory the operator built up) forward, but each fresh operator turn gets
+        its own turn + cost budget: without the reset, an earlier turn's usage
+        would throttle or halt every later turn. The cost ceiling itself rides
+        on the context unchanged so its per-turn bound still applies.
+
+        Args:
+            max_turns: The turn budget for the continued turn.
+
+        Returns:
+            New ``AgentContext`` with the conversation preserved and
+            ``turn_count`` / ``accumulated_cost`` reset for a fresh turn.
+        """
+        return self.model_copy(
+            update={
+                "turn_count": 0,
+                "accumulated_cost": ZERO_TOKEN_USAGE,
+                "max_turns": max_turns,
+            }
+        )
+
     def with_steering_adopted(self, directive_id: NotBlankStr) -> AgentContext:
         """Mark a mid-flight steering directive as adopted by this run.
 

@@ -10,11 +10,35 @@ the actor) to keep the module dependency acyclic.
 
 from synthorg.api.conversational_builders import build_operator_console
 from synthorg.api.state import AppState
+from synthorg.meta.chief_of_staff.console_conversation_store import (
+    ConsoleConversationStore,
+)
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 
 logger = get_logger(__name__)
+
+
+def _console_conversation_store(app_state: AppState) -> ConsoleConversationStore:
+    """Return the process-local console conversation store, creating it once.
+
+    Held on ``MetaStateSlice`` so it is a stable singleton: a live console
+    rebuild (toggle flip) reuses the same store, keeping in-flight conversation
+    memory rather than dropping it on every reconfigure.
+
+    Returns:
+        The shared :class:`ConsoleConversationStore`.
+    """
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+
+    existing = app_state.slice(MetaStateSlice).console_conversation_store
+    if existing is not None:
+        return existing
+    store = ConsoleConversationStore(clock=app_state.clock)
+    app_state.wire_if_field_absent(MetaStateSlice, "console_conversation_store", store)
+    wired = app_state.slice(MetaStateSlice).console_conversation_store
+    return wired if wired is not None else store
 
 
 async def wire_operator_console(
@@ -49,6 +73,7 @@ async def wire_operator_console(
         autonomy_resolver=service.autonomy_resolver,
         clock=app_state.clock,
         secret_capture=app_state.slice(IntegrationsStateSlice).secret_capture_service,
+        conversations=_console_conversation_store(app_state),
     )
     if console is not None:
         app_state.wire(MetaStateSlice, operator_console=console)
@@ -92,6 +117,7 @@ async def rebuild_operator_console(
             secret_capture=app_state.slice(
                 IntegrationsStateSlice
             ).secret_capture_service,
+            conversations=_console_conversation_store(app_state),
         )
     app_state.wire(MetaStateSlice, operator_console=console)
     logger.info(

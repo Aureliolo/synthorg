@@ -3,9 +3,9 @@
 
 One entry point behind ``POST /meta/chat/turn``: classify what an operator's
 message wants, then dispatch it to the capability that already implements it
-(explain / propose / group / act / charter). The capability *services* are
-unchanged; this layer only picks which one answers, so collapsing the five
-mode endpoints into one surface never collapses the state machines beneath.
+(explain / propose / group / act / charter / configure). The capability
+*services* are unchanged; this layer only picks which one answers, so collapsing
+the mode endpoints into one surface never collapses the state machines beneath.
 
 The intent classifier lives in the meta layer; the per-capability dispatch
 here lives in the API layer because it composes the same app-state-resolved
@@ -540,8 +540,8 @@ async def dispatch_turn(
 
     ``require_mutation`` is invoked (and may raise ``PermissionDeniedException``)
     once the final intent is known and is side-effecting, so a read-only actor
-    can still run EXPLAIN while only propose/group/act/charter demand mutation
-    permission.
+    can still run EXPLAIN while propose/group/act/charter/configure demand
+    mutation permission.
 
     Returns:
         The unified :class:`TurnResult` carrying the resolved intent and its

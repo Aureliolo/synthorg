@@ -251,12 +251,12 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         required=("name",),
         args_model=ConnectionsCheckHealthArgs,
     ),
-    write_tool(
+    admin_tool(
         "connections",
         "request_secret_capture",
         "Ask the operator to provide one secret field out of band during an "
-        "in-chat setup flow (renders a masked input); never ask for a secret "
-        "value in the chat itself.",
+        "in-chat setup flow (renders a masked input; requires confirm); never "
+        "ask for a secret value in the chat itself.",
         {
             "connection_type": {
                 "type": "string",
@@ -270,8 +270,14 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "string",
                 "description": "Setup draft id the captured handle binds to",
             },
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("connection_type", "field_name", "draft_id"),
+        required=(
+            "connection_type",
+            "field_name",
+            "draft_id",
+            *ADMIN_GUARDRAIL_REQUIRED,
+        ),
         args_model=ConnectionsRequestSecretCaptureArgs,
     ),
     # --- Webhooks ---

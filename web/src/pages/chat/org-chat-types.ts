@@ -121,6 +121,13 @@ export interface SecretCaptureEvent {
   captures: readonly SecretCaptureField[]
   /** Set once the operator has submitted the captured secrets. */
   resolved?: 'submitted' | undefined
+  /**
+   * Stable dedup nonce for this card's configure submission, minted on the
+   * first attempt and reused on every retry so a lost response cannot drive a
+   * duplicate side effect (the server dedups the identical request). Transient
+   * client UX state, never persisted across reloads.
+   */
+  idempotencyKey?: string | undefined
 }
 
 export type OrgEvent =

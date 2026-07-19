@@ -304,7 +304,7 @@ const DEGRADE_NOTICE: Record<TurnResult['intent_reason'], string | null> = {
   charter_floor_not_met:
     'Answered as a question rather than starting a company charter. Say explicitly you want to define a new company.',
   configure_floor_not_met:
-    'Answered as a question rather than configuring the platform. Say explicitly what you want to set up or change (e.g. "connect our GitHub").',
+    'Answered as a question rather than configuring the platform. Say explicitly what you want to set up or change (e.g. "connect our issue tracker").',
   group_targets_missing:
     'Answered as a question rather than convening a group. Name the roles you want in the room.',
   classify_call_failed:

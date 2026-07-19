@@ -158,15 +158,17 @@ class ConnectionsCreateArgs(AdminGuardrailFields):
         return self
 
 
-class ConnectionsRequestSecretCaptureArgs(_ArgsBase):
-    """Args for ``connections.request_secret_capture``.
+class ConnectionsRequestSecretCaptureArgs(AdminGuardrailFields):
+    """Args for ``connections.request_secret_capture`` (admin op).
 
     Raised by the operator console mid-setup to ask the operator for one secret
     field out of band: the dashboard renders a masked input for
     ``(connection_type, field_name)`` and posts the value straight to the
     capture endpoint under ``draft_id``, so the raw value never enters the chat
     turn. Carries no value; the field's kind and label come from the backend
-    metadata registry, never the caller.
+    metadata registry, never the caller. Admin op: callers supply ``confirm=True``
+    and a non-blank ``reason`` (mixin) so triggering a credential-entry prompt
+    carries the same role + actor-audit controls as ``connections.create``.
     """
 
     connection_type: NotBlankStr = Field(description="Connection type being set up")
