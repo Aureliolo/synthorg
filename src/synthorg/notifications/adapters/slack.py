@@ -1,33 +1,32 @@
-"""Slack notification sink -- webhook POST."""
+"""Slack notification sink: bot-token Web API (chat.postMessage).
+
+Unified onto the same bound-connection Slack Web API the agent chat tools
+use: the sink resolves a ``SLACK`` connection's bot token from the
+connection catalog and posts to a configured channel via
+``chat.postMessage``. The connection + client are resolved lazily on the
+first send, so a Slack connection created after boot starts working on
+the next notification without a restart. Egress is pinned to slack.com by
+the chat client factory (no separate SSRF policy needed).
+"""
 
 import asyncio
 import math
 from types import TracebackType
 from typing import Final, Self
 
-import httpx
-
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.resilience import (
-    coerce_finite_nonneg_seconds,
-    parse_retry_after_seconds,
-)
-from synthorg.notifications.adapters._ssrf import (
-    build_pinned_transport,
-    resolve_outbound_target,
-    validate_outbound_url_scheme,
-)
+from synthorg.core.types import NotBlankStr
+from synthorg.integrations.chat_api import ChatApiClient, build_chat_api_client
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.notifications.models import Notification
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_SLACK_DELIVERED,
     NOTIFICATION_SLACK_FAILED,
 )
-from synthorg.tools.network_validator import NetworkPolicy
 
 logger = get_logger(__name__)
-_DEFAULT_WEBHOOK_TIMEOUT_SECONDS: Final[float] = 10.0
-_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
+_DEFAULT_TIMEOUT_SECONDS: Final[float] = 10.0
 
 
 def _escape_mrkdwn(text: str) -> str:
@@ -39,100 +38,70 @@ def _escape_mrkdwn(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _build_slack_payload(notification: Notification) -> dict[str, object]:
-    """Build the Slack Block Kit payload for a notification.
+def _format_message(notification: Notification) -> str:
+    """Render a notification as a Slack mrkdwn message body.
 
     Returns:
-        The Slack webhook payload: a fallback ``text`` plus Block Kit
-        ``blocks`` rendering the escaped notification fields.
+        A single mrkdwn string: a severity-tagged header, the optional
+        body, and a category/source context line.
     """
-    safe_title = _escape_mrkdwn(notification.title)
-    safe_body = _escape_mrkdwn(notification.body) if notification.body else ""
-    safe_category = _escape_mrkdwn(notification.category)
-    safe_source = _escape_mrkdwn(notification.source)
-    header = f"*[{notification.severity.value.upper()}]* {safe_title}"
-    body_text = f"{header}\n{safe_body}" if safe_body else header
-    return {
-        "text": header,
-        "blocks": [
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": body_text},
-            },
-            {
-                "type": "context",
-                "elements": [
-                    {
-                        "type": "mrkdwn",
-                        "text": (f"Category: {safe_category} | Source: {safe_source}"),
-                    },
-                ],
-            },
-        ],
-    }
+    header = (
+        f"*[{notification.severity.value.upper()}]* "
+        f"{_escape_mrkdwn(notification.title)}"
+    )
+    parts = [header]
+    if notification.body:
+        parts.append(_escape_mrkdwn(notification.body))
+    parts.append(
+        f"Category: {_escape_mrkdwn(notification.category)} | "
+        f"Source: {_escape_mrkdwn(notification.source)}"
+    )
+    return "\n".join(parts)
 
 
 class SlackNotificationSink:
-    """Notification sink that posts to a Slack incoming webhook.
-
-    The ``httpx.AsyncClient`` is created lazily inside ``start()``
-    and closed inside ``close()`` so a never-started sink leaks
-    nothing. Both methods are idempotent under the
-    ``_lifecycle_lock``: a second ``start()`` is a no-op, a
-    ``close()`` before ``start()`` is a no-op, concurrent calls
-    converge on a single client instance.
+    """Notification sink that posts via the Slack Web API.
 
     Args:
-        webhook_url: Slack incoming webhook URL.
-        webhook_timeout_seconds: HTTP timeout for webhook POST calls,
-            in seconds. Mirrors the
-            ``notifications.slack_webhook_timeout_seconds`` setting;
-            the notification factory threads the resolved value in at
-            construction so operator tuning takes effect on restart.
-            Must be positive.
-        network_policy: SSRF policy applied to *webhook_url* at
-            ``start()`` (async DNS resolution + blocked-range check +
-            connect pinning). ``None`` selects the fail-closed default
-            (private/internal IPs blocked, empty allowlist); a
-            Slack-compatible receiver on an internal address requires a
-            policy whose ``hostname_allowlist`` covers its host.
+        connection_catalog: Catalog used to resolve the ``SLACK``
+            connection's bot token at first send.
+        connection_name: Name of the bound ``SLACK`` connection.
+        channel: Target channel id (or name) to post to.
+        timeout_seconds: Per-request HTTP timeout. Must be positive.
+
+    The client is built lazily on the first send and reused; ``close()``
+    releases it. Both lifecycle methods are idempotent under the
+    ``_lifecycle_lock``.
 
     Raises:
-        ValueError: If *webhook_url* uses a non-HTTP scheme or is a
-            literal private/loopback host, or if
-            *webhook_timeout_seconds* is not positive.
+        ValueError: If *timeout_seconds* is not a finite number > 0.
     """
 
     __slots__ = (
+        "_catalog",
+        "_channel",
         "_client",
+        "_connection_name",
         "_lifecycle_lock",
-        "_network_policy",
-        "_webhook_timeout_seconds",
-        "_webhook_url",
+        "_timeout_seconds",
     )
 
     def __init__(
         self,
         *,
-        webhook_url: str,
-        webhook_timeout_seconds: float = _DEFAULT_WEBHOOK_TIMEOUT_SECONDS,
-        network_policy: NetworkPolicy | None = None,
+        connection_catalog: ConnectionCatalog,
+        connection_name: str,
+        channel: str,
+        timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
-        validate_outbound_url_scheme(webhook_url, "webhook_url")
-        if not math.isfinite(webhook_timeout_seconds) or webhook_timeout_seconds <= 0:
-            msg = (
-                "webhook_timeout_seconds must be a finite number > 0, got "
-                f"{webhook_timeout_seconds}"
-            )
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            msg = f"timeout_seconds must be a finite number > 0, got {timeout_seconds}"
             raise ValueError(msg)
-        self._webhook_url = webhook_url
-        self._webhook_timeout_seconds = webhook_timeout_seconds
-        self._network_policy = (
-            network_policy if network_policy is not None else NetworkPolicy()
-        )
-        self._client: httpx.AsyncClient | None = None
-        # Eager init: stop() must be safe before any start() call,
-        # so the lock is created here rather than lazily in start().
+        self._catalog = connection_catalog
+        self._connection_name = connection_name
+        self._channel = channel
+        self._timeout_seconds = timeout_seconds
+        self._client: ChatApiClient | None = None
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init
 
     @property
@@ -141,49 +110,10 @@ class SlackNotificationSink:
         return "slack"
 
     async def start(self) -> None:
-        """Create the underlying HTTP client (idempotent).
-
-        Runs the async SSRF pre-flight against ``webhook_url`` (DNS
-        resolution + blocked-range check) and pins the client's TCP
-        connect to the validated IP, so a DNS name resolving to an
-        internal address is rejected and rebinding cannot redirect the
-        live connect. The pin lasts the sink's lifetime: a webhook
-        targets a single fixed host, so re-resolving per send buys
-        nothing.
-
-        ``follow_redirects=False`` is kept explicit: the pre-flight only
-        validates ``webhook_url``, so a 3xx to an internal host would
-        otherwise bypass the gate.
-
-        Raises:
-            ValueError: If ``webhook_url`` is rejected by the SSRF policy.
-        """
-        async with self._lifecycle_lock:
-            if self._client is not None:
-                return
-            validation = await resolve_outbound_target(
-                self._webhook_url,
-                field="webhook_url",
-                policy=self._network_policy,
-            )
-            self._client = httpx.AsyncClient(
-                timeout=self._webhook_timeout_seconds,
-                follow_redirects=False,
-                transport=build_pinned_transport(validation),
-            )
+        """No-op: the Web API client is built lazily on first send."""
 
     async def close(self) -> None:
-        """Close the underlying HTTP client (idempotent).
-
-        ``self._client`` is cleared only after ``aclose()`` succeeds:
-        if the close raises (network error, cancellation, ...), the
-        reference stays so a subsequent ``close()`` can retry. Without
-        that, an exception or cancellation would silently leak the
-        still-open HTTP client and break the idempotency contract.
-        Failures are logged before re-raising so standalone
-        ``async with`` users see them too -- ``NotificationDispatcher``
-        only sees the post-raise log path via ``_safe_close``.
-        """
+        """Release the underlying chat client if it was built (idempotent)."""
         async with self._lifecycle_lock:
             if self._client is None:
                 return
@@ -205,7 +135,7 @@ class SlackNotificationSink:
         """Start the sink; return self for ``async with`` callers.
 
         Returns:
-            This sink instance, started and ready to send.
+            This sink instance.
         """
         await self.start()
         return self
@@ -220,62 +150,23 @@ class SlackNotificationSink:
         await self.close()
 
     async def send(self, notification: Notification) -> None:
-        """Post the notification to Slack.
-
-        Raises:
-            RuntimeError: If called before ``start()``.
-            httpx.HTTPStatusError: On a non-2xx webhook response (incl. a
-                429 rate-limit, logged once with its Retry-After).
+        """Post the notification to Slack via ``chat.postMessage``.
 
         Args:
             notification: The notification to deliver.
+
+        Raises:
+            ChatApiError: On any Web API / transport failure (logged
+                first; the dispatcher swallows it as best-effort).
         """
-        client = self._client
+        client = await self._ensure_client()
         if client is None:
-            logger.warning(
-                NOTIFICATION_SLACK_FAILED,
-                notification_id=str(notification.id),
-                error_type="RuntimeError",
-                detail="send_called_before_start",
-            )
-            msg = "SlackNotificationSink.send called before start()"
-            raise RuntimeError(msg)
-        payload = _build_slack_payload(notification)
+            return
         try:
-            response = await client.post(
-                self._webhook_url,
-                json=payload,
+            await client.send_message(
+                channel=NotBlankStr(self._channel),
+                text=NotBlankStr(_format_message(notification)),
             )
-            if response.status_code == _HTTP_TOO_MANY_REQUESTS:
-                # Surface the Retry-After hint so a throttled webhook is
-                # observable. raise_for_status below turns this into an
-                # HTTPStatusError; the handler skips re-logging it (see
-                # below) so a 429 is recorded exactly once.
-                logger.warning(
-                    NOTIFICATION_SLACK_FAILED,
-                    notification_id=str(notification.id),
-                    detail="rate_limited",
-                    retry_after_seconds=coerce_finite_nonneg_seconds(
-                        parse_retry_after_seconds(response.headers.get("retry-after"))
-                    ),
-                )
-            response.raise_for_status()
-            logger.info(
-                NOTIFICATION_SLACK_DELIVERED,
-                notification_id=str(notification.id),
-            )
-        except httpx.HTTPStatusError as exc:
-            # A 429 was already logged above with its Retry-After; avoid the
-            # duplicate failure log (which would fire automated alerts twice
-            # per rate-limited delivery). Other statuses log here.
-            if exc.response.status_code != _HTTP_TOO_MANY_REQUESTS:
-                logger.warning(
-                    NOTIFICATION_SLACK_FAILED,
-                    notification_id=str(notification.id),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-            raise
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -285,3 +176,50 @@ class SlackNotificationSink:
                 error=safe_error_description(exc),
             )
             raise
+        logger.info(NOTIFICATION_SLACK_DELIVERED, notification_id=str(notification.id))
+
+    async def _ensure_client(self) -> ChatApiClient | None:
+        """Resolve the connection + token and build the client once.
+
+        Returns:
+            The chat client, or ``None`` when the connection is absent /
+            lacks a token (logged; the sink degrades to a no-op until the
+            connection is configured).
+        """
+        async with self._lifecycle_lock:
+            if self._client is not None:
+                return self._client
+            conn = await self._catalog.get(self._connection_name)
+            if conn is None:
+                logger.warning(
+                    NOTIFICATION_SLACK_FAILED,
+                    detail="connection_not_found",
+                    connection=self._connection_name,
+                )
+                return None
+            try:
+                credentials = await self._catalog.get_credentials(self._connection_name)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    NOTIFICATION_SLACK_FAILED,
+                    detail="credential_resolution_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                return None
+            token = credentials.get("token")
+            if not token:
+                logger.warning(
+                    NOTIFICATION_SLACK_FAILED,
+                    detail="missing_token",
+                    connection=self._connection_name,
+                )
+                return None
+            self._client = build_chat_api_client(
+                connection_type=conn.connection_type,
+                base_url=str(conn.base_url or ""),
+                token=token,
+                timeout=self._timeout_seconds,
+            )
+            return self._client

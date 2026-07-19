@@ -92,3 +92,7 @@ TOOL_REGISTRY_INTEGRITY_CHECK_COMPLETE: Final[str] = "tool.registry.integrity.co
 
 # ── Memory tool events ────────────────────────────────────────────
 TOOL_MEMORY_AUGMENTATION_FAILED: Final[str] = "tool.memory.augmentation_failed"
+
+# ── Forge / chat tool events ──────────────────────────────────────
+FORGE_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.forge.credential_failed"
+CHAT_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.chat.credential_failed"

@@ -70,8 +70,10 @@ from tests._shared import mock_of
 
 def _slack_factory(timeout: float) -> object:
     return SlackNotificationSink(
-        webhook_url="https://hooks.slack.com/services/T/B/XYZ",
-        webhook_timeout_seconds=timeout,
+        connection_catalog=mock_of[ConnectionCatalog](),
+        connection_name="slack-conn",
+        channel="C1",
+        timeout_seconds=timeout,
     )
 
 
@@ -97,10 +99,10 @@ def _email_factory(timeout: float) -> object:
 @pytest.mark.parametrize(
     ("factory", "match", "bad_value"),
     [
-        (_slack_factory, "webhook_timeout_seconds", 0.0),
-        (_slack_factory, "webhook_timeout_seconds", -1.0),
-        (_slack_factory, "webhook_timeout_seconds", float("inf")),
-        (_slack_factory, "webhook_timeout_seconds", float("nan")),
+        (_slack_factory, "timeout_seconds", 0.0),
+        (_slack_factory, "timeout_seconds", -1.0),
+        (_slack_factory, "timeout_seconds", float("inf")),
+        (_slack_factory, "timeout_seconds", float("nan")),
         (_ntfy_factory, "webhook_timeout_seconds", 0.0),
         (_ntfy_factory, "webhook_timeout_seconds", float("inf")),
         (_email_factory, "smtp_timeout_seconds", 0.0),
@@ -329,55 +331,48 @@ class TestResolveOAuthHttpTimeout:
 
 
 class TestNotificationFactoryBridgeConfig:
-    @pytest.mark.unit
-    def test_slack_sink_receives_bridge_timeout(self) -> None:
-        bridge_config = NotificationsBridgeConfig(
-            slack_webhook_timeout_seconds=7.5,
-            ntfy_webhook_timeout_seconds=10.0,
-            email_smtp_timeout_seconds=10.0,
-        )
-        config = NotificationConfig(
+    @staticmethod
+    def _slack_config() -> NotificationConfig:
+        return NotificationConfig(
             sinks=(
                 NotificationSinkConfig(
                     type=NotificationSinkType.SLACK,
                     enabled=True,
-                    params={"webhook_url": "https://example.com/slack-webhook"},
+                    params={"connection": "slack-conn", "channel": "C1"},
                 ),
             ),
         )
-        dispatcher = build_notification_dispatcher(config, bridge_config=bridge_config)
+
+    @pytest.mark.unit
+    def test_slack_sink_receives_bridge_timeout(self) -> None:
+        bridge_config = NotificationsBridgeConfig(
+            slack_timeout_seconds=7.5,
+            ntfy_webhook_timeout_seconds=10.0,
+            email_smtp_timeout_seconds=10.0,
+        )
+        dispatcher = build_notification_dispatcher(
+            self._slack_config(),
+            bridge_config=bridge_config,
+            connection_catalog=mock_of[ConnectionCatalog](),
+        )
         slack_sinks = [
             s for s in dispatcher._sinks if isinstance(s, SlackNotificationSink)
         ]
         assert slack_sinks, "Slack sink should have been registered"
-        slack = slack_sinks[0]
-        # The sink stores the bridge timeout; the underlying
-        # ``httpx.AsyncClient`` is created lazily inside ``start()``
-        # so we assert on the stored value rather than on a
-        # not-yet-constructed client.
-        assert slack._webhook_timeout_seconds == 7.5
+        assert slack_sinks[0]._timeout_seconds == 7.5
 
     @pytest.mark.unit
     def test_factory_without_bridge_uses_default(self) -> None:
-        config = NotificationConfig(
-            sinks=(
-                NotificationSinkConfig(
-                    type=NotificationSinkType.SLACK,
-                    enabled=True,
-                    params={"webhook_url": "https://example.com/slack-webhook"},
-                ),
-            ),
+        dispatcher = build_notification_dispatcher(
+            self._slack_config(),
+            bridge_config=None,
+            connection_catalog=mock_of[ConnectionCatalog](),
         )
-        dispatcher = build_notification_dispatcher(config, bridge_config=None)
         slack_sinks = [
             s for s in dispatcher._sinks if isinstance(s, SlackNotificationSink)
         ]
         assert slack_sinks
-        slack = slack_sinks[0]
-        # Default is 10.0 (module default on SlackNotificationSink).
-        # The sink stores it for lazy client construction in
-        # ``start()``.
-        assert slack._webhook_timeout_seconds == 10.0
+        assert slack_sinks[0]._timeout_seconds == 10.0
 
 
 # ── NotificationsBridgeConfig URL validation ───────────────────

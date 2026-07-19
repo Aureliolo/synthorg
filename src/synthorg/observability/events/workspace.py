@@ -59,6 +59,14 @@ FORGE_API_REPO_EXISTS_CHECK: Final[str] = "forge_api.repo.exists_check"
 FORGE_API_REQUEST_FAILED: Final[str] = "forge_api.request.failed"
 FORGE_API_RATE_LIMITED: Final[str] = "forge_api.rate_limited"
 
+# ── Forge agent-operation events (issues, PRs, reviews, CI) ───────
+FORGE_API_ISSUE_OPENED: Final[str] = "forge_api.issue.opened"
+FORGE_API_ISSUE_COMMENTED: Final[str] = "forge_api.issue.commented"
+FORGE_API_PULL_REQUEST_OPENED: Final[str] = "forge_api.pull_request.opened"
+FORGE_API_PULL_REQUEST_COMMENTED: Final[str] = "forge_api.pull_request.commented"
+FORGE_API_PULL_REQUEST_REVIEWED: Final[str] = "forge_api.pull_request.reviewed"
+FORGE_API_PULL_REQUEST_MERGED: Final[str] = "forge_api.pull_request.merged"
+
 # ── Project workspace provisioning events ────────────────────────
 PROJECT_WORKSPACE_PROVISIONED: Final[str] = "project_workspace.provisioned"
 PROJECT_WORKSPACE_REUSED: Final[str] = "project_workspace.reused"

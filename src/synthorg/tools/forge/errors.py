@@ -1,0 +1,92 @@
+"""Domain error hierarchy for the forge agent tools.
+
+Every failure path raises a ``Forge<Condition>Error`` subclass of
+:class:`synthorg.tools.errors.ToolError` so the
+``check_domain_error_hierarchy.py`` gate stays clean and callers can
+discriminate failures by ``error_code`` / class. The tool maps the
+lower-level forge-client errors (``GitBackendForge*``,
+``FeatureNotImplementedError``) onto these.
+"""
+
+from typing import ClassVar
+
+from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.tools.errors import ToolError
+
+
+class ForgeToolError(ToolError):
+    """Base for all forge agent-tool domain errors."""
+
+    status_code: ClassVar[int] = 500
+    error_code: ClassVar[ErrorCode] = ErrorCode.TOOL_EXECUTION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    default_message: ClassVar[str] = "Forge tool failure"
+
+
+class ForgeToolArgumentError(ForgeToolError):
+    """Arguments were structurally valid but semantically unusable."""
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.TOOL_PARAMETER_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Forge tool arguments invalid"
+
+
+class ForgeConnectionNotFoundError(
+    ForgeToolError
+):  # lint-allow: error-code-uniqueness -- twin of ConnectionNotFoundError
+    """The configured forge connection is absent from the catalog."""
+
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.CONNECTION_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Forge connection not found"
+
+
+class ForgeUnsupportedError(
+    ForgeToolError
+):  # lint-allow: error-code-uniqueness -- twin of FeatureNotImplementedError
+    """The bound forge (or operation) has no agent-operations client."""
+
+    status_code: ClassVar[int] = 501
+    error_code: ClassVar[ErrorCode] = ErrorCode.FEATURE_NOT_IMPLEMENTED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    default_message: ClassVar[str] = "Forge operation not supported for this forge"
+
+
+class ForgeCredentialError(ForgeToolError):
+    """Credentials could not be brokered for the forge connection."""
+
+    status_code: ClassVar[int] = 500
+    error_code: ClassVar[ErrorCode] = ErrorCode.TOOL_EXECUTION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    default_message: ClassVar[str] = "Forge credential brokering failed"
+
+
+class ForgeRateLimitedError(ForgeToolError):
+    """The forge rate-limited the request."""
+
+    status_code: ClassVar[int] = 429
+    error_code: ClassVar[ErrorCode] = ErrorCode.RATE_LIMITED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.RATE_LIMIT
+    default_message: ClassVar[str] = "Forge rate limit exceeded"
+
+
+class ForgeUpstreamError(ForgeToolError):
+    """The forge request failed (auth, transport, or non-2xx)."""
+
+    status_code: ClassVar[int] = 502
+    error_code: ClassVar[ErrorCode] = ErrorCode.TOOL_EXECUTION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    default_message: ClassVar[str] = "Forge upstream request failed"
+
+
+__all__ = [
+    "ForgeConnectionNotFoundError",
+    "ForgeCredentialError",
+    "ForgeRateLimitedError",
+    "ForgeToolArgumentError",
+    "ForgeToolError",
+    "ForgeUnsupportedError",
+    "ForgeUpstreamError",
+]

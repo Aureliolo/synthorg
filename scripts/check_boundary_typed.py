@@ -66,6 +66,12 @@ _TOOL_EXECUTE_SITES: tuple[tuple[str, str], ...] = (
     ("src/synthorg/tools/examples/echo.py", "EchoTool"),
     ("src/synthorg/tools/discovery.py", "LoadToolTool"),
     ("src/synthorg/tools/discovery.py", "LoadToolResourceTool"),
+    # Forge + chat agent tools share one execute() per base class; the
+    # concrete leaves (forge_repo / forge_issue / ..., chat_messages /
+    # chat_directory) inherit it, so the typed boundary is registered once
+    # on each base.
+    ("src/synthorg/tools/forge/forge_tools.py", "_BaseForgeTool"),
+    ("src/synthorg/tools/chat/chat_tools.py", "_BaseChatTool"),
 )
 
 

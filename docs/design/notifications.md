@@ -24,7 +24,7 @@ The lifecycle is guarded by an `asyncio.Lock` on stateful adapters so concurrent
 
 The `NotificationDispatcher` is itself driven by an `async start()` / `async aclose()` pair (wired into the API lifecycle in `src/synthorg/api/lifecycle_builder.py`). On startup it fans out `start()` to every registered sink through `asyncio.TaskGroup`; sinks whose start fails are dropped from the active set so the rest of the dispatch flow keeps working.
 
-Each `dispatch(notification)` call fans out to the active sinks concurrently via `asyncio.TaskGroup`. Failures in individual sinks are isolated: a failing Slack webhook does not prevent ntfy or email delivery. All errors are logged with structured event constants (`error_type` + `safe_error_description`, never raw `str(exc)` so webhook URLs / SMTP credentials never reach the log sink) and collected into an `ExceptionGroup` that preserves per-sink context.
+Each `dispatch(notification)` call fans out to the active sinks concurrently via `asyncio.TaskGroup`. Failures in individual sinks are isolated: a failing Slack post does not prevent ntfy or email delivery. All errors are logged with structured event constants (`error_type` + `safe_error_description`, never raw `str(exc)` so tokens / SMTP credentials never reach the log sink) and collected into an `ExceptionGroup` that preserves per-sink context.
 
 The dispatcher applies **severity-based filtering**: notifications below the
 configured `min_severity` threshold are dropped before fan-out. `aclose()`
@@ -38,12 +38,17 @@ Four built-in adapters are provided:
 |---------|-----------|-----------------|
 | **Console** | stderr via structured logger | None (always available as fallback) |
 | **ntfy** | HTTPS POST to ntfy server | `topic` (required), `server_url` (defaults to `https://ntfy.sh`), `token` (optional) |
-| **Slack** | HTTPS POST to Incoming Webhook | `webhook_url` (required) |
+| **Slack** | `chat.postMessage` via the Slack Web API | `connection` (required, name of a bound `SLACK` connection holding the bot token), `channel` (required) |
 | **Email** | SMTP with STARTTLS | `host`, `to_addrs` (required), `port`, `username`, `password`, `from_addr`, `use_tls` |
 
-The ntfy and Slack adapters validate target URLs against SSRF (private/loopback IP
-rejection). The email adapter enforces STARTTLS when `use_tls` is enabled and
-rejects partial credentials (username without password or vice versa).
+The Slack adapter is unified onto the same bot-token Web API the agent chat tools
+use: it resolves the bound `SLACK` connection's token from the connection catalog
+(lazily, on the first send, so a connection created after boot works without a
+restart) and posts via `chat.postMessage`; egress is pinned to `slack.com` by the
+chat client factory. The legacy incoming-webhook path has been retired. The ntfy
+adapter validates target URLs against SSRF (private/loopback IP rejection). The
+email adapter enforces STARTTLS when `use_tls` is enabled and rejects partial
+credentials (username without password or vice versa).
 
 ## Integration Points
 
@@ -78,7 +83,8 @@ notifications:
     - type: slack
       enabled: true
       params:
-        webhook_url: "${SLACK_WEBHOOK_URL}"
+        connection: "ops-slack"   # a bound SLACK connection holding the bot token
+        channel: "C0123456789"
     - type: email
       enabled: false
       params:

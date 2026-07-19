@@ -1326,6 +1326,12 @@
         "WorkspaceBaselineStore",
         "DesktopTool",
         "ExternalApiTool",
+        "ForgeRepoTool",
+        "ForgeIssueTool",
+        "ForgePullRequestTool",
+        "ForgeCiTool",
+        "ChatMessagesTool",
+        "ChatDirectoryTool",
         "build_structure_map_tool_factory",
         "QueryStructureMapTool",
         "create_lifecycle_strategy",
@@ -1402,6 +1408,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-19T08:51:21.009482Z",
+  "generated_at": "2026-07-19T11:46:41.508729Z",
   "schema_version": 1
 }

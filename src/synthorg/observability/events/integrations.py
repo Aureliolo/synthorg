@@ -205,3 +205,8 @@ ARTIFACT_DELETE_STORAGE_MISS: Final[str] = "integrations.artifact.delete_storage
 """The index held the artifact but the storage backend reported no blob."""
 ARTIFACT_DELETE_INDEX_MISS: Final[str] = "integrations.artifact.delete_index_miss"
 """A delete named a valid-UUID artifact with no index entry (idempotent no-op)."""
+
+# -- Chat platform Web API client events ---------------------------------
+CHAT_API_MESSAGE_SENT: Final[str] = "integrations.chat_api.message_sent"
+CHAT_API_REQUEST_FAILED: Final[str] = "integrations.chat_api.request_failed"
+CHAT_API_RATE_LIMITED: Final[str] = "integrations.chat_api.rate_limited"

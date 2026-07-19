@@ -23,9 +23,10 @@ class NotificationSinkConfig(BaseModel):
         type: Adapter type (``console``, ``ntfy``, ``slack``,
             ``email``).
         enabled: Whether this sink is active.
-        params: Adapter-specific parameters (URL, topic, etc.).
-            May contain credentials (``password``, ``token``,
-            ``webhook_url``) -- treat as sensitive.
+        params: Adapter-specific parameters (URL, topic, the bound
+            ``connection`` name + ``channel`` for Slack, etc.). May
+            contain credentials (``password``, ``token``) -- treat as
+            sensitive.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

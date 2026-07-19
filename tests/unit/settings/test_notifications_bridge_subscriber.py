@@ -44,7 +44,7 @@ class TestProtocol:
     def test_watched_keys_cover_slack_ntfy_email(self) -> None:
         sub, _, _ = _make_subscriber()
         watched = sub.watched_keys
-        assert ("notifications", "slack_webhook_timeout_seconds") in watched
+        assert ("notifications", "slack_timeout_seconds") in watched
         assert ("notifications", "ntfy_default_url") in watched
         assert ("notifications", "email_smtp_timeout_seconds") in watched
 
@@ -56,7 +56,7 @@ class TestRebuild:
         spy = create_autospec(config_apply._apply_notification_dispatcher_config)
         monkeypatch.setattr(config_apply, "_apply_notification_dispatcher_config", spy)
         sub, app_state, config = _make_subscriber()
-        await sub.on_settings_changed("notifications", "slack_default_webhook_url")
+        await sub.on_settings_changed("notifications", "slack_timeout_seconds")
         spy.assert_awaited_once_with(app_state, config)
 
     async def test_unknown_key_is_noop(self, monkeypatch: pytest.MonkeyPatch) -> None:

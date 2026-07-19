@@ -30,7 +30,8 @@ notifications:
     - type: slack
       enabled: true
       params:
-        webhook_url: "${SLACK_WEBHOOK_URL}"
+        connection: "ops-slack"   # a bound SLACK connection holding the bot token
+        channel: "C0123456789"
     - type: email
       enabled: false
       params:
@@ -49,10 +50,10 @@ notifications:
 |---------|-----------|-----------------|
 | Console | stderr via structured logger | none (always available as fallback) |
 | ntfy | HTTPS POST to ntfy server | `topic` (required), `server_url` (defaults to `https://ntfy.sh`), `token` (optional) |
-| Slack | HTTPS POST to Incoming Webhook | `webhook_url` (required) |
+| Slack | `chat.postMessage` via the Slack Web API | `connection` (required, a bound `SLACK` connection holding the bot token), `channel` (required) |
 | Email | SMTP with STARTTLS | `host`, `to_addrs` (required), `port`, `username`, `password`, `from_addr`, `use_tls` |
 
-The ntfy and Slack adapters validate webhook URLs against SSRF (private / loopback / link-local IPs rejected). The email adapter enforces STARTTLS when `use_tls` is true.
+The Slack sink posts through the bound `SLACK` connection's bot token (`chat.postMessage`), egress pinned to `slack.com`; the legacy incoming-webhook path has been retired. The ntfy adapter validates its URL against SSRF (private / loopback / link-local IPs rejected). The email adapter enforces STARTTLS when `use_tls` is true.
 
 ### Severity Filtering
 
@@ -132,13 +133,13 @@ The server emits `{"action": "auth_ok"}` once your ticket is validated; only the
 
 ## Integration Recipes
 
-### Slack webhook sink
+### Slack sink
 
-1. Create an Incoming Webhook in your Slack workspace (`App Settings → Incoming Webhooks → Add New Webhook`).
-2. Set the webhook URL as `SLACK_WEBHOOK_URL` in your deployment env.
-3. Add the Slack entry to `notifications.sinks` (see config example above).
+1. Create a Slack app with a bot token (`chat:write` scope) and install it to your workspace.
+2. Add a `SLACK` connection in the dashboard holding the bot token in its `token` credential field.
+3. Add the Slack entry to `notifications.sinks` (see config example above), pointing `connection` at that connection and `channel` at the target channel id. The same connection also backs the `chat_*` agent tools.
 
-Verify by triggering an approval: the dispatcher will post a formatted card to the channel within ~500ms.
+Verify by triggering an approval: the dispatcher will post a formatted message to the channel within ~500ms.
 
 ### Email relay via SMTP sink
 

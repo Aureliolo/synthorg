@@ -348,12 +348,20 @@ def _group_is_aliased(
     members: list[_ClassEntry],
     ancestors: dict[tuple[str, str], set[tuple[str, str]]],
 ) -> bool:
-    """Return True iff one member is an ancestor of every other member."""
+    """Return True iff one member anchors every reportable member as an ancestor.
+
+    Only non-suppressed members are ever reported, so aliasing only needs
+    to hold over them. A suppressed member (e.g. a ``lint-allow``'d twin in
+    a foreign hierarchy) may still serve as the anchoring ancestor -- hence
+    candidates range over the full group -- but it must not force a
+    non-alias verdict just because no canonical ancestor covers it.
+    """
+    reportable = [m for m in members if not m.suppressed]
     for candidate in members:
         if all(
             other.key == candidate.key
             or candidate.key in ancestors.get(other.key, set())
-            for other in members
+            for other in reportable
         ):
             return True
     return False

@@ -11,11 +11,20 @@ from urllib.parse import urlsplit
 
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.errors import GitBackendConfigError
+from synthorg.engine.workspace.git_backend.forge_api.agent_protocol import (
+    ForgeAgentApiClient,
+)
 from synthorg.engine.workspace.git_backend.forge_api.gitea import (
     ForgejoForgeClient,
     GiteaForgeClient,
 )
+from synthorg.engine.workspace.git_backend.forge_api.gitea_agent import (
+    ForgejoAgentForgeClient,
+)
 from synthorg.engine.workspace.git_backend.forge_api.github import GitHubForgeClient
+from synthorg.engine.workspace.git_backend.forge_api.github_agent import (
+    GitHubAgentForgeClient,
+)
 from synthorg.engine.workspace.git_backend.forge_api.gitlab import GitLabForgeClient
 from synthorg.engine.workspace.git_backend.forge_api.protocol import ForgeApiClient
 from synthorg.integrations.connections.models import ConnectionType
@@ -103,6 +112,26 @@ def _build_forgejo(base_url: str, token: str, timeout: float) -> ForgeApiClient:
     )
 
 
+def _build_github_agent(
+    base_url: str, token: str, timeout: float
+) -> ForgeAgentApiClient:
+    return GitHubAgentForgeClient(
+        api_base_url=_github_api_base(base_url),
+        token=token,
+        timeout=timeout,
+    )
+
+
+def _build_forgejo_agent(
+    base_url: str, token: str, timeout: float
+) -> ForgeAgentApiClient:
+    return ForgejoAgentForgeClient(
+        api_base_url=_gitea_api_base(base_url),
+        token=token,
+        timeout=timeout,
+    )
+
+
 _REGISTRY: StrategyRegistry[ForgeApiClient] = StrategyRegistry(
     {
         ConnectionType.GITHUB: _build_github,
@@ -111,6 +140,18 @@ _REGISTRY: StrategyRegistry[ForgeApiClient] = StrategyRegistry(
         ConnectionType.FORGEJO: _build_forgejo,
     },
     kind="forge_api_client",
+)
+
+# The richer agent-operations surface is wired for GitHub + Forgejo now.
+# Gitea shares Forgejo's client (add ``ConnectionType.GITEA: _build_gitea_agent``
+# to enable it) and GitLab's merge-request surface is a separate follow-up; both
+# absent here surface as a typed unsupported-forge error at the tool boundary.
+_AGENT_REGISTRY: StrategyRegistry[ForgeAgentApiClient] = StrategyRegistry(
+    {
+        ConnectionType.GITHUB: _build_github_agent,
+        ConnectionType.FORGEJO: _build_forgejo_agent,
+    },
+    kind="forge_agent_api_client",
 )
 
 
@@ -139,4 +180,40 @@ def build_forge_api_client(
     return _REGISTRY.build(connection_type, base_url, token, timeout)
 
 
-__all__ = ["build_forge_api_client"]
+def forge_agent_api_supported(connection_type: ConnectionType) -> bool:
+    """Return ``True`` if agent-operations are wired for ``connection_type``."""
+    return connection_type in _AGENT_REGISTRY
+
+
+def build_forge_agent_api_client(
+    *,
+    connection_type: ConnectionType,
+    base_url: str,
+    token: str,
+    timeout: float,
+) -> ForgeAgentApiClient:
+    """Build the per-forge agent-operations REST client.
+
+    Args:
+        connection_type: Selects the forge implementation.
+        base_url: The connection's git base URL (host derives the API base).
+        token: Resolved access token (header auth only, never logged).
+        timeout: Per-request timeout in seconds.
+
+    Returns:
+        A client satisfying :class:`ForgeAgentApiClient`.
+
+    Raises:
+        StrategyFactoryNotFoundError: ``connection_type`` has no wired
+            agent-operations client (check ``forge_agent_api_supported``
+            first to surface a caller-friendly error).
+        GitBackendConfigError: ``base_url`` is not a valid https URL.
+    """
+    return _AGENT_REGISTRY.build(connection_type, base_url, token, timeout)
+
+
+__all__ = [
+    "build_forge_agent_api_client",
+    "build_forge_api_client",
+    "forge_agent_api_supported",
+]

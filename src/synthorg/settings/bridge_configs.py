@@ -97,69 +97,13 @@ class NotificationsBridgeConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    slack_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    slack_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     ntfy_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
     email_smtp_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
-    slack_default_webhook_url: str = Field(
-        default="",
-        pattern=r"^(|https://hooks\.slack\.com/services/.+)$",
-    )
     ntfy_default_url: str = Field(
         default="",
         pattern=r"^(|https://[\w.\-:]+(?:/.*)?)$",
     )
-
-    @field_validator("slack_default_webhook_url")
-    @classmethod
-    def _validate_slack_default_webhook_url(cls, value: str) -> str:
-        """Validate the Slack default webhook URL is canonical (or empty).
-
-        Returns:
-            The unchanged *value* (empty string permitted to mean "no
-            default webhook configured").
-
-        Raises:
-            ValueError: If *value* is non-empty and has surrounding
-                whitespace, a non-numeric or reserved port, or is not a
-                canonical ``http(s)`` URL.
-        """
-        if value == "":
-            return value
-        if value != value.strip():
-            msg = (
-                "slack_default_webhook_url must not have leading or trailing whitespace"
-            )
-            raise ValueError(msg)
-        parsed = urlsplit(value)
-        try:
-            port = parsed.port
-        except ValueError as exc:
-            msg = (
-                "slack_default_webhook_url must use a numeric port in"
-                " 1..65535 when one is supplied"
-            )
-            raise ValueError(msg) from exc
-        if port == 0:
-            msg = (
-                "slack_default_webhook_url must use a port in 1..65535 (0 is reserved)"
-            )
-            raise ValueError(msg)
-        if (
-            parsed.scheme != "https"
-            or parsed.hostname != "hooks.slack.com"
-            or parsed.username is not None
-            or parsed.password is not None
-            or not parsed.path.startswith("/services/")
-            or parsed.query
-            or parsed.fragment
-        ):
-            msg = (
-                "slack_default_webhook_url must be a canonical Slack"
-                " webhook URL: https://hooks.slack.com/services/<path>"
-                " with no userinfo, query, or fragment"
-            )
-            raise ValueError(msg)
-        return value
 
     @field_validator("ntfy_default_url")
     @classmethod

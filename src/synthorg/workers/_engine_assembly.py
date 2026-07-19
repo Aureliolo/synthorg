@@ -74,7 +74,9 @@ if TYPE_CHECKING:
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.visionverify.protocol import VisionVerifierGate
+    from synthorg.tools.chat._runtime import ChatToolsRuntime
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
+    from synthorg.tools.forge._runtime import ForgeToolsRuntime
     from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
@@ -449,6 +451,8 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
     tool_registry: ToolRegistry,
     coordination_metrics_collector: CoordinationMetricsCollector | None,
     external_api_runtime: ExternalApiRuntime | None = None,
+    forge_tools_runtime: ForgeToolsRuntime | None = None,
+    chat_tools_runtime: ChatToolsRuntime | None = None,
     *,
     flight_recorder_sink: FlightRecorderSink | None = None,
     step_classifier: StepQualityClassifier | None = None,
@@ -512,6 +516,8 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         event_stream_hub=app_state.slice(CommunicationStateSlice).event_stream_hub,
         interrupt_store=app_state.slice(CommunicationStateSlice).interrupt_store,
         external_api_runtime=external_api_runtime,
+        forge_tools_runtime=forge_tools_runtime,
+        chat_tools_runtime=chat_tools_runtime,
         brain_tool_factory_provider=boot_brain_tool_factory_provider(app_state),
         knowledge_tool_factory_provider=boot_knowledge_tool_factory_provider(app_state),
         docs_tool_factory_provider=boot_docs_tool_factory_provider(app_state),

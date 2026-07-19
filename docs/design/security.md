@@ -612,7 +612,7 @@ that unifies URL validation across all outbound connection points:
 
 | Consumer | Current Implementation | Consolidation target |
 |----------|----------------------|-------------------|
-| Notification adapters (ntfy, Slack) | `synthorg.tools.ssrf` (via `notifications/adapters/_ssrf.py`) | `SsrfValidator` protocol seam |
+| Notification adapters (ntfy) | `synthorg.tools.ssrf` (via `notifications/adapters/_ssrf.py`) | `SsrfValidator` protocol seam |
 | Git clone URLs | `git_url_validator` module | `SsrfValidator` |
 | Provider discovery | `ProviderDiscoveryPolicy` allowlist + `resolve_discovery_target` DNS pinning | `SsrfValidator` + allowlist |
 | OAuth token endpoints | `synthorg.tools.ssrf` (`resolve_outbound_target` + pinned transport) | `SsrfValidator` |
