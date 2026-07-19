@@ -23,11 +23,10 @@ from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult
-from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_protocol import BudgetChecker
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
+    COS_CONSOLE_AUTONOMY_DEGRADED,
     COS_CONSOLE_COMPLETED,
     COS_CONSOLE_FAILED,
     COS_CONSOLE_PARKED,
@@ -138,7 +137,7 @@ class OperatorConsoleService:
                 instruction=args.instruction,
                 effective_autonomy=effective_autonomy,
                 max_turns=self._config.operator_console_max_turns,
-                budget_checker=self._build_budget_checker(),
+                cost_ceiling=self._config.operator_console_cost_ceiling,
                 system_prompt_addendum=CONSOLE_OPERATING_BRIEF,
             )
         except Exception as exc:
@@ -166,20 +165,6 @@ class OperatorConsoleService:
             action=result,
         )
 
-    def _build_budget_checker(self) -> BudgetChecker:
-        """Build a per-session budget checker closing over the cost ceiling.
-
-        Returns:
-            A callback that trips once accumulated session cost meets or
-            exceeds ``operator_console_cost_ceiling``.
-        """
-        ceiling = self._config.operator_console_cost_ceiling
-
-        def _check(ctx: AgentContext) -> bool:
-            return ctx.accumulated_cost.cost >= ceiling
-
-        return _check
-
     def _resolve_autonomy(self) -> EffectiveAutonomy | None:
         """Resolve the console's effective autonomy; degrade on misconfig.
 
@@ -197,8 +182,8 @@ class OperatorConsoleService:
                 agent_level=self._identity.autonomy_level,
             )
         except ValueError as exc:
-            logger.warning(
-                COS_CONSOLE_FAILED,
+            logger.error(
+                COS_CONSOLE_AUTONOMY_DEGRADED,
                 console_id=str(self._identity.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

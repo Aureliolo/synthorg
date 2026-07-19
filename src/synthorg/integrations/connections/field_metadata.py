@@ -16,6 +16,7 @@ unless the dialect is sqlite"); the registry only guarantees that every field
 an authenticator can reference is present here.
 """
 
+from collections.abc import Iterable
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Self
@@ -82,6 +83,34 @@ class ConnectionFieldMetadata(BaseModel):
             raise ValueError(msg)
         if not self.secret and self.capture_mode is not None:
             msg = f"non-secret field {self.name!r} must not declare a capture_mode"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _input_type_and_placement_consistent(self) -> Self:
+        """A SELECT field carries options; a BASE_URL field is named base_url.
+
+        Both are biconditional authoring guards so a mistake (a SELECT with no
+        choices, options on a plain text field, or a base-url-placed field the
+        create call keys off ``base_url`` but named otherwise) fails at import
+        rather than silently mis-rendering or mis-routing later.
+
+        Returns:
+            ``self`` when input type, options, and placement agree.
+
+        Raises:
+            ValueError: On any of the three inconsistencies.
+        """
+        if self.input_type is FieldInputType.SELECT and not self.options:
+            msg = f"SELECT field {self.name!r} must declare non-empty options"
+            raise ValueError(msg)
+        if self.input_type is not FieldInputType.SELECT and self.options:
+            msg = f"non-SELECT field {self.name!r} must not declare options"
+            raise ValueError(msg)
+        if self.placement is FieldPlacement.BASE_URL and self.name != "base_url":
+            msg = (
+                f"BASE_URL-placement field must be named 'base_url', got {self.name!r}"
+            )
             raise ValueError(msg)
         return self
 
@@ -582,6 +611,38 @@ def list_connection_type_metadata() -> tuple[ConnectionTypeMetadata, ...]:
     return tuple(CONNECTION_FIELD_METADATA.values())
 
 
+def reject_inline_secret_fields(
+    connection_type: ConnectionType,
+    credential_field_names: Iterable[str],
+) -> None:
+    """Reject a create request that puts a secret field inline in ``credentials``.
+
+    Secret fields must be captured out of band (masked field -> handle) and
+    passed via ``credential_handles``; sending one inline in ``credentials``
+    routes the raw value through the request body and the tool argument,
+    defeating the out-of-band guarantee. Enforced at every create boundary
+    (REST ``CreateConnectionRequest`` + the ``connections.create`` MCP args)
+    so no path can bypass it.
+
+    Raises:
+        ValueError: If any supplied credential field name is a secret field
+            for this connection type.
+    """
+    metadata = CONNECTION_FIELD_METADATA.get(connection_type)
+    if metadata is None:
+        return
+    inline_secrets = sorted(
+        set(credential_field_names) & set(metadata.secret_field_names)
+    )
+    if inline_secrets:
+        joined = ", ".join(inline_secrets)
+        msg = (
+            f"secret field(s) [{joined}] must be captured out of band and passed "
+            "as credential_handles, not sent inline in credentials"
+        )
+        raise ValueError(msg)
+
+
 __all__ = [
     "CONNECTION_FIELD_METADATA",
     "ConnectionFieldMetadata",
@@ -591,4 +652,5 @@ __all__ = [
     "SecretCaptureMode",
     "get_connection_type_metadata",
     "list_connection_type_metadata",
+    "reject_inline_secret_fields",
 ]

@@ -30,6 +30,7 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig, ToolPermissions
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.tool_constraints import ToolAccessLevel
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.context import AgentContext
@@ -245,27 +246,39 @@ class TestRunChatAction:
                 turn_observer=_cancel,
             )
 
-    async def test_budget_checker_halts_before_any_tool(self) -> None:
-        # The operator console passes a budget_checker closing over its cost
-        # ceiling; run_chat_action must thread it into the loop so an
-        # exhausted budget halts the session before any tool runs.
-        tool = QueryTool()
-        engine, _ = _build_engine(
-            responses=[
-                _tool_call("query_metrics", window="7d"),
-                _final("unreached"),
-            ],
-            tool=tool,
+    def test_cost_ceiling_builds_checker_and_survives_park_resume(self) -> None:
+        # A8: the cost ceiling rides ON the context (not a caller-held
+        # closure), so the engine derives the same per-turn budget checker on
+        # the initial run AND after a park/resume round-trip. Losing the bound
+        # on the resumed continuation is exactly the regression this guards.
+        engine, _ = _build_engine(responses=[_final("noop")])
+        ctx = AgentContext.from_identity(_acting_identity()).model_copy(
+            update={"cost_ceiling": 0.5}
         )
 
-        result = await engine.run_chat_action(
-            identity=_acting_identity(),
-            instruction="Do a lot of expensive work.",
-            budget_checker=lambda _ctx: True,
-        )
+        checker = engine._budget_checker_for(ctx)
+        assert checker is not None
+        cost_below = ZERO_TOKEN_USAGE.model_copy(update={"cost": 0.49})
+        cost_at = ZERO_TOKEN_USAGE.model_copy(update={"cost": 0.5})
+        below = ctx.model_copy(update={"accumulated_cost": cost_below})
+        at = ctx.model_copy(update={"accumulated_cost": cost_at})
+        assert checker(below) is False
+        assert checker(at) is True
 
-        assert result.termination_reason == TerminationReason.BUDGET_EXHAUSTED
-        assert tool.calls == []
+        park = ParkService()
+        parked = park.park(
+            context=ctx,
+            approval_id=NotBlankStr("appr-budget"),
+            agent_id=NotBlankStr(str(ctx.identity.id)),
+        )
+        resumed = park.resume(parked)
+        assert resumed.cost_ceiling == 0.5
+        assert engine._budget_checker_for(resumed) is not None
+
+    def test_no_cost_ceiling_yields_no_checker(self) -> None:
+        engine, _ = _build_engine(responses=[_final("noop")])
+        ctx = AgentContext.from_identity(_acting_identity())
+        assert engine._budget_checker_for(ctx) is None
 
     async def test_system_prompt_addendum_is_appended(self) -> None:
         engine, _ = _build_engine(responses=[_final("Acknowledged.")])

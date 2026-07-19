@@ -152,26 +152,30 @@ interface WebhookRetention {
   readonly retentionValue: number | null
 }
 
+interface CreateBodyContext extends WebhookRetention {
+  readonly draftId: string
+}
+
 function buildCreateBody(
   form: ConnectionFormState,
+  connectionType: ConnectionType,
   spec: ResolvedConnectionSpec,
   resolved: ResolvedCredentials,
-  draftId: string,
-  webhook: WebhookRetention,
+  ctx: CreateBodyContext,
 ): CreateConnectionRequest {
   const hasHandles = Object.keys(resolved.handles).length > 0
   return {
     name: form.name.trim(),
-    connection_type: form.type as ConnectionType,
+    connection_type: connectionType,
     auth_method: spec.defaultAuthMethod,
     credentials: resolved.credentials,
     credential_handles: resolved.handles,
     base_url: form.topLevel['base_url']?.trim() || null,
     health_check_enabled: true,
     sensitive: form.sensitive,
-    ...(hasHandles ? { connection_draft_id: draftId } : {}),
-    ...(webhook.supportsWebhook
-      ? { webhook_receipt_retention_days: webhook.retentionValue }
+    ...(hasHandles ? { connection_draft_id: ctx.draftId } : {}),
+    ...(ctx.supportsWebhook
+      ? { webhook_receipt_retention_days: ctx.retentionValue }
       : {}),
   }
 }
@@ -206,6 +210,7 @@ function resetSnapshotChanged(prev: ResetSnapshot, next: ResetSnapshot): boolean
 
 interface SubmitDeps {
   form: ConnectionFormState
+  connectionType: ConnectionType
   spec: ResolvedConnectionSpec
   mode: Mode
   connection: Connection | null | undefined
@@ -231,7 +236,8 @@ async function submitConnection(deps: SubmitDeps): Promise<boolean> {
     if (resolved === null) return false
     return Boolean(
       await deps.createConnection(
-        buildCreateBody(deps.form, deps.spec, resolved, deps.draftId, {
+        buildCreateBody(deps.form, deps.connectionType, deps.spec, resolved, {
+          draftId: deps.draftId,
           supportsWebhook: deps.supportsWebhook,
           retentionValue: deps.retentionValue,
         }),
@@ -401,6 +407,9 @@ export function useConnectionForm(props: ConnectionFormModalArgs): ConnectionFor
       if (!prep.proceed) return
       const shouldClose = await submitConnection({
         form,
+        // `form.type` is narrowed to ConnectionType by the guard above; pass
+        // it explicitly so the create body needs no `as` cast downstream.
+        connectionType: form.type,
         spec,
         mode,
         connection,

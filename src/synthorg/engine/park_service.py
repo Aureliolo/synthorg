@@ -21,12 +21,14 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
 from synthorg.execution.parked_context import ParkedContext
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.security import SECURITY_TURN_SECRET_REDACTED
 from synthorg.observability.events.timeout import (
     TIMEOUT_CONTEXT_PARK_FAILED,
     TIMEOUT_CONTEXT_PARKED,
     TIMEOUT_CONTEXT_RESUME_FAILED,
     TIMEOUT_CONTEXT_RESUMED,
 )
+from synthorg.security.rules.credential_detector import redact_credentials
 
 logger = get_logger(__name__)
 
@@ -71,6 +73,20 @@ class ParkService:
         # exception escaping this layer.
         try:
             context_json = context.model_dump_json()
+            # Defence in depth: a parked context is durable, so a raw
+            # credential that reached a tool argument earlier in the session
+            # (despite out-of-band capture keeping secrets out of tool args)
+            # must not be persisted verbatim. Scrub credential-shaped values
+            # from the serialised context before it is stored; a clean flow
+            # never trips this, and if it does the leak is flagged.
+            context_json, findings = redact_credentials(context_json)
+            if findings:
+                logger.warning(
+                    SECURITY_TURN_SECRET_REDACTED,
+                    findings=list(findings),
+                    surface="parked_context",
+                    agent_id=agent_id,
+                )
             parked = ParkedContext(
                 execution_id=str(context.execution_id),
                 agent_id=agent_id,

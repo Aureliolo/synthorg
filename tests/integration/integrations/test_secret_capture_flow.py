@@ -1,15 +1,21 @@
-"""Keystone test: a captured secret never appears in a tool-call argument.
+"""Keystone test: a captured secret never leaks through the create path.
 
-Drives the full out-of-band path (capture -> handle -> connections.create)
-and asserts the raw secret is resolved into the create credentials in-process
-while never appearing in the MCP tool-call ``arguments`` dict, so it can never
-reach a persisted transcript.
+Drives the out-of-band path (capture -> handle -> connections.create) and
+asserts the raw secret is resolved into the create credentials in-process
+while never appearing in the MCP tool-call ``arguments`` dict, the handler
+response, or ANY emitted log line -- the sinks the create path could persist
+it through. Parametrised over credential shapes. The transcript / LLM-prompt
+sinks for a *pasted* secret are covered by the redact-before-persist backstop
+(``tests/unit/security/test_credential_redaction.py`` + the turn/park redaction
+call sites); the in-chat capture turn lands its own end-to-end coverage with
+the chat capture affordance.
 """
 
 import json
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.mcp_service import ConnectionService
@@ -29,7 +35,12 @@ from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.integration
 
-_SENTINEL = "ghp_KEYSTONEsecret0000000000000000000000AB"
+_SENTINELS = (
+    "ghp_KEYSTONEsecret0000000000000000000000AB",
+    "Bearer eyJKEYSTONEsecrettokenpayloadpayloadpayloadAB",
+    "password=KEYSTONEsuperSecretValue1234567890",
+    "sk-KEYSTONEsecretkeyvalue00000000000000000000",
+)
 _DRAFT = "draft-keystone-1"
 
 
@@ -45,14 +56,15 @@ def _connection() -> Connection:
     )
 
 
-async def test_captured_secret_resolves_without_touching_tool_args() -> None:
+@pytest.mark.parametrize("sentinel", _SENTINELS)
+async def test_captured_secret_resolves_without_leaking(sentinel: str) -> None:
     backend = InMemorySecretBackend()
     capture = SecretCaptureService(secret_backend=backend)
     handle = await capture.capture(
         draft_id=NotBlankStr(_DRAFT),
         field_name=NotBlankStr("token"),
         secret_kind=NotBlankStr("token"),
-        value=_SENTINEL,
+        value=sentinel,
     )
 
     connection_service = mock_of[ConnectionService](
@@ -77,22 +89,28 @@ async def test_captured_secret_resolves_without_touching_tool_args() -> None:
         "reason": "operator setup via chat",
     }
     handler = COMMUNICATION_HANDLERS["synthorg_connections_create"]
-    response = await handler(
-        app_state=app_state,
-        arguments=arguments,
-        actor=make_test_actor(),
-    )
+    with structlog.testing.capture_logs() as logs:
+        response = await handler(
+            app_state=app_state,
+            arguments=arguments,
+            actor=make_test_actor(),
+        )
 
     assert json.loads(response)["status"] == "ok"
     # The handle resolved to the real secret in-process for the create call.
     passed_credentials = connection_service.create_connection.await_args.kwargs[
         "credentials"
     ]
-    assert passed_credentials == {"token": _SENTINEL}
-    # The raw secret never appears anywhere in the tool-call arguments.
-    assert _SENTINEL not in json.dumps(arguments)
+    assert passed_credentials == {"token": sentinel}
+    # The raw secret never appears in the tool-call arguments, the handler
+    # response, or ANY emitted log line -- every sink the create path could
+    # persist it through.
+    assert sentinel not in json.dumps(arguments)
+    assert sentinel not in response
+    for entry in logs:
+        assert sentinel not in json.dumps(entry, default=str), entry
     # The handle is single-use: the temp backing secret was consumed.
-    assert backend._secrets == {}
+    assert backend.stored_count() == 0
 
 
 async def test_create_rejects_handles_without_draft_id() -> None:
@@ -102,7 +120,7 @@ async def test_create_rejects_handles_without_draft_id() -> None:
         draft_id=NotBlankStr(_DRAFT),
         field_name=NotBlankStr("token"),
         secret_kind=NotBlankStr("token"),
-        value=_SENTINEL,
+        value=_SENTINELS[0],
     )
     connection_service = mock_of[ConnectionService](
         create_connection=AsyncMock(return_value=_connection()),

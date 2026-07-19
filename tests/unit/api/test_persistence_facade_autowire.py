@@ -44,8 +44,8 @@ def _app_state(  # noqa: PLR0913 -- independent per-facade dependency flags
     """Compose an app state with the requested backing services present.
 
     ``with_catalog``, ``with_installations``, and ``with_connection_catalog``
-    are independent so the MCP-catalog facade's three-dependency gate can be
-    exercised with any part absent.
+    are independent so the MCP-catalog facade's gate (catalog + installations
+    required, connection catalog optional) can be exercised with any part absent.
 
     Returns:
         The composed ``AppState``.
@@ -158,14 +158,17 @@ class TestMcpCatalogFacadeWiring:
         await wire_persistence_facades(app_state)
         assert app_state.slice(FacadesStateSlice).mcp_catalog_facade_service is None
 
-    async def test_absent_without_connection_catalog(self) -> None:
+    async def test_wired_without_connection_catalog(self) -> None:
+        # A connectionless catalog entry must still install when the
+        # feature-flagged connection catalog is unwired, so the facade wires on
+        # catalog + installations alone and carries ``connection_catalog=None``.
         app_state = _app_state(
             with_catalog=True,
             with_installations=True,
             with_connection_catalog=False,
         )
         await wire_persistence_facades(app_state)
-        assert app_state.slice(FacadesStateSlice).mcp_catalog_facade_service is None
+        assert app_state.slice(FacadesStateSlice).mcp_catalog_facade_service is not None
 
     async def test_idempotent_keeps_existing(self) -> None:
         app_state = _app_state(

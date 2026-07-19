@@ -12,7 +12,7 @@ import type {
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
-import type { ConnectionsGet, ConnectionsSet } from './types'
+import type { ConnectionsGet, ConnectionsSet, ConnectionsState } from './types'
 
 const log = createLogger('connections-crud')
 
@@ -133,7 +133,13 @@ async function captureSecretImpl(
   }
 }
 
-export function createCrudActions(set: ConnectionsSet, get: ConnectionsGet) {
+export function createCrudActions(
+  set: ConnectionsSet,
+  get: ConnectionsGet,
+): Pick<
+  ConnectionsState,
+  'createConnection' | 'captureSecret' | 'updateConnection' | 'deleteConnection'
+> {
   return {
     createConnection: (data: CreateConnectionRequest) =>
       createConnectionImpl(set, get, data),

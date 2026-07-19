@@ -620,12 +620,16 @@ class GroupChatService:
                 detail="empty_content",
             )
             return None, None
+        # Redact-before-persist backstop: an agent contribution that echoes a
+        # credential must not reach the transcript nor propagate to the other
+        # agents' context. A clean out-of-band flow never trips this.
+        redacted_content = redact_turn_content(content)
         await self._turn_repo.append(
             ConversationTurn(
                 conversation_id=str(conversation.id),
                 sequence=sequence,
                 role=ConversationRole.AGENT,
-                content=NotBlankStr(content),
+                content=NotBlankStr(redacted_content),
                 author_agent_id=participant.agent_id,
                 author_name=participant.agent_name,
                 created_at=now,
@@ -642,7 +646,7 @@ class GroupChatService:
                 agent_id=participant.agent_id,
                 agent_name=participant.agent_name,
                 participant_role=participant.participant_role,
-                content=NotBlankStr(content),
+                content=NotBlankStr(redacted_content),
                 sequence=sequence,
                 input_tokens=response.input_tokens,
                 output_tokens=response.output_tokens,

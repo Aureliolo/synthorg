@@ -42,7 +42,22 @@ async function fetchConnectionTypesImpl(
   }
 }
 
-export function createListActions(set: ConnectionsSet, get: ConnectionsGet) {
+type ListActionSlice = Pick<
+  ConnectionsState,
+  | 'fetchConnections'
+  | 'fetchConnectionTypes'
+  | 'runHealthCheck'
+  | 'setSearchQuery'
+  | 'setTypeFilter'
+  | 'setHealthFilter'
+  | 'setSortBy'
+  | 'setSortDirection'
+>
+
+export function createListActions(
+  set: ConnectionsSet,
+  get: ConnectionsGet,
+): ListActionSlice {
   return {
     fetchConnections: async () => {
       const requestId = ++_listRequestId

@@ -35,6 +35,7 @@ from synthorg.hr.state import agent_registry_of
 from synthorg.meta.charter.models import InterviewTurnArgs
 from synthorg.meta.charter.state import CharterStateSlice
 from synthorg.meta.chief_of_staff._multi_voice import ChimeIn
+from synthorg.meta.chief_of_staff._turn_redaction import redact_turn_content
 from synthorg.meta.chief_of_staff.actor import (
     ConversationalActArgs,
 )
@@ -346,9 +347,12 @@ async def _dispatch_act(
             "``security.mcp_self_consumer.mode`` to ``trust_scoped``."
         )
         raise ServiceUnavailableError(msg)
+    # Mask any credential-shaped value before the instruction reaches the
+    # actor's LLM loop / parked context, mirroring the console path: the raw
+    # message is untrusted operator input and a pasted secret must not leak.
     act = await actor_service.act(
         ConversationalActArgs(
-            instruction=NotBlankStr(ctx.body),
+            instruction=NotBlankStr(redact_turn_content(ctx.body)),
             agent=agent,
             conversation_id=ctx.conversation_id,
             requested_by=ctx.actor_id,
@@ -404,9 +408,13 @@ async def _dispatch_configure(
             "security governance so the console fails closed."
         )
         raise ServiceUnavailableError(msg)
+    # The operator's raw message is fed to the console's LLM loop. Mask any
+    # credential-shaped value first: secrets are meant to be captured out of
+    # band (masked field -> handle), so a pasted token must never reach the
+    # prompt or a parked-context persist. A clean flow never trips this.
     configure = await console.configure(
         ConsoleTurnArgs(
-            instruction=NotBlankStr(ctx.body),
+            instruction=NotBlankStr(redact_turn_content(ctx.body)),
             conversation_id=ctx.conversation_id,
             requested_by=NotBlankStr(ctx.actor_id) if ctx.actor_id else None,
         )

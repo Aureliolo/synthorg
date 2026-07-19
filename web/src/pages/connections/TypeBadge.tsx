@@ -15,7 +15,7 @@ export function TypeBadge({ type, className }: TypeBadgeProps) {
     <span
       className={cn(
         'inline-flex items-center rounded-md border border-border bg-surface',
-        'px-2 py-0.5 font-mono text-[11px] text-text-secondary',
+        'px-2 py-0.5 font-mono text-xs text-text-secondary',
         className,
       )}
     >

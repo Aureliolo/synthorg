@@ -22,6 +22,7 @@ from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_persona_body
+from synthorg.meta.chief_of_staff._turn_redaction import redact_turn_content
 from synthorg.meta.chief_of_staff.enums import ConversationKind, RoutingReason
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.providers.protocol import CompletionProvider
@@ -223,7 +224,10 @@ def build_attributed_assistant_turn(
         conversation_id=conversation_id,
         sequence=sequence,
         role=ConversationRole.ASSISTANT,
-        content=content,
+        # Redact-before-persist backstop: a model that echoes a credential
+        # despite the out-of-band capture flow must not write it to the
+        # transcript. A clean flow never trips this.
+        content=NotBlankStr(redact_turn_content(content)),
         author_agent_id=responder.agent_id if responder is not None else None,
         author_name=responder.name if responder is not None else None,
         routed_topic=routing.topic if routing is not None else None,

@@ -3,10 +3,14 @@
 Covers messages, meetings, connections, webhooks, tunnel.
 """
 
-from pydantic import Field
+from typing import Self
+
+from pydantic import Field, model_validator
 
 from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.field_metadata import reject_inline_secret_fields
+from synthorg.integrations.connections.models import ConnectionType
 from synthorg.meta.mcp.domains._common_args import (
     AdminGuardrailFields,
     PaginationFields,
@@ -127,6 +131,31 @@ class ConnectionsCreateArgs(AdminGuardrailFields):
         default=None,
         description="Free-form connection metadata",
     )
+
+    @model_validator(mode="after")
+    def _validate_credentials(self) -> Self:
+        """Enforce the credential-boundary invariants (parity with REST).
+
+        Handles require a draft id, and a secret field must be captured out of
+        band (never inline in ``credentials``). An unrecognised
+        ``connection_type`` is left for the handler to reject, so the
+        no-inline-secret check is skipped for it here.
+
+        Returns:
+            ``self`` when both invariants hold.
+
+        Raises:
+            ValueError: If handles lack a draft id, or a secret field is inline.
+        """
+        if self.credential_handles and self.connection_draft_id is None:
+            msg = "connection_draft_id is required when credential_handles are supplied"
+            raise ValueError(msg)
+        try:
+            connection_type = ConnectionType(self.connection_type)
+        except ValueError:
+            return self
+        reject_inline_secret_fields(connection_type, self.credentials.keys())
+        return self
 
 
 class ConnectionsDeleteArgs(AdminGuardrailFields):

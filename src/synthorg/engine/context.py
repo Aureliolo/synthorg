@@ -26,6 +26,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.compaction.models import CompressionMetadata
+from synthorg.engine.context_disclosure import validate_tool_disclosure
 from synthorg.engine.context_snapshot import AgentContextSnapshot
 from synthorg.engine.errors import ExecutionStateError, MaxTurnsExceededError
 from synthorg.engine.task_execution import TaskExecution
@@ -116,6 +117,15 @@ class AgentContext(BaseModel):
         gt=0,
         description="Hard turn limit",
     )
+    cost_ceiling: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Optional per-session cost ceiling; the chat-action loop halts "
+            "once accumulated cost meets it. Carried on the context so the "
+            "bound survives a park/resume round-trip."
+        ),
+    )
     started_at: AwareDatetime = Field(
         description="When execution began",
     )
@@ -182,16 +192,7 @@ class AgentContext(BaseModel):
                 of names in ``tool_load_order``, or when
                 ``tool_load_order`` carries duplicates.
         """
-        order_set = set(self.tool_load_order)
-        if order_set != self.loaded_tools:
-            msg = (
-                f"loaded_tools={self.loaded_tools} and "
-                f"tool_load_order={self.tool_load_order} are inconsistent"
-            )
-            raise ValueError(msg)
-        if len(self.tool_load_order) != len(order_set):
-            msg = f"tool_load_order contains duplicates: {self.tool_load_order}"
-            raise ValueError(msg)
+        validate_tool_disclosure(self.loaded_tools, self.tool_load_order)
         return self
 
     @computed_field(

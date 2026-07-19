@@ -12,6 +12,13 @@ primed (see the prime in ``tests/conftest.py``), so an in-process import would
 not exercise the cold path. A non-zero exit most likely means a package-level
 circular import has regressed.
 
+The per-leaf imports are independent and dominated by interpreter startup plus
+a one-off cold import of heavy transitive dependencies, so they are spawned
+concurrently in a bounded pool (each still in its own pristine interpreter).
+That collapses the file's wall-clock from the serial sum of every leaf to the
+slowest single import, without weakening the guarantee that each leaf loads on
+an unprimed graph.
+
 The cycle is driven by eager re-export side effects in package ``__init__``
 hubs, not by simple module-to-module edges, so a ``grimp`` / import-linter
 chain contract cannot see it (it reports ``KEPT`` even when the runtime cycle
@@ -21,9 +28,10 @@ documentation-grade backstop. See
 ``docs/decisions/0012-cold-import-cycle-break.md``.
 """
 
+import concurrent.futures
 import subprocess
 import sys
-from typing import Final
+from typing import Final, NamedTuple
 
 import pytest
 
@@ -31,6 +39,12 @@ import pytest
 # surfaces here as a clear pytest.fail rather than as the worker-level
 # os.abort the pytest-timeout patch triggers at 30s.
 _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
+
+# Upper bound on concurrent fresh interpreters. Cold-import lands on a single
+# xdist worker (``--dist=loadfile`` keeps a file together), so this caps the
+# transient memory/process spike from spawning every leaf at once while still
+# running enough in parallel to hide the serial startup cost.
+_MAX_CONCURRENT_COLD_IMPORTS: Final[int] = 16
 
 # Leaves that must import cold. The first two are the primary regression
 # targets (the original cold-import failure points). The rest pin each
@@ -109,10 +123,16 @@ COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
 )
 
 
-@pytest.mark.unit
-@pytest.mark.parametrize("module_name", COLD_IMPORT_LEAVES)
-def test_leaf_imports_from_cold_interpreter(module_name: str) -> None:
-    """Each leaf imports successfully from a fresh, unprimed interpreter."""
+class _ColdImportOutcome(NamedTuple):
+    """Result of importing one leaf in a fresh interpreter."""
+
+    returncode: int
+    stderr: str
+    timed_out: bool
+
+
+def _import_leaf_cold(module_name: str) -> _ColdImportOutcome:
+    """Import ``module_name`` in a fresh, unprimed interpreter."""
     try:
         result = subprocess.run(  # noqa: S603 -- module_name is a hardcoded tuple
             [sys.executable, "-c", f"import {module_name}"],
@@ -122,15 +142,49 @@ def test_leaf_imports_from_cold_interpreter(module_name: str) -> None:
             check=False,
         )
     except subprocess.TimeoutExpired:
+        return _ColdImportOutcome(returncode=-1, stderr="", timed_out=True)
+    return _ColdImportOutcome(
+        returncode=result.returncode, stderr=result.stderr, timed_out=False
+    )
+
+
+@pytest.fixture(scope="module")
+def cold_import_outcomes() -> dict[str, _ColdImportOutcome]:
+    """Import every leaf concurrently, each in its own fresh interpreter.
+
+    Module-scoped so the concurrent sweep runs once per worker; each
+    parametrized test then asserts on its own leaf's cached outcome, keeping
+    per-leaf failure reporting while paying the wall-clock of only the slowest
+    single import.
+    """
+    max_workers = min(len(COLD_IMPORT_LEAVES), _MAX_CONCURRENT_COLD_IMPORTS)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+        return dict(
+            zip(
+                COLD_IMPORT_LEAVES,
+                pool.map(_import_leaf_cold, COLD_IMPORT_LEAVES),
+                strict=True,
+            )
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("module_name", COLD_IMPORT_LEAVES)
+def test_leaf_imports_from_cold_interpreter(
+    module_name: str, cold_import_outcomes: dict[str, _ColdImportOutcome]
+) -> None:
+    """Each leaf imports successfully from a fresh, unprimed interpreter."""
+    outcome = cold_import_outcomes[module_name]
+    if outcome.timed_out:
         pytest.fail(
             f"Cold import of {module_name!r} did not finish within "
             f"{_IMPORT_TIMEOUT_SECONDS}s; a cold-import cycle (or an import-time "
             f"deadlock) is the likely cause."
         )
 
-    assert result.returncode == 0, (
-        f"Cold import of {module_name!r} failed (exit {result.returncode}); "
+    assert outcome.returncode == 0, (
+        f"Cold import of {module_name!r} failed (exit {outcome.returncode}); "
         f"a regressed package-level circular import is the most likely cause "
         f"(an ImportError from a typo or missing dependency also exits non-zero "
-        f"-- check the stderr tail).\nstderr tail:\n{result.stderr[-2000:]}"
+        f"-- check the stderr tail).\nstderr tail:\n{outcome.stderr[-2000:]}"
     )

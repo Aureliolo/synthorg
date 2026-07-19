@@ -8,17 +8,16 @@ the system prompt; a sensitive action parks; and the per-session budget
 checker trips at the cost ceiling.
 """
 
-from datetime import date
 from typing import cast
 
 import pytest
 from pydantic import JsonValue
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import FinishReason
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
-from synthorg.engine.context import AgentContext
+from synthorg.engine.chat_action import ChatActionResult
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.console_identity import build_console_identity
@@ -65,20 +64,6 @@ def _tool_call(name: str, **arguments: object) -> CompletionResponse:
         usage=ZERO_TOKEN_USAGE,
         model="test-model-001",
     )
-
-
-def _ctx_with_cost(cost: float) -> AgentContext:
-    """A minimal AgentContext whose accumulated cost is *cost*."""
-    identity = AgentIdentity(
-        name="Operator Console",
-        role="console",
-        department="Operations",
-        model=ModelConfig(provider="test-provider", model_id="test-model-001"),
-        hiring_date=date(2026, 1, 1),
-    )
-    ctx = AgentContext.from_identity(identity)
-    usage = ZERO_TOKEN_USAGE.model_copy(update={"cost": cost})
-    return ctx.model_copy(update={"accumulated_cost": usage})
 
 
 def _final(content: str) -> CompletionResponse:
@@ -167,7 +152,16 @@ class TestConfigure:
 
 
 class TestBudgetCeiling:
-    def test_checker_trips_at_or_above_ceiling(self) -> None:
+    async def test_configure_threads_cost_ceiling_into_run_chat_action(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The console passes its cost ceiling to ``run_chat_action``.
+
+        The engine derives the per-turn budget checker from the ceiling and
+        carries it on the context so the bound survives a park/resume (see
+        the engine's ``test_cost_ceiling`` tests); the console's own job is
+        only to supply the configured ceiling.
+        """
         service, _provider, _tool = _service(
             responses=[_final("noop")],
             config=ChiefOfStaffConfig(
@@ -176,8 +170,23 @@ class TestBudgetCeiling:
                 operator_console_cost_ceiling=0.5,
             ),
         )
-        checker = service._build_budget_checker()
+        captured: dict[str, object] = {}
 
-        assert checker(_ctx_with_cost(0.49)) is False
-        assert checker(_ctx_with_cost(0.5)) is True
-        assert checker(_ctx_with_cost(1.2)) is True
+        async def _spy(**kwargs: object) -> ChatActionResult:
+            captured.update(kwargs)
+            return ChatActionResult(
+                termination_reason=TerminationReason.COMPLETED,
+                final_message="done",
+                tool_calls=(),
+            )
+
+        monkeypatch.setattr(service._engine, "run_chat_action", _spy)
+        await service.configure(
+            ConsoleTurnArgs(
+                instruction=NotBlankStr("connect the thing"),
+                conversation_id=None,
+                requested_by=None,
+            )
+        )
+
+        assert captured["cost_ceiling"] == 0.5

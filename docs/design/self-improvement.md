@@ -128,7 +128,7 @@ src/synthorg/meta/
     invoker.py         -- MCPToolInvoker (handler dispatch + error mapping)
     errors.py          -- ArgumentValidationError + GuardrailViolationError
     tool_builder.py    -- read_tool / write_tool / admin_tool builders
-    domains/           -- 22 domain tool definition modules (245 tools)
+    domains/           -- 22 domain tool definition modules (246 tools)
     handlers/          -- domain handler modules + common envelope helpers
                          (ok / err / not_supported / require_admin_guardrails)
 
@@ -169,6 +169,12 @@ src/synthorg/meta/
     group_roster.py    -- Roster + transcript helpers for the multi-agent group chat
     group_invite.py    -- GroupInviteCoordinator (agent-initiated invite, human-consented)
     actor.py           -- ConversationalActor (direct MCP acting under trust)
+    intent_router.py   -- IntentClassifier + TurnIntent (per-turn capability classification, live confidence floors)
+    operator_console.py -- OperatorConsoleService (CONFIGURE turns: configure the control plane as the system console identity)
+    console_identity.py -- build_console_identity (shared ELEVATED system console AgentIdentity, fail-closed on unbound model)
+    _multi_voice.py    -- Multi-voice chime-in (secondary role agents adding to a routed answer)
+    _role_resolution.py -- Shared role -> agent resolution for routing / group chat
+    _turn_redaction.py -- Redact-before-persist credential backstop for conversation-turn content
     narrative/         -- Documentary mode (post-run run narrative)
       models.py        -- RunNarrativeInputs, ReducedRun, NarrativeProse, SourceRef
       constants.py     -- Scan / decision / agent / source bounds + section titles
@@ -402,14 +408,19 @@ system's job, not the user's, so there is no mode picker.
   auto** autonomy tier by default (reads flow; risky writes escalate). The
   guardrail `reason` is **synthesised** from flow context, so the operator sees
   a structured confirm (tool, risk, target), never a mandatory free-text box.
-  Integration setup is the first guided flow: a deterministic controller
-  (`meta/chief_of_staff/setup/`) sequences pick-type -> collect-fields ->
-  validate -> preview -> confirm -> apply -> health-verify from the backend
-  connection-type metadata registry, with an agent session per interpretation
-  step; secrets are captured **out of band** (never in the transcript or LLM
-  context, see [Integrations: conversational setup](integrations.md#conversational-setup))
-  and the preview reflects the exact resolved `connections.create` arguments so
-  what applies is what was reviewed.
+  Integration setup is the first guided flow. It runs as a **governed agent
+  loop** (the console reusing `run_chat_action`), not a separate deterministic
+  step controller: the loop reads the backend connection-type metadata registry
+  to know which fields a type needs, then drives pick-type -> collect-fields ->
+  preview -> confirm -> apply -> health-verify through the ordinary
+  `connections.create` / `settings.update` / catalog-install / `check_health`
+  MCP tools under the same SecOps gate + approval inbox. When a step needs a
+  credential, the value is captured **out of band** via an in-chat masked field
+  that posts straight to the write-only capture endpoint and returns a
+  single-use handle (never in the transcript or LLM context, see
+  [Integrations: conversational setup](integrations.md#conversational-setup));
+  the preview reflects the exact resolved `connections.create` arguments so what
+  applies is what was reviewed.
 
 - **Two levels of routing.** The intent classifier picks *which capability*;
   the existing concern router (`routing.py`) still picks *who answers* one level
@@ -459,12 +470,12 @@ self_improvement:
   chief_of_staff:
     # Unified turn (POST /meta/chat/turn): intent classification in front.
     turn_router_enabled: true                # Classify each turn's intent (gated live per request)
-    turn_intent_model: example-small-001     # Intent classifier model id
+    turn_intent_model: example-provider:example-small-001     # Intent classifier model ref (explicit provider,model)
     act_intent_confidence_floor: 0.85        # Higher floor for act (a write): below it degrades to explain
     charter_intent_confidence_floor: 0.8     # Higher floor for the charter interview
     # Transparent multi-voice: specialists chime in on an answer (opt-out).
     multi_voice_enabled: true                # Let specialists add an attributed chime-in (gated live per request)
-    multi_voice_model: example-small-001     # Chime-in model id
+    multi_voice_model: example-provider:example-small-001     # Chime-in model ref (explicit provider,model)
     multi_voice_max_speakers: 2              # Cap on chime-ins per answer
     multi_voice_confidence_floor: 0.7        # Value bar a specialist must clear to chime in
     # Explain turns (the unified turn's read path).
@@ -472,7 +483,7 @@ self_improvement:
     chat_org_state_max_items_per_section: 10 # Per-section org-state sample cap (tasks/projects/approvals); full counts always reported; live-resolved per request
     # Propose turns (clarify-and-draft-a-plan). All opt-in.
     propose_enabled: false                   # Master switch
-    propose_model: example-small-001         # LLM model id
+    propose_model: example-provider:example-small-001         # LLM model ref (explicit provider,model)
     propose_temperature: 0.3                 # Lower than chat: structured output
     propose_max_tokens: 2000                 # Per-turn token budget
     conversational_history_token_budget: 4000       # Windowed transcript budget (oldest turns dropped first); also bounds group-convene input
@@ -481,7 +492,7 @@ self_improvement:
     # Concern routing (who answers, within explain/propose). All opt-in.
     routing_enabled: false                   # Master switch
     routing_strategy: llm                    # "llm" (classifier) or "keyword" (static map)
-    routing_model: example-small-001         # Classifier model id (llm strategy)
+    routing_model: example-provider:example-small-001         # Classifier model ref (llm strategy; explicit provider,model)
     routing_temperature: 0.0                 # Deterministic classification
     routing_max_tokens: 200                  # Per-classification token budget
     routing_confidence_floor: 0.6            # Below this, fall back to the generic persona
@@ -511,7 +522,7 @@ self_improvement:
     operator_console_autonomy_level: semi    # Default tier: reads flow, risky writes escalate
     # Documentary mode: post-run run narrative. All opt-in.
     narrative_enabled: false                 # Master switch
-    narrative_model: example-small-001       # LLM model id (connective prose only)
+    narrative_model: example-provider:example-small-001       # LLM model ref (connective prose only; explicit provider,model)
     narrative_temperature: 0.4               # Slightly above propose: readable prose
     narrative_max_tokens: 2000               # Per-call token budget
   schedule:

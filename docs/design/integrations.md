@@ -42,7 +42,11 @@ methods.
 | `database` | `dialect`, `host`, `port`, `username`, `password`, `database` | `SELECT 1` |
 | `generic_http` | `base_url`, `token` / `api_key` | `HEAD base_url` |
 | `oauth_app` | `client_id`, `client_secret`, `auth_url`, `token_url` | N/A |
+| `a2a_peer` | `base_url`, `auth_scheme`, scheme credentials (`api_key` / `bearer_token` / `client_id` + `client_secret` / mTLS `cert_path` + `key_path`), `signing_secret` | N/A |
+| `llm_provider` | `api_key` | N/A |
 | `tunnel` | `auth_token` | N/A |
+
+The authoritative per-field metadata (label, input type, required/secret flags, capture mode, placement) for every type lives in the backend registry `integrations/connections/field_metadata.py`, exposed read-only via `GET /connections/types` and the `connections.field_metadata` MCP tool; the dashboard form and the operator console both render from it.
 
 ### Secret Storage
 

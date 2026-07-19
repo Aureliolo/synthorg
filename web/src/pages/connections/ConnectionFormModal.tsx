@@ -17,7 +17,10 @@ import { SelectField } from '@/components/ui/select-field'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { cn } from '@/lib/utils'
 import { useConnectionsStore } from '@/stores/connections'
-import { type ConnectionFieldSpec } from './connection-fields'
+import {
+  type ConnectionFieldSpec,
+  type ResolvedConnectionSpec,
+} from './connection-fields'
 import { TypeBadge } from './TypeBadge'
 import { type ConnectionForm, type Mode, useConnectionForm } from './useConnectionForm'
 
@@ -102,10 +105,35 @@ function TypePicker({ onSelect }: { onSelect: (type: ConnectionType) => void }) 
   // they are labelled/described; render exactly what the backend returns.
   const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
   const typesLoading = useConnectionsStore((s) => s.typesLoading)
+  const typesError = useConnectionsStore((s) => s.typesError)
+  const fetchConnectionTypes = useConnectionsStore((s) => s.fetchConnectionTypes)
   if (connectionTypes.length === 0) {
+    if (typesLoading) {
+      return (
+        <p className="p-card text-sm text-text-secondary">
+          Loading connection types...
+        </p>
+      )
+    }
+    // Distinguish a failed fetch from a genuinely empty registry so the
+    // operator gets a retry instead of a misleading "none available".
+    if (typesError !== null) {
+      return (
+        <div className="flex flex-col items-start gap-2 p-card text-sm">
+          <p className="text-danger">Couldn&apos;t load connection types.</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchConnectionTypes()}
+          >
+            Retry
+          </Button>
+        </div>
+      )
+    }
     return (
       <p className="p-card text-sm text-text-secondary">
-        {typesLoading ? 'Loading connection types...' : 'No connection types available.'}
+        No connection types available.
       </p>
     )
   }
@@ -188,12 +216,23 @@ function WebhookRetentionField({ f }: { f: ConnectionForm }) {
   )
 }
 
-function ConnectionFormFields({ f, mode, onClose }: { f: ConnectionForm; mode: Mode; onClose: () => void }) {
-  const spec = f.spec!
+function ConnectionFormFields({
+  f,
+  spec,
+  connectionType,
+  mode,
+  onClose,
+}: {
+  f: ConnectionForm
+  spec: ResolvedConnectionSpec
+  connectionType: ConnectionType
+  mode: Mode
+  onClose: () => void
+}) {
   return (
     <form onSubmit={f.handleSubmit} className="flex flex-col gap-4">
       <div className="flex items-center gap-2 text-sm text-text-secondary">
-        <TypeBadge type={f.form.type as ConnectionType} />
+        <TypeBadge type={connectionType} />
         <span>{spec.description}</span>
       </div>
 
@@ -274,7 +313,16 @@ export function ConnectionFormModal(props: ConnectionFormModalProps) {
           {mode === 'create' && f.form.type === null ? (
             <TypePicker onSelect={f.setType} />
           ) : (
-            Boolean(f.spec) && <ConnectionFormFields f={f} mode={mode} onClose={onClose} />
+            f.spec !== null &&
+            f.form.type !== null && (
+              <ConnectionFormFields
+                f={f}
+                spec={f.spec}
+                connectionType={f.form.type}
+                mode={mode}
+                onClose={onClose}
+              />
+            )
           )}
         </div>
       </DialogContent>

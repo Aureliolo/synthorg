@@ -23,6 +23,7 @@ from synthorg.api.api_core_state import (
 )
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
@@ -30,6 +31,7 @@ from synthorg.observability.events.api import (
     API_SESSION_CLEANUP,
     API_WS_TICKET_CLEANUP,
 )
+from synthorg.observability.events.integrations import SECRET_CAPTURE_PURGED
 from synthorg.observability.events.persistence.oauth_state import (
     PERSISTENCE_OAUTH_STATE_CLEANUP,
 )
@@ -212,6 +214,21 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
         event=API_WS_TICKET_CLEANUP,
         failure_message="Periodic ticket cleanup failed",
     )
+    # Sweep abandoned out-of-band secret-capture handles: the store is
+    # process-local, so an operator who submits a masked credential then
+    # never completes ``connections.create`` would otherwise leave the
+    # handle (and its encrypted backing secret) resident until the value's
+    # TTL is reached. This tick is what makes ``secret_capture_ttl_seconds``
+    # bound retention rather than only expire a handle on a later consume.
+    secret_capture_service = app_state.slice(
+        IntegrationsStateSlice
+    ).secret_capture_service
+    if secret_capture_service is not None:
+        await _run_cleanup_step(
+            secret_capture_service.purge_expired,
+            event=SECRET_CAPTURE_PURGED,
+            failure_message="Periodic secret-capture handle sweep failed",
+        )
     if app_state.slice(ApiCoreStateSlice).session_store is not None:
         await _run_cleanup_step(
             session_store_of(app_state).cleanup_expired,

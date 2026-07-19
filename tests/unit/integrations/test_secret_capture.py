@@ -48,7 +48,7 @@ async def test_capture_then_consume_returns_value() -> None:
 
     assert value == _VALUE
     # The backing secret is deleted after a successful consume.
-    assert backend._secrets == {}
+    assert backend.stored_count() == 0
 
 
 async def test_consume_is_single_use() -> None:
@@ -73,7 +73,7 @@ async def test_consume_rejects_expired_handle() -> None:
     with pytest.raises(SecretCaptureHandleInvalidError):
         await service.consume(handle_id=handle, draft_id=_DRAFT, field_name=_FIELD)
     # The expired handle's backing secret is swept on the rejected consume.
-    assert backend._secrets == {}
+    assert backend.stored_count() == 0
 
 
 async def test_consume_rejects_wrong_field_binding() -> None:
@@ -117,13 +117,13 @@ async def test_purge_expired_sweeps_backing_secrets() -> None:
     clock = FakeClock()
     service = _service(backend, clock)
     await _capture(service)
-    assert len(backend._secrets) == 1
+    assert backend.stored_count() == 1
 
     clock.advance(601)
     purged = await service.purge_expired()
 
     assert purged == 1
-    assert backend._secrets == {}
+    assert backend.stored_count() == 0
 
 
 async def test_handle_is_opaque_and_unique() -> None:

@@ -6,11 +6,19 @@ its size budget. Both models forbid unknown keys at the boundary and cap
 string lengths on attacker-controllable fields.
 """
 
-from typing import Annotated, Final
+from typing import Annotated, Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.field_metadata import reject_inline_secret_fields
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
 
 _MAX_NAME_LEN: Final[int] = 128
@@ -106,6 +114,27 @@ class CreateConnectionRequest(BaseModel):
         """
         return v.strip()
 
+    @model_validator(mode="after")
+    def _validate_credentials(self) -> Self:
+        """Enforce the credential-boundary invariants at request parse time.
+
+        Credential handles must carry a ``connection_draft_id`` to bind
+        against, and a secret field must be captured out of band (never sent
+        inline in ``credentials``). Enforcing both here makes them structurally
+        unbypassable and identical to the ``connections.create`` MCP args.
+
+        Returns:
+            ``self`` when both invariants hold.
+
+        Raises:
+            ValueError: If handles lack a draft id, or a secret field is inline.
+        """
+        if self.credential_handles and self.connection_draft_id is None:
+            msg = "connection_draft_id is required when credential_handles are supplied"
+            raise ValueError(msg)
+        reject_inline_secret_fields(self.connection_type, self.credentials.keys())
+        return self
+
 
 class UpdateConnectionRequest(BaseModel):
     """Request body for ``PATCH /connections/{name}`` (partial update).
@@ -193,7 +222,7 @@ class SecretCaptureRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    value: Annotated[SecretStr, Field(max_length=_MAX_CRED_VALUE_LEN)] = Field(
+    value: SecretStr = Field(
         description="Raw secret value; written to the backend, never logged.",
     )
     secret_kind: NotBlankStr = Field(
@@ -203,6 +232,27 @@ class SecretCaptureRequest(BaseModel):
     conversation_id: Annotated[NotBlankStr, Field(max_length=_MAX_NAME_LEN)] | None = (
         Field(default=None, description="Owning conversation id (audit only).")
     )
+
+    @field_validator("value")
+    @classmethod
+    def _bounded_secret_value(cls, v: SecretStr) -> SecretStr:
+        """Bound the secret length without ever surfacing the raw value.
+
+        A ``Field(max_length=...)`` on a ``SecretStr`` validates the inner
+        string *before* masking, so an over-length value echoes raw plaintext
+        in the ``ValidationError``. Checking the length here keeps the value
+        masked: the error message carries only the limit, never the value.
+
+        Returns:
+            The validated secret.
+
+        Raises:
+            ValueError: If the value exceeds the maximum length.
+        """
+        if len(v.get_secret_value()) > _MAX_CRED_VALUE_LEN:
+            msg = f"secret value exceeds the {_MAX_CRED_VALUE_LEN}-character limit"
+            raise ValueError(msg)
+        return v
 
 
 class SecretCaptureResponse(BaseModel):

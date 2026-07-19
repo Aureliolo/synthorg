@@ -45,6 +45,18 @@ class InMemorySecretBackend:
     async def close(self) -> None:
         return None
 
+    def stored_count(self) -> int:
+        """Number of secrets currently held (public test-assertion helper).
+
+        Lets a test assert the backing store is empty (single-use consume,
+        sweep) through a public method instead of reaching into the private
+        ``_secrets`` dict.
+
+        Returns:
+            The count of stored secrets.
+        """
+        return len(self._secrets)
+
 
 def make_in_memory_catalog() -> ConnectionCatalog:
     """Build a ConnectionCatalog over in-memory repository + secret backend.

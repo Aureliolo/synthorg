@@ -185,7 +185,7 @@ class TestConnectionsController:
                     {
                         "name": "x",
                         "connection_type": "github",
-                        "credentials": {"token": "t"},
+                        "credential_handles": {},
                     },
                 ),
             )
@@ -339,7 +339,7 @@ class TestConnectionAuditEvents:
                     {
                         "name": "gh",
                         "connection_type": "github",
-                        "credentials": {"token": "t"},
+                        "credential_handles": {},
                     },
                 ),
             )
@@ -938,12 +938,13 @@ class TestMCPCatalogController:
             InstallEntryRequest,
             MCPCatalogController,
         )
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
         from synthorg.integrations.mcp_catalog.in_memory_installations import (
             InMemoryMcpInstallationRepository,
         )
         from synthorg.integrations.mcp_catalog.service import CatalogService
 
-        catalog = MagicMock()
+        catalog = MagicMock(spec=ConnectionCatalog)
         wrong_type_conn = Connection(
             name=NotBlankStr("slacky"),
             connection_type=ConnectionType.SLACK,
@@ -1104,6 +1105,9 @@ class TestMCPCatalogController:
             MCPCatalogController,
         )
         from synthorg.api.cursor import CursorSecret
+        from synthorg.integrations.mcp_catalog.in_memory_installations import (
+            InMemoryMcpInstallationRepository,
+        )
         from synthorg.integrations.mcp_catalog.installations import McpInstallation
         from synthorg.integrations.mcp_catalog.service import CatalogService
 
@@ -1129,7 +1133,7 @@ class TestMCPCatalogController:
                 installed_at=now,
             ),
         )
-        repo = MagicMock()
+        repo = MagicMock(spec=InMemoryMcpInstallationRepository)
         repo.list_items = AsyncMock(side_effect=[first_page, second_page])
 
         state = State(

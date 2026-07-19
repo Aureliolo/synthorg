@@ -152,6 +152,11 @@ COS_CONSOLE_REQUESTED: Final[str] = "chief_of_staff.console.requested"
 COS_CONSOLE_COMPLETED: Final[str] = "chief_of_staff.console.completed"
 COS_CONSOLE_PARKED: Final[str] = "chief_of_staff.console.parked"
 COS_CONSOLE_FAILED: Final[str] = "chief_of_staff.console.failed"
+# Autonomy-tier resolution failed for a console turn (misconfigured
+# operator_console_autonomy_level); the turn degrades to rule-engine-only
+# governance. ERROR-level so a persistent misconfiguration surfaces in
+# alerting rather than as a routine per-turn warning.
+COS_CONSOLE_AUTONOMY_DEGRADED: Final[str] = "chief_of_staff.console.autonomy_degraded"
 
 # -- Run narrative (documentary mode) ----------------------------------
 

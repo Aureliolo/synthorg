@@ -73,7 +73,7 @@ class AgentEngineChatActionMixin:
         effective_autonomy: EffectiveAutonomy | None = None,
         max_turns: int = DEFAULT_CHAT_ACTION_MAX_TURNS,
         turn_observer: TurnObserver | None = None,
-        budget_checker: BudgetChecker | None = None,
+        cost_ceiling: float | None = None,
         system_prompt_addendum: str | None = None,
     ) -> ChatActionResult:
         """Drive a real MCP action from a chat instruction under trust.
@@ -94,11 +94,12 @@ class AgentEngineChatActionMixin:
             turn_observer: Optional per-turn progress callback, invoked
                 after each turn with the tools it requested; used by the
                 streaming ``/act`` endpoint to emit incremental progress.
-            budget_checker: Optional per-turn budget-exhaustion callback;
-                the operator console passes one closing over its cost
-                ceiling so a runaway session halts the moment accumulated
-                cost crosses it. ``None`` leaves the loop bounded only by
-                ``max_turns``.
+            cost_ceiling: Optional per-session cost ceiling; the operator
+                console passes its ``operator_console_cost_ceiling`` so a
+                runaway session halts the moment accumulated cost meets it.
+                Carried on the context so the bound is re-applied after a
+                park/resume, not lost on the resumed continuation. ``None``
+                leaves the loop bounded only by ``max_turns``.
             system_prompt_addendum: Optional trusted operating brief
                 appended to the persona ``system`` prompt (after the
                 untrusted-content directive); the operator console uses it
@@ -114,6 +115,8 @@ class AgentEngineChatActionMixin:
         if system_prompt_addendum:
             system_prompt = f"{system_prompt}\n\n{system_prompt_addendum}"
         ctx = AgentContext.from_identity(identity, max_turns=max_turns)
+        if cost_ceiling is not None:
+            ctx = ctx.model_copy(update={"cost_ceiling": cost_ceiling})
         ctx = ctx.with_message(
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
         )
@@ -133,7 +136,6 @@ class AgentEngineChatActionMixin:
                 ctx,
                 effective_autonomy,
                 turn_observer=turn_observer,
-                budget_checker=budget_checker,
             )
         return self._to_chat_action_result(result, agent_id=agent_id)
 
@@ -200,7 +202,6 @@ class AgentEngineChatActionMixin:
         effective_autonomy: EffectiveAutonomy | None,
         *,
         turn_observer: TurnObserver | None = None,
-        budget_checker: BudgetChecker | None = None,
     ) -> ExecutionResult:
         """Run the governed ReAct loop over a chat-action context.
 
@@ -209,10 +210,11 @@ class AgentEngineChatActionMixin:
         gate, so a parked chat action resumes on the same gate the
         ``/approvals`` controller drives. The engine's shared
         ``shutdown_checker`` is always passed so a chat action halts at a
-        safe boundary on graceful shutdown, exactly as a task run does;
-        ``budget_checker`` is optional and bounds a session's spend. No
-        checkpoint / stagnation / compaction callbacks: a chat action is
-        short and taskless.
+        safe boundary on graceful shutdown, exactly as a task run does. The
+        budget checker is derived from ``ctx.cost_ceiling`` so the same bound
+        applies to the initial run and to any resumed continuation (the
+        ceiling rides on the serialised context). No checkpoint / stagnation
+        / compaction callbacks: a chat action is short and taskless.
 
         Returns:
             The loop's :class:`ExecutionResult`.
@@ -230,9 +232,26 @@ class AgentEngineChatActionMixin:
             context=ctx,
             provider=self._provider,
             tool_invoker=tool_invoker,
-            budget_checker=budget_checker,
+            budget_checker=self._budget_checker_for(ctx),
             shutdown_checker=self._shutdown_checker,
         )
+
+    @staticmethod
+    def _budget_checker_for(ctx: AgentContext) -> BudgetChecker | None:
+        """Build a per-turn budget checker from the context's cost ceiling.
+
+        Returns:
+            A callback that trips once accumulated session cost meets the
+            ceiling, or ``None`` when the context carries no ceiling.
+        """
+        ceiling = ctx.cost_ceiling
+        if ceiling is None:
+            return None
+
+        def _check(current: AgentContext) -> bool:
+            return current.accumulated_cost.cost >= ceiling
+
+        return _check
 
     def _to_chat_action_result(
         self,
