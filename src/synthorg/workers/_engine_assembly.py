@@ -20,6 +20,7 @@ from synthorg.budget.state import BudgetStateSlice
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.text_estimation import DefaultTokenEstimator
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.flight_recording import FlightRecorderSink
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
@@ -29,6 +30,9 @@ from synthorg.engine.routing_policy import build_stakes_router
 from synthorg.engine.stagnation import create_stagnation_detector
 from synthorg.engine.state import task_engine_of
 from synthorg.integrations.state import IntegrationsStateSlice, connection_catalog_of
+from synthorg.memory.consolidation.wiki_export import WikiExporter
+from synthorg.memory.injection import MemoryInjectionStrategy
+from synthorg.memory.injection_factory import build_memory_injection_strategy
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import (
     get_logger,
@@ -36,7 +40,8 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_APP_STARTUP
-from synthorg.persistence.state import code_execution_records_of
+from synthorg.persistence.memory_protocol import OrgFactRepository
+from synthorg.persistence.state import PersistenceStateSlice, code_execution_records_of
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
@@ -161,6 +166,12 @@ async def _build_tool_registry(
         code_execution_records=code_execution_records_of(app_state),
         image_provider=image_provider,
         web_search_provider=search_provider,
+        # Without these three the Knowledge-Architect tool set builds
+        # empty, which is how org memory stayed unreachable from an agent
+        # even though its backend was wired at boot.
+        org_memory_backend=app_state.slice(MemoryStateSlice).org_memory_backend,
+        org_fact_store=_org_fact_store_or_none(app_state),
+        wiki_exporter=_wiki_exporter_or_none(app_state),
     )
     tools: list[BaseTool] = [*default_tools, *extra_tools]
     return ToolRegistry(tools), len(tools), sandbox_backends
@@ -402,6 +413,55 @@ def _build_evolution_service_or_none(
     return service
 
 
+def _org_fact_store_or_none(app_state: AppState) -> OrgFactRepository | None:
+    """Resolve the org-fact store, or ``None`` before persistence connects.
+
+    Returns:
+        The repository, or ``None``.
+    """
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    return None if persistence is None else persistence.org_facts
+
+
+def _wiki_exporter_or_none(app_state: AppState) -> WikiExporter | None:
+    """Build the wiki exporter backing ``memory.browse_wiki``.
+
+    Returns:
+        The exporter, or ``None`` when no memory backend is wired.
+    """
+    backend = app_state.slice(MemoryStateSlice).backend
+    if backend is None:
+        return None
+    return WikiExporter(
+        backend=backend,
+        config=app_state.config.memory.consolidation.wiki_export,
+    )
+
+
+def _build_memory_injection_strategy(
+    app_state: AppState,
+) -> MemoryInjectionStrategy | None:
+    """Build the strategy that seeds memory into an agent's context.
+
+    This is the seam the whole issue turns on. It was the one memory
+    argument ``_construct_agent_engine`` never passed, so
+    ``_retrieve_injected_memory_messages`` short-circuited on every task
+    and no agent ever saw a memory it had not explicitly asked for.
+
+    Returns:
+        The strategy, or ``None`` when no memory backend is wired, in
+        which case the engine keeps its existing no-injection behaviour.
+    """
+    backend = app_state.slice(MemoryStateSlice).backend
+    if backend is None:
+        return None
+    return build_memory_injection_strategy(
+        app_state.config.memory.retrieval,
+        backend=backend,
+        token_estimator=DefaultTokenEstimator(),
+    )
+
+
 def _build_compaction_callback(
     app_state: AppState,
     provider: CompletionProvider,
@@ -512,6 +572,13 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         security_config_provider=lambda: app_state.security_runtime_config.current,
         audit_log=app_state.slice(SecurityStateSlice).audit_log,
         memory_backend=app_state.slice(MemoryStateSlice).backend,
+        memory_injection_strategy=_build_memory_injection_strategy(app_state),
+        # The write side. Distillation capture and the procedural config
+        # were never passed either, so a run's learnings were discarded
+        # the moment it ended and a second run of the same objective
+        # started from nothing.
+        procedural_memory_config=app_state.config.memory.procedural,
+        distillation_capture_enabled=True,
         config_resolver=config_resolver_of(app_state),
         event_stream_hub=app_state.slice(CommunicationStateSlice).event_stream_hub,
         interrupt_store=app_state.slice(CommunicationStateSlice).interrupt_store,
