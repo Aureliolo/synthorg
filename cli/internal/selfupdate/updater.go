@@ -55,16 +55,22 @@ var (
 	apiTimeout  = config.DefaultSelfUpdateAPITimeout
 )
 
+// errDisallowedRedirect marks a CheckRedirect policy rejection so the
+// retry loop can treat it as terminal: a redirect to a disallowed
+// host/scheme is a permanent security-policy failure, not a transient
+// transport blip, and retrying it only burns budget on the same rejection.
+var errDisallowedRedirect = errors.New("disallowed redirect")
+
 // checkRedirectHost validates that each redirect hop stays within
 // AllowedDownloadHosts. This prevents a compromised redirect chain
 // from opening connections to internal hosts before the post-response
 // check in httpGetWithClient fires.
 func checkRedirectHost(req *http.Request, _ []*http.Request) error {
 	if req.URL.Scheme != "https" {
-		return fmt.Errorf("redirect to disallowed scheme %q", req.URL.Scheme)
+		return fmt.Errorf("%w: scheme %q", errDisallowedRedirect, req.URL.Scheme)
 	}
 	if !AllowedDownloadHosts[req.URL.Hostname()] {
-		return fmt.Errorf("redirect to disallowed host %q", req.URL.Hostname())
+		return fmt.Errorf("%w: host %q", errDisallowedRedirect, req.URL.Hostname())
 	}
 	return nil
 }
@@ -284,14 +290,24 @@ func rankReleasePair(stable, dev *devRelease) (*devRelease, error) {
 func fetchJSON[T any](ctx context.Context, url string) (T, error) {
 	var zero T
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return zero, fmt.Errorf("creating request: %w", err)
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "synthorg-cli/"+version.Version)
+	// Bound the whole retry sequence by one deadline so retries share a
+	// budget rather than each attempt getting a fresh apiTimeout (a
+	// per-request ceiling that would otherwise let a stalling endpoint
+	// stretch the total wait to apiMaxAttempts * apiTimeout). The body is
+	// fully decoded before this returns, so the deferred cancel cannot cut
+	// a still-reading response.
+	ctx, cancel := context.WithTimeout(ctx, apiTimeout)
+	defer cancel()
 
-	resp, err := apiClient.Do(req)
+	resp, err := doWithRetry(ctx, apiClient, func() (*http.Request, error) {
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if reqErr != nil {
+			return nil, fmt.Errorf("creating request: %w", reqErr)
+		}
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("User-Agent", "synthorg-cli/"+version.Version)
+		return req, nil
+	})
 	if err != nil {
 		return zero, fmt.Errorf("querying GitHub releases: %w", err)
 	}
@@ -446,8 +462,8 @@ func isUpdateAvailable(current, latest string) (bool, error) {
 // string is empty (e.g. "1." has a trailing empty patch) are
 // legitimately 0; a non-empty slot without any digit run is the
 // malformed signal isUsableRelease / pickNewerRelease use to filter
-// tags out (per CR #10), so it returns an error rather than the
-// silent 0 the older closure did.
+// tags out, so it returns an error instead of a silent 0 that would let
+// a bad tag compare as a real version.
 func parseSemverComponent(parts []string, i int, ver string) (int, error) {
 	if i >= len(parts) || parts[i] == "" {
 		return 0, nil
@@ -721,11 +737,18 @@ var AllowedDownloadHosts = map[string]bool{
 }
 
 func httpGetWithClient(ctx context.Context, client *http.Client, rawURL string, maxBytes int64) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, err
+	// Bound the whole retry sequence by the client's own per-request
+	// timeout so retries share one budget instead of each attempt getting
+	// a fresh full timeout. The body is fully read before this returns, so
+	// the deferred cancel cannot cut a still-reading response.
+	if client.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, client.Timeout)
+		defer cancel()
 	}
-	resp, err := client.Do(req)
+	resp, err := doWithRetry(ctx, client, func() (*http.Request, error) {
+		return http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	})
 	if err != nil {
 		return nil, err
 	}

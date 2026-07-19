@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
 	"github.com/spf13/cobra"
 )
 
@@ -762,5 +764,43 @@ func TestIsDevChannelMismatch(t *testing.T) {
 				t.Errorf("isDevChannelMismatch(%q, %q) = %v, want %v", tt.channel, tt.version, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestUpdateCLI_checkFailureAborts verifies that a failed update-check
+// aborts with an ExitRuntime-wrapped ExitError (so Execute does not
+// re-print it) and surfaces the recovery hint on stderr, rather than
+// continuing into the changelog/download steps.
+func TestUpdateCLI_checkFailureAborts(t *testing.T) {
+	prev := checkForChannel
+	checkForChannel = func(_ context.Context, _ string) (selfupdate.CheckResult, error) {
+		return selfupdate.CheckResult{}, errors.New("github API returned 503")
+	}
+	t.Cleanup(func() { checkForChannel = prev })
+
+	cmd := &cobra.Command{}
+	cmd.SetContext(SetGlobalOpts(context.Background(), &GlobalOpts{Hints: "always", DataDir: t.TempDir()}))
+	cmd.Flags().Bool("skip-cli-update", false, "")
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+
+	err := updateCLI(cmd, false)
+	if err == nil {
+		t.Fatal("expected an error when the update check fails")
+	}
+
+	var exitErr *ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *ExitError, got %T: %v", err, err)
+	}
+	if exitErr.Code != ExitRuntime {
+		t.Errorf("exit code = %d, want ExitRuntime (%d)", exitErr.Code, ExitRuntime)
+	}
+	if !strings.Contains(err.Error(), "checking for updates") {
+		t.Errorf("error = %q, want it to wrap 'checking for updates'", err.Error())
+	}
+	if !strings.Contains(errOut.String(), "--images-only") {
+		t.Errorf("stderr = %q, want the --images-only recovery hint", errOut.String())
 	}
 }

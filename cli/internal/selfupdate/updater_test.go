@@ -13,12 +13,16 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMain(m *testing.M) {
 	// Allow localhost for httptest servers in redirect host validation.
 	AllowedDownloadHosts["127.0.0.1"] = true
 	AllowedDownloadHosts["localhost"] = true
+	// Keep the transient-failure backoff negligible so tests exercising a
+	// 5xx path (which retries apiMaxAttempts times) stay fast.
+	apiRetryBaseDelay = time.Millisecond
 	os.Exit(m.Run())
 }
 
