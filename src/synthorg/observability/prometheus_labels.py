@@ -279,6 +279,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
         "notifications",
         "observability",
         "org_chart",
+        "output_style",
         "providers",
         "research",
         "security",

@@ -14,6 +14,7 @@ and batch write paths) so every surface inherits it; callers thread a
 :class:`SettingsWriteGovernance` through ``set`` / ``set_many``.
 """
 
+import json
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from typing import Final
 
@@ -36,6 +37,24 @@ logger = get_logger(__name__)
 _SECURITY_NS: Final[str] = SettingNamespace.SECURITY.value
 _ENGINE_NS: Final[str] = SettingNamespace.ENGINE.value
 _TOOLS_NS: Final[str] = SettingNamespace.TOOLS.value
+_OUTPUT_STYLE_NS: Final[str] = SettingNamespace.OUTPUT_STYLE.value
+
+# Output-style keys whose change relaxes the running guardrail: disabling the
+# whole policy, switching every rule to shadow (surface but never block), or
+# adding a sanctioned exemption (which lets an agent legitimately emit an
+# otherwise-banned literal in a matching scope). Each routes through the same
+# deliberate confirm+reason+actor guardrail.
+_OUTPUT_STYLE_ENABLED_KEY: Final[str] = "enabled"
+_OUTPUT_STYLE_SHADOW_KEY: Final[str] = "shadow_mode"
+_OUTPUT_STYLE_EXEMPTIONS_KEY: Final[str] = "exemptions"
+_OUTPUT_STYLE_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        _OUTPUT_STYLE_ENABLED_KEY,
+        _OUTPUT_STYLE_SHADOW_KEY,
+        _OUTPUT_STYLE_EXEMPTIONS_KEY,
+    }
+)
+_OUTPUT_STYLE_ENABLED_DEFAULT: Final[str] = "true"
 
 # Boolean security toggles whose ``true -> false`` transition weakens posture.
 _WEAKENING_BOOL_KEYS: Final[frozenset[str]] = frozenset(
@@ -130,6 +149,54 @@ def _is_mcp_sandbox_weakening(key: str, *, current: str | None, new: str) -> boo
     return False
 
 
+def _exemption_keys(raw: str | None) -> frozenset[tuple[str, str, str]]:
+    """Parse an ``exemptions`` JSON value into a set of scope keys.
+
+    Reason text is ignored: two exemptions covering the same rule + scope are
+    the same grant. A malformed / non-list value yields the empty set so a bad
+    value is not treated as a broadening (the type validator rejects it).
+
+    Returns:
+        The set of ``(rule_id, scope_kind, match)`` keys.
+    """
+    if not raw:
+        return frozenset()
+    try:
+        parsed = json.loads(raw)
+    except ValueError, TypeError:
+        return frozenset()
+    if not isinstance(parsed, list):
+        return frozenset()
+    keys: set[tuple[str, str, str]] = set()
+    for entry in parsed:
+        if isinstance(entry, dict):
+            keys.add(
+                (
+                    str(entry.get("rule_id", "")),
+                    str(entry.get("scope_kind", "")),
+                    str(entry.get("match", "")),
+                )
+            )
+    return frozenset(keys)
+
+
+def _is_output_style_weakening(key: str, *, current: str | None, new: str) -> bool:
+    """Return whether an ``output_style.*`` change relaxes the guardrail."""
+    if key == _OUTPUT_STYLE_ENABLED_KEY:
+        currently_on = current is None or compare_ci(
+            current, _OUTPUT_STYLE_ENABLED_DEFAULT
+        )
+        return currently_on and not compare_ci(new, "true")
+    if key == _OUTPUT_STYLE_SHADOW_KEY:
+        currently_off = current is None or not compare_ci(current, "true")
+        return currently_off and compare_ci(new, "true")
+    if key == _OUTPUT_STYLE_EXEMPTIONS_KEY:
+        # Adding a sanctioned scope broadens what agents may legitimately emit;
+        # removing / narrowing tightens and is unguarded.
+        return bool(_exemption_keys(new) - _exemption_keys(current))
+    return False
+
+
 def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
     """Return whether an ``engine.*`` oracle change relaxes verification."""
     if key == _ENGINE_ORACLE_DISABLE_KEY:
@@ -180,6 +247,8 @@ def _is_guarded(namespace: str, key: str) -> bool:
         return key in _ENGINE_GUARDED_KEYS
     if namespace == _TOOLS_NS:
         return key in _MCP_SANDBOX_GUARDED_KEYS
+    if namespace == _OUTPUT_STYLE_NS:
+        return key in _OUTPUT_STYLE_GUARDED_KEYS
     return False
 
 
@@ -189,6 +258,8 @@ def _is_weakening(namespace: str, key: str, *, current: str | None, new: str) ->
         return _is_engine_weakening(key, current=current, new=new)
     if namespace == _TOOLS_NS:
         return _is_mcp_sandbox_weakening(key, current=current, new=new)
+    if namespace == _OUTPUT_STYLE_NS:
+        return _is_output_style_weakening(key, current=current, new=new)
     if key in _WEAKENING_BOOL_KEYS:
         # Weakening only when turning a currently-enabled toggle off. A
         # missing current value (first write) is treated as the registered

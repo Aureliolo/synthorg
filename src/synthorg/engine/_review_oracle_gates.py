@@ -37,6 +37,57 @@ logger = get_logger(__name__)
 GateOutcome = tuple[TaskStatus, str, str, bool]
 
 
+def apply_output_policy_gate(  # noqa: PLR0913 -- gate inputs, all required
+    *,
+    deliverable: RedTeamReviewInput | None,
+    task: Task,
+    target: TaskStatus,
+    transition_reason: str,
+    event: str,
+    approved: bool,
+) -> GateOutcome:
+    """Enforce the output-style policy on a completing deliverable (backstop).
+
+    A deterministic, LLM-free defence-in-depth check on the deliverable prose
+    that runs first among the deliverable-consuming gates. It complements the
+    per-tool interceptors: even a deliverable that reached completion by a path
+    that skipped a guarded tool cannot ship with a hard-rule violation. A
+    blocking verdict reroutes the task to IN_PROGRESS rework; a shadow or exempt
+    finding never blocks. When the policy is unwired / disabled, or no
+    deliverable was built, it passes through. Deferred import keeps the
+    output-style leaf out of this module's cold-import set.
+
+    Returns:
+        The (possibly rerouted) ``(target, reason, event, approved)`` tuple.
+    """
+    if not approved or deliverable is None:
+        return target, transition_reason, event, approved
+    content = getattr(deliverable, "deliverable_content", None)
+    if not content:
+        return target, transition_reason, event, approved
+
+    from synthorg.engine.output_style import (  # noqa: PLC0415
+        OutputChannel,
+        OutputContext,
+        evaluate_output_policy,
+    )
+
+    ctx = OutputContext(
+        channel=OutputChannel.DELIVERABLE,
+        task_type=task.type.value,
+        project_id=task.project,
+    )
+    verdict = evaluate_output_policy(content, ctx)
+    if verdict is None or not verdict.blocked:
+        return target, transition_reason, event, approved
+    return (
+        TaskStatus.IN_PROGRESS,
+        f"Output-style policy blocked completion: {verdict.summary}",
+        APPROVAL_GATE_REVIEW_REWORK,
+        False,
+    )
+
+
 def to_oracle_input(
     deliverable: RedTeamReviewInput | None,
 ) -> CompletionOracleReviewInput | None:

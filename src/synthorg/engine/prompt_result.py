@@ -99,6 +99,9 @@ def build_prompt_result(  # noqa: PLR0913
         estimate, template version, and optional personality-trim
         info populated.
     """
+    from synthorg.engine.output_style.adapter import (  # noqa: PLC0415
+        should_inject_house_style,
+    )
     from synthorg.engine.strategy.prompt_injection import (  # noqa: PLC0415
         should_inject_strategy,
     )
@@ -112,6 +115,7 @@ def build_prompt_result(  # noqa: PLR0913
         context_budget=context_budget,
         profile=profile,
         has_strategy=should_inject_strategy(agent, strategy_config),
+        has_house_style=should_inject_house_style(agent),
     )
     metadata = _build_metadata(agent)
     if profile is not None:

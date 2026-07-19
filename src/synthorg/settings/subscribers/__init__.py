@@ -54,6 +54,9 @@ from synthorg.settings.subscribers.observability_bridge_subscriber import (
 from synthorg.settings.subscribers.observability_subscriber import (
     ObservabilitySettingsSubscriber,
 )
+from synthorg.settings.subscribers.output_style_subscriber import (
+    OutputStyleSettingsSubscriber,
+)
 from synthorg.settings.subscribers.per_op_rate_limit_subscriber import (
     PerOpRateLimitSettingsSubscriber,
 )
@@ -108,6 +111,7 @@ __all__ = [
     "NotificationsBridgeSettingsSubscriber",
     "ObservabilityBridgeSettingsSubscriber",
     "ObservabilitySettingsSubscriber",
+    "OutputStyleSettingsSubscriber",
     "PerOpRateLimitSettingsSubscriber",
     "ProviderSettingsSubscriber",
     "ResearchSettingsSubscriber",

@@ -118,7 +118,27 @@ class MessageService:
         cannot spoof ``sender`` in the log.  The payload-side
         ``message.sender`` is still logged as ``sender`` for
         observability but is never treated as the authenticated actor.
+
+        Agent-authored message text is enforced against the output-style policy
+        before publish: a hard violation raises ``OutputPolicyViolationError``
+        so the sender is told the rule and reworks. Deferred import breaks the
+        engine/communication cold-import cycle.
+
+        Raises:
+            OutputPolicyViolationError: When the message text violates a hard
+                output-style rule.
         """
+        from synthorg.engine.output_style import (  # noqa: PLC0415
+            OutputChannel,
+            OutputContext,
+            enforce_output_policy,
+        )
+
+        ctx = OutputContext(channel=OutputChannel.MESSAGE)
+        for part in message.parts:
+            text = getattr(part, "text", None)
+            if isinstance(text, str):
+                enforce_output_policy(text, ctx)
         await self._bus.publish(message)
         logger.info(
             COMMUNICATION_MESSAGE_SENT_VIA_MCP,

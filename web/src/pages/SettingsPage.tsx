@@ -27,6 +27,7 @@ import {
   Shield,
   TestTubes,
   TrendingUp,
+  Type,
   Users,
   Wallet,
   Waypoints,
@@ -108,6 +109,7 @@ const NAMESPACE_ICONS: Partial<Record<SettingNamespace, React.ReactNode>> = {
   appearance: <Palette className="size-4" />,
   org_chart: <Workflow className="size-4" />,
   dashboard: <LayoutDashboard className="size-4" />,
+  output_style: <Type className="size-4" />,
 }
 
 function getFooterAction(ns: SettingNamespace): React.ReactNode {

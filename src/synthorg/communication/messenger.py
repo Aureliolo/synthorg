@@ -81,6 +81,46 @@ def _resolve_parts(
     raise ValueError(msg)
 
 
+def _guard_outbound(message: Message) -> Message:
+    """Enforce the output-style policy on an outbound message before publish.
+
+    Evaluates each text part at the ``MESSAGE`` boundary. A hard violation
+    raises ``OutputPolicyViolationError`` so the sending agent is told the
+    specific rule and reworks; an auto-rewrite (off by default) rebuilds the
+    offending part. Deferred import breaks the engine/communication cold-import
+    cycle.
+
+    Args:
+        message: The constructed message about to be published.
+
+    Returns:
+        The message, with any auto-rewritten text parts substituted.
+
+    Raises:
+        OutputPolicyViolationError: When a non-exempt hard rule blocks.
+    """
+    from synthorg.engine.output_style import (  # noqa: PLC0415
+        OutputChannel,
+        OutputContext,
+        enforce_output_policy,
+    )
+
+    ctx = OutputContext(channel=OutputChannel.MESSAGE)
+    changed = False
+    new_parts: list[Part] = []
+    for part in message.parts:
+        if isinstance(part, TextPart):
+            guarded = enforce_output_policy(part.text, ctx)
+            if guarded != part.text:
+                new_parts.append(part.model_copy(update={"text": guarded}))
+                changed = True
+                continue
+        new_parts.append(part)
+    if not changed:
+        return message
+    return message.model_copy(update={"parts": tuple(new_parts)})
+
+
 class AgentMessenger:
     """Per-agent facade for sending, receiving, and dispatching messages.
 
@@ -178,6 +218,7 @@ class AgentMessenger:
             channel=channel,
             parts=resolved,
         )
+        msg = _guard_outbound(msg)
         await self._bus.publish(msg)
         logger.info(
             COMM_MESSAGE_SENT,
@@ -228,6 +269,7 @@ class AgentMessenger:
             channel=channel,
             parts=resolved,
         )
+        msg = _guard_outbound(msg)
         await self._bus.send_direct(msg, recipient=to)
         logger.info(
             COMM_MESSAGE_SENT,
@@ -278,6 +320,7 @@ class AgentMessenger:
             channel=channel,
             parts=resolved,
         )
+        msg = _guard_outbound(msg)
         await self._bus.publish(msg)
         logger.info(
             COMM_MESSAGE_BROADCAST,

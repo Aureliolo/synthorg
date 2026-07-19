@@ -392,6 +392,9 @@ class TestEventConstants:
             # Model-pin validation: tier-policy drift benchmark + the
             # validator that stamps each prompt class's last-validated time.
             "model_pins",
+            # Output-style policy: house-style injection + hard-guardrail
+            # verdict / rewrite / exemption / shadow events.
+            "output_style",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

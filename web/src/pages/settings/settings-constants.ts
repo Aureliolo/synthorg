@@ -47,6 +47,7 @@ export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'workers',
   'client',
   'design',
+  'output_style',
   'appearance',
   'org_chart',
   'dashboard',
@@ -88,6 +89,7 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   org_chart: 'Org Chart',
   dashboard: 'Dashboard',
   design: 'Design',
+  output_style: 'Output Style',
 }
 
 /** Settings that should never be shown in the GUI (internal/system-managed). */

@@ -44,6 +44,7 @@ class SettingNamespace(StrEnum):
     ORG_CHART = "org_chart"
     DASHBOARD = "dashboard"
     DESIGN = "design"
+    OUTPUT_STYLE = "output_style"
 
 
 class SettingType(StrEnum):

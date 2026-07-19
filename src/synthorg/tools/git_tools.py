@@ -459,6 +459,26 @@ class GitCommitTool(_BaseGitTool):
         """
         args = parse_typed("tool.git_commit", arguments, GitCommitArgs)
         message = args.message
+
+        # Commit messages are code-adjacent agent output: enforce the hard
+        # output-style policy before the commit lands, returning a clean tool
+        # error the agent can rework against. Deferred import breaks the
+        # engine/tools cold-import cycle.
+        from synthorg.engine.output_style import (  # noqa: PLC0415
+            OutputChannel,
+            OutputContext,
+            evaluate_output_policy,
+        )
+
+        verdict = evaluate_output_policy(
+            message, OutputContext(channel=OutputChannel.COMMIT_MESSAGE)
+        )
+        if verdict is not None:
+            if verdict.blocked:
+                return ToolExecutionResult(content=verdict.summary, is_error=True)
+            if verdict.rewritten_text is not None:
+                message = verdict.rewritten_text
+
         paths = list(args.paths)
         stage_all = args.all
 

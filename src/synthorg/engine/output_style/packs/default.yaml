@@ -1,0 +1,106 @@
+# Default output-style pack: house writing style (soft) + hard rules.
+#
+# The em-dash char is declared by its integer codepoint (8212) and its HTML
+# entity forms by the emdash_entities flag; the loader expands both to literal
+# patterns in Python, so this file stays fully ASCII and the repo's
+# check_no_em_dashes.py gate never sees a banned literal in committed source.
+# Fuzzy-tell rules ship in shadow mode and never block; only the em-dash hard
+# ban rejects. Regexes use lookarounds instead of backslash word-boundaries so
+# the source needs no backslash escaping.
+name: "default"
+version: "1.0.0"
+description: "Conservative house style plus the no-em-dash hard ban."
+
+house_style:
+  - id: "british_english"
+    text: >-
+      Write in British / international English (colour, behaviour, organise,
+      centred, analyse, licence as a noun). Use metric units.
+  - id: "concision"
+    text: >-
+      Be concise and direct. State the point, then support it. Cut filler and
+      throat-clearing; prefer plain verbs over ornate ones.
+  - id: "no_ai_tells"
+    text: >-
+      Do not write like a language model. Never use em-dashes (use a colon,
+      comma, semicolon, period, or parentheses). Avoid the "it's not just X,
+      it's Y" construction, over-hedging, sycophancy, puffery, promotional
+      tone, filler transitions, the word "delve", and rule-of-three padding.
+  - id: "register"
+    text: >-
+      Match the register to the audience: professional and neutral by default,
+      no flattery of the reader and no self-congratulation.
+
+rules:
+  # Hard ban: the em-dash character (codepoint 8212) and its HTML-entity forms.
+  # Enforced: a match rejects the output and routes it back to the agent.
+  - id: "emdash_literal"
+    type: "literal_ban"
+    codepoints: [8212]
+    emdash_entities: true
+    message: >-
+      Em-dash (U+2014) is banned in agent output. Use a colon, comma,
+      semicolon, period, or parentheses instead.
+    mode: "reject_rework"
+    severity: "critical"
+    scan_code: true
+    case_insensitive: false
+
+  # Fuzzy AI-writing tells: shadow only (surfaced, never blocking).
+  - id: "delve"
+    type: "regex_ban"
+    patterns:
+      - '(?<![a-z])delv(e|es|ed|ing)(?![a-z])'
+    message: "Avoid 'delve' (an AI-writing tell); use a plainer verb."
+    mode: "shadow"
+    severity: "info"
+    scan_code: false
+
+  - id: "not_just_x_its_y"
+    type: "regex_ban"
+    patterns:
+      - 'it''?s not (just|only) [^.]+?,? it''?s'
+    message: "Avoid the 'it's not just X, it's Y' construction."
+    mode: "shadow"
+    severity: "info"
+    scan_code: false
+
+  - id: "sycophancy"
+    type: "regex_ban"
+    patterns:
+      - '(?<![a-z])(great|excellent|fantastic|brilliant) question(?![a-z])'
+      - '(?<![a-z])i''?d be happy to(?![a-z])'
+    message: "Avoid sycophancy and flattery openers."
+    mode: "shadow"
+    severity: "info"
+    scan_code: false
+
+  - id: "puffery"
+    type: "regex_ban"
+    patterns:
+      - '(?<![a-z])(seamless(ly)?|robust|cutting[- ]edge|state[- ]of[- ]the[- ]art|game[- ]chang(er|ing)|world[- ]class|revolutionary|best[- ]in[- ]class)(?![a-z])'
+    message: "Avoid promotional puffery."
+    mode: "shadow"
+    severity: "info"
+    scan_code: false
+
+  - id: "filler_transitions"
+    type: "regex_ban"
+    patterns:
+      - '(?<![a-z])(it''?s (important|worth noting) that|needless to say|at the end of the day|when it comes to)(?![a-z])'
+    message: "Avoid filler transitions."
+    mode: "shadow"
+    severity: "info"
+    scan_code: false
+
+  - id: "over_hedging"
+    type: "regex_ban"
+    patterns:
+      - '(?<![a-z])(arguably|it could be argued that|some might say that|it is worth mentioning that)(?![a-z])'
+    message: "Avoid over-hedging."
+    mode: "shadow"
+    severity: "info"
+    scan_code: false
+
+# Operators add sanctioned exemptions via settings; the default pack ships none.
+exemptions: []

@@ -113,6 +113,7 @@ if _missing_detail:
 
 SECTION_IDENTITY: Final[str] = "identity"
 SECTION_PERSONALITY: Final[str] = "personality"
+SECTION_HOUSE_STYLE: Final[str] = "house_style"
 SECTION_SKILLS: Final[str] = "skills"
 SECTION_AUTHORITY: Final[str] = "authority"
 SECTION_ORG_POLICIES: Final[str] = "org_policies"
@@ -499,6 +500,7 @@ def compute_sections(  # noqa: PLR0913
     context_budget: str | None = None,
     profile: PromptProfile | None = None,
     has_strategy: bool = False,
+    has_house_style: bool = False,
 ) -> tuple[str, ...]:
     """Determine which sections are present in the rendered prompt.
 
@@ -516,6 +518,7 @@ def compute_sections(  # noqa: PLR0913
         context_budget: Formatted context budget indicator string.
         profile: Prompt profile controlling section inclusion.
         has_strategy: Whether strategic analysis sections are present.
+        has_house_style: Whether the house-style section is present.
 
     Returns:
         Tuple of section names that are included.
@@ -525,9 +528,10 @@ def compute_sections(  # noqa: PLR0913
     sections: list[str] = [
         SECTION_IDENTITY,
         SECTION_PERSONALITY,
-        SECTION_SKILLS,
-        SECTION_AUTHORITY,
     ]
+    if has_house_style:
+        sections.append(SECTION_HOUSE_STYLE)
+    sections.extend((SECTION_SKILLS, SECTION_AUTHORITY))
     if org_policies and include_policies:
         sections.append(SECTION_ORG_POLICIES)
     # Autonomy follows org_policies in the template.

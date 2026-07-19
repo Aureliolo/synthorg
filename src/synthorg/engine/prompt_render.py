@@ -115,6 +115,13 @@ def build_template_context(  # noqa: PLR0913
 
     inject_strategy_context(context, agent, strategy_config)
 
+    # House-style directives (conditional on the ambient provider + agent scope).
+    from synthorg.engine.output_style.adapter import (  # noqa: PLC0415
+        inject_house_style_context,
+    )
+
+    inject_house_style_context(context, agent)
+
     if task is not None:
         # Title / description / acceptance criteria are client-supplied
         # free text injected into the system prompt; fence each with

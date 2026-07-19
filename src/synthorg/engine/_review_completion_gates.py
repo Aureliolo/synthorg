@@ -23,6 +23,7 @@ from synthorg.engine._review_oracle_gates import (
     GateOutcome,
     apply_build_test_gate,
     apply_oracle_review_stage,
+    apply_output_policy_gate,
 )
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
@@ -130,6 +131,20 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         red_team_active=red_team_active,
         task=task,
         outcome=(target, transition_reason, event, approved),
+    )
+    if not approved:
+        return target, transition_reason, event, approved
+
+    # Deterministic output-style backstop on the deliverable prose, reusing the
+    # already-built deliverable input. Runs before the adversarial gates: it is
+    # the cheapest, most objective deliverable check and needs no LLM.
+    target, transition_reason, event, approved = apply_output_policy_gate(
+        deliverable=deliverable_input,
+        task=task,
+        target=target,
+        transition_reason=transition_reason,
+        event=event,
+        approved=approved,
     )
     if not approved:
         return target, transition_reason, event, approved

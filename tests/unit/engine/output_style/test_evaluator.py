@@ -1,0 +1,203 @@
+"""Unit tests for the deterministic output-policy evaluator."""
+
+import pytest
+
+from synthorg.engine.output_style.errors import OutputStylePackValidationError
+from synthorg.engine.output_style.evaluator import OutputPolicyEvaluator
+from synthorg.engine.output_style.exemptions import OutputContext
+from synthorg.engine.output_style.models import (
+    EnforcementMode,
+    ExemptionScopeKind,
+    OutputChannel,
+    OutputStyleRule,
+    RuleType,
+    SanctionedExemption,
+    SegmentKind,
+)
+
+#: Built at runtime so no literal U+2014 lands in committed test source.
+_EM_DASH = chr(0x2014)
+
+
+def _emdash_rule(
+    mode: EnforcementMode = EnforcementMode.REJECT_REWORK,
+) -> OutputStyleRule:
+    return OutputStyleRule(
+        id="emdash_literal",
+        type=RuleType.LITERAL_BAN,
+        patterns=(_EM_DASH,),
+        message="Em-dash banned",
+        mode=mode,
+        rewrite=", " if mode is EnforcementMode.AUTO_REWRITE else None,
+        scan_code=True,
+        case_insensitive=False,
+    )
+
+
+class TestHardBan:
+    @pytest.mark.unit
+    def test_emdash_in_prose_blocks(self) -> None:
+        ev = OutputPolicyEvaluator(rules=(_emdash_rule(),))
+        text = f"The parser {_EM_DASH} rewritten {_EM_DASH} now works."
+        verdict = ev.evaluate(text, OutputContext(channel=OutputChannel.DELIVERABLE))
+        assert verdict.blocked is True
+        assert len([f for f in verdict.findings if f.blocks]) == 2
+        assert verdict.summary
+
+    @pytest.mark.unit
+    def test_clean_prose_passes(self) -> None:
+        ev = OutputPolicyEvaluator(rules=(_emdash_rule(),))
+        verdict = ev.evaluate(
+            "A clean sentence: nothing to see here.",
+            OutputContext(channel=OutputChannel.DELIVERABLE),
+        )
+        assert verdict.clean is True
+        assert verdict.blocked is False
+
+    @pytest.mark.unit
+    def test_emdash_in_commit_message_blocks(self) -> None:
+        ev = OutputPolicyEvaluator(rules=(_emdash_rule(),))
+        verdict = ev.evaluate(
+            f"fix: tidy the parser {_EM_DASH} again",
+            OutputContext(channel=OutputChannel.COMMIT_MESSAGE),
+        )
+        assert verdict.blocked is True
+
+    @pytest.mark.unit
+    def test_codepoint_reference_is_not_a_violation(self) -> None:
+        # A textual reference to the codepoint is ASCII, not the character.
+        ev = OutputPolicyEvaluator(rules=(_emdash_rule(),))
+        verdict = ev.evaluate(
+            "strip the U+2014 escape from output",
+            OutputContext(channel=OutputChannel.DELIVERABLE),
+        )
+        assert verdict.clean is True
+
+
+class TestModes:
+    @pytest.mark.unit
+    def test_shadow_never_blocks(self) -> None:
+        ev = OutputPolicyEvaluator(rules=(_emdash_rule(mode=EnforcementMode.SHADOW),))
+        verdict = ev.evaluate(
+            f"prose {_EM_DASH} here",
+            OutputContext(channel=OutputChannel.DELIVERABLE),
+        )
+        assert verdict.blocked is False
+        assert len(verdict.findings) == 1
+        assert verdict.findings[0].mode is EnforcementMode.SHADOW
+
+    @pytest.mark.unit
+    def test_global_shadow_mode_forces_shadow(self) -> None:
+        ev = OutputPolicyEvaluator(rules=(_emdash_rule(),), shadow_mode=True)
+        verdict = ev.evaluate(
+            f"prose {_EM_DASH} here",
+            OutputContext(channel=OutputChannel.DELIVERABLE),
+        )
+        assert verdict.blocked is False
+        assert verdict.findings[0].mode is EnforcementMode.SHADOW
+
+    @pytest.mark.unit
+    def test_auto_rewrite_fixes_prose(self) -> None:
+        ev = OutputPolicyEvaluator(
+            rules=(_emdash_rule(mode=EnforcementMode.AUTO_REWRITE),)
+        )
+        text = f"The parser {_EM_DASH} now works."
+        verdict = ev.evaluate(text, OutputContext(channel=OutputChannel.DELIVERABLE))
+        assert verdict.blocked is False
+        assert verdict.rewritten_text == "The parser ,  now works."
+        assert _EM_DASH not in (verdict.rewritten_text or "")
+
+    @pytest.mark.unit
+    def test_auto_rewrite_in_code_downgrades_to_reject(self) -> None:
+        ev = OutputPolicyEvaluator(
+            rules=(_emdash_rule(mode=EnforcementMode.AUTO_REWRITE),)
+        )
+        verdict = ev.evaluate(
+            f'label = "{_EM_DASH}"',
+            OutputContext(channel=OutputChannel.CODE_FILE),
+        )
+        assert verdict.blocked is True
+        assert verdict.rewritten_text is None
+        assert verdict.findings[0].mode is EnforcementMode.REJECT_REWORK
+
+    @pytest.mark.unit
+    def test_auto_rewrite_inside_fenced_code_downgrades(self) -> None:
+        ev = OutputPolicyEvaluator(
+            rules=(_emdash_rule(mode=EnforcementMode.AUTO_REWRITE),)
+        )
+        text = f"see below\n```\nx = '{_EM_DASH}'\n```\n"
+        verdict = ev.evaluate(text, OutputContext(channel=OutputChannel.DELIVERABLE))
+        assert verdict.blocked is True
+        assert verdict.findings[0].segment_kind is SegmentKind.CODE
+
+
+class TestScanCode:
+    @pytest.mark.unit
+    def test_prose_only_rule_skips_code_segment(self) -> None:
+        rule = OutputStyleRule(
+            id="delve",
+            type=RuleType.REGEX_BAN,
+            patterns=("(?<![a-z])delve(?![a-z])",),
+            message="no delve",
+            mode=EnforcementMode.SHADOW,
+            scan_code=False,
+        )
+        ev = OutputPolicyEvaluator(rules=(rule,))
+        verdict = ev.evaluate(
+            "call `delve` here",
+            OutputContext(channel=OutputChannel.DELIVERABLE),
+        )
+        assert verdict.clean is True
+
+
+class TestExemptions:
+    @pytest.mark.unit
+    def test_sanctioned_scope_exempts(self) -> None:
+        exemption = SanctionedExemption(
+            rule_id="emdash_literal",
+            scope_kind=ExemptionScopeKind.PATH,
+            match="src/textfilter/**",
+            reason="filter product",
+        )
+        ev = OutputPolicyEvaluator(rules=(_emdash_rule(),), exemptions=(exemption,))
+        verdict = ev.evaluate(
+            f'BANNED = "{_EM_DASH}"',
+            OutputContext(
+                channel=OutputChannel.CODE_FILE,
+                file_path="src/textfilter/strip.py",
+            ),
+        )
+        assert verdict.blocked is False
+        assert verdict.findings[0].exempted is True
+        assert verdict.findings[0].exemption_reason == "filter product"
+
+    @pytest.mark.unit
+    def test_outside_scope_not_exempt(self) -> None:
+        exemption = SanctionedExemption(
+            rule_id="emdash_literal",
+            scope_kind=ExemptionScopeKind.PATH,
+            match="src/textfilter/**",
+            reason="filter product",
+        )
+        ev = OutputPolicyEvaluator(rules=(_emdash_rule(),), exemptions=(exemption,))
+        verdict = ev.evaluate(
+            f'x = "{_EM_DASH}"',
+            OutputContext(
+                channel=OutputChannel.CODE_FILE,
+                file_path="src/other/mod.py",
+            ),
+        )
+        assert verdict.blocked is True
+
+
+class TestCompilation:
+    @pytest.mark.unit
+    def test_invalid_regex_raises_at_construction(self) -> None:
+        rule = OutputStyleRule(
+            id="bad",
+            type=RuleType.REGEX_BAN,
+            patterns=("(unclosed",),
+            message="bad regex",
+        )
+        with pytest.raises(OutputStylePackValidationError):
+            OutputPolicyEvaluator(rules=(rule,))
