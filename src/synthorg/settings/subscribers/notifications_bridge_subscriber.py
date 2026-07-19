@@ -23,10 +23,9 @@ _NAMESPACE = "notifications"
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     (_NAMESPACE, k)
     for k in (
-        "slack_webhook_timeout_seconds",
+        "slack_timeout_seconds",
         "ntfy_webhook_timeout_seconds",
         "email_smtp_timeout_seconds",
-        "slack_default_webhook_url",
         "ntfy_default_url",
     )
 )

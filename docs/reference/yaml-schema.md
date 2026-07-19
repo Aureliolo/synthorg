@@ -114,7 +114,8 @@ notifications:
     - type: slack
       enabled: true
       params:
-        webhook_url: ${SLACK_WEBHOOK}
+        connection: ops-slack   # a bound SLACK connection holding the bot token
+        channel: C0123456789
     - type: console
       enabled: true
   min_severity: warning
@@ -124,7 +125,7 @@ notifications:
 |---|---|---|---|
 | `notifications.sinks[].type` | enum | (required) | Adapter type: `console`, `ntfy`, `slack`, `email`. |
 | `notifications.sinks[].enabled` | bool | `true` | Activate the sink. |
-| `notifications.sinks[].params` | map[str,str] | `{}` | Adapter parameters (e.g. `webhook_url`). |
+| `notifications.sinks[].params` | map[str,str] | `{}` | Adapter parameters (e.g. ntfy `topic`, Slack `connection` + `channel`). |
 | `notifications.min_severity` | enum | `info` | Minimum severity to dispatch; one of `info`, `warning`, `error`. |
 
 ## `security`

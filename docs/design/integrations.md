@@ -187,10 +187,11 @@ child that died after boot surfaces as unhealthy without re-spawning it.
 ## MCP Server Catalog
 
 Static JSON catalog (`bundled.json`) of curated MCP server entries. It ships the
-maintained Brave Search server (`@brave/brave-search-mcp-server`); a first-party
-GitHub and Slack agent-tool path (reusing the native connection + forge plumbing
-rather than an unmaintained third-party MCP server) is tracked as follow-up work.
-Each bundled entry is connection-gated (it declares a `required_connection_type`);
+maintained Brave Search server (`@brave/brave-search-mcp-server`). Forge (GitHub /
+Forgejo) and chat (Slack) access is served by first-party, connection-gated agent
+tools (`forge_*` / `chat_*`, see [Tools & Capabilities](tools.md)) built on the
+native connection catalog + forge/chat client registries, not a third-party MCP
+server. Each bundled entry is connection-gated (it declares a `required_connection_type`);
 no entry runs without a bound connection. Every stdio entry pins an exact `npm_version` (an
 unpinned `npx` spec would resolve `latest` on every reconnect, defeating the
 supply-chain pin). A database-typed entry additionally declares

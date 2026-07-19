@@ -158,4 +158,13 @@ export const SETTING_DEPENDENCIES: Readonly<Record<string, readonly string[]>> =
     'tools/mcp_sandbox_cpus',
     'tools/mcp_sandbox_network',
   ],
+  'tools/forge_tools_enabled': [
+    'tools/forge_tools_connection',
+    'tools/forge_tools_timeout_seconds',
+    'tools/forge_tools_max_read_chars',
+  ],
+  'tools/chat_tools_enabled': [
+    'tools/chat_tools_connection',
+    'tools/chat_tools_timeout_seconds',
+  ],
 }

@@ -143,7 +143,9 @@ if TYPE_CHECKING:
     from synthorg.security.config import SecurityConfig
     from synthorg.security.policy_engine.protocol import PolicyEngine
     from synthorg.settings.resolver import ConfigResolver
+    from synthorg.tools.chat._runtime import ChatToolsRuntime
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
+    from synthorg.tools.forge._runtime import ForgeToolsRuntime
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
     from synthorg.tools.protocol import ToolInvokerProtocol
     from synthorg.tools.registry import ToolRegistry
@@ -246,6 +248,8 @@ class AgentEngine(
         interrupt_store: InterruptStore | None = None,
         approval_interrupt_timeout_seconds: float | None = None,
         external_api_runtime: ExternalApiRuntime | None = None,
+        forge_tools_runtime: ForgeToolsRuntime | None = None,
+        chat_tools_runtime: ChatToolsRuntime | None = None,
         brain_tool_factory_provider: BrainToolFactoryProvider | None = None,
         knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None = None,
         docs_tool_factory_provider: DocsToolFactoryProvider | None = None,
@@ -280,6 +284,8 @@ class AgentEngine(
         self._clarification_enabled = clarification_enabled
         self._scoping_enabled = scoping_enabled
         self._external_api_runtime = external_api_runtime
+        self._forge_tools_runtime = forge_tools_runtime
+        self._chat_tools_runtime = chat_tools_runtime
         self._brain_tool_factory_provider = brain_tool_factory_provider
         self._knowledge_tool_factory_provider = knowledge_tool_factory_provider
         self._docs_tool_factory_provider = docs_tool_factory_provider

@@ -34,6 +34,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from litestar.channels import ChannelsPlugin
 
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.communication.bus_protocol import MessageBus
@@ -65,13 +66,17 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 from tests._shared import mock_of
 
+pytestmark = pytest.mark.unit
+
 # ── Notification adapters: positive timeout validation ─────────
 
 
 def _slack_factory(timeout: float) -> object:
     return SlackNotificationSink(
-        webhook_url="https://hooks.slack.com/services/T/B/XYZ",
-        webhook_timeout_seconds=timeout,
+        connection_catalog=mock_of[ConnectionCatalog](),
+        connection_name="slack-conn",
+        channel="C1",
+        timeout_seconds=timeout,
     )
 
 
@@ -93,14 +98,13 @@ def _email_factory(timeout: float) -> object:
     )
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize(
     ("factory", "match", "bad_value"),
     [
-        (_slack_factory, "webhook_timeout_seconds", 0.0),
-        (_slack_factory, "webhook_timeout_seconds", -1.0),
-        (_slack_factory, "webhook_timeout_seconds", float("inf")),
-        (_slack_factory, "webhook_timeout_seconds", float("nan")),
+        (_slack_factory, "timeout_seconds", 0.0),
+        (_slack_factory, "timeout_seconds", -1.0),
+        (_slack_factory, "timeout_seconds", float("inf")),
+        (_slack_factory, "timeout_seconds", float("nan")),
         (_ntfy_factory, "webhook_timeout_seconds", 0.0),
         (_ntfy_factory, "webhook_timeout_seconds", float("inf")),
         (_email_factory, "smtp_timeout_seconds", 0.0),
@@ -130,7 +134,6 @@ def test_notification_adapter_rejects_invalid_timeout(
 # ── OAuth flows: positive timeout validation ──────────────────
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize(
     ("flow_cls", "bad_value"),
     [
@@ -162,7 +165,6 @@ def test_oauth_flow_rejects_invalid_timeout(flow_cls: type, bad_value: float) ->
 class TestAuditChainSinkTimeout:
     """``set_signing_timeout_seconds`` updates the live timeout."""
 
-    @pytest.mark.unit
     def test_set_signing_timeout_seconds_updates_instance(self) -> None:
         sink_module = importlib.import_module("synthorg.observability.audit_chain.sink")
         sink = object.__new__(sink_module.AuditChainSink)
@@ -170,7 +172,6 @@ class TestAuditChainSinkTimeout:
         sink.set_signing_timeout_seconds(12.5)
         assert sink._signing_timeout_seconds == 12.5
 
-    @pytest.mark.unit
     def test_set_signing_timeout_seconds_rejects_zero(self) -> None:
         sink_module = importlib.import_module("synthorg.observability.audit_chain.sink")
         sink = object.__new__(sink_module.AuditChainSink)
@@ -185,21 +186,18 @@ class TestAuditChainSinkTimeout:
 class TestOAuthTokenManagerConfigResolver:
     """Resolver injection + ``_resolve_flow_timeout`` semantics."""
 
-    @pytest.mark.unit
     def test_set_config_resolver_stores_reference(self) -> None:
         mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
         resolver = mock_of[ConfigResolver]()
         mgr.set_config_resolver(resolver)
         assert mgr._config_resolver is resolver
 
-    @pytest.mark.unit
     async def test_resolve_flow_timeout_noop_without_resolver(self) -> None:
         mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
         original = mgr._flow
         await mgr._resolve_flow_timeout()
         assert mgr._flow is original
 
-    @pytest.mark.unit
     async def test_resolve_flow_timeout_rebuilds_flow(self) -> None:
         mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
         resolver = mock_of[ConfigResolver](get_float=AsyncMock(return_value=45.0))
@@ -208,7 +206,6 @@ class TestOAuthTokenManagerConfigResolver:
         # The rebuilt flow should carry the resolved timeout.
         assert mgr._flow._http_timeout_seconds == 45.0
 
-    @pytest.mark.unit
     async def test_resolve_flow_timeout_tolerates_outage(self) -> None:
         mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
         resolver = mock_of[ConfigResolver](
@@ -220,7 +217,6 @@ class TestOAuthTokenManagerConfigResolver:
         await mgr._resolve_flow_timeout()
         assert mgr._flow is original
 
-    @pytest.mark.unit
     async def test_resolve_loop_tuning_noop_without_resolver(self) -> None:
         mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
         interval, threshold = mgr._interval, mgr._threshold
@@ -228,7 +224,6 @@ class TestOAuthTokenManagerConfigResolver:
         assert mgr._interval == interval
         assert mgr._threshold == threshold
 
-    @pytest.mark.unit
     async def test_resolve_loop_tuning_applies_resolved_values(self) -> None:
         mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
         resolver = mock_of[ConfigResolver](get_int=AsyncMock(side_effect=[120, 900]))
@@ -237,7 +232,6 @@ class TestOAuthTokenManagerConfigResolver:
         assert mgr._interval == 120
         assert mgr._threshold == timedelta(seconds=900)
 
-    @pytest.mark.unit
     async def test_resolve_loop_tuning_tolerates_outage(self) -> None:
         mgr = OAuthTokenManager(catalog=MagicMock(spec=ConnectionCatalog))
         resolver = mock_of[ConfigResolver](
@@ -254,10 +248,9 @@ class TestOAuthTokenManagerConfigResolver:
 
 
 class TestWebhookEventBridgeConfigResolver:
-    @pytest.mark.unit
     def test_set_config_resolver_stores_reference(self) -> None:
         bridge = WebhookEventBridge(
-            bus=MagicMock(spec=MessageBus),
+            bus=mock_of[MessageBus](),
             ceremony_scheduler=MagicMock(spec=CeremonyScheduler),
         )
         resolver = mock_of[ConfigResolver]()
@@ -269,15 +262,14 @@ class TestWebhookEventBridgeConfigResolver:
 
 
 class TestMessageBusBridgeFallbackLogging:
-    @pytest.mark.unit
     async def test_poll_timeout_logs_once_per_failure_run(
         self,
     ) -> None:
-        bus = MagicMock()
-        bus.receive = AsyncMock(return_value=None)
-        plugin = MagicMock()
-        resolver = MagicMock(spec=ConfigResolver)
-        resolver.get_float = AsyncMock(side_effect=RuntimeError("boom"))
+        bus = mock_of[MessageBus](receive=AsyncMock(return_value=None))
+        plugin = MagicMock(spec=ChannelsPlugin)
+        resolver = mock_of[ConfigResolver](
+            get_float=AsyncMock(side_effect=RuntimeError("boom"))
+        )
         bridge = MessageBusBridge(bus, plugin, config_resolver=resolver)
         # First failure logs; second and third do not (flag stays set).
         await bridge._get_poll_timeout()
@@ -288,12 +280,12 @@ class TestMessageBusBridgeFallbackLogging:
         await bridge._get_poll_timeout()
         assert bridge._poll_timeout_fallback_logged is False
 
-    @pytest.mark.unit
     async def test_max_errors_logs_once_per_failure_run(self) -> None:
-        bus = MagicMock()
-        plugin = MagicMock()
-        resolver = MagicMock(spec=ConfigResolver)
-        resolver.get_int = AsyncMock(side_effect=RuntimeError("boom"))
+        bus = mock_of[MessageBus]()
+        plugin = MagicMock(spec=ChannelsPlugin)
+        resolver = mock_of[ConfigResolver](
+            get_int=AsyncMock(side_effect=RuntimeError("boom"))
+        )
         bridge = MessageBusBridge(bus, plugin, config_resolver=resolver)
         await bridge._get_max_consecutive_errors()
         assert bridge._max_errors_fallback_logged is True
@@ -308,16 +300,13 @@ class TestMessageBusBridgeFallbackLogging:
 
 
 class TestResolveOAuthHttpTimeout:
-    @pytest.mark.unit
     async def test_returns_none_without_resolver(self) -> None:
         assert await resolve_oauth_http_timeout(None) is None
 
-    @pytest.mark.unit
     async def test_returns_resolved_value(self) -> None:
         resolver = mock_of[ConfigResolver](get_float=AsyncMock(return_value=42.0))
         assert await resolve_oauth_http_timeout(resolver) == 42.0
 
-    @pytest.mark.unit
     async def test_returns_none_on_outage(self) -> None:
         resolver = mock_of[ConfigResolver](
             get_float=AsyncMock(side_effect=RuntimeError("boom"))
@@ -329,81 +318,68 @@ class TestResolveOAuthHttpTimeout:
 
 
 class TestNotificationFactoryBridgeConfig:
-    @pytest.mark.unit
-    def test_slack_sink_receives_bridge_timeout(self) -> None:
-        bridge_config = NotificationsBridgeConfig(
-            slack_webhook_timeout_seconds=7.5,
-            ntfy_webhook_timeout_seconds=10.0,
-            email_smtp_timeout_seconds=10.0,
-        )
-        config = NotificationConfig(
+    @staticmethod
+    def _slack_config() -> NotificationConfig:
+        return NotificationConfig(
             sinks=(
                 NotificationSinkConfig(
                     type=NotificationSinkType.SLACK,
                     enabled=True,
-                    params={"webhook_url": "https://example.com/slack-webhook"},
+                    params={"connection": "slack-conn", "channel": "C1"},
                 ),
             ),
         )
-        dispatcher = build_notification_dispatcher(config, bridge_config=bridge_config)
+
+    def test_slack_sink_receives_bridge_timeout(self) -> None:
+        bridge_config = NotificationsBridgeConfig(
+            slack_timeout_seconds=7.5,
+            ntfy_webhook_timeout_seconds=10.0,
+            email_smtp_timeout_seconds=10.0,
+        )
+        dispatcher = build_notification_dispatcher(
+            self._slack_config(),
+            bridge_config=bridge_config,
+            connection_catalog=mock_of[ConnectionCatalog](),
+        )
         slack_sinks = [
             s for s in dispatcher._sinks if isinstance(s, SlackNotificationSink)
         ]
         assert slack_sinks, "Slack sink should have been registered"
-        slack = slack_sinks[0]
-        # The sink stores the bridge timeout; the underlying
-        # ``httpx.AsyncClient`` is created lazily inside ``start()``
-        # so we assert on the stored value rather than on a
-        # not-yet-constructed client.
-        assert slack._webhook_timeout_seconds == 7.5
+        assert slack_sinks[0]._timeout_seconds == 7.5
 
-    @pytest.mark.unit
     def test_factory_without_bridge_uses_default(self) -> None:
-        config = NotificationConfig(
-            sinks=(
-                NotificationSinkConfig(
-                    type=NotificationSinkType.SLACK,
-                    enabled=True,
-                    params={"webhook_url": "https://example.com/slack-webhook"},
-                ),
-            ),
+        dispatcher = build_notification_dispatcher(
+            self._slack_config(),
+            bridge_config=None,
+            connection_catalog=mock_of[ConnectionCatalog](),
         )
-        dispatcher = build_notification_dispatcher(config, bridge_config=None)
         slack_sinks = [
             s for s in dispatcher._sinks if isinstance(s, SlackNotificationSink)
         ]
         assert slack_sinks
-        slack = slack_sinks[0]
-        # Default is 10.0 (module default on SlackNotificationSink).
-        # The sink stores it for lazy client construction in
-        # ``start()``.
-        assert slack._webhook_timeout_seconds == 10.0
+        assert slack_sinks[0]._timeout_seconds == 10.0
 
 
 # ── NotificationsBridgeConfig URL validation ───────────────────
 
 
 class TestNotificationsBridgeConfigUrlValidation:
-    @pytest.mark.unit
     def test_empty_ntfy_url_allowed(self) -> None:
         """Empty means no default server configured, not a misconfig."""
         config = NotificationsBridgeConfig(ntfy_default_url="")
         assert config.ntfy_default_url == ""
 
-    @pytest.mark.unit
     def test_https_ntfy_url_accepted(self) -> None:
         config = NotificationsBridgeConfig(
             ntfy_default_url="https://ntfy.example.com",
         )
         assert config.ntfy_default_url == "https://ntfy.example.com"
 
-    @pytest.mark.unit
     def test_http_ntfy_url_rejected(self) -> None:
         """A plaintext URL is rejected so topic names are not sent in clear."""
         with pytest.raises(ValueError, match="https"):
             NotificationsBridgeConfig(ntfy_default_url="http://ntfy.example.com")
 
-    @pytest.mark.unit
     def test_reserved_port_ntfy_url_rejected(self) -> None:
         """A URL passing the pattern but using port 0 hits the validator."""
         with pytest.raises(ValueError, match="reserved"):
@@ -416,7 +392,6 @@ class TestNotificationsBridgeConfigUrlValidation:
 
 
 class TestSubprocessSandboxKillGrace:
-    @pytest.mark.unit
     def test_rejects_zero_kill_grace(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="kill_grace_seconds"):
             SubprocessSandbox(
@@ -424,7 +399,6 @@ class TestSubprocessSandboxKillGrace:
                 kill_grace_seconds=0,
             )
 
-    @pytest.mark.unit
     def test_stores_positive_kill_grace(self, tmp_path: Path) -> None:
         sbx = SubprocessSandbox(
             workspace=tmp_path,
@@ -437,7 +411,6 @@ class TestSubprocessSandboxKillGrace:
 
 
 class TestAppStateBridgeConfigFlags:
-    @pytest.mark.unit
     def test_flag_starts_false_and_flips_once(self) -> None:
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.config.schema import RootConfig
@@ -451,7 +424,6 @@ class TestAppStateBridgeConfigFlags:
         state.bridge_config.mark_applied()
         assert state.bridge_config.applied is True
 
-    @pytest.mark.unit
     def test_swap_notification_dispatcher_returns_previous(self) -> None:
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.config.schema import RootConfig

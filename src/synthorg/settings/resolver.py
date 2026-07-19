@@ -1188,10 +1188,9 @@ class ConfigResolver:
         values = await self._resolve_bridge_fields(
             "notifications",
             (
-                ("slack_webhook_timeout_seconds", "float"),
+                ("slack_timeout_seconds", "float"),
                 ("ntfy_webhook_timeout_seconds", "float"),
                 ("email_smtp_timeout_seconds", "float"),
-                ("slack_default_webhook_url", "str"),
                 ("ntfy_default_url", "str"),
             ),
         )

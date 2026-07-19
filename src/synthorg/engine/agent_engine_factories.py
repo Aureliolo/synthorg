@@ -5,6 +5,10 @@ from typing import TYPE_CHECKING, Literal
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock
 from synthorg.core.task import Task
+from synthorg.engine._agent_tool_registry import (
+    registry_with_chat_tools,
+    registry_with_forge_tools,
+)
 from synthorg.engine._security_factory import (
     make_security_interceptor,
     registry_with_approval_tool,
@@ -62,7 +66,9 @@ if TYPE_CHECKING:
     from synthorg.security.audit import AuditLog
     from synthorg.security.config import SecurityConfig
     from synthorg.security.policy_engine.protocol import PolicyEngine
+    from synthorg.tools.chat._runtime import ChatToolsRuntime
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
+    from synthorg.tools.forge._runtime import ForgeToolsRuntime
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
     from synthorg.tools.registry import ToolRegistry
 
@@ -77,6 +83,8 @@ class AgentEngineFactoriesMixin:
     _scoping_enabled: bool
     _clock: Clock
     _external_api_runtime: ExternalApiRuntime | None
+    _forge_tools_runtime: ForgeToolsRuntime | None
+    _chat_tools_runtime: ChatToolsRuntime | None
     _brain_tool_factory_provider: BrainToolFactoryProvider | None
     _knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None
     _docs_tool_factory_provider: DocsToolFactoryProvider | None
@@ -331,6 +339,22 @@ class AgentEngineFactoriesMixin:
         registry = registry_with_external_api_tool(
             registry,
             self._external_api_runtime,
+            self._approval_store,
+            identity,
+            task_id=task_id,
+            effective_autonomy=effective_autonomy,
+        )
+        registry = registry_with_forge_tools(
+            registry,
+            self._forge_tools_runtime,
+            self._approval_store,
+            identity,
+            task_id=task_id,
+            effective_autonomy=effective_autonomy,
+        )
+        registry = registry_with_chat_tools(
+            registry,
+            self._chat_tools_runtime,
             self._approval_store,
             identity,
             task_id=task_id,

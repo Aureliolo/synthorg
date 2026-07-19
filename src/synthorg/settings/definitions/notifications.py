@@ -29,12 +29,12 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.NOTIFICATIONS,
-        key="slack_webhook_timeout_seconds",
+        key="slack_timeout_seconds",
         type=SettingType.FLOAT,
         default="10.0",
         description=(
-            "HTTP timeout for Slack incoming-webhook posts. A change"
-            " rebuilds the dispatcher's sinks without a restart."
+            "HTTP timeout for Slack Web API posts (chat.postMessage). A"
+            " change rebuilds the dispatcher's sinks without a restart."
         ),
         group="Slack",
         level=SettingLevel.ADVANCED,
@@ -74,29 +74,6 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=60.0,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.NOTIFICATIONS,
-        key="slack_default_webhook_url",
-        type=SettingType.STRING,
-        default="",
-        description=(
-            "Optional fallback Slack incoming-webhook URL applied when a"
-            " Slack notification sink is configured without its own"
-            " ``webhook_url`` parameter. Leave blank to require every"
-            " sink to specify the URL explicitly. A change rebuilds the"
-            " dispatcher's sinks without a restart."
-        ),
-        group="Slack",
-        level=SettingLevel.ADVANCED,
-        sensitive=True,
-        validator_pattern=(
-            r"^(?:|https://hooks\.slack\.com/services/"
-            r"[A-Za-z0-9_-]+/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+)$"
-        ),
     )
 )
 

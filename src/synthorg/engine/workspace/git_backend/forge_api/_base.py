@@ -57,6 +57,7 @@ class BaseForgeClient:
         *,
         action: str,
         json: dict[str, object] | None = None,
+        params: Mapping[str, str | int] | None = None,
     ) -> httpx.Response:
         """Issue a request, mapping transport errors to a typed error.
 
@@ -64,6 +65,14 @@ class BaseForgeClient:
         ``raise_for_forge_status``); this only guards transport-level
         failures so a connection reset surfaces as a retryable
         ``GitBackendForgeApiError`` rather than a bare ``httpx`` error.
+
+        Args:
+            method: HTTP verb.
+            url: Endpoint path (a leading slash is stripped so it
+                resolves against the base_url path prefix).
+            action: Human-readable action for the error message.
+            json: Optional JSON request body.
+            params: Optional query-string parameters.
 
         Returns:
             The raw :class:`httpx.Response`; status mapping is the
@@ -78,7 +87,9 @@ class BaseForgeClient:
             # Strip any leading slash so the endpoint resolves *against*
             # the base_url path prefix; a leading slash would make httpx
             # treat it as host-absolute and discard the prefix.
-            return await self._client.request(method, url.lstrip("/"), json=json)
+            return await self._client.request(
+                method, url.lstrip("/"), json=json, params=params
+            )
         except httpx.HTTPError as exc:
             logger.warning(
                 FORGE_API_REQUEST_FAILED,

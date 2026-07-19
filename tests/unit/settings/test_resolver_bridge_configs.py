@@ -39,6 +39,8 @@ from synthorg.settings.models import SettingValue
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service_protocol import SettingsServiceProtocol
 
+pytestmark = pytest.mark.unit
+
 
 class _FakeRootConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -292,19 +294,14 @@ _HAPPY_CASES: tuple[
         "get_notifications_bridge_config",
         NotificationsBridgeConfig,
         {
-            ("notifications", "slack_webhook_timeout_seconds"): "15.0",
+            ("notifications", "slack_timeout_seconds"): "15.0",
             ("notifications", "ntfy_webhook_timeout_seconds"): "10.0",
             ("notifications", "email_smtp_timeout_seconds"): "30.0",
-            (
-                "notifications",
-                "slack_default_webhook_url",
-            ): "https://hooks.slack.com/services/T/B/X",
             ("notifications", "ntfy_default_url"): "https://ntfy.example.com",
         },
         {
-            "slack_webhook_timeout_seconds": 15.0,
+            "slack_timeout_seconds": 15.0,
             "email_smtp_timeout_seconds": 30.0,
-            "slack_default_webhook_url": "https://hooks.slack.com/services/T/B/X",
             "ntfy_default_url": "https://ntfy.example.com",
         },
     ),
@@ -355,7 +352,6 @@ _HAPPY_CASES: tuple[
 )
 
 
-@pytest.mark.unit
 @pytest.mark.parametrize(
     ("method_name", "expected_cls", "mapping", "expected_attrs"),
     _HAPPY_CASES,
@@ -391,7 +387,6 @@ async def test_bridge_config_happy_path(  # noqa: PLR0913
 # ── Classifier-bridge defaults ──────────────────────────────────
 
 
-@pytest.mark.unit
 def test_engine_bridge_classifier_defaults_match_classifier_module() -> None:
     """``EngineBridgeConfig`` classifier defaults mirror the classifier module.
 
@@ -416,7 +411,6 @@ def test_engine_bridge_classifier_defaults_match_classifier_module() -> None:
 # ── Validation-failure cases ────────────────────────────────────
 
 
-@pytest.mark.unit
 async def test_get_api_bridge_config_rejects_out_of_range(
     resolver: ConfigResolver, mock_settings: AsyncMock
 ) -> None:
@@ -462,7 +456,6 @@ async def test_get_api_bridge_config_rejects_out_of_range(
         await resolver.get_api_bridge_config()
 
 
-@pytest.mark.unit
 async def test_get_tools_bridge_config_rejects_bad_memory_literal(
     resolver: ConfigResolver, mock_settings: AsyncMock
 ) -> None:
@@ -483,60 +476,6 @@ async def test_get_tools_bridge_config_rejects_bad_memory_literal(
         await resolver.get_tools_bridge_config()
 
 
-# ── slack_default_webhook_url canonical-URL validation ──────────
-
-
-@pytest.mark.unit
-class TestSlackDefaultWebhookUrlValidator:
-    """``slack_default_webhook_url`` must accept only empty or canonical
-    Slack incoming-webhook URLs. The pattern alone is too permissive;
-    the field validator forces scheme/host/path/no-userinfo/no-query
-    discipline so malformed config never reaches the dispatcher."""
-
-    @pytest.mark.parametrize(
-        "good_url",
-        [
-            "",
-            "https://hooks.slack.com/services/T/B/X",
-            "https://hooks.slack.com/services/T000/B000/abc-123",
-        ],
-        ids=["empty", "minimal", "with_alphanum_path"],
-    )
-    def test_accepts_canonical_url(self, good_url: str) -> None:
-        cfg = NotificationsBridgeConfig(slack_default_webhook_url=good_url)
-        assert cfg.slack_default_webhook_url == good_url
-
-    @pytest.mark.parametrize(
-        "bad_url",
-        [
-            "http://hooks.slack.com/services/T/B/X",
-            "https://evil.example.com/services/T/B/X",
-            "https://hooks.slack.com/services/T/B/X?debug=1",
-            "https://hooks.slack.com/services/T/B/X#frag",
-            "https://user:pw@hooks.slack.com/services/T/B/X",
-            "https://hooks.slack.com/foo/T/B/X",
-            " https://hooks.slack.com/services/T/B/X",
-            "https://hooks.slack.com/services/T/B/X ",
-            "https://hooks.slack.com:99999/services/T/B/X",
-        ],
-        ids=[
-            "http_insecure",
-            "wrong_host",
-            "with_query",
-            "with_fragment",
-            "with_userinfo",
-            "wrong_path_prefix",
-            "leading_whitespace",
-            "trailing_whitespace",
-            "port_out_of_range",
-        ],
-    )
-    def test_rejects_non_canonical_url(self, bad_url: str) -> None:
-        with pytest.raises(ValidationError):
-            NotificationsBridgeConfig(slack_default_webhook_url=bad_url)
-
-
-@pytest.mark.unit
 class TestApprovalUrgencyThresholdInvariant:
     """``critical_seconds`` must be strictly less than ``high_seconds``.
 

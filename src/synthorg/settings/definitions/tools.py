@@ -3,7 +3,8 @@
 
 Covers git subprocess kill-grace, Docker sandbox sidecar resource
 limits, Docker stop grace period, subprocess sandbox kill-grace,
-native web search, and MCP stdio-server sandboxing.
+native web search, MCP stdio-server sandboxing, and the forge / chat
+agent tools.
 """
 
 from synthorg import __version__
@@ -640,5 +641,140 @@ _r.register(
         group="Desktop",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+    )
+)
+
+# ── Forge agent tools ────────────────────────────────────────────
+# The forge tools (read repo/file, open/comment issues, open/comment/
+# review/merge PRs, read CI) are ghost-wired at boot: built only when
+# enabled AND a bound forge connection is set, so a misconfigured feature
+# never crashes the runtime. Writes route through the identity-bound
+# approval flow. A settings change applies on the next runtime rebuild
+# (no process restart).
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="forge_tools_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether agents may drive a forge (GitHub / Forgejo) through the"
+            " forge_repo, forge_issue, forge_pull_request, and forge_ci tools."
+            " Off by default: a connection holding a forge access token must"
+            " be bound first. Writes always require approval."
+        ),
+        group="Forge Tools",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="forge_tools_connection",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Name of the forge connection (GitHub / Forgejo) holding the"
+            " access token (read from its 'token' credential field) and the"
+            " repository host base_url. Empty disables the forge tools even"
+            " when enabled."
+        ),
+        group="Forge Tools",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="forge_tools_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="30.0",
+        description=(
+            "Maximum wall-clock time a single forge API request may run"
+            " before it is cancelled."
+        ),
+        group="Forge Tools",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=300.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="forge_tools_max_read_chars",
+        type=SettingType.INTEGER,
+        default="100000",
+        description=(
+            "Maximum characters a single forge file read returns to the agent"
+            " before the content is truncated (keeps a large file from"
+            " flooding the context window)."
+        ),
+        group="Forge Tools",
+        level=SettingLevel.ADVANCED,
+        min_value=1000,
+        max_value=1000000,
+    )
+)
+
+# ── Chat agent tools ─────────────────────────────────────────────
+# The chat tools (send/read messages, read threads, list channels, look
+# up users) are ghost-wired at boot: built only when enabled AND a bound
+# chat connection is set. Sending a message routes through the
+# identity-bound approval flow. A settings change applies on the next
+# runtime rebuild (no process restart).
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="chat_tools_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether agents may use the operator chat channel through the"
+            " chat_messages and chat_directory tools. Off by default: a"
+            " connection holding a chat bot token must be bound first."
+            " Sending a message always requires approval."
+        ),
+        group="Chat Tools",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="chat_tools_connection",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Name of the chat connection (Slack) holding the bot token (read"
+            " from its 'token' credential field). Empty disables the chat"
+            " tools even when enabled. The same connection also backs the"
+            " Slack notification sink."
+        ),
+        group="Chat Tools",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="chat_tools_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="30.0",
+        description=(
+            "Maximum wall-clock time a single chat API request may run before"
+            " it is cancelled."
+        ),
+        group="Chat Tools",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=300.0,
     )
 )

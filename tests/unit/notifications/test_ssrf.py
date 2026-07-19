@@ -1,4 +1,4 @@
-"""SSRF hardening for the ntfy / Slack outbound webhook sinks.
+"""SSRF hardening for the ntfy outbound webhook sink.
 
 The notification sinks POST to an operator-configured URL. These tests
 pin the three-layer defence shared via
@@ -24,7 +24,6 @@ from synthorg.notifications.adapters._ssrf import (
     validate_outbound_url_scheme,
 )
 from synthorg.notifications.adapters.ntfy import NtfyNotificationSink
-from synthorg.notifications.adapters.slack import SlackNotificationSink
 from synthorg.tools._dns_pinning import PinnedDnsTransport
 from synthorg.tools.network_validator import DnsValidationOk, NetworkPolicy
 
@@ -247,61 +246,10 @@ class TestNtfyStartSsrf:
         await sink.close()
 
 
-class TestSlackStartSsrf:
-    async def test_start_rejects_host_resolving_to_blocked_ip(self) -> None:
-        sink = SlackNotificationSink(
-            webhook_url="https://rebind.example.com/services/abc",
-        )
-        with (
-            patch(
-                _RESOLVE_AND_CHECK,
-                return_value="URL host resolves to blocked private/reserved IP",
-            ),
-            pytest.raises(ValueError, match="rejected by SSRF policy"),
-        ):
-            await sink.start()
-        assert sink._client is None
-
-    async def test_start_pins_connect_to_validated_ip(self) -> None:
-        sink = SlackNotificationSink(
-            webhook_url="https://hooks.example.com/services/abc",
-        )
-        with (
-            patch(_RESOLVE_AND_CHECK, return_value=(_PUBLIC_IP,)),
-            patch(
-                "synthorg.notifications.adapters.slack.httpx.AsyncClient",
-                autospec=True,
-            ) as mock_cls,
-        ):
-            await sink.start()
-        transport = mock_cls.call_args.kwargs["transport"]
-        assert isinstance(transport, PinnedDnsTransport)
-
-    async def test_start_allows_allowlisted_internal_host(self) -> None:
-        sink = SlackNotificationSink(
-            webhook_url="http://hooks.internal/services/abc",
-            network_policy=NetworkPolicy(hostname_allowlist=("hooks.internal",)),
-        )
-        with (
-            patch(_RESOLVE_AND_CHECK, return_value=(_PUBLIC_IP,)),
-            patch(
-                "synthorg.notifications.adapters.slack.httpx.AsyncClient",
-                autospec=True,
-            ),
-        ):
-            await sink.start()
-        assert sink._client is not None
-        await sink.close()
-
-
-# ── Construction-time rejection (both adapters) ─────────────────
+# ── Construction-time rejection ─────────────────────────────────
 
 
 class TestConstructionRejectsInternalTargets:
     def test_ntfy_rejects_literal_private_ip(self) -> None:
         with pytest.raises(ValueError, match="private/internal IP"):
             NtfyNotificationSink(server_url="http://10.0.0.1", topic="t")
-
-    def test_slack_rejects_loopback(self) -> None:
-        with pytest.raises(ValueError, match="loopback"):
-            SlackNotificationSink(webhook_url="http://localhost/services/abc")

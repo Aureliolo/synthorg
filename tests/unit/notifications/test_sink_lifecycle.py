@@ -1,7 +1,6 @@
 """Lifecycle contract tests for HTTP-bearing notification sinks.
 
-Pins the resource-hygiene rule that ``SlackNotificationSink`` and
-``NtfyNotificationSink``:
+Pins the resource-hygiene rule that ``NtfyNotificationSink``:
 
 1. Do **not** create the ``httpx.AsyncClient`` in ``__init__`` (zero
    leak when a sink is constructed but never started).
@@ -22,11 +21,8 @@ from typing import TYPE_CHECKING, override
 from unittest.mock import AsyncMock, patch
 
 import pytest
-import respx
-from httpx import Response
 
 from synthorg.notifications.adapters.ntfy import NtfyNotificationSink
-from synthorg.notifications.adapters.slack import SlackNotificationSink
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import (
     Notification,
@@ -41,86 +37,6 @@ if TYPE_CHECKING:
 # Lifecycle tests do not exercise the SSRF gate; the private-IP block is
 # disabled so ``start()`` skips live DNS resolution (no network).
 _DEV_POLICY = NetworkPolicy(block_private_ips=False)
-
-
-@pytest.mark.unit
-class TestSlackSinkLifecycle:
-    """SlackNotificationSink lazy lifecycle."""
-
-    def test_constructor_does_not_create_http_client(self) -> None:
-        """``__init__`` is pure construction; no ``httpx.AsyncClient``."""
-        sink = SlackNotificationSink(
-            webhook_url="https://hooks.example.com/services/abc",
-            network_policy=_DEV_POLICY,
-        )
-        assert sink._client is None
-
-    async def test_send_before_start_raises_runtime_error(self) -> None:
-        """Calling ``send`` before ``start`` is a loud failure."""
-        sink = SlackNotificationSink(
-            webhook_url="https://hooks.example.com/services/abc",
-            network_policy=_DEV_POLICY,
-        )
-        n = Notification(
-            category=NotificationCategory.SYSTEM,
-            severity=NotificationSeverity.INFO,
-            title="Test",
-            source="test",
-        )
-        with pytest.raises(RuntimeError, match="before start"):
-            await sink.send(n)
-
-    async def test_aenter_aexit_calls_aclose(self) -> None:
-        """``async with`` closes the underlying client on exit."""
-        aclose = AsyncMock()
-        with patch(
-            "synthorg.notifications.adapters.slack.httpx.AsyncClient",
-            autospec=True,
-        ) as mock_cls:
-            mock_cls.return_value.aclose = aclose
-            sink = SlackNotificationSink(
-                webhook_url="https://hooks.example.com/services/abc",
-                network_policy=_DEV_POLICY,
-            )
-            async with sink:
-                assert sink._client is mock_cls.return_value
-            aclose.assert_awaited_once()
-        assert sink._client is None
-
-    async def test_double_start_is_idempotent(self) -> None:
-        """Second ``start()`` does not create a second client."""
-        sink = SlackNotificationSink(
-            webhook_url="https://hooks.example.com/services/abc",
-            network_policy=_DEV_POLICY,
-        )
-        await sink.start()
-        first = sink._client
-        await sink.start()
-        assert sink._client is first
-        await sink.close()
-
-    async def test_close_before_start_is_no_op(self) -> None:
-        """``close()`` on a never-started sink is harmless."""
-        sink = SlackNotificationSink(
-            webhook_url="https://hooks.example.com/services/abc",
-            network_policy=_DEV_POLICY,
-        )
-        await sink.close()
-        assert sink._client is None
-
-    async def test_concurrent_start_creates_one_client(self) -> None:
-        """Two ``start()`` coroutines converge on one client."""
-        with patch(
-            "synthorg.notifications.adapters.slack.httpx.AsyncClient",
-            autospec=True,
-        ) as mock_cls:
-            sink = SlackNotificationSink(
-                webhook_url="https://hooks.example.com/services/abc",
-                network_policy=_DEV_POLICY,
-            )
-            await asyncio.gather(sink.start(), sink.start())
-            assert mock_cls.call_count == 1
-            await sink.close()
 
 
 @pytest.mark.unit
@@ -316,28 +232,3 @@ class TestDispatcherLifecycle:
         # through).
         assert callable(dispatcher.aclose)
         assert not hasattr(dispatcher, "close")
-
-
-@pytest.mark.unit
-class TestSlackSendThroughLifecycle:
-    """End-to-end smoke through ``async with`` to confirm send still works."""
-
-    @respx.mock
-    async def test_send_via_async_context_manager(self) -> None:
-        route = respx.post("https://hooks.example.com/services/abc").mock(
-            return_value=Response(200),
-        )
-        sink = SlackNotificationSink(
-            webhook_url="https://hooks.example.com/services/abc",
-            network_policy=_DEV_POLICY,
-        )
-        async with sink:
-            await sink.send(
-                Notification(
-                    category=NotificationCategory.SYSTEM,
-                    severity=NotificationSeverity.INFO,
-                    title="Hello",
-                    source="test",
-                ),
-            )
-        assert route.called

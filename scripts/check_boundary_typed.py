@@ -66,6 +66,12 @@ _TOOL_EXECUTE_SITES: tuple[tuple[str, str], ...] = (
     ("src/synthorg/tools/examples/echo.py", "EchoTool"),
     ("src/synthorg/tools/discovery.py", "LoadToolTool"),
     ("src/synthorg/tools/discovery.py", "LoadToolResourceTool"),
+    # Forge + chat agent tools share one execute() on the common
+    # GovernedConnectionTool base; the family bases (_BaseForgeTool /
+    # _BaseChatTool) and their concrete leaves (forge_repo / forge_issue /
+    # ..., chat_messages / chat_directory) all inherit it, so the typed
+    # boundary is registered once on the shared base.
+    ("src/synthorg/tools/_governed_connection_tool.py", "GovernedConnectionTool"),
 )
 
 

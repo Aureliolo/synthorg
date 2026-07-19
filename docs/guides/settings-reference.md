@@ -88,15 +88,16 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 
 ### Security headers and error documentation
 
-The `api` namespace also carries operator-tunable settings that govern the response surface of `/docs/` and RFC 9457 error payloads, and the `notifications` namespace has a Slack default URL fallback:
+The `api` namespace also carries operator-tunable settings that govern the response surface of `/docs/` and RFC 9457 error payloads:
 
 | Setting | Type | Default | Purpose |
 |---------|------|---------|---------|
 | `api.csp_docs_external_origins` | JSON list | `["https://cdn.jsdelivr.net", "https://fonts.scalar.com", "https://proxy.scalar.com"]` | Trusted external origins used to build the relaxed Content-Security-Policy on `/docs/` paths. Override with internally-mirrored hosts when the backend is not allowed to reach the public Scalar CDN. Each origin must match `^https?://[\w.\-:/]+$`; a malformed entry rejects the bridge config and the runtime falls back to defaults with a `WARNING` log. |
 | `api.error_docs_base_url` | STRING | `https://synthorg.io/docs/errors` | Base URL appended with `#<category>` for the RFC 9457 `type` field on every error response. HTTPS-only (`^https://[A-Za-z0-9.\-]+(?::\d{1,5})?(?:/[^\s?#]*)?$`); userinfo, query, and fragment components are rejected at runtime. |
-| `notifications.slack_default_webhook_url` | STRING (sensitive) | `""` | Optional fallback Slack incoming webhook applied when a Slack sink is configured without its own `webhook_url`. Empty default keeps every sink explicit; setting a value lets operators centralise the URL. Encrypted at rest. |
 
-All three are `restart_required=True`: the CSP and error-docs URL are baked into module-level state during startup; the Slack default is read at sink construction and is not hot-reloaded.
+Both are `restart_required=True`: the CSP and error-docs URL are baked into module-level state during startup.
+
+The Slack notification sink binds a `SLACK` connection (its `notifications.slack_timeout_seconds` bridge setting is hot-reloadable), and the forge / chat agent tools are configured under the `tools` namespace (`forge_tools_enabled` / `forge_tools_connection`, `chat_tools_enabled` / `chat_tools_connection`), applied on the next runtime rebuild.
 
 ## REST API
 

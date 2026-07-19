@@ -11,6 +11,7 @@ from synthorg.core.normalization import (
 )
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.notifications.adapters.console import ConsoleNotificationSink
 from synthorg.notifications.config import (
     NotificationConfig,
@@ -19,7 +20,7 @@ from synthorg.notifications.config import (
 )
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.protocol import NotificationSink
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.notification import (
     NOTIFICATION_SINK_CONFIG_INVALID,
     NOTIFICATION_SINK_DEFAULT_FALLBACK,
@@ -55,6 +56,7 @@ def build_notification_dispatcher(
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
     config_resolver: ConfigResolver | None = None,
+    connection_catalog: ConnectionCatalog | None = None,
 ) -> NotificationDispatcher:
     """Build a ``NotificationDispatcher`` from configuration.
 
@@ -74,6 +76,10 @@ def build_notification_dispatcher(
             ``None`` disables the gate (always-on dispatcher); the
             startup wiring threads the resolver in via the dispatcher
             rebuild in ``_apply_bridge_config``.
+        connection_catalog: Optional connection catalog used by the
+            Slack sink to resolve its bound ``SLACK`` connection's bot
+            token. ``None`` means the Slack sink cannot be built (it is
+            skipped with a warning).
 
     Returns:
         Configured notification dispatcher.
@@ -86,7 +92,11 @@ def build_notification_dispatcher(
                 sink_type=sink_cfg.type,
             )
             continue
-        sink = _create_notification_sink(sink_cfg, bridge_config=bridge_config)
+        sink = _create_notification_sink(
+            sink_cfg,
+            bridge_config=bridge_config,
+            connection_catalog=connection_catalog,
+        )
         if sink is not None:
             sinks.append(sink)
     if not sinks:
@@ -102,8 +112,9 @@ def _create_console_sink(
     params: dict[str, str],
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
+    connection_catalog: ConnectionCatalog | None = None,
 ) -> NotificationSink | None:
-    del params, bridge_config  # console sink has no configurable params
+    del params, bridge_config, connection_catalog  # console sink takes no params
     return ConsoleNotificationSink()
 
 
@@ -111,6 +122,7 @@ def _create_ntfy_sink(
     params: dict[str, str],
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
+    connection_catalog: ConnectionCatalog | None = None,
 ) -> NotificationSink | None:
     """Create an ntfy notification sink.
 
@@ -124,6 +136,7 @@ def _create_ntfy_sink(
         bridge_config: Optional operator-tuned notification bridge
             config. When provided, threads
             ``ntfy_webhook_timeout_seconds`` into the adapter.
+        connection_catalog: Unused (ntfy targets a topic URL).
 
     Returns:
         Configured ntfy sink or ``None`` if topic is missing.
@@ -132,6 +145,7 @@ def _create_ntfy_sink(
         NtfyNotificationSink,
     )
 
+    del connection_catalog  # ntfy targets a topic URL, not a connection
     topic = params.get("topic", "")
     if not topic:
         logger.warning(
@@ -200,77 +214,63 @@ def _create_slack_sink(
     params: dict[str, str],
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
+    connection_catalog: ConnectionCatalog | None = None,
 ) -> NotificationSink | None:
-    """Create a Slack webhook notification sink.
+    """Create a Slack Web API notification sink.
 
     Args:
-        params: Adapter-specific parameters. Reads
-            ``webhook_url``; falls back to
-            ``bridge_config.slack_default_webhook_url`` when the
-            per-sink value is missing or blank.
+        params: Adapter-specific parameters. Requires ``connection``
+            (the bound ``SLACK`` connection name) and ``channel`` (the
+            target channel id).
         bridge_config: Optional operator-tuned notification bridge
-            config. When provided, threads
-            ``slack_webhook_timeout_seconds`` into the adapter and
-            supplies the namespace-level ``slack_default_webhook_url``
-            fallback.
+            config. When provided, threads ``slack_timeout_seconds`` into
+            the adapter.
+        connection_catalog: Connection catalog used to resolve the bound
+            connection's bot token at send time. Required.
 
     Returns:
-        Configured Slack sink, or ``None`` when neither *params* nor
-        the bridge default supplies a webhook URL, or when the
-        resolved URL fails outbound-target validation
-        (loopback / private IP / non-HTTP scheme).
+        Configured Slack sink, or ``None`` when the catalog is absent or
+        ``connection`` / ``channel`` is missing (logged, fail-closed).
     """
     from synthorg.notifications.adapters.slack import (  # noqa: PLC0415
         SlackNotificationSink,
     )
 
-    # Treat whitespace-only as blank so the bridge fallback fires
-    # instead of letting "   " reach SlackNotificationSink which would
-    # then raise ValueError and drop the sink entirely.
-    webhook_url = (params.get("webhook_url") or "").strip()
-    used_bridge_default = False
-    if not webhook_url and bridge_config is not None:
-        webhook_url = bridge_config.slack_default_webhook_url
-        used_bridge_default = bool(webhook_url)
-    if not webhook_url:
+    if connection_catalog is None:
         logger.warning(
             NOTIFICATION_SINK_CONFIG_INVALID,
             sink_type="slack",
-            error="webhook_url is required",
+            error="connection catalog unavailable",
         )
         return None
-    if used_bridge_default:
-        logger.info(
-            NOTIFICATION_SINK_DEFAULT_FALLBACK,
+    connection = (params.get("connection") or "").strip()
+    channel = (params.get("channel") or "").strip()
+    if not connection or not channel:
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
             sink_type="slack",
-            source="bridge_config.slack_default_webhook_url",
+            error="both 'connection' and 'channel' are required",
         )
-    network_policy = _build_network_policy(params)
-    try:
-        if bridge_config is None:
-            return SlackNotificationSink(
-                webhook_url=webhook_url,
-                network_policy=network_policy,
-            )
+        return None
+    if bridge_config is None:
         return SlackNotificationSink(
-            webhook_url=webhook_url,
-            webhook_timeout_seconds=bridge_config.slack_webhook_timeout_seconds,
-            network_policy=network_policy,
+            connection_catalog=connection_catalog,
+            connection_name=connection,
+            channel=channel,
         )
-    except ValueError as exc:
-        logger.warning(
-            NOTIFICATION_SINK_CONFIG_INVALID,
-            sink_type="slack",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return None
+    return SlackNotificationSink(
+        connection_catalog=connection_catalog,
+        connection_name=connection,
+        channel=channel,
+        timeout_seconds=bridge_config.slack_timeout_seconds,
+    )
 
 
 def _create_email_sink(
     params: dict[str, str],
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
+    connection_catalog: ConnectionCatalog | None = None,
 ) -> NotificationSink | None:
     """Create an email SMTP notification sink.
 
@@ -279,6 +279,7 @@ def _create_email_sink(
         bridge_config: Optional operator-tuned notification bridge
             config. When provided, threads
             ``email_smtp_timeout_seconds`` into the adapter.
+        connection_catalog: Unused (email uses SMTP params).
 
     Returns:
         Configured email sink or ``None`` if required params
@@ -288,6 +289,7 @@ def _create_email_sink(
         EmailNotificationSink,
     )
 
+    del connection_catalog  # email uses SMTP params, not a connection
     host = (params.get("host") or "").strip()
     if not host:
         # Treat whitespace-only ("   ") the same as missing; otherwise
@@ -419,12 +421,15 @@ def _create_notification_sink(
     cfg: NotificationSinkConfig,
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
+    connection_catalog: ConnectionCatalog | None = None,
 ) -> NotificationSink | None:
     """Instantiate a notification sink from config.
 
     Args:
         cfg: Single sink configuration.
         bridge_config: Optional operator-tuned bridge settings.
+        connection_catalog: Optional catalog threaded to connection-backed
+            sinks (Slack).
 
     Returns:
         Sink instance, or ``None`` if the adapter declines to build
@@ -436,6 +441,7 @@ def _create_notification_sink(
             cfg.type.value,
             cfg.params,
             bridge_config=bridge_config,
+            connection_catalog=connection_catalog,
         )
     except StrategyFactoryNotFoundError:
         # Forward compatibility: a new ``NotificationSinkType`` value

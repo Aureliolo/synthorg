@@ -18,12 +18,12 @@ Agents act on the world through tools. SynthOrg defines a pluggable tool system 
 | **Database** | Query, migrate, admin | Backend devs, DBAs |
 | **Terminal** | Shell commands (sandboxed) | DevOps, senior devs |
 | **Design** | Image generation, mockup tools | Designers |
-| **Communication** | Email, Slack, notifications | PMs, executives |
+| **Communication** | Email / notification dispatcher tools (the Slack notification sink lives here; agent-invocable Slack access is the `chat_*` tools under External Data) | PMs, executives |
 | **Analytics** | Metrics, dashboards, reporting | Data analysts, CFO |
 | **Deployment** | CI/CD, container management | DevOps, SRE |
 | **Memory** | Search memory, recall by ID | All agents (tool-based strategy) |
 | **Browser** | Headless Playwright + Chromium: navigate, screenshot, SSIM diff, axe accessibility scan, full spec, direct WebStorage read/write (`storage_get`/`storage_set`/`storage_remove`/`storage_clear`), and WebAuthn passkey handling via a virtual authenticator (`webauthn_install`/`webauthn_create_credential`/`webauthn_list_credentials`/`webauthn_delete_credential`). The `url` field is restricted to `http`/`https` and rejects link-local / cloud-metadata hosts (169.254.169.254, `metadata.google.internal`); local files use the workspace-scoped `path` field. Loopback and private addresses stay allowed so the in-sandbox app-under-test is reachable. Session state (cookies, localStorage, passkeys) persists across calls (see [Browser Session State](#browser-session-state-webstorage--webauthn)) | QA, frontend devs, agents validating web deliverables |
-| **External Data** | Governed external API/data access through a configured connection: credentials brokered from the connection catalog, egress constrained to the connection host (SSRF policy + DNS pinning), per-connection rate limiting, sensitive/write calls gated to approval | Agents consuming third-party APIs while building deliverables |
+| **External Data** | Governed external API/data access through a configured connection: credentials brokered from the connection catalog, egress constrained to the connection host, and sensitive/write calls gated to approval. The generic `external_api` tool adds a full SSRF policy + DNS pinning + per-connection rate limiting on top. The first-party **forge tools** (`forge_repo`, `forge_issue`, `forge_pull_request`, `forge_ci`) give the software-build org real hands on a repository (read repo/file, open/comment issues, open/comment/review/merge PRs, read CI runs; `forge_ci` is GitHub-only even on a bound Forgejo connection) and the **chat tools** (`chat_messages`, `chat_directory`) drive the operator control-plane channel (egress pinned to the platform host, e.g. `slack.com`, by construction). All are vendor-neutral (the concrete forge/chat provider is selected by the bound connection's type); reads on a `sensitive` connection and every write route through the identity-bound approval flow | Agents consuming third-party APIs, driving a forge, or messaging the operator while building deliverables |
 | **Desktop** | Virtual desktop (Xvfb + xdotool + scrot in a container): launch a GUI app, click/type/press-keys/scroll, capture screenshots | QA, frontend devs, agents validating GUI deliverables |
 | **MCP Servers** | Any MCP-compatible tool | Configurable per agent |
 
@@ -113,11 +113,12 @@ Per-category backend selection is implemented in `tools/sandbox/factory.py` via 
 (`build_default_tools_from_config`) wires tool categories. Core tools
 (`FILE_SYSTEM`, `VERSION_CONTROL`, web, etc.) are part of the default toolset
 and always registered. The
-auxiliary categories `DESIGN`, `COMMUNICATION`, and `ANALYTICS` are opt-in: tools
-are only registered when the corresponding config section is present, and some
-individual tools additionally require a runtime dependency (e.g. image tools
-require an `ImageProvider`, notification tools require a dispatcher, analytics
-query/metric tools require a provider or sink).
+auxiliary categories `DESIGN`, `COMMUNICATION`, `EXTERNAL_DATA`, and `ANALYTICS`
+are opt-in: tools are only registered when the corresponding config section is
+present, and some individual tools additionally require a runtime dependency (e.g.
+image tools require an `ImageProvider`, notification tools require a dispatcher,
+the `forge_*`/`chat_*` tools require a bound connection and an enabling setting,
+analytics query/metric tools require a provider or sink).
 
 ### MCP stdio server sandboxing
 
