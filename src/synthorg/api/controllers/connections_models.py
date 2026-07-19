@@ -41,7 +41,32 @@ class CreateConnectionRequest(BaseModel):
         Annotated[str, Field(max_length=_MAX_CRED_VALUE_LEN)],
     ] = Field(
         default_factory=dict,
-        description="Credential field-name to value map sent to the secret backend.",
+        description=(
+            "Non-secret credential field-name to value map. Secret fields "
+            "(tokens/passwords/keys) are NOT sent here: capture them out of "
+            "band and pass their handles via ``credential_handles``."
+        ),
+    )
+    credential_handles: dict[
+        NotBlankStr,
+        Annotated[NotBlankStr, Field(max_length=_MAX_NAME_LEN)],
+    ] = Field(
+        default_factory=dict,
+        description=(
+            "Secret credential field-name to opaque capture-handle map. Each "
+            "handle is resolved once, in-process, against its "
+            "``(connection_draft_id, field)`` binding so the raw value never "
+            "enters the request body or the logs. Requires connection_draft_id."
+        ),
+    )
+    connection_draft_id: (
+        Annotated[NotBlankStr, Field(max_length=_MAX_NAME_LEN)] | None
+    ) = Field(
+        default=None,
+        description=(
+            "Client-generated draft id the secret-capture handles are bound "
+            "to; required when credential_handles are supplied."
+        ),
     )
     base_url: Annotated[NotBlankStr, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
     metadata: (

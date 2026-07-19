@@ -9,12 +9,15 @@ capture (raw value straight to the secret backend, opaque handle out).
 
 from synthorg._core.features import require_service
 from synthorg.api.controllers.connections_models import (
+    CreateConnectionRequest,
     RevealedSecretResponse,
     SecretCaptureRequest,
     SecretCaptureResponse,
 )
 from synthorg.api.state import AppState
+from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.secret_capture import resolve_credential_handles
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     SecretRetrievalError,
@@ -103,6 +106,41 @@ async def reveal_secret_field(
         field=field,
     )
     return RevealedSecretResponse(field=NotBlankStr(field), value=value)
+
+
+_DRAFT_ID_REQUIRED = (
+    "connection_draft_id is required when credential_handles are supplied"
+)
+
+
+async def resolve_create_credentials(
+    app_state: AppState,
+    data: CreateConnectionRequest,
+) -> dict[str, str]:
+    """Resolve a create request's credentials, consuming any secret handles.
+
+    Inline ``credentials`` (non-secret fields) merge with secret fields
+    resolved out of band from ``credential_handles``. The raw secret value is
+    consumed once, in-process, against its ``(connection_draft_id, field)``
+    binding and never enters the request body or the logs.
+
+    Returns:
+        The full credentials mapping ready for ``catalog.create``.
+
+    Raises:
+        ValidationError: If handles are supplied without a connection_draft_id.
+        SecretCaptureHandleInvalidError: If a handle is invalid or expired.
+    """
+    if not data.credential_handles:
+        return dict(data.credentials)
+    if data.connection_draft_id is None:
+        raise ValidationError(_DRAFT_ID_REQUIRED)
+    return await resolve_credential_handles(
+        secret_capture_service_of(app_state),
+        credentials=dict(data.credentials),
+        credential_handles=dict(data.credential_handles),
+        connection_draft_id=data.connection_draft_id,
+    )
 
 
 async def capture_secret_value(

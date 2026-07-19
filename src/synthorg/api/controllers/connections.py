@@ -13,6 +13,7 @@ from litestar.datastructures import State
 from synthorg._core.features import require_service
 from synthorg.api.controllers._connection_secrets import (
     capture_secret_value,
+    resolve_create_credentials,
     reveal_secret_field,
 )
 from synthorg.api.controllers.connections_models import (
@@ -188,13 +189,12 @@ class ConnectionsController(Controller):
             InvalidConnectionAuthError: If the supplied credentials fail
                 validation (422, mapped by the domain handler).
         """
-        # Defensively deepcopy ``credentials`` / ``metadata`` at the API
-        # boundary so the catalog can never observe (or be mutated by)
-        # subsequent caller-owned changes to the request payload.  The
-        # secret backend persists ``credentials`` in plaintext briefly
-        # before encryption, so a shared-reference write would be
-        # particularly dangerous here.
-        credentials_copy = copy.deepcopy(data.credentials)
+        # Resolve any out-of-band secret handles to their raw values in-process
+        # (secret fields never arrive inline in the request body); inline
+        # non-secret fields pass through. The returned mapping is a fresh dict,
+        # so no shared-reference write can reach the caller's payload. ``metadata``
+        # is still caller-owned, so it is defensively deepcopied.
+        credentials_copy = await resolve_create_credentials(state["app_state"], data)
         metadata_copy = (
             copy.deepcopy(data.metadata) if data.metadata is not None else None
         )

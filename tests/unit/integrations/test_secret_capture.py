@@ -8,7 +8,10 @@ secret out of the conversation while remaining resolvable exactly once by
 import pytest
 
 from synthorg.core.types import NotBlankStr
-from synthorg.integrations.connections.secret_capture import SecretCaptureService
+from synthorg.integrations.connections.secret_capture import (
+    SecretCaptureService,
+    resolve_credential_handles,
+)
 from synthorg.integrations.errors import SecretCaptureHandleInvalidError
 from tests._shared import FakeClock, InMemorySecretBackend
 
@@ -130,3 +133,45 @@ async def test_handle_is_opaque_and_unique() -> None:
 
     assert first.startswith("sech_")
     assert first != second
+
+
+async def test_resolve_credential_handles_merges_secret_and_inline() -> None:
+    # The shared resolver both REST and MCP create paths use: inline
+    # non-secret fields merge with out-of-band handle-resolved secrets, and
+    # the raw value only ever exists in-process here.
+    service = _service(InMemorySecretBackend(), FakeClock())
+    handle = await _capture(service)
+
+    resolved = await resolve_credential_handles(
+        service,
+        credentials={"username": "svc-account"},
+        credential_handles={_FIELD: handle},
+        connection_draft_id=_DRAFT,
+    )
+
+    assert resolved == {"username": "svc-account", _FIELD: _VALUE}
+
+
+async def test_resolve_credential_handles_no_handles_is_passthrough() -> None:
+    service = _service(InMemorySecretBackend(), FakeClock())
+
+    resolved = await resolve_credential_handles(
+        service,
+        credentials={"username": "svc-account"},
+        credential_handles={},
+        connection_draft_id=_DRAFT,
+    )
+
+    assert resolved == {"username": "svc-account"}
+
+
+async def test_resolve_credential_handles_rejects_invalid_handle() -> None:
+    service = _service(InMemorySecretBackend(), FakeClock())
+
+    with pytest.raises(SecretCaptureHandleInvalidError):
+        await resolve_credential_handles(
+            service,
+            credentials={},
+            credential_handles={_FIELD: "sech_bogus"},
+            connection_draft_id=_DRAFT,
+        )

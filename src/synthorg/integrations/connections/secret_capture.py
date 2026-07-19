@@ -227,8 +227,42 @@ class SecretCaptureService:
             )
 
 
+async def resolve_credential_handles(
+    capture: SecretCaptureService,
+    *,
+    credentials: dict[str, str],
+    credential_handles: dict[str, str],
+    connection_draft_id: str,
+) -> dict[str, str]:
+    """Merge inline non-secret fields with out-of-band handle-resolved secrets.
+
+    Each secret handle is consumed exactly once against its
+    ``(connection_draft_id, field_name)`` binding, so the raw value only ever
+    exists in-process here, never in a request body, a tool argument, or the
+    transcript. Callers validate that ``connection_draft_id`` is present before
+    calling (the "handles require a draft id" rule is enforced with each
+    caller's own boundary error).
+
+    Returns:
+        The full credentials mapping ready for ``create_connection``.
+
+    Raises:
+        SecretCaptureHandleInvalidError: If a handle is missing, expired,
+            already consumed, or bound to a different draft/field.
+    """
+    resolved = dict(credentials)
+    for field_name, handle in credential_handles.items():
+        resolved[field_name] = await capture.consume(
+            handle_id=handle,
+            draft_id=connection_draft_id,
+            field_name=field_name,
+        )
+    return resolved
+
+
 __all__ = [
     "DEFAULT_SECRET_CAPTURE_TTL_SECONDS",
     "SecretCaptureHandle",
     "SecretCaptureService",
+    "resolve_credential_handles",
 ]

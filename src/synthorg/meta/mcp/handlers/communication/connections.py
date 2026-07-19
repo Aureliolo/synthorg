@@ -11,6 +11,9 @@ from synthorg.integrations.connections.field_metadata import (
     list_connection_type_metadata,
 )
 from synthorg.integrations.connections.models import ConnectionType
+from synthorg.integrations.connections.secret_capture import (
+    resolve_credential_handles,
+)
 from synthorg.integrations.state import (
     connection_service_of,
     secret_capture_service_of,
@@ -140,19 +143,16 @@ async def _resolve_credentials(
         ArgumentValidationError: If handles are supplied without a draft id.
         SecretCaptureHandleInvalidError: If a handle is invalid or expired.
     """
-    credentials = dict(args.credentials)
     if not args.credential_handles:
-        return credentials
+        return dict(args.credentials)
     if args.connection_draft_id is None:
         raise ArgumentValidationError(_ARG_DRAFT_ID, _TY_DRAFT_ID_REQUIRED)
-    capture = secret_capture_service_of(app_state)
-    for field_name, handle in args.credential_handles.items():
-        credentials[field_name] = await capture.consume(
-            handle_id=handle,
-            draft_id=args.connection_draft_id,
-            field_name=field_name,
-        )
-    return credentials
+    return await resolve_credential_handles(
+        secret_capture_service_of(app_state),
+        credentials=dict(args.credentials),
+        credential_handles=dict(args.credential_handles),
+        connection_draft_id=args.connection_draft_id,
+    )
 
 
 async def _connections_create(
