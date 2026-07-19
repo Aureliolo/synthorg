@@ -115,6 +115,7 @@ from synthorg.persistence.meeting_cooldown_protocol import (
 from synthorg.persistence.memory_protocol import (
     OrgFactRepository,
 )
+from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
 from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.model_tool_call_signal_protocol import (
     ModelToolCallSignalRepository,
@@ -736,6 +737,11 @@ class PersistenceBackend(Protocol):
     @property
     def org_facts(self) -> OrgFactRepository:
         """Repository for organizational fact persistence (MVCC)."""
+        ...
+
+    @property
+    def memory_vectors(self) -> MemoryVectorRepository:
+        """Repository for durable agent memory with hybrid retrieval."""
         ...
 
     @property
