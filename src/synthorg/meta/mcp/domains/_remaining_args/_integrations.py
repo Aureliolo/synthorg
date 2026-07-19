@@ -33,6 +33,13 @@ class McpCatalogInstallArgs(_ArgsBase):
     """Args for ``mcp_catalog.install``."""
 
     entry_id: NotBlankStr = Field(description="Catalog entry to install")
+    connection_name: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Name of the bound connection for entries that require one "
+            "(e.g. an API-key connection); omit for connectionless entries"
+        ),
+    )
 
 
 class McpCatalogUninstallArgs(AdminGuardrailFields):

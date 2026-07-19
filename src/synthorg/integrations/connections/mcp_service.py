@@ -11,6 +11,8 @@ from collections.abc import Sequence
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import Connection, ConnectionType
+from synthorg.integrations.errors import ConnectionNotFoundError
+from synthorg.integrations.health.service import check_connection_health
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMMUNICATION_CONNECTION_HEALTH_CHECKED,
@@ -125,19 +127,50 @@ class ConnectionService:
         *,
         name: NotBlankStr,
     ) -> Connection | None:
-        """Probe the catalog for the latest health status.
+        """Run an on-demand live probe and return the refreshed connection.
+
+        Mirrors the REST ``/connections/{name}/health`` path: probe the
+        connection now, persist the fresh status, and return the reloaded
+        ``Connection`` so a conversational caller never acts on a stale
+        cached snapshot the background prober has not yet refreshed.
 
         Returns:
-            The ``Connection`` with its last-known health status, or
-            ``None`` when the connection is not in the catalog.
+            The ``Connection`` with its just-probed health status, or
+            ``None`` when the connection is absent (including a delete
+            racing between the existence check and the probe).
         """
         connection = await self._catalog.get(name)
+        if connection is None:
+            logger.info(
+                COMMUNICATION_CONNECTION_HEALTH_CHECKED,
+                connection_name=name,
+                found=False,
+            )
+            return None
+        try:
+            report = await check_connection_health(self._catalog, name)
+        except ConnectionNotFoundError:
+            # A concurrent delete between the existence check above and the
+            # probe surfaces as not-found rather than a 500 to the caller.
+            logger.info(
+                COMMUNICATION_CONNECTION_HEALTH_CHECKED,
+                connection_name=name,
+                found=False,
+            )
+            return None
+        await self._catalog.update_health(
+            name,
+            status=report.status,
+            checked_at=report.checked_at,
+        )
+        refreshed = await self._catalog.get(name)
         logger.info(
             COMMUNICATION_CONNECTION_HEALTH_CHECKED,
             connection_name=name,
-            found=connection is not None,
+            found=refreshed is not None,
+            status=report.status.value,
         )
-        return connection
+        return refreshed
 
 
 __all__ = [

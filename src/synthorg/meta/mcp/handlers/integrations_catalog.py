@@ -167,9 +167,11 @@ async def _mcp_catalog_install(
     """
     tool = "synthorg_mcp_catalog_install"
     try:
-        entry_id = typed_args(arguments, McpCatalogInstallArgs).entry_id
+        install_args = typed_args(arguments, McpCatalogInstallArgs)
+        entry_id = install_args.entry_id
         result = await mcp_catalog_facade_service_of(app_state).install_catalog_entry(
             entry_id=entry_id,
+            connection_name=install_args.connection_name,
             actor_id=require_actor_id(actor),
         )
     except CapabilityNotSupportedError as exc:

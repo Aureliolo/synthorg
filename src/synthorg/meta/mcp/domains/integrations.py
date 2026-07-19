@@ -75,6 +75,13 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
         "Install an MCP server from the catalog.",
         {
             "entry_id": {"type": "string", "description": "Catalog entry to install"},
+            "connection_name": {
+                "type": "string",
+                "description": (
+                    "Bound connection name for entries that require one; "
+                    "omit for connectionless entries"
+                ),
+            },
         },
         required=("entry_id",),
         args_model=McpCatalogInstallArgs,

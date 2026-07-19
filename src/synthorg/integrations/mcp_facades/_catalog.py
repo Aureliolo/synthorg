@@ -16,9 +16,10 @@ from synthorg.observability.events.integrations import (
 )
 
 if TYPE_CHECKING:
-    # CatalogService / McpInstallationRepository are concrete collaborators
-    # injected via SimpleNamespace fakes in tests; a runtime import would make
-    # typeguard reject the fakes.
+    # CatalogService / McpInstallationRepository / ConnectionCatalog are
+    # concrete collaborators injected via SimpleNamespace fakes in tests; a
+    # runtime import would make typeguard reject the fakes.
+    from synthorg.integrations.connections.catalog import ConnectionCatalog
     from synthorg.integrations.mcp_catalog.installations import (
         McpInstallationRepository,
     )
@@ -28,16 +29,24 @@ logger = get_logger(__name__)
 
 
 class MCPCatalogFacadeService:
-    """Facade over :class:`CatalogService` + installation repo."""
+    """Facade over :class:`CatalogService` + installation repo.
+
+    Install/uninstall carry the connection-aware validation that lives on
+    :class:`CatalogService` (type match, credential-map presence, dialect),
+    so the facade threads the connection catalog + installations repo into
+    those calls rather than delegating to the CRUD-only installation repo.
+    """
 
     def __init__(
         self,
         *,
         catalog: CatalogService,
         installations: McpInstallationRepository,
+        connection_catalog: ConnectionCatalog | None = None,
     ) -> None:
         self._catalog = cast("object", catalog)
         self._installations = cast("object", installations)
+        self._connection_catalog = cast("object", connection_catalog)
 
     async def list_catalog(self) -> Sequence[object]:
         """List all catalog entries.
@@ -124,18 +133,24 @@ class MCPCatalogFacadeService:
         self,
         *,
         entry_id: NotBlankStr,
+        connection_name: NotBlankStr | None = None,
         actor_id: NotBlankStr,
     ) -> object:
-        """Install a catalog entry and audit the event.
+        """Install a catalog entry (connection-aware) and audit the event.
+
+        Delegates to :meth:`CatalogService.install`, which validates the
+        entry, that a required ``connection_name`` resolves to a connection
+        of the entry's ``required_connection_type`` (and matching dialect
+        for database entries), and persists the installation row.
 
         Returns:
-            The installation record returned by the repository.
+            The :class:`InstallationResult` describing the installed server.
 
         Raises:
-            CapabilityNotSupportedError: If the installation repository
-                does not expose ``install``.
+            CapabilityNotSupportedError: If the catalog service does not
+                expose ``install``.
         """
-        fn = getattr(self._installations, "install", None)
+        fn = getattr(self._catalog, "install", None)
         if not callable(fn):
             logger.warning(
                 INTEGRATIONS_CAPABILITY_UNSUPPORTED,
@@ -144,12 +159,18 @@ class MCPCatalogFacadeService:
             )
             raise CapabilityNotSupportedError(
                 "mcp_catalog_install",
-                "McpInstallationRepository does not expose install",
+                "CatalogService does not expose install",
             )
-        result = await fn(entry_id=entry_id, actor=actor_id)
+        result = await fn(
+            entry_id,
+            connection_name,
+            connection_catalog=self._connection_catalog,
+            installations_repo=self._installations,
+        )
         logger.info(
             MCP_CATALOG_INSTALLED_VIA_MCP,
             entry_id=entry_id,
+            connection_name=connection_name,
             actor_id=actor_id,
         )
         return result
@@ -171,7 +192,7 @@ class MCPCatalogFacadeService:
             CapabilityNotSupportedError: If the installation repository
                 does not expose ``uninstall``.
         """
-        fn = getattr(self._installations, "uninstall", None)
+        fn = getattr(self._catalog, "uninstall", None)
         if not callable(fn):
             logger.warning(
                 INTEGRATIONS_CAPABILITY_UNSUPPORTED,
@@ -180,9 +201,11 @@ class MCPCatalogFacadeService:
             )
             raise CapabilityNotSupportedError(
                 "mcp_catalog_uninstall",
-                "McpInstallationRepository does not expose uninstall",
+                "CatalogService does not expose uninstall",
             )
-        removed = bool(await fn(installation_id=installation_id))
+        removed = bool(
+            await fn(installation_id, installations_repo=self._installations),
+        )
         if removed:
             logger.info(
                 MCP_CATALOG_UNINSTALLED_VIA_MCP,

@@ -121,6 +121,23 @@ class TestMCPCatalog:
         )
         assert json.loads(response)["status"] == "ok"
 
+    async def test_install_threads_connection_name(
+        self,
+        fake_app_state: AppState,
+        fake_catalog: AsyncMock,
+    ) -> None:
+        handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_install"]
+        await handler(
+            app_state=fake_app_state,
+            arguments={"entry_id": "brave-search-mcp", "connection_name": "brave"},
+            actor=make_test_actor(),
+        )
+        fake_catalog.install_catalog_entry.assert_awaited_once()
+        assert (
+            fake_catalog.install_catalog_entry.await_args.kwargs["connection_name"]
+            == "brave"
+        )
+
     async def test_install_capability_gap(
         self,
         fake_app_state: AppState,
