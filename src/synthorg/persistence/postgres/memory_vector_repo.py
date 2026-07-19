@@ -45,21 +45,17 @@ _DISTANCE_TO_SCORE_OFFSET: Final[float] = 1.0
 class PostgresMemoryVectorRepository:
     """Postgres-backed durable agent memory.
 
+    The embedding width arrives at :meth:`ensure_ready` rather than here
+    because persistence constructs this repository long before the
+    embedder is resolved, and it has no business knowing about embedders.
+
     Args:
         pool: An open async connection pool.
-        dimensions: Embedding width, or ``None`` when no embedder is
-            wired, in which case the dense column is never created and
-            retrieval degrades to lexical-only.
     """
 
-    def __init__(
-        self,
-        pool: AsyncConnectionPool,
-        *,
-        dimensions: int | None = None,
-    ) -> None:
+    def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
-        self._dimensions = dimensions
+        self._dimensions: int | None = None
         self._dense_ready = False
 
     @property
@@ -72,14 +68,20 @@ class PostgresMemoryVectorRepository:
         """Dimension-suffixed name of the dense column."""
         return sql.vector_column(self._dimensions or 0)
 
-    async def ensure_ready(self) -> None:
-        """Add the dense column and its HNSW index if configured.
+    async def ensure_ready(self, dimensions: int | None = None) -> None:
+        """Add the dense column and its HNSW index for *dimensions*.
 
         Never raises: a pgvector extension that is absent degrades recall
         rather than taking down persistence for every other feature. The
         capability is reported through :attr:`supports_dense_search` so
         the memory backend fails loud at its own boundary instead.
+
+        Args:
+            dimensions: Embedding width, or ``None`` when no embedder is
+                wired, in which case recall stays lexical-only.
         """
+        if dimensions is not None:
+            self._dimensions = dimensions
         if self._dimensions is None or self._dense_ready:
             return
         try:

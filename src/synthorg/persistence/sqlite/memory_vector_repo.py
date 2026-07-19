@@ -56,12 +56,13 @@ _DISTANCE_TO_SCORE_OFFSET: Final[float] = 1.0
 class SQLiteMemoryVectorRepository:
     """SQLite-backed durable agent memory.
 
+    The embedding width arrives at :meth:`ensure_ready` rather than here
+    because persistence constructs this repository long before the
+    embedder is resolved, and it has no business knowing about embedders.
+
     Args:
         db: An open aiosqlite connection.
         write_context: Async write-serialising context manager.
-        dimensions: Embedding width, or ``None`` when no embedder is
-            wired. Without it the dense index is never created and
-            retrieval degrades to lexical-only.
     """
 
     def __init__(
@@ -69,12 +70,11 @@ class SQLiteMemoryVectorRepository:
         db: aiosqlite.Connection,
         *,
         write_context: WriteContext,
-        dimensions: int | None = None,
     ) -> None:
         self._db = db
         self._db.row_factory = aiosqlite.Row
         self._write_context = write_context
-        self._dimensions = dimensions
+        self._dimensions: int | None = None
         self._dense_ready = False
 
     @property
@@ -87,15 +87,21 @@ class SQLiteMemoryVectorRepository:
         """Dimension-suffixed name of the dense index table."""
         return f"memory_entries_vec_{self._dimensions}"
 
-    async def ensure_ready(self) -> None:
-        """Load ``sqlite-vec`` and create the dense index if configured.
+    async def ensure_ready(self, dimensions: int | None = None) -> None:
+        """Load ``sqlite-vec`` and create the dense index for *dimensions*.
 
         Never raises: a missing extension degrades recall rather than
         taking down persistence, which also serves every non-memory
         feature on this connection. The capability is reported through
         :attr:`supports_dense_search` so the memory backend can fail
         loud at its own boundary instead.
+
+        Args:
+            dimensions: Embedding width, or ``None`` when no embedder is
+                wired, in which case recall stays lexical-only.
         """
+        if dimensions is not None:
+            self._dimensions = dimensions
         if self._dimensions is None or self._dense_ready:
             return
         try:

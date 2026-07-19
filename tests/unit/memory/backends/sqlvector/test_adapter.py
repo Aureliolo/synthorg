@@ -28,7 +28,6 @@ from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 
-_DIMS = 8
 _NOW = datetime(2026, 7, 20, 12, 0, tzinfo=UTC)
 _AGENT = NotBlankStr("agent-1")
 _CAP = 100
@@ -109,7 +108,7 @@ async def backend(tmp_path: Path) -> AsyncIterator[SqlVectorBackend]:
         await db.executescript(_SCHEMA)
         await db.commit()
         repository = SQLiteMemoryVectorRepository(
-            db, write_context=_no_op_write_context, dimensions=_DIMS
+            db, write_context=_no_op_write_context
         )
         instance = SqlVectorBackend(
             repository,
@@ -144,7 +143,7 @@ class TestLifecycle:
             db.row_factory = aiosqlite.Row
             await db.executescript(_SCHEMA)
             repository = SQLiteMemoryVectorRepository(
-                db, write_context=_no_op_write_context, dimensions=_DIMS
+                db, write_context=_no_op_write_context
             )
             instance = SqlVectorBackend(repository, max_memories_per_agent=_CAP)
 
@@ -264,7 +263,7 @@ class TestLexicalOnlyMode:
             await db.executescript(_SCHEMA)
             await db.commit()
             repository = SQLiteMemoryVectorRepository(
-                db, write_context=_no_op_write_context, dimensions=None
+                db, write_context=_no_op_write_context
             )
             instance = SqlVectorBackend(
                 repository, max_memories_per_agent=_CAP, clock=FakeClock(start=_NOW)
@@ -350,7 +349,7 @@ class TestCrud:
             await db.executescript(_SCHEMA)
             await db.commit()
             repository = SQLiteMemoryVectorRepository(
-                db, write_context=_no_op_write_context, dimensions=_DIMS
+                db, write_context=_no_op_write_context
             )
             instance = SqlVectorBackend(
                 repository,

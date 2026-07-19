@@ -118,8 +118,15 @@ class SqlVectorBackend:
         return self._embedder is not None and self._repository.supports_dense_search
 
     async def connect(self) -> None:
-        """Prepare the dense index and mark the backend usable."""
-        await self._repository.ensure_ready()
+        """Prepare the dense index and mark the backend usable.
+
+        The embedder's width is handed to the repository here: the
+        backend is the first place that knows both the store and the
+        embedder, so it is where the two are reconciled.
+        """
+        await self._repository.ensure_ready(
+            self._embedder.dimensions if self._embedder is not None else None
+        )
         self._connected = True
         logger.info(
             MEMORY_BACKEND_CONNECTED,

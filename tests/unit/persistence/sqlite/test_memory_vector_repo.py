@@ -95,9 +95,8 @@ async def repo(db_path: Path) -> AsyncIterator[SQLiteMemoryVectorRepository]:
         repository = SQLiteMemoryVectorRepository(
             db,
             write_context=_no_op_write_context,
-            dimensions=_DIMS,
         )
-        await repository.ensure_ready()
+        await repository.ensure_ready(_DIMS)
         yield repository
 
 
@@ -455,10 +454,8 @@ class TestDurability:
             db.row_factory = aiosqlite.Row
             await db.executescript(_SCHEMA)
             await db.commit()
-            first = SQLiteMemoryVectorRepository(
-                db, write_context=_no_op_write_context, dimensions=_DIMS
-            )
-            await first.ensure_ready()
+            first = SQLiteMemoryVectorRepository(db, write_context=_no_op_write_context)
+            await first.ensure_ready(_DIMS)
             await first.upsert(
                 _entry("m1", "rollback procedure"), embedding=(1.0, 0.0, 0.0, 0.0)
             )
@@ -466,9 +463,9 @@ class TestDurability:
         async with aiosqlite.connect(str(db_path)) as db:
             db.row_factory = aiosqlite.Row
             second = SQLiteMemoryVectorRepository(
-                db, write_context=_no_op_write_context, dimensions=_DIMS
+                db, write_context=_no_op_write_context
             )
-            await second.ensure_ready()
+            await second.ensure_ready(_DIMS)
 
             survived = await second.get(NotBlankStr("agent-1"), NotBlankStr("m1"))
             recalled = await second.search_dense(

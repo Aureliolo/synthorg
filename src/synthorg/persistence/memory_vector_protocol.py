@@ -40,8 +40,8 @@ class MemoryVectorRepository(Protocol):
     Every method raises ``PersistenceError`` on failure.
     """
 
-    async def ensure_ready(self) -> None:
-        """Prepare the dense index, if one is configured.
+    async def ensure_ready(self, dimensions: int | None = None) -> None:
+        """Prepare the dense index for a given embedding width.
 
         Idempotent. Deliberately does not raise when the vector index
         cannot be prepared: this repository shares a connection with
@@ -49,6 +49,12 @@ class MemoryVectorRepository(Protocol):
         persistence down. The outcome is reported through
         :attr:`supports_dense_search`, and the memory backend is what
         turns an absent index into a loud failure at its own boundary.
+
+        Args:
+            dimensions: Embedding width. Supplied here rather than at
+                construction because persistence builds the repository
+                before the embedder is resolved. ``None`` leaves recall
+                lexical-only.
         """
         ...
 
