@@ -55,16 +55,22 @@ var (
 	apiTimeout  = config.DefaultSelfUpdateAPITimeout
 )
 
+// errDisallowedRedirect marks a CheckRedirect policy rejection so the
+// retry loop can treat it as terminal: a redirect to a disallowed
+// host/scheme is a permanent security-policy failure, not a transient
+// transport blip, and retrying it only burns budget on the same rejection.
+var errDisallowedRedirect = errors.New("disallowed redirect")
+
 // checkRedirectHost validates that each redirect hop stays within
 // AllowedDownloadHosts. This prevents a compromised redirect chain
 // from opening connections to internal hosts before the post-response
 // check in httpGetWithClient fires.
 func checkRedirectHost(req *http.Request, _ []*http.Request) error {
 	if req.URL.Scheme != "https" {
-		return fmt.Errorf("redirect to disallowed scheme %q", req.URL.Scheme)
+		return fmt.Errorf("%w: scheme %q", errDisallowedRedirect, req.URL.Scheme)
 	}
 	if !AllowedDownloadHosts[req.URL.Hostname()] {
-		return fmt.Errorf("redirect to disallowed host %q", req.URL.Hostname())
+		return fmt.Errorf("%w: host %q", errDisallowedRedirect, req.URL.Hostname())
 	}
 	return nil
 }

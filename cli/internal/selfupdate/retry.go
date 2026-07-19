@@ -2,6 +2,7 @@ package selfupdate
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -72,8 +73,9 @@ func doWithRetry(
 // doWithRetry. retry is true only for transient failures (a transport
 // error while ctx is still live, or an HTTP 5xx); on a transient 5xx the
 // response is returned so the final one can be handed back to the caller.
-// A build error, a cancelled context, or any non-5xx response is terminal
-// (retry=false) and returned as-is for the caller to classify.
+// A build error, a cancelled context, a CheckRedirect policy rejection, or
+// any non-5xx response is terminal (retry=false) and returned as-is for the
+// caller to classify.
 func doAttempt(
 	ctx context.Context,
 	client *http.Client,
@@ -85,7 +87,10 @@ func doAttempt(
 	}
 	resp, err = client.Do(req)
 	if err != nil {
-		if ctx.Err() != nil {
+		// A cancelled context or a redirect-policy rejection is permanent,
+		// not a transient blip; retrying only burns budget on the same
+		// deterministic failure.
+		if ctx.Err() != nil || errors.Is(err, errDisallowedRedirect) {
 			return nil, false, err
 		}
 		return nil, true, err

@@ -3,6 +3,7 @@ package selfupdate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -144,6 +145,32 @@ func TestDoWithRetry(t *testing.T) {
 		}
 		if got := hits.Load(); got != 1 {
 			t.Errorf("handler hit %d times, want 1 (rate-limit must not retry)", got)
+		}
+	})
+
+	t.Run("disallowed redirect is terminal (not retried)", func(t *testing.T) {
+		var hits atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			http.Redirect(w, r, "https://disallowed.example.invalid/", http.StatusFound)
+		}))
+		defer srv.Close()
+
+		client := &http.Client{CheckRedirect: checkRedirectHost}
+		resp, err := doWithRetry(context.Background(), client, func() (*http.Request, error) {
+			return http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+		})
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		if err == nil {
+			t.Fatal("expected a disallowed-redirect error")
+		}
+		if !errors.Is(err, errDisallowedRedirect) {
+			t.Errorf("error = %v, want errDisallowedRedirect", err)
+		}
+		if got := hits.Load(); got != 1 {
+			t.Errorf("handler hit %d times, want 1 (redirect-policy rejection must not retry)", got)
 		}
 	})
 
