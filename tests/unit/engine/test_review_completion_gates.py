@@ -7,6 +7,7 @@ short-circuit, and the "gate attached but input builder unwired" path
 rather than fail-closed and block every completion.
 """
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -41,6 +42,28 @@ from synthorg.security.redteam.protocol import RedTeamGate
 from tests._shared import as_uuid, mock_of
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _reset_output_policy_ambient() -> Iterator[None]:
+    """Reset the process-global output-policy service around every test.
+
+    The completion backstop builds a deliverable whenever the policy is active,
+    so a service another test (e.g. the session-scoped API app on the same
+    xdist worker) left bound would otherwise make the stakes-gating assertions
+    non-deterministic. Reset to unbound, restoring whatever was bound before.
+    """
+    from synthorg.engine.output_style import (
+        current_output_policy_service,
+        set_output_policy_service,
+    )
+
+    previous = current_output_policy_service()
+    set_output_policy_service(None)
+    try:
+        yield
+    finally:
+        set_output_policy_service(previous)
 
 
 def _task(*, stakes: Stakes = Stakes.NORMAL) -> Task:
