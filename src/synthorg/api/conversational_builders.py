@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from synthorg.core.clock import Clock
     from synthorg.engine.agent_engine import AgentEngine
     from synthorg.hr.registry import AgentRegistryService
+    from synthorg.integrations.connections.secret_capture import SecretCaptureService
     from synthorg.meta.chief_of_staff.actor import ConversationalActor
     from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
     from synthorg.meta.chief_of_staff.group_chat import GroupChatService
@@ -226,6 +227,7 @@ def build_operator_console(
     engine: AgentEngine,
     autonomy_resolver: AutonomyResolver | None,
     clock: Clock,
+    secret_capture: SecretCaptureService | None = None,
 ) -> OperatorConsoleService | None:
     """Resolve an OperatorConsoleService from config + the boot engine.
 
@@ -293,6 +295,7 @@ def build_operator_console(
         identity=identity,
         autonomy_resolver=autonomy_resolver,
         config=chief_of_staff_config,
+        secret_capture=secret_capture,
     )
 
 

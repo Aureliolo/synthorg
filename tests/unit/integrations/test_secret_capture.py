@@ -9,6 +9,7 @@ import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.secret_capture import (
+    PendingSecretCapture,
     SecretCaptureService,
     resolve_credential_handles,
 )
@@ -175,3 +176,42 @@ async def test_resolve_credential_handles_rejects_invalid_handle() -> None:
             credential_handles={_FIELD: "sech_bogus"},
             connection_draft_id=_DRAFT,
         )
+
+
+def _pending(field: str) -> PendingSecretCapture:
+    return PendingSecretCapture(
+        draft_id=_DRAFT,
+        connection_type=NotBlankStr("database"),
+        field_name=NotBlankStr(field),
+        secret_kind=NotBlankStr(field),
+        label=NotBlankStr(field.title()),
+    )
+
+
+def test_take_pending_consumes_registered_requests() -> None:
+    # The in-chat capture signal: request_secret_capture registers, the console
+    # reads-and-clears once per turn so a request is surfaced exactly once.
+    service = _service(InMemorySecretBackend(), FakeClock())
+    service.register_pending(_pending("password"))
+
+    first = service.take_pending(_DRAFT)
+    second = service.take_pending(_DRAFT)
+
+    assert [p.field_name for p in first] == ["password"]
+    assert second == ()
+
+
+def test_register_pending_dedupes_by_field() -> None:
+    service = _service(InMemorySecretBackend(), FakeClock())
+    service.register_pending(_pending("password"))
+    service.register_pending(_pending("password"))
+
+    assert len(service.take_pending(_DRAFT)) == 1
+
+
+def test_take_pending_is_scoped_by_draft() -> None:
+    service = _service(InMemorySecretBackend(), FakeClock())
+    service.register_pending(_pending("password"))
+
+    assert service.take_pending(NotBlankStr("other-draft")) == ()
+    assert len(service.take_pending(_DRAFT)) == 1

@@ -48,6 +48,7 @@ SECRET_BACKEND_UNAVAILABLE: Final[str] = "integrations.secret.backend_unavailabl
 
 # -- Out-of-band secret capture (metadata only; never the value) ---------
 
+SECRET_CAPTURE_REQUESTED: Final[str] = "integrations.secret_capture.requested"  # noqa: S105
 SECRET_CAPTURE_STORED: Final[str] = "integrations.secret_capture.stored"  # noqa: S105
 SECRET_CAPTURE_CONSUMED: Final[str] = "integrations.secret_capture.consumed"  # noqa: S105
 SECRET_CAPTURE_REJECTED: Final[str] = "integrations.secret_capture.rejected"  # noqa: S105

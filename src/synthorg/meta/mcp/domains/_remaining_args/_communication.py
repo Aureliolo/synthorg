@@ -158,6 +158,24 @@ class ConnectionsCreateArgs(AdminGuardrailFields):
         return self
 
 
+class ConnectionsRequestSecretCaptureArgs(_ArgsBase):
+    """Args for ``connections.request_secret_capture``.
+
+    Raised by the operator console mid-setup to ask the operator for one secret
+    field out of band: the dashboard renders a masked input for
+    ``(connection_type, field_name)`` and posts the value straight to the
+    capture endpoint under ``draft_id``, so the raw value never enters the chat
+    turn. Carries no value; the field's kind and label come from the backend
+    metadata registry, never the caller.
+    """
+
+    connection_type: NotBlankStr = Field(description="Connection type being set up")
+    field_name: NotBlankStr = Field(description="Secret field to capture out of band")
+    draft_id: NotBlankStr = Field(
+        description="Setup draft id the captured handle will bind to",
+    )
+
+
 class ConnectionsDeleteArgs(AdminGuardrailFields):
     """Args for ``connections.delete``.
 

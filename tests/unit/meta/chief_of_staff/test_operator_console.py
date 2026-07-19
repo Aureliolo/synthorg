@@ -19,6 +19,10 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult
 from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.integrations.connections.secret_capture import (
+    PendingSecretCapture,
+    SecretCaptureService,
+)
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.console_identity import build_console_identity
 from synthorg.meta.chief_of_staff.operator_console import (
@@ -34,7 +38,7 @@ from synthorg.providers.models import (
 )
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.tools.registry import ToolRegistry
-from tests._shared import FakeClock
+from tests._shared import FakeClock, InMemorySecretBackend
 from tests._shared.scripted_provider import ScriptedProvider
 from tests.unit.engine.chat_action_fakes import InMemoryParkedRepo, QueryTool
 
@@ -79,6 +83,7 @@ def _service(
     *,
     responses: list[CompletionResponse],
     config: ChiefOfStaffConfig | None = None,
+    secret_capture: SecretCaptureService | None = None,
 ) -> tuple[OperatorConsoleService, ScriptedProvider, QueryTool]:
     provider = ScriptedProvider(responses)
     tool = QueryTool()
@@ -98,7 +103,11 @@ def _service(
     )
     assert identity is not None
     service = OperatorConsoleService(
-        engine=engine, identity=identity, autonomy_resolver=None, config=cfg
+        engine=engine,
+        identity=identity,
+        autonomy_resolver=None,
+        config=cfg,
+        secret_capture=secret_capture,
     )
     return service, provider, tool
 
@@ -190,3 +199,67 @@ class TestBudgetCeiling:
         )
 
         assert captured["cost_ceiling"] == 0.5
+
+
+class TestInChatCapture:
+    async def test_pending_captures_surfaced_for_the_turn_draft(self) -> None:
+        # A capture the console raised this turn (here pre-registered against the
+        # supplied draft, standing in for the request_secret_capture tool) is
+        # read back and surfaced so the dashboard renders the masked field.
+        capture = SecretCaptureService(secret_backend=InMemorySecretBackend())
+        capture.register_pending(
+            PendingSecretCapture(
+                draft_id=NotBlankStr("d1"),
+                connection_type=NotBlankStr("database"),
+                field_name=NotBlankStr("password"),
+                secret_kind=NotBlankStr("password"),
+                label=NotBlankStr("Password"),
+            )
+        )
+        service, _provider, _tool = _service(
+            responses=[_final("I need the database password.")],
+            secret_capture=capture,
+        )
+
+        result = await service.configure(
+            ConsoleTurnArgs(
+                instruction=NotBlankStr("connect Postgres"),
+                connection_draft_id=NotBlankStr("d1"),
+            )
+        )
+
+        assert result.connection_draft_id == "d1"
+        assert [c.field_name for c in result.pending_captures] == ["password"]
+        # Consumed on read: a second turn does not re-surface it.
+        assert capture.take_pending("d1") == ()
+
+    async def test_provided_handles_and_draft_ride_in_prompt(self) -> None:
+        service, provider, _tool = _service(responses=[_final("Creating it now.")])
+
+        await service.configure(
+            ConsoleTurnArgs(
+                instruction=NotBlankStr("finish connecting Postgres"),
+                connection_draft_id=NotBlankStr("d1"),
+                provided_credential_handles={
+                    NotBlankStr("password"): NotBlankStr("sech_abc123"),
+                },
+            )
+        )
+
+        first_turn = provider.received_messages[0]
+        system_msg = next(m for m in first_turn if m.role == MessageRole.SYSTEM)
+        assert system_msg.content is not None
+        # The draft id and the opaque handle (not a secret) reach the prompt so
+        # the console binds the create call to them.
+        assert "d1" in system_msg.content
+        assert "password=sech_abc123" in system_msg.content
+
+    async def test_no_secret_capture_service_yields_no_pending(self) -> None:
+        service, _provider, _tool = _service(responses=[_final("Done.")])
+
+        result = await service.configure(
+            ConsoleTurnArgs(instruction=NotBlankStr("what is connected?"))
+        )
+
+        assert result.pending_captures == ()
+        assert result.connection_draft_id is not None

@@ -80,8 +80,8 @@
     },
     "src/synthorg/api/controllers/_turn_dispatch.py": {
       "cap": 600,
-      "loc": 517,
-      "ratio": 0.862,
+      "loc": 528,
+      "ratio": 0.88,
       "tier": "service"
     },
     "src/synthorg/api/controllers/activities/_shared.py": {
@@ -464,8 +464,8 @@
     },
     "src/synthorg/engine/context.py": {
       "cap": 500,
-      "loc": 503,
-      "ratio": 1.006,
+      "loc": 495,
+      "ratio": 0.99,
       "tier": "code"
     },
     "src/synthorg/engine/evolution/factory.py": {
@@ -1594,7 +1594,7 @@
     "synthorg.core.role": 22,
     "synthorg.core.task": 132,
     "synthorg.core.task_enums": 122,
-    "synthorg.core.types": 1286,
+    "synthorg.core.types": 1287,
     "synthorg.engine.context": 44,
     "synthorg.engine.decomposition.models": 38,
     "synthorg.engine.errors": 99,
@@ -1620,7 +1620,7 @@
     "synthorg.integrations.connections.catalog": 35,
     "synthorg.integrations.connections.models": 71,
     "synthorg.integrations.errors": 56,
-    "synthorg.integrations.state": 37,
+    "synthorg.integrations.state": 38,
     "synthorg.knowledge.models": 29,
     "synthorg.llm.metadata": 45,
     "synthorg.llm.model_pins": 44,
@@ -1660,7 +1660,7 @@
     "synthorg.observability.events.evolution": 24,
     "synthorg.observability.events.execution": 42,
     "synthorg.observability.events.hr": 39,
-    "synthorg.observability.events.integrations": 78,
+    "synthorg.observability.events.integrations": 79,
     "synthorg.observability.events.mcp": 67,
     "synthorg.observability.events.memory": 57,
     "synthorg.observability.events.meta": 70,

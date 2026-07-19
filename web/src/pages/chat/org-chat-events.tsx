@@ -1,10 +1,12 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { Link } from 'react-router'
 
 import type { ExecutedToolCall } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { InputField, PasswordVisibilityGroup } from '@/components/ui/input-field'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { ROUTES } from '@/router/routes'
+import { useConnectionsStore } from '@/stores/connections'
 import { approvalDetailPath } from '@/utils/approvals'
 
 import type {
@@ -13,6 +15,7 @@ import type {
   InviteEvent,
   OrgEvent,
   PlanDraftedEvent,
+  SecretCaptureEvent,
   SteeringEvent,
 } from './org-chat-types'
 
@@ -172,6 +175,89 @@ function InviteCard({ turnId, event, resolving, onResolve }: InviteCardProps) {
   )
 }
 
+interface SecretCaptureCardProps {
+  turnId: number
+  event: SecretCaptureEvent
+  sending: boolean
+  onSubmit: (
+    turnId: number,
+    draftId: string,
+    handles: Readonly<Record<string, string>>,
+  ) => void
+}
+
+function SecretCaptureCard({ turnId, event, sending, onSubmit }: SecretCaptureCardProps) {
+  const captureSecret = useConnectionsStore((s) => s.captureSecret)
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [submitting, setSubmitting] = useState(false)
+  const allFilled = event.captures.every((c) => (values[c.fieldName] ?? '').length > 0)
+
+  const submit = useCallback(async () => {
+    setSubmitting(true)
+    const handles: Record<string, string> = {}
+    for (const capture of event.captures) {
+      // captureSecret posts to the write-only endpoint, owns its error toast,
+      // and returns null on failure; abort the whole submit if any field fails
+      // so a partial set of handles never reaches the turn.
+      const handle = await captureSecret(
+        event.draftId,
+        capture.fieldName,
+        values[capture.fieldName] ?? '',
+        capture.secretKind,
+      )
+      if (handle === null) {
+        setSubmitting(false)
+        return
+      }
+      handles[capture.fieldName] = handle
+    }
+    onSubmit(turnId, event.draftId, handles)
+    setSubmitting(false)
+  }, [captureSecret, event.captures, event.draftId, onSubmit, turnId, values])
+
+  if (event.resolved === 'submitted') {
+    return (
+      <div className={CARD}>
+        <p className="text-sm font-medium text-foreground">Credentials provided</p>
+        <p className="text-xs text-muted-foreground">
+          The secrets were captured securely and never entered this conversation.
+        </p>
+      </div>
+    )
+  }
+  return (
+    <div className={CARD}>
+      <p className="text-sm font-medium text-foreground">Provide credentials</p>
+      <p className="text-xs text-muted-foreground">
+        Each value posts straight to secure storage; only an opaque handle
+        returns, so the secret never appears in this conversation.
+      </p>
+      <PasswordVisibilityGroup>
+        {event.captures.map((capture) => (
+          <InputField
+            key={capture.fieldName}
+            type="password"
+            autoComplete="off"
+            label={capture.label ?? capture.fieldName}
+            value={values[capture.fieldName] ?? ''}
+            onValueChange={(v) =>
+              setValues((prev) => ({ ...prev, [capture.fieldName]: v }))
+            }
+          />
+        ))}
+      </PasswordVisibilityGroup>
+      <Button
+        size="sm"
+        disabled={!allFilled || submitting || sending}
+        aria-busy={submitting}
+        onClick={() => void submit()}
+      >
+        Provide securely
+      </Button>
+    </div>
+  )
+}
+
 function CharterDraftedCard({ event }: { event: CharterDraftedEvent }) {
   return (
     <div className={CARD}>
@@ -190,6 +276,13 @@ export interface OrgEventCardProps {
   event: OrgEvent
   resolvingInvites: ReadonlySet<string>
   onResolveInvite: (turnId: number, approvalId: string, accept: boolean) => void
+  /** True while a turn is in flight, so a capture card can't race a submit. */
+  sending: boolean
+  onSubmitSecretCaptures: (
+    turnId: number,
+    draftId: string,
+    handles: Readonly<Record<string, string>>,
+  ) => void
 }
 
 /** Render one inline transcript event, dispatching on its type. */
@@ -198,6 +291,8 @@ export function OrgEventCard({
   event,
   resolvingInvites,
   onResolveInvite,
+  sending,
+  onSubmitSecretCaptures,
 }: OrgEventCardProps) {
   switch (event.type) {
     case 'plan-drafted':
@@ -217,5 +312,14 @@ export function OrgEventCard({
       )
     case 'charter-drafted':
       return <CharterDraftedCard event={event} />
+    case 'secret-capture':
+      return (
+        <SecretCaptureCard
+          turnId={turnId}
+          event={event}
+          sending={sending}
+          onSubmit={onSubmitSecretCaptures}
+        />
+      )
   }
 }

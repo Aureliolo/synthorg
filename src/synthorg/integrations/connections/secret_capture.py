@@ -104,8 +104,31 @@ class SecretCaptureHandle(BaseModel):
         return self.draft_id == draft_id and self.field_name == field_name
 
 
+class PendingSecretCapture(BaseModel):
+    """One masked-field capture the operator console still needs from the user.
+
+    Emitted by the ``connections.request_secret_capture`` tool when the console
+    reaches a secret field during an in-chat setup flow: it carries no value,
+    only enough for the dashboard to render the right masked input and post the
+    value out of band to the capture endpoint under this ``draft_id``.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    draft_id: NotBlankStr
+    connection_type: NotBlankStr
+    field_name: NotBlankStr
+    secret_kind: NotBlankStr
+    label: NotBlankStr | None = None
+
+
 class SecretCaptureService:
     """Process-local, single-use, TTL-bounded secret-capture store.
+
+    Also holds the transient per-draft queue of *pending* capture requests the
+    operator console raised this turn (see :meth:`register_pending` /
+    :meth:`take_pending`), so the in-chat flow can surface the masked fields the
+    console asked for without the raw value ever entering the turn.
 
     Args:
         secret_backend: Where the raw value is written (encrypted at rest).
@@ -124,6 +147,10 @@ class SecretCaptureService:
         self._clock: Clock = clock or SystemClock()
         self._ttl_seconds = ttl_seconds
         self._handles: dict[str, SecretCaptureHandle] = {}
+        # Per-draft pending capture requests, deduplicated by field name so a
+        # re-asked field replaces rather than stacks. Process-local and
+        # consume-on-read: read within the same turn the console raised them.
+        self._pending: dict[str, dict[str, PendingSecretCapture]] = {}
         # Constructed lazily on first async use so the lock binds to the
         # running loop then, not to whichever loop happened to be current at
         # construction (which breaks across pytest-asyncio per-test loops and
@@ -257,6 +284,28 @@ class SecretCaptureService:
             logger.info(SECRET_CAPTURE_PURGED, count=len(expired))
         return len(expired)
 
+    def register_pending(self, pending: PendingSecretCapture) -> None:
+        """Record a masked-field capture the console still needs this turn.
+
+        Deduplicated by ``(draft_id, field_name)`` so a field the console asks
+        for twice is surfaced once. Synchronous (no I/O), so it is atomic under
+        the event loop and needs no lock.
+        """
+        self._pending.setdefault(pending.draft_id, {})[pending.field_name] = pending
+
+    def take_pending(self, draft_id: str) -> tuple[PendingSecretCapture, ...]:
+        """Return and clear the pending capture requests for a draft.
+
+        Consume-on-read so each console turn surfaces only the fields raised on
+        that turn; the dashboard captures them out of band and passes the
+        resulting handles back on the next turn.
+
+        Returns:
+            The pending requests for ``draft_id`` in field-registration order,
+            empty when none are pending.
+        """
+        return tuple(self._pending.pop(draft_id, {}).values())
+
     def _reject(self, reason: str, draft_id: str, field_name: str) -> NoReturn:
         """Log a uniform rejection and raise the opaque handle error.
 
@@ -339,6 +388,7 @@ async def resolve_credential_handles(
 
 __all__ = [
     "DEFAULT_SECRET_CAPTURE_TTL_SECONDS",
+    "PendingSecretCapture",
     "SecretCaptureHandle",
     "SecretCaptureService",
     "resolve_credential_handles",

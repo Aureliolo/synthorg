@@ -197,7 +197,7 @@ function mapConfigure(configure: ConsoleTurnResult | null): OrgTurn[] {
   if (!configure) return []
   // The operator console reuses the same governed action loop as a direct act,
   // so it renders as an action event attributed to the console identity.
-  return [
+  const turns: OrgTurn[] = [
     {
       id: nextMessageId(),
       kind: 'event',
@@ -215,6 +215,26 @@ function mapConfigure(configure: ConsoleTurnResult | null): OrgTurn[] {
       },
     },
   ]
+  // The console asked for one or more secrets out of band: render a masked
+  // capture card so the operator provides them without the value ever entering
+  // the transcript. Only opaque handles flow back on the next turn.
+  if (configure.pending_captures.length > 0 && configure.connection_draft_id) {
+    turns.push({
+      id: nextMessageId(),
+      kind: 'event',
+      event: {
+        type: 'secret-capture',
+        draftId: configure.connection_draft_id,
+        captures: configure.pending_captures.map((c) => ({
+          connectionType: c.connection_type,
+          fieldName: c.field_name,
+          secretKind: c.secret_kind,
+          ...(c.label != null && { label: c.label }),
+        })),
+      },
+    })
+  }
+  return turns
 }
 
 function mapAct(act: ConversationalActResult | null): OrgTurn[] {

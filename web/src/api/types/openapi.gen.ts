@@ -9336,12 +9336,19 @@ export type components = {
         /** ConsoleTurnResult */
         readonly ConsoleTurnResult: {
             readonly action: components["schemas"]["ChatActionResult"];
+            /** @description The setup draft id this turn used; echo it back with captured handles on the next turn to continue the flow. */
+            readonly connection_draft_id: string | null;
             /** @description Id of the system console identity */
             readonly console_id: string;
             /** @description Name of the console identity */
             readonly console_name: string;
             /** @description The correlated conversation id, if supplied */
             readonly conversation_id: string | null;
+            /**
+             * @description Secret fields the console asked the operator to provide out of band this turn; the dashboard renders a masked input per entry.
+             * @default []
+             */
+            readonly pending_captures: readonly components["schemas"]["PendingSecretCapture"][];
         };
         /**
          * ContentType
@@ -13887,6 +13894,14 @@ export type components = {
             readonly target_name: string;
             readonly target_role: string | null;
         };
+        /** PendingSecretCapture */
+        readonly PendingSecretCapture: {
+            readonly connection_type: string;
+            readonly draft_id: string;
+            readonly field_name: string;
+            readonly label: string | null;
+            readonly secret_kind: string;
+        };
         /** PerformanceSummary */
         readonly PerformanceSummary: {
             readonly collaboration_score: number | null;
@@ -17728,6 +17743,8 @@ export type components = {
         readonly TurnIntent: "explain" | "propose" | "act" | "group_convene" | "charter" | "configure";
         /** TurnRequest */
         readonly TurnRequest: {
+            /** @description Operator-console setup draft to continue; echo back the id a prior CONFIGURE turn returned so captured secret handles bind to it. */
+            readonly connection_draft_id?: string | null;
             /** @description Existing conversation to continue; None starts a new one. */
             readonly conversation_id?: string | null;
             /**
@@ -17744,6 +17761,10 @@ export type components = {
             readonly named_targets: readonly string[];
             /** @description Project the turn is scoped to, for propose/charter turns. */
             readonly project?: string | null;
+            /** @description Opaque single-use secret-capture handles (field-name -> handle) the operator supplied out of band for a CONFIGURE setup flow; the raw value is never sent here. Only honoured on a CONFIGURE turn. */
+            readonly provided_credential_handles?: {
+                readonly [key: string]: string;
+            };
         };
         /** TurnResult */
         readonly TurnResult: {

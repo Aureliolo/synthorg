@@ -13,6 +13,7 @@ from synthorg.meta.mcp.domains._remaining_args import (
     ConnectionsFieldMetadataArgs,
     ConnectionsGetArgs,
     ConnectionsListArgs,
+    ConnectionsRequestSecretCaptureArgs,
     MeetingsCreateArgs,
     MeetingsDeleteArgs,
     MeetingsGetArgs,
@@ -249,6 +250,29 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("name",),
         args_model=ConnectionsCheckHealthArgs,
+    ),
+    write_tool(
+        "connections",
+        "request_secret_capture",
+        "Ask the operator to provide one secret field out of band during an "
+        "in-chat setup flow (renders a masked input); never ask for a secret "
+        "value in the chat itself.",
+        {
+            "connection_type": {
+                "type": "string",
+                "description": "Connection type being set up",
+            },
+            "field_name": {
+                "type": "string",
+                "description": "Secret field to capture (must be a secret field)",
+            },
+            "draft_id": {
+                "type": "string",
+                "description": "Setup draft id the captured handle binds to",
+            },
+        },
+        required=("connection_type", "field_name", "draft_id"),
+        args_model=ConnectionsRequestSecretCaptureArgs,
     ),
     # --- Webhooks ---
     read_tool(

@@ -58,6 +58,21 @@ class TurnRequest(BaseModel):
         default=None,
         description="Project the turn is scoped to, for propose/charter turns.",
     )
+    connection_draft_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Operator-console setup draft to continue; echo back the id a prior"
+            " CONFIGURE turn returned so captured secret handles bind to it."
+        ),
+    )
+    provided_credential_handles: dict[NotBlankStr, NotBlankStr] = Field(
+        default_factory=dict,
+        description=(
+            "Opaque single-use secret-capture handles (field-name -> handle) the"
+            " operator supplied out of band for a CONFIGURE setup flow; the raw"
+            " value is never sent here. Only honoured on a CONFIGURE turn."
+        ),
+    )
 
 
 class TurnResult(BaseModel):

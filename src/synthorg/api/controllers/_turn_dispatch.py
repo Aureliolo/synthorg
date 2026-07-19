@@ -16,7 +16,7 @@ did, never silently downgraded to a read.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 from synthorg.api._feature_gate import ensure_feature_enabled
@@ -124,6 +124,9 @@ class TurnDispatchContext:
         reason: Why this (final) intent was chosen or degraded to.
         confidence: Classifier confidence (0-1) when a classification ran;
             ``None`` for an override / no-classifier turn.
+        connection_draft_id: Operator-console setup draft to continue (CONFIGURE).
+        provided_credential_handles: Out-of-band secret-capture handles the
+            operator supplied for a CONFIGURE setup flow (field-name -> handle).
     """
 
     body: str
@@ -132,6 +135,10 @@ class TurnDispatchContext:
     actor_id: str
     reason: IntentRoutingReason
     confidence: float | None
+    connection_draft_id: NotBlankStr | None = None
+    provided_credential_handles: dict[NotBlankStr, NotBlankStr] = field(
+        default_factory=dict
+    )
 
 
 async def prepare_explain_context(app_state: AppState, *, body: str) -> ExplainContext:
@@ -417,6 +424,8 @@ async def _dispatch_configure(
             instruction=NotBlankStr(redact_turn_content(ctx.body)),
             conversation_id=ctx.conversation_id,
             requested_by=NotBlankStr(ctx.actor_id) if ctx.actor_id else None,
+            connection_draft_id=ctx.connection_draft_id,
+            provided_credential_handles=ctx.provided_credential_handles,
         )
     )
     return TurnResult(
@@ -586,6 +595,8 @@ async def dispatch_turn(
         actor_id=actor_id,
         reason=reason,
         confidence=outcome.confidence,
+        connection_draft_id=data.connection_draft_id,
+        provided_credential_handles=data.provided_credential_handles,
     )
     match intent:
         case TurnIntent.PROPOSE:

@@ -292,6 +292,7 @@
         "synthorg_connections_create",
         "synthorg_connections_delete",
         "synthorg_connections_check_health",
+        "synthorg_connections_request_secret_capture",
         "synthorg_webhooks_list",
         "synthorg_webhooks_get",
         "synthorg_webhooks_create",
@@ -1413,6 +1414,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-19T16:28:50.768263Z",
+  "generated_at": "2026-07-19T17:38:48.371050Z",
   "schema_version": 1
 }

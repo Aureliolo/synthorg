@@ -31,6 +31,7 @@ async def wire_operator_console(
     console model is bound, or no provider-backed boot engine was installed
     (empty company). Idempotent: a second boot pass skips when already wired.
     """
+    from synthorg.integrations.state import IntegrationsStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.workers.execution_service import (  # noqa: PLC0415
         AgentEngineExecutionService,
@@ -47,6 +48,7 @@ async def wire_operator_console(
         engine=service.engine,
         autonomy_resolver=service.autonomy_resolver,
         clock=app_state.clock,
+        secret_capture=app_state.slice(IntegrationsStateSlice).secret_capture_service,
     )
     if console is not None:
         app_state.wire(MetaStateSlice, operator_console=console)
@@ -72,6 +74,7 @@ async def rebuild_operator_console(
     live enable stays fail-closed. This is what lets the console toggle be
     hot-reloadable without weakening the startup security invariant.
     """
+    from synthorg.integrations.state import IntegrationsStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.workers.execution_service import (  # noqa: PLC0415
         AgentEngineExecutionService,
@@ -86,6 +89,9 @@ async def rebuild_operator_console(
             engine=service.engine,
             autonomy_resolver=service.autonomy_resolver,
             clock=app_state.clock,
+            secret_capture=app_state.slice(
+                IntegrationsStateSlice
+            ).secret_capture_service,
         )
     app_state.wire(MetaStateSlice, operator_console=console)
     logger.info(

@@ -150,11 +150,14 @@ the console's default `SEMI` autonomy a sensitive `connections.create`
 escalates through the merged auto-gate to the approval inbox with a structured
 preview of the exact resolved arguments (secrets masked), so **apply happens
 only after an explicit confirm**, enforced by the `ApprovalGate` rather than by
-the agent. Secrets are captured out of band by the dashboard's masked field and
-referenced only by handle, so no secret is ever at the LLM's discretion, and
-`connections.check_health` verifies the result. A dedicated deterministic setup
-controller was considered and deliberately not built: it would duplicate the
-governed create/confirm/verify path the console + approval gate already provide.
+the agent. When the loop needs a secret it calls `connections.request_secret_capture`
+(never asking for the value in chat), which surfaces an in-chat masked field; the
+dashboard posts the value straight to the capture endpoint and threads only the
+single-use handle back on the next `CONFIGURE` turn, so no secret is ever in the
+transcript or at the LLM's discretion, and `connections.check_health` verifies the
+result. A dedicated deterministic setup controller was considered and deliberately
+not built: it would duplicate the governed create/confirm/verify path the console +
+approval gate already provide.
 
 ---
 

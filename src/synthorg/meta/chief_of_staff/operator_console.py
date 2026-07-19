@@ -15,6 +15,8 @@ own default-off ``operator_console_enabled`` toggle, and it bounds each
 session by a hard cost ceiling in addition to the turn cap.
 """
 
+from uuid import uuid4
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.agent import AgentIdentity
@@ -23,6 +25,10 @@ from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult
+from synthorg.integrations.connections.secret_capture import (
+    PendingSecretCapture,
+    SecretCaptureService,
+)
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
@@ -54,6 +60,40 @@ CONSOLE_OPERATING_BRIEF: str = (
 """Trusted operating brief appended to the console identity's persona prompt."""
 
 
+def _capture_brief(
+    draft_id: str,
+    provided_handles: dict[NotBlankStr, NotBlankStr],
+) -> str:
+    """Build the per-turn secret-capture guidance for the console prompt.
+
+    Tells the console the draft id to bind captures to, how to ask for a secret
+    out of band (``connections.request_secret_capture``), and surfaces any
+    handles the operator already provided so the console passes them to
+    ``connections.create``. Handles are opaque single-use references, not the
+    secret value, so they are safe to place in the prompt.
+
+    Returns:
+        The trusted guidance string to append to the operating brief.
+    """
+    brief = (
+        f"\n\nThis setup session's connection draft id is '{draft_id}'. When you "
+        "need a secret field (a token, password, or key) to create a connection, "
+        "call connections.request_secret_capture with this draft id and the field "
+        "name instead of asking for the value in chat: the operator provides it "
+        "out of band and you receive an opaque handle on a later turn. Pass "
+        "captured handles to connections.create as credential_handles with "
+        f"connection_draft_id set to '{draft_id}'."
+    )
+    if not provided_handles:
+        return brief
+    pairs = ", ".join(f"{field}={handle}" for field, handle in provided_handles.items())
+    return (
+        brief + " The operator has now provided these capture handles (opaque "
+        f"references, not secrets): {pairs}. Use them as credential_handles on "
+        "connections.create for this draft."
+    )
+
+
 class ConsoleTurnArgs(BaseModel):
     """Typed request for one operator-console configure turn."""
 
@@ -70,6 +110,23 @@ class ConsoleTurnArgs(BaseModel):
         default=None,
         description="The authenticated operator who directed the turn (audit)",
     )
+    connection_draft_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Setup draft id to continue; None starts a fresh draft. The console "
+            "binds every secret-capture request and the resulting connections."
+            "create to this id."
+        ),
+    )
+    provided_credential_handles: dict[NotBlankStr, NotBlankStr] = Field(
+        default_factory=dict,
+        description=(
+            "Opaque single-use capture handles the operator supplied out of band "
+            "since the last turn, as field-name -> handle. Injected into the "
+            "console's context so it passes them to connections.create; the raw "
+            "secret is never here."
+        ),
+    )
 
 
 class ConsoleTurnResult(BaseModel):
@@ -84,6 +141,20 @@ class ConsoleTurnResult(BaseModel):
         description="The correlated conversation id, if supplied",
     )
     action: ChatActionResult = Field(description="The engine's chat-action outcome")
+    connection_draft_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "The setup draft id this turn used; echo it back with captured "
+            "handles on the next turn to continue the flow."
+        ),
+    )
+    pending_captures: tuple[PendingSecretCapture, ...] = Field(
+        default=(),
+        description=(
+            "Secret fields the console asked the operator to provide out of band "
+            "this turn; the dashboard renders a masked input per entry."
+        ),
+    )
 
 
 class OperatorConsoleService:
@@ -98,6 +169,9 @@ class OperatorConsoleService:
             ``None`` to leave the rule engine governing without the
             autonomy-tier layer.
         config: Chief of Staff configuration (turn cap + cost ceiling).
+        secret_capture: The out-of-band secret-capture service, or ``None`` when
+            integrations are disabled. Read after each turn for the masked
+            fields the console asked for via ``connections.request_secret_capture``.
     """
 
     def __init__(
@@ -107,11 +181,13 @@ class OperatorConsoleService:
         identity: AgentIdentity,
         autonomy_resolver: AutonomyResolver | None,
         config: ChiefOfStaffConfig,
+        secret_capture: SecretCaptureService | None = None,
     ) -> None:
         self._engine = engine
         self._identity = identity
         self._autonomy_resolver = autonomy_resolver
         self._config = config
+        self._secret_capture = secret_capture
 
     async def configure(self, args: ConsoleTurnArgs) -> ConsoleTurnResult:
         """Run one governed configure turn as the console identity.
@@ -124,6 +200,7 @@ class OperatorConsoleService:
             parked ``approval_id``) with console attribution.
         """
         console_id = str(self._identity.id)
+        draft_id = args.connection_draft_id or NotBlankStr(f"draft-{uuid4()}")
         logger.info(
             COS_CONSOLE_REQUESTED,
             console_id=console_id,
@@ -138,7 +215,8 @@ class OperatorConsoleService:
                 effective_autonomy=effective_autonomy,
                 max_turns=self._config.operator_console_max_turns,
                 cost_ceiling=self._config.operator_console_cost_ceiling,
-                system_prompt_addendum=CONSOLE_OPERATING_BRIEF,
+                system_prompt_addendum=CONSOLE_OPERATING_BRIEF
+                + _capture_brief(draft_id, args.provided_credential_handles),
             )
         except Exception as exc:
             reraise_critical(exc)
@@ -150,6 +228,11 @@ class OperatorConsoleService:
                 error=safe_error_description(exc),
             )
             raise
+        pending = (
+            self._secret_capture.take_pending(draft_id)
+            if self._secret_capture is not None
+            else ()
+        )
         logger.info(
             COS_CONSOLE_PARKED if result.parked else COS_CONSOLE_COMPLETED,
             console_id=console_id,
@@ -157,12 +240,15 @@ class OperatorConsoleService:
             termination_reason=result.termination_reason.value,
             approval_id=result.approval_id,
             tool_call_count=len(result.tool_calls),
+            pending_capture_count=len(pending),
         )
         return ConsoleTurnResult(
             console_id=NotBlankStr(console_id),
             console_name=self._identity.name,
             conversation_id=args.conversation_id,
             action=result,
+            connection_draft_id=draft_id,
+            pending_captures=pending,
         )
 
     def _resolve_autonomy(self) -> EffectiveAutonomy | None:

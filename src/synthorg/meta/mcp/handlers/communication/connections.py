@@ -7,11 +7,14 @@ from typing import TYPE_CHECKING
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.field_metadata import (
+    get_connection_type_metadata,
     list_connection_type_metadata,
 )
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.connections.secret_capture import (
+    PendingSecretCapture,
     resolve_credential_handles,
 )
 from synthorg.integrations.state import (
@@ -25,6 +28,7 @@ from synthorg.meta.mcp.domains._remaining_args import (
     ConnectionsFieldMetadataArgs,
     ConnectionsGetArgs,
     ConnectionsListArgs,
+    ConnectionsRequestSecretCaptureArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -48,6 +52,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import SECRET_CAPTURE_REQUESTED
 from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
@@ -62,6 +67,7 @@ _ARG_CONNECTION_TYPE = "connection_type"
 _TY_CONNECTION_TYPE = "ConnectionType string"
 _ARG_DRAFT_ID = "connection_draft_id"
 _TY_DRAFT_ID_REQUIRED = "required when credential_handles are supplied"
+_ARG_FIELD_NAME = "field_name"
 
 
 async def _connections_list(
@@ -315,6 +321,80 @@ async def _connections_field_metadata(
     return ok(entries)
 
 
+async def _connections_request_secret_capture(
+    *,
+    app_state: AppState,
+    arguments: dict[str, object],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    """Register a masked secret-capture request for the in-chat setup flow.
+
+    Raised by the operator console when it reaches a secret field mid-setup:
+    it records a *pending* capture the dashboard renders as a masked input and
+    posts out of band under ``draft_id``. The request carries no value, and the
+    field's kind and label come from the metadata registry, not the caller, so
+    nothing sensitive enters the turn.
+
+    Returns:
+        Resulting string acknowledging the pending capture.
+
+    Raises:
+        ArgumentValidationError: When ``connection_type`` is unknown or
+            ``field_name`` is not a secret field of that type (caught and
+            returned as an error payload).
+    """
+    tool = "synthorg_connections_request_secret_capture"
+    try:
+        args = typed_args(arguments, ConnectionsRequestSecretCaptureArgs)
+        try:
+            connection_type = ConnectionType(args.connection_type)
+        except ValueError as exc:
+            bad = ArgumentValidationError(_ARG_CONNECTION_TYPE, _TY_CONNECTION_TYPE)
+            raise bad from exc
+        metadata = get_connection_type_metadata(connection_type)
+        field = next(
+            (f for f in metadata.fields if f.name == args.field_name and f.secret),
+            None,
+        )
+        if field is None:
+            not_secret = f"a secret field of connection type {connection_type.value!r}"
+            raise ArgumentValidationError(_ARG_FIELD_NAME, not_secret)
+        secret_capture_service_of(app_state).register_pending(
+            PendingSecretCapture(
+                draft_id=args.draft_id,
+                connection_type=NotBlankStr(connection_type.value),
+                field_name=field.name,
+                secret_kind=field.name,
+                label=field.label,
+            )
+        )
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
+        log_handler_invoke_failed(tool, exc)
+        return err(exc)
+    logger.info(
+        SECRET_CAPTURE_REQUESTED,
+        draft_id=args.draft_id,
+        field=field.name,
+        connection_type=connection_type.value,
+    )
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(
+        {
+            "status": "capture_requested",
+            "field": field.name,
+            "message": (
+                f"Masked capture requested for {field.label!r}. Wait for the "
+                "operator to provide it out of band; the handle arrives on a "
+                "later turn. Do not call connections.create until then."
+            ),
+        }
+    )
+
+
 CONNECTIONS_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {
         "synthorg_connections_list": _connections_list,
@@ -323,5 +403,8 @@ CONNECTIONS_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
         "synthorg_connections_create": _connections_create,
         "synthorg_connections_delete": _connections_delete,
         "synthorg_connections_check_health": _connections_check_health,
+        "synthorg_connections_request_secret_capture": (
+            _connections_request_secret_capture
+        ),
     },
 )

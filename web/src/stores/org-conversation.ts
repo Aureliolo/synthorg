@@ -71,6 +71,17 @@ export interface OrgConversationState {
   resolvingInvites: ReadonlySet<string>
   sendTurn: (message: string, opts: SendOptions) => Promise<void>
   resolveInvite: (turnId: number, approvalId: string, accept: boolean) => void
+  /**
+   * Re-issue a CONFIGURE turn carrying the out-of-band secret-capture handles
+   * the operator provided, continuing the console setup flow. The raw secret
+   * never reaches this store: the card captured it straight to the backend and
+   * only opaque handles are threaded here.
+   */
+  submitSecretCaptures: (
+    turnId: number,
+    draftId: string,
+    handles: Readonly<Record<string, string>>,
+  ) => void
   /** Replace the transcript wholesale (resume hydration). */
   hydrate: (patch: {
     messages: readonly OrgTurn[]
@@ -367,6 +378,49 @@ async function resolveInviteImpl(
   })
 }
 
+async function submitSecretCapturesImpl(
+  set: Setter,
+  get: Getter,
+  turnId: number,
+  draftId: string,
+  handles: Readonly<Record<string, string>>,
+): Promise<void> {
+  const state = get()
+  if (state.sending) return
+  const iso = new Date().toISOString()
+  const turnEpoch = state.epoch
+  const guardedSet: Setter = (patch) => {
+    if (get().epoch !== turnEpoch) return
+    set(patch)
+  }
+  // Freeze the card into its submitted state and mark the thread busy so the
+  // input and any other capture card can't race a second turn.
+  set({
+    sending: true,
+    messages: state.messages.map((turn) =>
+      turn.id === turnId &&
+      turn.kind === 'event' &&
+      turn.event.type === 'secret-capture'
+        ? { ...turn, event: { ...turn.event, resolved: 'submitted' } }
+        : turn,
+    ),
+  })
+  try {
+    const result = await postTurn('Here are the credentials you requested.', {
+      ...(state.conversationId != null && { conversationId: state.conversationId }),
+      intentOverride: 'configure',
+      connectionDraftId: draftId,
+      providedCredentialHandles: handles,
+      idempotencyKey: crypto.randomUUID(),
+    })
+    applyBufferedResult(guardedSet, get, result, iso)
+  } catch (err) {
+    handleTurnError(guardedSet, get, err)
+  } finally {
+    guardedSet({ sending: false })
+  }
+}
+
 function initialState(): Pick<
   OrgConversationState,
   | 'messages'
@@ -393,6 +447,8 @@ export const useOrgConversationStore = create<OrgConversationState>()(
     sendTurn: (message, opts) => runTurn(set, get, message, opts),
     resolveInvite: (turnId, approvalId, accept) =>
       void resolveInviteImpl(set, get, turnId, approvalId, accept),
+    submitSecretCaptures: (turnId, draftId, handles) =>
+      void submitSecretCapturesImpl(set, get, turnId, draftId, handles),
     // Every transcript replacement bumps the epoch so an in-flight turn from
     // the previous conversation is orphaned (its guardedSet writes are dropped).
     hydrate: (patch) =>

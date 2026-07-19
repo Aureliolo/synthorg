@@ -128,7 +128,7 @@ src/synthorg/meta/
     invoker.py         -- MCPToolInvoker (handler dispatch + error mapping)
     errors.py          -- ArgumentValidationError + GuardrailViolationError
     tool_builder.py    -- read_tool / write_tool / admin_tool builders
-    domains/           -- 22 domain tool definition modules (246 tools)
+    domains/           -- 22 domain tool definition modules (247 tools)
     handlers/          -- domain handler modules + common envelope helpers
                          (ok / err / not_supported / require_admin_guardrails)
 
@@ -415,9 +415,12 @@ system's job, not the user's, so there is no mode picker.
   preview -> confirm -> apply -> health-verify through the ordinary
   `connections.create` / `settings.update` / catalog-install / `check_health`
   MCP tools under the same SecOps gate + approval inbox. When a step needs a
-  credential, the value is captured **out of band** via an in-chat masked field
-  that posts straight to the write-only capture endpoint and returns a
-  single-use handle (never in the transcript or LLM context, see
+  credential, the console calls `connections.request_secret_capture` to raise an
+  in-chat masked field rather than asking for the value in chat; the value is
+  captured **out of band** (the dashboard posts it straight to the write-only
+  capture endpoint) and only the single-use handle flows back on the next
+  `CONFIGURE` turn, which the console passes to `connections.create` (never in
+  the transcript or LLM context, see
   [Integrations: conversational setup](integrations.md#conversational-setup));
   the preview reflects the exact resolved `connections.create` arguments so what
   applies is what was reviewed.
