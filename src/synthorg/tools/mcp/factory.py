@@ -18,11 +18,12 @@ from synthorg.observability.events.mcp import (
 )
 from synthorg.tools.mcp.bridge_tool import MCPBridgeTool
 from synthorg.tools.mcp.cache import MCPResultCache
-from synthorg.tools.mcp.client import MCPClient, MCPCredentialResolver
+from synthorg.tools.mcp.client import MCPClient
 from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
 from synthorg.tools.mcp.errors import MCPConnectionError, MCPDiscoveryError
 from synthorg.tools.mcp.models import MCPServerStatus, MCPToolInfo
 from synthorg.tools.mcp.sandbox import MCPSandboxConfig
+from synthorg.tools.mcp.stdio_credentials import MCPCredentialResolver
 
 logger = get_logger(__name__)
 

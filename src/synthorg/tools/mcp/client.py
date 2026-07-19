@@ -9,7 +9,7 @@ import asyncio
 import copy
 from contextlib import AsyncExitStack
 from types import TracebackType
-from typing import Final, NoReturn, Protocol, Self, runtime_checkable
+from typing import Final, NoReturn, Self
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -17,7 +17,6 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared._httpx_utils import create_mcp_http_client
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.env_var_safety import validate_credential_env_var_name
 from synthorg.core.resilience.general_retry import GeneralRetryHandler
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -28,8 +27,6 @@ from synthorg.observability.events.mcp import (
     MCP_CLIENT_DISCONNECTED,
     MCP_CLIENT_RECONNECT_RETRY,
     MCP_CLIENT_RECONNECTING,
-    MCP_CREDENTIAL_SOURCE_MISSING,
-    MCP_CREDENTIALS_INJECTED,
     MCP_DISCOVERY_COMPLETE,
     MCP_DISCOVERY_FAILED,
     MCP_DISCOVERY_FILTERED,
@@ -50,6 +47,10 @@ from synthorg.tools.mcp.errors import (
 )
 from synthorg.tools.mcp.models import MCPRawResult, MCPToolInfo
 from synthorg.tools.mcp.sandbox import MCPSandboxConfig, wrap_stdio_in_sandbox
+from synthorg.tools.mcp.stdio_credentials import (
+    MCPCredentialResolver,
+    resolve_stdio_launch,
+)
 
 logger = get_logger(__name__)
 
@@ -67,15 +68,6 @@ _DISCONNECT_TIMEOUT_SECONDS: Final[float] = 10.0
 _RECONNECT_MAX_ATTEMPTS: Final[int] = 3
 _RECONNECT_BACKOFF_BASE_SECONDS: Final[float] = 0.2
 _RECONNECT_BACKOFF_CAP_SECONDS: Final[float] = 2.0
-
-
-@runtime_checkable
-class MCPCredentialResolver(Protocol):
-    """Resolves a bound connection's decrypted credentials by name."""
-
-    async def get_credentials(self, name: str) -> dict[str, str]:
-        """Return the decrypted credential fields for connection ``name``."""
-        ...
 
 
 class MCPClient:
@@ -110,6 +102,11 @@ class MCPClient:
         self._session: ClientSession | None = None
         self._exit_stack: AsyncExitStack | None = None
         self._lock = asyncio.Lock()
+        # A disconnect that times out cannot prove the child transport was torn
+        # down, so reusing this client would risk a fresh session racing an
+        # abandoned one. Latch the client closed instead (lifecycle convention:
+        # a timed-out stop is unrestartable).
+        self._unrestartable = False
         # Bounded backoff so a transient reconnect blip self-heals without
         # an unbounded stall while the session lock is held.
         self._reconnect_retry = GeneralRetryHandler(
@@ -158,9 +155,24 @@ class MCPClient:
         re-acquiring between the two and racing a concurrent healer.
 
         Raises:
-            MCPConnectionError: If the connection fails.
+            MCPConnectionError: If the connection fails, or the client was
+                latched unrestartable by a prior disconnect timeout.
             RuntimeError: If already connected.
         """
+        if self._unrestartable:
+            msg = (
+                f"Client for {self._config.name!r} is unrestartable after a "
+                f"disconnect timeout; the prior transport may still be alive"
+            )
+            logger.warning(
+                MCP_CLIENT_CONNECTION_FAILED,
+                server=self._config.name,
+                error=msg,
+            )
+            raise MCPConnectionError(
+                msg,
+                context={"server": self._config.name},
+            )
         if self._session is not None:
             msg = f"Already connected to {self._config.name!r}"
             logger.warning(
@@ -297,6 +309,11 @@ class MCPClient:
                     timeout=_DISCONNECT_TIMEOUT_SECONDS,
                 )
             except TimeoutError:
+                # The transport close did not confirm within the bound, so the
+                # child may still be alive. Latch the client unrestartable so a
+                # later connect()/reconnect() cannot spawn a fresh session over
+                # the abandoned one.
+                self._unrestartable = True
                 logger.warning(
                     MCP_CLIENT_DISCONNECT_FAILED,
                     server=self._config.name,
@@ -415,6 +432,7 @@ class MCPClient:
             tool=tool_name,
         )
         invocation_error: Exception | None = None
+        timeout_cause: BaseException | None = None
         async with self._lock:
             session = self._require_session()
             try:
@@ -430,14 +448,15 @@ class MCPClient:
                     timeout=self._config.timeout_seconds,
                 )
                 msg = f"Tool {tool_name!r} timed out on {self._config.name!r}"
-                raise MCPTimeoutError(
+                invocation_error = MCPTimeoutError(
                     msg,
                     context={
                         "server": self._config.name,
                         "tool": tool_name,
                         "timeout": self._config.timeout_seconds,
                     },
-                ) from exc
+                )
+                timeout_cause = exc
             except Exception as exc:  # noqa: BLE001 -- re-raised as typed error below
                 reraise_critical(exc)
                 logger.warning(
@@ -464,12 +483,16 @@ class MCPClient:
                     ),
                 )
 
-        # A raised (non-timeout) call means the session/transport is likely
-        # dead (MCP tool-level errors come back as ``is_error``, not
-        # exceptions). Heal the connection for subsequent calls, but surface
-        # THIS call's failure rather than auto-retrying: an MCP tool may be a
-        # mutation, so a silent retry could double-execute a side effect.
+        # Any failure -- a raised exception OR a timeout -- means the
+        # session/transport is likely dead (MCP tool-level errors come back as
+        # ``is_error``, not exceptions; a timed-out read is a stuck pipe that
+        # will just time out again next call). Heal the connection for
+        # subsequent calls outside the lock, but surface THIS call's failure
+        # rather than auto-retrying: an MCP tool may be a mutation, so a silent
+        # retry could double-execute a side effect.
         await self._heal_after_failure()
+        if isinstance(invocation_error, MCPTimeoutError):
+            raise invocation_error from timeout_cause
         msg = (
             f"Tool {tool_name!r} failed on {self._config.name!r}: "
             f"{safe_error_description(invocation_error)}"
@@ -592,7 +615,10 @@ class MCPClient:
                 msg,
                 context={"server": self._config.name},
             )
-        args, env = await self._resolve_stdio_launch()
+        args, env = await resolve_stdio_launch(
+            self._config,
+            self._credential_source,
+        )
         command = self._config.command
         if self._sandbox is not None and self._sandbox.enabled:
             command, args, sandbox_env = wrap_stdio_in_sandbox(
@@ -624,113 +650,6 @@ class MCPClient:
         )
         return await stack.enter_async_context(
             ClientSession(read_stream, write_stream),
-        )
-
-    async def _resolve_stdio_launch(self) -> tuple[list[str], dict[str, str] | None]:
-        """Resolve the launch args + env, injecting bound-connection secrets.
-
-        The connection's decrypted credentials are mapped into the environment
-        variables (``credential_env_map``) the target server expects, at connect
-        time so secrets are never persisted in the stored config. Secrets are
-        forwarded by environment variable only: a value never lands in the
-        process argv (visible via ``ps`` / ``/proc``). Every enabled-but-
-        unresolvable state (bound connection with no map, no resolver, or a
-        short injection) is logged loudly rather than silently pretending the
-        server is authenticated.
-
-        Returns:
-            The final ``(args, env)`` pair for ``StdioServerParameters``.
-        """
-        args = list(self._config.args)
-        env = dict(self._config.env)
-        name = self._config.connection_name
-        if name is None:
-            return args, (env or None)
-        env_map = self._config.credential_env_map
-        if not env_map:
-            logger.warning(
-                MCP_CREDENTIAL_SOURCE_MISSING,
-                server=self._config.name,
-                connection=name,
-                note="connection bound but entry declares no credential fields",
-            )
-            return args, (env or None)
-        if self._credential_source is None:
-            logger.warning(
-                MCP_CREDENTIAL_SOURCE_MISSING,
-                server=self._config.name,
-                connection=name,
-                note="connection bound but no credential source; unauthenticated",
-            )
-            return args, (env or None)
-        creds = await self._credential_source.get_credentials(name)
-        injected = 0
-        for field, env_var in env_map.items():
-            self._screen_injection_target(env_var)
-            value = creds.get(field)
-            if value:
-                env[env_var] = value
-                injected += 1
-        self._log_injection(name, injected, len(env_map))
-        return args, (env or None)
-
-    def _screen_injection_target(self, env_var: str) -> None:
-        """Re-screen a credential target env-var name at the spawn boundary.
-
-        ``credential_env_map`` is screened at config construction, but the
-        model's ``frozen=True`` only blocks field reassignment: the nested dict
-        stays mutable in place, so a post-validation edit could redirect a
-        secret at a loader/process-control variable (``LD_PRELOAD`` /
-        ``NODE_OPTIONS`` / ``PATH``). Revalidate here, immediately before the
-        value is injected into the child environment, and fail closed rather
-        than spawn with a hijacked target.
-
-        Raises:
-            MCPConnectionError: If the target env-var name is unsafe.
-        """
-        try:
-            validate_credential_env_var_name(env_var)
-        except ValueError as exc:
-            logger.warning(
-                MCP_CLIENT_CONNECTION_FAILED,
-                server=self._config.name,
-                reason="credential injection target rejected at spawn",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = (
-                f"Server {self._config.name!r}: credential injection target "
-                f"env-var name is unsafe"
-            )
-            raise MCPConnectionError(
-                msg,
-                context={"server": self._config.name},
-            ) from exc
-
-    def _log_injection(self, connection: str, injected: int, expected: int) -> None:
-        """Log credential injection, escalating a short injection to WARNING.
-
-        ``injected < expected`` means the resolved connection is missing a
-        field the entry declares (a schema mismatch between the catalog entry
-        and the connection's credential type); it presents downstream as an
-        opaque upstream auth failure, so it is surfaced here rather than logged
-        identically to a full injection.
-        """
-        if injected < expected:
-            logger.warning(
-                MCP_CREDENTIALS_INJECTED,
-                server=self._config.name,
-                connection=connection,
-                injected_fields=injected,
-                expected_fields=expected,
-                note="fewer credential fields resolved than the entry declares",
-            )
-            return
-        logger.info(
-            MCP_CREDENTIALS_INJECTED,
-            server=self._config.name,
-            connection=connection,
-            injected_fields=injected,
         )
 
     async def _connect_http(

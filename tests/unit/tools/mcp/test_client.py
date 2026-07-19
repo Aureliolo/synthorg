@@ -138,6 +138,22 @@ class TestMCPClientConnection:
         assert not mock_client.is_connected
         assert mock_client._exit_stack is None
 
+    async def test_disconnect_timeout_latches_unrestartable(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        """A disconnect that times out must refuse a later reconnect.
+
+        The transport close never confirmed, so the child may still be alive; a
+        fresh session over the abandoned one is exactly what the latch blocks.
+        """
+        mock_client._exit_stack = AsyncMock()
+        mock_client._exit_stack.aclose = AsyncMock(side_effect=TimeoutError())
+        await mock_client.disconnect()
+        assert not mock_client.is_connected
+        with pytest.raises(MCPConnectionError, match="unrestartable"):
+            await mock_client.connect()
+
     def test_config_property(
         self,
         stdio_server_config: MCPServerConfig,
@@ -260,8 +276,23 @@ class TestMCPClientCallTool:
         mock_client: MCPClient,
     ) -> None:
         mock_client._session.call_tool.side_effect = TimeoutError()  # type: ignore[union-attr]
+        mock_client.reconnect = AsyncMock()  # type: ignore[method-assign]
         with pytest.raises(MCPTimeoutError, match="timed out"):
             await mock_client.call_tool("slow-tool", {})
+
+    async def test_call_tool_timeout_heals_connection(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        """A timed-out call heals the (likely-stuck) transport for the next call.
+
+        A hung pipe would otherwise be reused and time out again indefinitely.
+        """
+        mock_client._session.call_tool.side_effect = TimeoutError()  # type: ignore[union-attr]
+        mock_client.reconnect = AsyncMock()  # type: ignore[method-assign]
+        with pytest.raises(MCPTimeoutError):
+            await mock_client.call_tool("slow-tool", {})
+        mock_client.reconnect.assert_awaited_once()
 
     async def test_call_tool_error_raises(
         self,

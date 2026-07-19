@@ -16,6 +16,7 @@ from synthorg.observability.events.mcp import (
 from synthorg.tools.mcp.client import MCPClient
 from synthorg.tools.mcp.config import MCPServerConfig
 from synthorg.tools.mcp.errors import MCPConnectionError
+from synthorg.tools.mcp.stdio_credentials import resolve_stdio_launch
 
 pytestmark = pytest.mark.unit
 
@@ -46,7 +47,7 @@ async def test_env_credentials_injected() -> None:
         credential_env_map={"token": "GITHUB_PERSONAL_ACCESS_TOKEN"},
     )
     client = MCPClient(config, credential_source=_StubCreds({"token": "secret123"}))
-    args, env = await client._resolve_stdio_launch()
+    args, env = await resolve_stdio_launch(client._config, client._credential_source)
     assert env is not None
     assert env["GITHUB_PERSONAL_ACCESS_TOKEN"] == "secret123"
     # The secret is forwarded by env var only; it never lands on the argv.
@@ -59,7 +60,7 @@ async def test_secret_never_appears_in_args() -> None:
         credential_env_map={"token": "GITHUB_PERSONAL_ACCESS_TOKEN"},
     )
     client = MCPClient(config, credential_source=_StubCreds({"token": "secret123"}))
-    args, _env = await client._resolve_stdio_launch()
+    args, _env = await resolve_stdio_launch(client._config, client._credential_source)
     assert "secret123" not in args
 
 
@@ -69,13 +70,13 @@ async def test_no_credential_source_leaves_server_unauthenticated() -> None:
         credential_env_map={"token": "GITHUB_PERSONAL_ACCESS_TOKEN"},
     )
     client = MCPClient(config, credential_source=None)
-    _args, env = await client._resolve_stdio_launch()
+    _args, env = await resolve_stdio_launch(client._config, client._credential_source)
     assert env is None or "GITHUB_PERSONAL_ACCESS_TOKEN" not in env
 
 
 async def test_connectionless_server_gets_no_injection() -> None:
     client = MCPClient(_config(), credential_source=_StubCreds({"token": "x"}))
-    args, env = await client._resolve_stdio_launch()
+    args, env = await resolve_stdio_launch(client._config, client._credential_source)
     assert args == ["-y", "pkg"]
     assert env is None
 
@@ -85,7 +86,9 @@ async def test_bound_connection_with_empty_map_warns() -> None:
     config = _config(connection_name="gh")  # no credential_env_map
     client = MCPClient(config, credential_source=_StubCreds({"token": "x"}))
     with structlog.testing.capture_logs() as cap:
-        _args, env = await client._resolve_stdio_launch()
+        _args, env = await resolve_stdio_launch(
+            client._config, client._credential_source
+        )
     assert env is None
     events = [e for e in cap if e.get("event") == MCP_CREDENTIAL_SOURCE_MISSING]
     assert events
@@ -105,7 +108,7 @@ async def test_spawn_boundary_rescreens_mutated_target() -> None:
     config.credential_env_map["token"] = "LD_PRELOAD"
     client = MCPClient(config, credential_source=_StubCreds({"token": "secret123"}))
     with pytest.raises(MCPConnectionError):
-        await client._resolve_stdio_launch()
+        await resolve_stdio_launch(client._config, client._credential_source)
 
 
 async def test_partial_injection_warns() -> None:
@@ -117,7 +120,9 @@ async def test_partial_injection_warns() -> None:
     # Only ``host`` resolves; ``password`` is absent (schema mismatch).
     client = MCPClient(config, credential_source=_StubCreds({"host": "db.internal"}))
     with structlog.testing.capture_logs() as cap:
-        _args, env = await client._resolve_stdio_launch()
+        _args, env = await resolve_stdio_launch(
+            client._config, client._credential_source
+        )
     assert env is not None
     assert env["PGHOST"] == "db.internal"
     assert "PGPASSWORD" not in env
