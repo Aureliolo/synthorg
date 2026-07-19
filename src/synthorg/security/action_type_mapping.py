@@ -26,6 +26,18 @@ DEFAULT_CATEGORY_ACTION_MAP: Final[MappingProxyType[ToolCategory, ActionType]] =
             ToolCategory.DEPLOYMENT: ActionType.DEPLOY_STAGING,
             ToolCategory.MEMORY: ActionType.MEMORY_READ,
             ToolCategory.ONTOLOGY: ActionType.MEMORY_READ,
+            # A remote MCP server is reached over the network, so COMMS_EXTERNAL
+            # is deliberate: it is one of the two action types the network
+            # sub-constraint gates (SubConstraintEnforcer._NETWORK_ACTION_TYPES),
+            # so a SANDBOXED (network=none) agent cannot invoke MCP tools. A
+            # write classification would drop that egress gate -- the dominant
+            # risk for a remote server -- while adding only approval gating that
+            # is empty at the default MCP level (ELEVATED). Per-tool precision
+            # from MCP tool annotations is intentionally NOT derived here: the
+            # MCP spec treats annotations as untrusted hints, so relaxing (or
+            # tightening) a security decision on them is unsafe. MCP tools stay
+            # governed by the ELEVATED permission gate, Docker sandboxing, the
+            # network sub-constraint, and untrusted-output prompt fencing.
             ToolCategory.MCP: ActionType.COMMS_EXTERNAL,
             ToolCategory.BROWSER: ActionType.BROWSER_NAVIGATE,
             ToolCategory.EXTERNAL_DATA: ActionType.EXTERNAL_DATA_REQUEST,

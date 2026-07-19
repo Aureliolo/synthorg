@@ -22,23 +22,16 @@ logger = get_logger(__name__)
 
 
 def _npx_package_arg(entry: CatalogEntry) -> str:
-    """Build the ``npx`` package spec, pinning the version when declared.
+    """Build the version-pinned ``npx`` package spec.
 
     An unpinned spec resolves ``latest`` on every reconnect, so a pinned
-    ``<package>@<version>`` is the supply-chain guard; a bundled entry
-    without a pin is logged so the gap is visible.
+    ``<package>@<version>`` is the supply-chain guard. The caller has already
+    rejected an unpinned stdio entry, so a pin is guaranteed here.
 
     Returns:
-        ``<package>@<version>`` when pinned, else the bare package name.
+        ``<package>@<version>``.
     """
-    if entry.npm_version:
-        return f"{entry.npm_package}@{entry.npm_version}"
-    logger.warning(
-        MCP_SERVER_INSTALL_VALIDATION_FAILED,
-        entry_id=entry.id,
-        reason="npm_package is not version-pinned; npx will resolve 'latest'",
-    )
-    return str(entry.npm_package)
+    return f"{entry.npm_package}@{entry.npm_version}"
 
 
 def installation_to_server_config(
@@ -64,13 +57,27 @@ def installation_to_server_config(
 
     Raises:
         ValueError: If the catalog entry lacks the fields required for
-            its transport (``npm_package`` for stdio).
+            its transport (a pinned ``npm_package``/``npm_version`` for stdio).
     """
     if entry.transport == "stdio":
         if not entry.npm_package:
             msg = (
                 f"Catalog entry '{entry.id}' is stdio but has no "
                 "npm_package; cannot materialize server config"
+            )
+            logger.warning(
+                MCP_SERVER_INSTALL_VALIDATION_FAILED,
+                entry_id=entry.id,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if not entry.npm_version:
+            # An unpinned stdio spec would let npx resolve 'latest' on every
+            # reconnect, defeating the supply-chain pin; reject rather than
+            # launch an unpinned package.
+            msg = (
+                f"Catalog entry '{entry.id}' is stdio but has no "
+                "npm_version; refusing to launch an unpinned package"
             )
             logger.warning(
                 MCP_SERVER_INSTALL_VALIDATION_FAILED,

@@ -163,6 +163,16 @@ class TestMCPServerConfigDefaults:
         )
         assert cfg.connection_name == "bound"
 
+    def test_credential_map_without_connection_rejected(self) -> None:
+        """A credential map with no bound connection has nothing to resolve."""
+        with pytest.raises(ValidationError, match="connection_name"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="echo",
+                credential_env_map={"token": "TOKEN"},
+            )
+
     def test_frozen(self) -> None:
         cfg = MCPServerConfig(
             name="s1",

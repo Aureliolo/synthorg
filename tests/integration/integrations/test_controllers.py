@@ -702,7 +702,7 @@ class TestMCPCatalogController:
         )
         # Bundled catalog ships the connection-gated integrations; cursor
         # pagination returns the first page plus pagination metadata.
-        assert len(response.data) >= 5
+        assert len(response.data) == 3
 
     async def test_browse_rejects_tampered_cursor(self) -> None:
         from synthorg.api.controllers.mcp_catalog import MCPCatalogController

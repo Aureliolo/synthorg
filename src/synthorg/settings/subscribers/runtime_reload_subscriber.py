@@ -42,6 +42,14 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("coordination", "decomposition_model"),
         ("design", "image_generation_enabled"),
         ("design", "image_model"),
+        # The tool registry and the planning-agent grant bake in the native
+        # web-search provider, which ``build_runtime_services`` re-resolves from
+        # these keys on a rebuild; without watching them a provider / connection
+        # / ceiling change would not go live until an unrelated rebuild.
+        ("tools", "web_search_enabled"),
+        ("tools", "web_search_provider"),
+        ("tools", "web_search_connection"),
+        ("tools", "web_search_max_results"),
         # Auto-review + the completion oracle are wired into the runtime on a
         # rebuild: the pipeline is (re)built by ``build_runtime_services`` and
         # the oracle gates are re-attached to the review-gate service, so an

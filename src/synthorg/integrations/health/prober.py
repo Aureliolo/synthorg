@@ -75,9 +75,9 @@ def bind_health_check_catalog(catalog: ConnectionCatalog) -> None:
     """Bind a catalog to every checker that exposes ``bind_catalog``.
 
     The check registry is instantiated at import time, before the
-    catalog exists. Health checks that need to fetch credentials
-    (GitHub, Slack, and the credential-aware generic HTTP probe) expose
-    ``bind_catalog`` so the live catalog can be injected at app startup.
+    catalog exists. Health checks that need to fetch credentials (the
+    connection-bound checkers and the credential-aware generic HTTP probe)
+    expose ``bind_catalog`` so the live catalog can be injected at app startup.
     """
     for checker in _CHECK_REGISTRY.values():
         bind = getattr(checker, "bind_catalog", None)

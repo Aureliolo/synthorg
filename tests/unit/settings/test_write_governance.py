@@ -206,6 +206,66 @@ async def test_engine_oracle_strengthening_or_unguarded_key_is_unguarded(
     )
 
 
+@pytest.mark.parametrize(
+    ("key", "current", "new"),
+    [
+        ("mcp_sandbox_enabled", "true", "false"),  # disable sandbox
+        ("mcp_sandbox_network", "bridge", "host"),  # share host network
+        ("mcp_sandbox_cpus", "1.0", "0"),  # lift CPU quota
+        ("mcp_sandbox_cpus", "1.0", "0.0"),
+    ],
+)
+async def test_mcp_sandbox_weakening_without_confirmation_rejected(
+    key: str, current: str, new: str
+) -> None:
+    """Removing an MCP sandbox isolation boundary is a guarded weakening."""
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await enforce_security_write_governance(
+            [("tools", key, new)],
+            governance=None,
+            get_current=_current_factory({("tools", key): current}),
+        )
+
+
+@pytest.mark.parametrize(
+    ("key", "current", "new"),
+    [
+        ("mcp_sandbox_enabled", "true", "false"),
+        ("mcp_sandbox_network", "bridge", "host"),
+        ("mcp_sandbox_cpus", "2.0", "0"),
+    ],
+)
+async def test_mcp_sandbox_weakening_with_confirmation_allowed(
+    key: str, current: str, new: str
+) -> None:
+    await enforce_security_write_governance(
+        [("tools", key, new)],
+        governance=_SATISFIED,
+        get_current=_current_factory({("tools", key): current}),
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "current", "new"),
+    [
+        ("mcp_sandbox_enabled", "false", "true"),  # re-enable = strengthen
+        ("mcp_sandbox_network", "host", "bridge"),  # re-isolate = strengthen
+        ("mcp_sandbox_network", "bridge", "none"),  # block egress = strengthen
+        ("mcp_sandbox_cpus", "0", "1.0"),  # re-cap = strengthen
+        ("mcp_sandbox_cpus", "2.0", "1.0"),  # lower cap = not weakening
+        ("mcp_sandbox_pids_limit", "256", "512"),  # not a guarded key
+    ],
+)
+async def test_mcp_sandbox_strengthening_or_unguarded_is_unguarded(
+    key: str, current: str, new: str
+) -> None:
+    await enforce_security_write_governance(
+        [("tools", key, new)],
+        governance=None,
+        get_current=_current_factory({("tools", key): current}),
+    )
+
+
 def _entry_factory(
     values: dict[tuple[str, str], str],
 ) -> Callable[[str, str], Awaitable[SettingValue]]:

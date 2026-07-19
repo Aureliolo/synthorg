@@ -6,14 +6,13 @@ from typing import TYPE_CHECKING, cast
 import pytest
 import structlog
 
-from synthorg.core.clock import SystemClock
 from synthorg.integrations.connections.models import Connection
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
 from synthorg.workers._web_search_provider_wiring import (
     build_web_search_provider_or_none,
 )
-from tests._shared import mock_of
+from tests._shared import FakeClock, mock_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -43,7 +42,7 @@ def _app_state(*, catalog: object) -> AppState:
         SimpleNamespace(
             slice=lambda _cls: integrations,
             config=config,
-            clock=SystemClock(),
+            clock=FakeClock(),
         ),
     )
 

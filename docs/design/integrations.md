@@ -186,22 +186,24 @@ child that died after boot surfaces as unhealthy without re-spawning it.
 
 ## MCP Server Catalog
 
-Static JSON catalog (`bundled.json`) with 5 curated MCP server entries:
-GitHub, Slack, PostgreSQL, SQLite, Brave Search (`@brave/brave-search-mcp-server`).
-Each entry is connection-gated (it declares a `required_connection_type`);
-no entry runs without a bound connection. A database entry additionally
-declares `required_dialect` so `postgres-mcp` and `sqlite-mcp` (which share
-`ConnectionType.DATABASE`) cannot be bound to the wrong dialect.
+Static JSON catalog (`bundled.json`) of curated MCP server entries: GitHub,
+Slack, and Brave Search (`@brave/brave-search-mcp-server`). Each bundled entry
+is connection-gated (it declares a `required_connection_type`); no entry runs
+without a bound connection. Every stdio entry pins an exact `npm_version` (an
+unpinned `npx` spec would resolve `latest` on every reconnect, defeating the
+supply-chain pin). A database-typed entry additionally declares
+`required_dialect` so entries sharing `ConnectionType.DATABASE` cannot be bound
+to a connection of the wrong dialect.
 
 ### Credential injection
 
-A catalog entry declares a `credential_env_map` (credential field to
-environment variable) and/or `credential_arg_map` (credential field to
-command-line flag). The bound connection's secrets are resolved from the
-connection catalog and injected into the spawned server **at connect time**,
-never persisted into the stored `MCPServerConfig` (which only records the
-connection name and the maps). Missing credentials are logged loudly rather
-than silently producing an unauthenticated server.
+A catalog entry declares a `credential_env_map` (credential field to environment
+variable). The bound connection's secrets are resolved from the connection
+catalog and injected into the spawned server's environment **at connect time**,
+never persisted into the stored `MCPServerConfig` (which records only the
+connection name and the map) and never placed on the process argv (where a
+secret would be visible via `ps`/`/proc`). Missing credentials are logged loudly
+rather than silently producing an unauthenticated server.
 
 ### Sandboxing
 

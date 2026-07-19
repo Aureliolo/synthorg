@@ -46,10 +46,44 @@ def _connectionless_catalog(tmp_path: Path) -> CatalogService:
                         "name": "Test Local",
                         "description": "Connectionless test server",
                         "npm_package": "@example/server-test-local",
+                        "npm_version": "1.0.0",
                         "required_connection_type": None,
                         "transport": "stdio",
                         "capabilities": ["alpha", "beta"],
                         "tags": ["test", "local"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return CatalogService(catalog_path=catalog_path)
+
+
+def _dialect_catalog(tmp_path: Path) -> CatalogService:
+    """A ``CatalogService`` over one synthetic database entry with a dialect.
+
+    The bundled catalog ships no database-typed MCP server, so the
+    dialect-gated install path is exercised against a synthetic
+    ``test-db-mcp`` entry requiring the ``postgres`` dialect.
+    """
+    catalog_path = tmp_path / "db-catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "servers": [
+                    {
+                        "id": "test-db-mcp",
+                        "name": "Test DB",
+                        "description": "Database test server",
+                        "npm_package": "@example/server-test-db",
+                        "npm_version": "1.0.0",
+                        "required_connection_type": "database",
+                        "required_dialect": "postgres",
+                        "transport": "stdio",
+                        "capabilities": ["sql_query"],
+                        "tags": ["test", "database"],
+                        "credential_env_map": {"password": "PGPASSWORD"},
                     }
                 ]
             }
@@ -66,7 +100,7 @@ class TestCatalogService:
     async def test_browse_returns_entries(self) -> None:
         service = CatalogService()
         entries = await service.browse()
-        assert len(entries) >= 4
+        assert len(entries) == 3
 
     async def test_browse_entries_have_required_fields(self) -> None:
         service = CatalogService()
@@ -84,7 +118,7 @@ class TestCatalogService:
 
     async def test_search_by_tag(self) -> None:
         service = CatalogService()
-        results = await service.search("database")
+        results = await service.search("web")
         assert len(results) >= 1
 
     async def test_search_case_insensitive(self) -> None:
@@ -245,9 +279,9 @@ class TestCatalogInstall:
                 installations_repo=repo,
             )
 
-    async def test_install_dialect_match_succeeds(self) -> None:
-        """postgres-mcp binds a database connection whose dialect is postgres."""
-        service = CatalogService()
+    async def test_install_dialect_match_succeeds(self, tmp_path: Path) -> None:
+        """A database entry binds a connection whose dialect matches."""
+        service = _dialect_catalog(tmp_path)
         repo = InMemoryMcpInstallationRepository()
         catalog = FakeConnectionCatalog()
         catalog.add(
@@ -255,16 +289,16 @@ class TestCatalogInstall:
             creds={"dialect": "postgres"},
         )
         result = await service.install(
-            "postgres-mcp",
+            "test-db-mcp",
             "pg-conn",
             connection_catalog=catalog,  # type: ignore[arg-type]
             installations_repo=repo,
         )
         assert result.connection_name == "pg-conn"
 
-    async def test_install_dialect_mismatch_rejected(self) -> None:
-        """A sqlite-dialect connection cannot bind the postgres-mcp entry."""
-        service = CatalogService()
+    async def test_install_dialect_mismatch_rejected(self, tmp_path: Path) -> None:
+        """A sqlite-dialect connection cannot bind a postgres-dialect entry."""
+        service = _dialect_catalog(tmp_path)
         repo = InMemoryMcpInstallationRepository()
         catalog = FakeConnectionCatalog()
         catalog.add(
@@ -273,11 +307,30 @@ class TestCatalogInstall:
         )
         with pytest.raises(InvalidConnectionAuthError):
             await service.install(
-                "postgres-mcp",
+                "test-db-mcp",
                 "sqlite-conn",
                 connection_catalog=catalog,  # type: ignore[arg-type]
                 installations_repo=repo,
             )
+
+    async def test_install_dialect_match_strips_whitespace(
+        self, tmp_path: Path
+    ) -> None:
+        """A stored dialect with surrounding whitespace still matches."""
+        service = _dialect_catalog(tmp_path)
+        repo = InMemoryMcpInstallationRepository()
+        catalog = FakeConnectionCatalog()
+        catalog.add(
+            _make_connection("pg-conn", ConnectionType.DATABASE),
+            creds={"dialect": "  postgres  "},
+        )
+        result = await service.install(
+            "test-db-mcp",
+            "pg-conn",
+            connection_catalog=catalog,  # type: ignore[arg-type]
+            installations_repo=repo,
+        )
+        assert result.connection_name == "pg-conn"
 
     async def test_uninstall_existing(self, tmp_path: Path) -> None:
         service = _connectionless_catalog(tmp_path)

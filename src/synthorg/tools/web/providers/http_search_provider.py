@@ -16,7 +16,8 @@ governed external-access tool uses); nothing about the provider is
 vendor-specific beyond the injected preset.
 """
 
-from collections.abc import Awaitable, Callable, Mapping
+import copy
+from collections.abc import Mapping
 from typing import Final, Protocol, runtime_checkable
 
 import httpx
@@ -62,7 +63,6 @@ _DEFAULT_RETRY_ATTEMPTS: Final[int] = 3
 _DEFAULT_RETRY_BASE: Final[float] = 0.5
 _DEFAULT_RETRY_CAP: Final[float] = 8.0
 _HTTP_BAD_REQUEST: Final[int] = 400
-_HTTP_TOO_MANY_REQUESTS: Final[int] = 429
 _RETRYABLE_STATUSES: Final[frozenset[int]] = frozenset({429, 500, 502, 503, 504})
 
 
@@ -183,20 +183,20 @@ class HttpWebSearchProvider:
 
         # Each retry attempt is a real request, so the rate limit wraps the
         # per-attempt call (retries count against the ceiling), not the outer
-        # retry loop.
-        rate_limited: Callable[[], Awaitable[list[SearchResult]]] = (
-            with_connection_rate_limit(
-                self._connection_name,
-                config=self._rate_limiter,
-            )(
-                lambda: self._request_once(
-                    query=query,
-                    count=count,
-                    key=key,
-                    validation=validation,
-                ),
-            )
+        # retry loop. A coroutine function (not a lambda returning a coroutine)
+        # so a decorator that inspects ``iscoroutinefunction`` gates the actual
+        # request, not just the instantaneous coroutine creation.
+        @with_connection_rate_limit(
+            self._connection_name,
+            config=self._rate_limiter,
         )
+        async def rate_limited() -> list[SearchResult]:
+            return await self._request_once(
+                query=query,
+                count=count,
+                key=key,
+                validation=validation,
+            )
 
         return await self._retry.execute(rate_limited, provider=self._preset.id)
 
@@ -338,9 +338,14 @@ class HttpWebSearchProvider:
                 headers=headers,
                 timeout=self._timeout,
             )
+        # Deep-copy the preset's constant extra: ``get_search_preset`` hands out
+        # the shared registry instance, and ``extra`` is a mutable dict (nested,
+        # so a shallow spread still aliases sub-dicts) on the frozen model.
+        # Copying at this boundary keeps a per-request body from mutating the
+        # shared preset used by every later request.
         body: dict[str, JsonValue] = {
             self._preset.query_key: query,
-            **self._preset.extra,
+            **copy.deepcopy(self._preset.extra),
         }
         if self._preset.count_key is not None:
             body[self._preset.count_key] = count
@@ -367,7 +372,7 @@ class HttpWebSearchProvider:
         """
         status = response.status_code
         if status in _RETRYABLE_STATUSES:
-            retry_after = self._retry_after_seconds(response, status)
+            retry_after = self._retry_after_seconds(response)
             logger.warning(
                 WEB_SEARCH_FAILED,
                 provider=self._preset.id,
@@ -402,18 +407,17 @@ class HttpWebSearchProvider:
     def _retry_after_seconds(
         self,
         response: httpx.Response,
-        status: int,
     ) -> float | None:
-        """Parse a ``Retry-After`` header (429 especially) into seconds.
+        """Parse a ``Retry-After`` header into seconds for any retryable status.
 
-        Honouring the server's own cooldown avoids hammering a rate-limited
-        provider through its quota window on the fixed exponential schedule.
+        Honouring the server's own cooldown avoids hammering a rate-limited or
+        temporarily-unavailable provider (429, 503, ...) on the fixed
+        exponential schedule; the header is advisory on every retryable status,
+        not just 429.
 
         Returns:
             The parsed non-negative delay, or ``None`` when absent/unparseable.
         """
-        if status != _HTTP_TOO_MANY_REQUESTS:
-            return None
         raw = response.headers.get("Retry-After")
         if raw is None:
             return None

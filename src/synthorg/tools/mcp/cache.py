@@ -185,19 +185,6 @@ class MCPResultCache:
         return (tool_name, _make_hashable(arguments))
 
 
-def make_arguments_hashable(arguments: dict[str, object]) -> Hashable:
-    """Freeze tool arguments into a hashable key.
-
-    Shared with the bridge tool's single-flight coalescing so both derive the
-    same key shape from a given argument dict (raises ``TypeError`` on an
-    unhashable leaf, which callers treat as "not coalescable / not cacheable").
-
-    Returns:
-        A hashable representation of ``arguments``.
-    """
-    return _make_hashable(arguments)
-
-
 def _make_hashable(obj: object) -> Hashable:
     """Recursively freeze a value into a hashable form.
 

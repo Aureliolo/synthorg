@@ -171,8 +171,23 @@ class MCPServerConfig(BaseModel):
             Result of type ``Self``.
 
         Raises:
-            ValueError: If credential binding is set on a non-stdio transport.
+            ValueError: If credential binding is set on a non-stdio transport,
+                or a credential map is declared without a bound connection.
         """
+        if self.connection_name is None and self.credential_env_map:
+            # A map with no connection has nothing to resolve from; the client's
+            # stdio launch would silently skip it, leaving a credential-required
+            # server spawned unauthenticated. Reject at construction instead.
+            msg = (
+                f"Server {self.name!r}: credential_env_map requires a bound "
+                f"connection_name"
+            )
+            logger.warning(
+                MCP_CONFIG_VALIDATION_FAILED,
+                server=self.name,
+                reason=msg,
+            )
+            raise ValueError(msg)
         if self.transport == "stdio":
             return self
         if self.connection_name is not None or self.credential_env_map:

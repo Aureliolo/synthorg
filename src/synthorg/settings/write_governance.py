@@ -1,11 +1,13 @@
 """Deliberate-action guardrail for security-weakening settings writes.
 
-Turning a security toggle off (or switching the output-scan policy to the
-permissive ``log_only``) reduces the running security posture. Because those
-settings are now hot-reloadable, the write path enforces a deliberate
-confirm + reason + actor for the weakening direction so neither an HTTP import,
-an MCP handler, nor a CLI/import path can silently disable scanning or audit.
-Enabling / tightening is unguarded and applies immediately.
+Turning a security toggle off (switching the output-scan policy to the
+permissive ``log_only``, disabling the MCP sandbox, giving a sandbox container
+the host network, or lifting its CPU quota) reduces the running security
+posture. Because those settings are now hot-reloadable, the write path enforces
+a deliberate confirm + reason + actor for the weakening direction so neither an
+HTTP import, an MCP handler, nor a CLI/import path can silently disable scanning,
+audit, or an isolation boundary. Enabling / tightening is unguarded and applies
+immediately.
 
 The guard is enforced centrally in :class:`SettingsService` (both the single
 and batch write paths) so every surface inherits it; callers thread a
@@ -33,6 +35,7 @@ logger = get_logger(__name__)
 
 _SECURITY_NS: Final[str] = SettingNamespace.SECURITY.value
 _ENGINE_NS: Final[str] = SettingNamespace.ENGINE.value
+_TOOLS_NS: Final[str] = SettingNamespace.TOOLS.value
 
 # Boolean security toggles whose ``true -> false`` transition weakens posture.
 _WEAKENING_BOOL_KEYS: Final[frozenset[str]] = frozenset(
@@ -60,6 +63,54 @@ _ENGINE_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
 # Registered default for the enable toggle, consulted when the key is unset so
 # a first explicit weakening write (no stored current) is still guarded.
 _ENGINE_ORACLE_ENABLED_DEFAULT: Final[str] = "true"
+
+# MCP sandbox isolation keys in the ``tools`` namespace. Disabling the sandbox,
+# switching a container to the host network namespace, or lifting the CPU cgroup
+# cap each remove an isolation boundary around an untrusted stdio MCP server, so
+# they route through the same deliberate confirm+reason+actor guardrail.
+_MCP_SANDBOX_ENABLED_KEY: Final[str] = "mcp_sandbox_enabled"
+_MCP_SANDBOX_NETWORK_KEY: Final[str] = "mcp_sandbox_network"
+_MCP_SANDBOX_CPUS_KEY: Final[str] = "mcp_sandbox_cpus"
+_MCP_SANDBOX_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        _MCP_SANDBOX_ENABLED_KEY,
+        _MCP_SANDBOX_NETWORK_KEY,
+        _MCP_SANDBOX_CPUS_KEY,
+    }
+)
+_MCP_SANDBOX_ENABLED_DEFAULT: Final[str] = "true"
+# Docker ``--network host`` shares the host network namespace, removing egress
+# isolation; ``--cpus 0`` lifts the CPU quota entirely.
+_MCP_SANDBOX_HOST_NETWORK: Final[str] = "host"
+
+
+def _is_unlimited_cpus(value: str) -> bool:
+    """Return whether a ``mcp_sandbox_cpus`` value removes the CPU quota."""
+    try:
+        return float(value) == 0
+    except ValueError:
+        # A malformed value is rejected downstream by the validator; do not
+        # treat an unparseable quota as a weakening transition.
+        return False
+
+
+def _is_mcp_sandbox_weakening(key: str, *, current: str | None, new: str) -> bool:
+    """Return whether a ``tools.*`` MCP sandbox change relaxes isolation."""
+    if key == _MCP_SANDBOX_ENABLED_KEY:
+        currently_on = current is None or compare_ci(
+            current, _MCP_SANDBOX_ENABLED_DEFAULT
+        )
+        return currently_on and not compare_ci(new, "true")
+    if key == _MCP_SANDBOX_NETWORK_KEY:
+        new_host = compare_ci(new, _MCP_SANDBOX_HOST_NETWORK)
+        current_host = current is not None and compare_ci(
+            current, _MCP_SANDBOX_HOST_NETWORK
+        )
+        return new_host and not current_host
+    if key == _MCP_SANDBOX_CPUS_KEY:
+        current_unlimited = current is not None and _is_unlimited_cpus(current)
+        return _is_unlimited_cpus(new) and not current_unlimited
+    return False
 
 
 def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
@@ -110,6 +161,8 @@ def _is_guarded(namespace: str, key: str) -> bool:
         return key in _WEAKENING_BOOL_KEYS or key == _OUTPUT_SCAN_POLICY_KEY
     if namespace == _ENGINE_NS:
         return key in _ENGINE_GUARDED_KEYS
+    if namespace == _TOOLS_NS:
+        return key in _MCP_SANDBOX_GUARDED_KEYS
     return False
 
 
@@ -117,6 +170,8 @@ def _is_weakening(namespace: str, key: str, *, current: str | None, new: str) ->
     """Return whether ``current -> new`` weakens the posture for *namespace.key*."""
     if namespace == _ENGINE_NS:
         return _is_engine_weakening(key, current=current, new=new)
+    if namespace == _TOOLS_NS:
+        return _is_mcp_sandbox_weakening(key, current=current, new=new)
     if key in _WEAKENING_BOOL_KEYS:
         # Weakening only when turning a currently-enabled toggle off. A
         # missing current value (first write) is treated as the registered

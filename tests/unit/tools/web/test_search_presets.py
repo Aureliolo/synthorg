@@ -1,6 +1,7 @@
 """Unit tests for the native web-search provider presets."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.tools.web.providers.presets import (
     DEFAULT_SEARCH_PROVIDER_ID,
@@ -42,7 +43,7 @@ class TestSearchPresets:
     def test_preset_is_frozen(self) -> None:
         preset = get_search_preset("brave")
         assert preset is not None
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             preset.endpoint = "https://evil.example"  # type: ignore[misc]
 
     @pytest.mark.unit

@@ -25,25 +25,6 @@
       "credential_env_map": {"token": "SLACK_BOT_TOKEN", "team_id": "SLACK_TEAM_ID"}
     },
     {
-      "id": "postgres-mcp",
-      "name": "PostgreSQL",
-      "description": "Query and manage PostgreSQL databases",
-      "npm_package": "@modelcontextprotocol/server-postgres",
-      "npm_version": "0.6.2",
-      "required_connection_type": "database",
-      "required_dialect": "postgres",
-      "transport": "stdio",
-      "capabilities": ["sql_query", "schema_inspect", "data_mutation"],
-      "tags": ["database", "sql"],
-      "credential_env_map": {
-        "host": "PGHOST",
-        "port": "PGPORT",
-        "database": "PGDATABASE",
-        "username": "PGUSER",
-        "password": "PGPASSWORD"
-      }
-    },
-    {
       "id": "brave-search-mcp",
       "name": "Brave Search",
       "description": "Web and local search via the Brave Search API",

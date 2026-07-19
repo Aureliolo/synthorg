@@ -129,39 +129,35 @@ class TestBridgeToolExecute:
         assert result.is_error
         assert "invocation error" in result.content
 
-    async def test_concurrent_identical_calls_coalesce(
+    async def test_concurrent_identical_calls_each_execute(
         self,
         bridge_tool: MCPBridgeTool,
         mock_client: MCPClient,
     ) -> None:
-        """Two racing identical calls share one server call (no double-execute).
+        """Two racing identical calls each hit the server (not coalesced).
 
-        The single-flight guard is what stops a mutating tool from running
-        twice when two agents race the same invocation before either caches it.
+        An MCP tool carries no trusted idempotency signal, so two authorised
+        identical invocations are two distinct intended side effects (e.g. two
+        ``send_message`` calls with the same body) and neither may be silently
+        dropped. This pins that the bridge does not single-flight-coalesce.
         """
         import asyncio
 
         session_result = mock_client._session.call_tool.return_value  # type: ignore[union-attr]
-        gate = asyncio.Event()
-        first_started = asyncio.Event()
         calls = 0
 
-        async def _slow(*_a: object, **_k: object) -> object:
+        async def _count(*_a: object, **_k: object) -> object:
             nonlocal calls
             calls += 1
-            first_started.set()
-            await gate.wait()
             return session_result
 
-        mock_client._session.call_tool.side_effect = _slow  # type: ignore[union-attr]
+        mock_client._session.call_tool.side_effect = _count  # type: ignore[union-attr]
         args = {"q": "same"}
-        t1 = asyncio.create_task(bridge_tool.execute(arguments=dict(args)))
-        await first_started.wait()  # t1 now holds the in-flight future
-        t2 = asyncio.create_task(bridge_tool.execute(arguments=dict(args)))
-        await asyncio.sleep(0)  # let t2 reach the in-flight await
-        gate.set()
-        r1, r2 = await asyncio.gather(t1, t2)
-        assert calls == 1
+        r1, r2 = await asyncio.gather(
+            bridge_tool.execute(arguments=dict(args)),
+            bridge_tool.execute(arguments=dict(args)),
+        )
+        assert calls == 2
         assert r1.content == r2.content
 
 

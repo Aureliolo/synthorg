@@ -219,10 +219,17 @@ class MCPToolFactory:
         N-server shutdown into N x the per-client timeout).
         """
         try:
-            await asyncio.gather(
+            outcomes = await asyncio.gather(
                 *(self._disconnect_one(client) for client in self._clients),
                 return_exceptions=True,
             )
+            # ``return_exceptions=True`` also captures interpreter-critical
+            # exceptions (MemoryError/RecursionError) that ``_disconnect_one``
+            # re-raises past its broad handler; surface them rather than let
+            # gather bury them as inspected-but-discarded results.
+            for outcome in outcomes:
+                if isinstance(outcome, BaseException):
+                    reraise_critical(outcome)
         finally:
             self._clients.clear()
 

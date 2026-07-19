@@ -422,8 +422,8 @@ class CatalogEntry(BaseModel):
     def _validate_required_dialect(self) -> Self:
         """Reject a ``required_dialect`` outside the known dialect set.
 
-        Guards against a typo in a hand-authored or DB-installed entry
-        (e.g. ``"postgress"``) that would silently never match a real
+        Guards against a misspelled dialect in a hand-authored or
+        DB-installed entry that would silently never match a real
         connection's dialect and leave the entry uninstallable.
 
         Returns:
@@ -438,6 +438,34 @@ class CatalogEntry(BaseModel):
             msg = (
                 f"Catalog entry {self.id!r}: required_dialect "
                 f"{self.required_dialect!r} is not one of {sorted(VALID_DIALECTS)}"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_stdio_is_version_pinned(self) -> Self:
+        """Require a pinned ``npm_version`` on every launchable stdio entry.
+
+        An unpinned ``npx`` spec resolves ``latest`` on every reconnect, so a
+        newly-published (potentially compromised) release would be pulled
+        silently. Pinning is the supply-chain guard, enforced at the model so a
+        hand-authored or DB-installed stdio entry cannot bypass it.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If a stdio entry names an ``npm_package`` without a
+                pinned ``npm_version``.
+        """
+        if (
+            self.transport == "stdio"
+            and self.npm_package is not None
+            and self.npm_version is None
+        ):
+            msg = (
+                f"Catalog entry {self.id!r}: stdio entries must pin npm_version "
+                f"(npm_package {self.npm_package!r} would resolve 'latest')"
             )
             raise ValueError(msg)
         return self

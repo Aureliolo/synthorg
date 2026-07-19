@@ -350,10 +350,14 @@ class CatalogService:
                 )
                 raise InvalidConnectionAuthError(msg)
             if entry.required_dialect is not None:
-                # postgres-mcp and sqlite-mcp share ConnectionType.DATABASE, so
-                # the type check above cannot tell them apart; the dialect does.
+                # A database connection's dialect disambiguates entries that
+                # share ConnectionType.DATABASE, which the type check above
+                # cannot. Strip so a stored "  postgres " (which the database
+                # authenticator accepts after trimming) is not spuriously
+                # rejected here.
                 creds = await connection_catalog.get_credentials(connection_name)
-                dialect = creds.get("dialect")
+                raw_dialect = creds.get("dialect")
+                dialect = raw_dialect.strip() if isinstance(raw_dialect, str) else None
                 if dialect != entry.required_dialect:
                     msg = (
                         f"Connection '{connection_name}' has dialect "

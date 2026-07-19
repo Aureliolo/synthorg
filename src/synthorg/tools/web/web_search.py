@@ -169,7 +169,7 @@ class WebSearchTool(BaseWebTool):
 
     def _coerce_results(
         self,
-        results: list[SearchResult],
+        results: list[SearchResult] | None,
         query: str,
         max_results: int,
     ) -> list[SearchResult]:
@@ -181,6 +181,11 @@ class WebSearchTool(BaseWebTool):
         Returns:
             The validated results, capped to ``max_results``.
         """
+        if not results:
+            # A custom / MCP-bridged provider may return ``None`` instead of an
+            # empty list; treat both as "no results" rather than crashing on
+            # ``list(None)``.
+            return []
         validated: list[SearchResult] = []
         for item in list(results)[:max_results]:
             try:
