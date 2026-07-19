@@ -483,6 +483,25 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
         )
 
 
+async def wire_conversational_write_path(
+    app_state: AppState,
+    *,
+    si_config: SelfImprovementConfig,
+) -> None:
+    """Wire both governed chat-action services (direct-MCP actor + console).
+
+    The two share the boot engine and the same fail-closed gating shape, so
+    boot brings them up together. Each remains individually idempotent and
+    fail-closed.
+    """
+    from synthorg.api.lifecycle_helpers.conversational_console_wiring import (  # noqa: PLC0415
+        wire_operator_console,
+    )
+
+    await wire_conversational_actor(app_state, si_config=si_config)
+    await wire_operator_console(app_state, si_config=si_config)
+
+
 async def wire_conversational_plan_dispatcher(app_state: AppState) -> None:
     """Attach the plan dispatcher to the proposer once its deps are up.
 
@@ -533,5 +552,6 @@ __all__ = [
     "wire_chief_of_staff_proposer",
     "wire_conversational_actor",
     "wire_conversational_plan_dispatcher",
+    "wire_conversational_write_path",
     "wire_group_chat_service",
 ]

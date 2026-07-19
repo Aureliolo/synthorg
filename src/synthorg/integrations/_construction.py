@@ -39,6 +39,7 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
                 if integrations.connection_catalog is not None
                 else None
             ),
+            secret_capture_service=integrations.secret_capture_service,
             oauth_token_manager=integrations.oauth_token_manager,
             health_prober_service=integrations.health_prober_service,
             tunnel_provider=tunnel,

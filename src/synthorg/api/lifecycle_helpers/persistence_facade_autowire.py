@@ -147,9 +147,13 @@ async def _wire_ontology_facade_service(app_state: AppState) -> None:
 async def _wire_mcp_catalog_facade_service(app_state: AppState) -> None:
     """Wire ``MCPCatalogFacadeService`` once its catalog + repo are present.
 
-    The catalog service and installation repo are wired onto the
-    integrations slice during ``_init_persistence``; the MCP-catalog read/
-    install tools 503 until both are available.
+    Gated only on the catalog service and installation repo (both wired
+    unconditionally when persistence is connected). The connection catalog is
+    passed through but may be ``None``: it is needed only to validate a
+    *connection-bound* install, and ``CatalogService.install`` already raises
+    for a connection-bound entry when it is absent, so a *connectionless*
+    entry must still install even when the feature-flagged connection catalog
+    is not wired (e.g. ``integrations.enabled=false``).
     """
     integrations = app_state.slice(IntegrationsStateSlice)
     if (
@@ -168,6 +172,7 @@ async def _wire_mcp_catalog_facade_service(app_state: AppState) -> None:
             mcp_catalog_facade_service=MCPCatalogFacadeService(
                 catalog=integrations.mcp_catalog_service,
                 installations=integrations.mcp_installations_repo,
+                connection_catalog=integrations.connection_catalog,
             ),
         )
         logger.info(API_SERVICE_AUTO_WIRED, service="mcp_catalog_facade_service")

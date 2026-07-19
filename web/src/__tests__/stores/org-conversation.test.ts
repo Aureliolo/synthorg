@@ -43,6 +43,7 @@ function proposeTurn(closed: boolean) {
     },
     group: null,
     act: null,
+    configure: null,
     charter: null,
     chime_ins: [],
   })
@@ -101,6 +102,7 @@ describe('useOrgConversationStore', () => {
       propose: null,
       group: null,
       act: null,
+      configure: null,
       charter: null,
       chime_ins: [],
     }

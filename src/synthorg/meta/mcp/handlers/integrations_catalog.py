@@ -158,22 +158,38 @@ async def _mcp_catalog_install(
     app_state: AppState,
     arguments: dict[str, object],
     actor: AgentIdentity | None = None,
-    # lint-allow: mcp-admin-guardrail -- install records new entry; no state mutated
 ) -> str:
-    """Install an MCP catalog entry (non-destructive create).
+    """Install an MCP catalog entry (admin op; enforces guardrails).
+
+    Installing binds a catalog entry to a connection and records an
+    installation, so it mutates state and carries the same confirm + role +
+    actor-audit guardrails as the other admin ops.
 
     Returns:
         Resulting string.
     """
     tool = "synthorg_mcp_catalog_install"
     try:
-        entry_id = typed_args(arguments, McpCatalogInstallArgs).entry_id
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        install_args = typed_args(arguments, McpCatalogInstallArgs)
+        actor_id = require_actor_id(resolved_actor)
         result = await mcp_catalog_facade_service_of(app_state).install_catalog_entry(
-            entry_id=entry_id,
-            actor_id=require_actor_id(actor),
+            entry_id=install_args.entry_id,
+            connection_name=install_args.connection_name,
+            actor_id=actor_id,
+        )
+        logger.info(
+            MCP_ADMIN_OP_EXECUTED,
+            tool_name=tool,
+            actor_agent_id=actor_id,
+            reason=reason,
+            entry_id=install_args.entry_id,
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)

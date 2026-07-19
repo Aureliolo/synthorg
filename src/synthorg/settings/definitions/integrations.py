@@ -131,6 +131,25 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.INTEGRATIONS,
+        key="secret_capture_ttl_seconds",
+        type=SettingType.INTEGER,
+        default="600",
+        description=(
+            "Lifetime (seconds) of an out-of-band secret-capture handle used"
+            " by the conversational setup flow before it expires and is swept."
+            " Kept short so a captured credential lives only long enough to be"
+            " consumed by connections.create."
+        ),
+        group="Connections",
+        level=SettingLevel.ADVANCED,
+        min_value=30,
+        max_value=3_600,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
         key="webhook_receipt_cleanup_tick_seconds",
         type=SettingType.FLOAT,
         default="86400.0",

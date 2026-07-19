@@ -19,22 +19,24 @@ re-escalate a re-issued autonomy-gated tool).
 """
 
 import asyncio
+import math
 from datetime import date
 from typing import cast
 from uuid import uuid4
 
 import pytest
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig, ToolPermissions
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.tool_constraints import ToolAccessLevel
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
-from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.loop_protocol import BudgetChecker, TerminationReason
 from synthorg.engine.park_service import ParkService
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -244,6 +246,142 @@ class TestRunChatAction:
                 instruction="What is revenue doing this week?",
                 turn_observer=_cancel,
             )
+
+    def test_cost_ceiling_builds_checker_and_survives_park_resume(self) -> None:
+        # A8: the cost ceiling rides ON the context (not a caller-held
+        # closure), so the engine derives the same per-turn budget checker on
+        # the initial run AND after a park/resume round-trip. Losing the bound
+        # on the resumed continuation is exactly the regression this guards.
+        # Built through the validated constructor (not a post-hoc model_copy) so
+        # the ceiling is the same value the public run path forwards.
+        engine, _ = _build_engine(responses=[_final("noop")])
+        ctx = AgentContext.from_identity(_acting_identity(), cost_ceiling=0.5)
+
+        checker = engine._budget_checker_for(ctx)
+        assert checker is not None
+        cost_below = ZERO_TOKEN_USAGE.model_copy(update={"cost": 0.49})
+        cost_at = ZERO_TOKEN_USAGE.model_copy(update={"cost": 0.5})
+        below = ctx.model_copy(update={"accumulated_cost": cost_below})
+        at = ctx.model_copy(update={"accumulated_cost": cost_at})
+        assert checker(below) is False
+        assert checker(at) is True
+
+        park = ParkService()
+        parked = park.park(
+            context=ctx,
+            approval_id=NotBlankStr("appr-budget"),
+            agent_id=NotBlankStr(str(ctx.identity.id)),
+        )
+        resumed = park.resume(parked)
+        assert resumed.cost_ceiling == 0.5
+        assert engine._budget_checker_for(resumed) is not None
+
+    def test_no_cost_ceiling_yields_no_checker(self) -> None:
+        engine, _ = _build_engine(responses=[_final("noop")])
+        ctx = AgentContext.from_identity(_acting_identity())
+        assert engine._budget_checker_for(ctx) is None
+
+    async def test_run_chat_action_forwards_cost_ceiling_to_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The public method must forward cost_ceiling INTO the loop's context so
+        # the budget gate binds; a regression to post-hoc wiring would run the
+        # loop against an unbounded context even though the caller passed one.
+        # Two responses: one per run_chat_action call below.
+        engine, _ = _build_engine(responses=[_final("noop"), _final("noop")])
+        seen: list[float | None] = []
+        original = engine._budget_checker_for
+
+        def _spy(ctx: AgentContext) -> BudgetChecker | None:
+            seen.append(ctx.cost_ceiling)
+            return original(ctx)
+
+        monkeypatch.setattr(engine, "_budget_checker_for", _spy)
+
+        await engine.run_chat_action(
+            identity=_acting_identity(), instruction="do work", cost_ceiling=0.5
+        )
+        await engine.run_chat_action(
+            identity=_acting_identity(), instruction="more work"
+        )
+
+        # First run forwards the validated ceiling; the second leaves it unbounded.
+        assert seen == [0.5, None]
+
+    async def test_continued_turn_keeps_session_cost_against_the_ceiling(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ``cost_ceiling`` bounds the SESSION, so a continued turn must carry
+        # the cost already spent. Zeroing the counter each turn would let an
+        # unbounded number of turns each spend up to the ceiling while the
+        # checker only ever saw a single turn's usage. The turn counter, by
+        # contrast, is a per-turn loop budget and does reset.
+        engine, _ = _build_engine(responses=[_final("one"), _final("two")])
+        seen: list[AgentContext] = []
+        original = engine._budget_checker_for
+
+        def _spy(ctx: AgentContext) -> BudgetChecker | None:
+            seen.append(ctx)
+            return original(ctx)
+
+        monkeypatch.setattr(engine, "_budget_checker_for", _spy)
+
+        _, first_ctx = await engine.run_chat_action_session(
+            identity=_acting_identity(), instruction="turn one", cost_ceiling=0.5
+        )
+        # The mock provider reports no usage, so stamp the spend (and the loop
+        # iterations) the first turn would have accrued before continuing.
+        spent = first_ctx.model_copy(
+            update={
+                "accumulated_cost": ZERO_TOKEN_USAGE.model_copy(update={"cost": 0.4}),
+                "turn_count": 3,
+            },
+        )
+
+        await engine.run_chat_action_session(
+            identity=_acting_identity(),
+            instruction="turn two",
+            prior_context=spent,
+        )
+
+        continued = seen[-1]
+        assert continued.accumulated_cost.cost == 0.4
+        assert continued.turn_count == 0
+        assert continued.cost_ceiling == 0.5
+        # A further 0.1 of spend is far under the 0.5 ceiling on its own; it
+        # halts the turn only because the session's earlier 0.4 still counts.
+        checker = original(continued)
+        assert checker is not None
+        at_ceiling = ZERO_TOKEN_USAGE.model_copy(update={"cost": 0.5})
+        session_total = continued.model_copy(update={"accumulated_cost": at_ceiling})
+        assert checker(session_total) is True
+
+    @pytest.mark.parametrize("bad_ceiling", [0.0, -1.0, math.nan])
+    def test_invalid_cost_ceiling_is_rejected_at_construction(
+        self, bad_ceiling: float
+    ) -> None:
+        # The ceiling flows through from_identity (the constructor) rather than a
+        # post-hoc model_copy so the ``gt=0`` / no-NaN field constraint actually
+        # validates it; a non-positive or NaN ceiling would otherwise silently
+        # bypass the budget gate.
+        with pytest.raises(ValidationError):
+            AgentContext.from_identity(_acting_identity(), cost_ceiling=bad_ceiling)
+
+    async def test_system_prompt_addendum_is_appended(self) -> None:
+        engine, _ = _build_engine(responses=[_final("Acknowledged.")])
+
+        await engine.run_chat_action(
+            identity=_acting_identity(),
+            instruction="hello",
+            system_prompt_addendum="CONSOLE-BRIEF-SENTINEL",
+        )
+
+        provider = engine._provider
+        assert isinstance(provider, MockCompletionProvider)
+        first_turn = provider.recorded_messages[0]
+        system_msg = next(m for m in first_turn if m.role == MessageRole.SYSTEM)
+        assert system_msg.content is not None
+        assert "CONSOLE-BRIEF-SENTINEL" in system_msg.content
 
     async def test_instruction_is_untrusted_fenced(self) -> None:
         engine, _ = _build_engine(responses=[_final("Acknowledged.")])

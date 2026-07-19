@@ -136,6 +136,7 @@ export default function ChatPage() {
           autoScroll={conv.autoScroll}
           resolvingInvites={conv.resolvingInvites}
           onResolveInvite={conv.resolveInvite}
+          onSubmitSecretCaptures={conv.submitSecretCaptures}
           onRetry={conv.retry}
         />
       ) : (

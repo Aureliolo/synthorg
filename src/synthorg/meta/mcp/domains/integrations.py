@@ -72,11 +72,19 @@ INTEGRATION_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "mcp_catalog",
         "install",
-        "Install an MCP server from the catalog.",
+        "Install an MCP server from the catalog (admin; requires confirm).",
         {
             "entry_id": {"type": "string", "description": "Catalog entry to install"},
+            "connection_name": {
+                "type": "string",
+                "description": (
+                    "Bound connection name for entries that require one; "
+                    "omit for connectionless entries"
+                ),
+            },
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("entry_id",),
+        required=("entry_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=McpCatalogInstallArgs,
     ),
     admin_tool(

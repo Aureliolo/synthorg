@@ -10,6 +10,7 @@ deliberately lacks the method, so the defensive branch is exercised
 """
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -33,6 +34,7 @@ def _catalog_facade() -> MCPCatalogFacadeService:
     return MCPCatalogFacadeService(
         catalog=SimpleNamespace(),  # type: ignore[arg-type]
         installations=SimpleNamespace(),
+        connection_catalog=SimpleNamespace(),  # type: ignore[arg-type]
     )
 
 
@@ -72,17 +74,69 @@ async def test_get_catalog_entry_returns_none_on_miss() -> None:
     assert await facade.get_catalog_entry(NotBlankStr("missing")) is None
 
 
+async def test_install_catalog_entry_routes_to_catalog_service() -> None:
+    """``install_catalog_entry`` delegates to ``CatalogService.install``.
+
+    The connection-aware validation (type match, credential-map, dialect)
+    lives on ``CatalogService.install``, so the facade must call it with the
+    bound ``connection_name`` + the connection catalog + the installations
+    repo, not a non-existent repo ``install`` method.
+    """
+    install = AsyncMock(return_value="install-result")
+    conn_catalog = SimpleNamespace()
+    installs_repo = SimpleNamespace()
+    facade = MCPCatalogFacadeService(
+        catalog=SimpleNamespace(install=install),  # type: ignore[arg-type]
+        installations=installs_repo,
+        connection_catalog=conn_catalog,  # type: ignore[arg-type]
+    )
+    result = await facade.install_catalog_entry(
+        entry_id=NotBlankStr("brave-search-mcp"),
+        connection_name=NotBlankStr("brave"),
+        actor_id=NotBlankStr("actor-1"),
+    )
+    assert result == "install-result"
+    install.assert_awaited_once_with(
+        "brave-search-mcp",
+        "brave",
+        connection_catalog=conn_catalog,
+        installations_repo=installs_repo,
+    )
+
+
 async def test_install_catalog_entry_without_capability_raises() -> None:
-    """``install_catalog_entry`` raises when the repo lacks ``install``."""
+    """``install_catalog_entry`` raises when the catalog lacks ``install``."""
     with pytest.raises(CapabilityNotSupportedError):
         await _catalog_facade().install_catalog_entry(
             entry_id=NotBlankStr("entry-1"),
+            connection_name=None,
             actor_id=NotBlankStr("actor-1"),
         )
 
 
+async def test_uninstall_catalog_entry_routes_to_catalog_service() -> None:
+    """``uninstall_catalog_entry`` delegates to ``CatalogService.uninstall``."""
+    uninstall = AsyncMock(return_value=True)
+    installs_repo = SimpleNamespace()
+    facade = MCPCatalogFacadeService(
+        catalog=SimpleNamespace(uninstall=uninstall),  # type: ignore[arg-type]
+        installations=installs_repo,
+        connection_catalog=SimpleNamespace(),  # type: ignore[arg-type]
+    )
+    removed = await facade.uninstall_catalog_entry(
+        installation_id=NotBlankStr("brave-search-mcp"),
+        actor_id=NotBlankStr("actor-1"),
+        reason=NotBlankStr("cleanup"),
+    )
+    assert removed is True
+    uninstall.assert_awaited_once_with(
+        "brave-search-mcp",
+        installations_repo=installs_repo,
+    )
+
+
 async def test_uninstall_catalog_entry_without_capability_raises() -> None:
-    """``uninstall_catalog_entry`` raises when the repo lacks ``uninstall``."""
+    """``uninstall_catalog_entry`` raises when the catalog lacks ``uninstall``."""
     with pytest.raises(CapabilityNotSupportedError):
         await _catalog_facade().uninstall_catalog_entry(
             installation_id=NotBlankStr("inst-1"),

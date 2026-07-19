@@ -19,6 +19,7 @@ from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.secret_capture import SecretCaptureService
 from synthorg.integrations.health.prober import HealthProberService
 from synthorg.integrations.mcp_catalog.installations import McpInstallationRepository
 from synthorg.integrations.mcp_catalog.service import CatalogService
@@ -47,6 +48,7 @@ class IntegrationsBundle:
 
     connection_catalog: ConnectionCatalog | None = None
     provider_credential_catalog: ConnectionCatalog | None = None
+    secret_capture_service: SecretCaptureService | None = None
     oauth_token_manager: OAuthTokenManager | None = None
     health_prober_service: HealthProberService | None = None
     tunnel_provider: TunnelManager | None = None
@@ -343,6 +345,11 @@ def auto_wire_integrations(  # noqa: PLR0913
             return bundle
 
         bundle.connection_catalog = catalog
+        bundle.secret_capture_service = SecretCaptureService(
+            secret_backend=secret_backend,
+            ttl_seconds=effective_config.integrations.connections.secret_capture_ttl_seconds,
+        )
+        logger.info(API_SERVICE_AUTO_WIRED, service="secret_capture_service")
         bind_health_check_catalog(catalog)
         bind_tunnel_connection_health(bundle.tunnel_provider)
         # Resolve the operator-configured GitHub API base URL (env > default;

@@ -50,8 +50,14 @@ function AssistantMeta({ turn }: { turn: OrgAssistantTurn }) {
 }
 
 interface EventProps {
+  sending: boolean
   resolvingInvites: ReadonlySet<string>
   onResolveInvite: (turnId: number, approvalId: string, accept: boolean) => void
+  onSubmitSecretCaptures: (
+    turnId: number,
+    draftId: string,
+    handles: Readonly<Record<string, string>>,
+  ) => void
 }
 
 function EventTurnView({ turn, events }: { turn: OrgEventTurn; events: EventProps }) {
@@ -61,6 +67,8 @@ function EventTurnView({ turn, events }: { turn: OrgEventTurn; events: EventProp
       event={turn.event}
       resolvingInvites={events.resolvingInvites}
       onResolveInvite={events.onResolveInvite}
+      sending={events.sending}
+      onSubmitSecretCaptures={events.onSubmitSecretCaptures}
     />
   )
 }
@@ -131,6 +139,11 @@ export interface OrgChatTranscriptProps {
   autoScroll: AutoScroll
   resolvingInvites: ReadonlySet<string>
   onResolveInvite: (turnId: number, approvalId: string, accept: boolean) => void
+  onSubmitSecretCaptures: (
+    turnId: number,
+    draftId: string,
+    handles: Readonly<Record<string, string>>,
+  ) => void
   onRetry: (turnId: number) => void
 }
 
@@ -141,13 +154,14 @@ export function OrgChatTranscript({
   autoScroll,
   resolvingInvites,
   onResolveInvite,
+  onSubmitSecretCaptures,
   onRetry,
 }: OrgChatTranscriptProps) {
   // Stable identity so the memoised TurnView only re-renders when its own turn
   // (or the invite-resolution set) actually changes, not on every keystroke.
   const events: EventProps = useMemo(
-    () => ({ resolvingInvites, onResolveInvite }),
-    [resolvingInvites, onResolveInvite],
+    () => ({ sending, resolvingInvites, onResolveInvite, onSubmitSecretCaptures }),
+    [sending, resolvingInvites, onResolveInvite, onSubmitSecretCaptures],
   )
   // While a token stream is live the growing bubble is aria-hidden, so a
   // screen reader learns the state (not every token) from this debounced

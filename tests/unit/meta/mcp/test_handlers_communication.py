@@ -1,8 +1,8 @@
 """Unit tests for the communication MCP handlers.
 
-Covers 21 tools across messages, meetings, connections, webhooks,
-tunnel.  Uses AsyncMock-backed facades so tests exercise handler
-parsing + envelope shaping without standing up real services.
+Covers the messages, meetings, connections, webhooks, and tunnel tools.
+Uses AsyncMock-backed facades so tests exercise handler parsing +
+envelope shaping without standing up real services.
 """
 
 import json
@@ -28,6 +28,7 @@ from synthorg.integrations.connections.models import (
     ConnectionType,
     SecretRef,
 )
+from synthorg.integrations.connections.secret_capture import SecretCaptureService
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.integrations.tunnel.mcp_service import TunnelStatus
 from synthorg.integrations.webhooks.models import (
@@ -35,7 +36,7 @@ from synthorg.integrations.webhooks.models import (
     WebhookVerifierKind,
 )
 from synthorg.meta.mcp.handlers.communication import COMMUNICATION_HANDLERS
-from tests._shared import make_app_state
+from tests._shared import FakeClock, InMemorySecretBackend, make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -490,6 +491,101 @@ class TestConnectionsHandlers:
             arguments={"name": "c1"},
         )
         assert json.loads(response)["status"] == "ok"
+
+    async def test_field_metadata(
+        self,
+        fake_app_state: AppState,
+    ) -> None:
+        handler = COMMUNICATION_HANDLERS["synthorg_connections_field_metadata"]
+        response = await handler(app_state=fake_app_state, arguments={})
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        types = {entry["connection_type"] for entry in payload["data"]}
+        assert "github" in types
+        github = next(e for e in payload["data"] if e["connection_type"] == "github")
+        assert github["secret_field_names"] == ["token"]
+
+    @staticmethod
+    def _capture_app_state() -> tuple[AppState, SecretCaptureService]:
+        capture = SecretCaptureService(
+            secret_backend=InMemorySecretBackend(), clock=FakeClock()
+        )
+        app_state = make_app_state(
+            slices={IntegrationsStateSlice: {"secret_capture_service": capture}},
+        )
+        return app_state, capture
+
+    async def test_request_secret_capture_registers_pending(self) -> None:
+        app_state, capture = self._capture_app_state()
+        handler = COMMUNICATION_HANDLERS["synthorg_connections_request_secret_capture"]
+        response = await handler(
+            app_state=app_state,
+            arguments={
+                "connection_type": "database",
+                "field_name": "password",
+                "draft_id": "draft-xyz",
+                "confirm": True,
+                "reason": "operator database setup",
+            },
+            actor=make_test_actor(),
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "ok"
+        assert payload["data"]["status"] == "capture_requested"
+        pending = capture.take_pending("draft-xyz")
+        assert [p.field_name for p in pending] == ["password"]
+        # Kind + label come from the registry, never the caller.
+        assert pending[0].secret_kind == "password"
+
+    async def test_request_secret_capture_requires_confirm(self) -> None:
+        app_state, capture = self._capture_app_state()
+        handler = COMMUNICATION_HANDLERS["synthorg_connections_request_secret_capture"]
+        response = await handler(
+            app_state=app_state,
+            arguments={
+                "connection_type": "database",
+                "field_name": "password",
+                "draft_id": "draft-xyz",
+                "reason": "operator database setup",
+            },
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["status"] == "error"
+        # The guardrail runs before any state mutation, so nothing is registered.
+        assert capture.take_pending("draft-xyz") == ()
+
+    async def test_request_secret_capture_rejects_non_secret_field(self) -> None:
+        app_state, capture = self._capture_app_state()
+        handler = COMMUNICATION_HANDLERS["synthorg_connections_request_secret_capture"]
+        response = await handler(
+            app_state=app_state,
+            arguments={
+                "connection_type": "database",
+                "field_name": "host",
+                "draft_id": "draft-xyz",
+                "confirm": True,
+                "reason": "operator database setup",
+            },
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["status"] == "error"
+        assert capture.take_pending("draft-xyz") == ()
+
+    async def test_request_secret_capture_rejects_unknown_type(self) -> None:
+        app_state, _ = self._capture_app_state()
+        handler = COMMUNICATION_HANDLERS["synthorg_connections_request_secret_capture"]
+        response = await handler(
+            app_state=app_state,
+            arguments={
+                "connection_type": "not_a_type",
+                "field_name": "token",
+                "draft_id": "draft-xyz",
+                "confirm": True,
+                "reason": "operator database setup",
+            },
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["status"] == "error"
 
 
 # ── Webhooks ────────────────────────────────────────────────────────

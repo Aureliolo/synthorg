@@ -342,6 +342,55 @@ class TestMetaTurn:
         finally:
             app_state.swap_slice(original)
 
+    async def test_configure_is_fail_closed_when_console_off(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """A configure turn 503s while operator_console_enabled is off."""
+        classifier = _FixedClassifier(
+            IntentOutcome(
+                intent=TurnIntent.CONFIGURE,
+                reason=IntentRoutingReason.CLASSIFIED,
+                confidence=0.95,
+            )
+        )
+        app_state = async_test_client.app.state.app_state
+        original = app_state.slice(MetaStateSlice)
+        app_state.wire(MetaStateSlice, turn_intent_classifier=classifier)
+        try:
+            resp = await async_test_client.post(
+                _BASE,
+                headers=_HEADERS,
+                json={"message": "connect our GitHub organisation"},
+            )
+            # operator_console_enabled is off by default: configuring fails
+            # closed rather than being answered as a read.
+            assert resp.status_code == 503
+        finally:
+            app_state.swap_slice(original)
+
+    async def test_configure_from_read_only_actor_blocked(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """A configure turn is side-effecting, so a read-only actor is denied.
+
+        The mutation check fires on the final (CONFIGURE) intent before the
+        console gate, so an unauthorised actor never reaches the console.
+        """
+        app_state = async_test_client.app.state.app_state
+        original = app_state.slice(MetaStateSlice)
+        try:
+            resp = await async_test_client.post(
+                _BASE,
+                headers=make_auth_headers("observer"),
+                json={
+                    "message": "connect our issue tracker",
+                    "intent_override": "configure",
+                },
+            )
+            assert resp.status_code == 403
+        finally:
+            app_state.swap_slice(original)
+
     async def test_read_only_actor_may_explain(
         self, async_test_client: LoopAsyncClient
     ) -> None:

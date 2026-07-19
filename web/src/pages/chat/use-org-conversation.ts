@@ -45,6 +45,11 @@ export interface OrgConversation {
   /** Re-send the human turn that precedes the clicked error bubble. */
   retry: (beforeTurnId: number) => void
   resolveInvite: (turnId: number, approvalId: string, accept: boolean) => void
+  submitSecretCaptures: (
+    turnId: number,
+    draftId: string,
+    handles: Readonly<Record<string, string>>,
+  ) => void
   /** Clear the thread so the next send opens a fresh conversation. */
   startNew: () => void
 }
@@ -56,6 +61,7 @@ export function useOrgConversation(): OrgConversation {
   const resolvingInvites = useOrgConversationStore((s) => s.resolvingInvites)
   const sendTurn = useOrgConversationStore((s) => s.sendTurn)
   const resolveInvite = useOrgConversationStore((s) => s.resolveInvite)
+  const submitSecretCaptures = useOrgConversationStore((s) => s.submitSecretCaptures)
   const startNew = useOrgConversationStore((s) => s.startNew)
 
   const [input, setInput] = useState('')
@@ -126,6 +132,7 @@ export function useOrgConversation(): OrgConversation {
     cancel,
     retry,
     resolveInvite,
+    submitSecretCaptures,
     startNew,
   }
 }

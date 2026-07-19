@@ -48,6 +48,7 @@
         "build_group_chat_service",
         "GroupInviteCoordinator",
         "build_conversational_actor",
+        "build_operator_console",
         "build_chief_of_staff_narrator",
         "ConversationalPlanDispatcher"
       ],
@@ -286,10 +287,12 @@
         "synthorg_meetings_update",
         "synthorg_meetings_delete",
         "synthorg_connections_list",
+        "synthorg_connections_field_metadata",
         "synthorg_connections_get",
         "synthorg_connections_create",
         "synthorg_connections_delete",
         "synthorg_connections_check_health",
+        "synthorg_connections_request_secret_capture",
         "synthorg_webhooks_list",
         "synthorg_webhooks_get",
         "synthorg_webhooks_create",
@@ -778,6 +781,7 @@
         "connection_catalog",
         "provider_credential_catalog",
         "connection_service",
+        "secret_capture_service",
         "oauth_token_manager",
         "oauth_state_service",
         "webhook_event_bridge",
@@ -953,6 +957,8 @@
         "multi_voice_router",
         "group_chat_service",
         "conversational_actor",
+        "operator_console",
+        "console_conversation_store",
         "custom_rules_service",
         "self_improvement_config",
         "evolution_outcome_store",
@@ -1286,7 +1292,8 @@
       "directory": "src/synthorg/settings",
       "ghost_wired_symbols": [
         "CosCharterModelSettingsSubscriber",
-        "DirectMcpActorSettingsSubscriber"
+        "DirectMcpActorSettingsSubscriber",
+        "OperatorConsoleSettingsSubscriber"
       ],
       "mcp_tool_names": [],
       "name": "settings",
@@ -1424,6 +1431,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-19T18:41:17.493018Z",
+  "generated_at": "2026-07-19T22:23:53.671309Z",
   "schema_version": 1
 }

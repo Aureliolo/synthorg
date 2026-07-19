@@ -1,4 +1,5 @@
 import {
+  captureConnectionSecret as apiCaptureConnectionSecret,
   createConnection as apiCreateConnection,
   deleteConnection as apiDeleteConnection,
   updateConnection as apiUpdateConnection,
@@ -10,8 +11,8 @@ import type {
 } from '@/api/types/integrations'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
-import type { ConnectionsGet, ConnectionsSet } from './types'
+import { getCrudErrorTitle, getErrorCode, getErrorMessage } from '@/utils/errors'
+import type { ConnectionsGet, ConnectionsSet, ConnectionsState } from './types'
 
 const log = createLogger('connections-crud')
 
@@ -111,10 +112,53 @@ async function deleteConnectionImpl(
   }
 }
 
-export function createCrudActions(set: ConnectionsSet, get: ConnectionsGet) {
+async function captureSecretImpl(
+  draftId: string,
+  field: string,
+  value: string,
+  secretKind: string,
+): Promise<string | null> {
+  // The raw value goes straight to the write-only capture endpoint and never
+  // enters a connection payload, a chat turn, or the store. Only the opaque
+  // handle returns; on failure a toast fires and the caller aborts the submit.
+  try {
+    const { handle } = await apiCaptureConnectionSecret(draftId, field, {
+      value,
+      secret_kind: secretKind,
+    })
+    return handle
+  } catch (err) {
+    // The request body carries the raw secret, so an upstream validation /
+    // proxy error can reflect credential material in its message. Never route
+    // it through emitCrudError (which logs + toasts the raw server message):
+    // log only the structured error code and toast a fixed, content-free
+    // message.
+    log.error('Capture secret failed', { field, code: getErrorCode(err) })
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Capture secret failed',
+      description: 'The credential could not be captured. Check the value and try again.',
+    })
+    return null
+  }
+}
+
+export function createCrudActions(
+  set: ConnectionsSet,
+  get: ConnectionsGet,
+): Pick<
+  ConnectionsState,
+  'createConnection' | 'captureSecret' | 'updateConnection' | 'deleteConnection'
+> {
   return {
     createConnection: (data: CreateConnectionRequest) =>
       createConnectionImpl(set, get, data),
+    captureSecret: (
+      draftId: string,
+      field: string,
+      value: string,
+      secretKind: string,
+    ) => captureSecretImpl(draftId, field, value, secretKind),
     updateConnection: (name: string, data: UpdateConnectionRequest) =>
       updateConnectionImpl(set, get, name, data),
     deleteConnection: (name: string) =>

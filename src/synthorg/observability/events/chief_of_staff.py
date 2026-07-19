@@ -146,6 +146,21 @@ COS_ACT_COMPLETED: Final[str] = "chief_of_staff.act.completed"
 COS_ACT_PARKED: Final[str] = "chief_of_staff.act.parked"
 COS_ACT_FAILED: Final[str] = "chief_of_staff.act.failed"
 
+# -- Operator console (CONFIGURE turns) --------------------------------
+
+COS_CONSOLE_REQUESTED: Final[str] = "chief_of_staff.console.requested"
+COS_CONSOLE_COMPLETED: Final[str] = "chief_of_staff.console.completed"
+COS_CONSOLE_PARKED: Final[str] = "chief_of_staff.console.parked"
+COS_CONSOLE_FAILED: Final[str] = "chief_of_staff.console.failed"
+# Autonomy-tier resolution failed for a console turn (misconfigured
+# operator_console_autonomy_level); the turn degrades to rule-engine-only
+# governance. ERROR-level so a persistent misconfiguration surfaces in
+# alerting rather than as a routine per-turn warning.
+COS_CONSOLE_AUTONOMY_DEGRADED: Final[str] = "chief_of_staff.console.autonomy_degraded"
+# Idle console conversation contexts swept from the process-local store past
+# their TTL (the multi-turn memory a CONFIGURE session accumulates).
+COS_CONSOLE_CONTEXT_PURGED: Final[str] = "chief_of_staff.console.context_purged"
+
 # -- Run narrative (documentary mode) ----------------------------------
 
 COS_NARRATIVE_GENERATION_STARTED: Final[str] = (

@@ -235,7 +235,7 @@ class TestConnectionAuditChainCoverage:
                 {
                     "name": "gh",
                     "connection_type": "github",
-                    "credentials": {"token": "t"},
+                    "credential_handles": {},
                 },
             ),
         )
@@ -266,7 +266,7 @@ class TestConnectionAuditChainCoverage:
                 {
                     "name": "gh",
                     "connection_type": "github",
-                    "credentials": {"token": "t"},
+                    "credential_handles": {},
                 },
             ),
         )

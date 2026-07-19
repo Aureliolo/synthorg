@@ -58,6 +58,7 @@ _COS_BOOL_FIELDS: dict[str, str] = {
     "narrative_enabled": "narrative_enabled",
     "invite_enabled": "invite_enabled",
     "direct_mcp_enabled": "direct_mcp_enabled",
+    "operator_console_enabled": "operator_console_enabled",
 }
 
 # chief_of_staff per-feature model keys; each shares its name between the
@@ -71,6 +72,17 @@ _COS_MODEL_FIELDS: tuple[str, ...] = (
     "turn_intent_model",
     "multi_voice_model",
     "narrative_model",
+    "operator_console_model",
+)
+
+# chief_of_staff scalar/enum keys the boot ChiefOfStaffConfig carries directly
+# (read by the operator-console service, not live per-turn), each sharing its
+# name between the setting and the config field. Overlaid as raw strings;
+# Pydantic coerces them to int/float/enum on config construction.
+_COS_SCALAR_FIELDS: tuple[str, ...] = (
+    "operator_console_max_turns",
+    "operator_console_cost_ceiling",
+    "operator_console_autonomy_level",
 )
 
 # charter setting key -> CharterConfig field (shared names). The model is
@@ -230,6 +242,9 @@ async def overlay_feature_settings(
         value = cos.get(field, "").strip()
         if value:
             cos_overrides[field] = value
+    for field in _COS_SCALAR_FIELDS:
+        if field in cos:
+            cos_overrides[field] = cos[field]
 
     charter = await _read_namespace(settings_service, SettingNamespace.CHARTER)
     charter_overrides = _nested(overrides, "charter")

@@ -26,6 +26,12 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.compaction.models import CompressionMetadata
+from synthorg.engine.context_disclosure import (
+    resource_loaded_update,
+    tool_loaded_update,
+    tool_unloaded_update,
+    validate_tool_disclosure,
+)
 from synthorg.engine.context_snapshot import AgentContextSnapshot
 from synthorg.engine.errors import ExecutionStateError, MaxTurnsExceededError
 from synthorg.engine.task_execution import TaskExecution
@@ -116,6 +122,15 @@ class AgentContext(BaseModel):
         gt=0,
         description="Hard turn limit",
     )
+    cost_ceiling: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Optional per-session cost ceiling; the chat-action loop halts "
+            "once accumulated cost meets it. Carried on the context so the "
+            "bound survives a park/resume round-trip."
+        ),
+    )
     started_at: AwareDatetime = Field(
         description="When execution began",
     )
@@ -182,16 +197,7 @@ class AgentContext(BaseModel):
                 of names in ``tool_load_order``, or when
                 ``tool_load_order`` carries duplicates.
         """
-        order_set = set(self.tool_load_order)
-        if order_set != self.loaded_tools:
-            msg = (
-                f"loaded_tools={self.loaded_tools} and "
-                f"tool_load_order={self.tool_load_order} are inconsistent"
-            )
-            raise ValueError(msg)
-        if len(self.tool_load_order) != len(order_set):
-            msg = f"tool_load_order contains duplicates: {self.tool_load_order}"
-            raise ValueError(msg)
+        validate_tool_disclosure(self.loaded_tools, self.tool_load_order)
         return self
 
     @computed_field(
@@ -215,6 +221,7 @@ class AgentContext(BaseModel):
         task: Task | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
         context_capacity_tokens: int | None = None,
+        cost_ceiling: float | None = None,
     ) -> AgentContext:
         """Create a fresh execution context from an agent identity.
 
@@ -224,6 +231,9 @@ class AgentContext(BaseModel):
             max_turns: Maximum number of LLM turns allowed.
             context_capacity_tokens: Model's max context window
                 tokens, or ``None`` when unknown.
+            cost_ceiling: Optional per-session cost ceiling. Passed through
+                the constructor (not a post-hoc ``model_copy``) so the
+                ``gt=0`` / no-NaN field constraint actually validates it.
 
         Returns:
             New ``AgentContext`` ready for execution.
@@ -236,6 +246,7 @@ class AgentContext(BaseModel):
             max_turns=max_turns,
             started_at=datetime.now(UTC),
             context_capacity_tokens=context_capacity_tokens,
+            cost_ceiling=cost_ceiling,
         )
         logger.debug(
             EXECUTION_CONTEXT_CREATED,
@@ -505,16 +516,8 @@ class AgentContext(BaseModel):
         Returns:
             New ``AgentContext`` with the tool marked as loaded.
         """
-        if tool_name in self.loaded_tools:
-            return self
-        new_loaded = self.loaded_tools | {tool_name}
-        new_order = (*self.tool_load_order, tool_name)
-        return self.model_copy(
-            update={
-                "loaded_tools": new_loaded,
-                "tool_load_order": new_order,
-            },
-        )
+        update = tool_loaded_update(self.loaded_tools, self.tool_load_order, tool_name)
+        return self if update is None else self.model_copy(update=update)
 
     def with_tool_unloaded(self, tool_name: str) -> AgentContext:
         """Mark a tool's L2 body as unloaded.
@@ -528,20 +531,10 @@ class AgentContext(BaseModel):
         Returns:
             New ``AgentContext`` with the tool removed.
         """
-        if tool_name not in self.loaded_tools:
-            return self
-        new_loaded = self.loaded_tools - {tool_name}
-        new_order = tuple(t for t in self.tool_load_order if t != tool_name)
-        new_resources = frozenset(
-            (t, r) for t, r in self.loaded_resources if t != tool_name
+        update = tool_unloaded_update(
+            self.loaded_tools, self.tool_load_order, self.loaded_resources, tool_name
         )
-        return self.model_copy(
-            update={
-                "loaded_tools": new_loaded,
-                "tool_load_order": new_order,
-                "loaded_resources": new_resources,
-            },
-        )
+        return self if update is None else self.model_copy(update=update)
 
     def with_resource_loaded(
         self,
@@ -559,13 +552,8 @@ class AgentContext(BaseModel):
         Returns:
             New ``AgentContext`` with the resource marked as loaded.
         """
-        pair = (tool_name, resource_id)
-        if pair in self.loaded_resources:
-            return self
-        new_resources = self.loaded_resources | {pair}
-        return self.model_copy(
-            update={"loaded_resources": new_resources},
-        )
+        update = resource_loaded_update(self.loaded_resources, tool_name, resource_id)
+        return self if update is None else self.model_copy(update=update)
 
     @property
     def has_turns_remaining(self) -> bool:

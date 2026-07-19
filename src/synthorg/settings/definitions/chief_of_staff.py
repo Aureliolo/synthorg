@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Chief-of-Staff namespace setting definitions.
 
 Each Chief-of-Staff capability flag and per-feature model is an
@@ -250,6 +251,85 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=_NS,
+        key="operator_console_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Let the unified chat operate the control plane itself when it"
+            " classifies a turn as a configure request: connect an integration,"
+            " change a setting, install a catalogue entry, call any control-plane"
+            " tool. Acts as a shared system console identity, not one of your"
+            " agents. Off by default. Fail-closed: it materialises only when"
+            " security governance and the MCP self-consumer are wired and a"
+            " console model is selected, and stays inert (503) otherwise. A live"
+            " toggle rebuilds the console through that same fail-closed gate, so"
+            " it takes effect with no restart. Independent of the direct-MCP"
+            " acting toggle."
+        ),
+        group="Acts on your behalf",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="operator_console_max_turns",
+        type=SettingType.INTEGER,
+        default="12",
+        description=(
+            "Hard turn cap for one operator-console session (bounds the"
+            " configure/observe fan-out a single instruction can drive). Applied"
+            " on the next console rebuild (any chief-of-staff settings write)."
+        ),
+        group="Acts on your behalf",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=30,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="operator_console_cost_ceiling",
+        type=SettingType.FLOAT,
+        default="1.0",
+        description=(
+            "Hard per-session cost ceiling (in the configured currency) for the"
+            " operator console; the session halts the moment accumulated cost"
+            " crosses it, independent of the turn cap. Applied on the next"
+            " console rebuild."
+        ),
+        group="Acts on your behalf",
+        level=SettingLevel.ADVANCED,
+        min_value=0.01,
+        max_value=100.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="operator_console_autonomy_level",
+        type=SettingType.ENUM,
+        default="semi",
+        description=(
+            "Autonomy tier the operator console acts under. 'semi' (default)"
+            " lets reads flow while risky writes escalate to the approval inbox;"
+            " 'supervised' escalates more; 'locked' parks nearly everything;"
+            " 'full' runs everything the hard-deny floor still permits. Applied"
+            " on the next console rebuild."
+        ),
+        group="Acts on your behalf",
+        level=SettingLevel.ADVANCED,
+        enum_values=("full", "semi", "supervised", "locked"),
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
         key="chat_model",
         type=SettingType.MODEL_REF,
         default="",
@@ -326,6 +406,42 @@ _r.register(
         ),
         group="Models",
         level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="operator_console_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model for the operator-console configure loop, selected"
+            " through the model picker (a `{provider, model_id}` reference)."
+            " Empty keeps the console fail-closed (a configure turn 503s) until a"
+            " model is selected. Applied on the next console rebuild."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="configure_intent_confidence_floor",
+        type=SettingType.FLOAT,
+        default="0.85",
+        description=(
+            "Minimum classifier confidence before a turn may resolve to"
+            " CONFIGURE (operator console); below it the turn degrades to a plain"
+            " answer. Read live per turn, so raising this safety floor takes"
+            " effect without a restart."
+        ),
+        group="Chat",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=1.0,
     )
 )
 

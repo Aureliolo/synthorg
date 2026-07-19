@@ -3,10 +3,14 @@
 Covers messages, meetings, connections, webhooks, tunnel.
 """
 
-from pydantic import Field
+from typing import Self
+
+from pydantic import Field, model_validator
 
 from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.field_metadata import reject_inline_secret_fields
+from synthorg.integrations.connections.models import ConnectionType
 from synthorg.meta.mcp.domains._common_args import (
     AdminGuardrailFields,
     PaginationFields,
@@ -87,6 +91,10 @@ class ConnectionsListArgs(PaginationFields):
     """Args for ``connections.list``."""
 
 
+class ConnectionsFieldMetadataArgs(_ArgsBase):
+    """Args for ``connections.field_metadata``: no fields."""
+
+
 class ConnectionsGetArgs(_ArgsBase):
     """Args for ``connections.get``."""
 
@@ -105,12 +113,68 @@ class ConnectionsCreateArgs(AdminGuardrailFields):
     auth_method: NotBlankStr = Field(description="Authentication method")
     credentials: dict[str, str] = Field(
         default_factory=dict,
-        description="Connection credentials",
+        description="Non-secret credential fields (e.g. host, port, dialect)",
+    )
+    credential_handles: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Secret credential fields as out-of-band capture handles"
+            " (field name -> handle); resolved in-process, never inline"
+        ),
+    )
+    connection_draft_id: NotBlankStr | None = Field(
+        default=None,
+        description="Setup draft id binding the credential handles",
     )
     base_url: NotBlankStr | None = Field(default=None, description="Base URL")
     metadata: dict[str, str] | None = Field(
         default=None,
         description="Free-form connection metadata",
+    )
+
+    @model_validator(mode="after")
+    def _validate_credentials(self) -> Self:
+        """Enforce the credential-boundary invariants (parity with REST).
+
+        Handles require a draft id, and a secret field must be captured out of
+        band (never inline in ``credentials``). An unrecognised
+        ``connection_type`` is left for the handler to reject, so the
+        no-inline-secret check is skipped for it here.
+
+        Returns:
+            ``self`` when both invariants hold.
+
+        Raises:
+            ValueError: If handles lack a draft id, or a secret field is inline.
+        """
+        if self.credential_handles and self.connection_draft_id is None:
+            msg = "connection_draft_id is required when credential_handles are supplied"
+            raise ValueError(msg)
+        try:
+            connection_type = ConnectionType(self.connection_type)
+        except ValueError:
+            return self
+        reject_inline_secret_fields(connection_type, self.credentials.keys())
+        return self
+
+
+class ConnectionsRequestSecretCaptureArgs(AdminGuardrailFields):
+    """Args for ``connections.request_secret_capture`` (admin op).
+
+    Raised by the operator console mid-setup to ask the operator for one secret
+    field out of band: the dashboard renders a masked input for
+    ``(connection_type, field_name)`` and posts the value straight to the
+    capture endpoint under ``draft_id``, so the raw value never enters the chat
+    turn. Carries no value; the field's kind and label come from the backend
+    metadata registry, never the caller. Admin op: callers supply ``confirm=True``
+    and a non-blank ``reason`` (mixin) so triggering a credential-entry prompt
+    carries the same role + actor-audit controls as ``connections.create``.
+    """
+
+    connection_type: NotBlankStr = Field(description="Connection type being set up")
+    field_name: NotBlankStr = Field(description="Secret field to capture out of band")
+    draft_id: NotBlankStr = Field(
+        description="Setup draft id the captured handle will bind to",
     )
 
 

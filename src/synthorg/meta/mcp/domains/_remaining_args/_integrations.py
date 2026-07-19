@@ -29,10 +29,22 @@ class McpCatalogGetArgs(_ArgsBase):
     entry_id: NotBlankStr = Field(description="Catalog entry ID")
 
 
-class McpCatalogInstallArgs(_ArgsBase):
-    """Args for ``mcp_catalog.install``."""
+class McpCatalogInstallArgs(AdminGuardrailFields):
+    """Args for ``mcp_catalog.install`` (admin op).
+
+    Installing binds a catalog entry to a connection and records an
+    installation, so callers supply ``confirm=True`` and a non-blank ``reason``
+    (mixin) alongside the entry id.
+    """
 
     entry_id: NotBlankStr = Field(description="Catalog entry to install")
+    connection_name: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Name of the bound connection for entries that require one "
+            "(e.g. an API-key connection); omit for connectionless entries"
+        ),
+    )
 
 
 class McpCatalogUninstallArgs(AdminGuardrailFields):

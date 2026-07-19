@@ -11,6 +11,7 @@ from typing import Final, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.approval.enums import ApprovalRiskLevel
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import RuleSeverity
 
@@ -153,6 +154,27 @@ _INVITE_MAX_PER_ROUND_MAX: int = 5
 _DIRECT_MCP_MAX_TURNS_DEFAULT: int = 6
 _DIRECT_MCP_MAX_TURNS_MIN: int = 1
 _DIRECT_MCP_MAX_TURNS_MAX: int = 20
+# Operator console: a CONFIGURE turn drives the control plane as the shared
+# system console identity. A console session is a genuine multi-step
+# configure/observe loop (read metadata -> preview -> confirm -> apply ->
+# verify), so twelve turns is a roomier envelope than the six-turn act loop; 1
+# is the floor and 30 a ceiling past which a session is clearly stuck.
+_CONSOLE_MAX_TURNS_DEFAULT: int = 12
+_CONSOLE_MAX_TURNS_MIN: int = 1
+_CONSOLE_MAX_TURNS_MAX: int = 30
+# CONFIGURE, like ACT, sits behind its own stricter confidence floor: below it
+# a configure turn degrades to a plain explanation rather than driving the
+# control plane on a guess. 0.85 matches the ACT floor; 0.0/1.0 is the
+# probability range.
+_CONFIGURE_INTENT_CONFIDENCE_FLOOR_DEFAULT: float = 0.85
+# A single console session's hard cost ceiling, in the org's configured
+# currency. The per-turn cap bounds the loop's length; this bounds its spend
+# independently, halting the loop the moment accumulated cost crosses it so a
+# runaway tool loop cannot burn budget. 1.0 is a generous single-session
+# allowance; 0.01 is the floor for a meaningful session and 100.0 a ceiling.
+_CONSOLE_COST_CEILING_DEFAULT: float = 1.0
+_CONSOLE_COST_CEILING_MIN: float = 0.01
+_CONSOLE_COST_CEILING_MAX: float = 100.0
 # Run narrative (documentary mode): the synthesiser writes only the
 # connective prose around the structured facts, so a mild temperature
 # (0.4) gives readable narration without drifting from the supplied
@@ -323,6 +345,23 @@ class ChiefOfStaffConfig(BaseModel):
         direct_mcp_max_turns: Hard turn cap for one chat-driven action
             loop (bounds the act/observe fan-out a single instruction
             can drive).
+        operator_console_enabled: Enable the operator console (a CONFIGURE
+            turn drives the control plane as the shared system console
+            identity). When off, a configure turn 503s. Its own default-off
+            toggle, independent of ``direct_mcp_enabled``.
+        operator_console_model: Model for the console configure loop; unset
+            until an operator or setup selects one (fail-closed when unset).
+        configure_intent_confidence_floor: Minimum classifier confidence
+            (0-1) before a turn may resolve to CONFIGURE; below it the turn
+            degrades to a plain explanation rather than configuring.
+        operator_console_max_turns: Hard turn cap for one console session
+            (bounds the configure/observe fan-out a single instruction can
+            drive).
+        operator_console_cost_ceiling: Hard per-session cost ceiling in the
+            configured currency; the session halts the moment accumulated cost
+            crosses it.
+        operator_console_autonomy_level: Autonomy tier the console acts under
+            (SEMI by default: reads flow, risky writes escalate to approval).
         narrative_enabled: Enable documentary mode (the post-run
             run-narrative generator). When off, completed briefs produce
             no narrative.
@@ -532,6 +571,31 @@ class ChiefOfStaffConfig(BaseModel):
         ge=_DIRECT_MCP_MAX_TURNS_MIN,
         le=_DIRECT_MCP_MAX_TURNS_MAX,
     )
+
+    # ── Operator console (CONFIGURE turns) ────────────────
+
+    operator_console_enabled: bool = False
+    operator_console_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model for the operator-console configure loop; unset until "
+        "an operator or setup selects one (never a placeholder default)",
+    )
+    configure_intent_confidence_floor: float = Field(
+        default=_CONFIGURE_INTENT_CONFIDENCE_FLOOR_DEFAULT,
+        ge=0.0,
+        le=1.0,
+    )
+    operator_console_max_turns: int = Field(
+        default=_CONSOLE_MAX_TURNS_DEFAULT,
+        ge=_CONSOLE_MAX_TURNS_MIN,
+        le=_CONSOLE_MAX_TURNS_MAX,
+    )
+    operator_console_cost_ceiling: float = Field(
+        default=_CONSOLE_COST_CEILING_DEFAULT,
+        ge=_CONSOLE_COST_CEILING_MIN,
+        le=_CONSOLE_COST_CEILING_MAX,
+    )
+    operator_console_autonomy_level: AutonomyLevel = AutonomyLevel.SEMI
 
     # ── Run narrative (documentary mode) ──────────────────
 

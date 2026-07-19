@@ -21,10 +21,15 @@ if TYPE_CHECKING:
     from synthorg.core.clock import Clock
     from synthorg.engine.agent_engine import AgentEngine
     from synthorg.hr.registry import AgentRegistryService
+    from synthorg.integrations.connections.secret_capture import SecretCaptureService
     from synthorg.meta.chief_of_staff.actor import ConversationalActor
     from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+    from synthorg.meta.chief_of_staff.console_conversation_store import (
+        ConsoleConversationStore,
+    )
     from synthorg.meta.chief_of_staff.group_chat import GroupChatService
     from synthorg.meta.chief_of_staff.group_invite import GroupInviteCoordinator
+    from synthorg.meta.chief_of_staff.operator_console import OperatorConsoleService
     from synthorg.persistence.conversational_factory import (
         ConversationalRepositories,
     )
@@ -219,4 +224,88 @@ def build_conversational_actor(
     )
 
 
-__all__ = ["build_conversational_actor", "build_group_chat_service"]
+def build_operator_console(  # noqa: PLR0913 -- injected console dependencies
+    chief_of_staff_config: ChiefOfStaffConfig,
+    *,
+    engine: AgentEngine,
+    autonomy_resolver: AutonomyResolver | None,
+    clock: Clock,
+    secret_capture: SecretCaptureService | None = None,
+    conversations: ConsoleConversationStore | None = None,
+) -> OperatorConsoleService | None:
+    """Resolve an OperatorConsoleService from config + the boot engine.
+
+    Returns ``None`` -- and a CONFIGURE turn then surfaces 503 -- when:
+
+    - ``chief_of_staff_config.operator_console_enabled`` is False (opt-in
+      default, independent of ``direct_mcp_enabled``), or
+    - no ``operator_console_model`` is bound (the console cannot dispatch
+      without an explicit ``(provider, model)`` pair), or
+    - the boot ``AgentEngine`` has no MCP self-consumer wired (no
+      control-plane tools for the console to call), or
+    - the boot ``AgentEngine`` has no enabled ``SecurityConfig``
+      (``has_security_governance`` False): without governance the SecOps
+      escalate-and-park step is absent, so a permitted write/admin action
+      would run with no approval gate. The builder fails closed rather than
+      exposing an ungated console.
+
+    The console reuses the SHARED boot engine so a sensitive configure step
+    parks on the same ``ApprovalGate`` the ``/approvals`` controller resumes.
+
+    Returns:
+        The ``OperatorConsoleService`` value when present, ``None`` otherwise.
+    """
+    from synthorg.meta.chief_of_staff.console_identity import (  # noqa: PLC0415
+        build_console_identity,
+    )
+    from synthorg.meta.chief_of_staff.operator_console import (  # noqa: PLC0415
+        OperatorConsoleService,
+    )
+
+    if not chief_of_staff_config.operator_console_enabled:
+        return None
+    if not engine.has_mcp_self_consumer:
+        logger.warning(
+            API_APP_STARTUP,
+            note="Operator console enabled but no MCP self-consumer wired",
+        )
+        return None
+    if not engine.has_security_governance:
+        logger.warning(
+            API_APP_STARTUP,
+            note="Operator console enabled but security governance is inactive: "
+            "refusing to build the console (a CONFIGURE turn 503s). Without an "
+            "enabled SecurityConfig the SecOps escalate-and-park step is absent, "
+            "so a permitted write/admin action would run unsupervised. Wire an "
+            "enabled SecurityConfig to expose the console.",
+        )
+        return None
+    identity = build_console_identity(
+        model_ref=chief_of_staff_config.operator_console_model or "",
+        autonomy_level=chief_of_staff_config.operator_console_autonomy_level,
+        clock=clock,
+    )
+    if identity is None:
+        logger.warning(
+            API_APP_STARTUP,
+            note="Operator console enabled but no operator_console_model is "
+            "bound: refusing to build the console (a CONFIGURE turn 503s). "
+            "Select a provider + model for the console.",
+        )
+        return None
+    logger.info(API_APP_STARTUP, note="Operator console configured")
+    return OperatorConsoleService(
+        engine=engine,
+        identity=identity,
+        autonomy_resolver=autonomy_resolver,
+        config=chief_of_staff_config,
+        secret_capture=secret_capture,
+        conversations=conversations,
+    )
+
+
+__all__ = [
+    "build_conversational_actor",
+    "build_group_chat_service",
+    "build_operator_console",
+]

@@ -20,6 +20,7 @@ function baseResult(overrides: Partial<TurnResult>): TurnResult {
     propose: null,
     group: null,
     act: null,
+    configure: null,
     charter: null,
     chime_ins: [],
     ...overrides,
@@ -226,6 +227,77 @@ describe('mapTurnResult', () => {
         toolCalls: [{ tool_name: 'query_metrics', is_error: false, result: 'ok' }],
       },
     })
+  })
+
+  it('maps a configure result with pending captures to action + capture cards', () => {
+    const configure = {
+      console_id: 'console-1',
+      console_name: 'Operator Console',
+      conversation_id: 'c1',
+      action: {
+        termination_reason: 'completed' as const,
+        final_message: 'I need the database password.',
+        tool_calls: [],
+        approval_id: null,
+        parked: false,
+      },
+      connection_draft_id: 'draft-9',
+      pending_captures: [
+        {
+          draft_id: 'draft-9',
+          connection_type: 'database',
+          field_name: 'password',
+          secret_kind: 'password',
+          label: 'Password',
+        },
+      ],
+    }
+    const turns = mapTurnResult(baseResult({ intent: 'configure', configure }))
+    expect(turns).toHaveLength(2)
+    // turns[0] is the console's action card, turns[1] the masked capture card.
+    expect(turns[0]).toMatchObject({
+      kind: 'event',
+      event: {
+        type: 'action',
+        agentName: 'Operator Console',
+        content: 'I need the database password.',
+      },
+    })
+    expect(turns[1]).toMatchObject({
+      kind: 'event',
+      event: {
+        type: 'secret-capture',
+        draftId: 'draft-9',
+        captures: [
+          {
+            connectionType: 'database',
+            fieldName: 'password',
+            secretKind: 'password',
+            label: 'Password',
+          },
+        ],
+      },
+    })
+  })
+
+  it('maps a configure result with no pending captures to just an action card', () => {
+    const configure = {
+      console_id: 'console-1',
+      console_name: 'Operator Console',
+      conversation_id: 'c1',
+      action: {
+        termination_reason: 'completed' as const,
+        final_message: 'Connected.',
+        tool_calls: [],
+        approval_id: null,
+        parked: false,
+      },
+      connection_draft_id: 'draft-9',
+      pending_captures: [],
+    }
+    const turns = mapTurnResult(baseResult({ intent: 'configure', configure }))
+    expect(turns).toHaveLength(1)
+    expect(turns[0]).toMatchObject({ event: { type: 'action' } })
   })
 
   it('maps a charter question to a CEO-labelled assistant turn', () => {

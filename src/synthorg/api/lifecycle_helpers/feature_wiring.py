@@ -16,8 +16,8 @@ from synthorg.api.app_builders import build_chief_of_staff_chat
 from synthorg.api.lifecycle_helpers.charter_wiring import _wire_charter_engine
 from synthorg.api.lifecycle_helpers.conversational_wiring import (
     wire_chief_of_staff_proposer,
-    wire_conversational_actor,
     wire_conversational_plan_dispatcher,
+    wire_conversational_write_path,
     wire_group_chat_service,
 )
 from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (
@@ -660,7 +660,7 @@ async def wire_features_on_startup(
         cost_tracker=cost_tracker,
         si_config=si_config,
     )
-    await wire_conversational_actor(app_state, si_config=si_config)
+    await wire_conversational_write_path(app_state, si_config=si_config)
 
 
 async def _wire_meta_features(

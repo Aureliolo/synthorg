@@ -417,6 +417,22 @@ export const EVALUATION_CONFIDENCE_VALUES = [
 ] as const
 export type EvaluationConfidence = (typeof EVALUATION_CONFIDENCE_VALUES)[number]
 
+export const FIELD_INPUT_TYPE_VALUES = [
+    'text',
+    'password',
+    'number',
+    'url',
+    'select',
+] as const
+export type FieldInputType = (typeof FIELD_INPUT_TYPE_VALUES)[number]
+
+export const FIELD_PLACEMENT_VALUES = [
+    'base_url',
+    'credential',
+    'metadata',
+] as const
+export type FieldPlacement = (typeof FIELD_PLACEMENT_VALUES)[number]
+
 export const FILE_SYSTEM_SCOPE_VALUES = [
     'workspace_only',
     'project_directory',
@@ -490,6 +506,7 @@ export const INTENT_ROUTING_REASON_VALUES = [
     'no_intent_classifier',
     'act_floor_not_met',
     'charter_floor_not_met',
+    'configure_floor_not_met',
     'group_targets_missing',
     'act_no_target',
     'classify_call_failed',
@@ -885,6 +902,12 @@ export const RUN_OUTCOME_VALUES = [
 ] as const
 export type RunOutcome = (typeof RUN_OUTCOME_VALUES)[number]
 
+export const SECRET_CAPTURE_MODE_VALUES = [
+    'masked_field',
+    'oauth_redirect',
+] as const
+export type SecretCaptureMode = (typeof SECRET_CAPTURE_MODE_VALUES)[number]
+
 export const SETTING_LEVEL_VALUES = [
     'basic',
     'advanced',
@@ -1162,6 +1185,7 @@ export const TURN_INTENT_VALUES = [
     'act',
     'group_convene',
     'charter',
+    'configure',
 ] as const
 export type TurnIntent = (typeof TURN_INTENT_VALUES)[number]
 

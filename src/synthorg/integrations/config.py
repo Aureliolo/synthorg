@@ -22,11 +22,37 @@ class ConnectionsConfig(BaseModel):
 
     Attributes:
         max_connections_per_type: Upper bound per connection type.
+        secret_capture_ttl_seconds: Lifetime of an out-of-band secret-capture
+            handle before it expires and is swept.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="secret_capture_ttl_seconds",
+            namespace=SettingNamespace.INTEGRATIONS,
+            key="secret_capture_ttl_seconds",
+            parse=parse_int,
+        ),
+    )
+
     max_connections_per_type: int = Field(default=100, ge=1)
+    # Bounds mirror the INTEGRATIONS.secret_capture_ttl_seconds setting
+    # definition (30s..3600s) so the typed config and the settings registry
+    # agree on the accepted range.
+    secret_capture_ttl_seconds: int = Field(default=600, ge=30, le=3600)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Populate unset mirror fields from the settings registry.
+
+        Returns:
+            The raw model input with any unset mirror fields filled in
+            from their registered settings (caller-supplied keys win).
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
 class EncryptedSqliteConfig(BaseModel):

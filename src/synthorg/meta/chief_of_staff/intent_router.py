@@ -20,6 +20,7 @@ best-effort discipline.
 """
 
 import asyncio
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import ClassVar, Protocol, runtime_checkable
 
@@ -64,6 +65,22 @@ from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
+
+@dataclass(frozen=True)
+class _IntentFloors:
+    """The per-turn confidence floors gating the stricter intents.
+
+    Attributes:
+        act: Minimum confidence to resolve ACT.
+        charter: Minimum confidence to resolve CHARTER.
+        configure: Minimum confidence to resolve CONFIGURE.
+    """
+
+    act: float
+    charter: float
+    configure: float
+
+
 _INTENT_AGENT_ID: NotBlankStr = NotBlankStr("system")
 _INTENT_TASK_ID: NotBlankStr = NotBlankStr("system:cos:turn_intent")
 # A convened group needs at least two named participants to be a group at
@@ -82,6 +99,10 @@ class TurnIntent(StrEnum):
             acting agent's trust level. Gated behind a stricter floor.
         GROUP_CONVENE: Convene several named agents in a group discussion.
         CHARTER: Interview the operator to draft a company charter.
+        CONFIGURE: Configure or operate the control plane through the
+            operator console (connect an integration, change a setting,
+            call a control-plane tool). Gated behind a stricter floor and
+            its own default-off toggle.
     """
 
     EXPLAIN = "explain"
@@ -89,6 +110,7 @@ class TurnIntent(StrEnum):
     ACT = "act"
     GROUP_CONVENE = "group_convene"
     CHARTER = "charter"
+    CONFIGURE = "configure"
 
 
 class IntentRoutingReason(StrEnum):
@@ -109,6 +131,8 @@ class IntentRoutingReason(StrEnum):
             to EXPLAIN.
         CHARTER_FLOOR_NOT_MET: A confident-enough CHARTER was not reached;
             degraded to EXPLAIN.
+        CONFIGURE_FLOOR_NOT_MET: A confident-enough CONFIGURE was not
+            reached; degraded to EXPLAIN.
         GROUP_TARGETS_MISSING: A group was requested without enough named
             participants; degraded to EXPLAIN.
         ACT_NO_TARGET: An act was requested without naming an acting agent;
@@ -125,6 +149,7 @@ class IntentRoutingReason(StrEnum):
     NO_INTENT_CLASSIFIER = "no_intent_classifier"
     ACT_FLOOR_NOT_MET = "act_floor_not_met"
     CHARTER_FLOOR_NOT_MET = "charter_floor_not_met"
+    CONFIGURE_FLOOR_NOT_MET = "configure_floor_not_met"
     GROUP_TARGETS_MISSING = "group_targets_missing"
     ACT_NO_TARGET = "act_no_target"
     CLASSIFY_CALL_FAILED = "classify_call_failed"
@@ -206,6 +231,7 @@ class LlmIntentClassifier:
         model: Build-time classifier model id, bound to ``provider``.
         act_confidence_floor: Minimum confidence to resolve ACT.
         charter_confidence_floor: Minimum confidence to resolve CHARTER.
+        configure_confidence_floor: Minimum confidence to resolve CONFIGURE.
         temperature: Classifier sampling temperature.
         max_tokens: Token budget for one classification reply.
         timeout_seconds: Wall-clock cap for the classification call.
@@ -229,6 +255,7 @@ class LlmIntentClassifier:
         model: NotBlankStr,
         act_confidence_floor: float,
         charter_confidence_floor: float,
+        configure_confidence_floor: float,
         temperature: float,
         max_tokens: int,
         timeout_seconds: float,
@@ -240,6 +267,7 @@ class LlmIntentClassifier:
         self._model = model
         self._act_confidence_floor = act_confidence_floor
         self._charter_confidence_floor = charter_confidence_floor
+        self._configure_confidence_floor = configure_confidence_floor
         self._temperature = temperature
         self._max_tokens = max_tokens
         self._timeout_seconds = timeout_seconds
@@ -288,22 +316,25 @@ class LlmIntentClassifier:
         classification = await self._classify(history)
         if isinstance(classification, IntentRoutingReason):
             return IntentOutcome(intent=TurnIntent.EXPLAIN, reason=classification)
-        act_floor, charter_floor = await self._resolve_live_floors()
-        return self._apply_floors(classification, act_floor, charter_floor)
+        floors = await self._resolve_live_floors()
+        return self._apply_floors(classification, floors)
 
-    async def _resolve_live_floors(self) -> tuple[float, float]:
-        """Resolve the live ACT + CHARTER confidence floors for one classify.
+    async def _resolve_live_floors(self) -> _IntentFloors:
+        """Resolve the live ACT + CHARTER + CONFIGURE confidence floors.
 
-        Re-reads the flat ``chief_of_staff.{act,charter}_intent_confidence_floor``
-        settings per turn so raising a safety floor takes effect without a
-        restart; a missing resolver or setting falls back to the build-time
-        value.
+        Re-reads the flat ``chief_of_staff.*_intent_confidence_floor`` settings
+        per turn so raising a safety floor takes effect without a restart; a
+        missing resolver or setting falls back to the build-time value.
 
         Returns:
-            The ``(act_floor, charter_floor)`` to gate this classification with.
+            The ``_IntentFloors`` to gate this classification with.
         """
         if self._config_resolver is None:
-            return self._act_confidence_floor, self._charter_confidence_floor
+            return _IntentFloors(
+                act=self._act_confidence_floor,
+                charter=self._charter_confidence_floor,
+                configure=self._configure_confidence_floor,
+            )
         act_floor = await resolve_float_with_fallback(
             resolver=self._config_resolver,
             namespace=SettingNamespace.CHIEF_OF_STAFF,
@@ -316,7 +347,15 @@ class LlmIntentClassifier:
             key="charter_intent_confidence_floor",
             fallback=self._charter_confidence_floor,
         )
-        return act_floor, charter_floor
+        configure_floor = await resolve_float_with_fallback(
+            resolver=self._config_resolver,
+            namespace=SettingNamespace.CHIEF_OF_STAFF,
+            key="configure_intent_confidence_floor",
+            fallback=self._configure_confidence_floor,
+        )
+        return _IntentFloors(
+            act=act_floor, charter=charter_floor, configure=configure_floor
+        )
 
     async def _resolve_live_generation(self) -> tuple[float, int, float]:
         """Resolve the live temperature, token budget, and timeout for one call.
@@ -355,8 +394,7 @@ class LlmIntentClassifier:
     def _apply_floors(
         self,
         classification: IntentClassification,
-        act_floor: float,
-        charter_floor: float,
+        floors: _IntentFloors,
     ) -> IntentOutcome:
         """Degrade a raw classification that does not clear its gate.
 
@@ -367,10 +405,12 @@ class LlmIntentClassifier:
         intent = classification.intent
         confidence = classification.confidence
         degrade: IntentRoutingReason | None = None
-        if intent is TurnIntent.ACT and confidence < act_floor:
+        if intent is TurnIntent.ACT and confidence < floors.act:
             degrade = IntentRoutingReason.ACT_FLOOR_NOT_MET
-        elif intent is TurnIntent.CHARTER and confidence < charter_floor:
+        elif intent is TurnIntent.CHARTER and confidence < floors.charter:
             degrade = IntentRoutingReason.CHARTER_FLOOR_NOT_MET
+        elif intent is TurnIntent.CONFIGURE and confidence < floors.configure:
+            degrade = IntentRoutingReason.CONFIGURE_FLOOR_NOT_MET
         elif intent is TurnIntent.GROUP_CONVENE and (
             len({target.casefold() for target in classification.named_targets})
             < _MIN_GROUP_TARGETS
@@ -558,6 +598,7 @@ def build_intent_classifier(
         model=NotBlankStr(model_id),
         act_confidence_floor=config.act_intent_confidence_floor,
         charter_confidence_floor=config.charter_intent_confidence_floor,
+        configure_confidence_floor=config.configure_intent_confidence_floor,
         temperature=config.turn_intent_temperature,
         max_tokens=config.turn_intent_max_tokens,
         timeout_seconds=config.agent_call_timeout_seconds,

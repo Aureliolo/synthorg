@@ -7,14 +7,28 @@ from typing import TYPE_CHECKING
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.field_metadata import (
+    get_connection_type_metadata,
+    list_connection_type_metadata,
+)
 from synthorg.integrations.connections.models import ConnectionType
-from synthorg.integrations.state import connection_service_of
+from synthorg.integrations.connections.secret_capture import (
+    PendingSecretCapture,
+    resolve_credential_handles,
+)
+from synthorg.integrations.state import (
+    connection_service_of,
+    secret_capture_service_of,
+)
 from synthorg.meta.mcp.domains._remaining_args import (
     ConnectionsCheckHealthArgs,
     ConnectionsCreateArgs,
     ConnectionsDeleteArgs,
+    ConnectionsFieldMetadataArgs,
     ConnectionsGetArgs,
     ConnectionsListArgs,
+    ConnectionsRequestSecretCaptureArgs,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -50,6 +64,30 @@ logger = get_logger(__name__)
 
 _ARG_CONNECTION_TYPE = "connection_type"
 _TY_CONNECTION_TYPE = "ConnectionType string"
+_ARG_DRAFT_ID = "connection_draft_id"
+_TY_DRAFT_ID_REQUIRED = "required when credential_handles are supplied"
+_ARG_FIELD_NAME = "field_name"
+_CAPTURE_REQUESTED_MESSAGE = (
+    "Masked capture requested for {label!r}. Wait for the operator to provide "
+    "it out of band; the handle arrives on a later turn. Do not call "
+    "connections.create until then."
+)
+
+
+def _resolve_connection_type(value: str) -> ConnectionType:
+    """Parse a connection-type string into its enum, or raise the arg error.
+
+    Returns:
+        The resolved :class:`ConnectionType`.
+
+    Raises:
+        ArgumentValidationError: When ``value`` is not a known connection type.
+    """
+    try:
+        return ConnectionType(value)
+    except ValueError as exc:
+        bad = ArgumentValidationError(_ARG_CONNECTION_TYPE, _TY_CONNECTION_TYPE)
+        raise bad from exc
 
 
 async def _connections_list(
@@ -113,6 +151,36 @@ async def _connections_get(
     return ok(connection.model_dump(mode="json"))
 
 
+async def _resolve_credentials(
+    app_state: AppState,
+    args: ConnectionsCreateArgs,
+) -> dict[str, str]:
+    """Merge inline non-secret fields with out-of-band handle-resolved secrets.
+
+    Secret fields arrive as capture handles (never inline). Each handle is
+    consumed exactly once against its ``(draft_id, field_name)`` binding, so
+    the raw value only ever exists in-process here, never in a tool argument
+    or the transcript.
+
+    Returns:
+        The full credentials mapping ready for ``create_connection``.
+
+    Raises:
+        ArgumentValidationError: If handles are supplied without a draft id.
+        SecretCaptureHandleInvalidError: If a handle is invalid or expired.
+    """
+    if not args.credential_handles:
+        return dict(args.credentials)
+    if args.connection_draft_id is None:
+        raise ArgumentValidationError(_ARG_DRAFT_ID, _TY_DRAFT_ID_REQUIRED)
+    return await resolve_credential_handles(
+        secret_capture_service_of(app_state),
+        credentials=dict(args.credentials),
+        credential_handles=dict(args.credential_handles),
+        connection_draft_id=args.connection_draft_id,
+    )
+
+
 async def _connections_create(
     *,
     app_state: AppState,
@@ -132,17 +200,14 @@ async def _connections_create(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         args = typed_args(arguments, ConnectionsCreateArgs)
-        try:
-            connection_type = ConnectionType(args.connection_type)
-        except ValueError as exc:
-            bad = ArgumentValidationError(_ARG_CONNECTION_TYPE, _TY_CONNECTION_TYPE)
-            raise bad from exc
+        connection_type = _resolve_connection_type(args.connection_type)
         actor_id = require_actor_id(resolved_actor)
+        credentials = await _resolve_credentials(app_state, args)
         connection = await connection_service_of(app_state).create_connection(
             name=args.name,
             connection_type=connection_type,
             auth_method=args.auth_method,
-            credentials=args.credentials,
+            credentials=credentials,
             actor_id=actor_id,
             base_url=args.base_url,
             metadata=args.metadata,
@@ -240,12 +305,123 @@ async def _connections_check_health(
     return ok(connection.model_dump(mode="json"))
 
 
+async def _connections_field_metadata(
+    *,
+    app_state: AppState,  # noqa: ARG001 -- static registry, no app state needed
+    arguments: dict[str, object],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    """Return the connection-type + credential-field metadata registry.
+
+    Returns:
+        Resulting string. The payload is the ordered per-type metadata the
+        setup flow prompts from and the dashboard form renders, so a
+        conversational caller can discover a connection type's fields without
+        hard-coding them.
+    """
+    tool = "synthorg_connections_field_metadata"
+    try:
+        typed_args(arguments, ConnectionsFieldMetadataArgs)
+        entries = [
+            metadata.model_dump(mode="json")
+            for metadata in list_connection_type_metadata()
+        ]
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
+        log_handler_invoke_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(entries)
+
+
+async def _connections_request_secret_capture(
+    *,
+    app_state: AppState,
+    arguments: dict[str, object],
+    actor: AgentIdentity | None = None,
+) -> str:
+    """Register a masked secret-capture request for the in-chat setup flow.
+
+    Raised by the operator console when it reaches a secret field mid-setup:
+    it records a *pending* capture the dashboard renders as a masked input and
+    posts out of band under ``draft_id``. The request carries no value, and the
+    field's kind and label come from the metadata registry, not the caller, so
+    nothing sensitive enters the turn. Admin op: it triggers a credential-entry
+    prompt, so it enforces the same confirm + role + actor-audit guardrails as
+    ``connections.create`` before mutating pending state.
+
+    Returns:
+        Resulting string acknowledging the pending capture.
+
+    Raises:
+        ArgumentValidationError: When ``connection_type`` is unknown or
+            ``field_name`` is not a secret field of that type (caught and
+            returned as an error payload).
+    """
+    tool = "synthorg_connections_request_secret_capture"
+    try:
+        reason, resolved_actor = require_admin_guardrails(arguments, actor)
+        args = typed_args(arguments, ConnectionsRequestSecretCaptureArgs)
+        connection_type = _resolve_connection_type(args.connection_type)
+        fields = get_connection_type_metadata(connection_type).fields
+        field = next(
+            (f for f in fields if f.name == args.field_name and f.secret), None
+        )
+        if field is None:
+            not_secret = f"a secret field of connection type {connection_type.value!r}"
+            raise ArgumentValidationError(_ARG_FIELD_NAME, not_secret)
+        actor_id = require_actor_id(resolved_actor)
+        secret_capture_service_of(app_state).register_pending(
+            PendingSecretCapture(
+                draft_id=args.draft_id,
+                connection_type=NotBlankStr(connection_type.value),
+                field_name=field.name,
+                secret_kind=field.name,
+                label=field.label,
+            )
+        )
+    except GuardrailViolationError as exc:
+        log_handler_guardrail_violated(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool, exc)
+        return err(exc)
+    except Exception as exc:  # noqa: BLE001 -- mcp tool boundary
+        reraise_critical(exc)
+        log_handler_invoke_failed(tool, exc)
+        return err(exc)
+    # SECRET_CAPTURE_REQUESTED is emitted by register_pending, with its siblings.
+    logger.info(
+        MCP_ADMIN_OP_EXECUTED,
+        tool_name=tool,
+        actor_agent_id=actor_id,
+        reason=reason,
+        draft_id=args.draft_id,
+        field=field.name,
+    )
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(
+        {
+            "status": "capture_requested",
+            "field": field.name,
+            "message": _CAPTURE_REQUESTED_MESSAGE.format(label=field.label),
+        }
+    )
+
+
 CONNECTIONS_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {
         "synthorg_connections_list": _connections_list,
+        "synthorg_connections_field_metadata": _connections_field_metadata,
         "synthorg_connections_get": _connections_get,
         "synthorg_connections_create": _connections_create,
         "synthorg_connections_delete": _connections_delete,
         "synthorg_connections_check_health": _connections_check_health,
+        "synthorg_connections_request_secret_capture": (
+            _connections_request_secret_capture
+        ),
     },
 )

@@ -34,6 +34,8 @@ function buildTurnRequest(message: string, options?: PostTurnOptions): TurnReque
     intent_override: opts.intentOverride ?? null,
     named_targets: opts.namedTargets ?? [],
     project: opts.project ?? null,
+    connection_draft_id: opts.connectionDraftId ?? null,
+    provided_credential_handles: opts.providedCredentialHandles ?? {},
   }
 }
 
@@ -50,6 +52,14 @@ export interface PostTurnOptions {
   project?: string
   idempotencyKey?: string
   signal?: AbortSignal
+  /** Operator-console setup draft to continue (a CONFIGURE follow-up turn). */
+  connectionDraftId?: string
+  /**
+   * Opaque single-use secret-capture handles (field-name -> handle) the
+   * operator provided out of band; only meaningful on a CONFIGURE turn. The raw
+   * secret is never sent here.
+   */
+  providedCredentialHandles?: Readonly<Record<string, string>>
 }
 
 function turnRequestConfig(options: PostTurnOptions | undefined) {

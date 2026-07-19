@@ -46,6 +46,17 @@ SECRET_STORAGE_FAILED: Final[str] = "integrations.secret.storage_failed"  # noqa
 SECRET_DELETE_FAILED: Final[str] = "integrations.secret.delete_failed"  # noqa: S105
 SECRET_BACKEND_UNAVAILABLE: Final[str] = "integrations.secret.backend_unavailable"  # noqa: S105
 
+# -- Out-of-band secret capture (metadata only; never the value) ---------
+
+SECRET_CAPTURE_REQUESTED: Final[str] = "integrations.secret_capture.requested"  # noqa: S105
+SECRET_CAPTURE_STORED: Final[str] = "integrations.secret_capture.stored"  # noqa: S105
+SECRET_CAPTURE_CONSUMED: Final[str] = "integrations.secret_capture.consumed"  # noqa: S105
+SECRET_CAPTURE_REJECTED: Final[str] = "integrations.secret_capture.rejected"  # noqa: S105
+SECRET_CAPTURE_PURGED: Final[str] = "integrations.secret_capture.purged"  # noqa: S105
+# A backing secret could not be deleted (delete raised); it is now orphaned in
+# durable storage. ERROR-level so a leaking backend surfaces in alerting.
+SECRET_CAPTURE_ORPHANED: Final[str] = "integrations.secret_capture.orphaned"  # noqa: S105
+
 # -- OAuth flow ----------------------------------------------------------
 
 OAUTH_FLOW_STARTED: Final[str] = "integrations.oauth.flow_started"

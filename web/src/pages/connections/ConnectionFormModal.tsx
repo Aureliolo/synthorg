@@ -1,6 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
 import {
-  CONNECTION_TYPE_VALUES,
   connectionTypeUsesWebhookReceipts,
   type Connection,
   type ConnectionType,
@@ -17,7 +16,11 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { cn } from '@/lib/utils'
-import { CONNECTION_TYPE_FIELDS, type ConnectionFieldSpec } from './connection-type-fields'
+import { useConnectionsStore } from '@/stores/connections'
+import {
+  type ConnectionFieldSpec,
+  type ResolvedConnectionSpec,
+} from './connection-fields'
 import { TypeBadge } from './TypeBadge'
 import { type ConnectionForm, type Mode, useConnectionForm } from './useConnectionForm'
 
@@ -51,6 +54,10 @@ function renderField(
       />
     )
   }
+  // A secret field is captured out of band on submit (only an opaque handle
+  // reaches the create call), so surface that rather than leaving it implicit.
+  const secretHint = 'Captured securely; never stored in the connection payload.'
+  const hint = spec.secret ? (spec.hint ? `${spec.hint} ${secretHint}` : secretHint) : spec.hint
   return (
     <InputField
       key={spec.key}
@@ -58,7 +65,7 @@ function renderField(
       type={spec.type === 'select' ? 'text' : spec.type}
       value={value}
       placeholder={spec.placeholder}
-      hint={spec.hint}
+      hint={hint}
       error={error}
       required={spec.required}
       disabled={readOnly}
@@ -67,28 +74,79 @@ function renderField(
   )
 }
 
+function ConnectionTypeCard({
+  label,
+  description,
+  onSelect,
+}: {
+  label: string
+  description: string
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        'flex flex-col gap-1 rounded-lg border border-border bg-card p-card text-left',
+        'transition-all duration-200',
+        'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
+        'focus:outline-none focus:ring-2 focus:ring-accent',
+      )}
+    >
+      <span className="text-sm font-medium text-foreground">{label}</span>
+      <span className="text-xs text-text-secondary">{description}</span>
+    </button>
+  )
+}
+
 function TypePicker({ onSelect }: { onSelect: (type: ConnectionType) => void }) {
+  // The registry is the single source of truth for which types exist and how
+  // they are labelled/described; render exactly what the backend returns.
+  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
+  const typesLoading = useConnectionsStore((s) => s.typesLoading)
+  const typesError = useConnectionsStore((s) => s.typesError)
+  const fetchConnectionTypes = useConnectionsStore((s) => s.fetchConnectionTypes)
+  if (connectionTypes.length === 0) {
+    if (typesLoading) {
+      return (
+        <p className="p-card text-sm text-text-secondary">
+          Loading connection types...
+        </p>
+      )
+    }
+    // Distinguish a failed fetch from a genuinely empty registry so the
+    // operator gets a retry instead of a misleading "none available".
+    if (typesError !== null) {
+      return (
+        <div className="flex flex-col items-start gap-2 p-card text-sm">
+          <p className="text-danger">Could not load connection types.</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchConnectionTypes()}
+          >
+            Retry
+          </Button>
+        </div>
+      )
+    }
+    return (
+      <p className="p-card text-sm text-text-secondary">
+        No connection types available.
+      </p>
+    )
+  }
   return (
     <div className="grid grid-cols-2 gap-grid-gap max-[767px]:grid-cols-1">
-      {CONNECTION_TYPE_VALUES.map((type) => {
-        const spec = CONNECTION_TYPE_FIELDS[type]
-        return (
-          <button
-            key={type}
-            type="button"
-            onClick={() => onSelect(type)}
-            className={cn(
-              'flex flex-col gap-1 rounded-lg border border-border bg-card p-card text-left',
-              'transition-all duration-200',
-              'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
-              'focus:outline-none focus:ring-2 focus:ring-accent',
-            )}
-          >
-            <span className="text-sm font-medium text-foreground">{spec.label}</span>
-            <span className="text-xs text-text-secondary">{spec.description}</span>
-          </button>
-        )
-      })}
+      {connectionTypes.map((meta) => (
+        <ConnectionTypeCard
+          key={meta.connection_type}
+          label={meta.label}
+          description={meta.description}
+          onSelect={() => onSelect(meta.connection_type)}
+        />
+      ))}
     </div>
   )
 }
@@ -158,12 +216,23 @@ function WebhookRetentionField({ f }: { f: ConnectionForm }) {
   )
 }
 
-function ConnectionFormFields({ f, mode, onClose }: { f: ConnectionForm; mode: Mode; onClose: () => void }) {
-  const spec = f.spec!
+function ConnectionFormFields({
+  f,
+  spec,
+  connectionType,
+  mode,
+  onClose,
+}: {
+  f: ConnectionForm
+  spec: ResolvedConnectionSpec
+  connectionType: ConnectionType
+  mode: Mode
+  onClose: () => void
+}) {
   return (
     <form onSubmit={f.handleSubmit} className="flex flex-col gap-4">
       <div className="flex items-center gap-2 text-sm text-text-secondary">
-        <TypeBadge type={f.form.type as ConnectionType} />
+        <TypeBadge type={connectionType} />
         <span>{spec.description}</span>
       </div>
 
@@ -244,7 +313,16 @@ export function ConnectionFormModal(props: ConnectionFormModalProps) {
           {mode === 'create' && f.form.type === null ? (
             <TypePicker onSelect={f.setType} />
           ) : (
-            Boolean(f.spec) && <ConnectionFormFields f={f} mode={mode} onClose={onClose} />
+            f.spec !== null &&
+            f.form.type !== null && (
+              <ConnectionFormFields
+                f={f}
+                spec={f.spec}
+                connectionType={f.form.type}
+                mode={mode}
+                onClose={onClose}
+              />
+            )
           )}
         </div>
       </DialogContent>

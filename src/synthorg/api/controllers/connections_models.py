@@ -6,11 +6,19 @@ its size budget. Both models forbid unknown keys at the boundary and cap
 string lengths on attacker-controllable fields.
 """
 
-from typing import Annotated, Final
+from typing import Annotated, Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.field_metadata import reject_inline_secret_fields
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
 
 _MAX_NAME_LEN: Final[int] = 128
@@ -41,7 +49,32 @@ class CreateConnectionRequest(BaseModel):
         Annotated[str, Field(max_length=_MAX_CRED_VALUE_LEN)],
     ] = Field(
         default_factory=dict,
-        description="Credential field-name to value map sent to the secret backend.",
+        description=(
+            "Non-secret credential field-name to value map. Secret fields "
+            "(tokens/passwords/keys) are NOT sent here: capture them out of "
+            "band and pass their handles via ``credential_handles``."
+        ),
+    )
+    credential_handles: dict[
+        NotBlankStr,
+        Annotated[NotBlankStr, Field(max_length=_MAX_NAME_LEN)],
+    ] = Field(
+        default_factory=dict,
+        description=(
+            "Secret credential field-name to opaque capture-handle map. Each "
+            "handle is resolved once, in-process, against its "
+            "``(connection_draft_id, field)`` binding so the raw value never "
+            "enters the request body or the logs. Requires connection_draft_id."
+        ),
+    )
+    connection_draft_id: (
+        Annotated[NotBlankStr, Field(max_length=_MAX_NAME_LEN)] | None
+    ) = Field(
+        default=None,
+        description=(
+            "Client-generated draft id the secret-capture handles are bound "
+            "to; required when credential_handles are supplied."
+        ),
     )
     base_url: Annotated[NotBlankStr, Field(max_length=_MAX_BASE_URL_LEN)] | None = None
     metadata: (
@@ -80,6 +113,27 @@ class CreateConnectionRequest(BaseModel):
             The name with surrounding whitespace stripped.
         """
         return v.strip()
+
+    @model_validator(mode="after")
+    def _validate_credentials(self) -> Self:
+        """Enforce the credential-boundary invariants at request parse time.
+
+        Credential handles must carry a ``connection_draft_id`` to bind
+        against, and a secret field must be captured out of band (never sent
+        inline in ``credentials``). Enforcing both here makes them structurally
+        unbypassable and identical to the ``connections.create`` MCP args.
+
+        Returns:
+            ``self`` when both invariants hold.
+
+        Raises:
+            ValueError: If handles lack a draft id, or a secret field is inline.
+        """
+        if self.credential_handles and self.connection_draft_id is None:
+            msg = "connection_draft_id is required when credential_handles are supplied"
+            raise ValueError(msg)
+        reject_inline_secret_fields(self.connection_type, self.credentials.keys())
+        return self
 
 
 class UpdateConnectionRequest(BaseModel):
@@ -154,3 +208,58 @@ class RevealedSecretResponse(BaseModel):
     # can legitimately be empty (e.g. an optional, unset field), so blank is
     # a valid revealed value rather than a validation error.
     value: str = Field(description="Plaintext value of the credential field.")
+
+
+class SecretCaptureRequest(BaseModel):
+    """Request body for the out-of-band secret-capture endpoint.
+
+    The raw ``value`` is typed :class:`SecretStr` so it renders masked in
+    any accidental log/repr and never appears in a traceback dump; the
+    endpoint hands it straight to the secret backend and returns only an
+    opaque handle. ``secret_kind`` and ``conversation_id`` are metadata
+    (recorded for binding/audit), never the value.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    value: SecretStr = Field(
+        description="Raw secret value; written to the backend, never logged.",
+    )
+    secret_kind: NotBlankStr = Field(
+        max_length=_MAX_NAME_LEN,
+        description="Field kind this secret is for (e.g. token, password).",
+    )
+    conversation_id: Annotated[NotBlankStr, Field(max_length=_MAX_NAME_LEN)] | None = (
+        Field(default=None, description="Owning conversation id (audit only).")
+    )
+
+    @field_validator("value")
+    @classmethod
+    def _bounded_secret_value(cls, v: SecretStr) -> SecretStr:
+        """Bound the secret length without ever surfacing the raw value.
+
+        A ``Field(max_length=...)`` on a ``SecretStr`` validates the inner
+        string *before* masking, so an over-length value echoes raw plaintext
+        in the ``ValidationError``. Checking the length here keeps the value
+        masked: the error message carries only the limit, never the value.
+
+        Returns:
+            The validated secret.
+
+        Raises:
+            ValueError: If the value exceeds the maximum length.
+        """
+        if len(v.get_secret_value()) > _MAX_CRED_VALUE_LEN:
+            msg = f"secret value exceeds the {_MAX_CRED_VALUE_LEN}-character limit"
+            raise ValueError(msg)
+        return v
+
+
+class SecretCaptureResponse(BaseModel):
+    """Success payload for the secret-capture endpoint: the opaque handle."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    handle: NotBlankStr = Field(
+        description="Opaque single-use handle to pass as a credential handle.",
+    )

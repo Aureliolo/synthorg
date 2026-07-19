@@ -116,10 +116,41 @@ class TestMCPCatalog:
         handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_install"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"entry_id": "x"},
+            arguments={"entry_id": "x", "confirm": True, "reason": "operator setup"},
             actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "ok"
+
+    async def test_install_requires_confirm(self, fake_app_state: AppState) -> None:
+        handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_install"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"entry_id": "x", "reason": "operator setup"},
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["domain_code"] == "guardrail_violated"
+
+    async def test_install_threads_connection_name(
+        self,
+        fake_app_state: AppState,
+        fake_catalog: AsyncMock,
+    ) -> None:
+        handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_install"]
+        await handler(
+            app_state=fake_app_state,
+            arguments={
+                "entry_id": "example-search-mcp",
+                "connection_name": "example-connection",
+                "confirm": True,
+                "reason": "operator setup",
+            },
+            actor=make_test_actor(),
+        )
+        fake_catalog.install_catalog_entry.assert_awaited_once()
+        assert (
+            fake_catalog.install_catalog_entry.await_args.kwargs["connection_name"]
+            == "example-connection"
+        )
 
     async def test_install_capability_gap(
         self,
@@ -132,7 +163,7 @@ class TestMCPCatalog:
         handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_install"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"entry_id": "x"},
+            arguments={"entry_id": "x", "confirm": True, "reason": "operator setup"},
             actor=make_test_actor(),
         )
         assert json.loads(response)["domain_code"] == "not_supported"
@@ -271,7 +302,11 @@ class TestDestructiveHappyPaths:
         installed = json.loads(
             await install_handler(
                 app_state=fake_app_state,
-                arguments={"entry_id": "cat-1"},
+                arguments={
+                    "entry_id": "cat-1",
+                    "confirm": True,
+                    "reason": "operator setup",
+                },
                 actor=make_test_actor(),
             ),
         )

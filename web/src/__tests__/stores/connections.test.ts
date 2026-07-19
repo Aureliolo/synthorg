@@ -136,6 +136,76 @@ describe('useConnectionsStore', () => {
     expect(useConnectionsStore.getState().connections).toHaveLength(1)
   })
 
+  it('fetches the connection-type registry once and caches it', async () => {
+    let calls = 0
+    server.use(
+      http.get('/api/v1/connections/types', () => {
+        calls += 1
+        return HttpResponse.json(
+          apiSuccess([
+            {
+              connection_type: 'github',
+              default_auth_method: 'bearer_token',
+              label: 'GitHub',
+              description: '',
+              required_field_names: ['token'],
+              secret_field_names: ['token'],
+              fields: [],
+            },
+          ]),
+        )
+      }),
+    )
+
+    await useConnectionsStore.getState().fetchConnectionTypes()
+    await useConnectionsStore.getState().fetchConnectionTypes()
+
+    expect(calls).toBe(1)
+    expect(useConnectionsStore.getState().connectionTypes).toHaveLength(1)
+    expect(useConnectionsStore.getState().connectionTypes[0]?.label).toBe('GitHub')
+  })
+
+  it('captures a secret out of band and returns only the opaque handle', async () => {
+    let capturedBody: unknown = null
+    server.use(
+      http.post(
+        '/api/v1/connections/drafts/:draftId/fields/:field/capture',
+        async ({ request }) => {
+          capturedBody = await request.json()
+          return HttpResponse.json(apiSuccess({ handle: 'sech_abc123' }), {
+            status: 201,
+          })
+        },
+      ),
+    )
+
+    const handle = await useConnectionsStore
+      .getState()
+      .captureSecret('draft-1', 'token', 'ghp_secret_value', 'token')
+
+    expect(handle).toBe('sech_abc123')
+    // The raw value goes to the write-only endpoint, never into the store.
+    expect(capturedBody).toEqual({ value: 'ghp_secret_value', secret_kind: 'token' })
+  })
+
+  it('returns null and toasts when a secret capture fails', async () => {
+    const { useToastStore } = await import('@/stores/toast')
+    useToastStore.getState().dismissAll()
+    server.use(
+      http.post(
+        '/api/v1/connections/drafts/:draftId/fields/:field/capture',
+        () => HttpResponse.json(apiError('capture unavailable'), { status: 503 }),
+      ),
+    )
+
+    const handle = await useConnectionsStore
+      .getState()
+      .captureSecret('draft-1', 'token', 'ghp_secret_value', 'token')
+
+    expect(handle).toBeNull()
+    expect(useToastStore.getState().toasts).toHaveLength(1)
+  })
+
   it('optimistically removes a connection on delete and rolls back on failure', async () => {
     useConnectionsStore.setState({ connections: [sampleConnection] })
     server.use(

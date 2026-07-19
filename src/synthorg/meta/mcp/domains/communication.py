@@ -10,8 +10,10 @@ from synthorg.meta.mcp.domains._remaining_args import (
     ConnectionsCheckHealthArgs,
     ConnectionsCreateArgs,
     ConnectionsDeleteArgs,
+    ConnectionsFieldMetadataArgs,
     ConnectionsGetArgs,
     ConnectionsListArgs,
+    ConnectionsRequestSecretCaptureArgs,
     MeetingsCreateArgs,
     MeetingsDeleteArgs,
     MeetingsGetArgs,
@@ -172,6 +174,13 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
     ),
     read_tool(
         "connections",
+        "field_metadata",
+        "List connection-type + credential-field metadata (labels, types, "
+        "required/secret flags, capture mode) for guided setup.",
+        args_model=ConnectionsFieldMetadataArgs,
+    ),
+    read_tool(
+        "connections",
         "get",
         "Get a connection by name.",
         {
@@ -190,8 +199,20 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "auth_method": {"type": "string", "description": "Authentication method"},
             "credentials": {
                 "type": "object",
-                "description": "Connection credentials (string values)",
+                "description": "Non-secret credential fields (host, port, dialect)",
                 "additionalProperties": {"type": "string"},
+            },
+            "credential_handles": {
+                "type": "object",
+                "description": (
+                    "Secret fields as out-of-band capture handles "
+                    "(field name -> handle)"
+                ),
+                "additionalProperties": {"type": "string"},
+            },
+            "connection_draft_id": {
+                "type": "string",
+                "description": "Setup draft id binding the credential handles",
             },
             "base_url": {"type": "string", "description": "Base URL"},
             "metadata": {
@@ -229,6 +250,35 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("name",),
         args_model=ConnectionsCheckHealthArgs,
+    ),
+    admin_tool(
+        "connections",
+        "request_secret_capture",
+        "Ask the operator to provide one secret field out of band during an "
+        "in-chat setup flow (renders a masked input; requires confirm); never "
+        "ask for a secret value in the chat itself.",
+        {
+            "connection_type": {
+                "type": "string",
+                "description": "Connection type being set up",
+            },
+            "field_name": {
+                "type": "string",
+                "description": "Secret field to capture (must be a secret field)",
+            },
+            "draft_id": {
+                "type": "string",
+                "description": "Setup draft id the captured handle binds to",
+            },
+            **ADMIN_GUARDRAIL_PROPERTIES,
+        },
+        required=(
+            "connection_type",
+            "field_name",
+            "draft_id",
+            *ADMIN_GUARDRAIL_REQUIRED,
+        ),
+        args_model=ConnectionsRequestSecretCaptureArgs,
     ),
     # --- Webhooks ---
     read_tool(

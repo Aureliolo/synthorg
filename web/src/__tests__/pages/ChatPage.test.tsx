@@ -86,6 +86,7 @@ describe('ChatPage unified surface', () => {
             },
             group: null,
             act: null,
+            configure: null,
             charter: null,
             chime_ins: [],
           }),

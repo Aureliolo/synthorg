@@ -3,6 +3,7 @@ import type {
   Connection,
   ConnectionHealthStatus,
   ConnectionType,
+  ConnectionTypeMetadata,
   CreateConnectionRequest,
   HealthReport,
   UpdateConnectionRequest,
@@ -17,6 +18,11 @@ export interface ConnectionsState {
   listLoading: boolean
   listError: string | null
 
+  // Connection-type registry (backend single source of truth for the form)
+  connectionTypes: readonly ConnectionTypeMetadata[]
+  typesLoading: boolean
+  typesError: string | null
+
   // Filters
   searchQuery: string
   typeFilter: ConnectionType | null
@@ -30,7 +36,14 @@ export interface ConnectionsState {
 
   // Actions
   fetchConnections: () => Promise<void>
+  fetchConnectionTypes: () => Promise<void>
   createConnection: (data: CreateConnectionRequest) => Promise<Connection | null>
+  captureSecret: (
+    draftId: string,
+    field: string,
+    value: string,
+    secretKind: string,
+  ) => Promise<string | null>
   updateConnection: (
     name: string,
     data: UpdateConnectionRequest,

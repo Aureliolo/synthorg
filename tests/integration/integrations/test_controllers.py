@@ -47,7 +47,12 @@ from synthorg.integrations.errors import (
     InvalidConnectionAuthError,
 )
 from synthorg.integrations.tunnel.protocol import TunnelSnapshot
-from tests._shared import LoopAsyncClient, make_app_state
+from tests._shared import (
+    InMemorySecretBackend,
+    LoopAsyncClient,
+    make_app_state,
+    mock_of,
+)
 
 
 def _make_conn(name: str = "c1") -> Connection:
@@ -92,6 +97,48 @@ class TestConnectionsController:
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with pytest.raises(NotFoundError):
             await ctrl.get_connection.fn(ctrl, state=state, name="missing")
+
+    async def test_list_connection_types_returns_metadata(self) -> None:
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.integrations.connections.models import ConnectionType
+
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        response = await ctrl.list_connection_types.fn(ctrl)
+        got = {metadata.connection_type for metadata in response.data}
+        assert got == set(ConnectionType)
+
+    async def test_capture_secret_returns_opaque_handle(self) -> None:
+        from pydantic import SecretStr
+
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.api.controllers.connections_models import SecretCaptureRequest
+        from synthorg.integrations.connections.secret_capture import (
+            SecretCaptureService,
+        )
+        from synthorg.integrations.state import IntegrationsStateSlice
+
+        capture = SecretCaptureService(secret_backend=InMemorySecretBackend())
+        state = State(
+            {
+                "app_state": make_app_state(
+                    slices={
+                        IntegrationsStateSlice: {"secret_capture_service": capture},
+                    },
+                ),
+            }
+        )
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        response = await ctrl.capture_secret.fn(
+            ctrl,
+            state=state,
+            draft_id="draft-1",
+            field=NotBlankStr("token"),
+            data=SecretCaptureRequest(
+                value=SecretStr("ghp_restcapturesentinel0000000000000000AB"),
+                secret_kind=NotBlankStr("token"),
+            ),
+        )
+        assert response.data.handle.startswith("sech_")
 
     async def test_create_validates_missing_name(self) -> None:
         # Pydantic validation on ``CreateConnectionRequest`` rejects the
@@ -139,7 +186,7 @@ class TestConnectionsController:
                     {
                         "name": "x",
                         "connection_type": "github",
-                        "credentials": {"token": "t"},
+                        "credential_handles": {},
                     },
                 ),
             )
@@ -293,7 +340,7 @@ class TestConnectionAuditEvents:
                     {
                         "name": "gh",
                         "connection_type": "github",
-                        "credentials": {"token": "t"},
+                        "credential_handles": {},
                     },
                 ),
             )
@@ -892,12 +939,13 @@ class TestMCPCatalogController:
             InstallEntryRequest,
             MCPCatalogController,
         )
+        from synthorg.integrations.connections.catalog import ConnectionCatalog
         from synthorg.integrations.mcp_catalog.in_memory_installations import (
             InMemoryMcpInstallationRepository,
         )
         from synthorg.integrations.mcp_catalog.service import CatalogService
 
-        catalog = MagicMock()
+        catalog = mock_of[ConnectionCatalog]()
         wrong_type_conn = Connection(
             name=NotBlankStr("slacky"),
             connection_type=ConnectionType.SLACK,
@@ -1058,6 +1106,9 @@ class TestMCPCatalogController:
             MCPCatalogController,
         )
         from synthorg.api.cursor import CursorSecret
+        from synthorg.integrations.mcp_catalog.in_memory_installations import (
+            InMemoryMcpInstallationRepository,
+        )
         from synthorg.integrations.mcp_catalog.installations import McpInstallation
         from synthorg.integrations.mcp_catalog.service import CatalogService
 
@@ -1083,7 +1134,7 @@ class TestMCPCatalogController:
                 installed_at=now,
             ),
         )
-        repo = MagicMock()
+        repo = mock_of[InMemoryMcpInstallationRepository]()
         repo.list_items = AsyncMock(side_effect=[first_page, second_page])
 
         state = State(

@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import MakeToolInvoker
     from synthorg.engine.approval_gate import ApprovalGate
+    from synthorg.engine.loop_protocol import BudgetChecker, ShutdownChecker
     from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
@@ -62,8 +63,9 @@ class AgentEngineChatActionMixin:
     _provider: CompletionProvider
     _approval_gate: ApprovalGate | None
     _make_tool_invoker: MakeToolInvoker
+    _shutdown_checker: ShutdownChecker | None
 
-    async def run_chat_action(
+    async def run_chat_action(  # noqa: PLR0913 -- keyword-only run knobs
         self,
         *,
         identity: AgentIdentity,
@@ -71,14 +73,15 @@ class AgentEngineChatActionMixin:
         effective_autonomy: EffectiveAutonomy | None = None,
         max_turns: int = DEFAULT_CHAT_ACTION_MAX_TURNS,
         turn_observer: TurnObserver | None = None,
+        cost_ceiling: float | None = None,
+        system_prompt_addendum: str | None = None,
+        prior_context: AgentContext | None = None,
     ) -> ChatActionResult:
         """Drive a real MCP action from a chat instruction under trust.
 
-        Builds a minimal taskless context (persona ``system`` prompt
-        from the shared renderer plus the untrusted-content fenced
-        instruction),
-        then runs the governed ReAct loop. A permitted tool executes; a
-        sensitive tool escalates and parks (``PARKED_CONTEXT``).
+        Thin wrapper over :meth:`run_chat_action_session` that drops the
+        continued context; use the session variant when the caller persists
+        the conversation for a later turn.
 
         Args:
             identity: The acting agent.
@@ -87,20 +90,111 @@ class AgentEngineChatActionMixin:
                 ``None`` to leave the rule engine governing without the
                 autonomy-tier layer.
             max_turns: Hard turn cap for the action loop.
-            turn_observer: Optional per-turn progress callback, invoked
-                after each turn with the tools it requested; used by the
-                streaming ``/act`` endpoint to emit incremental progress.
+            turn_observer: Optional per-turn progress callback.
+            cost_ceiling: Optional per-session cost ceiling.
+            system_prompt_addendum: Optional trusted operating brief.
+            prior_context: Optional prior conversation to continue (see
+                :meth:`run_chat_action_session`).
 
         Returns:
             A :class:`ChatActionResult` reporting the executed tools and
             final message, or the parked ``approval_id`` when gated.
         """
-        agent_id = str(identity.id)
-        system_prompt = render_agent_system_prompt(identity)
-        ctx = AgentContext.from_identity(identity, max_turns=max_turns)
-        ctx = ctx.with_message(
-            ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
+        result, _ctx = await self.run_chat_action_session(
+            identity=identity,
+            instruction=instruction,
+            effective_autonomy=effective_autonomy,
+            max_turns=max_turns,
+            turn_observer=turn_observer,
+            cost_ceiling=cost_ceiling,
+            system_prompt_addendum=system_prompt_addendum,
+            prior_context=prior_context,
         )
+        return result
+
+    async def run_chat_action_session(  # noqa: PLR0913 -- keyword-only run knobs
+        self,
+        *,
+        identity: AgentIdentity,
+        instruction: str,
+        effective_autonomy: EffectiveAutonomy | None = None,
+        max_turns: int = DEFAULT_CHAT_ACTION_MAX_TURNS,
+        turn_observer: TurnObserver | None = None,
+        cost_ceiling: float | None = None,
+        system_prompt_addendum: str | None = None,
+        prior_context: AgentContext | None = None,
+    ) -> tuple[ChatActionResult, AgentContext]:
+        """Run a chat action and also return the resulting conversation context.
+
+        With ``prior_context`` ``None`` this builds a minimal taskless context
+        (persona ``system`` prompt plus the untrusted-content-fenced
+        instruction) and runs the governed ReAct loop. When ``prior_context`` is
+        supplied the run *continues that conversation*: its accumulated messages
+        (the memory) and its accumulated cost carry forward while the per-turn
+        loop budget resets, so a multi-turn operator-console session keeps its
+        context across turns instead of starting cold each time, and its cost
+        ceiling bounds the session rather than each turn. A permitted tool
+        executes; a sensitive tool escalates and parks (``PARKED_CONTEXT``).
+
+        Args:
+            identity: The acting agent.
+            instruction: The human instruction (wrapped untrusted).
+            effective_autonomy: Autonomy tier governing the invoker.
+            max_turns: Hard turn cap, applied when building a FRESH context. A
+                continued turn resets its turn counter to a fresh loop budget
+                but keeps the cap set when ``prior_context`` was first built, so
+                this argument does not re-cap an in-flight conversation.
+            turn_observer: Optional per-turn progress callback.
+            cost_ceiling: Optional per-session cost ceiling (used only when
+                building a fresh context; a continued turn keeps both the
+                ceiling and the cost accumulated so far on ``prior_context``,
+                so the ceiling bounds the session, not the single turn).
+            system_prompt_addendum: Optional trusted operating brief appended
+                to the persona prompt (fresh context) or injected as a fresh
+                per-turn ``system`` message (continued context), so a per-turn
+                brief such as the capture brief refreshes each turn.
+            prior_context: The conversation to continue, or ``None`` to start a
+                fresh one.
+
+        Returns:
+            A ``(result, context)`` tuple: the :class:`ChatActionResult` and the
+            final conversation context (persist it to continue the session).
+        """
+        agent_id = str(identity.id)
+        if prior_context is None:
+            system_prompt = render_agent_system_prompt(identity)
+            if system_prompt_addendum:
+                system_prompt = f"{system_prompt}\n\n{system_prompt_addendum}"
+            # Pass the ceiling through from_identity (the constructor) rather
+            # than a post-hoc model_copy: model_copy skips validation, so a
+            # non-positive or NaN ceiling would otherwise bypass the field
+            # constraint and defeat the budget gate.
+            ctx = AgentContext.from_identity(
+                identity, max_turns=max_turns, cost_ceiling=cost_ceiling
+            )
+            ctx = ctx.with_message(
+                ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
+            )
+        else:
+            # Continue the prior conversation: keep its messages but reset the
+            # turn count so an earlier turn's ReAct iterations do not consume
+            # this turn's loop budget. ``accumulated_cost`` deliberately does
+            # NOT reset: ``cost_ceiling`` bounds the whole session, so zeroing
+            # the counter each turn would let an unbounded number of turns each
+            # spend up to the ceiling. Only an unconstrained field is reset
+            # here; ``max_turns`` (a ``gt=0`` field) and the ceiling ride
+            # unchanged on the prior context, already validated when it was
+            # first built, so no unvalidated value can slip past the field
+            # constraint via ``model_copy``. Then re-inject the per-turn brief
+            # (the persona prompt is already carried in the prior context) so
+            # fresh guidance such as newly provided capture handles is seen.
+            ctx = prior_context.model_copy(update={"turn_count": 0})
+            if system_prompt_addendum:
+                ctx = ctx.with_message(
+                    ChatMessage(
+                        role=MessageRole.SYSTEM, content=system_prompt_addendum
+                    ),
+                )
         ctx = ctx.with_message(
             ChatMessage(
                 role=MessageRole.USER,
@@ -111,12 +205,16 @@ class AgentEngineChatActionMixin:
             logger.info(
                 EXECUTION_CHAT_ACTION_STARTED,
                 agent_id=agent_id,
-                max_turns=max_turns,
+                # The cap actually in force: a continued turn keeps the cap from
+                # its prior context, which can differ from the argument.
+                max_turns=ctx.max_turns,
             )
             result = await self._run_chat_loop(
-                ctx, effective_autonomy, turn_observer=turn_observer
+                ctx,
+                effective_autonomy,
+                turn_observer=turn_observer,
             )
-        return self._to_chat_action_result(result, agent_id=agent_id)
+        return self._to_chat_action_result(result, agent_id=agent_id), result.context
 
     async def resume_parked_chat_action(
         self,
@@ -187,8 +285,13 @@ class AgentEngineChatActionMixin:
         Builds the trust-scoped tool invoker (``task_id=None``) and a
         fresh :class:`ReactLoop` wired to the engine's SHARED approval
         gate, so a parked chat action resumes on the same gate the
-        ``/approvals`` controller drives. No checkpoint / stagnation /
-        compaction callbacks: a chat action is short and taskless.
+        ``/approvals`` controller drives. The engine's shared
+        ``shutdown_checker`` is always passed so a chat action halts at a
+        safe boundary on graceful shutdown, exactly as a task run does. The
+        budget checker is derived from ``ctx.cost_ceiling`` so the same bound
+        applies to the initial run and to any resumed continuation (the
+        ceiling rides on the serialised context). No checkpoint / stagnation
+        / compaction callbacks: a chat action is short and taskless.
 
         Returns:
             The loop's :class:`ExecutionResult`.
@@ -206,7 +309,26 @@ class AgentEngineChatActionMixin:
             context=ctx,
             provider=self._provider,
             tool_invoker=tool_invoker,
+            budget_checker=self._budget_checker_for(ctx),
+            shutdown_checker=self._shutdown_checker,
         )
+
+    @staticmethod
+    def _budget_checker_for(ctx: AgentContext) -> BudgetChecker | None:
+        """Build a per-turn budget checker from the context's cost ceiling.
+
+        Returns:
+            A callback that trips once accumulated session cost meets the
+            ceiling, or ``None`` when the context carries no ceiling.
+        """
+        ceiling = ctx.cost_ceiling
+        if ceiling is None:
+            return None
+
+        def _check(current: AgentContext) -> bool:
+            return current.accumulated_cost.cost >= ceiling
+
+        return _check
 
     def _to_chat_action_result(
         self,

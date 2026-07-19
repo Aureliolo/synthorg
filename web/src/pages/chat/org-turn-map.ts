@@ -1,5 +1,6 @@
 import { parseCitedRecords } from '@/api/endpoints/cited-records'
 import type {
+  ConsoleTurnResult,
   ConversationalActResult,
   GroupChatTruncationReason,
   GroupConverseResult,
@@ -192,26 +193,59 @@ function mapGroup(group: GroupConverseResult | null): OrgTurn[] {
   return turns
 }
 
-function mapAct(act: ConversationalActResult | null): OrgTurn[] {
-  if (!act) return []
-  return [
-    {
+/** Build the action-event card shared by the act and configure mappings. */
+function actionEventTurn(
+  agentName: string,
+  action: ConsoleTurnResult['action'],
+): OrgTurn {
+  return {
+    id: nextMessageId(),
+    kind: 'event',
+    event: {
+      type: 'action',
+      agentName,
+      toolCalls: action.tool_calls,
+      ...(action.final_message != null && { content: action.final_message }),
+      ...(action.parked &&
+        action.approval_id != null && {
+          parkedApprovalId: action.approval_id,
+        }),
+    },
+  }
+}
+
+function mapConfigure(configure: ConsoleTurnResult | null): OrgTurn[] {
+  if (!configure) return []
+  // The operator console reuses the same governed action loop as a direct act,
+  // so it renders as an action event attributed to the console identity.
+  const turns: OrgTurn[] = [
+    actionEventTurn(configure.console_name, configure.action),
+  ]
+  // The console asked for one or more secrets out of band: render a masked
+  // capture card so the operator provides them without the value ever entering
+  // the transcript. Only opaque handles flow back on the next turn.
+  if (configure.pending_captures.length > 0 && configure.connection_draft_id) {
+    turns.push({
       id: nextMessageId(),
       kind: 'event',
       event: {
-        type: 'action',
-        agentName: act.agent_name,
-        toolCalls: act.action.tool_calls,
-        ...(act.action.final_message != null && {
-          content: act.action.final_message,
-        }),
-        ...(act.action.parked &&
-          act.action.approval_id != null && {
-            parkedApprovalId: act.action.approval_id,
-          }),
+        type: 'secret-capture',
+        draftId: configure.connection_draft_id,
+        captures: configure.pending_captures.map((c) => ({
+          connectionType: c.connection_type,
+          fieldName: c.field_name,
+          secretKind: c.secret_kind,
+          ...(c.label != null && { label: c.label }),
+        })),
       },
-    },
-  ]
+    })
+  }
+  return turns
+}
+
+function mapAct(act: ConversationalActResult | null): OrgTurn[] {
+  if (!act) return []
+  return [actionEventTurn(act.agent_name, act.action)]
 }
 
 function mapCharter(charter: InterviewTurnResult | null): OrgTurn[] {
@@ -258,6 +292,8 @@ const DEGRADE_NOTICE: Record<TurnResult['intent_reason'], string | null> = {
     'Answered as a question: no acting agent was named. Say who should act (e.g. "have finance…").',
   charter_floor_not_met:
     'Answered as a question rather than starting a company charter. Say explicitly you want to define a new company.',
+  configure_floor_not_met:
+    'Answered as a question rather than configuring the platform. Say explicitly what you want to set up or change (e.g. "connect our issue tracker").',
   group_targets_missing:
     'Answered as a question rather than convening a group. Name the roles you want in the room.',
   classify_call_failed:
@@ -289,6 +325,8 @@ export function mapTurnResult(result: TurnResult): OrgTurn[] {
       return mapGroup(result.group)
     case 'act':
       return mapAct(result.act)
+    case 'configure':
+      return mapConfigure(result.configure)
     case 'charter':
       return mapCharter(result.charter)
     case 'explain': {

@@ -132,6 +132,23 @@ class MasterKeyError(IntegrationError):
     """The master encryption key is missing or invalid."""
 
 
+class SecretCaptureHandleInvalidError(IntegrationError):
+    """An out-of-band secret-capture handle is invalid.
+
+    Uniform failure for a missing, expired, already-consumed, or
+    wrong-binding handle: the single generic message (400
+    ``VALIDATION_ERROR``) deliberately does not distinguish the cases so a
+    caller cannot probe which handles exist or replay a consumed one.
+    Single-use is enforced at consume time, so a legitimate re-attempt
+    after a downstream failure re-captures rather than reusing.
+    """
+
+    status_code: ClassVar[int] = 400
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Secret capture handle is invalid or expired"
+
+
 # -- OAuth errors --------------------------------------------------------
 
 

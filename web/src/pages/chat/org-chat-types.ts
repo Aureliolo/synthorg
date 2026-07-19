@@ -101,12 +101,42 @@ export interface CharterDraftedEvent {
   charterId: string
 }
 
+/** One secret field the operator console asked the operator to provide. */
+export interface SecretCaptureField {
+  connectionType: string
+  fieldName: string
+  secretKind: string
+  label?: string | undefined
+}
+
+/**
+ * The operator console needs one or more secret fields captured out of band to
+ * finish a setup. The card renders a masked input per field; the raw value
+ * posts straight to the capture endpoint and only an opaque handle flows back
+ * into the next turn, so the secret never enters the transcript.
+ */
+export interface SecretCaptureEvent {
+  type: 'secret-capture'
+  draftId: string
+  captures: readonly SecretCaptureField[]
+  /** Set once the operator has submitted the captured secrets. */
+  resolved?: 'submitted' | undefined
+  /**
+   * Stable dedup nonce for this card's configure submission, minted on the
+   * first attempt and reused on every retry so a lost response cannot drive a
+   * duplicate side effect (the server dedups the identical request). Transient
+   * client UX state, never persisted across reloads.
+   */
+  idempotencyKey?: string | undefined
+}
+
 export type OrgEvent =
   | PlanDraftedEvent
   | SteeringEvent
   | ActionEvent
   | InviteEvent
   | CharterDraftedEvent
+  | SecretCaptureEvent
 
 /** An inline event card in the transcript. */
 export interface OrgEventTurn {

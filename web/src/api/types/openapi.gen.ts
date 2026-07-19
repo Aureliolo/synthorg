@@ -1822,6 +1822,40 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/connections/drafts/{draft_id}/fields/{field}/capture": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Capture a credential value out of band (write-only) */
+        readonly post: operations["ApiV1ConnectionsDraftsDraftIdFieldsCaptureCaptureSecret"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/connections/types": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Connection-type field metadata registry */
+        readonly get: operations["ApiV1ConnectionsTypesListConnectionTypes"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/coordination/metrics": {
         readonly parameters: {
             readonly query?: never;
@@ -5894,6 +5928,7 @@ export type components = {
     schemas: {
         /** _ApiKeyRotation */
         readonly _ApiKeyRotation: {
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly api_key: string;
             /** @constant */
             readonly auth_type: "api_key";
@@ -5903,6 +5938,7 @@ export type components = {
             /** @constant */
             readonly auth_type: "custom_header";
             readonly custom_header_name: string;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly custom_header_value: string;
         };
         /** _DecisionRequest */
@@ -5912,6 +5948,7 @@ export type components = {
             /** @constant */
             readonly auth_type: "oauth";
             readonly oauth_client_id: string;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly oauth_client_secret: string;
             readonly oauth_scope?: string | null;
             readonly oauth_token_url: string;
@@ -5920,6 +5957,7 @@ export type components = {
         readonly _SubscriptionRotation: {
             /** @constant */
             readonly auth_type: "subscription";
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly subscription_token: string;
             /** @description ToS re-acceptance is required on rotate */
             readonly tos_accepted: boolean;
@@ -6920,6 +6958,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[list[ConnectionTypeMetadata]] */
+        readonly ApiResponse_list_ConnectionTypeMetadata_: {
+            readonly data: readonly components["schemas"]["ConnectionTypeMetadata"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[list[PlanItemComment]] */
         readonly ApiResponse_list_PlanItemComment_: {
             readonly data: readonly components["schemas"]["PlanItemComment"][] | null;
@@ -7251,6 +7297,14 @@ export type components = {
         /** ApiResponse[ScalingStrategyResponse] */
         readonly ApiResponse_ScalingStrategyResponse_: {
             readonly data: components["schemas"]["ScalingStrategyResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[SecretCaptureResponse] */
+        readonly ApiResponse_SecretCaptureResponse_: {
+            readonly data: components["schemas"]["SecretCaptureResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -9225,6 +9279,25 @@ export type components = {
             /** @description Per-connection override for webhook-receipt retention (days). None = use the global default; 0 = never sweep this connection's receipts. */
             readonly webhook_receipt_retention_days: number | null;
         };
+        /** ConnectionFieldMetadata */
+        readonly ConnectionFieldMetadata: {
+            /** @enum {string|null} */
+            readonly capture_mode: "masked_field" | "oauth_redirect" | null;
+            /** @default  */
+            readonly help_text: string;
+            readonly input_type: components["schemas"]["FieldInputType"];
+            readonly label: string;
+            readonly name: string;
+            /** @default [] */
+            readonly options: readonly string[];
+            /** @default  */
+            readonly placeholder: string;
+            readonly placement: components["schemas"]["FieldPlacement"];
+            /** @default false */
+            readonly required: boolean;
+            /** @default false */
+            readonly secret: boolean;
+        };
         /** ConnectionHealth */
         readonly ConnectionHealth: {
             /**
@@ -9247,6 +9320,36 @@ export type components = {
          * @enum {string}
          */
         readonly ConnectionType: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | "llm_provider" | "tunnel";
+        /** ConnectionTypeMetadata */
+        readonly ConnectionTypeMetadata: {
+            readonly connection_type: components["schemas"]["ConnectionType"];
+            readonly default_auth_method: components["schemas"]["AuthMethod"];
+            /** @default  */
+            readonly description: string;
+            readonly fields: readonly components["schemas"]["ConnectionFieldMetadata"][];
+            readonly label: string;
+            /** @description Names of fields flagged required (a prompting hint, not the rule). */
+            readonly required_field_names: readonly string[];
+            /** @description Names of fields whose value is a secret captured out of band. */
+            readonly secret_field_names: readonly string[];
+        };
+        /** ConsoleTurnResult */
+        readonly ConsoleTurnResult: {
+            readonly action: components["schemas"]["ChatActionResult"];
+            /** @description The setup draft id this turn used; echo it back with captured handles on the next turn to continue the flow. */
+            readonly connection_draft_id: string | null;
+            /** @description Id of the system console identity */
+            readonly console_id: string;
+            /** @description Name of the console identity */
+            readonly console_name: string;
+            /** @description The correlated conversation id, if supplied */
+            readonly conversation_id: string | null;
+            /**
+             * @description Secret fields the console asked the operator to provide out of band this turn; the dashboard renders a masked input per entry.
+             * @default []
+             */
+            readonly pending_captures: readonly components["schemas"]["PendingSecretCapture"][];
+        };
         /**
          * ContentType
          * @description Content types available for training extraction.
@@ -9592,8 +9695,14 @@ export type components = {
         readonly CreateConnectionRequest: {
             readonly auth_method?: components["schemas"]["AuthMethod"];
             readonly base_url?: string | null;
+            /** @description Client-generated draft id the secret-capture handles are bound to; required when credential_handles are supplied. */
+            readonly connection_draft_id?: string | null;
             readonly connection_type: components["schemas"]["ConnectionType"];
-            /** @description Credential field-name to value map sent to the secret backend. */
+            /** @description Secret credential field-name to opaque capture-handle map. Each handle is resolved once, in-process, against its ``(connection_draft_id, field)`` binding so the raw value never enters the request body or the logs. Requires connection_draft_id. */
+            readonly credential_handles?: {
+                readonly [key: string]: string;
+            };
+            /** @description Non-secret credential field-name to value map. Secret fields (tokens/passwords/keys) are NOT sent here: capture them out of band and pass their handles via ``credential_handles``. */
             readonly credentials?: {
                 readonly [key: string]: string;
             };
@@ -9699,6 +9808,7 @@ export type components = {
         };
         /** CreateFromPresetRequest */
         readonly CreateFromPresetRequest: {
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly api_key?: string | null;
             /** @enum {string|null} */
             readonly auth_type?: "api_key" | "oauth" | "custom_header" | "subscription" | "none" | null;
@@ -9706,6 +9816,7 @@ export type components = {
             readonly models?: readonly components["schemas"]["ProviderModelConfig"][] | null;
             readonly name: string;
             readonly preset_name: string;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly subscription_token?: string | null;
             /** @default false */
             readonly tos_accepted: boolean;
@@ -9791,7 +9902,7 @@ export type components = {
              * @default true
              */
             readonly agent_eligible: boolean;
-            /** @description API key credential (required for API_KEY auth). */
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly api_key?: string | null;
             readonly auth_type?: components["schemas"]["AuthType"];
             /**
@@ -9800,6 +9911,7 @@ export type components = {
              */
             readonly base_url?: string | null;
             readonly custom_header_name?: string | null;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly custom_header_value?: string | null;
             /**
              * @description Driver backend name.
@@ -9818,11 +9930,12 @@ export type components = {
              */
             readonly name: string;
             readonly oauth_client_id?: string | null;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly oauth_client_secret?: string | null;
             readonly oauth_scope?: string | null;
             readonly oauth_token_url?: string | null;
             readonly preset_name?: string | null;
-            /** @description Bearer token for subscription-based auth. */
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly subscription_token?: string | null;
             /**
              * @description Whether the operator accepted the subscription terms.
@@ -10895,6 +11008,18 @@ export type components = {
             /** @description Relative selection weight */
             readonly weight: number;
         };
+        /**
+         * FieldInputType
+         * @description How a field is rendered / typed at the input boundary.
+         * @enum {string}
+         */
+        readonly FieldInputType: "text" | "password" | "number" | "url" | "select";
+        /**
+         * FieldPlacement
+         * @description Where a field's value goes in a ``connections.create`` call.
+         * @enum {string}
+         */
+        readonly FieldPlacement: "base_url" | "credential" | "metadata";
         /** FilePart */
         readonly FilePart: {
             /** @description Optional MIME type */
@@ -11541,6 +11666,8 @@ export type components = {
          *             to EXPLAIN.
          *         CHARTER_FLOOR_NOT_MET: A confident-enough CHARTER was not reached;
          *             degraded to EXPLAIN.
+         *         CONFIGURE_FLOOR_NOT_MET: A confident-enough CONFIGURE was not
+         *             reached; degraded to EXPLAIN.
          *         GROUP_TARGETS_MISSING: A group was requested without enough named
          *             participants; degraded to EXPLAIN.
          *         ACT_NO_TARGET: An act was requested without naming an acting agent;
@@ -11551,7 +11678,7 @@ export type components = {
          *             defaulted to EXPLAIN.
          * @enum {string}
          */
-        readonly IntentRoutingReason: "classified" | "explicit_override" | "conversation_kind_fixed" | "no_intent_classifier" | "act_floor_not_met" | "charter_floor_not_met" | "group_targets_missing" | "act_no_target" | "classify_call_failed" | "response_invalid";
+        readonly IntentRoutingReason: "classified" | "explicit_override" | "conversation_kind_fixed" | "no_intent_classifier" | "act_floor_not_met" | "charter_floor_not_met" | "configure_floor_not_met" | "group_targets_missing" | "act_no_target" | "classify_call_failed" | "response_invalid";
         /** InterruptResponse */
         readonly InterruptResponse: {
             readonly agent_id: string;
@@ -13767,6 +13894,14 @@ export type components = {
             readonly target_name: string;
             readonly target_role: string | null;
         };
+        /** PendingSecretCapture */
+        readonly PendingSecretCapture: {
+            readonly connection_type: string;
+            readonly draft_id: string;
+            readonly field_name: string;
+            readonly label: string | null;
+            readonly secret_kind: string;
+        };
         /** PerformanceSummary */
         readonly PerformanceSummary: {
             readonly collaboration_score: number | null;
@@ -15906,6 +16041,26 @@ export type components = {
             readonly refined_description?: string | null;
             readonly refined_title?: string | null;
         };
+        /**
+         * SecretCaptureMode
+         * @description How a secret field's value is captured out of band.
+         * @enum {string}
+         */
+        readonly SecretCaptureMode: "masked_field" | "oauth_redirect";
+        /** SecretCaptureRequest */
+        readonly SecretCaptureRequest: {
+            /** @description Owning conversation id (audit only). */
+            readonly conversation_id?: string | null;
+            /** @description Field kind this secret is for (e.g. token, password). */
+            readonly secret_kind: string;
+            /** @description Raw secret value; written to the backend, never logged. */
+            readonly value: string;
+        };
+        /** SecretCaptureResponse */
+        readonly SecretCaptureResponse: {
+            /** @description Opaque single-use handle to pass as a credential handle. */
+            readonly handle: string;
+        };
         /** SecretRef */
         readonly SecretRef: {
             readonly backend: string;
@@ -17539,6 +17694,7 @@ export type components = {
         /** TunnelCredentialRequest */
         readonly TunnelCredentialRequest: {
             readonly provider: string;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly token: string;
         };
         /** TunnelDeviceLoginRequest */
@@ -17578,18 +17734,24 @@ export type components = {
          *             acting agent's trust level. Gated behind a stricter floor.
          *         GROUP_CONVENE: Convene several named agents in a group discussion.
          *         CHARTER: Interview the operator to draft a company charter.
+         *         CONFIGURE: Configure or operate the control plane through the
+         *             operator console (connect an integration, change a setting,
+         *             call a control-plane tool). Gated behind a stricter floor and
+         *             its own default-off toggle.
          * @enum {string}
          */
-        readonly TurnIntent: "explain" | "propose" | "act" | "group_convene" | "charter";
+        readonly TurnIntent: "explain" | "propose" | "act" | "group_convene" | "charter" | "configure";
         /** TurnRequest */
         readonly TurnRequest: {
+            /** @description Operator-console setup draft to continue; echo back the id a prior CONFIGURE turn returned so captured secret handles bind to it. */
+            readonly connection_draft_id?: string | null;
             /** @description Existing conversation to continue; None starts a new one. */
             readonly conversation_id?: string | null;
             /**
              * @description Force a capability instead of classifying (e.g. to continue a typed conversation). None auto-routes.
              * @enum {string|null}
              */
-            readonly intent_override?: "explain" | "propose" | "act" | "group_convene" | "charter" | null;
+            readonly intent_override?: "explain" | "propose" | "act" | "group_convene" | "charter" | "configure" | null;
             /** @description The operator's message for this turn. */
             readonly message: string;
             /**
@@ -17599,6 +17761,10 @@ export type components = {
             readonly named_targets: readonly string[];
             /** @description Project the turn is scoped to, for propose/charter turns. */
             readonly project?: string | null;
+            /** @description Opaque single-use secret-capture handles (field-name -> handle) the operator supplied out of band for a CONFIGURE setup flow; the raw value is never sent here. Only honoured on a CONFIGURE turn. */
+            readonly provided_credential_handles?: {
+                readonly [key: string]: string;
+            };
         };
         /** TurnResult */
         readonly TurnResult: {
@@ -17610,6 +17776,7 @@ export type components = {
              * @default []
              */
             readonly chime_ins: readonly components["schemas"]["ChimeIn"][];
+            readonly configure: components["schemas"]["ConsoleTurnResult"] | null;
             readonly conversation_id: string | null;
             readonly group: components["schemas"]["GroupConverseResult"] | null;
             readonly intent: components["schemas"]["TurnIntent"];
@@ -17779,6 +17946,7 @@ export type components = {
         /** UpdateProviderRequest */
         readonly UpdateProviderRequest: {
             readonly agent_eligible?: boolean | null;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly api_key?: string | null;
             /** @enum {string|null} */
             readonly auth_type?: "api_key" | "oauth" | "custom_header" | "subscription" | "none" | null;
@@ -17788,15 +17956,18 @@ export type components = {
             /** @default false */
             readonly clear_subscription_token: boolean;
             readonly custom_header_name?: string | null;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly custom_header_value?: string | null;
             readonly driver?: string | null;
             readonly keep_alive?: string | null;
             readonly litellm_provider?: string | null;
             readonly models?: readonly components["schemas"]["ProviderModelConfig"][] | null;
             readonly oauth_client_id?: string | null;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly oauth_client_secret?: string | null;
             readonly oauth_scope?: string | null;
             readonly oauth_token_url?: string | null;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly subscription_token?: string | null;
             readonly tos_accepted?: boolean | null;
         };
@@ -22760,6 +22931,68 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ConnectionsDraftsDraftIdFieldsCaptureCaptureSecret: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly draft_id: string;
+                /** @description Credential field name */
+                readonly field: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SecretCaptureRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SecretCaptureResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ConnectionsTypesListConnectionTypes: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_list_ConnectionTypeMetadata_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

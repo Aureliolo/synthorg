@@ -11,9 +11,16 @@ from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State
 
 from synthorg._core.features import require_service
+from synthorg.api.controllers._connection_secrets import (
+    capture_secret_value,
+    resolve_create_credentials,
+    reveal_secret_field,
+)
 from synthorg.api.controllers.connections_models import (
     CreateConnectionRequest,
     RevealedSecretResponse,
+    SecretCaptureRequest,
+    SecretCaptureResponse,
     UpdateConnectionRequest,
 )
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -24,40 +31,30 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathField, PathName
+from synthorg.api.path_params import PathField, PathId, PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.integrations.connections.catalog import _UNSET, _UnsetType
+from synthorg.integrations.connections.field_metadata import (
+    ConnectionTypeMetadata,
+    list_connection_type_metadata,
+)
 from synthorg.integrations.connections.models import (
     Connection,
     HealthReport,
 )
-from synthorg.integrations.errors import (
-    ConnectionNotFoundError,
-    SecretRetrievalError,
-    SecretRetrievalNotFoundError,
-)
+from synthorg.integrations.errors import ConnectionNotFoundError
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import (
     get_logger,
-    log_exception_redacted,
     safe_error_description,
 )
 from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.observability.events.security import (
     SECURITY_CONNECTION_CREATED,
     SECURITY_CONNECTION_DELETED,
-    SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
-    SECURITY_CONNECTION_SECRET_REVEALED,
     SECURITY_CONNECTION_UPDATED,
 )
-
-# Unified error surfaced to clients on any reveal failure. The
-# message is deliberately opaque so callers cannot distinguish
-# "connection missing" from "field missing" from "secret backend
-# unavailable" -- all three would otherwise leak side-channel
-# information about what connections exist and which fields are set.
-_REVEAL_GENERIC_ERROR = "Connection or credential field not found"
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -109,6 +106,26 @@ class ConnectionsController(Controller):
             secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse[Connection](data=page, pagination=meta)
+
+    @get(
+        "/types",
+        guards=[require_read_access],
+        summary="Connection-type field metadata registry",
+    )
+    async def list_connection_types(
+        self,
+    ) -> ApiResponse[list[ConnectionTypeMetadata]]:
+        """Return the connection-type + credential-field metadata registry.
+
+        The single source of truth (`connections/field_metadata.py`) the
+        operator-console setup flow prompts from and the dashboard connection
+        form renders, so both agree on labels, types, required/secret flags,
+        capture mode, and field ordering without per-type UI code.
+
+        Returns:
+            ``ApiResponse`` wrapping the ordered per-type field metadata.
+        """
+        return ApiResponse(data=list(list_connection_type_metadata()))
 
     @get(
         "/{name:str}",
@@ -172,13 +189,12 @@ class ConnectionsController(Controller):
             InvalidConnectionAuthError: If the supplied credentials fail
                 validation (422, mapped by the domain handler).
         """
-        # Defensively deepcopy ``credentials`` / ``metadata`` at the API
-        # boundary so the catalog can never observe (or be mutated by)
-        # subsequent caller-owned changes to the request payload.  The
-        # secret backend persists ``credentials`` in plaintext briefly
-        # before encryption, so a shared-reference write would be
-        # particularly dangerous here.
-        credentials_copy = copy.deepcopy(data.credentials)
+        # Resolve any out-of-band secret handles to their raw values in-process
+        # (secret fields never arrive inline in the request body); inline
+        # non-secret fields pass through. The returned mapping is a fresh dict,
+        # so no shared-reference write can reach the caller's payload. ``metadata``
+        # is still caller-owned, so it is defensively deepcopied.
+        credentials_copy = await resolve_create_credentials(state["app_state"], data)
         metadata_copy = (
             copy.deepcopy(data.metadata) if data.metadata is not None else None
         )
@@ -354,6 +370,34 @@ class ConnectionsController(Controller):
         )
         return ApiResponse(data=None)
 
+    @post(
+        "/drafts/{draft_id:str}/fields/{field:str}/capture",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("connections.create", key="user"),
+        ],
+        summary="Capture a credential value out of band (write-only)",
+    )
+    async def capture_secret(
+        self,
+        state: State,
+        draft_id: PathId,
+        field: PathField,
+        data: SecretCaptureRequest,
+    ) -> ApiResponse[SecretCaptureResponse]:
+        """Capture a credential value out of band and return an opaque handle.
+
+        The raw value is written straight to the secret backend and never
+        enters the conversation transcript, an LLM prompt, or the logs; the
+        returned single-use handle is consumed once by ``connections.create``.
+        Implementation lives in ``_connection_secrets``.
+
+        Returns:
+            ``ApiResponse[SecretCaptureResponse]`` wrapping the opaque handle.
+        """
+        captured = await capture_secret_value(state["app_state"], draft_id, field, data)
+        return ApiResponse(data=captured)
+
     @get(
         "/{name:str}/health",
         guards=[require_read_access],
@@ -419,74 +463,18 @@ class ConnectionsController(Controller):
     ) -> ApiResponse[RevealedSecretResponse]:
         """Return the plaintext value of one credential field.
 
-        Scoped to a single field so a reveal action on the OAuth
-        Apps page can surface a specific ``client_secret`` without
-        exposing the rest of the credential blob. The reveal is
-        audit-logged (field name only, never the value).
+        Scoped to a single field so a reveal action on the OAuth Apps page
+        can surface a specific ``client_secret`` without exposing the rest
+        of the credential blob. The implementation (uniform-404 on any miss,
+        audit by field name only) lives in ``_connection_secrets`` to keep
+        this controller within its size budget.
 
         Returns:
             ``ApiResponse[RevealedSecretResponse]`` instance.
 
         Raises:
             SecretRetrievalNotFoundError: For a missing connection, an unset
-                field, or a secret-backend failure. Every reveal miss surfaces
-                through one deliberate uniform 404 (``RESOURCE_NOT_FOUND``) so
-                the error cannot enumerate which connections exist.
+                field, or a secret-backend failure (uniform 404).
         """
-        catalog = require_service(
-            state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
-            "Connection Catalog",
-        )
-        try:
-            credentials = await catalog.get_credentials(name)
-        except ConnectionNotFoundError as exc:
-            logger.warning(
-                SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
-                connection=name,
-                field=field,
-                reason="connection_not_found",
-            )
-            raise SecretRetrievalNotFoundError(_REVEAL_GENERIC_ERROR) from exc
-        except SecretRetrievalError as exc:
-            # Secret backend failures are operational errors, not a
-            # "not found" condition -- log at ERROR level so they
-            # show up on the health dashboard instead of getting lost
-            # in the 404 noise.  Use the request-side reveal-failed
-            # event rather than the backend-side
-            # ``SECRET_RETRIEVAL_FAILED`` that the catalog already
-            # emitted -- otherwise one backend failure would
-            # double-count and the user-visible context (this is a
-            # reveal request, not a credential-resolve) would be lost.
-            # ``exc_info`` is intentionally omitted: the full traceback
-            # for a credential-bearing operation can leak backend
-            # secret metadata via wrapped causes; the redacted
-            # ``safe_error_description`` is the only message emitted.
-            log_exception_redacted(
-                logger,
-                SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
-                exc,
-                connection=name,
-                field=field,
-                reason="secret_retrieval_failed",
-            )
-            # Uniform 404 (typed): identical wire shape to the missing-
-            # connection branch above, so the secret-backend error code
-            # cannot enumerate which connections exist. The typed class
-            # records this intentional 502 -> 404 / non-retryable override.
-            raise SecretRetrievalNotFoundError(_REVEAL_GENERIC_ERROR) from exc
-
-        value = credentials.get(field)
-        if value is None:
-            logger.warning(
-                SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
-                connection=name,
-                field=field,
-                reason="field_not_set",
-            )
-            raise SecretRetrievalNotFoundError(_REVEAL_GENERIC_ERROR)
-        logger.info(
-            SECURITY_CONNECTION_SECRET_REVEALED,
-            connection=name,
-            field=field,
-        )
-        return ApiResponse(data=RevealedSecretResponse(field=field, value=value))
+        revealed = await reveal_secret_field(state["app_state"], name, field)
+        return ApiResponse(data=revealed)

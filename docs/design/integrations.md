@@ -42,7 +42,11 @@ methods.
 | `database` | `dialect`, `host`, `port`, `username`, `password`, `database` | `SELECT 1` |
 | `generic_http` | `base_url`, `token` / `api_key` | `HEAD base_url` |
 | `oauth_app` | `client_id`, `client_secret`, `auth_url`, `token_url` | N/A |
+| `a2a_peer` | `base_url`, `auth_scheme`, scheme credentials (`api_key` / `bearer_token` / `client_id` + `client_secret` / mTLS `cert_path` + `key_path`), `signing_secret` | N/A |
+| `llm_provider` | `api_key` | N/A |
 | `tunnel` | `auth_token` | N/A |
+
+The authoritative per-field metadata (label, input type, required/secret flags, capture mode, placement) for every type lives in the backend registry `integrations/connections/field_metadata.py`, exposed read-only via `GET /api/v1/connections/types` and the `connections.field_metadata` MCP tool; the dashboard form and the operator console both render from it.
 
 ### Secret Storage
 
@@ -73,6 +77,87 @@ At-rest protection of the *rest* of the database (non-secret rows, full-text bac
 | `DELETE` | `/api/v1/connections/{name}` | Delete a connection |
 | `GET` | `/api/v1/connections/{name}/health` | On-demand health check |
 | `GET` | `/api/v1/connections/{name}/secrets/{field}` | Scoped reveal of a single credential field (audit-logged; returns a generic 404 on any failure to avoid side-channel leakage) |
+| `GET` | `/api/v1/connections/types` | Connection-type + credential-field metadata registry (label, type, required, secret, capture mode, help, order) |
+| `POST` | `/api/v1/connections/drafts/{draft_id}/fields/{field}/capture` | Out-of-band write-only secret capture; returns an opaque single-use handle (request body is excluded from access/request logs) |
+
+---
+
+## Conversational setup
+
+The operator can stand up a connection-bound integration by talking to the
+unified chat's operator console (`configure` intent, see
+[Self-Improving Company: the operator console](self-improvement.md#interactive-endpoint-one-unified-turn)).
+Three backend pieces make this vendor-generic and secret-safe.
+
+### Connection-type metadata registry
+
+A single backend-owned declarative registry
+(`integrations/connections/field_metadata.py`) is the sole source of truth for
+*what a connection type needs*: per `ConnectionType`, an ordered list of fields
+each carrying `name`, `label`, `type`, `required`, `secret`, `capture_mode`
+(`masked_field` or `oauth_redirect`), `help_text`, and the `connections.create`
+argument it maps to. It is exposed read-only via `GET /api/v1/connections/types` and
+the `connections.field_metadata` MCP tool, and the dashboard connection form
+renders purely from it (no hand-authored per-type UI), so the console prompts,
+the form, and the create call all agree from one definition. The registry stays
+in parity with the `required_fields()` each authenticator declares.
+
+### Out-of-band secret capture
+
+A credential (a token, a password, an API key) **never** enters the chat turn,
+the persisted transcript, or an LLM prompt. Instead the masked field posts the
+raw value straight to
+`POST /api/v1/connections/drafts/{draft_id}/fields/{field}/capture`, whose route
+excludes the request body from logging; the value is written immediately into
+the existing `SecretBackend` and the endpoint returns an opaque **single-use,
+short-TTL handle** bound to `(conversation_id, draft_id, field, secret_kind)`.
+The console references only the handle. `connections.create` (and
+`oauth.configure_provider`) accept **handle references, not inline credential
+strings**; create resolves and consumes the handle, verifies the binding
+(replay protection), and moves the value to permanent per-connection storage
+under its own `secret_id` for the normal rotate/retrieve/delete lifecycle. An
+abandoned draft's handle expires and its backend entry is swept. As
+defence-in-depth, a deterministic rule blocks any tool result from echoing a
+bound secret value back into a turn, and every persisted turn is scanned and
+credential-redacted before write (the backstop should never fire; if it does,
+it signals a boundary leak). Each field's `capture_mode` in the metadata
+registry selects how the value is obtained: static-secret types (a personal
+access token, a bot token, an SMTP or Postgres password, a generic API key) use
+the masked-field capture above, while a connection type backed by a configured
+OAuth app can mark a field `oauth_redirect`, so the value comes from a hosted
+authorize flow (the app server only ever receives a short-lived code exchanged
+server-side) rather than being pasted.
+
+### Guided flow
+
+There are two equivalent surfaces, and both are secret-safe by the pieces above
+rather than by a bespoke wizard.
+
+**Dashboard form (deterministic).** The connection form renders purely from the
+metadata registry, captures each `secret` field out of band as it is entered
+(masked field -> capture endpoint -> handle), then submits one typed
+`connections.create` carrying the non-secret fields inline and the secrets as
+`credential_handles` bound to a per-submit `connection_draft_id`. The create is
+a single validated call, and the live `connections.check_health` probe leaves
+the connection unverified until health passes. This is the deterministic path:
+what is submitted is exactly what the form assembled.
+
+**Operator console (conversational).** The same setup runs through the console
+`configure` intent as a governed agent loop: it reads the metadata registry,
+guides the operator, and calls `connections.create`. Determinism does not come
+from a separate step controller; it comes from the platform's governance. Under
+the console's default `semi` autonomy a sensitive `connections.create`
+escalates through the merged auto-gate to the approval inbox with a structured
+preview of the exact resolved arguments (secrets masked), so **apply happens
+only after an explicit confirm**, enforced by the `ApprovalGate` rather than by
+the agent. When the loop needs a secret it calls `connections.request_secret_capture`
+(never asking for the value in chat), which surfaces an in-chat masked field; the
+dashboard posts the value straight to the capture endpoint and threads only the
+single-use handle back on the next `CONFIGURE` turn, so no secret is ever in the
+transcript or at the LLM's discretion, and `connections.check_health` verifies the
+result. A dedicated deterministic setup controller was considered and deliberately
+not built: it would duplicate the governed create/confirm/verify path the console +
+approval gate already provide.
 
 ---
 

@@ -706,6 +706,12 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    past the budget under ``--dist=loadfile`` contention. Only this one
 #    test is exempt; the file's other cases scan synthetic ``tmp_path``
 #    trees and stay fast.
+#  - ``test_pretooluse_bash_gates.py``: every case spawns a real ``bash``
+#    subprocess to run the PreToolUse gate script under test. Windows
+#    process spawn contends with the xdist workers that are themselves
+#    spawning subprocesses, so the heaviest case can tip past the 6s
+#    budget on a loaded runner -- the real subprocess is the test's whole
+#    point, not a fixture leak (same class as ``test_cold_import.py``).
 #  - ``test_construction_wiring.py``: builds the whole app via
 #    ``create_app`` to assert construction-phase slice wiring. The build is
 #    class-scoped (one build shared across the class), so the one-time cost
@@ -737,6 +743,7 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/scripts/test_check_completion_config_temperature.py",
     "unit/scripts/test_check_error_code_uniqueness.py::test_real_tree_passes",
     "unit/scripts/test_gate_live_tree_clean.py",
+    "unit/scripts/test_pretooluse_bash_gates.py",
     "unit/api/test_construction_wiring.py",
     "unit/api/test_app.py",
     "unit/api/test_health.py",

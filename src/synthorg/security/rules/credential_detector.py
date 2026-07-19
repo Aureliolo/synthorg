@@ -20,7 +20,10 @@ _RULE_NAME: Final[str] = "credential_detector"
 CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     (
         "AWS access key",
-        re.compile(r"(?:^|[^A-Za-z0-9])(AKIA[0-9A-Z]{16})(?:[^A-Za-z0-9]|$)"),
+        # Non-consuming boundaries so no adjacent character is swallowed (a
+        # consumed brace/comma/space would not be restored by _redact_match,
+        # which only re-attaches quotes, breaking a surrounding document).
+        re.compile(r"(?<![A-Za-z0-9])AKIA[0-9A-Z]{16}(?![A-Za-z0-9])"),
     ),
     (
         "AWS secret key",
@@ -51,7 +54,7 @@ CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     ),
     (
         "GitHub personal access token",
-        re.compile(r"(?:^|[^A-Za-z0-9])(ghp_[A-Za-z0-9]{36,})"),
+        re.compile(r"(?<![A-Za-z0-9])ghp_[A-Za-z0-9]{36,}"),
     ),
     (
         "Generic secret assignment",
@@ -64,6 +67,28 @@ CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
 )
 
 
+_CREDENTIAL_REDACTED: Final[str] = "[REDACTED]"
+_QUOTE_CHARS: Final[str] = "'\""
+
+
+def _redact_match(match: re.Match[str]) -> str:
+    """Replace a credential match, preserving any quote it swallowed.
+
+    Some patterns match an optional surrounding quote, so a naive replace of
+    the whole span strips the quotes off a value. When the credential sits
+    inside a serialised JSON string that turns ``"secret"`` into ``[REDACTED]``
+    and breaks the document, so a parked context can no longer be resumed.
+    Re-attaching a leading/trailing quote keeps the boundary intact.
+
+    Returns:
+        ``[REDACTED]`` with any leading/trailing quote of the match preserved.
+    """
+    matched = match.group(0)
+    prefix = matched[:1] if matched[:1] in _QUOTE_CHARS else ""
+    suffix = matched[-1:] if matched[-1:] in _QUOTE_CHARS else ""
+    return f"{prefix}{_CREDENTIAL_REDACTED}{suffix}"
+
+
 def _scan_value(value: str) -> str | None:
     """Scan a single string for credential patterns.
 
@@ -74,6 +99,27 @@ def _scan_value(value: str) -> str | None:
         if pattern.search(value):
             return pattern_name
     return None
+
+
+def redact_credentials(text: str) -> tuple[str, tuple[str, ...]]:
+    """Redact credential-shaped substrings from free text.
+
+    Credential patterns only (no PII), so a chat transcript keeps
+    legitimate operator content while any secret-shaped value is masked.
+    This is a defence-in-depth backstop for the conversation-persistence
+    boundary: with out-of-band capture in place it should never fire.
+
+    Returns:
+        A ``(redacted_text, findings)`` tuple; ``findings`` names each
+        credential pattern that matched (empty when the text is clean).
+    """
+    findings: list[str] = []
+    redacted = text
+    for pattern_name, pattern in CREDENTIAL_PATTERNS:
+        if pattern.search(redacted):
+            findings.append(pattern_name)
+            redacted = pattern.sub(_redact_match, redacted)
+    return redacted, tuple(sorted(set(findings)))
 
 
 class CredentialDetector:

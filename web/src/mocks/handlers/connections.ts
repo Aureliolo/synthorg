@@ -1,12 +1,18 @@
 import { http, HttpResponse } from 'msw'
 import type {
+  captureConnectionSecret,
   checkConnectionHealth,
   createConnection,
   getConnection,
+  getConnectionTypes,
   revealConnectionSecret,
   updateConnection,
 } from '@/api/endpoints/connections'
-import type { Connection, ConnectionType } from '@/api/types/integrations'
+import type {
+  Connection,
+  ConnectionType,
+  ConnectionTypeMetadata,
+} from '@/api/types/integrations'
 import {
   apiError,
   emptyPageEnvelope,
@@ -16,6 +22,81 @@ import {
 } from './helpers'
 
 const NOW = '2026-04-11T12:00:00Z'
+
+// A small representative slice of the backend connection-type registry: a
+// bearer-token type (github, one secret field) and a database type (a select
+// dialect plus a masked password). Enough to exercise the metadata-driven form
+// and the out-of-band capture path without duplicating the full backend map.
+const mockConnectionTypes: ConnectionTypeMetadata[] = [
+  {
+    connection_type: 'github',
+    default_auth_method: 'bearer_token',
+    label: 'GitHub',
+    description: 'Access GitHub repositories, issues, and pull requests.',
+    required_field_names: ['token'],
+    secret_field_names: ['token'],
+    fields: [
+      {
+        name: 'base_url',
+        label: 'API URL',
+        input_type: 'url',
+        placement: 'base_url',
+        required: false,
+        secret: false,
+        options: [],
+        placeholder: 'https://api.github.com',
+        help_text: 'Leave blank for github.com',
+        capture_mode: null,
+      },
+      {
+        name: 'token',
+        label: 'Personal Access Token',
+        input_type: 'password',
+        placement: 'credential',
+        required: true,
+        secret: true,
+        options: [],
+        placeholder: 'ghp_...',
+        help_text: '',
+        capture_mode: 'masked_field',
+      },
+    ],
+  },
+  {
+    connection_type: 'database',
+    default_auth_method: 'basic_auth',
+    label: 'Database',
+    description: 'Connect to a SQL database.',
+    required_field_names: ['dialect'],
+    secret_field_names: ['password'],
+    fields: [
+      {
+        name: 'dialect',
+        label: 'Dialect',
+        input_type: 'select',
+        placement: 'credential',
+        required: true,
+        secret: false,
+        options: ['postgres', 'mysql', 'sqlite'],
+        placeholder: '',
+        help_text: '',
+        capture_mode: null,
+      },
+      {
+        name: 'password',
+        label: 'Password',
+        input_type: 'password',
+        placement: 'credential',
+        required: false,
+        secret: true,
+        options: [],
+        placeholder: '',
+        help_text: '',
+        capture_mode: 'masked_field',
+      },
+    ],
+  },
+]
 
 export function buildConnection(
   overrides: Partial<Connection> = {},
@@ -99,6 +180,19 @@ export const connectionsList = [
   http.get('/api/v1/connections', () =>
     HttpResponse.json(pageEnvelope(mockConnections)),
   ),
+  // Registered before ``/connections/:name`` so ``types`` is not captured as a
+  // connection name.
+  http.get('/api/v1/connections/types', () =>
+    HttpResponse.json(successFor<typeof getConnectionTypes>(mockConnectionTypes)),
+  ),
+  http.post(
+    '/api/v1/connections/drafts/:draftId/fields/:field/capture',
+    () =>
+      HttpResponse.json(
+        successFor<typeof captureConnectionSecret>({ handle: 'sech_mock_handle_0001' }),
+        { status: 201 },
+      ),
+  ),
   http.get('/api/v1/connections/:name', ({ params }) => {
     const conn = mockConnections.find((c) => c.name === params['name'])
     if (!conn) return HttpResponse.json(apiError('Connection not found'), { status: 404 })
@@ -157,6 +251,17 @@ export const connectionsList = [
 export const connectionsHandlers = [
   http.get('/api/v1/connections', () =>
     HttpResponse.json(emptyPageEnvelope<Connection>()),
+  ),
+  http.get('/api/v1/connections/types', () =>
+    HttpResponse.json(successFor<typeof getConnectionTypes>(mockConnectionTypes)),
+  ),
+  http.post(
+    '/api/v1/connections/drafts/:draftId/fields/:field/capture',
+    () =>
+      HttpResponse.json(
+        successFor<typeof captureConnectionSecret>({ handle: 'sech_mock_handle_0001' }),
+        { status: 201 },
+      ),
   ),
   http.get('/api/v1/connections/:name', ({ params }) =>
     HttpResponse.json(

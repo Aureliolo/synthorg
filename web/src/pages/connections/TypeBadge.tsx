@@ -1,6 +1,7 @@
 import type { ConnectionType } from '@/api/types/integrations'
 import { cn } from '@/lib/utils'
-import { CONNECTION_TYPE_FIELDS } from './connection-type-fields'
+import { useConnectionsStore } from '@/stores/connections'
+import { connectionTypeLabel } from './connection-fields'
 
 interface TypeBadgeProps {
   type: ConnectionType
@@ -8,13 +9,13 @@ interface TypeBadgeProps {
 }
 
 export function TypeBadge({ type, className }: TypeBadgeProps) {
-  const spec = CONNECTION_TYPE_FIELDS[type]
-  const label = spec.label
+  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
+  const label = connectionTypeLabel(type, connectionTypes)
   return (
     <span
       className={cn(
         'inline-flex items-center rounded-md border border-border bg-surface',
-        'px-2 py-0.5 font-mono text-[11px] text-text-secondary',
+        'px-2 py-0.5 font-mono text-xs text-text-secondary',
         className,
       )}
     >

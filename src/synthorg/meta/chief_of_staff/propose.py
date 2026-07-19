@@ -38,6 +38,7 @@ from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.meta.chief_of_staff._capability_gate import resolve_cos_autonomous_cap
 from synthorg.meta.chief_of_staff._propose_act import ProposeActMixin
+from synthorg.meta.chief_of_staff._turn_redaction import redact_turn_content
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
 from synthorg.meta.chief_of_staff.enums import RoutingReason
@@ -311,7 +312,7 @@ class ChiefOfStaffProposer(ProposeActMixin):
             conversation_id=str(conversation.id),
             sequence=next_sequence,
             role=ConversationRole.USER,
-            content=args.message,
+            content=NotBlankStr(redact_turn_content(args.message)),
             created_at=now,
         )
         await self._turn_repo.append(user_turn)
