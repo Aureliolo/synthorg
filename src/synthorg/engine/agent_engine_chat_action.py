@@ -38,7 +38,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_CHAT_ACTION_STARTED,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ZERO_TOKEN_USAGE, ChatMessage
 
 if TYPE_CHECKING:
     from synthorg.core.clock import Clock
@@ -172,11 +172,19 @@ class AgentEngineChatActionMixin:
                 ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
             )
         else:
-            # Continue the prior conversation: keep its messages, reset the
-            # turn budget, and re-inject the per-turn brief (the persona prompt
-            # is already carried in the prior context) so fresh guidance such as
-            # newly provided capture handles is seen this turn.
-            ctx = prior_context.continued_for_new_turn(max_turns=max_turns)
+            # Continue the prior conversation: keep its messages but reset the
+            # per-turn budget (turn count + accumulated cost) so an earlier
+            # turn's usage does not throttle this one; the cost ceiling rides on
+            # the context unchanged. Then re-inject the per-turn brief (the
+            # persona prompt is already carried in the prior context) so fresh
+            # guidance such as newly provided capture handles is seen this turn.
+            ctx = prior_context.model_copy(
+                update={
+                    "turn_count": 0,
+                    "accumulated_cost": ZERO_TOKEN_USAGE,
+                    "max_turns": max_turns,
+                }
+            )
             if system_prompt_addendum:
                 ctx = ctx.with_message(
                     ChatMessage(
