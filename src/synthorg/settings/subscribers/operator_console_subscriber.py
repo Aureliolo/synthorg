@@ -29,7 +29,7 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("chief_of_staff", "operator_console_enabled"),
         ("chief_of_staff", "operator_console_model"),
         ("chief_of_staff", "operator_console_max_turns"),
-        ("chief_of_staff", "operator_console_cost_ceiling_usd"),
+        ("chief_of_staff", "operator_console_cost_ceiling"),
         ("chief_of_staff", "operator_console_autonomy_level"),
     },
 )

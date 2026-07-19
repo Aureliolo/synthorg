@@ -173,7 +173,7 @@ class TestBudgetCeiling:
             config=ChiefOfStaffConfig(
                 operator_console_enabled=True,
                 operator_console_model=_MODEL,
-                operator_console_cost_ceiling_usd=0.5,
+                operator_console_cost_ceiling=0.5,
             ),
         )
         checker = service._build_budget_checker()

@@ -507,7 +507,7 @@ self_improvement:
     operator_console_model: example-provider:example-small-001  # Console model ref (explicit provider,model)
     configure_intent_confidence_floor: 0.85  # Write-capable floor: below it degrades to explain
     operator_console_max_turns: 12           # Hard turn cap for one console action loop
-    operator_console_cost_ceiling_usd: 1.0   # Spend ceiling for one console session (budget_checker)
+    operator_console_cost_ceiling: 1.0   # Spend ceiling for one console session (budget_checker)
     operator_console_autonomy_level: semi    # Default tier: reads flow, risky writes escalate
     # Documentary mode: post-run run narrative. All opt-in.
     narrative_enabled: false                 # Master switch

@@ -87,7 +87,7 @@ async def test_install_catalog_entry_routes_to_catalog_service() -> None:
     installs_repo = SimpleNamespace()
     facade = MCPCatalogFacadeService(
         catalog=SimpleNamespace(install=install),  # type: ignore[arg-type]
-        installations=installs_repo,  # type: ignore[arg-type]
+        installations=installs_repo,
         connection_catalog=conn_catalog,  # type: ignore[arg-type]
     )
     result = await facade.install_catalog_entry(
@@ -120,7 +120,7 @@ async def test_uninstall_catalog_entry_routes_to_catalog_service() -> None:
     installs_repo = SimpleNamespace()
     facade = MCPCatalogFacadeService(
         catalog=SimpleNamespace(uninstall=uninstall),  # type: ignore[arg-type]
-        installations=installs_repo,  # type: ignore[arg-type]
+        installations=installs_repo,
         connection_catalog=SimpleNamespace(),  # type: ignore[arg-type]
     )
     removed = await facade.uninstall_catalog_entry(

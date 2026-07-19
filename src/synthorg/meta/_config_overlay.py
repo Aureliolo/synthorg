@@ -81,7 +81,7 @@ _COS_MODEL_FIELDS: tuple[str, ...] = (
 # Pydantic coerces them to int/float/enum on config construction.
 _COS_SCALAR_FIELDS: tuple[str, ...] = (
     "operator_console_max_turns",
-    "operator_console_cost_ceiling_usd",
+    "operator_console_cost_ceiling",
     "operator_console_autonomy_level",
 )
 

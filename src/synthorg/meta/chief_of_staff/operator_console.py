@@ -171,9 +171,9 @@ class OperatorConsoleService:
 
         Returns:
             A callback that trips once accumulated session cost meets or
-            exceeds ``operator_console_cost_ceiling_usd``.
+            exceeds ``operator_console_cost_ceiling``.
         """
-        ceiling = self._config.operator_console_cost_ceiling_usd
+        ceiling = self._config.operator_console_cost_ceiling
 
         def _check(ctx: AgentContext) -> bool:
             return ctx.accumulated_cost.cost >= ceiling

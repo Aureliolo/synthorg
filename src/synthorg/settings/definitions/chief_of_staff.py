@@ -292,13 +292,14 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=_NS,
-        key="operator_console_cost_ceiling_usd",
+        key="operator_console_cost_ceiling",
         type=SettingType.FLOAT,
         default="1.0",
         description=(
-            "Hard per-session cost ceiling (USD) for the operator console; the"
-            " session halts the moment accumulated cost crosses it, independent"
-            " of the turn cap. Applied on the next console rebuild."
+            "Hard per-session cost ceiling (in the configured currency) for the"
+            " operator console; the session halts the moment accumulated cost"
+            " crosses it, independent of the turn cap. Applied on the next"
+            " console rebuild."
         ),
         group="Acts on your behalf",
         level=SettingLevel.ADVANCED,

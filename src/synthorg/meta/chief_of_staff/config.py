@@ -167,14 +167,14 @@ _CONSOLE_MAX_TURNS_MAX: int = 30
 # control plane on a guess. 0.85 matches the ACT floor; 0.0/1.0 is the
 # probability range.
 _CONFIGURE_INTENT_CONFIDENCE_FLOOR_DEFAULT: float = 0.85
-# A single console session's hard cost ceiling (USD). The per-turn cap bounds
-# the loop's length; this bounds its spend independently, halting the loop the
-# moment accumulated cost crosses it so a runaway tool loop cannot burn budget.
-# 1.0 USD is a generous single-session allowance; 0.01 is the floor for a
-# meaningful session and 100.0 a ceiling.
-_CONSOLE_COST_CEILING_USD_DEFAULT: float = 1.0
-_CONSOLE_COST_CEILING_USD_MIN: float = 0.01
-_CONSOLE_COST_CEILING_USD_MAX: float = 100.0
+# A single console session's hard cost ceiling, in the org's configured
+# currency. The per-turn cap bounds the loop's length; this bounds its spend
+# independently, halting the loop the moment accumulated cost crosses it so a
+# runaway tool loop cannot burn budget. 1.0 is a generous single-session
+# allowance; 0.01 is the floor for a meaningful session and 100.0 a ceiling.
+_CONSOLE_COST_CEILING_DEFAULT: float = 1.0
+_CONSOLE_COST_CEILING_MIN: float = 0.01
+_CONSOLE_COST_CEILING_MAX: float = 100.0
 # Run narrative (documentary mode): the synthesiser writes only the
 # connective prose around the structured facts, so a mild temperature
 # (0.4) gives readable narration without drifting from the supplied
@@ -357,8 +357,9 @@ class ChiefOfStaffConfig(BaseModel):
         operator_console_max_turns: Hard turn cap for one console session
             (bounds the configure/observe fan-out a single instruction can
             drive).
-        operator_console_cost_ceiling_usd: Hard per-session cost ceiling
-            (USD); the session halts the moment accumulated cost crosses it.
+        operator_console_cost_ceiling: Hard per-session cost ceiling in the
+            configured currency; the session halts the moment accumulated cost
+            crosses it.
         operator_console_autonomy_level: Autonomy tier the console acts under
             (SEMI by default: reads flow, risky writes escalate to approval).
         narrative_enabled: Enable documentary mode (the post-run
@@ -589,10 +590,10 @@ class ChiefOfStaffConfig(BaseModel):
         ge=_CONSOLE_MAX_TURNS_MIN,
         le=_CONSOLE_MAX_TURNS_MAX,
     )
-    operator_console_cost_ceiling_usd: float = Field(
-        default=_CONSOLE_COST_CEILING_USD_DEFAULT,
-        ge=_CONSOLE_COST_CEILING_USD_MIN,
-        le=_CONSOLE_COST_CEILING_USD_MAX,
+    operator_console_cost_ceiling: float = Field(
+        default=_CONSOLE_COST_CEILING_DEFAULT,
+        ge=_CONSOLE_COST_CEILING_MIN,
+        le=_CONSOLE_COST_CEILING_MAX,
     )
     operator_console_autonomy_level: AutonomyLevel = AutonomyLevel.SEMI
 
