@@ -20,6 +20,7 @@ function baseResult(overrides: Partial<TurnResult>): TurnResult {
     propose: null,
     group: null,
     act: null,
+    configure: null,
     charter: null,
     chime_ins: [],
     ...overrides,

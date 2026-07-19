@@ -3,11 +3,12 @@ import {
   type ConnectionHealthStatus,
   type ConnectionType,
 } from '@/api/types/integrations'
+import { useMemo } from 'react'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { useConnectionsStore } from '@/stores/connections'
 import type { ConnectionSortKey } from '@/stores/connections/types'
-import { CONNECTION_TYPE_FIELDS } from './connection-type-fields'
+import { connectionTypeLabel } from './connection-fields'
 
 const HEALTH_OPTIONS = [
   { value: '', label: 'All health' },
@@ -23,14 +24,6 @@ const VALID_HEALTH: ReadonlySet<string> = new Set([
   'unhealthy',
   'unknown',
 ])
-
-const TYPE_OPTIONS: readonly { value: string; label: string }[] = [
-  { value: '', label: 'All types' },
-  ...CONNECTION_TYPE_VALUES.map((t) => ({
-    value: t,
-    label: CONNECTION_TYPE_FIELDS[t].label,
-  })),
-]
 
 const VALID_TYPES: ReadonlySet<string> = new Set(CONNECTION_TYPE_VALUES)
 
@@ -53,10 +46,24 @@ export function ConnectionFilters() {
   const typeFilter = useConnectionsStore((s) => s.typeFilter)
   const healthFilter = useConnectionsStore((s) => s.healthFilter)
   const sortBy = useConnectionsStore((s) => s.sortBy)
+  const connectionTypes = useConnectionsStore((s) => s.connectionTypes)
   const setSearchQuery = useConnectionsStore((s) => s.setSearchQuery)
   const setTypeFilter = useConnectionsStore((s) => s.setTypeFilter)
   const setHealthFilter = useConnectionsStore((s) => s.setHealthFilter)
   const setSortBy = useConnectionsStore((s) => s.setSortBy)
+
+  // Labels come from the backend registry (with a humanized fallback before it
+  // loads); every valid type stays filterable regardless of load state.
+  const typeOptions = useMemo<readonly { value: string; label: string }[]>(
+    () => [
+      { value: '', label: 'All types' },
+      ...CONNECTION_TYPE_VALUES.map((t) => ({
+        value: t,
+        label: connectionTypeLabel(t, connectionTypes),
+      })),
+    ],
+    [connectionTypes],
+  )
 
   return (
     <div className="flex flex-wrap items-end gap-3">
@@ -69,7 +76,7 @@ export function ConnectionFilters() {
 
       <SelectField
         label="Type"
-        options={TYPE_OPTIONS}
+        options={typeOptions}
         value={typeFilter ?? ''}
         onChange={(v) => {
           setTypeFilter(v && VALID_TYPES.has(v) ? (v as ConnectionType) : null)

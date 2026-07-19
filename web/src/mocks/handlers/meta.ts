@@ -44,6 +44,7 @@ export function explainStreamBody(answer: string): string {
     propose: null,
     group: null,
     act: null,
+    configure: null,
     charter: null,
     chime_ins: [],
   }
@@ -149,6 +150,7 @@ export const metaHandlers = [
         propose: null,
         group: null,
         act: null,
+        configure: null,
         charter: null,
         chime_ins: [],
       }),

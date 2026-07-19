@@ -1,5 +1,6 @@
 import { parseCitedRecords } from '@/api/endpoints/cited-records'
 import type {
+  ConsoleTurnResult,
   ConversationalActResult,
   GroupChatTruncationReason,
   GroupConverseResult,
@@ -192,6 +193,30 @@ function mapGroup(group: GroupConverseResult | null): OrgTurn[] {
   return turns
 }
 
+function mapConfigure(configure: ConsoleTurnResult | null): OrgTurn[] {
+  if (!configure) return []
+  // The operator console reuses the same governed action loop as a direct act,
+  // so it renders as an action event attributed to the console identity.
+  return [
+    {
+      id: nextMessageId(),
+      kind: 'event',
+      event: {
+        type: 'action',
+        agentName: configure.console_name,
+        toolCalls: configure.action.tool_calls,
+        ...(configure.action.final_message != null && {
+          content: configure.action.final_message,
+        }),
+        ...(configure.action.parked &&
+          configure.action.approval_id != null && {
+            parkedApprovalId: configure.action.approval_id,
+          }),
+      },
+    },
+  ]
+}
+
 function mapAct(act: ConversationalActResult | null): OrgTurn[] {
   if (!act) return []
   return [
@@ -258,6 +283,8 @@ const DEGRADE_NOTICE: Record<TurnResult['intent_reason'], string | null> = {
     'Answered as a question: no acting agent was named. Say who should act (e.g. "have finance…").',
   charter_floor_not_met:
     'Answered as a question rather than starting a company charter. Say explicitly you want to define a new company.',
+  configure_floor_not_met:
+    'Answered as a question rather than configuring the platform. Say explicitly what you want to set up or change (e.g. "connect our GitHub").',
   group_targets_missing:
     'Answered as a question rather than convening a group. Name the roles you want in the room.',
   classify_call_failed:
@@ -289,6 +316,8 @@ export function mapTurnResult(result: TurnResult): OrgTurn[] {
       return mapGroup(result.group)
     case 'act':
       return mapAct(result.act)
+    case 'configure':
+      return mapConfigure(result.configure)
     case 'charter':
       return mapCharter(result.charter)
     case 'explain': {

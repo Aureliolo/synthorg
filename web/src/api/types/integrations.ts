@@ -3,6 +3,8 @@
 export type {
   CatalogEntry,
   Connection,
+  ConnectionFieldMetadata,
+  ConnectionTypeMetadata,
   CreateConnectionRequest,
   DeviceLoginPrompt,
   HealthReport,
@@ -12,13 +14,21 @@ export type {
   OAuthInitiationResponse,
   OAuthTokenStatusResponse,
   RevealedSecretResponse,
+  SecretCaptureRequest,
+  SecretCaptureResponse,
   TunnelProviderStatus,
   TunnelSnapshot,
   TunnelStartResponse,
   UpdateConnectionRequest,
 } from './dtos.gen'
 
-export type { ConnectionStatus, ConnectionType } from './enum-values.gen'
+export type {
+  ConnectionStatus,
+  ConnectionType,
+  FieldInputType,
+  FieldPlacement,
+  SecretCaptureMode,
+} from './enum-values.gen'
 export { CONNECTION_TYPE_VALUES } from './enum-values.gen'
 
 import type { CatalogEntry, InstallEntryRequest, InstallEntryResponse } from './dtos.gen'

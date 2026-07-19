@@ -1,4 +1,5 @@
 import {
+  captureConnectionSecret as apiCaptureConnectionSecret,
   createConnection as apiCreateConnection,
   deleteConnection as apiDeleteConnection,
   updateConnection as apiUpdateConnection,
@@ -111,10 +112,37 @@ async function deleteConnectionImpl(
   }
 }
 
+async function captureSecretImpl(
+  draftId: string,
+  field: string,
+  value: string,
+  secretKind: string,
+): Promise<string | null> {
+  // The raw value goes straight to the write-only capture endpoint and never
+  // enters a connection payload, a chat turn, or the store. Only the opaque
+  // handle returns; on failure a toast fires and the caller aborts the submit.
+  try {
+    const { handle } = await apiCaptureConnectionSecret(draftId, field, {
+      value,
+      secret_kind: secretKind,
+    })
+    return handle
+  } catch (err) {
+    emitCrudError(err, 'Failed to capture secret', 'Capture secret failed')
+    return null
+  }
+}
+
 export function createCrudActions(set: ConnectionsSet, get: ConnectionsGet) {
   return {
     createConnection: (data: CreateConnectionRequest) =>
       createConnectionImpl(set, get, data),
+    captureSecret: (
+      draftId: string,
+      field: string,
+      value: string,
+      secretKind: string,
+    ) => captureSecretImpl(draftId, field, value, secretKind),
     updateConnection: (name: string, data: UpdateConnectionRequest) =>
       updateConnectionImpl(set, get, name, data),
     deleteConnection: (name: string) =>

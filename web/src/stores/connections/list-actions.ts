@@ -1,6 +1,7 @@
 import { paginateAll } from '@/api/client'
 import {
   checkConnectionHealth,
+  getConnectionTypes,
   listConnections,
 } from '@/api/endpoints/connections'
 import { listIntegrationHealth } from '@/api/endpoints/integration-health'
@@ -19,6 +20,27 @@ import type {
 const log = createLogger('connections')
 
 let _listRequestId = 0
+
+async function fetchConnectionTypesImpl(
+  set: ConnectionsSet,
+  get: ConnectionsGet,
+): Promise<void> {
+  // The connection-type registry is small and stable; skip the re-fetch once
+  // loaded so opening the form modal repeatedly does not re-hit the backend.
+  // Still a pure API consumer: nothing is persisted client-side, so a reload
+  // re-hydrates it.
+  if (get().connectionTypes.length > 0 || get().typesLoading) return
+  set({ typesLoading: true, typesError: null })
+  try {
+    const connectionTypes = await getConnectionTypes()
+    set({ connectionTypes })
+  } catch (err) {
+    log.error('Failed to fetch connection types:', getErrorMessage(err))
+    set({ typesError: getErrorMessage(err) })
+  } finally {
+    set({ typesLoading: false })
+  }
+}
 
 export function createListActions(set: ConnectionsSet, get: ConnectionsGet) {
   return {
@@ -55,6 +77,8 @@ export function createListActions(set: ConnectionsSet, get: ConnectionsGet) {
         if (isLatest()) set({ listLoading: false })
       }
     },
+
+    fetchConnectionTypes: () => fetchConnectionTypesImpl(set, get),
 
     runHealthCheck: async (name: string) => {
       const current = get().checkingHealth

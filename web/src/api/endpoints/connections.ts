@@ -9,9 +9,12 @@ import {
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 import type {
   Connection,
+  ConnectionTypeMetadata,
   CreateConnectionRequest,
   HealthReport,
   RevealedSecretResponse,
+  SecretCaptureRequest,
+  SecretCaptureResponse,
   UpdateConnectionRequest,
 } from '../types/integrations'
 
@@ -31,6 +34,30 @@ export async function listConnections(): Promise<readonly Connection[]> {
   return paginateAll<Connection>((cursor) =>
     listConnectionsPage({ cursor, limit: 200 }),
   )
+}
+
+export async function getConnectionTypes(): Promise<readonly ConnectionTypeMetadata[]> {
+  // The backend connection-type/credential-field registry is the single
+  // source of truth for form labels, ordering, required + secret flags, and
+  // capture mode; the form renders from this rather than a hand-authored map.
+  const response =
+    await apiClient.get<ApiResponse<readonly ConnectionTypeMetadata[]>>('/connections/types')
+  return unwrap(response)
+}
+
+export async function captureConnectionSecret(
+  draftId: string,
+  field: string,
+  data: SecretCaptureRequest,
+): Promise<SecretCaptureResponse> {
+  // Out-of-band capture: the masked value POSTs straight to the write-only
+  // endpoint and never enters a connection payload or a chat turn; the reply
+  // is an opaque single-use handle the create call references.
+  const response = await apiClient.post<ApiResponse<SecretCaptureResponse>>(
+    `/connections/drafts/${encodeURIComponent(draftId)}/fields/${encodeURIComponent(field)}/capture`,
+    data,
+  )
+  return unwrap(response)
 }
 
 export async function getConnection(name: string): Promise<Connection> {
