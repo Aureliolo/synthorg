@@ -163,6 +163,17 @@ Per-type health check implementations with a background `HealthProberService`.
   available with its credential in place; `UNHEALTHY` when either is
   missing or the status lookup itself fails; `UNKNOWN` when no manager is
   bound yet or the connection maps to no known tunnel provider.
+- **`GENERIC_HTTP`** (`GenericHttpHealthCheck`): SSRF-validated, DNS-pinned
+  HEAD (GET fallback) of the connection `base_url`. When a `ConnectionCatalog`
+  is bound (`bind_catalog`) the probe resolves the connection's credentials
+  and sends them as auth headers, so a configured-but-broken credential
+  reports `UNHEALTHY` rather than false-greening on mere reachability. This is
+  the connection type the native web-search feature binds its API key to.
+
+The stdio MCP bridge exposes a parallel liveness surface:
+`MCPToolFactory.server_statuses` records each server's last connect outcome,
+and `ping_servers()` live-pings the connected sessions (`list_tools`) so a
+child that died after boot surfaces as unhealthy without re-spawning it.
 
 ---
 
@@ -175,10 +186,45 @@ Per-type health check implementations with a background `HealthProberService`.
 
 ## MCP Server Catalog
 
-Static JSON catalog (`bundled.json`) with 5 curated MCP server entries:
-GitHub, Slack, PostgreSQL, SQLite, Brave Search. Each entry is
-connection-gated (it declares a `required_connection_type`); no entry runs
-without a bound connection.
+Static JSON catalog (`bundled.json`) of curated MCP server entries. It ships the
+maintained Brave Search server (`@brave/brave-search-mcp-server`); a first-party
+GitHub and Slack agent-tool path (reusing the native connection + forge plumbing
+rather than an unmaintained third-party MCP server) is tracked as follow-up work.
+Each bundled entry is connection-gated (it declares a `required_connection_type`);
+no entry runs without a bound connection. Every stdio entry pins an exact `npm_version` (an
+unpinned `npx` spec would resolve `latest` on every reconnect, defeating the
+supply-chain pin). A database-typed entry additionally declares
+`required_dialect` so entries sharing `ConnectionType.DATABASE` cannot be bound
+to a connection of the wrong dialect.
+
+### Credential injection
+
+A catalog entry declares a `credential_env_map` (credential field to environment
+variable). The bound connection's secrets are resolved from the connection
+catalog and injected into the spawned server's environment **at connect time**,
+never persisted into the stored `MCPServerConfig` (which records only the
+connection name and the map) and never placed on the process argv (where a
+secret would be visible via `ps`/`/proc`). Missing credentials are logged loudly
+rather than silently producing an unauthenticated server.
+
+### Sandboxing
+
+A stdio MCP server is arbitrary third-party code (`npx -y <package>@<version>`).
+D16 requires the high-risk execution categories to run inside Docker, and an
+MCP server executes untrusted code, so it sits in that set. This is a bespoke
+launch-rewrite (`tools/mcp/sandbox.py`, `wrap_stdio_in_sandbox`) that runs the
+server via `docker run -i` under `--cap-drop=ALL`,
+`--security-opt=no-new-privileges`, a read-only rootfs, `NPM_CONFIG_IGNORE_SCRIPTS`,
+and cpu/memory/pid limits, controlled by the `tools.mcp_sandbox_*` settings
+(sandboxing is on by default, and fails secure to on if the settings cannot be
+resolved). It runs parallel to, not through, the per-category `SandboxBackend`
+selection the other tool categories use, because the MCP protocol must flow
+over the container's stdio. The npm package is version-pinned so a reconnect
+never resolves an unexpected `latest`. Resolved secrets are forwarded to the
+container by name (`--env KEY`) so they never appear in host `argv`, and
+credentials are forwarded only by environment variable (never as a CLI flag).
+A failed server connect is isolated so one broken server never blanks the
+tools of the others.
 
 ### API Endpoints
 

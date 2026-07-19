@@ -173,12 +173,12 @@ mcp:
       transport: stdio
       command: "npx"
       args: ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
-    - name: "github"
+    - name: "brave-search"
       transport: stdio
       command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-github"]
+      args: ["-y", "@brave/brave-search-mcp-server@2.1.0"]
       env:
-        GITHUB_TOKEN: "ghp_..."
+        BRAVE_API_KEY: "..."
     - name: "remote-analytics"
       transport: streamable_http
       url: "https://analytics.example.com/mcp"
@@ -192,10 +192,10 @@ Disable a server without removing its configuration by setting `enabled: false`:
 ```yaml
 mcp:
   servers:
-    - name: "github"
+    - name: "brave-search"
       transport: stdio
       command: "npx"
-      args: ["-y", "@modelcontextprotocol/server-github"]
+      args: ["-y", "@brave/brave-search-mcp-server@2.1.0"]
       enabled: false  # temporarily disabled
 ```
 

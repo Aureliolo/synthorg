@@ -1,12 +1,13 @@
 """Vendor-agnostic external search provider protocols.
 
-The research subsystem ships these protocols and their result models but no
-concrete vendor implementations: an operator injects a provider at runtime
-(via MCP bridge or a custom adapter), mirroring the existing
-:class:`~synthorg.tools.web.web_search.WebSearchProvider` house pattern. A
-missing provider simply means that source family does not fan out.
+The research subsystem ships these academic/code protocols and their result
+models but no concrete vendor implementations: an operator injects a provider
+at runtime (via MCP bridge or a custom adapter). A missing provider simply
+means that source family does not fan out.
 
-Web search reuses the existing ``WebSearchProvider``; this module adds the
+Web search is separate: it reuses the existing
+:class:`~synthorg.tools.web.web_search.WebSearchProvider`, which the native
+``HttpWebSearchProvider`` satisfies by default. This module adds only the
 academic and code search families.
 """
 

@@ -49,6 +49,7 @@ from synthorg.tools.sandbox.factory import (
     merge_secure_backend_defaults,
 )
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
+from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
 from synthorg.workers._agent_engine_collaborators import (
     boot_brain_tool_factory_provider,
     boot_docs_tool_factory_provider,
@@ -90,6 +91,8 @@ async def _build_tool_registry(
     app_state: AppState,
     workspace_root: Path,
     extra_tools: tuple[BaseTool, ...] = (),
+    *,
+    search_provider: HttpWebSearchProvider | None = None,
 ) -> tuple[ToolRegistry, int, Mapping[str, SandboxBackend]]:
     """Create the sandbox workspace and the config-driven tool registry.
 
@@ -155,6 +158,7 @@ async def _build_tool_registry(
         desktop_settings=desktop_settings,
         code_execution_records=code_execution_records_of(app_state),
         image_provider=image_provider,
+        web_search_provider=search_provider,
     )
     tools: list[BaseTool] = [*default_tools, *extra_tools]
     return ToolRegistry(tools), len(tools), sandbox_backends
@@ -328,86 +332,6 @@ async def _build_auto_review_pipeline_or_none(
     if not enabled:
         return None
     return build_review_pipeline()
-
-
-async def _build_mcp_bridge_tools(app_state: AppState) -> tuple[BaseTool, ...]:
-    """Bridge configured external MCP servers into the boot tool registry.
-
-    Merges catalog installations onto the YAML ``mcp`` config, connects to
-    every enabled server via :class:`MCPToolFactory`, and returns the
-    discovered tools so ``_build_tool_registry`` can expose them to agents.
-    No servers configured -> no-op (empty tuple). The factory is parked on
-    the integrations slice so the shutdown runner can close its sessions.
-    Best-effort: an unreachable server degrades to no bridge tools rather
-    than poisoning boot.
-
-    Returns:
-        The bridged external-MCP tools, or ``()`` when none are configured.
-    """
-    from synthorg.integrations.mcp_catalog.install import (  # noqa: PLC0415
-        merge_installed_servers,
-    )
-    from synthorg.integrations.state import IntegrationsStateSlice  # noqa: PLC0415
-    from synthorg.tools.mcp.factory import MCPToolFactory  # noqa: PLC0415
-
-    base = app_state.config.mcp
-    integrations = app_state.slice(IntegrationsStateSlice)
-    existing_factory = integrations.mcp_bridge_factory
-    if existing_factory is not None:
-        # build_runtime_services re-runs this on post_setup_reinit; close the
-        # prior factory's sessions before reconnecting so they do not leak,
-        # and clear the slice so a no-servers reinit leaves nothing wired.
-        try:
-            await existing_factory.shutdown()
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- degrade-to-None wiring
-            reraise_critical(exc)
-            logger.warning(
-                API_APP_STARTUP,
-                service="mcp_bridge",
-                note="failed to close prior MCP bridge factory before rebuild",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-        app_state.wire(IntegrationsStateSlice, mcp_bridge_factory=None)
-    repo = integrations.mcp_installations_repo
-    catalog = integrations.mcp_catalog_service
-    merged = base
-    if repo is not None and catalog is not None:
-        installations = await repo.list_items(limit=10_000)
-        if installations:
-            entries_by_id = {entry.id: entry for entry in await catalog.browse()}
-            merged = merge_installed_servers(base, installations, entries_by_id)
-    if not merged.servers:
-        return ()
-    factory: MCPToolFactory | None = None
-    try:
-        factory = MCPToolFactory(merged)
-        tools = await factory.create_tools()
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- degrade-to-None wiring
-        reraise_critical(exc)
-        # A factory that opened sessions before failing must release them;
-        # shutdown() is self-guarding (per-client try/except + clear), so
-        # only a critical propagates here, which is the correct behaviour.
-        if factory is not None:
-            await factory.shutdown()
-        logger.warning(
-            API_APP_STARTUP,
-            service="mcp_bridge",
-            note="external MCP bridge wiring failed; no bridge tools exposed",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return ()
-    app_state.wire(IntegrationsStateSlice, mcp_bridge_factory=factory)
-    logger.info(
-        API_APP_STARTUP,
-        service="mcp_bridge",
-        note="wired",
-        tool_count=len(tools),
-    )
-    return tools
 
 
 def _build_evolution_service_or_none(

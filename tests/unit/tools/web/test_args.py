@@ -63,20 +63,23 @@ class TestHttpRequestArgs:
 
     @pytest.mark.unit
     def test_lowercase_method_rejected(self) -> None:
-        """The Literal is case-sensitive; the tool used to upper() and the
-        previous schema documented uppercase only."""
+        """The method Literal is exact-case: the args model is the single
+        source of truth, so a lowercase method is rejected, not normalised."""
         with pytest.raises(ValidationError):
             HttpRequestArgs.model_validate(
                 {"url": "https://x", "method": "get"},
             )
 
     @pytest.mark.unit
-    def test_headers_must_be_string_to_string(self) -> None:
+    def test_headers_accepts_string_to_string_map(self) -> None:
         args = HttpRequestArgs(
             url="https://x",
             headers={"X-API-Key": "secret"},
         )
         assert args.headers == {"X-API-Key": "secret"}
+
+    @pytest.mark.unit
+    def test_headers_rejects_non_string_values(self) -> None:
         with pytest.raises(ValidationError):
             HttpRequestArgs.model_validate(
                 {"url": "https://x", "headers": {"X-Count": 1}},

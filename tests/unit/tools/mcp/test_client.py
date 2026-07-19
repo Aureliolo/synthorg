@@ -9,6 +9,7 @@ import pytest
 from synthorg.tools.mcp.client import MCPClient
 from synthorg.tools.mcp.config import MCPServerConfig
 from synthorg.tools.mcp.errors import (
+    MCPClientUnrestartableError,
     MCPConnectionError,
     MCPDiscoveryError,
     MCPInvocationError,
@@ -138,6 +139,22 @@ class TestMCPClientConnection:
         assert not mock_client.is_connected
         assert mock_client._exit_stack is None
 
+    async def test_disconnect_timeout_latches_unrestartable(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        """A disconnect that times out must refuse a later reconnect.
+
+        The transport close never confirmed, so the child may still be alive; a
+        fresh session over the abandoned one is exactly what the latch blocks.
+        """
+        mock_client._exit_stack = AsyncMock()
+        mock_client._exit_stack.aclose = AsyncMock(side_effect=TimeoutError())
+        await mock_client.disconnect()
+        assert not mock_client.is_connected
+        with pytest.raises(MCPConnectionError, match="unrestartable"):
+            await mock_client.connect()
+
     def test_config_property(
         self,
         stdio_server_config: MCPServerConfig,
@@ -260,8 +277,23 @@ class TestMCPClientCallTool:
         mock_client: MCPClient,
     ) -> None:
         mock_client._session.call_tool.side_effect = TimeoutError()  # type: ignore[union-attr]
+        mock_client.reconnect = AsyncMock()  # type: ignore[method-assign]
         with pytest.raises(MCPTimeoutError, match="timed out"):
             await mock_client.call_tool("slow-tool", {})
+
+    async def test_call_tool_timeout_heals_connection(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        """A timed-out call heals the (likely-stuck) transport for the next call.
+
+        A hung pipe would otherwise be reused and time out again indefinitely.
+        """
+        mock_client._session.call_tool.side_effect = TimeoutError()  # type: ignore[union-attr]
+        mock_client.reconnect = AsyncMock()  # type: ignore[method-assign]
+        with pytest.raises(MCPTimeoutError):
+            await mock_client.call_tool("slow-tool", {})
+        mock_client.reconnect.assert_awaited_once()
 
     async def test_call_tool_error_raises(
         self,
@@ -276,6 +308,23 @@ class TestMCPClientCallTool:
         ):
             await mock_client.call_tool("bad-tool", {})
 
+    async def test_call_tool_failure_heals_connection(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        """A transport failure heals the session for the next call.
+
+        The current call still raises (no auto-retry, since an MCP tool may be
+        a mutation), but a crashed server is reconnected for subsequent calls.
+        """
+        mock_client._session.call_tool.side_effect = RuntimeError(  # type: ignore[union-attr]
+            "transport dead",
+        )
+        mock_client.reconnect = AsyncMock()  # type: ignore[method-assign]
+        with pytest.raises(MCPInvocationError):
+            await mock_client.call_tool("bad-tool", {})
+        mock_client.reconnect.assert_awaited_once()
+
 
 class TestMCPClientReconnect:
     """Reconnect behavior."""
@@ -284,24 +333,103 @@ class TestMCPClientReconnect:
         self,
         mock_client: MCPClient,
     ) -> None:
-        mock_client._exit_stack = AsyncMock()
-        mock_client._exit_stack.aclose = AsyncMock()
+        """Reconnect runs disconnect+connect as one atomic locked cycle.
+
+        It drives the lock-free bodies under a single acquisition rather than
+        the public methods, so two concurrent healers cannot interleave a
+        disconnect against the other's fresh connect.
+        """
+        calls: list[str] = []
+        with (
+            patch.object(
+                mock_client,
+                "_disconnect_locked",
+                new_callable=AsyncMock,
+                side_effect=lambda: calls.append("disconnect"),
+            ),
+            patch.object(
+                mock_client,
+                "_connect_locked",
+                new_callable=AsyncMock,
+                side_effect=lambda: calls.append("connect"),
+            ),
+        ):
+            await mock_client.reconnect()
+        assert calls == ["disconnect", "connect"]
+
+    async def test_reconnect_holds_lock_within_an_attempt(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        """The session lock is held for a single disconnect+connect attempt."""
+        locked_during_disconnect = False
+
+        async def _check_locked() -> None:
+            nonlocal locked_during_disconnect
+            locked_during_disconnect = mock_client._lock.locked()
 
         with (
             patch.object(
                 mock_client,
-                "disconnect",
+                "_disconnect_locked",
                 new_callable=AsyncMock,
-            ) as mock_disconnect,
+                side_effect=_check_locked,
+            ),
             patch.object(
                 mock_client,
-                "connect",
+                "_connect_locked",
                 new_callable=AsyncMock,
-            ) as mock_connect,
+            ),
         ):
             await mock_client.reconnect()
-            mock_disconnect.assert_called_once()
-            mock_connect.assert_called_once()
+        assert locked_during_disconnect is True
+
+    async def test_reconnect_releases_lock_across_retry_loop(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        """The lock is NOT held across the retry+backoff loop.
+
+        Holding it there would stall every concurrent ``call_tool`` on this
+        server for the full backoff during an outage; the lock is scoped to a
+        single attempt instead.
+        """
+        locked_during_execute: bool | None = None
+
+        async def _sample(_fn: object, **_kwargs: object) -> None:
+            nonlocal locked_during_execute
+            locked_during_execute = mock_client._lock.locked()
+
+        mock_client._reconnect_retry.execute = AsyncMock(  # type: ignore[method-assign]
+            side_effect=_sample,
+        )
+        await mock_client.reconnect()
+        assert locked_during_execute is False
+
+    async def test_reconnect_on_unrestartable_client_fails_fast(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        """A latched-unrestartable client must not burn the retry budget."""
+        mock_client._unrestartable = True
+        disconnect_calls = 0
+
+        async def _count_disconnect() -> None:
+            nonlocal disconnect_calls
+            disconnect_calls += 1
+
+        with (
+            patch.object(
+                mock_client,
+                "_disconnect_locked",
+                new_callable=AsyncMock,
+                side_effect=_count_disconnect,
+            ),
+            pytest.raises(MCPClientUnrestartableError),
+        ):
+            await mock_client.reconnect()
+        # Exactly one attempt: the unrestartable error is non-retryable.
+        assert disconnect_calls == 1
 
 
 class TestMCPClientContextManager:

@@ -6,9 +6,10 @@ at runtime via the configured ``SecretBackend``.
 """
 
 import copy
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Final, Literal, Self
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -19,8 +20,21 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.core.env_var_safety import validate_credential_env_var_name
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.core.types import NotBlankStr
+
+# Canonical database dialect set. Lives here (a leaf import for the whole
+# connections package) so both the database authenticator and the catalog
+# entry validate against one source rather than drifting copies.
+VALID_DIALECTS: frozenset[str] = frozenset({"postgres", "mysql", "sqlite", "mariadb"})
+
+# An exact published version (MAJOR.MINOR.PATCH with optional pre-release/build),
+# NOT an npm dist-tag (``latest``) or a semver range (``^1.0.0`` / ``~1`` / ``1.x``).
+# A range or tag still resolves to a mutable version at launch, defeating the pin.
+_EXACT_NPM_VERSION: Final[re.Pattern[str]] = re.compile(
+    r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
+)
 
 # Per-connection webhook-receipt retention window in days. Tri-state:
 #   None    -- fall back to the global
@@ -383,10 +397,20 @@ class CatalogEntry(BaseModel):
         name: Human-readable server name.
         description: What the server does.
         npm_package: NPM package name for installation.
+        npm_version: Exact published version the launcher pins (``npx`` runs
+            ``<npm_package>@<npm_version>``), so a reconnect can never pull a
+            newly-published (potentially compromised) ``latest``.
         required_connection_type: Connection type needed (nullable).
         transport: MCP transport type (stdio or streamable_http).
         capabilities: List of capability tags.
         tags: Searchable tags.
+        credential_env_map: Map of bound-connection credential field name to
+            the environment variable the spawned server reads it from.
+            Credentials are forwarded only by environment variable so a secret
+            value can never appear in the spawned process argv.
+        required_dialect: For a database-typed entry, the connection dialect
+            it requires (e.g. ``"postgres"``/``"sqlite"``), since several
+            entries share ``ConnectionType.DATABASE``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -395,7 +419,129 @@ class CatalogEntry(BaseModel):
     name: NotBlankStr
     description: str = ""
     npm_package: NotBlankStr | None = None
+    npm_version: NotBlankStr | None = None
     required_connection_type: ConnectionType | None = None
     transport: Literal["stdio", "streamable_http"] = "stdio"
     capabilities: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
+    credential_env_map: dict[str, str] = Field(default_factory=dict)
+    required_dialect: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_required_dialect(self) -> Self:
+        """Confine ``required_dialect`` to a known-dialect database entry.
+
+        The dialect only disambiguates entries sharing
+        ``ConnectionType.DATABASE``, so declaring one on a non-database entry
+        makes it permanently uninstallable (no connection would ever carry a
+        matching dialect). A misspelled dialect on a database entry is the same
+        trap. Reject both at construction rather than silently ship an
+        uninstallable entry.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If ``required_dialect`` is set on a non-database entry
+                or is not a known dialect.
+        """
+        if self.required_dialect is None:
+            return self
+        if self.required_connection_type is not ConnectionType.DATABASE:
+            msg = (
+                f"Catalog entry {self.id!r}: required_dialect "
+                f"{self.required_dialect!r} is only valid on a database entry "
+                f"(required_connection_type={self.required_connection_type})"
+            )
+            raise ValueError(msg)
+        if self.required_dialect not in VALID_DIALECTS:
+            msg = (
+                f"Catalog entry {self.id!r}: required_dialect "
+                f"{self.required_dialect!r} is not one of {sorted(VALID_DIALECTS)}"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_credential_env_var_names(self) -> Self:
+        """Screen credential target env-var names for injection safety.
+
+        The map's values are the env-var names a connection secret is injected
+        under at spawn, so a hostile or careless entry could aim a credential at
+        a loader/process-control variable (``LD_PRELOAD``, ``NODE_OPTIONS``,
+        ``PATH``) and steer the child process. Reject those and any malformed
+        name at construction.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If a target env-var name is malformed or dangerous.
+        """
+        for env_var in self.credential_env_map.values():
+            validate_credential_env_var_name(env_var)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_credential_binding_is_stdio(self) -> Self:
+        """Confine credential injection to the stdio transport.
+
+        A materialised ``MCPServerConfig`` only injects
+        ``credential_env_map`` on the stdio connect path, so an entry that
+        pairs a credential map with ``streamable_http`` would be browsable but
+        never installable (the config it produces is rejected). Reject that
+        combination here so the catalog cannot advertise a dead entry.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If a credential map is declared on a non-stdio entry.
+        """
+        if self.transport != "stdio" and self.credential_env_map:
+            msg = (
+                f"Catalog entry {self.id!r}: credential_env_map is only "
+                f"supported on the stdio transport, not {self.transport!r}"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_stdio_is_version_pinned(self) -> Self:
+        """Require an exact pinned ``npm_version`` on every launchable stdio entry.
+
+        An unpinned ``npx`` spec resolves ``latest`` on every reconnect, and a
+        dist-tag or semver range (``^1.0.0`` / ``1.x``) still resolves to a
+        mutable version, so a newly-published (potentially compromised) release
+        could be pulled silently. Requiring an exact version is the
+        supply-chain guard, enforced at the model so a hand-authored or
+        DB-installed stdio entry cannot bypass it.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If a stdio entry names an ``npm_package`` without an
+                ``npm_version``, or the version is not an exact published
+                version (a dist-tag or range).
+        """
+        if (
+            self.transport == "stdio"
+            and self.npm_package is not None
+            and self.npm_version is None
+        ):
+            msg = (
+                f"Catalog entry {self.id!r}: stdio entries must pin npm_version "
+                f"(npm_package {self.npm_package!r} would resolve 'latest')"
+            )
+            raise ValueError(msg)
+        if self.npm_version is not None and not _EXACT_NPM_VERSION.fullmatch(
+            self.npm_version
+        ):
+            msg = (
+                f"Catalog entry {self.id!r}: npm_version {self.npm_version!r} must "
+                f"be an exact published version (e.g. '1.2.3'), not a dist-tag or "
+                f"range"
+            )
+            raise ValueError(msg)
+        return self

@@ -12,11 +12,13 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.env_var_safety import validate_credential_env_var_name
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_CONFIG_VALIDATION_FAILED,
 )
+from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 
@@ -36,6 +38,13 @@ class MCPServerConfig(BaseModel):
         command: Command to launch a stdio server.
         args: Command-line arguments for stdio server.
         env: Environment variables for stdio server.
+        connection_name: Bound connection whose credentials are injected at
+            spawn (never persisted here); ``None`` for connectionless servers.
+        credential_env_map: Map of connection credential field name to the
+            environment variable the server reads it from (e.g.
+            ``{"token": "GITHUB_PERSONAL_ACCESS_TOKEN"}``). Credentials are
+            forwarded only by environment variable so a secret value can never
+            land in the spawned process argv (visible via ``ps``/``/proc``).
         url: URL for streamable HTTP server.
         headers: HTTP headers for streamable HTTP server.
         enabled_tools: Allowlist of tool names (``None`` = all).
@@ -65,6 +74,14 @@ class MCPServerConfig(BaseModel):
     env: dict[str, str] = Field(
         default_factory=dict,
         description="Environment variables for stdio server",
+    )
+    connection_name: NotBlankStr | None = Field(
+        default=None,
+        description="Bound connection whose credentials are injected at spawn",
+    )
+    credential_env_map: dict[str, str] = Field(
+        default_factory=dict,
+        description="Credential field name to environment variable name",
     )
     # streamable_http fields
     url: NotBlankStr | None = Field(
@@ -140,6 +157,84 @@ class MCPServerConfig(BaseModel):
                 reason=msg,
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_credential_binding_is_stdio(self) -> Self:
+        """Confine credential injection to the stdio transport.
+
+        The ``streamable_http`` connect path (``_connect_http``) ignores
+        ``connection_name`` / ``credential_env_map`` entirely, so binding
+        them on a non-stdio server is silently ineffective; reject it at
+        construction rather than let an operator believe a remote server is
+        authenticated when it never receives the credential.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If credential binding is set on a non-stdio transport,
+                or a credential map is declared without a bound connection.
+        """
+        if self.connection_name is None and self.credential_env_map:
+            # A map with no connection has nothing to resolve from; the client's
+            # stdio launch would silently skip it, leaving a credential-required
+            # server spawned unauthenticated. Reject at construction instead.
+            msg = (
+                f"Server {self.name!r}: credential_env_map requires a bound "
+                f"connection_name"
+            )
+            logger.warning(
+                MCP_CONFIG_VALIDATION_FAILED,
+                server=self.name,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if self.transport == "stdio":
+            return self
+        if self.connection_name is not None or self.credential_env_map:
+            msg = (
+                f"Server {self.name!r}: credential binding "
+                f"(connection_name/credential_env_map) is only supported on the "
+                f"stdio transport, not {self.transport!r}"
+            )
+            logger.warning(
+                MCP_CONFIG_VALIDATION_FAILED,
+                server=self.name,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_credential_env_var_names(self) -> Self:
+        """Screen credential target env-var names at the injection boundary.
+
+        ``_resolve_stdio_launch`` injects each credential value into
+        ``env[<name>]`` for the spawned child, so a hostile or careless
+        ``credential_env_map`` value could aim a secret at a loader/process
+        control variable (``LD_PRELOAD``, ``NODE_OPTIONS``, ``PATH``) and steer
+        the child. This screens the config regardless of whether it came from a
+        catalog install or a hand-authored YAML block.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If a target env-var name is malformed or dangerous.
+        """
+        for env_var in self.credential_env_map.values():
+            try:
+                validate_credential_env_var_name(env_var)
+            except ValueError as exc:
+                logger.warning(
+                    MCP_CONFIG_VALIDATION_FAILED,
+                    server=self.name,
+                    reason="credential_env_map target env-var name rejected",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise
         return self
 
     @model_validator(mode="after")

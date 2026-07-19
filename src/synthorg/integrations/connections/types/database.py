@@ -1,6 +1,6 @@
 """Database connection type."""
 
-from synthorg.integrations.connections.models import ConnectionType
+from synthorg.integrations.connections.models import VALID_DIALECTS, ConnectionType
 from synthorg.integrations.errors import InvalidConnectionAuthError
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
@@ -9,7 +9,7 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
-_VALID_DIALECTS = frozenset({"postgres", "mysql", "sqlite", "mariadb"})
+_VALID_DIALECTS = VALID_DIALECTS
 
 # Dialects whose connections are file-based and therefore need no
 # network ``host``. Used as the discriminator for the host-required

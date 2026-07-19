@@ -5,15 +5,14 @@ tools, and wraps each as an ``MCPBridgeTool``.
 """
 
 import asyncio
-import contextlib
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_CLIENT_DISCONNECT_FAILED,
-    MCP_FACTORY_CLEANUP,
     MCP_FACTORY_COMPLETE,
     MCP_FACTORY_REUSE_REJECTED,
+    MCP_FACTORY_SERVER_FAILED,
     MCP_FACTORY_SERVER_SKIPPED,
     MCP_FACTORY_START,
 )
@@ -21,7 +20,10 @@ from synthorg.tools.mcp.bridge_tool import MCPBridgeTool
 from synthorg.tools.mcp.cache import MCPResultCache
 from synthorg.tools.mcp.client import MCPClient
 from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
-from synthorg.tools.mcp.models import MCPToolInfo
+from synthorg.tools.mcp.errors import MCPConnectionError, MCPDiscoveryError
+from synthorg.tools.mcp.models import MCPServerStatus, MCPToolInfo
+from synthorg.tools.mcp.sandbox import MCPSandboxConfig
+from synthorg.tools.mcp.stdio_credentials import MCPCredentialResolver
 
 logger = get_logger(__name__)
 
@@ -36,24 +38,75 @@ class MCPToolFactory:
         config: MCP bridge configuration.
     """
 
-    def __init__(self, config: MCPConfig) -> None:
+    def __init__(
+        self,
+        config: MCPConfig,
+        *,
+        credential_source: MCPCredentialResolver | None = None,
+        sandbox: MCPSandboxConfig | None = None,
+    ) -> None:
         self._config = config
+        self._credential_source = credential_source
+        self._sandbox = sandbox
         self._clients: list[MCPClient] = []
+        self._server_statuses: list[MCPServerStatus] = []
         self._created = False
+
+    @property
+    def server_statuses(self) -> tuple[MCPServerStatus, ...]:
+        """Per-server connect outcomes from the last ``create_tools`` pass."""
+        return tuple(self._server_statuses)
+
+    async def ping_servers(self) -> tuple[MCPServerStatus, ...]:
+        """Live-ping each connected server, reporting fresh per-server liveness.
+
+        Unlike :attr:`server_statuses` (the last connect outcome) this issues a
+        real ``list_tools`` over each existing session, so a server whose child
+        died after boot surfaces as unhealthy without re-spawning it. Pings run
+        concurrently and never raise: a failing server is reported, not thrown.
+
+        Returns:
+            A per-server :class:`MCPServerStatus` snapshot taken just now.
+        """
+        async with asyncio.TaskGroup() as tg:
+            tasks = [tg.create_task(self._ping_one(client)) for client in self._clients]
+        return tuple(task.result() for task in tasks)
+
+    async def _ping_one(self, client: MCPClient) -> MCPServerStatus:
+        """Ping a single client via ``list_tools``, mapping failure to a status.
+
+        Returns:
+            A fresh :class:`MCPServerStatus` for the pinged client.
+        """
+        try:
+            tools = await client.list_tools()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            return MCPServerStatus(
+                name=client.server_name,
+                connected=False,
+                error=safe_error_description(exc),
+            )
+        return MCPServerStatus(
+            name=client.server_name,
+            connected=True,
+            tool_count=len(tools),
+        )
 
     async def create_tools(self) -> tuple[MCPBridgeTool, ...]:
         """Connect to all enabled servers and create bridge tools.
 
-        Uses ``asyncio.TaskGroup`` for parallel server connections.
-        Disabled servers are skipped with a log message.
+        Servers connect in parallel with per-server failure isolation: a
+        server that fails to connect or discover is logged and dropped, and
+        the tools of the servers that succeeded are still returned. Disabled
+        servers are skipped with a log message.
 
         Returns:
-            Tuple of all discovered and wrapped bridge tools.
+            Tuple of discovered and wrapped bridge tools (empty if every
+            enabled server failed).
 
         Raises:
             RuntimeError: If called more than once.
-            MCPConnectionError: If a server connection fails.
-            MCPDiscoveryError: If tool discovery fails.
         """
         if self._created:
             msg = "create_tools() must not be called more than once"
@@ -93,70 +146,132 @@ class MCPToolFactory:
         self,
         servers: list[MCPServerConfig],
     ) -> list[tuple[MCPClient, tuple[MCPToolInfo, ...]]]:
-        """Connect to servers in parallel and collect results.
+        """Connect to servers in parallel, isolating per-server failures.
+
+        Failure isolation is the point: a single broken server (a missing
+        credential, an npm outage, a crashed child) must NOT take down every
+        other server's tools. Each connect runs in a ``TaskGroup`` task whose
+        wrapper (:meth:`_connect_one_isolated`) catches an expected failure and
+        returns it rather than raising, so it cannot cancel the group; only an
+        interpreter-critical exception escapes (and correctly tears the group
+        down). A failed server is logged with its name and dropped; only the
+        servers that connected are returned.
 
         Args:
             servers: Enabled server configurations.
 
         Returns:
-            List of (client, tools) tuples.
-
-        Raises:
-            BaseException: Raised when the relevant invariant fails.
+            List of (client, tools) tuples for the servers that connected.
         """
-        tasks: list[asyncio.Task[tuple[MCPClient, tuple[MCPToolInfo, ...]]]] = []
-        try:
-            async with asyncio.TaskGroup() as tg:
-                tasks = [
-                    tg.create_task(
-                        self._connect_and_discover(cfg),
-                    )
-                    for cfg in servers
-                ]
-        except BaseException:
-            # Clean up any clients that connected before the failure
-            logger.warning(
-                MCP_FACTORY_CLEANUP,
-                reason="partial failure during parallel connect",
-            )
-            for task in tasks:
-                if task.done() and not task.cancelled():
-                    exc = task.exception()
-                    if exc is None:
-                        client, _ = task.result()
-                        with contextlib.suppress(Exception):
-                            await client.disconnect()
-            raise
-
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                (cfg, tg.create_task(self._connect_one_isolated(cfg)))
+                for cfg in servers
+            ]
         results: list[tuple[MCPClient, tuple[MCPToolInfo, ...]]] = []
-        for task in tasks:
-            client, tools = task.result()
+        for cfg, task in tasks:
+            outcome = task.result()
+            if isinstance(outcome, BaseException):
+                self._record_failure(cfg, outcome)
+                continue
+            client, tools = outcome
             self._clients.append(client)
+            self._server_statuses.append(
+                MCPServerStatus(
+                    name=cfg.name,
+                    connected=True,
+                    tool_count=len(tools),
+                ),
+            )
             results.append((client, tools))
         return results
 
-    async def shutdown(self) -> None:
-        """Disconnect all managed MCP clients."""
+    async def _connect_one_isolated(
+        self,
+        config: MCPServerConfig,
+    ) -> tuple[MCPClient, tuple[MCPToolInfo, ...]] | BaseException:
+        """Connect + discover one server, returning an expected failure.
+
+        Catching here (rather than raising) is what keeps a broken server from
+        cancelling the sibling connects in the :meth:`_connect_all` TaskGroup;
+        an interpreter-critical error is re-raised so it still tears the group
+        down.
+
+        Returns:
+            The ``(client, tools)`` pair on success, or the caught expected
+            exception for the caller to record as a per-server failure.
+        """
         try:
-            for client in self._clients:
-                try:
-                    await client.disconnect()
-                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                    reraise_critical(exc)
-                    logger.warning(
-                        MCP_CLIENT_DISCONNECT_FAILED,
-                        server=client.server_name,
-                        context="disconnect failed",
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
+            return await self._connect_and_discover(config)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            return exc
+
+    def _record_failure(
+        self,
+        cfg: MCPServerConfig,
+        outcome: BaseException,
+    ) -> None:
+        """Log and record a dropped server, escalating enabled-but-broken.
+
+        A typed connect/discovery error on an explicitly-enabled server is an
+        operator misconfiguration (bad package, unresolvable connection), so it
+        logs at ERROR to match the rest of the wiring layer; an unexpected
+        transient stays at WARNING.
+        """
+        description = safe_error_description(outcome)
+        is_misconfig = isinstance(outcome, MCPConnectionError | MCPDiscoveryError)
+        log = logger.error if is_misconfig else logger.warning
+        log(
+            MCP_FACTORY_SERVER_FAILED,
+            server=cfg.name,
+            reason="connect/discover failed; server dropped",
+            error_type=type(outcome).__name__,
+            error=description,
+        )
+        self._server_statuses.append(
+            MCPServerStatus(name=cfg.name, connected=False, error=description),
+        )
+
+    async def shutdown(self) -> None:
+        """Disconnect all managed MCP clients concurrently.
+
+        Fan out like ``_connect_all`` so one hung server's bounded
+        disconnect timeout cannot serialise behind the others' (turning an
+        N-server shutdown into N x the per-client timeout). ``_disconnect_one``
+        catches an expected disconnect failure (logs it) so it cannot cancel
+        the group; an interpreter-critical error it re-raises tears the group
+        down, which the ``TaskGroup`` surfaces rather than swallows.
+        """
+        try:
+            async with asyncio.TaskGroup() as tg:
+                # Results are unused (disconnect returns None); the TaskGroup
+                # awaits them and surfaces any interpreter-critical error.
+                _ = [
+                    tg.create_task(self._disconnect_one(client))
+                    for client in self._clients
+                ]
         finally:
             self._clients.clear()
 
+    async def _disconnect_one(self, client: MCPClient) -> None:
+        """Disconnect a single client, logging (not raising) a failure."""
+        try:
+            await client.disconnect()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                MCP_CLIENT_DISCONNECT_FAILED,
+                server=client.server_name,
+                context="disconnect failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
     # ── Private helpers ──────────────────────────────────────────
 
-    @staticmethod
     async def _connect_and_discover(
+        self,
         config: MCPServerConfig,
     ) -> tuple[MCPClient, tuple[MCPToolInfo, ...]]:
         """Connect to a server and discover its tools.
@@ -173,7 +288,11 @@ class MCPToolFactory:
         Raises:
             BaseException: Raised when the relevant invariant fails.
         """
-        client = MCPClient(config)
+        client = MCPClient(
+            config,
+            credential_source=self._credential_source,
+            sandbox=self._sandbox,
+        )
         await client.connect()
         try:
             tools = await client.list_tools()

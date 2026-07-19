@@ -675,6 +675,20 @@ The services import `AppState` for re-use of the existing 3-level resolution (`s
 - **No provider registered**: returns a `NoProviderExecutionService` and `coordinator=None`; the execute seam fails loudly and `POST /tasks/{task_id}/coordinate` honestly 503s instead of walking status labels silently.
 - **Provider present but `coordination.decomposition_model` unset**: the coordinator's decomposition strategy requires a non-blank model, so the builder boots the *same* degraded no-coordinator mode (task execution rejected at the seam, `/coordinate` 503s) rather than crashing the boot / reload. A cheap pre-check short-circuits before the expensive engine / MCP-bridge assembly (so a self-heal reload triggered by an unrelated settings write does not churn live MCP sessions), and a single WARNING (`mode="no_coordinator"`) is logged. `coordination.decomposition_model` is a watched reload key, so setting it triggers a rebuild that succeeds: the runtime **self-heals** to full coordination without a process restart.
 
+### Planning Tool Grant (owner-run decomposition)
+
+The owner-run decomposition session (`AgentSessionDecompositionStrategy`) can be
+granted live tools through a `DecompositionToolProvider`. The concrete
+`PlanningToolProvider` (`src/synthorg/engine/decomposition/planning_tool_provider.py`)
+grants the read-only `web_search` tool whenever a web-search provider is
+configured, so the owner researches with real search results before drafting a
+plan instead of reasoning purely from priors. It is constructed in
+`_build_runtime_coordinator` from the single boot-resolved web-search provider
+and threaded into `build_coordinator` as `decomposition_tool_provider`; when no
+provider is configured the grant is simply absent (the strategy falls back to
+its prior-only planning). Only read-only action types survive the planning
+session's tool filter, so the grant cannot introduce a write capability.
+
 ## See Also
 
 - [Task & Workflow Engine](engine.md): task dispatch, state coordination

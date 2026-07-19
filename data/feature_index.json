@@ -471,6 +471,7 @@
       "depends_on": [],
       "directory": "src/synthorg/engine",
       "ghost_wired_symbols": [
+        "PlanningToolProvider",
         "TaskAssignmentService",
         "EvaluationVersionService",
         "SubworkflowService",
@@ -1201,7 +1202,8 @@
         "build_distributed_backend_services",
         "DeadLetterConsumer",
         "SeenClaimsPruner",
-        "WorkerHeartbeatSubscriber"
+        "WorkerHeartbeatSubscriber",
+        "build_web_search_provider_or_none"
       ],
       "mcp_tool_names": [],
       "name": "runtime",
@@ -1400,6 +1402,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-18T23:12:52.359660Z",
+  "generated_at": "2026-07-19T08:51:21.009482Z",
   "schema_version": 1
 }

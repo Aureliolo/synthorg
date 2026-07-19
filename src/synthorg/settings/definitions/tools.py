@@ -1,7 +1,9 @@
+# module-kind: declarative
 """Tools namespace setting definitions.
 
 Covers git subprocess kill-grace, Docker sandbox sidecar resource
-limits, Docker stop grace period, and subprocess sandbox kill-grace.
+limits, Docker stop grace period, subprocess sandbox kill-grace,
+native web search, and MCP stdio-server sandboxing.
 """
 
 from synthorg import __version__
@@ -155,6 +157,188 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=1.0,
         max_value=60.0,
+    )
+)
+
+# ── Native web search ────────────────────────────────────────────
+# The provider is ghost-wired at boot: built only when enabled AND a
+# bound connection resolves an API key, so a misconfigured feature never
+# crashes the runtime. A settings change applies on the next runtime
+# rebuild (no process restart). ``enum_values`` mirror
+# ``tools.web.providers.presets.SEARCH_PROVIDER_IDS`` (asserted equal by a
+# unit test) rather than importing the preset registry into the settings
+# bootstrap.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_search_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether agents may search the web. Off by default: a provider"
+            " and a connection holding its API key must be configured first."
+            " When on, the web_search tool is granted to the agent runtime and"
+            " the research subsystem's web source."
+        ),
+        group="Web Search",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_search_provider",
+        type=SettingType.ENUM,
+        default="brave",
+        enum_values=("brave", "tavily", "exa"),
+        description=(
+            "Which search provider backs the web_search tool. 'brave' (default)"
+            " is the broadest independent index; 'tavily' returns answer-shaped"
+            " results; 'exa' does semantic/conceptual search. All three read"
+            " their API key from the bound web_search connection."
+        ),
+        group="Web Search",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_search_connection",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Name of the generic_http connection holding the search provider's"
+            " API key (read from its 'api_key', 'token', or 'access_token'"
+            " credential field). Empty disables web search even when enabled."
+        ),
+        group="Web Search",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="web_search_max_results",
+        type=SettingType.INTEGER,
+        default="10",
+        description=(
+            "Default maximum results a single web search returns. Clamped down"
+            " to the selected provider's own ceiling."
+        ),
+        group="Web Search",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100,
+    )
+)
+
+# ── MCP server sandboxing ────────────────────────────────────────
+# A stdio MCP server is arbitrary third-party code; per ADR D16 every
+# execution-capable surface runs in a container. Enabled by default:
+# disabling re-exposes host execution and should only happen where Docker
+# is unavailable. Applies on the next MCP bridge rebuild (no restart).
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="mcp_sandbox_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Run stdio MCP servers inside a hardened Docker container"
+            " (cap-drop, no-new-privileges, read-only rootfs, resource"
+            " limits). Disabling re-exposes host execution; only do so where"
+            " Docker is unavailable."
+        ),
+        group="MCP",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="mcp_sandbox_image",
+        type=SettingType.STRING,
+        default="node:22-alpine",
+        description=(
+            "Container image used to run stdio MCP servers. Must provide"
+            " Node/npx so ``npx -y <package>`` can launch the server."
+        ),
+        group="MCP",
+        level=SettingLevel.ADVANCED,
+        # The image is appended as a positional ``docker run`` argument, so a
+        # leading '-' would be parsed as a flag and defeat the hardening flags
+        # set earlier in the argv; pin to an OCI image-reference shape.
+        validator_pattern=r"^[a-zA-Z0-9][\w.\-/:@]*$",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="mcp_sandbox_memory_limit",
+        type=SettingType.STRING,
+        default="512m",
+        description=(
+            "Docker --memory limit for an MCP server container (Docker size"
+            " string, e.g. '512m', '1g')."
+        ),
+        group="MCP",
+        level=SettingLevel.ADVANCED,
+        validator_pattern=r"^[1-9]\d*[bkmgBKMG]?$",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="mcp_sandbox_pids_limit",
+        type=SettingType.INTEGER,
+        default="256",
+        description=(
+            "Maximum number of processes inside an MCP server container"
+            " (PIDs cgroup limit)."
+        ),
+        group="MCP",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=4096,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="mcp_sandbox_cpus",
+        type=SettingType.STRING,
+        default="1.0",
+        description="Docker --cpus quota (in cores) for an MCP server container.",
+        group="MCP",
+        level=SettingLevel.ADVANCED,
+        validator_pattern=r"^\d+(\.\d+)?$",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="mcp_sandbox_network",
+        type=SettingType.STRING,
+        default="bridge",
+        description=(
+            "Docker --network mode for an MCP server container. MCP servers"
+            " reach external APIs, so 'bridge' by default; 'none' blocks all"
+            " egress (only for servers that need no network)."
+        ),
+        group="MCP",
+        level=SettingLevel.ADVANCED,
+        validator_pattern=r"^(bridge|none|host)$",
     )
 )
 

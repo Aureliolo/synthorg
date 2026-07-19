@@ -44,6 +44,15 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         # A registry rebuild (driven by ProviderSettingsSubscriber, registered
         # ahead of this one) re-bakes the strategies' retry handlers.
         ("providers", "retry_max_attempts"),
+        # The research WEB source bakes in the native web-search provider (its
+        # preset, bound connection, and result ceiling) at construction, so a
+        # change to any of these keys must rebuild research too -- otherwise the
+        # runtime's tool registry (rebuilt by RuntimeReloadSettingsSubscriber)
+        # would pick up the new provider while research kept the stale one.
+        ("tools", "web_search_enabled"),
+        ("tools", "web_search_provider"),
+        ("tools", "web_search_connection"),
+        ("tools", "web_search_max_results"),
     }
 )
 

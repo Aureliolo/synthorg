@@ -157,12 +157,19 @@ class CatalogService:
                             if s.get("npm_package")
                             else None
                         ),
+                        npm_version=(
+                            NotBlankStr(s["npm_version"])
+                            if s.get("npm_version")
+                            else None
+                        ),
                         required_connection_type=(
                             ConnectionType(conn_type) if conn_type else None
                         ),
                         transport=s.get("transport", "stdio"),
                         capabilities=tuple(s.get("capabilities", ())),
                         tags=tuple(s.get("tags", ())),
+                        credential_env_map=dict(s.get("credential_env_map", {})),
+                        required_dialect=s.get("required_dialect"),
                     ),
                 )
         except (json.JSONDecodeError, KeyError, FileNotFoundError) as exc:
@@ -280,6 +287,22 @@ class CatalogService:
         entry = await self.get_entry(entry_id)
         resolved_connection_name: str | None = None
         if entry.required_connection_type is not None:
+            if not entry.credential_env_map:
+                # An entry that binds a connection but declares no credential
+                # map would spawn unauthenticated while the operator believes
+                # the bound connection took effect; reject the misconfigured
+                # entry rather than fail silently at connect time.
+                msg = (
+                    f"Catalog entry '{entry_id}' requires a connection but "
+                    "declares no credential_env_map; it cannot use the "
+                    "connection's secrets"
+                )
+                logger.warning(
+                    MCP_SERVER_INSTALL_VALIDATION_FAILED,
+                    entry_id=entry_id,
+                    reason=msg,
+                )
+                raise InvalidConnectionAuthError(msg)
             if not connection_name:
                 msg = (
                     f"Catalog entry '{entry_id}' requires a connection "
@@ -326,6 +349,28 @@ class CatalogService:
                     reason=msg,
                 )
                 raise InvalidConnectionAuthError(msg)
+            if entry.required_dialect is not None:
+                # A database connection's dialect disambiguates entries that
+                # share ConnectionType.DATABASE, which the type check above
+                # cannot. Strip so a stored "  postgres " (which the database
+                # authenticator accepts after trimming) is not spuriously
+                # rejected here.
+                creds = await connection_catalog.get_credentials(connection_name)
+                raw_dialect = creds.get("dialect")
+                dialect = raw_dialect.strip() if isinstance(raw_dialect, str) else None
+                if dialect != entry.required_dialect:
+                    msg = (
+                        f"Connection '{connection_name}' has dialect "
+                        f"{dialect!r}, but catalog entry '{entry_id}' requires "
+                        f"{entry.required_dialect!r}"
+                    )
+                    logger.warning(
+                        MCP_SERVER_INSTALL_VALIDATION_FAILED,
+                        entry_id=entry_id,
+                        connection_name=connection_name,
+                        reason=msg,
+                    )
+                    raise InvalidConnectionAuthError(msg)
             resolved_connection_name = conn.name
         elif connection_name:
             # Entry does not require a connection; ignore and warn.

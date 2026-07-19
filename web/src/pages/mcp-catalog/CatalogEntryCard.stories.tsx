@@ -3,16 +3,18 @@ import { fn } from 'storybook/test'
 import type { McpCatalogEntry } from '@/api/types/integrations'
 import { CatalogEntryCard } from './CatalogEntryCard'
 
-const githubEntry: McpCatalogEntry = {
-  id: 'github-mcp',
-  name: 'GitHub',
-  description:
-    'Read and write GitHub repositories, issues, pull requests, and actions',
-  npm_package: '@modelcontextprotocol/server-github',
-  required_connection_type: 'github',
+const searchEntry: McpCatalogEntry = {
+  id: 'example-search-mcp',
+  name: 'Example Search',
+  description: 'Web and local search via an example search API',
+  npm_package: '@example-org/example-search-mcp-server',
+  npm_version: '1.0.0',
+  required_connection_type: 'generic_http',
+  required_dialect: null,
   transport: 'stdio',
-  capabilities: ['repository_access', 'issue_management', 'pull_requests', 'actions'],
-  tags: ['vcs', 'collaboration', 'ci'],
+  capabilities: ['web_search', 'local_search'],
+  tags: ['search', 'web'],
+  credential_env_map: { api_key: 'EXAMPLE_API_KEY' },
 }
 
 const filesystemEntry: McpCatalogEntry = {
@@ -20,10 +22,13 @@ const filesystemEntry: McpCatalogEntry = {
   name: 'Filesystem',
   description: 'Read, write, and manage files on the local filesystem',
   npm_package: '@modelcontextprotocol/server-filesystem',
+  npm_version: null,
   required_connection_type: null,
+  required_dialect: null,
   transport: 'stdio',
   capabilities: ['file_read', 'file_write', 'directory_listing'],
   tags: ['filesystem', 'local'],
+  credential_env_map: {},
 }
 
 const meta = {
@@ -47,7 +52,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const WithConnection: Story = {
-  args: { entry: githubEntry, installed: false },
+  args: { entry: searchEntry, installed: false },
 }
 
 export const Connectionless: Story = {
@@ -55,5 +60,5 @@ export const Connectionless: Story = {
 }
 
 export const Installed: Story = {
-  args: { entry: githubEntry, installed: true },
+  args: { entry: searchEntry, installed: true },
 }

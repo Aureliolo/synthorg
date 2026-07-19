@@ -72,6 +72,12 @@ class MCPBridgeTool(BaseTool):
         Checks the cache first (if available). On cache miss,
         invokes the remote tool and stores the result.
 
+        Concurrent identical invocations are NOT coalesced: an MCP tool
+        carries no trusted idempotency signal (the spec's read-only /
+        idempotent annotations are untrusted hints), so two authorised
+        identical calls can be two distinct intended side effects -- e.g.
+        two ``send_message`` calls with the same body -- and each must run.
+
         Args:
             arguments: Tool invocation arguments.
 
@@ -81,7 +87,6 @@ class MCPBridgeTool(BaseTool):
         cached = self._check_cache(arguments)
         if cached is not None:
             return cached
-
         result = await self._invoke(arguments)
         self._store_in_cache(arguments, result)
         return result

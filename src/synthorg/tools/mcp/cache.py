@@ -177,6 +177,11 @@ class MCPResultCache:
         Returns:
             A hashable tuple of (tool_name, frozen_arguments).
         """
+        # No agent/tenant dimension by design: one cache belongs to one client,
+        # which binds one server + one connection, so every agent hits that
+        # server with identical credentials. (tool_name, arguments) therefore
+        # fully determines the result, and an agent dimension would only break
+        # legitimate cache sharing rather than isolate anything.
         return (tool_name, _make_hashable(arguments))
 
 

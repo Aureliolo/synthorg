@@ -24,10 +24,13 @@ function buildMcpCatalogEntry(
     name: 'Default MCP',
     description: 'Default MCP catalog entry',
     npm_package: null,
+    npm_version: null,
     required_connection_type: null,
+    required_dialect: null,
     transport: 'stdio',
     capabilities: [],
     tags: [],
+    credential_env_map: {},
     ...overrides,
   }
 }
@@ -35,22 +38,15 @@ function buildMcpCatalogEntry(
 // ── Storybook-facing named export (preserve populated catalog). ──
 const mockCatalogEntries: McpCatalogEntry[] = [
   buildMcpCatalogEntry({
-    id: 'github-mcp',
-    name: 'GitHub',
-    description: 'Read and write GitHub repositories, issues, pull requests, and actions',
-    npm_package: '@modelcontextprotocol/server-github',
-    required_connection_type: 'github',
-    capabilities: ['repository_access', 'issue_management'],
-    tags: ['vcs'],
-  }),
-  buildMcpCatalogEntry({
-    id: 'slack-mcp',
-    name: 'Slack',
-    description: 'Send and receive Slack messages, manage channels and users',
-    npm_package: '@modelcontextprotocol/server-slack',
-    required_connection_type: 'slack',
-    capabilities: ['messaging'],
-    tags: ['communication'],
+    id: 'example-search-mcp',
+    name: 'Example Search',
+    description: 'Web and local search via an example search API',
+    npm_package: '@example-org/example-search-mcp-server',
+    npm_version: '1.0.0',
+    required_connection_type: 'generic_http',
+    capabilities: ['web_search', 'local_search'],
+    tags: ['search', 'web'],
+    credential_env_map: { api_key: 'EXAMPLE_API_KEY' },
   }),
   buildMcpCatalogEntry({
     id: 'filesystem-mcp',

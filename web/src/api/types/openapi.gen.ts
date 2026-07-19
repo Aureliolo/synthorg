@@ -8652,13 +8652,18 @@ export type components = {
         readonly CatalogEntry: {
             /** @default [] */
             readonly capabilities: readonly string[];
+            readonly credential_env_map: {
+                readonly [key: string]: string;
+            };
             /** @default  */
             readonly description: string;
             readonly id: string;
             readonly name: string;
             readonly npm_package: string | null;
+            readonly npm_version: string | null;
             /** @enum {string|null} */
             readonly required_connection_type: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | "llm_provider" | "tunnel" | null;
+            readonly required_dialect: string | null;
             /** @default [] */
             readonly tags: readonly string[];
             /**

@@ -128,20 +128,61 @@ class TestMCPServerConfigDefaults:
         assert cfg.enabled_tools is None
         assert cfg.disabled_tools == ()
 
-    def test_timeout_bounds(self) -> None:
+    @pytest.mark.parametrize(
+        "timeout_seconds",
+        [0, 601],
+        ids=["below_min", "above_max"],
+    )
+    def test_timeout_bounds(self, timeout_seconds: int) -> None:
         with pytest.raises(ValidationError):
             MCPServerConfig(
                 name="s1",
                 transport="stdio",
                 command="echo",
-                timeout_seconds=0,
+                timeout_seconds=timeout_seconds,
             )
+
+    def test_credential_binding_rejected_on_non_stdio(self) -> None:
+        """Credential binding on streamable_http is silently ineffective -> reject."""
+        with pytest.raises(ValidationError, match="stdio"):
+            MCPServerConfig(
+                name="s1",
+                transport="streamable_http",
+                url="https://mcp.example/rpc",
+                connection_name="bound",
+                credential_env_map={"token": "TOKEN"},
+            )
+
+    def test_credential_binding_allowed_on_stdio(self) -> None:
+        cfg = MCPServerConfig(
+            name="s1",
+            transport="stdio",
+            command="echo",
+            connection_name="bound",
+            credential_env_map={"token": "TOKEN"},
+        )
+        assert cfg.connection_name == "bound"
+
+    def test_credential_map_without_connection_rejected(self) -> None:
+        """A credential map with no bound connection has nothing to resolve."""
+        with pytest.raises(ValidationError, match="connection_name"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="echo",
+                credential_env_map={"token": "TOKEN"},
+            )
+
+    @pytest.mark.parametrize("env_var", ["LD_PRELOAD", "NODE_OPTIONS", "PATH", "a=b"])
+    def test_dangerous_credential_env_var_rejected(self, env_var: str) -> None:
+        """A credential must not be injected under a process-control env var."""
         with pytest.raises(ValidationError):
             MCPServerConfig(
                 name="s1",
                 transport="stdio",
                 command="echo",
-                timeout_seconds=601,
+                connection_name="bound",
+                credential_env_map={"token": env_var},
             )
 
     def test_frozen(self) -> None:

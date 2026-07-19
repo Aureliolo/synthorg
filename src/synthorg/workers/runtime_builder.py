@@ -81,17 +81,20 @@ from synthorg.workers._coordinator_assembly import (
 )
 from synthorg.workers._engine_assembly import (
     _build_external_api_runtime,
-    _build_mcp_bridge_tools,
     _build_tool_registry,
     _build_vision_gate_or_none,
     _construct_agent_engine,
 )
+from synthorg.workers._mcp_bridge_wiring import build_mcp_bridge_tools
 from synthorg.workers._red_team_runtime import build_red_team_runtime_or_none
 from synthorg.workers._runtime_aux_wiring import (
     _build_health_runtime,
     _construct_coordination_collector,
 )
 from synthorg.workers._runtime_services import RuntimeServices
+from synthorg.workers._web_search_provider_wiring import (
+    build_web_search_provider_or_none,
+)
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
@@ -332,7 +335,11 @@ async def build_runtime_services(
     completion_oracle_seed = build_completion_oracle_tool_seed(
         config=completion_oracle_config,
     )
-    mcp_bridge_tools = await _build_mcp_bridge_tools(app_state)
+    mcp_bridge_tools = await build_mcp_bridge_tools(app_state)
+    # Resolve the native web-search provider once per boot and thread the single
+    # instance into both the tool registry and the coordinator's planning grant,
+    # rather than each assembly re-resolving settings and building its own.
+    search_provider = await build_web_search_provider_or_none(app_state)
     tool_registry, tool_count, sandbox_backends = await _build_tool_registry(
         app_state,
         workspace_root,
@@ -341,6 +348,7 @@ async def build_runtime_services(
             *completion_oracle_seed.extra_tools,
             *mcp_bridge_tools,
         ),
+        search_provider=search_provider,
     )
     coordination_metrics_collector = _construct_coordination_collector(app_state)
     external_api_runtime = await _build_external_api_runtime(app_state)
@@ -392,6 +400,7 @@ async def build_runtime_services(
             app_state,
             engine,
             coordination_metrics_collector,
+            search_provider=search_provider,
         )
     except CoordinationConfigError as exc:
         # Backstop for the case the pre-check cannot catch: the model was

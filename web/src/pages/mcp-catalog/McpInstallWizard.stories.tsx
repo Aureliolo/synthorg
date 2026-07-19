@@ -7,16 +7,18 @@ import { useConnectionsStore } from '@/stores/connections'
 import { useMcpCatalogStore } from '@/stores/mcp-catalog'
 import { McpInstallWizard } from './McpInstallWizard'
 
-const githubEntry: McpCatalogEntry = {
-  id: 'github-mcp',
-  name: 'GitHub',
-  description:
-    'Read and write GitHub repositories, issues, pull requests, and actions',
-  npm_package: '@modelcontextprotocol/server-github',
-  required_connection_type: 'github',
+const searchEntry: McpCatalogEntry = {
+  id: 'example-search-mcp',
+  name: 'Example Search',
+  description: 'Web and local search via an example search API',
+  npm_package: '@example-org/example-search-mcp-server',
+  npm_version: '1.0.0',
+  required_connection_type: 'generic_http',
+  required_dialect: null,
   transport: 'stdio',
-  capabilities: ['repository_access', 'issue_management', 'pull_requests', 'actions'],
-  tags: ['vcs', 'collaboration', 'ci'],
+  capabilities: ['web_search', 'local_search'],
+  tags: ['search', 'web'],
+  credential_env_map: { api_key: 'EXAMPLE_API_KEY' },
 }
 
 const meta = {
@@ -31,14 +33,14 @@ const meta = {
   },
   decorators: [
     (Story) => {
-      useMcpCatalogStore.setState({ entries: [githubEntry] })
+      useMcpCatalogStore.setState({ entries: [searchEntry] })
       useConnectionsStore.setState({
         connections: [
           {
-            id: 'conn-primary-github',
-            name: 'primary-github',
-            connection_type: 'github',
-            auth_method: 'bearer_token',
+            id: 'conn-primary-search',
+            name: 'primary-search',
+            connection_type: 'generic_http',
+            auth_method: 'api_key',
             base_url: null,
             health_check_enabled: true,
             health: { status: 'healthy', last_check_at: null },
@@ -66,7 +68,7 @@ export const PickingConnection: Story = {
       useMcpCatalogStore.setState({
         installFlow: 'picking-connection',
         installContext: {
-          entryId: 'github-mcp',
+          entryId: 'example-search-mcp',
           connectionName: null,
           errorMessage: null,
           result: null,
@@ -83,8 +85,8 @@ export const Installing: Story = {
       useMcpCatalogStore.setState({
         installFlow: 'installing',
         installContext: {
-          entryId: 'github-mcp',
-          connectionName: 'primary-github',
+          entryId: 'example-search-mcp',
+          connectionName: 'primary-search',
           errorMessage: null,
           result: null,
         },
@@ -100,14 +102,14 @@ export const Done: Story = {
       useMcpCatalogStore.setState({
         installFlow: 'done',
         installContext: {
-          entryId: 'github-mcp',
-          connectionName: 'primary-github',
+          entryId: 'example-search-mcp',
+          connectionName: 'primary-search',
           errorMessage: null,
           result: {
             status: 'installed',
-            server_name: 'GitHub',
-            catalog_entry_id: 'github-mcp',
-            tool_count: 4,
+            server_name: 'Example Search',
+            catalog_entry_id: 'example-search-mcp',
+            tool_count: 2,
           },
         },
       })
@@ -122,8 +124,8 @@ export const ErrorState: Story = {
       useMcpCatalogStore.setState({
         installFlow: 'error',
         installContext: {
-          entryId: 'github-mcp',
-          connectionName: 'primary-github',
+          entryId: 'example-search-mcp',
+          connectionName: 'primary-search',
           errorMessage: 'Connection type mismatch',
           result: null,
         },
