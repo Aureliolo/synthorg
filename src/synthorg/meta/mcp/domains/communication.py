@@ -198,8 +198,20 @@ COMMUNICATION_TOOLS: tuple[MCPToolDef, ...] = (
             "auth_method": {"type": "string", "description": "Authentication method"},
             "credentials": {
                 "type": "object",
-                "description": "Connection credentials (string values)",
+                "description": "Non-secret credential fields (host, port, dialect)",
                 "additionalProperties": {"type": "string"},
+            },
+            "credential_handles": {
+                "type": "object",
+                "description": (
+                    "Secret fields as out-of-band capture handles "
+                    "(field name -> handle)"
+                ),
+                "additionalProperties": {"type": "string"},
+            },
+            "connection_draft_id": {
+                "type": "string",
+                "description": "Setup draft id binding the credential handles",
             },
             "base_url": {"type": "string", "description": "Base URL"},
             "metadata": {

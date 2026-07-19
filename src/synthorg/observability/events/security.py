@@ -20,6 +20,7 @@ SECURITY_CONFIG_LOADED: Final[str] = "security.config.loaded"
 SECURITY_DISABLED: Final[str] = "security.disabled"
 SECURITY_RISK_FALLBACK: Final[str] = "security.risk.fallback"
 SECURITY_CREDENTIAL_DETECTED: Final[str] = "security.credential.detected"
+SECURITY_TURN_SECRET_REDACTED: Final[str] = "security.turn.secret_redacted"  # noqa: S105
 SECURITY_PATH_TRAVERSAL_DETECTED: Final[str] = "security.path_traversal.detected"
 SECURITY_CURSOR_SIGNATURE_INVALID: Final[str] = "security.cursor.signature_invalid"
 SECURITY_DESTRUCTIVE_OP_DETECTED: Final[str] = "security.destructive_op.detected"

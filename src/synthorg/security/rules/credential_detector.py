@@ -64,6 +64,9 @@ CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
 )
 
 
+_CREDENTIAL_REDACTED: Final[str] = "[REDACTED]"
+
+
 def _scan_value(value: str) -> str | None:
     """Scan a single string for credential patterns.
 
@@ -74,6 +77,27 @@ def _scan_value(value: str) -> str | None:
         if pattern.search(value):
             return pattern_name
     return None
+
+
+def redact_credentials(text: str) -> tuple[str, tuple[str, ...]]:
+    """Redact credential-shaped substrings from free text.
+
+    Credential patterns only (no PII), so a chat transcript keeps
+    legitimate operator content while any secret-shaped value is masked.
+    This is a defence-in-depth backstop for the conversation-persistence
+    boundary: with out-of-band capture in place it should never fire.
+
+    Returns:
+        A ``(redacted_text, findings)`` tuple; ``findings`` names each
+        credential pattern that matched (empty when the text is clean).
+    """
+    findings: list[str] = []
+    redacted = text
+    for pattern_name, pattern in CREDENTIAL_PATTERNS:
+        if pattern.search(redacted):
+            findings.append(pattern_name)
+            redacted = pattern.sub(_CREDENTIAL_REDACTED, redacted)
+    return redacted, tuple(sorted(set(findings)))
 
 
 class CredentialDetector:

@@ -50,6 +50,7 @@ from synthorg.meta.chief_of_staff._group_budget import (
     bounded_call_max_tokens,
     round_bound,
 )
+from synthorg.meta.chief_of_staff._turn_redaction import redact_turn_content
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
 from synthorg.meta.chief_of_staff.enums import (
@@ -361,7 +362,7 @@ class GroupChatService:
             conversation_id=str(conversation.id),
             sequence=next_sequence,
             role=ConversationRole.USER,
-            content=args.message,
+            content=NotBlankStr(redact_turn_content(args.message)),
             created_at=now,
         )
         await self._turn_repo.append(user_turn)

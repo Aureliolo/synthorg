@@ -1822,6 +1822,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/connections/drafts/{draft_id}/fields/{field}/capture": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Capture a credential value out of band (write-only) */
+        readonly post: operations["ApiV1ConnectionsDraftsDraftIdFieldsCaptureCaptureSecret"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/connections/types": {
         readonly parameters: {
             readonly query?: never;
@@ -5911,6 +5928,7 @@ export type components = {
     schemas: {
         /** _ApiKeyRotation */
         readonly _ApiKeyRotation: {
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly api_key: string;
             /** @constant */
             readonly auth_type: "api_key";
@@ -5920,6 +5938,7 @@ export type components = {
             /** @constant */
             readonly auth_type: "custom_header";
             readonly custom_header_name: string;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly custom_header_value: string;
         };
         /** _DecisionRequest */
@@ -5929,6 +5948,7 @@ export type components = {
             /** @constant */
             readonly auth_type: "oauth";
             readonly oauth_client_id: string;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly oauth_client_secret: string;
             readonly oauth_scope?: string | null;
             readonly oauth_token_url: string;
@@ -5937,6 +5957,7 @@ export type components = {
         readonly _SubscriptionRotation: {
             /** @constant */
             readonly auth_type: "subscription";
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly subscription_token: string;
             /** @description ToS re-acceptance is required on rotate */
             readonly tos_accepted: boolean;
@@ -7276,6 +7297,14 @@ export type components = {
         /** ApiResponse[ScalingStrategyResponse] */
         readonly ApiResponse_ScalingStrategyResponse_: {
             readonly data: components["schemas"]["ScalingStrategyResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[SecretCaptureResponse] */
+        readonly ApiResponse_SecretCaptureResponse_: {
+            readonly data: components["schemas"]["SecretCaptureResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -9756,6 +9785,7 @@ export type components = {
         };
         /** CreateFromPresetRequest */
         readonly CreateFromPresetRequest: {
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly api_key?: string | null;
             /** @enum {string|null} */
             readonly auth_type?: "api_key" | "oauth" | "custom_header" | "subscription" | "none" | null;
@@ -9763,6 +9793,7 @@ export type components = {
             readonly models?: readonly components["schemas"]["ProviderModelConfig"][] | null;
             readonly name: string;
             readonly preset_name: string;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly subscription_token?: string | null;
             /** @default false */
             readonly tos_accepted: boolean;
@@ -9848,7 +9879,7 @@ export type components = {
              * @default true
              */
             readonly agent_eligible: boolean;
-            /** @description API key credential (required for API_KEY auth). */
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly api_key?: string | null;
             readonly auth_type?: components["schemas"]["AuthType"];
             /**
@@ -9857,6 +9888,7 @@ export type components = {
              */
             readonly base_url?: string | null;
             readonly custom_header_name?: string | null;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly custom_header_value?: string | null;
             /**
              * @description Driver backend name.
@@ -9875,11 +9907,12 @@ export type components = {
              */
             readonly name: string;
             readonly oauth_client_id?: string | null;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly oauth_client_secret?: string | null;
             readonly oauth_scope?: string | null;
             readonly oauth_token_url?: string | null;
             readonly preset_name?: string | null;
-            /** @description Bearer token for subscription-based auth. */
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly subscription_token?: string | null;
             /**
              * @description Whether the operator accepted the subscription terms.
@@ -15981,6 +16014,20 @@ export type components = {
          * @enum {string}
          */
         readonly SecretCaptureMode: "masked_field" | "oauth_redirect";
+        /** SecretCaptureRequest */
+        readonly SecretCaptureRequest: {
+            /** @description Owning conversation id (audit only). */
+            readonly conversation_id?: string | null;
+            /** @description Field kind this secret is for (e.g. token, password). */
+            readonly secret_kind: string;
+            /** @description Raw secret value; written to the backend, never logged. */
+            readonly value: string;
+        };
+        /** SecretCaptureResponse */
+        readonly SecretCaptureResponse: {
+            /** @description Opaque single-use handle to pass as a credential handle. */
+            readonly handle: string;
+        };
         /** SecretRef */
         readonly SecretRef: {
             readonly backend: string;
@@ -17614,6 +17661,7 @@ export type components = {
         /** TunnelCredentialRequest */
         readonly TunnelCredentialRequest: {
             readonly provider: string;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly token: string;
         };
         /** TunnelDeviceLoginRequest */
@@ -17854,6 +17902,7 @@ export type components = {
         /** UpdateProviderRequest */
         readonly UpdateProviderRequest: {
             readonly agent_eligible?: boolean | null;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly api_key?: string | null;
             /** @enum {string|null} */
             readonly auth_type?: "api_key" | "oauth" | "custom_header" | "subscription" | "none" | null;
@@ -17863,15 +17912,18 @@ export type components = {
             /** @default false */
             readonly clear_subscription_token: boolean;
             readonly custom_header_name?: string | null;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly custom_header_value?: string | null;
             readonly driver?: string | null;
             readonly keep_alive?: string | null;
             readonly litellm_provider?: string | null;
             readonly models?: readonly components["schemas"]["ProviderModelConfig"][] | null;
             readonly oauth_client_id?: string | null;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly oauth_client_secret?: string | null;
             readonly oauth_scope?: string | null;
             readonly oauth_token_url?: string | null;
+            /** @description Raw secret value; written to the backend, never logged. */
             readonly subscription_token?: string | null;
             readonly tos_accepted?: boolean | null;
         };
@@ -22835,6 +22887,43 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ConnectionsDraftsDraftIdFieldsCaptureCaptureSecret: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly draft_id: string;
+                /** @description Credential field name */
+                readonly field: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SecretCaptureRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SecretCaptureResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

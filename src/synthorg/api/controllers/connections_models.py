@@ -8,7 +8,7 @@ string lengths on attacker-controllable fields.
 
 from typing import Annotated, Final
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
@@ -154,3 +154,37 @@ class RevealedSecretResponse(BaseModel):
     # can legitimately be empty (e.g. an optional, unset field), so blank is
     # a valid revealed value rather than a validation error.
     value: str = Field(description="Plaintext value of the credential field.")
+
+
+class SecretCaptureRequest(BaseModel):
+    """Request body for the out-of-band secret-capture endpoint.
+
+    The raw ``value`` is typed :class:`SecretStr` so it renders masked in
+    any accidental log/repr and never appears in a traceback dump; the
+    endpoint hands it straight to the secret backend and returns only an
+    opaque handle. ``secret_kind`` and ``conversation_id`` are metadata
+    (recorded for binding/audit), never the value.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    value: Annotated[SecretStr, Field(max_length=_MAX_CRED_VALUE_LEN)] = Field(
+        description="Raw secret value; written to the backend, never logged.",
+    )
+    secret_kind: NotBlankStr = Field(
+        max_length=_MAX_NAME_LEN,
+        description="Field kind this secret is for (e.g. token, password).",
+    )
+    conversation_id: Annotated[NotBlankStr, Field(max_length=_MAX_NAME_LEN)] | None = (
+        Field(default=None, description="Owning conversation id (audit only).")
+    )
+
+
+class SecretCaptureResponse(BaseModel):
+    """Success payload for the secret-capture endpoint: the opaque handle."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    handle: NotBlankStr = Field(
+        description="Opaque single-use handle to pass as a credential handle.",
+    )

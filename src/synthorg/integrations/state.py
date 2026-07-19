@@ -23,6 +23,9 @@ from synthorg.integrations.connections.catalog import (
 from synthorg.integrations.connections.mcp_service import (
     ConnectionService,
 )
+from synthorg.integrations.connections.secret_capture import (
+    SecretCaptureService,
+)
 from synthorg.integrations.health.prober import (
     HealthProberService,
 )
@@ -63,6 +66,7 @@ class IntegrationsStateSlice(BaseFeatureStateSlice):
     # gated on ``integrations.enabled`` for the integrations controllers.
     provider_credential_catalog: ConnectionCatalog | None = None
     connection_service: ConnectionService | None = None
+    secret_capture_service: SecretCaptureService | None = None
     oauth_token_manager: OAuthTokenManager | None = None
     oauth_state_service: OAuthStateService | None = None
     webhook_event_bridge: WebhookEventBridge | None = None
@@ -116,6 +120,20 @@ def connection_service_of(app_state: AppStateSliceMixin) -> ConnectionService:
     return require_service(
         app_state.slice(IntegrationsStateSlice).connection_service,
         "Connection Service",
+    )
+
+
+def secret_capture_service_of(
+    app_state: AppStateSliceMixin,
+) -> SecretCaptureService:
+    """Resolve the out-of-band secret-capture service, or raise 503.
+
+    Returns:
+        The wired secret-capture service.
+    """
+    return require_service(
+        app_state.slice(IntegrationsStateSlice).secret_capture_service,
+        "Secret Capture Service",
     )
 
 

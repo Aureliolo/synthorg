@@ -47,7 +47,11 @@ from synthorg.integrations.errors import (
     InvalidConnectionAuthError,
 )
 from synthorg.integrations.tunnel.protocol import TunnelSnapshot
-from tests._shared import LoopAsyncClient, make_app_state
+from tests._shared import (
+    InMemorySecretBackend,
+    LoopAsyncClient,
+    make_app_state,
+)
 
 
 def _make_conn(name: str = "c1") -> Connection:
@@ -101,6 +105,39 @@ class TestConnectionsController:
         response = await ctrl.list_connection_types.fn(ctrl)
         got = {metadata.connection_type for metadata in response.data}
         assert got == set(ConnectionType)
+
+    async def test_capture_secret_returns_opaque_handle(self) -> None:
+        from pydantic import SecretStr
+
+        from synthorg.api.controllers.connections import ConnectionsController
+        from synthorg.api.controllers.connections_models import SecretCaptureRequest
+        from synthorg.integrations.connections.secret_capture import (
+            SecretCaptureService,
+        )
+        from synthorg.integrations.state import IntegrationsStateSlice
+
+        capture = SecretCaptureService(secret_backend=InMemorySecretBackend())
+        state = State(
+            {
+                "app_state": make_app_state(
+                    slices={
+                        IntegrationsStateSlice: {"secret_capture_service": capture},
+                    },
+                ),
+            }
+        )
+        ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
+        response = await ctrl.capture_secret.fn(
+            ctrl,
+            state=state,
+            draft_id="draft-1",
+            field=NotBlankStr("token"),
+            data=SecretCaptureRequest(
+                value=SecretStr("ghp_restcapturesentinel0000000000000000AB"),
+                secret_kind=NotBlankStr("token"),
+            ),
+        )
+        assert response.data.handle.startswith("sech_")
 
     async def test_create_validates_missing_name(self) -> None:
         # Pydantic validation on ``CreateConnectionRequest`` rejects the

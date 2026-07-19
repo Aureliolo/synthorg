@@ -109,7 +109,18 @@ class ConnectionsCreateArgs(AdminGuardrailFields):
     auth_method: NotBlankStr = Field(description="Authentication method")
     credentials: dict[str, str] = Field(
         default_factory=dict,
-        description="Connection credentials",
+        description="Non-secret credential fields (e.g. host, port, dialect)",
+    )
+    credential_handles: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Secret credential fields as out-of-band capture handles"
+            " (field name -> handle); resolved in-process, never inline"
+        ),
+    )
+    connection_draft_id: NotBlankStr | None = Field(
+        default=None,
+        description="Setup draft id binding the credential handles",
     )
     base_url: NotBlankStr | None = Field(default=None, description="Base URL")
     metadata: dict[str, str] | None = Field(

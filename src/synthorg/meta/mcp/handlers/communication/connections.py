@@ -11,7 +11,10 @@ from synthorg.integrations.connections.field_metadata import (
     list_connection_type_metadata,
 )
 from synthorg.integrations.connections.models import ConnectionType
-from synthorg.integrations.state import connection_service_of
+from synthorg.integrations.state import (
+    connection_service_of,
+    secret_capture_service_of,
+)
 from synthorg.meta.mcp.domains._remaining_args import (
     ConnectionsCheckHealthArgs,
     ConnectionsCreateArgs,
@@ -54,6 +57,8 @@ logger = get_logger(__name__)
 
 _ARG_CONNECTION_TYPE = "connection_type"
 _TY_CONNECTION_TYPE = "ConnectionType string"
+_ARG_DRAFT_ID = "connection_draft_id"
+_TY_DRAFT_ID_REQUIRED = "required when credential_handles are supplied"
 
 
 async def _connections_list(
@@ -117,6 +122,39 @@ async def _connections_get(
     return ok(connection.model_dump(mode="json"))
 
 
+async def _resolve_credentials(
+    app_state: AppState,
+    args: ConnectionsCreateArgs,
+) -> dict[str, str]:
+    """Merge inline non-secret fields with out-of-band handle-resolved secrets.
+
+    Secret fields arrive as capture handles (never inline). Each handle is
+    consumed exactly once against its ``(draft_id, field_name)`` binding, so
+    the raw value only ever exists in-process here, never in a tool argument
+    or the transcript.
+
+    Returns:
+        The full credentials mapping ready for ``create_connection``.
+
+    Raises:
+        ArgumentValidationError: If handles are supplied without a draft id.
+        SecretCaptureHandleInvalidError: If a handle is invalid or expired.
+    """
+    credentials = dict(args.credentials)
+    if not args.credential_handles:
+        return credentials
+    if args.connection_draft_id is None:
+        raise ArgumentValidationError(_ARG_DRAFT_ID, _TY_DRAFT_ID_REQUIRED)
+    capture = secret_capture_service_of(app_state)
+    for field_name, handle in args.credential_handles.items():
+        credentials[field_name] = await capture.consume(
+            handle_id=handle,
+            draft_id=args.connection_draft_id,
+            field_name=field_name,
+        )
+    return credentials
+
+
 async def _connections_create(
     *,
     app_state: AppState,
@@ -142,11 +180,12 @@ async def _connections_create(
             bad = ArgumentValidationError(_ARG_CONNECTION_TYPE, _TY_CONNECTION_TYPE)
             raise bad from exc
         actor_id = require_actor_id(resolved_actor)
+        credentials = await _resolve_credentials(app_state, args)
         connection = await connection_service_of(app_state).create_connection(
             name=args.name,
             connection_type=connection_type,
             auth_method=args.auth_method,
-            credentials=args.credentials,
+            credentials=credentials,
             actor_id=actor_id,
             base_url=args.base_url,
             metadata=args.metadata,
