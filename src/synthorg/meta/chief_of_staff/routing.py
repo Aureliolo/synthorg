@@ -24,7 +24,6 @@ its spend through the cost chokepoint.
 """
 
 import asyncio
-import functools
 from typing import ClassVar, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -33,10 +32,9 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.conversation.enums import ConversationRole
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.authority import compare_authority
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
-from synthorg.core.normalization import compare_ci, normalize_identifier
+from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role_catalog import get_builtin_role
 from synthorg.core.types import NotBlankStr, flatten_label
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
@@ -44,6 +42,7 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.llm.metadata import ModelPinMetadata
 from synthorg.llm.model_pins import pin_for
 from synthorg.llm.prompt_purpose import PromptPurposeId
+from synthorg.meta.chief_of_staff._role_resolution import resolve_agent_for_role
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.enums import RoutingReason
 from synthorg.meta.chief_of_staff.models import ConversationTurn
@@ -152,37 +151,6 @@ class RoleRouter(Protocol):
             reason the outcome landed.
         """
         ...
-
-
-def _by_seniority_then_name(a: AgentIdentity, b: AgentIdentity) -> int:
-    """Order two role-holders most-senior-first, then name ascending.
-
-    Returns:
-        Negative when *a* sorts before *b*, positive when after, zero
-        when identical on both keys.
-    """
-    by_authority = compare_authority(b.role, a.role)
-    if by_authority != 0:
-        return by_authority
-    return (a.name > b.name) - (a.name < b.name)
-
-
-def _resolve_agent_for_role(
-    active: tuple[AgentIdentity, ...], role: NotBlankStr
-) -> AgentIdentity | None:
-    """Find the active agent holding *role* (case-insensitive).
-
-    When several active agents share a role, the most senior is chosen
-    (the natural primary for the role), with the alphabetically-first by
-    name as a deterministic tiebreak across equal-seniority holders.
-
-    Returns:
-        The matching identity, or ``None`` when no active agent holds it.
-    """
-    matches = [a for a in active if compare_ci(a.role, role)]
-    if not matches:
-        return None
-    return min(matches, key=functools.cmp_to_key(_by_seniority_then_name))
 
 
 def _render_candidate_roles(active: tuple[AgentIdentity, ...]) -> str:
@@ -316,9 +284,9 @@ class LlmConcernRouter:
                 confidence=classification.confidence,
             )
             return RoutingOutcome(reason=RoutingReason.BELOW_CONFIDENCE_FLOOR)
-        agent = _resolve_agent_for_role(active, classification.role)
+        agent = resolve_agent_for_role(active, classification.role)
         if agent is None:
-            agent = _resolve_agent_for_role(active, self._default_role)
+            agent = resolve_agent_for_role(active, self._default_role)
         if agent is None:
             logger.info(
                 COS_ROUTING_FALLBACK,
@@ -505,9 +473,9 @@ class KeywordRoleRouter:
             matched = next((kw for kw in keywords if kw in lowered), None)
             if matched is None:
                 continue
-            agent = _resolve_agent_for_role(active, role)
+            agent = resolve_agent_for_role(active, role)
             if agent is None:
-                agent = _resolve_agent_for_role(active, self._default_role)
+                agent = resolve_agent_for_role(active, self._default_role)
             if agent is None:
                 continue
             logger.info(

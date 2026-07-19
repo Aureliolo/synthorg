@@ -67,6 +67,10 @@ PLAN_ID_METADATA_KEY = "plan_id"
 
 _PREVIEW_SUBTASKS: Final[int] = 3
 
+#: Wall-clock cap for one plan-item reply completion. A reply is a single
+#: bounded call, so it shares the order of a normal agent call timeout.
+_REPLY_TIMEOUT_SECONDS: Final[float] = 120.0
+
 # Plan-approval risk scales with plan size: a larger plan commits more work and
 # budget in one decision, so it warrants proportionally more scrutiny. (Risk
 # level is otherwise a mostly-decorative label; scaling it with size at least
@@ -437,3 +441,65 @@ async def wire_plan_review_panel(
     )
     work_pipeline_of(app_state).attach_plan_review_panel(panel)
     logger.info(API_APP_STARTUP, service="plan_review_panel", note="wired")
+
+
+async def wire_plan_item_reply_service(
+    app_state: AppState,
+    *,
+    provider_registry: ProviderRegistry | None,
+    cost_tracker: CostTrackerProtocol | None,
+) -> None:
+    """Wire the conversational plan-item reply service when a model is set.
+
+    Built unconditionally of ``plan_review_reply_enabled`` so the live
+    per-comment gate can flip without a restart; returns without wiring only
+    when no ``plan_review_reply_model`` is configured or no provider serves it,
+    leaving plan comments unanswered. Best-effort: an absent provider registry
+    or an unresolved model leaves the service unwired rather than failing boot.
+    """
+    from synthorg.engine.plan_review.reply import (  # noqa: PLC0415
+        build_plan_item_reply_service,
+    )
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
+
+    if provider_registry is None:
+        return
+    resolver = config_resolver_of(app_state)
+    service = build_plan_item_reply_service(
+        reply_model=await resolver.get_str("coordination", "plan_review_reply_model"),
+        temperature=await resolver.get_float(
+            "coordination", "plan_review_reply_temperature"
+        ),
+        max_tokens=await resolver.get_int(
+            "coordination", "plan_review_reply_max_tokens"
+        ),
+        timeout_seconds=_REPLY_TIMEOUT_SECONDS,
+        provider_registry=provider_registry,
+        cost_tracker=cost_tracker,
+        config_resolver=resolver,
+    )
+    if service is not None:
+        app_state.wire(EngineStateSlice, plan_item_reply_service=service)
+        logger.info(API_APP_STARTUP, service="plan_item_reply_service", note="wired")
+
+
+async def wire_plan_review_services(
+    app_state: AppState,
+    *,
+    provider_registry: ProviderRegistry | None,
+    cost_tracker: CostTrackerProtocol | None,
+) -> None:
+    """Wire the plan-review provider-backed services: the panel and the reply.
+
+    The stakeholder panel reviews a gated plan before the human sees it; the
+    reply service answers an operator's plan-item comment inline. Both are
+    best-effort and no-op without a provider, so this composition keeps the
+    boot dispatcher to one call.
+    """
+    await wire_plan_review_panel(
+        app_state, provider_registry=provider_registry, cost_tracker=cost_tracker
+    )
+    await wire_plan_item_reply_service(
+        app_state, provider_registry=provider_registry, cost_tracker=cost_tracker
+    )

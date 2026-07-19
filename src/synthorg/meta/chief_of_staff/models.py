@@ -356,9 +356,10 @@ class Conversation(BaseModel):
         created_at: When the conversation was opened.
         updated_at: When the most recent turn was appended.
         status: Lifecycle state (active, proposed, closed).
-        kind: Conversation shape (direct, routed, group). Fixed at
-            creation; discriminates the v1 1:1 thread from the
-            concern-routed and multi-agent group surfaces.
+        kind: Conversation shape (direct, routed, or group). Fixed at
+            creation; discriminates the 1:1 thread from the concern-routed
+            and multi-agent group surfaces. Charter interviews persist
+            separately, and acting turns stay part of a direct conversation.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

@@ -11,12 +11,19 @@ from enum import Enum, StrEnum
 class ConversationKind(StrEnum):
     """Shape of a conversation, fixed at creation.
 
-    Discriminates the three conversational surfaces that share the
-    ``conversations`` / ``conversation_turns`` tables.
+    Discriminates the conversational surfaces that share the
+    ``conversations`` / ``conversation_turns`` tables. A conversation's
+    kind is set when it opens and never re-classified mid-thread, so the
+    unified turn orchestrator dispatches an in-flight ``GROUP`` thread
+    straight to its owning service rather than re-running intent
+    classification. Charter interviews persist in their own
+    ``synthorg.meta.charter`` substrate; acting turns join the operator's
+    ``DIRECT`` conversation as ordinary turns carrying an action event.
 
     Attributes:
-        DIRECT: The v1 1:1 clarify-and-propose thread with the generic
-            Chief of Staff persona. Default.
+        DIRECT: A 1:1 clarify-and-propose (or explain) thread with the
+            generic Chief of Staff persona. Default; also the home of an
+            acting turn's timeline.
         ROUTED: A 1:1 thread whose turns are routed to a role agent by
             concern (budget to CFO, strategy to CEO, ...). The
             responding agent is recorded per assistant turn.

@@ -260,6 +260,93 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="plan_review_reply_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "When you comment on a plan item under review, let the responsible"
+            " agent (the item's owner role, else the Chief of Staff) reply"
+            " inline with a grounded answer. On by default; gated live per"
+            " comment, so a failed reply never blocks your comment. Turn off"
+            " for a comment board no agent answers."
+        ),
+        group="General",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="plan_review_reply_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model for a plan-item reply, selected through the model"
+            " picker (a `{provider, model_id}` reference). Empty leaves plan"
+            " replies unwired (comments are posted with no agent answer). Read"
+            " live per reply."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="plan_review_reply_temperature",
+        type=SettingType.FLOAT,
+        default="0.3",
+        description=(
+            "Sampling temperature for a plan-item reply. Resolved live per"
+            " reply, so a change takes effect on the next reply without a"
+            " restart."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=2.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="plan_review_reply_max_tokens",
+        type=SettingType.INTEGER,
+        default="600",
+        description=(
+            "Token budget for one plan-item reply. Resolved live per reply, so"
+            " a change takes effect on the next reply without a restart."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+        min_value=100,
+        max_value=4096,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="plan_review_reply_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="120.0",
+        description=(
+            "Wall-clock cap for one plan-item reply call. Resolved live per"
+            " reply, so a change takes effect on the next reply without a"
+            " restart."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=600.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="leaf_subtask_threshold",
         type=SettingType.INTEGER,
         default="1",

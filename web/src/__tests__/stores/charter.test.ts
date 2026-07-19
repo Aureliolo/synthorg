@@ -5,10 +5,10 @@ import { useToastStore } from '@/stores/toast'
 import { apiError, buildCharter, paginatedFor, successFor } from '@/mocks/handlers'
 import type {
   approveCharter as approveCharterApi,
+  editCharter as editCharterApi,
   listCharters as listChartersApi,
-  runInterviewTurn as runInterviewTurnApi,
 } from '@/api/endpoints/charter'
-import type { CharterApprovalResult, InterviewTurnResult } from '@/api/types'
+import type { CharterApprovalResult } from '@/api/types'
 import { server } from '@/test-setup'
 
 describe('useCharterStore', () => {
@@ -19,11 +19,8 @@ describe('useCharterStore', () => {
       error: null,
       nextCursor: null,
       hasMore: false,
-      conversationId: null,
-      messages: [],
       draftCharter: null,
-      sending: false,
-      conversationClosed: false,
+      mutating: false,
     })
     useToastStore.getState().dismissAll()
   })
@@ -59,43 +56,27 @@ describe('useCharterStore', () => {
     expect(useCharterStore.getState().error).not.toBeNull()
   })
 
-  it('runTurn records a clarifying question and stays open', async () => {
-    const result: InterviewTurnResult = {
+  it('hydrateFromTurn adopts a drafted charter for the side panel', () => {
+    useCharterStore.getState().hydrateFromTurn({
+      conversation_id: 'conv-9',
+      status: 'drafted',
+      next_question: null,
+      charter: buildCharter({ id: 'c-hydrated' }),
+      conversation_closed: false,
+    })
+    expect(useCharterStore.getState().draftCharter?.id).toBe('c-hydrated')
+  })
+
+  it('hydrateFromTurn keeps the prior draft when a turn carries none', () => {
+    useCharterStore.setState({ draftCharter: buildCharter({ id: 'c-keep' }) })
+    useCharterStore.getState().hydrateFromTurn({
       conversation_id: 'conv-9',
       status: 'needs_more',
       next_question: 'What is the budget?',
       charter: null,
       conversation_closed: false,
-    }
-    server.use(
-      http.post('/api/v1/meta/charters/interview', () =>
-        HttpResponse.json(successFor<typeof runInterviewTurnApi>(result)),
-      ),
-    )
-    await useCharterStore.getState().runTurn('build a memory tool')
-    const state = useCharterStore.getState()
-    expect(state.conversationId).toBe('conv-9')
-    expect(state.messages.map((m) => m.role)).toEqual(['user', 'assistant'])
-    expect(state.messages[1]!.content).toBe('What is the budget?')
-    expect(state.draftCharter).toBeNull()
-  })
-
-  it('runTurn captures a drafted charter', async () => {
-    // Default MSW handler returns a drafted charter.
-    await useCharterStore.getState().runTurn('a clear idea')
-    expect(useCharterStore.getState().draftCharter?.status).toBe('drafted')
-  })
-
-  it('runTurn toasts on failure and clears sending', async () => {
-    server.use(
-      http.post('/api/v1/meta/charters/interview', () =>
-        HttpResponse.json(apiError('nope'), { status: 502 }),
-      ),
-    )
-    await useCharterStore.getState().runTurn('idea')
-    expect(useCharterStore.getState().sending).toBe(false)
-    const toasts = useToastStore.getState().toasts
-    expect(toasts[0]!.variant).toBe('error')
+    })
+    expect(useCharterStore.getState().draftCharter?.id).toBe('c-keep')
   })
 
   it('approve returns the result and emits a success toast', async () => {
@@ -168,18 +149,51 @@ describe('useCharterStore', () => {
     expect(updated?.version).toBe(2)
   })
 
-  it('resetInterview clears the active interview', () => {
-    useCharterStore.setState({
-      conversationId: 'x',
-      messages: [{ id: 'm', role: 'user', content: 'hi' }],
-      draftCharter: buildCharter(),
-      conversationClosed: true,
-    })
+  it('resetInterview clears the active draft', () => {
+    useCharterStore.setState({ draftCharter: buildCharter(), mutating: true })
     useCharterStore.getState().resetInterview()
     const state = useCharterStore.getState()
-    expect(state.conversationId).toBeNull()
-    expect(state.messages).toEqual([])
     expect(state.draftCharter).toBeNull()
-    expect(state.conversationClosed).toBe(false)
+    expect(state.mutating).toBe(false)
+  })
+
+  it('drops a stale edit completion so it cannot repopulate a reset draft', async () => {
+    // An edit is in flight against the current draft; the operator resets the
+    // interview before it resolves. The late completion must be discarded: it
+    // must NOT re-open the (now cleared) draft panel, and must not flip the
+    // reset-state `mutating` flag back on.
+    let releaseEdit: (() => void) | undefined
+    const editGate = new Promise<void>((resolve) => {
+      releaseEdit = resolve
+    })
+    // Signal when the PATCH handler is actually entered, so the test resets and
+    // releases only once the request is genuinely parked -- otherwise the reset
+    // could race ahead of the in-flight edit it is meant to interleave with.
+    let markRequestStarted: (() => void) | undefined
+    const requestStarted = new Promise<void>((resolve) => {
+      markRequestStarted = resolve
+    })
+    server.use(
+      http.patch('/api/v1/meta/charters/:id', async () => {
+        markRequestStarted?.()
+        await editGate
+        return HttpResponse.json(
+          successFor<typeof editCharterApi>(
+            buildCharter({ id: 'c-stale', version: 9 }),
+          ),
+        )
+      }),
+    )
+    useCharterStore.setState({ draftCharter: buildCharter({ id: 'c-stale' }) })
+    const editing = useCharterStore.getState().editDraft('c-stale', { brief: 'x' })
+    await requestStarted
+    // Reset while the PATCH is still parked, bumping the draft generation.
+    useCharterStore.getState().resetInterview()
+    if (releaseEdit === undefined) throw new Error('edit release callback missing')
+    releaseEdit()
+    await editing
+    const state = useCharterStore.getState()
+    expect(state.draftCharter).toBeNull()
+    expect(state.mutating).toBe(false)
   })
 })

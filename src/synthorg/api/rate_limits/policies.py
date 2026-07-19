@@ -173,11 +173,13 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     # messages
     "messages.delete": (100, 3600),
     # meta
-    "meta.chat": (5, 60),
-    "meta.chat.act": (5, 60),
-    "meta.chat.group": (5, 60),
-    "meta.chat.propose": (5, 60),
-    "meta.charters.interview": (10, 60),
+    "meta.chat.turn": (5, 60),
+    # The streaming turn only classifies + streams a read (side-effecting
+    # intents defer to the buffered ``meta.chat.turn`` for execution), so it
+    # gets its own, more generous budget rather than sharing the execution
+    # bucket -- otherwise a deferred turn would charge both and halve how many
+    # real turns the buffered limit allows.
+    "meta.chat.turn_stream": (20, 60),
     "meta.charters.approve": (5, 60),
     "meta.charters.edit": (20, 60),
     "meta.charters.cancel": (10, 60),

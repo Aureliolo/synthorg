@@ -9,17 +9,11 @@ import { createLogger } from '@/lib/logger'
 import type {
   CharterApprovalResult,
   CharterEditRequest,
+  InterviewTurnResult,
   ProjectCharter,
 } from '@/api/types'
 
 const log = createLogger('charter')
-
-/** One rendered turn in the local interview transcript. */
-export interface InterviewMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-}
 
 interface CharterState {
   charters: ProjectCharter[]
@@ -28,21 +22,25 @@ interface CharterState {
   nextCursor: string | null
   hasMore: boolean
 
-  conversationId: string | null
-  messages: InterviewMessage[]
   draftCharter: ProjectCharter | null
-  sending: boolean
   /** True while an edit / approve / cancel mutation is in flight. */
   mutating: boolean
-  conversationClosed: boolean
-  // Persists the last interview-turn failure so a config error (e.g. a blank
-  // ``charter.interview_model`` 503) stays surfaced inline after the toast
-  // fades, letting the operator act on it. Cleared when a new turn starts.
-  turnError: string | null
+  /**
+   * Monotonic identity of the active draft. Bumped whenever the draft is
+   * replaced (hydrateFromTurn) or cleared (resetInterview); a mutation captures
+   * it at the start and drops its completion once it no longer matches, so an
+   * old edit/approve/cancel cannot repopulate a reset or superseded draft.
+   */
+  draftGeneration: number
 
   fetchCharters: (filters?: CharterFilters) => Promise<void>
   fetchMoreCharters: (filters?: CharterFilters) => Promise<void>
-  runTurn: (message: string) => Promise<void>
+  /**
+   * Adopt a charter-interview turn resolved through the unified org
+   * conversation ({@link postTurn}), so the draft side panel renders the
+   * drafted charter and its edit/approve/cancel actions target it.
+   */
+  hydrateFromTurn: (turn: InterviewTurnResult) => void
   editDraft: (
     id: string,
     data: CharterEditRequest,
@@ -99,65 +97,29 @@ async function fetchMoreChartersImpl(
   }
 }
 
-async function runTurnImpl(
-  set: CharterSet,
-  get: CharterGet,
-  message: string,
-): Promise<void> {
-  if (get().sending) return
-  const { conversationId, messages: previousMessages } = get()
-  set({
-    sending: true,
-    turnError: null,
-    messages: [
-      ...previousMessages,
-      { id: crypto.randomUUID(), role: 'user', content: message },
-    ],
-  })
-  try {
-    const result = await charterApi.runInterviewTurn({
-      message,
-      conversation_id: conversationId,
-      project: null,
-    })
-    const reply: InterviewMessage = {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: result.status === 'needs_more'
-        ? result.next_question ?? ''
-        : 'Charter drafted. Review and edit it, then approve to start the run.',
-    }
-    set((s) => ({
-      sending: false,
-      conversationId: result.conversation_id,
-      messages: [...s.messages, reply],
-      draftCharter: result.charter ?? s.draftCharter,
-      conversationClosed: result.conversation_closed,
-    }))
-  } catch (err) {
-    log.error('Interview turn failed', sanitizeForLog(err))
-    const description = getErrorMessage(err)
-    useToastStore.getState().add({
-      variant: 'error',
-      title: 'Could not continue the interview',
-      description,
-    })
-    set({ sending: false, messages: previousMessages, turnError: description })
-  }
+// A mutation completion is applied only while the draft it targeted is still
+// current; once the draft was reset or replaced (generation bumped), the stale
+// completion is dropped so it cannot repopulate the new/cleared draft.
+function _draftIsCurrent(get: CharterGet, generation: number): boolean {
+  return get().draftGeneration === generation
 }
 
 async function editDraftImpl(
   set: CharterSet,
+  get: CharterGet,
   id: string,
   data: CharterEditRequest,
 ): Promise<ProjectCharter | null> {
+  const generation = get().draftGeneration
   set({ mutating: true })
   try {
     const updated = await charterApi.editCharter(id, data)
+    if (!_draftIsCurrent(get, generation)) return updated
     set({ draftCharter: updated })
     useToastStore.getState().add({ variant: 'success', title: 'Charter updated' })
     return updated
   } catch (err) {
+    if (!_draftIsCurrent(get, generation)) return null
     log.error('Charter edit failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
@@ -166,18 +128,21 @@ async function editDraftImpl(
     })
     return null
   } finally {
-    set({ mutating: false })
+    if (_draftIsCurrent(get, generation)) set({ mutating: false })
   }
 }
 
 async function approveImpl(
   set: CharterSet,
+  get: CharterGet,
   id: string,
 ): Promise<CharterApprovalResult | null> {
+  const generation = get().draftGeneration
   set({ mutating: true })
   try {
     const result = await charterApi.approveCharter(id)
-    set({ draftCharter: result.charter, conversationClosed: true })
+    if (!_draftIsCurrent(get, generation)) return result
+    set({ draftCharter: result.charter })
     if (result.is_success) {
       useToastStore.getState().add({
         variant: 'success',
@@ -198,6 +163,7 @@ async function approveImpl(
     }
     return result
   } catch (err) {
+    if (!_draftIsCurrent(get, generation)) return null
     log.error('Charter approval failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
@@ -206,18 +172,25 @@ async function approveImpl(
     })
     return null
   } finally {
-    set({ mutating: false })
+    if (_draftIsCurrent(get, generation)) set({ mutating: false })
   }
 }
 
-async function cancelImpl(set: CharterSet, id: string): Promise<boolean> {
+async function cancelImpl(
+  set: CharterSet,
+  get: CharterGet,
+  id: string,
+): Promise<boolean> {
+  const generation = get().draftGeneration
   set({ mutating: true })
   try {
     const cancelled = await charterApi.cancelCharter(id)
-    set({ draftCharter: cancelled, conversationClosed: true })
+    if (!_draftIsCurrent(get, generation)) return true
+    set({ draftCharter: cancelled })
     useToastStore.getState().add({ variant: 'success', title: 'Charter cancelled' })
     return true
   } catch (err) {
+    if (!_draftIsCurrent(get, generation)) return false
     log.error('Charter cancel failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
@@ -226,7 +199,7 @@ async function cancelImpl(set: CharterSet, id: string): Promise<boolean> {
     })
     return false
   } finally {
-    set({ mutating: false })
+    if (_draftIsCurrent(get, generation)) set({ mutating: false })
   }
 }
 
@@ -236,31 +209,29 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
   error: null,
   nextCursor: null,
   hasMore: false,
-  conversationId: null,
-  messages: [],
   draftCharter: null,
-  sending: false,
   mutating: false,
-  conversationClosed: false,
-  turnError: null,
+  draftGeneration: 0,
 
   fetchCharters: (filters) => fetchChartersImpl(set, filters),
   fetchMoreCharters: (filters) => fetchMoreChartersImpl(set, get, filters),
-  runTurn: (message) => runTurnImpl(set, get, message),
+  // Adopting a new drafted charter replaces the active draft, so bump the
+  // generation to orphan any mutation still in flight against the old one.
+  hydrateFromTurn: (turn) =>
+    set((state) => ({
+      draftCharter: turn.charter ?? state.draftCharter,
+      draftGeneration: state.draftGeneration + 1,
+    })),
 
-  editDraft: (id, data) => editDraftImpl(set, id, data),
-  approve: (id) => approveImpl(set, id),
-  cancel: (id) => cancelImpl(set, id),
+  editDraft: (id, data) => editDraftImpl(set, get, id, data),
+  approve: (id) => approveImpl(set, get, id),
+  cancel: (id) => cancelImpl(set, get, id),
 
   resetInterview: () => {
-    set({
-      conversationId: null,
-      messages: [],
+    set((state) => ({
       draftCharter: null,
-      sending: false,
       mutating: false,
-      conversationClosed: false,
-      turnError: null,
-    })
+      draftGeneration: state.draftGeneration + 1,
+    }))
   },
 }))

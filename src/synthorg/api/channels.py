@@ -4,7 +4,6 @@ Defines the named channels for real-time event feeds and
 creates the Litestar ``ChannelsPlugin`` with an in-memory backend.
 """
 
-from datetime import UTC, datetime
 from typing import Final
 
 from litestar import Request
@@ -12,7 +11,9 @@ from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
 from litestar.datastructures import State
 
+from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_WS_SEND_FAILED
@@ -138,6 +139,61 @@ def get_channels_plugin(
     return None
 
 
+def publish_ws_event_with_plugin(
+    channels_plugin: ChannelsPlugin | None,
+    event_type: WsEventType,
+    channel: str,
+    payload: dict[str, object],
+    *,
+    clock: Clock,
+) -> None:
+    """Best-effort publish to a channel through an already-resolved plugin.
+
+    The plugin-first form so a caller that outlives its request (a background
+    task fired after the response returned) can still publish: it resolves the
+    plugin while the request is live and hands it here. Logs and returns
+    silently when the plugin is absent or the publish fails; ``MemoryError``
+    and ``RecursionError`` always re-raise.
+
+    Args:
+        channels_plugin: The resolved plugin, or ``None`` to drop the event.
+        event_type: Classification of the event.
+        channel: Target channel name (shared channels from
+            ``ALL_CHANNELS`` or dynamic ``user:{id}`` channels).
+        payload: Event-specific data.
+        clock: The application ``Clock`` seam, so the event timestamp honours a
+            ``FakeClock`` under test rather than reading wall time directly.
+    """
+    if channels_plugin is None:
+        logger.warning(
+            API_WS_SEND_FAILED,
+            note="ChannelsPlugin not available, dropping WS event",
+            event_type=event_type.value,
+            channel=channel,
+        )
+        return
+
+    event = WsEvent(
+        event_type=event_type,
+        channel=channel,
+        timestamp=clock.now(),
+        payload=payload,
+    )
+    try:
+        channels_plugin.publish(
+            event.model_dump_json(),
+            channels=[channel],
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_WS_SEND_FAILED,
+            event_type=event_type.value,
+            channel=channel,
+            note="Failed to publish WS event",
+        )
+
+
 def publish_ws_event(
     request: Request[object, object, State],
     event_type: WsEventType,
@@ -157,35 +213,14 @@ def publish_ws_event(
             ``ALL_CHANNELS`` or dynamic ``user:{id}`` channels).
         payload: Event-specific data.
     """
-    channels_plugin = get_channels_plugin(request)
-    if channels_plugin is None:
-        logger.warning(
-            API_WS_SEND_FAILED,
-            note="ChannelsPlugin not available, dropping WS event",
-            event_type=event_type.value,
-            channel=channel,
-        )
-        return
-
-    event = WsEvent(
-        event_type=event_type,
-        channel=channel,
-        timestamp=datetime.now(UTC),
-        payload=payload,
+    app_state: AppState = request.app.state["app_state"]
+    publish_ws_event_with_plugin(
+        get_channels_plugin(request),
+        event_type,
+        channel,
+        payload,
+        clock=app_state.clock,
     )
-    try:
-        channels_plugin.publish(
-            event.model_dump_json(),
-            channels=[channel],
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            API_WS_SEND_FAILED,
-            event_type=event_type.value,
-            channel=channel,
-            note="Failed to publish WS event",
-        )
 
 
 def create_channels_plugin() -> ChannelsPlugin:

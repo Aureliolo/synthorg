@@ -8,11 +8,11 @@ audit event a posted comment otherwise lacks, mirroring :class:`PlanService`.
 """
 
 from typing import Final
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from synthorg.api.responses import require_resource_or_404
 from synthorg.core.clock import Clock
-from synthorg.core.plan_comment import PlanItemComment
+from synthorg.core.plan_comment import CommentAuthorKind, PlanItemComment
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -75,15 +75,27 @@ class PlanCommentService:
             limit=limit,
         )
 
-    async def add_comment(
+    async def add_comment(  # noqa: PLR0913 -- comment payload fields
         self,
         *,
         plan_id: NotBlankStr,
         item_id: NotBlankStr,
         author: NotBlankStr,
         body: NotBlankStr,
+        author_kind: CommentAuthorKind = "human",
+        author_agent_id: NotBlankStr | None = None,
+        reply_to_id: UUID | None = None,
     ) -> PlanItemComment:
         """Post a comment on a plan item after validating the target exists.
+
+        Args:
+            plan_id: The plan the item belongs to.
+            item_id: The item being commented on.
+            author: The comment author's display name.
+            body: The comment text.
+            author_kind: Whether a human or an agent wrote it.
+            author_agent_id: The responding agent's id for an agent comment.
+            reply_to_id: The comment this one answers, when a reply.
 
         Returns:
             The persisted :class:`PlanItemComment`.
@@ -95,11 +107,16 @@ class PlanCommentService:
             QueryError: Repository write failure (logged before propagating).
         """
         await self._require_target(plan_id, item_id)
+        if reply_to_id is not None:
+            await self._require_reply_target(plan_id, item_id, reply_to_id)
         comment = PlanItemComment(
             id=uuid4(),
             plan_id=plan_id,
             item_id=item_id,
             author=author,
+            author_kind=author_kind,
+            author_agent_id=author_agent_id,
+            reply_to_id=reply_to_id,
             body=body,
             created_at=self._clock.now(),
         )
@@ -110,6 +127,7 @@ class PlanCommentService:
             item_id=item_id,
             comment_id=str(comment.id),
             author=author,
+            author_kind=author_kind,
         )
         return comment
 
@@ -138,4 +156,34 @@ class PlanCommentService:
             identifier=item_id,
             log_event=API_RESOURCE_NOT_FOUND,
             operation="comment",
+        )
+
+    async def _require_reply_target(
+        self,
+        plan_id: NotBlankStr,
+        item_id: NotBlankStr,
+        reply_to_id: UUID,
+    ) -> None:
+        """Reject a reply whose parent is not a comment on the same item (404).
+
+        The item is the thread, so a reply may only answer a comment already on
+        that same item; a parent on another item (or none at all) would strand
+        the reply outside any readable thread.
+
+        Raises:
+            NotFoundError: ``reply_to_id`` names no comment on this item.
+        """
+        matches = await self._comments.query(
+            PlanItemCommentFilterSpec(
+                plan_id=plan_id, item_id=item_id, comment_id=reply_to_id
+            ),
+            limit=1,
+        )
+        parent = reply_to_id if matches else None
+        require_resource_or_404(
+            parent,
+            resource_type="Parent comment",
+            identifier=str(reply_to_id),
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="reply",
         )

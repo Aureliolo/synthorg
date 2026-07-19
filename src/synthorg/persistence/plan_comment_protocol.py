@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Protocol, override, runtime_checkable
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -31,6 +32,10 @@ class PlanItemCommentFilterSpec(BaseModel):
     item_id: NotBlankStr | None = Field(
         default=None,
         description="Narrow to a single item's thread when set",
+    )
+    comment_id: UUID | None = Field(
+        default=None,
+        description="Narrow to a single comment by id (a direct PK lookup) when set",
     )
 
 

@@ -23,6 +23,7 @@ import {
   planItemTitleMap,
 } from '@/utils/plans'
 
+import { PlanApprovalActions } from './plans/PlanApprovalActions'
 import { PlanAttentionPanel } from './plans/PlanAttentionPanel'
 import { PlanCoveragePanel } from './plans/PlanCoveragePanel'
 import { PlanEditor } from './plans/PlanEditor'
@@ -96,6 +97,7 @@ function PlanReviewToolbar({ plan, onEdit, onRequestChanges }: {
   const editable = plan.status === 'pending_review' || plan.status === 'draft'
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <PlanApprovalActions plan={plan} />
       {editable && (
         <>
           <Button variant="outline" size="sm" onClick={onEdit}>
@@ -164,8 +166,8 @@ function PlanReviewView({ plan, setMode }: { plan: Plan; setMode: (mode: Mode) =
     return map
   }, [comments])
   const addComment = useCallback(
-    (itemId: string, body: string) =>
-      usePlanCommentsStore.getState().addComment(plan.id, itemId, body),
+    (itemId: string, body: string, replyToId?: string) =>
+      usePlanCommentsStore.getState().addComment(plan.id, itemId, body, replyToId),
     [plan.id],
   )
   const chooseOption = useCallback(

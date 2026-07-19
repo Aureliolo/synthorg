@@ -8,38 +8,21 @@ import {
   listABTests,
   listProposals,
   listRecentAlerts,
-  postChat,
-  postChatAct,
-  postChatGroup,
-  postChatPropose,
   type AbTestRecord,
   type AlertSummary,
-  type ChatResponse,
-  type ChatScope,
-  type ConversationalProposeResponse,
   type EvolutionAxisStat,
   type EvolutionSummary,
   type MetaConfig,
   type ProposalSummary,
   type SignalsResponse,
 } from '@/api/endpoints/meta'
-import { listActiveAgents } from '@/api/endpoints/agents'
-import type {
-  ActiveAgentSummary,
-  ConversationalActResult,
-  GroupConverseResult,
-} from '@/api/types'
-import { ErrorCode } from '@/api/types/errors'
 import { createLogger } from '@/lib/logger'
-import { useToastStore } from '@/stores/toast'
-import { getErrorDetail, getErrorMessage, isAbortError, unavailableMessage } from '@/utils/errors'
+import { getErrorMessage, unavailableMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('meta')
 
 type MetaSet = StoreApi<MetaState>['setState']
-
-const FEATURE_UNAVAILABLE_TITLE = 'Conversational mode unavailable'
 
 /**
  * Fail-closed 503 copy for a signals fetch, shared with the meta-analytics
@@ -48,110 +31,6 @@ const FEATURE_UNAVAILABLE_TITLE = 'Conversational mode unavailable'
  */
 export const SIGNALS_UNAVAILABLE_MESSAGE =
   'Signal reporting is not enabled for this deployment. Ask your administrator to enable it.'
-
-/**
- * Build the toast title + description for a conversational action failure.
- *
- * A SERVICE_UNAVAILABLE (503) from these endpoints is the deliberate
- * fail-closed state (the mode is disabled, or direct-MCP acting lacks
- * security governance), not a transient outage, so it gets a distinct
- * title and surfaces the backend's specific reason rather than the
- * generic "try again" copy.
- */
-function describeConversationalError(
-  err: unknown,
-  fallbackTitle: string,
-): { title: string; description: string } {
-  if (getErrorDetail(err)?.error_code === ErrorCode.SERVICE_UNAVAILABLE) {
-    return {
-      title: FEATURE_UNAVAILABLE_TITLE,
-      description: unavailableMessage(
-        err,
-        'This conversational mode is not enabled. Ask your administrator to enable it.',
-      ),
-    }
-  }
-  return { title: fallbackTitle, description: getErrorMessage(err) }
-}
-
-async function runProposeConversation(
-  set: MetaSet,
-  message: string,
-  conversationId?: string,
-  idempotencyKey?: string,
-  signal?: AbortSignal,
-): Promise<ConversationalProposeResponse | null> {
-  set({ proposeLoading: true })
-  try {
-    return await postChatPropose(message, conversationId, undefined, idempotencyKey, signal)
-  } catch (err) {
-    // A deliberate operator abort is not a failure: no error toast, no
-    // log.error. The caller sees the null sentinel and renders a cancelled
-    // state; the server still completes and parks any work idempotently.
-    if (isAbortError(err)) {
-      log.debug('Propose request cancelled by user')
-      return null
-    }
-    const { title, description } = describeConversationalError(
-      err,
-      'Propose request failed',
-    )
-    log.error('Propose request failed', sanitizeForLog(err))
-    // Surface via toast + the null sentinel only; the shared ``error`` slice
-    // belongs to the data-fetch/config reads, so a chat failure must not
-    // leak into it.
-    useToastStore.getState().add({ variant: 'error', title, description })
-    return null
-  } finally {
-    set({ proposeLoading: false })
-  }
-}
-
-async function runConverseGroup(
-  set: MetaSet,
-  message: string,
-  agentIds: readonly string[],
-  conversationId?: string,
-  idempotencyKey?: string,
-): Promise<GroupConverseResult | null> {
-  set({ groupChatLoading: true })
-  try {
-    return await postChatGroup(message, agentIds, conversationId, idempotencyKey)
-  } catch (err) {
-    const { title, description } = describeConversationalError(
-      err,
-      'Group chat request failed',
-    )
-    log.error('Group chat request failed', sanitizeForLog(err))
-    useToastStore.getState().add({ variant: 'error', title, description })
-    return null
-  } finally {
-    set({ groupChatLoading: false })
-  }
-}
-
-async function runAct(
-  set: MetaSet,
-  instruction: string,
-  agent: string,
-  conversationId?: string,
-  idempotencyKey?: string,
-): Promise<ConversationalActResult | null> {
-  set({ actionLoading: true })
-  try {
-    return await postChatAct(instruction, agent, conversationId, idempotencyKey)
-  } catch (err) {
-    const { title, description } = describeConversationalError(
-      err,
-      'Direct action request failed',
-    )
-    log.error('Direct action request failed', sanitizeForLog(err))
-    useToastStore.getState().add({ variant: 'error', title, description })
-    return null
-  } finally {
-    set({ actionLoading: false })
-  }
-}
 
 type FetchAllResults = readonly [
   PromiseSettledResult<Awaited<ReturnType<typeof getMetaConfig>>>,
@@ -230,8 +109,8 @@ async function runFetchProposals(set: MetaSet): Promise<void> {
 async function runFetchAlerts(set: MetaSet): Promise<void> {
   set({ error: null })
   try {
-    // The chat scope picker only needs a reasonably-sized recent set,
-    // not the full alert history -- bounded single page, not paginateAll.
+    // A reasonably-sized recent set (bounded single page, not paginateAll)
+    // is enough for the surfaces that list recent alerts.
     set({ alerts: await listRecentAlerts() })
   } catch (err) {
     log.error('Failed to fetch alerts', sanitizeForLog(err))
@@ -249,39 +128,6 @@ async function runFetchSignals(set: MetaSet): Promise<void> {
   }
 }
 
-async function runFetchActiveAgents(set: MetaSet): Promise<void> {
-  set({ error: null })
-  try {
-    set({ activeAgents: await listActiveAgents() })
-  } catch (err) {
-    log.error('Failed to fetch active agents', sanitizeForLog(err))
-    set({ error: getErrorMessage(err) })
-  }
-}
-
-async function runSendChat(
-  set: MetaSet,
-  question: string,
-  scope?: ChatScope,
-  idempotencyKey?: string,
-): Promise<ChatResponse | null> {
-  set({ chatLoading: true })
-  try {
-    return await postChat(question, scope, idempotencyKey)
-  } catch (err) {
-    const msg = getErrorMessage(err)
-    log.error('Chat request failed', sanitizeForLog(err))
-    useToastStore.getState().add({
-      variant: 'error',
-      title: 'Chat request failed',
-      description: msg,
-    })
-    return null
-  } finally {
-    set({ chatLoading: false })
-  }
-}
-
 interface MetaState {
   // Data
   config: MetaConfig | null
@@ -291,15 +137,10 @@ interface MetaState {
   evolutionSummary: EvolutionSummary | null
   evolutionAxes: readonly EvolutionAxisStat[]
   signals: SignalsResponse | null
-  activeAgents: readonly ActiveAgentSummary[]
 
   // UI state
   loading: boolean
   error: string | null
-  chatLoading: boolean
-  proposeLoading: boolean
-  groupChatLoading: boolean
-  actionLoading: boolean
 
   // Actions
   fetchAll: () => Promise<void>
@@ -308,30 +149,6 @@ interface MetaState {
   fetchProposals: () => Promise<void>
   fetchAlerts: () => Promise<void>
   fetchSignals: () => Promise<void>
-  fetchActiveAgents: () => Promise<void>
-  sendChat: (
-    question: string,
-    scope?: ChatScope,
-    idempotencyKey?: string,
-  ) => Promise<ChatResponse | null>
-  proposeConversation: (
-    message: string,
-    conversationId?: string,
-    idempotencyKey?: string,
-    signal?: AbortSignal,
-  ) => Promise<ConversationalProposeResponse | null>
-  converseGroup: (
-    message: string,
-    agentIds: readonly string[],
-    conversationId?: string,
-    idempotencyKey?: string,
-  ) => Promise<GroupConverseResult | null>
-  runAction: (
-    instruction: string,
-    agent: string,
-    conversationId?: string,
-    idempotencyKey?: string,
-  ) => Promise<ConversationalActResult | null>
 }
 
 export const useMetaStore = create<MetaState>((set) => ({
@@ -342,38 +159,12 @@ export const useMetaStore = create<MetaState>((set) => ({
   evolutionSummary: null,
   evolutionAxes: [],
   signals: null,
-  activeAgents: [],
   loading: false,
   error: null,
-  chatLoading: false,
-  proposeLoading: false,
-  groupChatLoading: false,
-  actionLoading: false,
 
   fetchAll: () => runFetchAll(set),
   fetchConfig: () => runFetchConfig(set),
   fetchProposals: () => runFetchProposals(set),
   fetchAlerts: () => runFetchAlerts(set),
   fetchSignals: () => runFetchSignals(set),
-  fetchActiveAgents: () => runFetchActiveAgents(set),
-  sendChat: (question: string, scope?: ChatScope, idempotencyKey?: string) =>
-    runSendChat(set, question, scope, idempotencyKey),
-  proposeConversation: (
-    message: string,
-    conversationId?: string,
-    idempotencyKey?: string,
-    signal?: AbortSignal,
-  ) => runProposeConversation(set, message, conversationId, idempotencyKey, signal),
-  converseGroup: (
-    message: string,
-    agentIds: readonly string[],
-    conversationId?: string,
-    idempotencyKey?: string,
-  ) => runConverseGroup(set, message, agentIds, conversationId, idempotencyKey),
-  runAction: (
-    instruction: string,
-    agent: string,
-    conversationId?: string,
-    idempotencyKey?: string,
-  ) => runAct(set, instruction, agent, conversationId, idempotencyKey),
 }))

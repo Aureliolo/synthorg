@@ -254,21 +254,96 @@ def _get_scoped_departments(
     return ()
 
 
+def assert_org_mutation(
+    connection: GuardConnection,
+    department_param: str | None = None,
+) -> None:
+    """Assert the connection's actor may perform an org-config mutation.
+
+    The reusable core of :func:`require_org_mutation`, callable outside the
+    guard chain so a handler that only learns a turn is side-effecting *after*
+    classifying it (the unified chat turn) can enforce mutation permission at
+    that point rather than blanket-blocking read-only users up front.
+
+    Access is granted if the user has one of ``OrgRole.OWNER`` /
+    ``OrgRole.EDITOR`` (always), or ``OrgRole.DEPARTMENT_ADMIN`` scoped to the
+    target department. A user with no ``org_roles`` is denied.
+
+    Args:
+        connection: The request connection carrying the authenticated actor.
+        department_param: Path parameter naming the target department;
+            ``None`` skips department scoping (company-level endpoints).
+
+    Raises:
+        PermissionDeniedException: When the actor may not mutate.
+    """
+    org_roles = _get_org_roles(connection)
+
+    # Owner and editor always allowed
+    if _ORG_ROLE_OWNER in org_roles or _ORG_ROLE_EDITOR in org_roles:
+        return
+
+    # Department admin: check scope
+    if _ORG_ROLE_DEPARTMENT_ADMIN in org_roles:
+        if department_param is None:
+            # Company-level endpoint -- dept_admin cannot modify
+            logger.warning(
+                API_GUARD_DENIED,
+                guard="require_org_mutation(dept_admin_no_scope)",
+                path=str(connection.url.path),
+            )
+            raise PermissionDeniedException(
+                detail="Department admins cannot modify company-level settings",
+            )
+        target_dept = connection.path_params.get(department_param, "")
+        scoped = _get_scoped_departments(connection)
+        if target_dept.lower() in (d.lower() for d in scoped):
+            return
+        logger.warning(
+            API_GUARD_DENIED,
+            guard="require_org_mutation(dept_admin_out_of_scope)",
+            target_department=target_dept,
+            scoped_departments=scoped,
+            path=str(connection.url.path),
+        )
+        raise PermissionDeniedException(
+            detail=f"Department admin access denied for {target_dept!r}",
+        )
+
+    # No org roles provisioned at all: name the missing configuration
+    # explicitly. Without this an operator on an install whose
+    # ``org_roles`` were never populated sees only a generic 403 with
+    # no pointer to the underlying setup gap.
+    if not org_roles:
+        logger.warning(
+            API_GUARD_DENIED,
+            guard="require_org_mutation(no_org_roles_provisioned)",
+            path=str(connection.url.path),
+        )
+        raise PermissionDeniedException(
+            detail=(
+                "Org mutation access denied: no organisation roles are "
+                "assigned to this account. Provision org roles to enable "
+                "organisation-config changes."
+            ),
+        )
+
+    # Viewer or unrecognised role
+    logger.warning(
+        API_GUARD_DENIED,
+        guard="require_org_mutation(insufficient_org_role)",
+        org_roles=org_roles,
+        path=str(connection.url.path),
+    )
+    raise PermissionDeniedException(detail="Org mutation access denied")
+
+
 def require_org_mutation(
     department_param: str | None = None,
 ) -> Callable[[GuardConnection, object], None]:
     """Guard factory for org config mutations.
 
-    Access is granted if the user has one of:
-
-    - ``OrgRole.OWNER`` -- always allowed
-    - ``OrgRole.EDITOR`` -- always allowed
-    - ``OrgRole.DEPARTMENT_ADMIN`` -- allowed only when the
-      target department (read from the path parameter named
-      *department_param*) is in the user's ``scoped_departments``
-
-    A user with no ``org_roles`` is denied: organisation-level roles
-    are the sole authority for org-config mutation.
+    Thin wrapper over :func:`assert_org_mutation` for the Litestar guard chain.
 
     Args:
         department_param: Path parameter name containing the target
@@ -291,65 +366,7 @@ def require_org_mutation(
         Raises:
             PermissionDeniedException: Raised on the corresponding failure path.
         """
-        org_roles = _get_org_roles(connection)
-
-        # Owner and editor always allowed
-        if _ORG_ROLE_OWNER in org_roles or _ORG_ROLE_EDITOR in org_roles:
-            return
-
-        # Department admin: check scope
-        if _ORG_ROLE_DEPARTMENT_ADMIN in org_roles:
-            if department_param is None:
-                # Company-level endpoint -- dept_admin cannot modify
-                logger.warning(
-                    API_GUARD_DENIED,
-                    guard="require_org_mutation(dept_admin_no_scope)",
-                    path=str(connection.url.path),
-                )
-                raise PermissionDeniedException(
-                    detail="Department admins cannot modify company-level settings",
-                )
-            target_dept = connection.path_params.get(department_param, "")
-            scoped = _get_scoped_departments(connection)
-            if target_dept.lower() in (d.lower() for d in scoped):
-                return
-            logger.warning(
-                API_GUARD_DENIED,
-                guard="require_org_mutation(dept_admin_out_of_scope)",
-                target_department=target_dept,
-                scoped_departments=scoped,
-                path=str(connection.url.path),
-            )
-            raise PermissionDeniedException(
-                detail=f"Department admin access denied for {target_dept!r}",
-            )
-
-        # No org roles provisioned at all: name the missing configuration
-        # explicitly. Without this an operator on an install whose
-        # ``org_roles`` were never populated sees only a generic 403 with
-        # no pointer to the underlying setup gap.
-        if not org_roles:
-            logger.warning(
-                API_GUARD_DENIED,
-                guard="require_org_mutation(no_org_roles_provisioned)",
-                path=str(connection.url.path),
-            )
-            raise PermissionDeniedException(
-                detail=(
-                    "Org mutation access denied: no organisation roles are "
-                    "assigned to this account. Provision org roles to enable "
-                    "organisation-config changes."
-                ),
-            )
-
-        # Viewer or unrecognised role
-        logger.warning(
-            API_GUARD_DENIED,
-            guard="require_org_mutation(insufficient_org_role)",
-            org_roles=org_roles,
-            path=str(connection.url.path),
-        )
-        raise PermissionDeniedException(detail="Org mutation access denied")
+        assert_org_mutation(connection, department_param)
 
     guard.__name__ = "require_org_mutation"
     guard.__qualname__ = "require_org_mutation"

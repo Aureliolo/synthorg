@@ -5,13 +5,8 @@ import type {
   editCharter,
   getCharter,
   listCharters,
-  runInterviewTurn,
 } from '@/api/endpoints/charter'
-import type {
-  CharterApprovalResult,
-  InterviewTurnResult,
-  ProjectCharter,
-} from '@/api/types'
+import type { CharterApprovalResult, ProjectCharter } from '@/api/types'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { paginatedFor, successFor } from './helpers'
 
@@ -68,16 +63,6 @@ export const charterHandlers = [
       successFor<typeof getCharter>(buildCharter({ id: String(params['id']) })),
     ),
   ),
-  http.post('/api/v1/meta/charters/interview', () => {
-    const result: InterviewTurnResult = {
-      conversation_id: 'conv-default',
-      status: 'drafted',
-      next_question: null,
-      charter: buildCharter(),
-      conversation_closed: false,
-    }
-    return HttpResponse.json(successFor<typeof runInterviewTurn>(result))
-  }),
   http.patch('/api/v1/meta/charters/:id', ({ params }) =>
     HttpResponse.json(
       successFor<typeof editCharter>(

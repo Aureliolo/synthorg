@@ -117,19 +117,19 @@ class TestRegistryVsConfigOverrides:
 
 
 class TestMetaChatPolicy:
-    """HYG-3 wired ``meta.chat`` as the first LLM-backed rate-limited op."""
+    """The unified ``meta.chat.turn`` surface is the LLM-backed chat op."""
 
     def test_meta_chat_registered(self) -> None:
-        """``meta.chat`` must be in the registry so the guard builds."""
-        assert "meta.chat" in RATE_LIMIT_POLICIES
+        """``meta.chat.turn`` must be in the registry so the guard builds."""
+        assert "meta.chat.turn" in RATE_LIMIT_POLICIES
 
     def test_meta_chat_bounds(self) -> None:
         """5 requests per 60s is the documented default."""
-        assert RATE_LIMIT_POLICIES["meta.chat"] == (5, 60)
+        assert RATE_LIMIT_POLICIES["meta.chat.turn"] == (5, 60)
 
     def test_meta_chat_guard_builds(self) -> None:
-        """The policy-lookup helper must resolve ``meta.chat`` without error."""
-        guard = per_op_rate_limit_from_policy("meta.chat", key="user")
+        """The policy-lookup helper must resolve ``meta.chat.turn`` cleanly."""
+        guard = per_op_rate_limit_from_policy("meta.chat.turn", key="user")
         # The guard is a callable returned by ``per_op_rate_limit``; the
         # exact callable shape is an implementation detail -- asserting
         # that it exists confirms the policy registration is consistent.

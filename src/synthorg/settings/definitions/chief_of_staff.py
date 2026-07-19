@@ -86,8 +86,8 @@ _r.register(
         type=SettingType.BOOLEAN,
         default="true",
         description=(
-            "Let the Chief of Staff clarify a request and park proposed work"
-            " items for your approval (the /meta/chat/propose path)."
+            "Let the Chief of Staff clarify a request and draft it into a plan"
+            " for your review when the unified chat classifies a turn as work."
         ),
         group="Conversational",
     )
@@ -117,7 +117,42 @@ _r.register(
         default="true",
         description=(
             "Hold a multi-agent group conversation with several role agents"
-            " in one room (the /meta/chat/group path)."
+            " in one room when the unified chat convenes a group."
+        ),
+        group="Conversational",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="turn_router_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Let the unified chat classify each message and dispatch it to the"
+            " right capability (answer, propose work, act, convene a group, or"
+            " draft a charter) so you talk to your org in one conversation"
+            " instead of picking a mode (the /meta/chat/turn path). Each"
+            " capability still enforces its own toggle. Gated live per request."
+        ),
+        group="Conversational",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="multi_voice_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Let specialists (your CFO, CTO, and other roles) add a short,"
+            " attributed perspective to an answer when their role genuinely"
+            " adds a distinct angle, so you see the organisation answering"
+            " rather than one voice. On by default; stays quiet on simple"
+            " questions. Turn off for single-voice answers only. Gated live"
+            " per request."
         ),
         group="Conversational",
     )
@@ -199,8 +234,9 @@ _r.register(
         default="false",
         description=(
             "Let a chat instruction drive a real MCP action under the acting"
-            " agent's trust level (the /meta/chat/act path). Off by default:"
-            " the Chief of Staff acts for you only when you opt in. Fail-closed:"
+            " agent's trust level when the unified chat classifies a turn as an"
+            " action. Off by default: the Chief of Staff acts for you only when"
+            " you opt in. Fail-closed:"
             " it materialises only when security governance and the MCP"
             " self-consumer are wired, and stays inert (503) otherwise. A live"
             " toggle rebuilds the actor through that same fail-closed gate, so"
@@ -247,6 +283,22 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=_NS,
+        key="multi_voice_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model for the multi-voice chime-ins, selected through"
+            " the model picker (a `{provider, model_id}` reference). Empty"
+            " leaves chime-ins off until a model is set. Read live per call."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
         key="routing_model",
         type=SettingType.MODEL_REF,
         default="",
@@ -257,6 +309,110 @@ _r.register(
         ),
         group="Models",
         level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="turn_intent_model",
+        type=SettingType.MODEL_REF,
+        default="",
+        description=(
+            "Provider + model for the unified turn-intent classifier, selected"
+            " through the model picker (a `{provider, model_id}` reference)."
+            " Empty leaves the unified router without a classifier, so every"
+            " turn is answered as a plain question. Read live per call."
+        ),
+        group="Models",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="act_intent_confidence_floor",
+        type=SettingType.FLOAT,
+        default="0.85",
+        description=(
+            "Minimum classifier confidence before a turn may resolve to ACT;"
+            " below it the turn degrades to a plain answer. Read live per turn,"
+            " so raising this safety floor takes effect without a restart."
+        ),
+        group="Chat",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="charter_intent_confidence_floor",
+        type=SettingType.FLOAT,
+        default="0.8",
+        description=(
+            "Minimum classifier confidence before a turn may resolve to CHARTER;"
+            " below it the turn degrades to a plain answer. Read live per turn,"
+            " so a change takes effect without a restart."
+        ),
+        group="Chat",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="turn_intent_temperature",
+        type=SettingType.FLOAT,
+        default="0.0",
+        description=(
+            "Sampling temperature for the turn-intent classifier. Read live per"
+            " turn, so a change takes effect without a restart."
+        ),
+        group="Chat",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=2.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="turn_intent_max_tokens",
+        type=SettingType.INTEGER,
+        default="200",
+        description=(
+            "Token budget for one turn-intent classification reply. Read live"
+            " per turn, so a change takes effect without a restart."
+        ),
+        group="Chat",
+        level=SettingLevel.ADVANCED,
+        min_value=50,
+        max_value=4096,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=_NS,
+        key="turn_intent_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="120.0",
+        description=(
+            "Wall-clock cap for one turn-intent classification call. Read live"
+            " per turn, so a change takes effect without a restart."
+        ),
+        group="Chat",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=600.0,
     )
 )
 

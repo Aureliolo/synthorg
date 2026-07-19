@@ -112,21 +112,4 @@ async def resolve_chat_answer(
     return await chat_backend.ask(query, snapshot, org_state=org_state)
 
 
-def chat_answer_payload(result: ChatResponse) -> dict[str, object]:
-    """Flatten a chat response into the wire body shared by both paths.
-
-    Used by the buffered ``/meta/chat`` response and the streaming
-    ``complete`` frame so the two never drift on the field set.
-
-    Returns:
-        The ``answer`` / ``sources`` / ``cited_records`` / ``confidence`` dict.
-    """
-    return {
-        "answer": result.answer,
-        "sources": list(result.sources),
-        "cited_records": [r.model_dump(mode="json") for r in result.cited_records],
-        "confidence": result.confidence,
-    }
-
-
-__all__ = ["chat_answer_payload", "resolve_chat_answer"]
+__all__ = ["resolve_chat_answer"]

@@ -28,6 +28,7 @@ from synthorg.engine.pipeline.entry.task_board_adapter import (
     TaskBoardEntryAdapter,
 )
 from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.engine.plan_review.reply import PlanItemReplyService
 from synthorg.engine.quality.mcp_services import (
     EvaluationVersionService,
 )
@@ -74,6 +75,7 @@ class EngineStateSlice(BaseFeatureStateSlice):
     brownfield_entry_adapter: WorkEntryAdapter[CodebaseImportSubmission] | None = None
     task_board_entry_adapter: TaskBoardEntryAdapter | None = None
     structure_map_tool_factory: StructureMapToolFactory | None = None
+    plan_item_reply_service: PlanItemReplyService | None = None
 
 
 def task_engine_of(app_state: AppStateSliceMixin) -> TaskEngine:

@@ -1,46 +1,58 @@
-import type { ConversationTurnRecord } from '@/api/endpoints/meta'
+import type {
+  ConversationKind,
+  ConversationTurnRecord,
+} from '@/api/endpoints/meta'
+import type { TurnIntent } from '@/api/types'
 
-import type { GroupMessage, RequestWorkMessage } from './chat-types'
 import { nextMessageId } from './message-id'
+import type { OrgTurn } from './org-chat-types'
 
 /**
- * Reconstruct transcript bubbles from persisted conversation turns.
+ * Reconstruct the unified transcript from persisted conversation turns.
  *
- * Resume is text-only by design: a turn row carries the rendered content
- * and attribution, but not the ephemeral parked-proposal summaries or the
- * responder role label, so a resumed assistant/agent turn shows its text
- * without the in-context approval links or the routed-role badge (the
- * parked items still live in the approvals queue). Which mode a
- * conversation resumes into is decided by its ``kind``: ``group`` into the
- * group surface, ``direct``/``routed`` into Request work.
+ * Resume is text-only by design: a turn row carries the rendered content plus
+ * attribution, but not the ephemeral parked-proposal summaries or the routed
+ * confidence, so a resumed agent turn shows its text and attribution without
+ * the in-context approval links (the parked items still live in Approvals).
  */
 
-/** Map persisted turns to Request-work transcript bubbles. */
-export function hydrateWorkMessages(
-  turns: readonly ConversationTurnRecord[],
-): RequestWorkMessage[] {
-  return turns.map((turn) => ({
-    id: nextMessageId(),
-    role: turn.role === 'user' ? 'user' : 'assistant',
-    content: turn.content,
-    ...(turn.author_name != null && { responderName: turn.author_name }),
-    ...(turn.routed_topic != null && { routedTopic: turn.routed_topic }),
-  }))
+/**
+ * The pinned capability a resumed conversation continues as: a group thread
+ * keeps convening, a direct/routed request-work thread keeps proposing, so a
+ * follow-up turn stays in the same capability instead of being re-classified.
+ */
+export function activeIntentForKind(kind: ConversationKind): TurnIntent {
+  return kind === 'group' ? 'group_convene' : 'propose'
 }
 
-/** Map persisted turns to group-chat transcript bubbles. */
-export function hydrateGroupMessages(
+/** Map persisted turns to unified-conversation transcript turns. */
+export function hydrateOrgMessages(
   turns: readonly ConversationTurnRecord[],
-): GroupMessage[] {
-  return turns.map((turn) => {
+): OrgTurn[] {
+  return turns.map((turn): OrgTurn => {
     if (turn.role === 'user') {
-      return { id: nextMessageId(), kind: 'human', content: turn.content }
+      return {
+        id: nextMessageId(),
+        kind: 'human',
+        content: turn.content,
+        timestamp: turn.created_at,
+      }
+    }
+    if (turn.author_name != null) {
+      return {
+        id: nextMessageId(),
+        kind: 'agent',
+        content: turn.content,
+        agentName: turn.author_name,
+        agentTopic: turn.routed_topic,
+        timestamp: turn.created_at,
+      }
     }
     return {
       id: nextMessageId(),
-      kind: 'agent',
+      kind: 'assistant',
       content: turn.content,
-      ...(turn.author_name != null && { agentName: turn.author_name }),
+      timestamp: turn.created_at,
     }
   })
 }

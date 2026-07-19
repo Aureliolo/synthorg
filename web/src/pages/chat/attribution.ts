@@ -1,7 +1,7 @@
 /**
  * A conversational reply is attributed only when both a display name and a
- * role are known. Shared across the propose, group, and direct-action
- * surfaces so every mode gates the {@link ResponderAttribution} identically.
+ * role are known. Shared by the unified transcript's turn mapper and its
+ * inline event cards so every attributed voice gates identically.
  */
 export function hasAttribution(
   name: string | undefined,

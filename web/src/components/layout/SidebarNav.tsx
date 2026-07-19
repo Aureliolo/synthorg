@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 import { ROUTES } from '@/router/routes'
 import { usePendingApprovalsCount } from '@/hooks/usePendingApprovalsCount'
+import { usePendingPlanReviewCount } from '@/hooks/usePendingPlanReviewCount'
 import { SidebarNavGroup } from './SidebarNavGroup'
 import { SidebarNavItem } from './SidebarNavItem'
 import { SidebarSection } from './SidebarSection'
@@ -45,6 +46,7 @@ export interface SidebarNavProps {
 
 export function SidebarNav({ collapsed }: SidebarNavProps) {
   const { pendingCount } = usePendingApprovalsCount()
+  const { pendingCount: planReviewCount } = usePendingPlanReviewCount()
   return (
     <nav className="flex-1 overflow-y-auto px-2 py-3" aria-label="Main navigation">
       <SidebarSection collapsed={collapsed}>
@@ -58,7 +60,7 @@ export function SidebarNav({ collapsed }: SidebarNavProps) {
           <SidebarNavItem to={ROUTES.BUDGET} icon={DollarSign} label="Budget" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.REPORTS} icon={FileText} label="Reports" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.APPROVALS} icon={ShieldCheck} label="Approvals" collapsed={collapsed} badge={pendingCount} />
-          <SidebarNavItem to={ROUTES.PLANS} icon={ListChecks} label="Plan Review" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.PLANS} icon={ListChecks} label="Plan Review" collapsed={collapsed} badge={planReviewCount} />
           <SidebarNavItem to={ROUTES.SCALING} icon={Scale} label="Scaling" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.META} icon={Orbit} label="Meta Loop" collapsed={collapsed} end />
         </SidebarNavGroup>

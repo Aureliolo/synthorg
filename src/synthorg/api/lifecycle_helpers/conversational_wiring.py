@@ -334,6 +334,78 @@ def _wire_role_router(
     return role_router
 
 
+def _wire_turn_intent_classifier(
+    app_state: AppState,
+    config: ChiefOfStaffConfig,
+    *,
+    provider_registry: ProviderRegistry,
+    cost_tracker: CostTrackerProtocol | None,
+) -> None:
+    """Build + wire the unified turn-intent classifier when a model is set.
+
+    ``build_intent_classifier`` builds the classifier unconditionally of
+    ``turn_router_enabled`` so the live per-request gate (applied in the
+    ``/meta/chat/turn`` endpoint) can flip without a restart; it returns
+    ``None`` only when no ``turn_intent_model`` is configured or its bound
+    provider is absent, leaving the unified router to answer every turn as a
+    plain question.
+    """
+    from synthorg.meta.chief_of_staff.intent_router import (  # noqa: PLC0415
+        build_intent_classifier,
+    )
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+    classifier = build_intent_classifier(
+        config=config,
+        provider_registry=provider_registry,
+        cost_tracker=cost_tracker,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+    )
+    if classifier is not None:
+        app_state.wire(MetaStateSlice, turn_intent_classifier=classifier)
+        logger.info(
+            API_APP_STARTUP,
+            service="turn_intent_classifier",
+            note="turn intent classifier wired",
+        )
+
+
+def _wire_multi_voice_router(
+    app_state: AppState,
+    config: ChiefOfStaffConfig,
+    *,
+    provider_registry: ProviderRegistry,
+    cost_tracker: CostTrackerProtocol | None,
+) -> None:
+    """Build + wire the multi-voice chime-in router when a model is set.
+
+    ``build_multi_voice_router`` builds the router unconditionally of
+    ``multi_voice_enabled`` so the live per-turn gate can flip without a
+    restart; it returns ``None`` only when no ``multi_voice_model`` is set or
+    its bound provider is absent, leaving turns to carry no chime-ins.
+    """
+    from synthorg.meta.chief_of_staff._multi_voice import (  # noqa: PLC0415
+        build_multi_voice_router,
+    )
+    from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+    router = build_multi_voice_router(
+        config=config,
+        provider_registry=provider_registry,
+        cost_tracker=cost_tracker,
+        config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+    )
+    if router is not None:
+        app_state.wire(MetaStateSlice, multi_voice_router=router)
+        logger.info(
+            API_APP_STARTUP,
+            service="multi_voice_router",
+            note="multi-voice router wired",
+        )
+
+
 async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
     app_state: AppState,
     *,
@@ -351,6 +423,24 @@ async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
             conversational approvals.
     """
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
+
+    # The turn-intent classifier and multi-voice router are optional and each
+    # guards its own state field idempotently, so wire them on every pass -- even
+    # once the proposer exists -- so a classifier / multi-voice model configured
+    # after the proposer was first built still wires without a restart.
+    if provider_registry is not None:
+        _wire_turn_intent_classifier(
+            app_state,
+            si_config.chief_of_staff,
+            provider_registry=provider_registry,
+            cost_tracker=cost_tracker,
+        )
+        _wire_multi_voice_router(
+            app_state,
+            si_config.chief_of_staff,
+            provider_registry=provider_registry,
+            cost_tracker=cost_tracker,
+        )
 
     if app_state.slice(MetaStateSlice).chief_of_staff_proposer is not None:
         return

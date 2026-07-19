@@ -6,8 +6,11 @@ import { Skeleton } from './skeleton'
 export interface ResponderAttributionProps {
   /** Display name of the responding role agent. */
   name: string
-  /** Role of the responding agent (e.g. "CFO"). */
-  role: string
+  /**
+   * Role of the responding agent (e.g. "CFO"). Omitted for an actor that
+   * carries no role (a direct-action turn), which renders name-only.
+   */
+  role?: string | undefined
   /** Optional concern topic that selected the role (e.g. "budget"). */
   topic?: string | null | undefined
   /** When true, render a placeholder while the routing decision resolves. */
@@ -53,10 +56,14 @@ export function ResponderAttribution({
         <Avatar name={name} size="sm" />
       </span>
       <span className="font-medium text-foreground">{name}</span>
-      <span aria-hidden="true" className="text-muted-foreground">
-        ·
-      </span>
-      <span>{role}</span>
+      {role && (
+        <>
+          <span aria-hidden="true" className="text-muted-foreground">
+            ·
+          </span>
+          <span>{role}</span>
+        </>
+      )}
       {topic && (
         <span className="text-muted-foreground">
           <span aria-hidden="true">· </span>routed by{' '}

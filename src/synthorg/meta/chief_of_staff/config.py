@@ -6,7 +6,7 @@ proactive alerts, and the chat interface. All capabilities are
 opt-in with safe defaults (disabled).
 """
 
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -53,6 +53,48 @@ _ROUTING_MAX_TOKENS_MIN: int = 50
 # Chief of Staff rather than routing to a possibly-wrong role; the
 # 0.0/1.0 envelope is the natural probability range.
 _ROUTING_CONFIDENCE_FLOOR_DEFAULT: float = 0.6
+# Unified turn routing: one endpoint classifies the operator's intent and
+# dispatches to the right capability. The intent classifier runs a
+# deterministic pass (temperature 0.0) so the intent JSON is stable; a
+# classification reply is a single small JSON object, so 200 tokens fits it
+# and 50 is the floor below which even that minimal object risks truncation.
+_TURN_INTENT_TEMPERATURE_DEFAULT: Final[float] = 0.0
+_TURN_INTENT_MAX_TOKENS_DEFAULT: Final[int] = 200
+_TURN_INTENT_MAX_TOKENS_MIN: Final[int] = 50
+# ACT and CHARTER sit behind their own, stricter confidence floors than
+# concern routing so an uncertain classifier never escalates a read into a
+# real action or a multi-turn charter interview: below the floor the turn
+# degrades to a plain explanation. 0.85 (act) / 0.8 (charter) are well
+# above the 0.6 routing floor; the 0.0/1.0 envelope is the probability range.
+_ACT_INTENT_CONFIDENCE_FLOOR_DEFAULT: Final[float] = 0.85
+_CHARTER_INTENT_CONFIDENCE_FLOOR_DEFAULT: Final[float] = 0.8
+# Multi-voice: after an answer, 0..N specialists add a short, attributed
+# chime-in when their role genuinely adds a distinct, grounded perspective.
+# Default-on (opt-out): it is the core of the "talk to your organisation"
+# surface, but stays quiet unless a specialist clears the value bar so simple
+# questions still get one clean answer.
+# Two extra voices is a calm default; 1 keeps it minimal and 5 caps the
+# per-answer fan-out cost.
+_MULTI_VOICE_MAX_SPEAKERS_DEFAULT: Final[int] = 2
+_MULTI_VOICE_MAX_SPEAKERS_MIN: Final[int] = 1
+_MULTI_VOICE_MAX_SPEAKERS_MAX: Final[int] = 5
+# 0.7 is a real value bar: only a specialist genuinely confident it adds a
+# distinct angle chimes in, so the transcript never fills with filler. The
+# 0.0/1.0 envelope is the probability range.
+_MULTI_VOICE_CONFIDENCE_FLOOR_DEFAULT: Final[float] = 0.7
+# A chime-in is short attributed prose, so a moderate temperature and a tight
+# token budget; 100 is the floor below which even one chime-in would truncate.
+_MULTI_VOICE_TEMPERATURE_DEFAULT: Final[float] = 0.5
+_MULTI_VOICE_MAX_TOKENS_DEFAULT: Final[int] = 600
+_MULTI_VOICE_MAX_TOKENS_MIN: Final[int] = 100
+# A chime-in is a best-effort enrichment the operator has not asked for, and
+# on the buffered turn path it is awaited before the answer returns. Its cap is
+# therefore tighter than a first-class agent call (45s vs 120s): a slow or hung
+# chime must not add a first-class call's worth of latency to a plain answer. 5s
+# is the floor for a legitimate short reply; 300s a ceiling for slow large models.
+_MULTI_VOICE_TIMEOUT_SECONDS_DEFAULT: Final[float] = 45.0
+_MULTI_VOICE_TIMEOUT_SECONDS_MIN: Final[float] = 5.0
+_MULTI_VOICE_TIMEOUT_SECONDS_MAX: Final[float] = 300.0
 # Group chat: one human, several agents, round-robin turns. The
 # defaults below bound a single human turn so it cannot drive unbounded
 # fan-out cost; all are operator-tunable.
@@ -219,8 +261,36 @@ class ChiefOfStaffConfig(BaseModel):
         routing_keyword_rules: Operator override for the keyword
             strategy's keyword-to-role map. Empty (default) uses the
             built-in C-Suite map; supply rules to cover bespoke roles.
-        group_chat_enabled: Enable the multi-agent group chat
-            (``/meta/chat/group``). When off, the controller 503s.
+        turn_router_enabled: Enable the unified ``/meta/chat/turn`` surface
+            that classifies each operator turn to a capability. When off,
+            the endpoint 503s. Each dispatched capability still enforces
+            its own gate.
+        turn_intent_model: LLM model identifier for the turn-intent
+            classifier.
+        turn_intent_temperature: Sampling temperature for the classifier.
+        turn_intent_max_tokens: Token budget for one classification reply.
+        act_intent_confidence_floor: Minimum classifier confidence (0-1)
+            before a turn may resolve to ACT; below it the turn degrades
+            to a plain explanation rather than acting.
+        charter_intent_confidence_floor: Minimum classifier confidence
+            (0-1) before a turn may resolve to CHARTER; below it the turn
+            degrades to a plain explanation.
+        multi_voice_enabled: Let specialists add a short, attributed
+            chime-in to an answer when their role adds a distinct grounded
+            perspective. Default-on (opt-out): the core of the unified
+            surface, but gated so simple questions still get one clean answer.
+        multi_voice_model: LLM model identifier for the chime-in calls.
+        multi_voice_temperature: Sampling temperature for a chime-in.
+        multi_voice_max_tokens: Token budget for one chime-in reply.
+        multi_voice_max_speakers: Maximum specialists that may chime in on
+            one answer (bounds per-answer fan-out).
+        multi_voice_confidence_floor: Minimum confidence (0-1) a specialist
+            must clear to chime in; below it it stays silent.
+        multi_voice_timeout_seconds: Wall-clock cap for one chime-in call.
+            Tighter than a first-class agent call because a chime-in is a
+            best-effort enrichment awaited before a buffered answer returns.
+        group_chat_enabled: Enable the multi-agent group chat capability.
+            When off, a group-convene turn 503s.
         group_chat_max_participants: Maximum agents in one group
             conversation (bounds per-round fan-out).
         group_chat_round_token_budget: Total token budget for one
@@ -350,6 +420,67 @@ class ChiefOfStaffConfig(BaseModel):
         "a role with no active agent",
     )
     routing_keyword_rules: tuple[KeywordRoleRule, ...] = ()
+
+    # ── Unified turn routing ──────────────────────────────
+
+    turn_router_enabled: bool = True
+    turn_intent_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model for the turn-intent classifier LLM calls; unset "
+        "until an operator or setup selects one (never a placeholder default)",
+    )
+    turn_intent_temperature: float = Field(
+        default=_TURN_INTENT_TEMPERATURE_DEFAULT,
+        ge=_PROPOSE_TEMPERATURE_MIN,
+        le=_PROPOSE_TEMPERATURE_MAX,
+    )
+    turn_intent_max_tokens: int = Field(
+        default=_TURN_INTENT_MAX_TOKENS_DEFAULT,
+        ge=_TURN_INTENT_MAX_TOKENS_MIN,
+    )
+    act_intent_confidence_floor: float = Field(
+        default=_ACT_INTENT_CONFIDENCE_FLOOR_DEFAULT,
+        ge=0.0,
+        le=1.0,
+    )
+    charter_intent_confidence_floor: float = Field(
+        default=_CHARTER_INTENT_CONFIDENCE_FLOOR_DEFAULT,
+        ge=0.0,
+        le=1.0,
+    )
+
+    # ── Multi-voice chime-ins ─────────────────────────────
+
+    multi_voice_enabled: bool = True
+    multi_voice_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model for the multi-voice chime-in LLM calls; unset until "
+        "an operator or setup selects one (never a placeholder default)",
+    )
+    multi_voice_temperature: float = Field(
+        default=_MULTI_VOICE_TEMPERATURE_DEFAULT,
+        ge=_PROPOSE_TEMPERATURE_MIN,
+        le=_PROPOSE_TEMPERATURE_MAX,
+    )
+    multi_voice_max_tokens: int = Field(
+        default=_MULTI_VOICE_MAX_TOKENS_DEFAULT,
+        ge=_MULTI_VOICE_MAX_TOKENS_MIN,
+    )
+    multi_voice_max_speakers: int = Field(
+        default=_MULTI_VOICE_MAX_SPEAKERS_DEFAULT,
+        ge=_MULTI_VOICE_MAX_SPEAKERS_MIN,
+        le=_MULTI_VOICE_MAX_SPEAKERS_MAX,
+    )
+    multi_voice_confidence_floor: float = Field(
+        default=_MULTI_VOICE_CONFIDENCE_FLOOR_DEFAULT,
+        ge=0.0,
+        le=1.0,
+    )
+    multi_voice_timeout_seconds: float = Field(
+        default=_MULTI_VOICE_TIMEOUT_SECONDS_DEFAULT,
+        ge=_MULTI_VOICE_TIMEOUT_SECONDS_MIN,
+        le=_MULTI_VOICE_TIMEOUT_SECONDS_MAX,
+    )
 
     # ── Multi-agent group chat ────────────────────────────
 

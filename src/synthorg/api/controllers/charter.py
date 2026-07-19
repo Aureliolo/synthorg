@@ -37,14 +37,11 @@ from synthorg.api.state import AppState
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.meta.charter.enums import CharterStatus
 from synthorg.meta.charter.models import (
     BudgetEnvelope,
     CharterApprovalResult,
     CharterEditArgs,
-    InterviewTurnArgs,
-    InterviewTurnResult,
     ProjectCharter,
     ScopeBoundaries,
 )
@@ -56,25 +53,6 @@ from synthorg.observability.events.charter import CHARTER_SUBSTRATE_UNAVAILABLE
 logger = get_logger(__name__)
 
 _DEFAULT_PAGE_SIZE: int = 50
-
-
-class InterviewTurnRequest(BaseModel):
-    """Request body for one charter-interview turn."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    message: NotBlankStr = Field(
-        max_length=4000,
-        description="Human message for this charter-interview turn.",
-    )
-    conversation_id: NotBlankStr | None = Field(
-        default=None,
-        description="Existing interview conversation to continue; None starts one.",
-    )
-    project: NotBlankStr | None = Field(
-        default=None,
-        description="Project the interview is scoped to, if any.",
-    )
 
 
 class CharterEditRequest(BaseModel):
@@ -151,45 +129,6 @@ class CharterController(Controller):
             )
             raise ServiceUnavailableError(msg)
         return service
-
-    @post(
-        "/interview",
-        status_code=200,
-        guards=[
-            require_org_mutation(),
-            per_op_rate_limit_from_policy("meta.charters.interview", key="user"),
-        ],
-    )
-    async def interview(
-        self,
-        data: InterviewTurnRequest,
-        state: State,
-    ) -> ApiResponse[InterviewTurnResult]:
-        """Run one interview turn: a question, or a drafted charter.
-
-        Returns 200 with either the next elicitation question (the
-        conversation stays open) or the drafted charter for review.
-
-        Returns:
-            ``ApiResponse[InterviewTurnResult]`` instance.
-
-        Raises:
-            ServiceUnavailableError: 503 when the charter substrate is
-                unavailable (no provider or persistence not connected).
-        """
-        service = self._service(state)
-        actor = require_actor()
-        # Fence the human-supplied message in a ``<task-data>`` envelope
-        # so the model treats it as data, not instructions.
-        result = await service.run_turn(
-            InterviewTurnArgs(
-                message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, data.message)),
-                created_by=NotBlankStr(actor.actor_id),
-                conversation_id=data.conversation_id,
-                project=data.project,
-            )
-        )
-        return ApiResponse[InterviewTurnResult](data=result)
 
     @get("/")
     async def list_charters(

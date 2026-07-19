@@ -89,7 +89,9 @@ class PromptPurposeId(StrEnum):
     RESEARCH_SYNTHESIS = "system:research:synthesis"
     RESEARCH_PLANNING = "system:research:planning"
 
+    COS_TURN_INTENT = "system:cos:turn_intent"
     COS_ROUTING = "system:cos:routing"
+    COS_MULTI_VOICE = "system:cos:multi_voice"
     COS_PROPOSE = "system:cos:propose"
     COS_CHAT = "system:cos:chat"
     COS_NARRATIVE = "system:cos:narrative"
@@ -99,6 +101,7 @@ class PromptPurposeId(StrEnum):
 
     STEERING_PROPOSE = "system:steering:propose"
     EVOLUTION_PROPOSE = "system:evolution:propose"
+    PLAN_REVIEW_ITEM_REPLY = "system:plan_review:item_reply"
     WORKSPACE = "system:workspace"
     INTAKE = "system:intake"
     VERIFICATION = "system:verification"
@@ -332,9 +335,19 @@ _PROMPT_PURPOSE_SPECS: Final[
         "Plan the steps to answer a research brief.",
     ),
     (
+        PromptPurposeId.COS_TURN_INTENT,
+        PromptPurposeCategory.META,
+        "Classify an operator turn to the org capability that handles it.",
+    ),
+    (
         PromptPurposeId.COS_ROUTING,
         PromptPurposeCategory.META,
         "Route a chief-of-staff request to a capability.",
+    ),
+    (
+        PromptPurposeId.COS_MULTI_VOICE,
+        PromptPurposeCategory.META,
+        "Pick specialists to add a grounded chime-in to an answer.",
     ),
     (
         PromptPurposeId.COS_PROPOSE,
@@ -375,6 +388,11 @@ _PROMPT_PURPOSE_SPECS: Final[
         PromptPurposeId.EVOLUTION_PROPOSE,
         PromptPurposeCategory.ENGINE,
         "Propose an evolution to an agent's behaviour.",
+    ),
+    (
+        PromptPurposeId.PLAN_REVIEW_ITEM_REPLY,
+        PromptPurposeCategory.ENGINE,
+        "Answer an operator's comment on a plan item as the responsible role.",
     ),
     (
         PromptPurposeId.WORKSPACE,

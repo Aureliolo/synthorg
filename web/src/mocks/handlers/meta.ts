@@ -10,11 +10,9 @@ import type {
   listProposals,
   getConversationTurns,
   listConversations,
-  postChat,
-  postChatAct,
-  postChatGroup,
-  postChatPropose,
+  postTurn,
 } from '@/api/endpoints/meta'
+import type { TurnIntent, TurnResult } from '@/api/types'
 import { apiSuccess, apiError, paginatedEnvelopeFor, successFor } from './helpers'
 
 function _hasBlankField(body: unknown, field: string): boolean {
@@ -23,23 +21,42 @@ function _hasBlankField(body: unknown, field: string): boolean {
   return typeof value !== 'string' || !value.trim()
 }
 
-/** Render one ``event:``/``data:`` SSE frame for a mock stream. */
+/** Serialise one SSE frame in the `event:`/`data:` shape the client parses. */
 export function sseFrame(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
 }
 
-/** Build a ``text/event-stream`` response body from pre-rendered frames. */
-export function sseStream(frames: readonly string[]): HttpResponse<ReadableStream<Uint8Array>> {
-  const encoder = new TextEncoder()
-  const body = new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const frame of frames) controller.enqueue(encoder.encode(frame))
-      controller.close()
-    },
-  })
+/** An SSE (`text/event-stream`) response body for a `/turn/stream` handler. */
+export function sseResponse(body: string): HttpResponse<string> {
   return new HttpResponse(body, {
     headers: { 'Content-Type': 'text/event-stream' },
   })
+}
+
+/** A streamed EXPLAIN turn: two deltas then the terminal complete frame. */
+export function explainStreamBody(answer: string): string {
+  const complete: TurnResult = {
+    intent: 'explain',
+    intent_reason: 'no_intent_classifier',
+    intent_confidence: null,
+    conversation_id: null,
+    answer: { answer, sources: [], cited_records: [], confidence: 0.8 },
+    propose: null,
+    group: null,
+    act: null,
+    charter: null,
+    chime_ins: [],
+  }
+  return (
+    sseFrame('delta', { delta: answer.slice(0, 4) }) +
+    sseFrame('delta', { delta: answer.slice(4) }) +
+    sseFrame('complete', complete)
+  )
+}
+
+/** A deferred turn: the stream classifies then hands the intent to the buffer. */
+export function deferredStreamBody(intent: TurnIntent): string {
+  return sseFrame('deferred', { intent })
 }
 
 export const metaHandlers = [
@@ -100,7 +117,7 @@ export const metaHandlers = [
     // explicitly so the mock still turns red if ``EvolutionAxisStat`` drifts.
     HttpResponse.json(apiSuccess<{ axes: EvolutionAxisStat[] }>({ axes: [] })),
   ),
-  http.post('/api/v1/meta/chat/propose', async ({ request }) => {
+  http.post('/api/v1/meta/chat/turn', async ({ request }) => {
     let body: unknown
     try {
       body = await request.json()
@@ -114,163 +131,41 @@ export const metaHandlers = [
         status: 400,
       })
     }
+    // Default happy path: the org classifies an ambiguous message as a
+    // read-only question and answers it. Tests that exercise a specific
+    // capability override this with their own ``server.use(...)``.
     return HttpResponse.json(
-      successFor<typeof postChatPropose>({
-        conversation_id: 'conv-mock-001',
-        status: 'proposed',
-        clarifying_question: null,
-        conversation_closed: false,
-        plan_draft: {
-          task_id: 'task-mock-001',
-          project: 'Mock Project',
-          title: 'Mock drafted plan',
+      successFor<typeof postTurn>({
+        intent: 'explain',
+        intent_reason: 'no_intent_classifier',
+        intent_confidence: null,
+        conversation_id: null,
+        answer: {
+          answer: 'The organisation is healthy.',
+          sources: [],
+          cited_records: [],
+          confidence: 0.8,
         },
-        // Concern routing is off by default: the generic Chief
-        // of Staff answers, so no role attribution is carried.
-        responder_role: null,
-        responder_name: null,
-        routed_topic: null,
-        routing_confidence: null,
-        routing_reason: 'no_role_router',
-        steering: [],
+        propose: null,
+        group: null,
+        act: null,
+        charter: null,
+        chime_ins: [],
       }),
     )
   }),
-  http.post('/api/v1/meta/chat/group', async ({ request }) => {
-    let body: unknown
-    try {
-      body = await request.json()
-    } catch {
-      return HttpResponse.json(apiError('Message must not be blank'), {
-        status: 400,
-      })
-    }
+  http.post('/api/v1/meta/chat/turn/stream', async ({ request }) => {
+    const body: unknown = await request.json().catch(() => null)
     if (_hasBlankField(body, 'message')) {
       return HttpResponse.json(apiError('Message must not be blank'), {
         status: 400,
       })
     }
-    return HttpResponse.json(
-      successFor<typeof postChatGroup>({
-        conversation_id: 'conv-grp-mock-001',
-        contributions: [
-          {
-            agent_id: 'agent-ceo-mock',
-            agent_name: 'Dana',
-            participant_role: 'CEO',
-            content: 'We should prioritise the enterprise segment.',
-            sequence: 1,
-            input_tokens: 80,
-            output_tokens: 30,
-          },
-          {
-            agent_id: 'agent-cfo-mock',
-            agent_name: 'Casey',
-            participant_role: 'CFO',
-            content: 'That needs a larger sales budget; I can model it.',
-            sequence: 2,
-            input_tokens: 90,
-            output_tokens: 28,
-          },
-        ],
-        participants: [
-          {
-            id: '11111111-1111-4111-8111-111111111111',
-            conversation_id: 'conv-grp-mock-001',
-            agent_id: 'agent-ceo-mock',
-            agent_name: 'Dana',
-            participant_role: 'CEO',
-            status: 'active',
-            added_by: 'user-mock',
-            added_at: '2026-05-19T09:00:00Z',
-          },
-          {
-            id: '22222222-2222-4222-8222-222222222222',
-            conversation_id: 'conv-grp-mock-001',
-            agent_id: 'agent-cfo-mock',
-            agent_name: 'Casey',
-            participant_role: 'CFO',
-            status: 'active',
-            added_by: 'user-mock',
-            added_at: '2026-05-19T09:00:00.000001Z',
-          },
-        ],
-        participants_skipped: [],
-        truncated_reason: null,
-        // Agent-initiated invites are off by default; the happy
-        // path parks none, so the consent surface stays empty.
-        pending_invites: [],
-      }),
-    )
+    // Default happy path: an ambiguous message classifies as a read and streams
+    // its answer. Tests that exercise a deferred (side-effecting) intent
+    // override this with ``deferredStreamBody(...)``.
+    return sseResponse(explainStreamBody('The organisation is healthy.'))
   }),
-  http.post('/api/v1/meta/chat/act', async ({ request }) => {
-    let body: unknown
-    try {
-      body = await request.json()
-    } catch {
-      return HttpResponse.json(apiError('Instruction must not be blank'), {
-        status: 400,
-      })
-    }
-    if (_hasBlankField(body, 'instruction')) {
-      return HttpResponse.json(apiError('Instruction must not be blank'), {
-        status: 400,
-      })
-    }
-    return HttpResponse.json(
-      successFor<typeof postChatAct>({
-        agent_id: 'agent-cfo-mock',
-        agent_name: 'Casey',
-        conversation_id: 'conv-act-mock-001',
-        // Direct MCP acting is off by default; the happy path
-        // performs a permitted action under trust and completes.
-        action: {
-          termination_reason: 'completed',
-          final_message: 'Done -- revenue is up 4% this week.',
-          tool_calls: [
-            { tool_name: 'query_metrics', is_error: false, result: 'revenue +4%' },
-          ],
-          approval_id: null,
-          parked: false,
-        },
-      }),
-    )
-  }),
-  http.post('/api/v1/meta/chat', async ({ request }) => {
-    let body: unknown
-    try {
-      body = await request.json()
-    } catch {
-      return HttpResponse.json(apiError('Question must not be blank'), {
-        status: 400,
-      })
-    }
-    if (_hasBlankField(body, 'question')) {
-      return HttpResponse.json(apiError('Question must not be blank'), {
-        status: 400,
-      })
-    }
-    return HttpResponse.json(
-      successFor<typeof postChat>({
-        answer: 'default response',
-        sources: [],
-        cited_records: [],
-        confidence: 0,
-      }),
-    )
-  }),
-  http.post('/api/v1/meta/chat/stream', () =>
-    sseStream([
-      sseFrame('progress', { delta: 'default ' }),
-      sseFrame('progress', { delta: 'response' }),
-      sseFrame('complete', {
-        answer: 'default response',
-        sources: [],
-        cited_records: [],
-        confidence: 0,
-      }),
-    ]),
-  ),
   http.get('/api/v1/meta/chat/conversations', () =>
     HttpResponse.json(paginatedEnvelopeFor<typeof listConversations>([])),
   ),

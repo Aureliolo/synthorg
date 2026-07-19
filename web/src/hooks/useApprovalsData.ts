@@ -41,9 +41,20 @@ export interface UseApprovalsDataReturn {
 }
 
 export function useApprovalsData(): UseApprovalsDataReturn {
-  const approvals = useApprovalsStore((s) => s.approvals)
+  const rawApprovals = useApprovalsStore((s) => s.approvals)
+  // Plan reviews live on their own surface (the Plan Review page), so the
+  // generic Approvals inbox excludes them from the list, counts, and batch
+  // selection. Filtered here, after the raw store read, so the reference stays
+  // stable across renders.
+  const approvals = useMemo(
+    () => rawApprovals.filter((a) => a.source !== 'plan_review'),
+    [rawApprovals],
+  )
   const selectedApproval = useApprovalsStore((s) => s.selectedApproval)
-  const total = useApprovalsStore((s) => s.total)
+  // The store's ``total`` counts every source; the generic inbox excludes plan
+  // reviews, so its total is the filtered row count (the full set is loaded via
+  // paginateAll, so this is exact, not a page estimate).
+  const total = approvals.length
   const loading = useApprovalsStore((s) => s.loading)
   const loadingDetail = useApprovalsStore((s) => s.loadingDetail)
   const error = useApprovalsStore((s) => s.error)

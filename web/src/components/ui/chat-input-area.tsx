@@ -1,8 +1,9 @@
 import { Send } from 'lucide-react'
-import { useCallback, type KeyboardEvent } from 'react'
+import { useCallback, useRef, type KeyboardEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
+import { useTextareaAutogrow } from '@/components/ui/use-textarea-autogrow'
 import { cn } from '@/lib/utils'
 
 export interface ChatInputAreaProps {
@@ -26,6 +27,8 @@ export interface ChatInputAreaProps {
 /**
  * Shared multiline send box for the meta conversational surfaces. Enter
  * sends; Shift+Enter inserts a newline so operators can compose paragraphs.
+ * Enter while an IME composition is active (confirming a CJK candidate, an
+ * AZERTY dead key, etc.) never sends: it only commits the candidate.
  */
 export function ChatInputArea({
   value,
@@ -38,19 +41,33 @@ export function ChatInputArea({
   rows = 2,
   className,
 }: ChatInputAreaProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  useTextareaAutogrow(textareaRef, value)
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      // ``isComposing`` guards IME candidate confirmation: a bare Enter that
+      // commits a composition must edit the field, never send the message.
+      // The Send button's own guards (non-empty, not disabled) apply to Enter
+      // too, so the two paths cannot diverge into a whitespace/ineligible send.
+      if (
+        e.key === 'Enter' &&
+        !e.shiftKey &&
+        !e.nativeEvent.isComposing &&
+        !disabled &&
+        !inputDisabled &&
+        value.trim()
+      ) {
         e.preventDefault()
         onSend()
       }
     },
-    [onSend],
+    [disabled, inputDisabled, onSend, value],
   )
   return (
     <div className={cn('flex items-end gap-2', className)}>
       <div className="flex-1">
         <InputField
+          ref={textareaRef}
           label={label}
           multiline
           rows={rows}
