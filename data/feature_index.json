@@ -958,6 +958,7 @@
         "group_chat_service",
         "conversational_actor",
         "operator_console",
+        "console_conversation_store",
         "custom_rules_service",
         "self_improvement_config",
         "evolution_outcome_store",
@@ -1087,6 +1088,22 @@
         "role_version_service",
         "team_service"
       ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/engine/output_style",
+      "ghost_wired_symbols": [
+        "rebuild_and_bind_output_style",
+        "OutputStyleSettingsSubscriber"
+      ],
+      "mcp_tool_names": [],
+      "name": "output_style",
+      "protocol_exports": [
+        "HouseStyleProvider"
+      ],
+      "settings_namespace": "output_style",
+      "state_slice_fields": []
     },
     {
       "controllers": [],
@@ -1414,6 +1431,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-19T17:38:48.371050Z",
+  "generated_at": "2026-07-19T20:06:22.260215Z",
   "schema_version": 1
 }
