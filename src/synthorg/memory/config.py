@@ -238,7 +238,7 @@ class CompanyMemoryConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset(
-        {"mem0", "composite", "inmemory"},
+        {"sqlvector", "composite", "inmemory"},
     )
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
@@ -257,7 +257,7 @@ class CompanyMemoryConfig(BaseModel):
     )
 
     backend: NotBlankStr = Field(
-        default="mem0",
+        default="sqlvector",
         description="Memory backend name",
     )
     level: MemoryLevel = Field(

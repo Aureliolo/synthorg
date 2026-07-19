@@ -5,11 +5,11 @@ from synthorg.memory.backends.composite import (
     CompositeBackendConfig,
 )
 from synthorg.memory.backends.inmemory import InMemoryBackend
-from synthorg.memory.backends.mem0 import Mem0MemoryBackend
+from synthorg.memory.backends.sqlvector import SqlVectorBackend
 
 __all__ = [
     "CompositeBackend",
     "CompositeBackendConfig",
     "InMemoryBackend",
-    "Mem0MemoryBackend",
+    "SqlVectorBackend",
 ]

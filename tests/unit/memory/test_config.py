@@ -227,7 +227,7 @@ class TestEmbedderOverrideConfig:
 class TestCompanyMemoryConfig:
     def test_defaults(self) -> None:
         c = CompanyMemoryConfig()
-        assert c.backend == "mem0"
+        assert c.backend == "sqlvector"
         # ``memory.default_level`` is registered with default ``persistent``;
         # the mirror validator surfaces that value through the Pydantic field.
         assert c.level is MemoryLevel.PERSISTENT
@@ -236,8 +236,8 @@ class TestCompanyMemoryConfig:
         assert isinstance(c.retrieval, MemoryRetrievalConfig)
 
     def test_valid_backend_accepted(self) -> None:
-        c = CompanyMemoryConfig(backend="mem0")
-        assert c.backend == "mem0"
+        c = CompanyMemoryConfig(backend="sqlvector")
+        assert c.backend == "sqlvector"
 
     def test_unknown_backend_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Unknown memory backend"):
@@ -255,7 +255,7 @@ class TestCompanyMemoryConfig:
 
     def test_custom_nested_config(self) -> None:
         c = CompanyMemoryConfig(
-            backend="mem0",
+            backend="sqlvector",
             level=MemoryLevel.PERSISTENT,
             storage=MemoryStorageConfig(data_dir="/custom"),
             options=MemoryOptionsConfig(retention_days=30),
@@ -265,7 +265,7 @@ class TestCompanyMemoryConfig:
 
     def test_json_roundtrip(self) -> None:
         c = CompanyMemoryConfig(
-            backend="mem0",
+            backend="sqlvector",
             level=MemoryLevel.PERSISTENT,
             options=MemoryOptionsConfig(retention_days=60),
         )

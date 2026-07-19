@@ -28,16 +28,16 @@ dependencies = [
     "lxml==6.1.1",
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.24.0",
     "mcp==1.28.1",
-    "mem0ai==2.0.12",
     "mmh3==5.2.1",
     "packaging==26.2",
+    "pgvector==0.5.0",
     "prometheus-client==0.25.0",
     "pydantic==2.13.4",
     "pyjwt[crypto]==2.13.0",
     "pyngrok==8.1.2",
     "pyyaml==6.0.3",
-    "qdrant-client==1.18.0",
     "referencing==0.37.0",
+    "sqlite-vec==0.1.9",
     "structlog==26.1.0",
     "rfc3161-client==1.0.7",
     "opentelemetry-api==1.40.0",
@@ -548,6 +548,10 @@ module = "sentence_transformers.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "sqlite_vec.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "jsonschema.*"
 ignore_missing_imports = true
 
@@ -569,10 +573,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "mcp.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "mem0.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

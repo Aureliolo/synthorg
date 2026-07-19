@@ -10,10 +10,15 @@ _r.register(
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="backend",
-        type=SettingType.STRING,
-        default="mem0",
-        description="Memory backend implementation",
+        type=SettingType.ENUM,
+        default="sqlvector",
+        description=(
+            "Memory backend implementation. 'sqlvector' is durable and"
+            " semantically searchable. 'inmemory' is DISCOURAGED: it"
+            " matches by substring and loses every memory on restart."
+        ),
         group="General",
+        enum_values=("sqlvector", "composite", "inmemory"),
         restart_required=True,
     )
 )

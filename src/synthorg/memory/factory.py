@@ -1,327 +1,228 @@
 """Factory for creating memory backends from configuration.
 
-Each company gets its own ``MemoryBackend`` instance.  The factory
-dispatches to concrete backend implementations based on
-``config.backend`` via :class:`MemoryBackendRegistry`.
+Each company gets its own ``MemoryBackend`` instance. The factory
+dispatches on ``config.backend`` via :class:`MemoryBackendRegistry`.
+
+Unlike a pure config factory, this one also takes the collaborators the
+durable backend cannot invent for itself: a
+:class:`MemoryVectorRepository` from the persistence layer and a
+:class:`TextEmbedder`. Boot wiring resolves both and passes them in, so
+the backend never reaches across the persistence boundary itself.
 """
 
-import builtins
-
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
-from synthorg.memory.backends.mem0.config import (
-    Mem0EmbedderConfig,
-)
+from synthorg.memory.backend_deps import MemoryBackendDeps
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.errors import MemoryConfigError
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.registry import MemoryBackendRegistry
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
-    MEMORY_BACKEND_CONFIG_INVALID,
     MEMORY_BACKEND_CREATED,
-    MEMORY_BACKEND_SYSTEM_ERROR,
     MEMORY_BACKEND_UNKNOWN,
 )
 from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 
+SQL_VECTOR_BACKEND = "sqlvector"
+IN_MEMORY_BACKEND = "inmemory"
+COMPOSITE_BACKEND = "composite"
 
-def _create_mem0_backend(
+
+def _create_sqlvector_backend(
     config: CompanyMemoryConfig,
     *,
-    embedder: Mem0EmbedderConfig | None,
+    deps: MemoryBackendDeps,
 ) -> MemoryBackend:
-    """Create a Mem0 memory backend from configuration.
+    """Create the durable SQL-backed memory backend.
 
     Args:
         config: Company-wide memory configuration.
-        embedder: Mem0-specific embedder configuration (required).
+        deps: Injected collaborators; ``repository`` is required.
 
     Returns:
-        A new, disconnected ``Mem0MemoryBackend`` instance.
+        A new, disconnected ``SqlVectorBackend``.
 
     Raises:
-        MemoryConfigError: If embedder is missing/invalid or
-            backend construction fails.
-        MemoryError: If the related operation fails.
-        RecursionError: If the related operation fails.
+        MemoryConfigError: If no repository was supplied.
     """
-    from synthorg.memory.backends.mem0 import Mem0MemoryBackend  # noqa: PLC0415
-    from synthorg.memory.backends.mem0.config import (  # noqa: PLC0415
-        build_config_from_company_config,
-    )
+    from synthorg.memory.backends.sqlvector import SqlVectorBackend  # noqa: PLC0415
 
-    if embedder is None:
+    if deps.repository is None:
         msg = (
-            "Mem0 backend requires an embedder configuration -- "
-            "pass a Mem0EmbedderConfig instance"
-        )
-        logger.warning(
-            MEMORY_BACKEND_CONFIG_INVALID,
-            backend="mem0",
-            reason="missing_embedder",
-            error=msg,
+            "The 'sqlvector' backend requires a MemoryVectorRepository; "
+            "boot wiring must resolve one from the persistence layer"
         )
         raise MemoryConfigError(msg)
-    if not isinstance(embedder, Mem0EmbedderConfig):
-        msg = (  # type: ignore[unreachable]
-            f"embedder must be a Mem0EmbedderConfig, got {type(embedder).__name__}"
-        )
-        logger.warning(
-            MEMORY_BACKEND_CONFIG_INVALID,
-            backend="mem0",
-            reason="invalid_embedder_type",
-            error=msg,
-            embedder_type=type(embedder).__name__,
-        )
-        raise MemoryConfigError(msg)
-
-    try:
-        mem0_config = build_config_from_company_config(
-            config,
-            embedder=embedder,
-        )
-    except (builtins.MemoryError, RecursionError) as exc:
-        logger.warning(
-            MEMORY_BACKEND_SYSTEM_ERROR,
-            operation="create_mem0_backend",
-            error=safe_error_description(exc),
-            error_type=type(exc).__name__,
-        )
-        raise
-    except Exception as exc:
-        reraise_critical(exc)
-        msg = f"Invalid Mem0 configuration: {safe_error_description(exc)}"
-        logger.warning(
-            MEMORY_BACKEND_CONFIG_INVALID,
-            backend="mem0",
-            reason="config_build_failed",
-            error=msg,
-            error_type=type(exc).__name__,
-        )
-        raise MemoryConfigError(msg) from exc
-    try:
-        backend = Mem0MemoryBackend(
-            mem0_config=mem0_config,
-            max_memories_per_agent=config.options.max_memories_per_agent,
-        )
-    except (builtins.MemoryError, RecursionError) as exc:
-        logger.warning(
-            MEMORY_BACKEND_SYSTEM_ERROR,
-            operation="create_mem0_backend",
-            error=safe_error_description(exc),
-            error_type=type(exc).__name__,
-        )
-        raise
-    except Exception as exc:
-        reraise_critical(exc)
-        msg = f"Failed to create Mem0 backend: {safe_error_description(exc)}"
-        logger.warning(
-            MEMORY_BACKEND_CONFIG_INVALID,
-            backend="mem0",
-            reason="backend_init_failed",
-            error=msg,
-            error_type=type(exc).__name__,
-        )
-        raise MemoryConfigError(msg) from exc
+    backend = SqlVectorBackend(
+        deps.repository,
+        embedder=deps.embedder,
+        max_memories_per_agent=config.options.max_memories_per_agent,
+        clock=deps.clock,
+    )
     logger.info(
         MEMORY_BACKEND_CREATED,
-        backend="mem0",
-        data_dir=mem0_config.data_dir,
+        backend=SQL_VECTOR_BACKEND,
+        dense_search=deps.embedder is not None,
     )
     return backend
 
 
-def _create_inmemory_backend(
+def _create_inmemory_entry(
     config: CompanyMemoryConfig,
+    *,
+    deps: MemoryBackendDeps,  # noqa: ARG001 -- registry signature parity; this backend needs none
 ) -> MemoryBackend:
-    """Create an in-memory (session-scoped) backend.
+    """Registry entry for the ephemeral backend.
+
+    Returns:
+        A new, disconnected ``InMemoryBackend``.
+    """
+    return _create_inmemory_backend(config)
+
+
+def _create_inmemory_backend(config: CompanyMemoryConfig) -> MemoryBackend:
+    """Create the ephemeral, keyword-only backend.
+
+    Retained as an explicit operator opt-in, never an automatic
+    fallback: it loses every memory on restart and matches by substring
+    rather than meaning, so silently selecting it would look like
+    working memory while quietly recalling the wrong things.
 
     Args:
         config: Company-wide memory configuration.
 
     Returns:
-        A new, disconnected ``InMemoryBackend`` instance.
+        A new, disconnected ``InMemoryBackend``.
     """
-    from synthorg.memory.backends.inmemory import (  # noqa: PLC0415
-        InMemoryBackend,
-    )
+    from synthorg.memory.backends.inmemory import InMemoryBackend  # noqa: PLC0415
 
     backend = InMemoryBackend(
         max_memories_per_agent=config.options.max_memories_per_agent,
     )
-    logger.info(MEMORY_BACKEND_CREATED, backend="inmemory")
+    logger.warning(
+        MEMORY_BACKEND_CREATED,
+        backend=IN_MEMORY_BACKEND,
+        durable=False,
+        note="ephemeral keyword-only memory; recall is lost on restart",
+    )
     return backend
 
 
 def _create_composite_backend(
     config: CompanyMemoryConfig,
     *,
-    embedder: Mem0EmbedderConfig | None,
+    deps: MemoryBackendDeps,
 ) -> MemoryBackend:
-    """Create a composite backend with namespace routing.
+    """Create a namespace-routing backend over leaf backends.
 
     Args:
-        config: Company-wide memory configuration (must have
-            ``composite`` set).
-        embedder: Embedder config, passed through to child mem0
-            backends.
+        config: Company-wide memory configuration with ``composite`` set.
+        deps: Injected collaborators, passed through to each child.
 
     Returns:
-        A new, disconnected ``CompositeBackend`` instance.
+        A new, disconnected ``CompositeBackend``.
 
     Raises:
-        MemoryConfigError: If composite config is missing or
-            child backends cannot be created.
+        MemoryConfigError: If the composite config is missing or a child
+            names an unknown backend.
     """
-    from synthorg.memory.backends.composite import (  # noqa: PLC0415
-        CompositeBackend,
-    )
+    from synthorg.memory.backends.composite import CompositeBackend  # noqa: PLC0415
 
     if config.composite is None:  # pragma: no cover -- guarded by validator
         msg = "composite config is required when backend is 'composite'"
         raise MemoryConfigError(msg)
     composite_cfg = config.composite
-    # Collect unique backend names from routes + default.
     names: set[str] = set(composite_cfg.routes.values())
     names.add(composite_cfg.default)
-    # Create each leaf backend once via the leaf registry (composite
-    # children may not themselves be composite).
     children: dict[str, MemoryBackend] = {}
     for name in sorted(names):
         try:
-            children[name] = _LEAF_REGISTRY.build(name, config, embedder=embedder)
+            children[name] = _LEAF_REGISTRY.build(name, config, deps=deps)
         except StrategyFactoryNotFoundError as exc:
-            msg = f"Composite child '{name}' is not a recognized backend"
+            msg = f"Composite child {name!r} is not a recognised backend"
             logger.warning(
                 MEMORY_BACKEND_UNKNOWN,
                 backend=name,
+                error=msg,
                 error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise MemoryConfigError(msg) from exc
     backend = CompositeBackend(
         children=children,
-        config=composite_cfg,
+        routes=dict(composite_cfg.routes),
+        default=composite_cfg.default,
     )
     logger.info(
         MEMORY_BACKEND_CREATED,
-        backend="composite",
-        children=sorted(children.keys()),
+        backend=COMPOSITE_BACKEND,
+        children=sorted(children),
     )
     return backend
 
 
-def _build_mem0_entry(
-    config: CompanyMemoryConfig,
-    *,
-    embedder: Mem0EmbedderConfig | None,
-) -> MemoryBackend:
-    """Registry entry: build the mem0 backend (requires an embedder).
-
-    Returns:
-        A disconnected ``Mem0MemoryBackend``.
-    """
-    return _create_mem0_backend(config, embedder=embedder)
-
-
-def _build_inmemory_entry(
-    config: CompanyMemoryConfig,
-    *,
-    embedder: Mem0EmbedderConfig | None,  # noqa: ARG001
-) -> MemoryBackend:
-    """Registry entry: build the in-memory backend (embedder ignored).
-
-    Returns:
-        A disconnected ``InMemoryBackend``.
-    """
-    return _create_inmemory_backend(config)
-
-
-def build_in_memory_backend() -> MemoryBackend:
-    """Build a disconnected default in-memory memory backend.
-
-    Public seam so callers outside the memory package (e.g. the API
-    lifecycle wiring building an ephemeral backend for the training
-    service) construct one through the factory instead of reaching into
-    ``memory.backends.inmemory`` directly. Uses the default options; pass
-    a config through :func:`create_memory_backend` when operator-tuned
-    limits are needed.
-
-    Returns:
-        A new, disconnected default ``InMemoryBackend``.
-    """
-    return _create_inmemory_backend(CompanyMemoryConfig())
-
-
-def _build_composite_entry(
-    config: CompanyMemoryConfig,
-    *,
-    embedder: Mem0EmbedderConfig | None,
-) -> MemoryBackend:
-    """Registry entry: build the namespace-routing composite backend.
-
-    Returns:
-        A disconnected ``CompositeBackend`` wrapping the configured children.
-    """
-    return _create_composite_backend(config, embedder=embedder)
-
-
-# Leaf registry (mem0, inmemory) used by the composite child loop -- a
-# composite child must itself be a non-composite backend to keep the
-# wiring acyclic.
+# A composite child must itself be non-composite, keeping the wiring
+# acyclic by construction rather than by a runtime depth check.
 _LEAF_REGISTRY: MemoryBackendRegistry = MemoryBackendRegistry(
     {
-        "mem0": _build_mem0_entry,
-        "inmemory": _build_inmemory_entry,
+        SQL_VECTOR_BACKEND: _create_sqlvector_backend,
+        IN_MEMORY_BACKEND: _create_inmemory_entry,
     },
 )
 
-# Top-level registry used by ``create_memory_backend``.
 _REGISTRY: MemoryBackendRegistry = MemoryBackendRegistry(
     {
-        "mem0": _build_mem0_entry,
-        "inmemory": _build_inmemory_entry,
-        "composite": _build_composite_entry,
+        SQL_VECTOR_BACKEND: _create_sqlvector_backend,
+        IN_MEMORY_BACKEND: _create_inmemory_entry,
+        COMPOSITE_BACKEND: _create_composite_backend,
     },
 )
 
 
 def default_registry() -> MemoryBackendRegistry:
-    """Return the module-level registry containing the built-in backends.
+    """Return the module-level registry of built-in backends.
 
     Returns:
-        Result of type ``MemoryBackendRegistry``.
+        The registry.
     """
     return _REGISTRY
+
+
+def build_in_memory_backend() -> MemoryBackend:
+    """Build the ephemeral backend directly, bypassing configuration.
+
+    Exists for tests and for the explicitly-degraded operator path. It is
+    never the automatic answer to a missing embedder: that case fails
+    loud instead, because a silent fallback to keyword-only memory is
+    exactly how a dead memory layer went unnoticed before.
+
+    Returns:
+        A new, disconnected ``InMemoryBackend``.
+    """
+    return _create_inmemory_backend(CompanyMemoryConfig())
 
 
 def create_memory_backend(
     config: CompanyMemoryConfig,
     *,
-    embedder: Mem0EmbedderConfig | None = None,
+    deps: MemoryBackendDeps | None = None,
 ) -> MemoryBackend:
-    """Create a memory backend from configuration.
+    """Create the memory backend named by ``config.backend``.
 
     Args:
-        config: Memory configuration (includes backend selection and
-            backend-specific settings).
-        embedder: Backend-specific embedder configuration.  Required
-            for the ``"mem0"`` backend (must be a
-            ``Mem0EmbedderConfig`` instance).
+        config: Memory configuration, including backend selection.
+        deps: Collaborators the chosen backend needs.
 
     Returns:
-        A new, disconnected backend instance.  The caller must call
-        ``connect()`` before use.
+        A new, disconnected backend. The caller must ``connect()``.
 
     Raises:
-        MemoryConfigError: If the backend is not recognized or
-            required configuration is missing.
+        MemoryConfigError: If the backend name is unknown or the chosen
+            backend is missing a required collaborator.
     """
     try:
-        return _REGISTRY.build(config.backend, config, embedder=embedder)
+        return _REGISTRY.build(config.backend, config, deps=deps or MemoryBackendDeps())
     except StrategyFactoryNotFoundError as exc:
         msg = f"Unknown memory backend: {config.backend!r}"
         logger.warning(
@@ -331,3 +232,14 @@ def create_memory_backend(
             error=safe_error_description(exc),
         )
         raise MemoryConfigError(msg) from exc
+
+
+__all__ = [
+    "COMPOSITE_BACKEND",
+    "IN_MEMORY_BACKEND",
+    "SQL_VECTOR_BACKEND",
+    "MemoryBackendDeps",
+    "build_in_memory_backend",
+    "create_memory_backend",
+    "default_registry",
+]

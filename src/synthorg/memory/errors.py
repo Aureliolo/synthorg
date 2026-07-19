@@ -32,6 +32,26 @@ class MemoryStoreError(MemoryError):
     """Raised when a store operation fails."""
 
 
+class MemoryEmbeddingError(MemoryError):
+    """Raised when a text-embedding call fails.
+
+    Distinct from :class:`MemoryEmbedderUnavailableError`, which means the
+    embedder could not be constructed at all. This one means a wired,
+    constructed embedder failed on a specific batch, so recall degrades
+    for that call rather than the backend being unusable.
+    """
+
+
+class MemoryDenseSearchUnavailableError(MemoryError):
+    """Raised when dense retrieval is required but the index is absent.
+
+    SQLite loads ``sqlite-vec`` as a runtime extension. When it cannot be
+    loaded, semantic recall is impossible; failing loudly here keeps that
+    visible instead of silently degrading to lexical-only recall, which
+    reads as "memory works" while quietly returning the wrong things.
+    """
+
+
 class MemoryRetrievalError(MemoryError):
     """Raised when a retrieve or search operation fails."""
 

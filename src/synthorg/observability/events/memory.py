@@ -37,6 +37,18 @@ MEMORY_ENTRY_FETCHED: Final[str] = "memory.entry.fetched"
 MEMORY_ENTRY_FETCH_FAILED: Final[str] = "memory.entry.fetch_failed"
 MEMORY_ENTRY_COUNTED: Final[str] = "memory.entry.counted"
 MEMORY_ENTRY_COUNT_FAILED: Final[str] = "memory.entry.count_failed"
+
+MEMORY_DENSE_INDEX_READY: Final[str] = "memory.dense_index.ready"
+"""Emitted at INFO once the dense vector index is loaded and usable."""
+
+MEMORY_DENSE_INDEX_UNAVAILABLE: Final[str] = "memory.dense_index.unavailable"
+"""Emitted at WARNING when the dense vector index cannot be prepared.
+
+Semantic recall is impossible in this state. The repository degrades
+rather than raising so persistence stays up for every non-memory
+feature sharing the connection; the memory backend is what turns this
+into a loud failure at its own boundary.
+"""
 MEMORY_RRF_PIPELINE_COMPLETED: Final[str] = "memory.rrf.pipeline_completed"
 """Emitted at DEBUG after the RRF hybrid pipeline fuses + filters results.
 
