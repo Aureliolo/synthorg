@@ -483,6 +483,30 @@ class CatalogEntry(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _validate_credential_binding_is_stdio(self) -> Self:
+        """Confine credential injection to the stdio transport.
+
+        A materialised ``MCPServerConfig`` only injects
+        ``credential_env_map`` on the stdio connect path, so an entry that
+        pairs a credential map with ``streamable_http`` would be browsable but
+        never installable (the config it produces is rejected). Reject that
+        combination here so the catalog cannot advertise a dead entry.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If a credential map is declared on a non-stdio entry.
+        """
+        if self.transport != "stdio" and self.credential_env_map:
+            msg = (
+                f"Catalog entry {self.id!r}: credential_env_map is only "
+                f"supported on the stdio transport, not {self.transport!r}"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _validate_stdio_is_version_pinned(self) -> Self:
         """Require an exact pinned ``npm_version`` on every launchable stdio entry.
 

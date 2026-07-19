@@ -15,6 +15,7 @@ from synthorg.observability.events.mcp import (
 )
 from synthorg.tools.mcp.client import MCPClient
 from synthorg.tools.mcp.config import MCPServerConfig
+from synthorg.tools.mcp.errors import MCPConnectionError
 
 pytestmark = pytest.mark.unit
 
@@ -89,6 +90,22 @@ async def test_bound_connection_with_empty_map_warns() -> None:
     events = [e for e in cap if e.get("event") == MCP_CREDENTIAL_SOURCE_MISSING]
     assert events
     assert events[0].get("log_level") == "warning"
+
+
+async def test_spawn_boundary_rescreens_mutated_target() -> None:
+    """A post-construction in-place map edit fails closed at the spawn boundary.
+
+    ``frozen=True`` blocks field reassignment but not nested mutation of the
+    dict, so the spawn boundary re-screens each target before injection.
+    """
+    config = _config(
+        connection_name="gh",
+        credential_env_map={"token": "GITHUB_PERSONAL_ACCESS_TOKEN"},
+    )
+    config.credential_env_map["token"] = "LD_PRELOAD"
+    client = MCPClient(config, credential_source=_StubCreds({"token": "secret123"}))
+    with pytest.raises(MCPConnectionError):
+        await client._resolve_stdio_launch()
 
 
 async def test_partial_injection_warns() -> None:

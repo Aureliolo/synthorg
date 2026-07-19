@@ -226,6 +226,16 @@ class TestCatalogEntryValidation:
         )
         assert entry.credential_env_map["token"] == "GITHUB_PERSONAL_ACCESS_TOKEN"
 
+    def test_credential_map_rejected_on_streamable_http(self) -> None:
+        """A credential map on a non-stdio entry would be uninstallable."""
+        with pytest.raises(ValidationError, match="only supported on the stdio"):
+            CatalogEntry(
+                id="x",
+                name="X",
+                transport="streamable_http",
+                credential_env_map={"token": "GITHUB_PERSONAL_ACCESS_TOKEN"},
+            )
+
 
 class FakeConnectionCatalog:
     """Minimal in-memory catalog used by install tests."""

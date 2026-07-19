@@ -17,6 +17,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared._httpx_utils import create_mcp_http_client
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.env_var_safety import validate_credential_env_var_name
 from synthorg.core.resilience.general_retry import GeneralRetryHandler
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -665,12 +666,46 @@ class MCPClient:
         creds = await self._credential_source.get_credentials(name)
         injected = 0
         for field, env_var in env_map.items():
+            self._screen_injection_target(env_var)
             value = creds.get(field)
             if value:
                 env[env_var] = value
                 injected += 1
         self._log_injection(name, injected, len(env_map))
         return args, (env or None)
+
+    def _screen_injection_target(self, env_var: str) -> None:
+        """Re-screen a credential target env-var name at the spawn boundary.
+
+        ``credential_env_map`` is screened at config construction, but the
+        model's ``frozen=True`` only blocks field reassignment: the nested dict
+        stays mutable in place, so a post-validation edit could redirect a
+        secret at a loader/process-control variable (``LD_PRELOAD`` /
+        ``NODE_OPTIONS`` / ``PATH``). Revalidate here, immediately before the
+        value is injected into the child environment, and fail closed rather
+        than spawn with a hijacked target.
+
+        Raises:
+            MCPConnectionError: If the target env-var name is unsafe.
+        """
+        try:
+            validate_credential_env_var_name(env_var)
+        except ValueError as exc:
+            logger.warning(
+                MCP_CLIENT_CONNECTION_FAILED,
+                server=self._config.name,
+                reason="credential injection target rejected at spawn",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = (
+                f"Server {self._config.name!r}: credential injection target "
+                f"env-var name is unsafe"
+            )
+            raise MCPConnectionError(
+                msg,
+                context={"server": self._config.name},
+            ) from exc
 
     def _log_injection(self, connection: str, injected: int, expected: int) -> None:
         """Log credential injection, escalating a short injection to WARNING.

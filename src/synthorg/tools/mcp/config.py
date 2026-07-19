@@ -18,6 +18,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_CONFIG_VALIDATION_FAILED,
 )
+from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 
@@ -229,7 +230,9 @@ class MCPServerConfig(BaseModel):
                 logger.warning(
                     MCP_CONFIG_VALIDATION_FAILED,
                     server=self.name,
-                    reason=str(exc),
+                    reason="credential_env_map target env-var name rejected",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
         return self
