@@ -203,6 +203,29 @@ class TestCatalogEntryValidation:
         )
         assert entry.required_dialect == "postgres"
 
+    @pytest.mark.parametrize("env_var", ["LD_PRELOAD", "NODE_OPTIONS", "PATH", "a b"])
+    def test_dangerous_credential_env_var_name_rejected(self, env_var: str) -> None:
+        with pytest.raises(ValidationError):
+            CatalogEntry(
+                id="x",
+                name="X",
+                npm_package="@example/server-x",
+                npm_version="1.0.0",
+                transport="stdio",
+                credential_env_map={"token": env_var},
+            )
+
+    def test_safe_credential_env_var_name_accepted(self) -> None:
+        entry = CatalogEntry(
+            id="x",
+            name="X",
+            npm_package="@example/server-x",
+            npm_version="1.0.0",
+            transport="stdio",
+            credential_env_map={"token": "GITHUB_PERSONAL_ACCESS_TOKEN"},
+        )
+        assert entry.credential_env_map["token"] == "GITHUB_PERSONAL_ACCESS_TOKEN"
+
 
 class FakeConnectionCatalog:
     """Minimal in-memory catalog used by install tests."""

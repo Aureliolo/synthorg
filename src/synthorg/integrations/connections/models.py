@@ -20,6 +20,7 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.core.env_var_safety import validate_credential_env_var_name
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.core.types import NotBlankStr
 
@@ -459,6 +460,26 @@ class CatalogEntry(BaseModel):
                 f"{self.required_dialect!r} is not one of {sorted(VALID_DIALECTS)}"
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_credential_env_var_names(self) -> Self:
+        """Screen credential target env-var names for injection safety.
+
+        The map's values are the env-var names a connection secret is injected
+        under at spawn, so a hostile or careless entry could aim a credential at
+        a loader/process-control variable (``LD_PRELOAD``, ``NODE_OPTIONS``,
+        ``PATH``) and steer the child process. Reject those and any malformed
+        name at construction.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If a target env-var name is malformed or dangerous.
+        """
+        for env_var in self.credential_env_map.values():
+            validate_credential_env_var_name(env_var)
         return self
 
     @model_validator(mode="after")

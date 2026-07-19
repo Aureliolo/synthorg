@@ -173,6 +173,18 @@ class TestMCPServerConfigDefaults:
                 credential_env_map={"token": "TOKEN"},
             )
 
+    @pytest.mark.parametrize("env_var", ["LD_PRELOAD", "NODE_OPTIONS", "PATH", "a=b"])
+    def test_dangerous_credential_env_var_rejected(self, env_var: str) -> None:
+        """A credential must not be injected under a process-control env var."""
+        with pytest.raises(ValidationError):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="echo",
+                connection_name="bound",
+                credential_env_map={"token": env_var},
+            )
+
     def test_frozen(self) -> None:
         cfg = MCPServerConfig(
             name="s1",

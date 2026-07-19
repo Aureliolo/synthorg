@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.env_var_safety import validate_credential_env_var_name
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
@@ -202,6 +203,35 @@ class MCPServerConfig(BaseModel):
                 reason=msg,
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_credential_env_var_names(self) -> Self:
+        """Screen credential target env-var names at the injection boundary.
+
+        ``_resolve_stdio_launch`` injects each credential value into
+        ``env[<name>]`` for the spawned child, so a hostile or careless
+        ``credential_env_map`` value could aim a secret at a loader/process
+        control variable (``LD_PRELOAD``, ``NODE_OPTIONS``, ``PATH``) and steer
+        the child. This screens the config regardless of whether it came from a
+        catalog install or a hand-authored YAML block.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If a target env-var name is malformed or dangerous.
+        """
+        for env_var in self.credential_env_map.values():
+            try:
+                validate_credential_env_var_name(env_var)
+            except ValueError as exc:
+                logger.warning(
+                    MCP_CONFIG_VALIDATION_FAILED,
+                    server=self.name,
+                    reason=str(exc),
+                )
+                raise
         return self
 
     @model_validator(mode="after")
