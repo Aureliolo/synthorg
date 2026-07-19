@@ -499,9 +499,11 @@ class TestFeatureWiringProposerDegradation:
         proposer = AsyncMock(side_effect=ServiceUnavailableError("proposer boom"))
         monkeypatch.setattr(feature_wiring, "wire_chief_of_staff_proposer", proposer)
         after_group = AsyncMock()
-        after_actor = AsyncMock()
+        after_write_path = AsyncMock()
         monkeypatch.setattr(feature_wiring, "wire_group_chat_service", after_group)
-        monkeypatch.setattr(feature_wiring, "wire_conversational_actor", after_actor)
+        monkeypatch.setattr(
+            feature_wiring, "wire_conversational_write_path", after_write_path
+        )
 
         app_state = _make_state()
         with suppress_type_checks():
@@ -514,9 +516,10 @@ class TestFeatureWiringProposerDegradation:
             )
 
         # The wirers sequenced after the proposer still ran: the raise was
-        # contained, boot did not abort.
+        # contained, boot did not abort. The conversational write-path wirer
+        # (direct-MCP actor + operator console) is the last of them.
         after_group.assert_awaited_once()
-        after_actor.assert_awaited_once()
+        after_write_path.assert_awaited_once()
 
 
 class _NoFineTuneBackend(FakePersistenceBackend):
