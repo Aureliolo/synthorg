@@ -21,6 +21,19 @@ MEMORY_BACKEND_UNKNOWN: Final[str] = "memory.backend.unknown"
 MEMORY_BACKEND_CONFIG_INVALID: Final[str] = "memory.backend.config_invalid"
 MEMORY_BACKEND_NOT_CONNECTED: Final[str] = "memory.backend.not_connected"
 MEMORY_BACKEND_AGENT_ID_REJECTED: Final[str] = "memory.backend.agent_id_rejected"
+MEMORY_BACKEND_WIRED: Final[str] = "memory.backend.wired"
+"""Emitted at INFO once the boot path publishes a usable backend."""
+
+MEMORY_BACKEND_WIRE_SKIPPED: Final[str] = "memory.backend.wire_skipped"
+"""Emitted at WARNING when boot deliberately wires no memory backend.
+
+Distinct from a construction failure: this is the expected shape when a
+prerequisite (persistence, an embedder) is absent, and it is the signal
+an operator alerts on to learn that agent memory is off.
+"""
+
+MEMORY_BACKEND_WIRE_FAILED: Final[str] = "memory.backend.wire_failed"
+"""Emitted at ERROR when the backend could not be built or connected."""
 MEMORY_BACKEND_SYSTEM_ERROR: Final[str] = "memory.backend.system_error"
 
 # ── Entry operations ──────────────────────────────────────────────
@@ -40,6 +53,16 @@ MEMORY_ENTRY_COUNT_FAILED: Final[str] = "memory.entry.count_failed"
 
 MEMORY_EMBEDDING_FAILED: Final[str] = "memory.embedding.failed"
 """Emitted at WARNING when an embedding call fails for a batch."""
+
+MEMORY_EMBEDDING_RETRIED: Final[str] = "memory.embedding.retried"
+"""Emitted when a transient embedding failure is retried with backoff."""
+
+MEMORY_EMBEDDING_COST_RECORD_FAILED: Final[str] = "memory.embedding.cost_record_failed"
+"""Emitted at WARNING when a batch's spend could not be attributed.
+
+The embedding itself succeeded; what is lost is the accounting, so the
+call continues and the gap is reported rather than costing recall.
+"""
 
 MEMORY_DENSE_INDEX_READY: Final[str] = "memory.dense_index.ready"
 """Emitted at INFO once the dense vector index is loaded and usable."""
@@ -129,6 +152,15 @@ MEMORY_SHARED_RETRACT_FAILED: Final[str] = "memory.shared.retract_failed"
 
 MEMORY_MODEL_INVALID: Final[str] = "memory.model.invalid"
 
+MEMORY_CONTENT_REDACTED: Final[str] = "memory.content.redacted"
+"""Emitted at WARNING when candidate memory text carried a secret.
+
+Carries the finding names only, never the matched text. Worth WARNING
+rather than INFO: memory is re-injected into later prompts, so a
+credential reaching this point means one leaked into a tool result or an
+agent's own write and the source is worth chasing.
+"""
+
 # ── Retrieval pipeline ──────────────────────────────────────────
 
 MEMORY_RETRIEVAL_START: Final[str] = "memory.retrieval.start"
@@ -156,6 +188,16 @@ MEMORY_FILTER_APPLIED: Final[str] = "memory.filter.applied"
 MEMORY_FILTER_STORE_MISSING_TAG: Final[str] = "memory.filter.store_missing_tag"
 
 # ── Embedding selection ──────────────────────────────────────────
+
+MEMORY_EMBEDDER_RESOLVED: Final[str] = "memory.embedder.resolved"
+"""Emitted at INFO with the provider, model and width boot settled on."""
+
+MEMORY_EMBEDDER_UNRESOLVED: Final[str] = "memory.embedder.unresolved"
+"""Emitted at ERROR when no embedding model could be resolved at boot.
+
+Semantic memory cannot start without one, so this is the root cause an
+operator needs when the dashboard reports memory off.
+"""
 
 MEMORY_EMBEDDER_AUTO_SELECTED: Final[str] = "memory.embedder.auto_selected"
 MEMORY_EMBEDDER_AUTO_SELECT_FAILED: Final[str] = "memory.embedder.auto_select_failed"

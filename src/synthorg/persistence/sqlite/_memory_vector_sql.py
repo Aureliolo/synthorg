@@ -98,6 +98,13 @@ def build_filter_clause(spec: MemoryVectorSearchSpec) -> tuple[str, list[object]
             "EXISTS (SELECT 1 FROM json_each(e.tags) WHERE json_each.value = ?)"
         )
         params.append(tag)
+    if spec.excluded_tags:
+        placeholders = ", ".join("?" for _ in spec.excluded_tags)
+        clauses.append(
+            "NOT EXISTS (SELECT 1 FROM json_each(e.tags) "  # noqa: S608 -- placeholders are count-derived
+            f"WHERE json_each.value IN ({placeholders}))"
+        )
+        params.extend(spec.excluded_tags)
     if spec.since is not None:
         clauses.append("e.created_at >= ?")
         params.append(format_iso_utc(spec.since))

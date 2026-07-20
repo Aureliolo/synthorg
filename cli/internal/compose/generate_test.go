@@ -411,8 +411,11 @@ func TestGenerateWithSandboxAndPostgres(t *testing.T) {
 	// Backend keeps the sandbox wiring regardless of persistence backend.
 	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock")
 	assertContains(t, yaml, `SYNTHORG_SANDBOX_IMAGE: "ghcr.io/aureliolo/synthorg-sandbox:latest"`)
-	// Postgres service is still generated alongside the sandbox wiring.
-	assertContains(t, yaml, "dhi.io/pgvector:"+config.DefaultPostgresImageTag)
+	// Postgres service is still generated alongside the sandbox wiring,
+	// digest-pinned: the pin is a defence-in-depth control independent of
+	// the pre-flight cosign pass, and a stale lookup key silently drops it
+	// while leaving the repo:tag reference looking correct.
+	assertContains(t, yaml, "dhi.io/pgvector:"+config.DefaultPostgresImageTag+"@"+config.DefaultPostgresImageDigest)
 	assertContains(t, yaml, "SYNTHORG_DATABASE_URL")
 	// SQLite path must not appear when postgres is active.
 	if strings.Contains(yaml, "SYNTHORG_DB_PATH") {

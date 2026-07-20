@@ -140,9 +140,10 @@ async def _wire(
             error=safe_error_description(exc),
         )
 
-    # ``wire_org_memory_backend`` runs earlier in ``_wire_features``, so the
-    # org-memory backend is published by now; thread it in so an offboarding
-    # snapshot persists the departing agent's facts instead of dropping them.
+    # ``wire_org_memory_backend`` runs with the memory backend, earlier than
+    # this hook, so the org-memory backend is published by now; thread it in
+    # so an offboarding snapshot persists the departing agent's facts
+    # instead of dropping them.
     offboarding = OffboardingService(
         registry=registry,
         org_memory_backend=org_memory_backend_of(app_state),

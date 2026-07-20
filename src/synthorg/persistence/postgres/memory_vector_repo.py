@@ -341,17 +341,24 @@ class PostgresMemoryVectorRepository:
         where, params = sql.build_filter_clause(spec)
         try:
             async with self._pool.connection() as conn:
-                rows = await self._fetch(
-                    conn, sql.lexical_postings(where), (terms, *params)
-                )
-                if not rows:
-                    return ()
-                stats_rows = await self._fetch(
-                    conn, sql.corpus_stats(where), tuple(params)
-                )
-                frequency_rows = await self._fetch(
-                    conn, sql.document_frequency(where), (terms, *params)
-                )
+                # BM25 combines postings, corpus size and document
+                # frequencies. Read under one REPEATABLE READ snapshot so
+                # a concurrent write cannot shift the corpus statistics
+                # between the three queries and yield a score computed
+                # from an inconsistent corpus.
+                await conn.set_isolation_level(psycopg.IsolationLevel.REPEATABLE_READ)
+                async with conn.transaction():
+                    rows = await self._fetch(
+                        conn, sql.lexical_postings(where), (terms, *params)
+                    )
+                    if not rows:
+                        return ()
+                    stats_rows = await self._fetch(
+                        conn, sql.corpus_stats(where), tuple(params)
+                    )
+                    frequency_rows = await self._fetch(
+                        conn, sql.document_frequency(where), (terms, *params)
+                    )
         except psycopg.Error as exc:
             self._fail("search_lexical", MEMORY_ENTRY_RETRIEVAL_FAILED, exc)
         stats = stats_rows[0] if stats_rows else None

@@ -15,6 +15,7 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.write_gate import (
+    SUPERSEDED_TAG,
     WriteDisposition,
     evaluate_write,
 )
@@ -27,6 +28,7 @@ def _entry(
     *,
     entry_id: str = "mem-1",
     category: MemoryCategory = MemoryCategory.SEMANTIC,
+    tags: tuple[str, ...] = (),
 ) -> MemoryEntry:
     """Build a stored memory entry."""
     return MemoryEntry(
@@ -34,7 +36,7 @@ def _entry(
         agent_id=NotBlankStr("agent-1"),
         category=category,
         content=NotBlankStr(content),
-        metadata=MemoryMetadata(),
+        metadata=MemoryMetadata(tags=tuple(NotBlankStr(t) for t in tags)),
         created_at=datetime(2026, 7, 20, tzinfo=UTC),
     )
 
@@ -109,10 +111,40 @@ class TestSupersession:
             _LESSON,
             existing=(stored,),
             supersedes=NotBlankStr("old"),
+            supersedes_exists=True,
         )
 
         assert decision.disposition is WriteDisposition.SUPERSEDE
         assert decision.supersedes == "old"
+
+    def test_supersession_does_not_require_the_prior_entry_to_be_similar(
+        self,
+    ) -> None:
+        """A correction is usually worded unlike the belief it replaces.
+
+        Requiring the named entry to appear among the similarity
+        candidates would reject exactly the writes that matter most.
+        """
+        decision = evaluate_write(
+            _LESSON,
+            existing=(_entry("something else entirely", entry_id="other"),),
+            supersedes=NotBlankStr("old"),
+            supersedes_exists=True,
+        )
+
+        assert decision.disposition is WriteDisposition.SUPERSEDE
+
+    def test_a_retired_entry_is_not_treated_as_a_duplicate(self) -> None:
+        """Re-asserting a belief the writer already replaced must land.
+
+        Dropping it as a duplicate would point the writer at an entry
+        recall never surfaces.
+        """
+        retired = _entry(_LESSON, entry_id="old", tags=(SUPERSEDED_TAG,))
+
+        decision = evaluate_write(_LESSON, existing=(retired,))
+
+        assert decision.disposition is WriteDisposition.ADD
 
     def test_supersession_wins_over_dedup(self) -> None:
         """An explicit replacement must land even if it reads as a duplicate."""
@@ -122,6 +154,7 @@ class TestSupersession:
             _LESSON,
             existing=(stored,),
             supersedes=NotBlankStr("old"),
+            supersedes_exists=True,
         )
 
         assert decision.disposition is WriteDisposition.SUPERSEDE
@@ -132,6 +165,7 @@ class TestSupersession:
             _LESSON,
             existing=(_entry("unrelated", entry_id="other"),),
             supersedes=NotBlankStr("missing"),
+            supersedes_exists=False,
         )
 
         assert decision.disposition is WriteDisposition.REJECT

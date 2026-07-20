@@ -11,7 +11,10 @@ import builtins
 from collections.abc import Awaitable
 
 import synthorg.memory.errors as memory_errors
-from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.critical_errors import (
+    reraise_critical,
+    reraise_critical_unwrapped,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.protocol import MemoryBackend
@@ -130,10 +133,9 @@ async def fetch_memories(
                 )
         # TaskGroup wraps task exceptions in ExceptionGroup;
         # unwrap system-level errors so callers see bare exceptions.
-        except* builtins.MemoryError as eg:
-            raise eg.exceptions[0] from eg
-        except* RecursionError as eg:
-            raise eg.exceptions[0] from eg
+        except BaseExceptionGroup as eg:
+            reraise_critical_unwrapped(eg)
+            raise
         return personal_task.result(), shared_task.result()
 
     personal = await personal_coro

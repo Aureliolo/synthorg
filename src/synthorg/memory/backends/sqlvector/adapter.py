@@ -15,6 +15,8 @@ ranks, so it sidesteps the score-normalisation problem that makes a
 weighted sum of cosine distance and BM25 unreliable.
 """
 
+import asyncio
+import math
 from typing import Final
 from uuid import uuid4
 
@@ -25,6 +27,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedder_port import TextEmbedder
 from synthorg.memory.errors import (
     MemoryConnectionError,
+    MemoryDenseSearchUnavailableError,
     MemoryEmbeddingError,
     MemoryRetrievalError,
     MemoryStoreError,
@@ -36,7 +39,8 @@ from synthorg.memory.models import (
     MemoryUpdateRequest,
 )
 from synthorg.memory.ranking_rrf import fuse_ranked_lists
-from synthorg.memory.vector_spec import MemoryVectorSearchSpec
+from synthorg.memory.vector_spec import MAX_SEARCH_LIMIT, MemoryVectorSearchSpec
+from synthorg.memory.write_gate import SUPERSEDED_TAG
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_CONNECTED,
@@ -62,16 +66,36 @@ _RECALL_MULTIPLIER: Final[int] = 3
 # it cannot be caught downstream because RRF min-max normalises the top
 # fused hit to exactly 1.0 regardless of quality.
 #
-# This floor is the coarse pre-filter for that: with normalised
-# embeddings, two orthogonal (entirely unrelated) vectors sit at L2
-# distance sqrt(2), which maps to 1/(1+sqrt(2)) ~= 0.414. Requiring more
-# than 0.5 therefore means "closer than orthogonal", which is a
-# geometric statement rather than a tuned magic number.
+# This floor is the coarse pre-filter for that: every vector is
+# L2-normalised by _unit_vector before it is stored or searched with, so
+# two orthogonal (entirely unrelated) vectors sit at L2 distance sqrt(2),
+# which maps to 1/(1+sqrt(2)) ~= 0.414. Requiring more than 0.5
+# therefore means "closer than orthogonal", which is a geometric
+# statement rather than a tuned magic number.
 #
 # It is deliberately NOT the calibrated relevance gate. Raw similarity is
 # a poor binary judge of whether a memory will actually help; that
 # decision belongs to the reranker stage.
 _ORTHOGONAL_SIMILARITY: Final[float] = 0.5
+
+
+def _unit_vector(embedding: tuple[float, ...]) -> tuple[float, ...]:
+    """Scale an embedding to unit length.
+
+    The relevance floor is a geometric statement about angles, and L2
+    distance only tracks the angle between two vectors once both have the
+    same magnitude. The embedder is operator-configurable and not every
+    model emits normalised output, so the invariant is established here
+    rather than assumed.
+
+    Returns:
+        The unit-length vector, or the input unchanged when it carries no
+        magnitude to normalise.
+    """
+    norm = math.sqrt(math.fsum(component * component for component in embedding))
+    if norm == 0.0:
+        return embedding
+    return tuple(component / norm for component in embedding)
 
 
 class SqlVectorBackend:
@@ -97,6 +121,7 @@ class SqlVectorBackend:
         self._max_memories_per_agent = max_memories_per_agent
         self._clock = clock or SystemClock()
         self._connected = False
+        self._cap_lock = asyncio.Lock()
 
     @property
     def is_connected(self) -> bool:
@@ -123,10 +148,28 @@ class SqlVectorBackend:
         The embedder's width is handed to the repository here: the
         backend is the first place that knows both the store and the
         embedder, so it is where the two are reconciled.
+
+        Raises:
+            MemoryDenseSearchUnavailableError: If an embedder is wired
+                but the store could not prepare its dense index. The
+                repository degrades rather than raising so persistence
+                stays up for every non-memory feature sharing the
+                connection; this is the boundary where that degradation
+                becomes a refusal, because lexical-only recall behind an
+                operator who configured semantic recall reads as working
+                memory while returning the wrong things.
         """
         await self._repository.ensure_ready(
             self._embedder.dimensions if self._embedder is not None else None
         )
+        if self._embedder is not None and not self._repository.supports_dense_search:
+            msg = (
+                "Semantic memory is configured but the dense index is "
+                "unavailable; recall would silently degrade to keyword "
+                "matching. See the memory.dense_index.* events for the "
+                "underlying cause."
+            )
+            raise MemoryDenseSearchUnavailableError(msg)
         self._connected = True
         logger.info(
             MEMORY_BACKEND_CONNECTED,
@@ -191,7 +234,7 @@ class SqlVectorBackend:
         if not vectors:
             msg = "Embedder returned no vector for a non-empty text"
             raise MemoryEmbeddingError(msg)
-        return vectors[0]
+        return _unit_vector(vectors[0])
 
     async def _query_embedding(self, text: str) -> tuple[float, ...] | None:
         """Embed a query, dropping a vector that carries no signal.
@@ -258,13 +301,21 @@ class SqlVectorBackend:
         return entry.id
 
     async def _enforce_cap(self, agent_id: NotBlankStr) -> None:
-        """Delete the oldest entries once an agent exceeds its cap."""
-        total = await self._repository.count(agent_id)
-        excess = total - self._max_memories_per_agent
-        if excess <= 0:
-            return
-        for memory_id in await self._repository.oldest_ids(agent_id, excess=excess):
-            await self._repository.delete(agent_id, memory_id)
+        """Delete the oldest entries once an agent exceeds its cap.
+
+        Count, select-oldest and delete are three round trips, so two
+        concurrent stores for one agent would each compute ``excess``
+        from the same pre-delete count and evict twice as much as either
+        needed. Serialising the whole sequence keeps it read-then-write
+        consistent.
+        """
+        async with self._cap_lock:
+            total = await self._repository.count(agent_id)
+            excess = total - self._max_memories_per_agent
+            if excess <= 0:
+                return
+            for memory_id in await self._repository.oldest_ids(agent_id, excess=excess):
+                await self._repository.delete(agent_id, memory_id)
 
     def _spec(
         self,
@@ -287,6 +338,9 @@ class SqlVectorBackend:
             namespaces=query.namespaces,
             categories=query.categories,
             tags=query.tags,
+            excluded_tags=(
+                () if query.include_superseded else (NotBlankStr(SUPERSEDED_TAG),)
+            ),
             limit=limit,
             since=query.since,
             until=query.until,
@@ -338,7 +392,12 @@ class SqlVectorBackend:
         Returns:
             Fused entries, best first, filtered by ``min_relevance``.
         """
-        recall_limit = query.limit * _RECALL_MULTIPLIER
+        # A large max_memories setting multiplied by the over-fetch
+        # width can exceed what the spec accepts, and that ValidationError
+        # would surface as "memory recalled nothing" rather than as a
+        # configuration error. Clamping keeps a legal settings
+        # combination retrievable, just with a narrower over-fetch.
+        recall_limit = min(query.limit * _RECALL_MULTIPLIER, MAX_SEARCH_LIMIT)
         embedding = await self._query_embedding(query.text) if query.text else None
         spec = self._spec(agent_id, query, embedding=embedding, limit=recall_limit)
         dense = self._drop_unrelated(await self._repository.search_dense(spec))

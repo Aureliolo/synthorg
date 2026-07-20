@@ -1,18 +1,23 @@
-"""The self-editing memory tools must reach a real agent's registry.
+"""The self-editing memory tools must be bound per agent, never shared.
 
-They were built and wired to nothing: six tool classes with a handler
-behind them and no call site that registered them, so an agent running
-under the self-editing strategy had no way to write its own memory.
+They mutate an agent's own memory, so the identity they carry decides
+whose memory they write. Building them into the boot-time registry that
+every agent shares would give the whole company one memory bucket: one
+agent could read, overwrite and evict another's memories, and the
+ownership check would pass because the id really is the one the tool
+holds.
 """
 
 import pytest
 
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.inmemory import InMemoryBackend
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.memory.self_editing import SelfEditingMemoryStrategy
 from synthorg.memory.self_editing_models import SelfEditingMemoryConfig
-from synthorg.tools.factory import _build_self_editing_memory_tools
+from synthorg.memory.tools import registry_with_memory_tools
+from synthorg.tools.registry import ToolRegistry
 
 pytestmark = pytest.mark.unit
 
@@ -34,41 +39,54 @@ def _self_editing() -> SelfEditingMemoryStrategy:
     )
 
 
-class TestSelfEditingToolRegistration:
-    def test_all_six_tools_are_built(self) -> None:
-        tools = _build_self_editing_memory_tools(
-            strategy=_self_editing(),
-            agent_id="agent-1",
-        )
+def _augment(
+    strategy: object,
+    agent_id: str = "agent-1",
+) -> ToolRegistry:
+    """Run the per-agent augmentation over an empty base registry."""
+    return registry_with_memory_tools(
+        ToolRegistry([]),
+        strategy,  # type: ignore[arg-type]  # the None / wrong-type cases are the point
+        NotBlankStr(agent_id),
+    )
 
-        assert {t.name for t in tools} == _EXPECTED
+
+class TestSelfEditingToolRegistration:
+    def test_all_six_tools_are_bound_for_the_agent(self) -> None:
+        registry = _augment(_self_editing())
+
+        assert {t.name for t in registry.all_tools()} == _EXPECTED
+
+    def test_each_agent_gets_its_own_bound_tools(self) -> None:
+        strategy = _self_editing()
+
+        first = _augment(strategy, "agent-1")
+        second = _augment(strategy, "agent-2")
+
+        assert not set(first.all_tools()) & set(second.all_tools())
 
     def test_context_strategy_registers_none(self) -> None:
         """Their handler lives on the self-editing strategy alone."""
-        tools = _build_self_editing_memory_tools(
-            strategy=ContextInjectionStrategy(
+        registry = _augment(
+            ContextInjectionStrategy(
                 backend=InMemoryBackend(),
                 config=MemoryRetrievalConfig(),
             ),
-            agent_id="agent-1",
         )
 
-        assert tools == ()
+        assert registry.all_tools() == ()
 
     def test_unwired_strategy_registers_none(self) -> None:
-        tools = _build_self_editing_memory_tools(strategy=None, agent_id="agent-1")
-
-        assert tools == ()
+        assert _augment(None).all_tools() == ()
 
     def test_write_tool_exposes_the_supersedes_field(self) -> None:
         """Without it the agent cannot declare a replacement, and
         supersession is only ever acted on when declared."""
-        tools = _build_self_editing_memory_tools(
-            strategy=_self_editing(),
-            agent_id="agent-1",
-        )
+        registry = _augment(_self_editing())
 
-        write = next(t for t in tools if t.name == "archival_memory_write")
+        write = next(
+            t for t in registry.all_tools() if t.name == "archival_memory_write"
+        )
         schema = write.parameters_schema
 
         assert schema is not None

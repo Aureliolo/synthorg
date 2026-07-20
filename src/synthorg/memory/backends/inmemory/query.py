@@ -8,6 +8,7 @@ from datetime import datetime
 
 from synthorg.memory.bm25 import tokenize_for_index
 from synthorg.memory.models import MemoryEntry, MemoryQuery
+from synthorg.memory.write_gate import is_superseded
 
 
 def prune_expired(store: dict[str, MemoryEntry], now: datetime) -> None:
@@ -64,6 +65,8 @@ def matches_metadata(entry: MemoryEntry, query: MemoryQuery) -> bool:
     if query.categories and entry.category not in query.categories:
         return False
     if query.tags and not all(tag in entry.metadata.tags for tag in query.tags):
+        return False
+    if not query.include_superseded and is_superseded(entry):
         return False
     return not (query.text and text_overlap_score(entry, query.text) <= 0.0)
 

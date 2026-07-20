@@ -53,6 +53,12 @@ async def _live_procedural_config(
     if config is None:
         return None
     if config_resolver is None:
+        logger.debug(
+            PROCEDURAL_MEMORY_SKIPPED,
+            phase="settings_resolution",
+            reason="no_config_resolver",
+            enabled=config.enabled,
+        )
         return config if config.enabled else None
     try:
         enabled = await config_resolver.get_bool("memory", "procedural_enabled")
@@ -75,12 +81,44 @@ async def _live_procedural_config(
     return config.model_copy(update={"min_confidence": min_confidence})
 
 
-async def try_capture_distillation(
+async def _live_capture_enabled(
+    config_resolver: ConfigResolver | None,
+    *,
+    boot_value: bool,
+) -> bool:
+    """Re-read the distillation kill switch against live settings.
+
+    Returns:
+        The live value, or ``boot_value`` when no resolver is wired or
+        the read fails. A settings-backend outage must not silently turn
+        learning on or off; it leaves the switch where boot put it.
+    """
+    if config_resolver is None:
+        return boot_value
+    try:
+        return await config_resolver.get_bool(
+            "memory",
+            "distillation_capture_enabled",
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort settings read
+        reraise_critical(exc)
+        logger.warning(
+            DISTILLATION_CAPTURE_FAILED,
+            phase="settings_resolution",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return boot_value
+
+
+async def try_capture_distillation(  # noqa: PLR0913 -- explicit-deps hook contract
     execution_result: ExecutionResult,
     agent_id: str,
     task_id: str,
     *,
     distillation_capture_enabled: bool,
+    config_resolver: ConfigResolver | None = None,
     memory_backend: MemoryBackend | None,
 ) -> None:
     """Capture trajectory distillation at task completion (non-critical).
@@ -89,11 +127,25 @@ async def try_capture_distillation(
     logged.  System errors (``MemoryError``, ``RecursionError``)
     and cancellation propagate.
 
+    Args:
+        execution_result: The finished run to distil.
+        agent_id: Owning agent identifier.
+        task_id: The task the run belongs to.
+        distillation_capture_enabled: Boot-time value, used when no
+            resolver is wired or the settings read fails.
+        config_resolver: Live settings source, re-read per task so an
+            operator can stop capture without a restart.
+        memory_backend: Where the distilled memory lands.
+
     Raises:
         asyncio.CancelledError: If the capture task is cancelled
             mid-flight.
     """
-    if not distillation_capture_enabled:
+    enabled = await _live_capture_enabled(
+        config_resolver,
+        boot_value=distillation_capture_enabled,
+    )
+    if not enabled:
         logger.debug(
             DISTILLATION_CAPTURE_SKIPPED,
             agent_id=agent_id,

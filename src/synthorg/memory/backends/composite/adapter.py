@@ -219,6 +219,16 @@ class CompositeBackend:
         """Human-readable backend identifier."""
         return NotBlankStr("composite")
 
+    @property
+    def supports_dense_search(self) -> bool:
+        """Whether every child ranks by meaning.
+
+        Deliberately unanimous rather than "any": a caller uses this to
+        decide it can drop a crude keyword pre-filter, and a route into
+        the one keyword-only child would then return unfiltered noise.
+        """
+        return all(b.supports_dense_search for b in self._unique_backends)
+
     # -- Capabilities -------------------------------------------------
 
     @property

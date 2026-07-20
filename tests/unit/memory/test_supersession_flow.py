@@ -68,9 +68,16 @@ class TestSupersessionFlow:
 
         assert "replacing" in result
 
-        entries = await backend.retrieve(_AGENT, MemoryQuery(limit=50))
-        retired = next(e for e in entries if str(e.id) == old_id)
+        # Retained for audit, so an explicit opt-in still sees it, while
+        # ordinary recall (below) does not.
+        archived = await backend.retrieve(
+            _AGENT, MemoryQuery(limit=50, include_superseded=True)
+        )
+        retired = next(e for e in archived if str(e.id) == old_id)
         assert SUPERSEDED_TAG in retired.metadata.tags
+        assert old_id not in {
+            str(e.id) for e in await backend.retrieve(_AGENT, MemoryQuery(limit=50))
+        }
 
         injection = ContextInjectionStrategy(
             backend=backend,

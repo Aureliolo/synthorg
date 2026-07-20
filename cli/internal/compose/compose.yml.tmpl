@@ -5,7 +5,7 @@ services:
 {{- if postgresEnabled}}
   postgres:
     # renovate: datasource=docker depName=dhi.io/pgvector
-    image: {{.DHIRegistry}}/pgvector:{{.PostgresImageTag}}{{if .PostgresDigest}}@{{.PostgresDigest}}{{end}}
+    image: {{.DHIRegistry}}/{{.PostgresImageName}}:{{.PostgresImageTag}}{{if .PostgresDigest}}@{{.PostgresDigest}}{{end}}
     ports:
       - "{{.PostgresPort}}:5432"
     volumes:

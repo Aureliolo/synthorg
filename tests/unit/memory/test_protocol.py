@@ -41,6 +41,10 @@ class _FakeMemoryBackend:
     def backend_name(self) -> NotBlankStr:
         return NotBlankStr("fake")
 
+    @property
+    def supports_dense_search(self) -> bool:
+        return False
+
     async def store(self, agent_id: str, request: MemoryStoreRequest) -> str:
         memory_id = str(uuid4())
         agent_store = self._store.setdefault(agent_id, {})

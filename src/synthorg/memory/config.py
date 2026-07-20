@@ -9,7 +9,6 @@ from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.memory_enums import MemoryLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.composite.config import (
     CompositeBackendConfig,
@@ -174,7 +173,6 @@ class CompanyMemoryConfig(BaseModel):
 
     Attributes:
         backend: Memory backend name (validated against ``_VALID_BACKENDS``).
-        level: Default memory persistence level.
         storage: Storage-specific settings.
         options: Memory behaviour options.
         retrieval: Memory retrieval pipeline settings.
@@ -198,21 +196,11 @@ class CompanyMemoryConfig(BaseModel):
             key="backend",
             only_if_env_set=True,
         ),
-        MirrorField(
-            field="level",
-            namespace=SettingNamespace.MEMORY,
-            key="default_level",
-            only_if_env_set=True,
-        ),
     )
 
     backend: NotBlankStr = Field(
         default="sqlvector",
         description="Memory backend name",
-    )
-    level: MemoryLevel = Field(
-        default=MemoryLevel.PERSISTENT,
-        description="Default memory persistence level",
     )
     storage: MemoryStorageConfig = Field(
         default_factory=MemoryStorageConfig,

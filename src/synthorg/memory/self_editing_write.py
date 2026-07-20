@@ -118,6 +118,10 @@ async def gate_archival_write(  # noqa: PLR0913 -- the gate's full input surface
             backend, agent_id, content, category, candidates
         ),
         supersedes=supersedes,
+        supersedes_exists=(
+            supersedes is not None
+            and await backend.get(agent_id, supersedes) is not None
+        ),
     )
     logger.info(
         MEMORY_WRITE_GATE_DECIDED,

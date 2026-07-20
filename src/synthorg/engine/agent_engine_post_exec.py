@@ -337,6 +337,7 @@ class AgentEnginePostExecMixin:
             agent_id,
             task_id,
             distillation_capture_enabled=self._distillation_capture_enabled,
+            config_resolver=self._config_resolver,
             memory_backend=self._memory_backend,
         )
 

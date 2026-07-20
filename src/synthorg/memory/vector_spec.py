@@ -11,10 +11,21 @@ policy into the persistence boundary and duplicate an algorithm the
 memory package already owns.
 """
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from typing import Final, Self
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
+
+MAX_SEARCH_LIMIT: Final[int] = 1000
+"""Largest single-arm result set a repository will return.
+
+Public because callers that over-fetch before fusion have to clamp
+against it; a caller computing its own recall width from a settings
+value can otherwise exceed the bound and turn a tuning choice into a
+``ValidationError`` on the retrieval path.
+"""
 
 
 class MemoryVectorSearchSpec(BaseModel):
@@ -27,6 +38,8 @@ class MemoryVectorSearchSpec(BaseModel):
         namespaces: Restrict to these storage namespaces.
         categories: Restrict to these memory categories.
         tags: Required tags, AND semantics (an entry must carry all).
+        excluded_tags: Disqualifying tags (an entry carrying any is
+            dropped).
         limit: Maximum rows to return from this single ranked list.
         since: Only entries created at or after this instant.
         until: Only entries created strictly before this instant.
@@ -56,10 +69,14 @@ class MemoryVectorSearchSpec(BaseModel):
         default=(),
         description="Required tags (AND semantics)",
     )
+    excluded_tags: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Disqualifying tags (any match drops the entry)",
+    )
     limit: int = Field(
         default=10,
         ge=1,
-        le=1000,
+        le=MAX_SEARCH_LIMIT,
         description="Maximum rows in this ranked list",
     )
     since: AwareDatetime | None = Field(
@@ -74,3 +91,23 @@ class MemoryVectorSearchSpec(BaseModel):
         default=None,
         description="Reference instant for expiry exclusion",
     )
+
+    @model_validator(mode="after")
+    def _validate_window(self) -> Self:
+        """Reject an inverted time window.
+
+        Returns:
+            The validated spec.
+
+        Raises:
+            ValueError: If ``since`` is later than ``until``.
+        """
+        window_inverted = (
+            self.since is not None
+            and self.until is not None
+            and self.since > self.until
+        )
+        if window_inverted:
+            msg = "since must not be later than until"
+            raise ValueError(msg)
+        return self

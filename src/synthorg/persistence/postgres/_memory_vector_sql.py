@@ -118,8 +118,14 @@ def build_filter_clause(
         clauses.append("e.category = ANY(%s)")
         params.append(sorted(c.value for c in spec.categories))
     if spec.tags:
-        clauses.append("e.tags @> %s::jsonb")
+        clauses.append("e.tags @> %s::JSONB")
         params.append(_json_array(spec.tags))
+    if spec.excluded_tags:
+        # ``?|`` asks whether the array shares any key with the given
+        # list, which is exactly "carries at least one disqualifying
+        # tag"; negating it keeps the check in one indexable predicate.
+        clauses.append("NOT (e.tags ?| %s)")
+        params.append(sorted(spec.excluded_tags))
     if spec.since is not None:
         clauses.append("e.created_at >= %s")
         params.append(spec.since)

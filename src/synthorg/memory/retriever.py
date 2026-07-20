@@ -40,7 +40,7 @@ from synthorg.memory.retriever_fetch import fetch_memories
 from synthorg.memory.retriever_rrf import execute_rrf_pipeline
 from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.memory.topic_scope import admissible, scope_terms
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_FILTER_INIT,
     MEMORY_RETRIEVAL_COMPLETE,
@@ -222,6 +222,7 @@ class ContextInjectionStrategy:
                 source="pipeline",
                 agent_id=agent_id,
                 error_type=type(exc).__qualname__,
+                error=safe_error_description(exc),
             )
             return ()
 
@@ -289,7 +290,7 @@ class ContextInjectionStrategy:
         scoped = admissible(
             ranked,
             terms=topic_terms,
-            scope_applies=not getattr(self._backend, "supports_dense_search", False),
+            scope_applies=not self._backend.supports_dense_search,
         )
         if len(scoped) != len(ranked):
             logger.info(

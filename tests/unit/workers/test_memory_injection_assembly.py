@@ -7,10 +7,13 @@ every task and no agent ever received a memory it had not explicitly
 asked for.
 """
 
+import inspect
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+import synthorg.api.lifecycle_assembly
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.state import MemoryStateSlice
@@ -49,3 +52,35 @@ class TestMemoryInjectionStrategyAssembly:
 
         assert app_state.slice(MemoryStateSlice).backend is backend
         assert strategy is not None
+
+
+class TestOrgMemoryWiringOrder:
+    """The org backend must exist before runtime services read it.
+
+    ``wire_org_memory_backend`` used to run inside ``_wire_features``,
+    which is ordered after ``_install_runtime_services``. Every consumer
+    that asks for the org layer does so while assembling an agent, so it
+    read ``None`` and the whole layer stayed unreachable for the life of
+    the process.
+    """
+
+    def test_org_wiring_precedes_runtime_services(self) -> None:
+        source = Path(inspect.getfile(synthorg.api.lifecycle_assembly)).read_text(
+            encoding="utf-8"
+        )
+        hooks = source.split("startup = [", 1)[1].split("]", 1)[0]
+
+        memory_at = hooks.index("_wire_memory_backend")
+        runtime_at = hooks.index("_install_runtime_services")
+
+        assert memory_at < runtime_at
+
+    def test_org_backend_is_wired_by_the_memory_hook(self) -> None:
+        source = Path(inspect.getfile(synthorg.api.lifecycle_assembly)).read_text(
+            encoding="utf-8"
+        )
+        hook = source.split("async def _wire_memory_backend", 1)[1].split(
+            "async def ", 1
+        )[0]
+
+        assert "wire_org_memory_backend" in hook

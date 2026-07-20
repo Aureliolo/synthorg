@@ -129,6 +129,11 @@ class InMemoryBackend:
         """Human-readable backend identifier."""
         return NotBlankStr("inmemory")
 
+    @property
+    def supports_dense_search(self) -> bool:
+        """Always ``False``: ranking here is term overlap, not meaning."""
+        return False
+
     # -- Capabilities -------------------------------------------------
 
     @property

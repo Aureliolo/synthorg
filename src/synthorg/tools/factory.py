@@ -56,7 +56,6 @@ if TYPE_CHECKING:
     from synthorg.communication.async_tasks.service import AsyncTaskService
     from synthorg.config.schema import RootConfig
     from synthorg.memory.consolidation.wiki_export import WikiExporter
-    from synthorg.memory.injection import MemoryInjectionStrategy
     from synthorg.memory.org.protocol import OrgMemoryBackend
     from synthorg.persistence.code_execution_protocol import (
         CodeExecutionRecordRepository,
@@ -517,50 +516,6 @@ def _build_knowledge_architect_tools(  # noqa: PLR0913
     )
 
 
-def _build_self_editing_memory_tools(
-    *,
-    strategy: MemoryInjectionStrategy | None,
-    agent_id: str,
-) -> tuple[BaseTool, ...]:
-    """Instantiate the six MemGPT-style self-editing memory tools.
-
-    Returns an empty tuple unless the wired injection strategy is the
-    self-editing one. The tools mutate an agent's own memory, so they
-    are meaningless (and their handler absent) under the context or
-    tool-based strategies.
-
-    Every write routes through the deterministic gate in
-    ``memory.write_gate``: the agent proposes, the gate deduplicates and
-    records supersession.
-
-    Returns:
-        Tuple of ``BaseTool``.
-    """
-    from synthorg.memory.self_editing import SelfEditingMemoryStrategy  # noqa: PLC0415
-
-    if not isinstance(strategy, SelfEditingMemoryStrategy):
-        return ()
-    from synthorg.core.types import NotBlankStr  # noqa: PLC0415
-    from synthorg.memory.tools import (  # noqa: PLC0415
-        ArchivalMemorySearchTool,
-        ArchivalMemoryWriteTool,
-        CoreMemoryReadTool,
-        CoreMemoryWriteTool,
-        RecallMemoryReadTool,
-        RecallMemoryWriteTool,
-    )
-
-    typed_agent_id = NotBlankStr(agent_id)
-    return (
-        CoreMemoryReadTool(strategy=strategy, agent_id=typed_agent_id),
-        CoreMemoryWriteTool(strategy=strategy, agent_id=typed_agent_id),
-        ArchivalMemorySearchTool(strategy=strategy, agent_id=typed_agent_id),
-        ArchivalMemoryWriteTool(strategy=strategy, agent_id=typed_agent_id),
-        RecallMemoryReadTool(strategy=strategy, agent_id=typed_agent_id),
-        RecallMemoryWriteTool(strategy=strategy, agent_id=typed_agent_id),
-    )
-
-
 def build_default_tools(  # noqa: PLR0913
     *,
     workspace: Path,
@@ -596,8 +551,6 @@ def build_default_tools(  # noqa: PLR0913
     architect_autonomy_level: AutonomyLevel = _DEFAULT_ARCHITECT_AUTONOMY,
     architect_writes_enabled: bool = False,
     code_execution_records: CodeExecutionRecordRepository | None = None,
-    memory_injection_strategy: MemoryInjectionStrategy | None = None,
-    memory_agent_id: str = _DEFAULT_ARCHITECT_AGENT_ID,
 ) -> tuple[BaseTool, ...]:
     """Instantiate all built-in workspace tools.
 
@@ -668,11 +621,6 @@ def build_default_tools(  # noqa: PLR0913
         org_fact_store: OrgFactRepository for write/delete operations on
             org facts.
         wiki_exporter: Wiki exporter used by ``memory.browse_wiki``.
-        memory_injection_strategy: The wired injection strategy.  The
-            six self-editing memory tools register only when this is
-            the self-editing strategy, whose handler they dispatch into.
-        memory_agent_id: Agent identity bound to the self-editing
-            memory tools.
         architect_agent_id: Agent identity bound to the architect
             tools.  Defaults to a sentinel string operators can
             override at startup.
@@ -795,12 +743,6 @@ def build_default_tools(  # noqa: PLR0913
         ),
     )
     all_tools.extend(
-        _build_self_editing_memory_tools(
-            strategy=memory_injection_strategy,
-            agent_id=memory_agent_id,
-        ),
-    )
-    all_tools.extend(
         _build_knowledge_architect_tools(
             org_backend=org_memory_backend,
             fact_store=org_fact_store,
@@ -841,7 +783,6 @@ def build_default_tools_from_config(  # noqa: PLR0913
     org_memory_backend: OrgMemoryBackend | None = None,
     org_fact_store: OrgFactRepository | None = None,
     wiki_exporter: WikiExporter | None = None,
-    memory_injection_strategy: MemoryInjectionStrategy | None = None,
     architect_agent_id: str = _DEFAULT_ARCHITECT_AGENT_ID,
     architect_autonomy_level: AutonomyLevel = _DEFAULT_ARCHITECT_AUTONOMY,
     architect_writes_enabled: bool = False,
@@ -887,8 +828,6 @@ def build_default_tools_from_config(  # noqa: PLR0913
         org_fact_store: ``OrgFactRepository`` for write/delete operations
             on org facts.
         wiki_exporter: Wiki exporter used by ``memory.browse_wiki``.
-        memory_injection_strategy: The wired injection strategy; gates
-            registration of the self-editing memory tools.
         architect_agent_id: Agent identity bound to the architect
             tools.  Defaults to a sentinel string operators can override.
         architect_autonomy_level: Default autonomy level for the
@@ -1077,8 +1016,6 @@ def build_default_tools_from_config(  # noqa: PLR0913
         org_memory_backend=org_memory_backend,
         org_fact_store=org_fact_store,
         wiki_exporter=wiki_exporter,
-        memory_injection_strategy=memory_injection_strategy,
-        memory_agent_id=architect_agent_id,
         architect_agent_id=architect_agent_id,
         architect_autonomy_level=architect_autonomy_level,
         architect_writes_enabled=architect_writes_enabled,

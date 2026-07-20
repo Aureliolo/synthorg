@@ -1,13 +1,10 @@
 # module-kind: code
 """Boot wiring for the durable agent-memory backend.
 
-This is the seam the whole memory layer hangs from. Before it existed,
-``MemoryStateSlice.backend`` was populated as a side effect of the
-training-service auto-wire with an ephemeral in-process store, so every
-consumer (the project brain, the knowledge substrate, living docs and
-agent memory itself) was silently doing substring matching over a dict
-that emptied on restart, while the settings page advertised a durable
-backend.
+This is the seam the whole memory layer hangs from: the project brain,
+the knowledge substrate, living docs and agent memory itself all read
+whatever ``MemoryStateSlice.backend`` holds, so a backend that is
+ephemeral or absent here degrades every one of them at once.
 
 Two rules shape this module:
 
@@ -30,7 +27,18 @@ from synthorg.memory.consolidation.cycle_scheduler import AgentIdSupplier
 from synthorg.memory.embedder_port import TextEmbedder
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.consolidation import (
+    SCHEDULER_DISABLED,
+    SCHEDULER_START_FAILED,
+)
+from synthorg.observability.events.memory import (
+    MEMORY_BACKEND_WIRE_FAILED,
+    MEMORY_BACKEND_WIRE_SKIPPED,
+    MEMORY_BACKEND_WIRED,
+    MEMORY_EMBEDDER_RESOLVED,
+    MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+    MEMORY_EMBEDDER_UNRESOLVED,
+)
 
 logger = get_logger(__name__)
 
@@ -55,11 +63,7 @@ async def wire_memory_backend(app_state: AppState) -> None:
     if app_state.slice(MemoryStateSlice).backend is not None:
         return
     if app_state.slice(PersistenceStateSlice).backend is None:
-        logger.warning(
-            API_APP_STARTUP,
-            service="memory_backend",
-            note="persistence not connected; agent memory unavailable",
-        )
+        logger.warning(MEMORY_BACKEND_WIRE_SKIPPED, reason="persistence_not_connected")
         return
 
     memory_config = app_state.config.memory
@@ -67,6 +71,7 @@ async def wire_memory_backend(app_state: AppState) -> None:
     if memory_config.backend != IN_MEMORY_BACKEND:
         embedder = await _build_embedder(app_state)
         if embedder is None:
+            logger.warning(MEMORY_BACKEND_WIRE_SKIPPED, reason="no_embedder_resolved")
             return
 
     try:
@@ -82,9 +87,8 @@ async def wire_memory_backend(app_state: AppState) -> None:
     except Exception as exc:  # noqa: BLE001 -- reported, then startup continues
         reraise_critical(exc)
         logger.error(
-            API_APP_STARTUP,
-            service="memory_backend",
-            note="construction failed; agent memory unavailable",
+            MEMORY_BACKEND_WIRE_FAILED,
+            backend=memory_config.backend,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
@@ -92,11 +96,10 @@ async def wire_memory_backend(app_state: AppState) -> None:
 
     app_state.wire(MemoryStateSlice, backend=backend)
     logger.info(
-        API_APP_STARTUP,
-        service="memory_backend",
-        note="wired",
+        MEMORY_BACKEND_WIRED,
         backend=memory_config.backend,
         durable=memory_config.backend != IN_MEMORY_BACKEND,
+        dense_search=backend.supports_dense_search,
     )
     await _wire_consolidation_scheduler(app_state, backend)
 
@@ -132,11 +135,7 @@ async def _wire_consolidation_scheduler(
     consolidation = app_state.config.memory.consolidation
     interval = interval_seconds_for(consolidation.interval)
     if interval is None:
-        logger.info(
-            API_APP_STARTUP,
-            service="memory_consolidation",
-            note="interval is 'never'; no scheduler started",
-        )
+        logger.info(SCHEDULER_DISABLED, interval=consolidation.interval.value)
         return
 
     scheduler = MemoryConsolidationScheduler(
@@ -154,20 +153,15 @@ async def _wire_consolidation_scheduler(
     except Exception as exc:  # noqa: BLE001 -- reported, then startup continues
         reraise_critical(exc)
         logger.error(
-            API_APP_STARTUP,
-            service="memory_consolidation",
-            note="scheduler failed to start; memory will not be maintained",
+            SCHEDULER_START_FAILED,
+            interval_seconds=interval,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return
+    # The scheduler base class emits its own started event, so this
+    # records only the wiring outcome the health surface reads.
     app_state.wire(MemoryStateSlice, consolidation_scheduler=scheduler)
-    logger.info(
-        API_APP_STARTUP,
-        service="memory_consolidation",
-        note="scheduler started",
-        interval_seconds=interval,
-    )
 
 
 def _agent_id_supplier(app_state: AppState) -> AgentIdSupplier:
@@ -214,11 +208,9 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
     except Exception as exc:  # noqa: BLE001 -- reported, then startup continues
         reraise_critical(exc)
         logger.error(
-            API_APP_STARTUP,
-            service="memory_backend",
-            note=(
-                "no embedding model resolved; agent memory is OFF. "
-                "Set memory.embedder_provider and memory.embedder_model, "
+            MEMORY_EMBEDDER_UNRESOLVED,
+            remedy=(
+                "set memory.embedder_provider and memory.embedder_model, "
                 "or connect a provider that offers an embedding model"
             ),
             error_type=type(exc).__name__,
@@ -226,14 +218,17 @@ async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
         )
         return None
     logger.info(
-        API_APP_STARTUP,
-        service="memory_backend",
-        note="embedder resolved",
+        MEMORY_EMBEDDER_RESOLVED,
         provider=config.provider,
         model=config.model,
         dims=config.dims,
     )
-    return ProviderTextEmbedder(config)
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+
+    return ProviderTextEmbedder(
+        config,
+        cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+    )
 
 
 async def _settings_override(app_state: AppState) -> EmbedderOverrideConfig | None:
@@ -255,9 +250,8 @@ async def _settings_override(app_state: AppState) -> EmbedderOverrideConfig | No
     except Exception as exc:  # noqa: BLE001 -- degrade to auto-selection
         reraise_critical(exc)
         logger.warning(
-            API_APP_STARTUP,
-            service="memory_backend",
-            note="could not read embedder overrides; using auto-selection",
+            MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+            fallback="auto_selection",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

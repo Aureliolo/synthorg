@@ -1,10 +1,9 @@
 """Periodic driver for memory consolidation and retention.
 
-``MemoryConsolidationService`` shipped with three strategies, a
-batch-size setting and a ``memory.consolidation_enabled`` kill switch,
-and nothing that ever called it: no cron, no route, no scheduler. The
-settings page offered operators control over a process that did not run,
-so memory grew without bound and archival never happened.
+Retention bounds and archival are per-agent properties with no natural
+trigger on the request path, so they need a timer: without one, memory
+grows to whatever the store allows and the
+``memory.consolidation_enabled`` kill switch governs nothing.
 
 The delicate loop-bound lifecycle (primitives rebound to the running
 loop, bounded stop-drain, per-tick kill-switch read) lives once in
@@ -38,6 +37,13 @@ type AgentIdSupplier = Callable[[], Awaitable[tuple[NotBlankStr, ...]]]
 
 _ENABLED_NS: Final[str] = "memory"
 _ENABLED_KEY: Final[str] = "consolidation_enabled"
+
+# One agent failing a tick is unremarkable (a transient store error, an
+# agent deleted mid-sweep). The same agent failing every tick means its
+# memory is never maintained again, which a stream of identical WARNINGs
+# does not distinguish from the transient case, so a run of failures
+# escalates once to ERROR.
+_CONSECUTIVE_FAILURES_BEFORE_ESCALATION: Final[int] = 3
 
 _SECONDS_PER_HOUR: Final[float] = 3600.0
 _SECONDS_PER_DAY: Final[float] = 86400.0
@@ -103,6 +109,7 @@ class MemoryConsolidationScheduler(AsyncCycleScheduler):
         self._service = service
         self._agent_ids = agent_ids
         self._config_resolver = config_resolver
+        self._consecutive_failures: dict[NotBlankStr, int] = {}
 
     @override
     async def _resolve_cycle_enabled(self) -> bool:
@@ -148,15 +155,28 @@ class MemoryConsolidationScheduler(AsyncCycleScheduler):
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 failed += 1
-                logger.warning(
-                    SCHEDULER_FAILED,
-                    agent_id=agent_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+                self._record_failure(agent_id, exc)
             else:
                 maintained += 1
+                self._consecutive_failures.pop(agent_id, None)
         logger.info(SCHEDULER_RAN, agents=maintained, failed=failed)
+
+    def _record_failure(self, agent_id: NotBlankStr, exc: Exception) -> None:
+        """Log one agent's maintenance failure, escalating a persistent run."""
+        streak = self._consecutive_failures.get(agent_id, 0) + 1
+        self._consecutive_failures[agent_id] = streak
+        log = (
+            logger.error
+            if streak >= _CONSECUTIVE_FAILURES_BEFORE_ESCALATION
+            else logger.warning
+        )
+        log(
+            SCHEDULER_FAILED,
+            agent_id=agent_id,
+            consecutive_failures=streak,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
     @override
     def _log_cycle_paused(self) -> None:

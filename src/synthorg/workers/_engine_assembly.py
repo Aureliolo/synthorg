@@ -172,11 +172,6 @@ async def _build_tool_registry(
         org_memory_backend=app_state.slice(MemoryStateSlice).org_memory_backend,
         org_fact_store=_org_fact_store_or_none(app_state),
         wiki_exporter=wiki_exporter_or_none(app_state),
-        # The self-editing tools are the agent's own write path. They
-        # build only under the self-editing strategy, whose handler they
-        # dispatch into; under the other strategies there is nothing to
-        # call.
-        memory_injection_strategy=build_memory_injection_strategy_or_none(app_state),
     )
     tools: list[BaseTool] = [*default_tools, *extra_tools]
     return ToolRegistry(tools), len(tools), sandbox_backends
@@ -539,12 +534,14 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         audit_log=app_state.slice(SecurityStateSlice).audit_log,
         memory_backend=app_state.slice(MemoryStateSlice).backend,
         memory_injection_strategy=build_memory_injection_strategy_or_none(app_state),
-        # The write side. Distillation capture and the procedural config
-        # were never passed either, so a run's learnings were discarded
-        # the moment it ended and a second run of the same objective
-        # started from nothing.
+        # The write side: without these an agent recalls but never
+        # learns, so a second run of the same objective starts from
+        # nothing. The engine re-reads the capture switch per task, so
+        # this is the boot fallback rather than the live value.
         procedural_memory_config=app_state.config.memory.procedural,
-        distillation_capture_enabled=True,
+        distillation_capture_enabled=await config_resolver_of(app_state).get_bool(
+            "memory", "distillation_capture_enabled"
+        ),
         config_resolver=config_resolver_of(app_state),
         event_stream_hub=app_state.slice(CommunicationStateSlice).event_stream_hub,
         interrupt_store=app_state.slice(CommunicationStateSlice).interrupt_store,

@@ -38,7 +38,14 @@ CREATE TABLE memory_entries (
 CREATE INDEX idx_memory_entries_agent ON memory_entries (agent_id, created_at DESC);
 CREATE INDEX idx_memory_entries_agent_category ON memory_entries (agent_id, category);
 CREATE INDEX idx_memory_entries_namespace ON memory_entries (agent_id, namespace);
-CREATE INDEX idx_memory_entries_expires ON memory_entries (expires_at);
+-- Partial: the purge sweep and every retrieval filter on expiry only ever
+-- look at rows that actually expire, and most rows never do, so indexing the
+-- NULL majority would be dead weight.
+CREATE INDEX idx_memory_entries_expires ON memory_entries (expires_at)
+WHERE expires_at IS NOT NULL;
+-- Tag filters use the JSONB containment (@>) and overlap (?|) operators, which
+-- only an inverted index can answer without scanning every row for the agent.
+CREATE INDEX idx_memory_entries_tags ON memory_entries USING GIN (tags);
 
 CREATE TABLE memory_entry_terms (
     memory_id TEXT NOT NULL

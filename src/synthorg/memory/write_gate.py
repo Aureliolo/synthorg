@@ -21,6 +21,10 @@ Two deliberate limits follow from that:
   shows is unreliable, so a replacement lands only when the writer names
   the entry it replaces, and a link to an entry that does not exist is
   rejected rather than silently dropped.
+
+A retired entry survives for audit but leaves recall: the backends
+exclude it from every retrieval unless a caller asks for it explicitly
+via ``MemoryQuery.include_superseded``.
 """
 
 from dataclasses import dataclass
@@ -75,9 +79,22 @@ class WriteDisposition(StrEnum):
     REJECT = "reject"
 
 
+_REQUIRED_FIELD_FOR: Final[dict[WriteDisposition, str]] = {
+    WriteDisposition.NOOP: "duplicate_of",
+    WriteDisposition.SUPERSEDE: "supersedes",
+    WriteDisposition.REJECT: "reason",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class WriteDecision:
     """The gate's verdict on one candidate write.
+
+    Three of the four dispositions are meaningless without their
+    companion field: consumers render "Already remembered (existing
+    id=...)" and "Refused: ...", so a decision missing its field reaches
+    the agent as a sentence ending in "None". The pairing is enforced at
+    construction rather than documented.
 
     Attributes:
         disposition: What to do with the candidate.
@@ -90,6 +107,21 @@ class WriteDecision:
     duplicate_of: str | None = None
     supersedes: str | None = None
     reason: str | None = None
+
+    def __post_init__(self) -> None:
+        """Reject a disposition built without the field it depends on.
+
+        Raises:
+            ValueError: If the companion field for this disposition is
+                missing or blank.
+        """
+        required = _REQUIRED_FIELD_FOR.get(self.disposition)
+        if required is None:
+            return
+        value = getattr(self, required)
+        if value is None or not str(value).strip():
+            msg = f"{self.disposition.value} decision requires {required}"
+            raise ValueError(msg)
 
 
 def content_similarity(left: str, right: str) -> float:
@@ -120,6 +152,7 @@ def evaluate_write(
     *,
     existing: tuple[MemoryEntry, ...],
     supersedes: NotBlankStr | None = None,
+    supersedes_exists: bool = False,
     dedup_threshold: float = DEFAULT_DEDUP_THRESHOLD,
 ) -> WriteDecision:
     """Decide what to do with a candidate memory write.
@@ -130,6 +163,11 @@ def evaluate_write(
             considers comparable (typically the top semantic matches).
         supersedes: Identifier of an entry this write replaces, when the
             writer explicitly claims one.
+        supersedes_exists: Whether the caller confirmed that entry is
+            really stored for this agent. Existence is the caller's to
+            establish because a correction is usually worded unlike the
+            belief it replaces, so it need not appear among the
+            similarity candidates at all.
         dedup_threshold: Similarity at or above which the candidate is
             treated as already stored.
 
@@ -143,14 +181,10 @@ def evaluate_write(
         )
 
     if supersedes is not None:
-        known = {str(entry.id) for entry in existing}
-        if str(supersedes) not in known:
+        if not supersedes_exists:
             return WriteDecision(
                 disposition=WriteDisposition.REJECT,
-                reason=(
-                    "supersedes names an entry that is not among the "
-                    "comparable existing entries"
-                ),
+                reason="supersedes names an entry that does not exist",
             )
         # An explicit replacement outranks dedup: the writer is asserting
         # the prior entry is wrong, and re-recording that is the point.
@@ -159,7 +193,12 @@ def evaluate_write(
             supersedes=str(supersedes),
         )
 
-    closest = _closest_match(candidate, existing)
+    # A retired belief is not a duplicate of the correction that retired
+    # it. Left in, a re-assertion of the old wording matches it, returns
+    # NOOP, and the write is dropped as already-known while recall never
+    # surfaces the thing it supposedly duplicates.
+    comparable = tuple(entry for entry in existing if not is_superseded(entry))
+    closest = _closest_match(candidate, comparable)
     if closest is not None and closest[1] >= dedup_threshold:
         return WriteDecision(
             disposition=WriteDisposition.NOOP,

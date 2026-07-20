@@ -31,6 +31,7 @@ class MemoryBackend(Protocol):
     Attributes:
         is_connected: Whether the backend has an active connection.
         backend_name: Human-readable backend identifier.
+        supports_dense_search: Whether recall is semantic or keyword-only.
     """
 
     async def connect(self) -> None:
@@ -72,7 +73,21 @@ class MemoryBackend(Protocol):
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier (e.g. ``"mem0"``)."""
+        """Human-readable backend identifier (e.g. ``"sqlvector"``)."""
+        ...
+
+    @property
+    def supports_dense_search(self) -> bool:
+        """Whether recall ranks by meaning rather than by keyword.
+
+        Part of the protocol rather than an optional attribute because
+        callers change behaviour on it: topic scoping, for one, is a
+        crude term filter that only earns its place when the ranking
+        underneath it cannot judge relatedness itself. Probed with
+        ``getattr`` it silently reads ``False`` on any backend that
+        forgot to expose it, over-filtering recall on a deployment that
+        looks correctly configured.
+        """
         ...
 
     async def store(

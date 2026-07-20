@@ -21,15 +21,36 @@ class MemoryError(DomainError):  # noqa: A001
     (8000, ``INTERNAL`` category) -- callers that need a more specific
     code per memory failure mode should override the ClassVars on the
     subclass.
+
+    ``is_retryable`` mirrors the sibling
+    :class:`~synthorg.core.persistence_errors.PersistenceError` and
+    provider hierarchies so a caller implementing bounded retry can
+    branch on the flag rather than on the exception type, and so the
+    RFC 9457 response tells an API client whether repeating the call is
+    worth anything. Default: ``False``.
     """
+
+    is_retryable: bool = False
 
 
 class MemoryConnectionError(MemoryError):
-    """Raised when a backend connection cannot be established or is lost."""
+    """Raised when a backend connection cannot be established or is lost.
+
+    Retryable: a dropped connection or an exhausted pool usually clears
+    on its own.
+    """
+
+    is_retryable: bool = True
 
 
 class MemoryStoreError(MemoryError):
-    """Raised when a store operation fails."""
+    """Raised when a store operation fails.
+
+    Retryable: the underlying failure is a database write, which is
+    transient far more often than not.
+    """
+
+    is_retryable: bool = True
 
 
 class MemoryEmbeddingError(MemoryError):
@@ -39,7 +60,11 @@ class MemoryEmbeddingError(MemoryError):
     embedder could not be constructed at all. This one means a wired,
     constructed embedder failed on a specific batch, so recall degrades
     for that call rather than the backend being unusable.
+
+    Retryable: the common cause is a provider rate limit or timeout.
     """
+
+    is_retryable: bool = True
 
 
 class MemoryDenseSearchUnavailableError(MemoryError):
@@ -53,7 +78,13 @@ class MemoryDenseSearchUnavailableError(MemoryError):
 
 
 class MemoryRetrievalError(MemoryError):
-    """Raised when a retrieve or search operation fails."""
+    """Raised when a retrieve or search operation fails.
+
+    Retryable: a read that failed on a transient store condition can
+    succeed unchanged on the next attempt.
+    """
+
+    is_retryable: bool = True
 
 
 class MemoryNotFoundError(MemoryError):

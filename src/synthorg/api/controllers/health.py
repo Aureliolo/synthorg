@@ -261,12 +261,12 @@ def _resolve_telemetry_status(app_state: AppState) -> TelemetryStatus:
     )
 
 
-def _resolve_memory_health(app_state: AppState) -> MemoryHealth:
-    """Report whether agent memory is actually running.
+def _memory_wiring_health(app_state: AppState) -> MemoryHealth | None:
+    """Judge agent memory from its wiring alone, without a probe.
 
     Returns:
-        ``MemoryHealth`` describing the substrate and, when it is not
-        durable, what the operator should do.
+        The verdict when the wiring already settles it, or ``None`` when
+        a live probe is needed to tell healthy from degraded.
     """
     from synthorg.memory.factory import IN_MEMORY_BACKEND  # noqa: PLC0415
     from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
@@ -294,6 +294,67 @@ def _resolve_memory_health(app_state: AppState) -> MemoryHealth:
                 "for durable, meaning-based recall."
             ),
         )
+    return None
+
+
+async def _resolve_memory_health(app_state: AppState) -> MemoryHealth:
+    """Report whether agent memory is actually running.
+
+    Reads the wiring *and* probes the live backend. A wired backend can
+    still have lost its store or its dense index after boot, and those
+    are the degradations an operator is least likely to anticipate:
+    keyword-only recall answers every query, so it reads as working
+    memory rather than as a fault.
+
+    Returns:
+        ``MemoryHealth`` describing the substrate and, when it is not
+        durable, what the operator should do.
+    """
+    from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
+
+    backend_name = app_state.config.memory.backend
+    memory_slice = app_state.slice(MemoryStateSlice)
+    backend = memory_slice.backend
+    settled = _memory_wiring_health(app_state)
+    if settled is not None or backend is None:
+        return settled or MemoryHealth(state=MemoryState.OFF, backend=backend_name)
+    healthy = await _probe_service(
+        configured=True,
+        probe=backend.health_check,
+        component="memory",
+    )
+    if not healthy:
+        return MemoryHealth(
+            state=MemoryState.DEGRADED,
+            backend=backend_name,
+            detail=(
+                "The memory backend is wired but did not answer a health "
+                "probe, so reads and writes are failing. Check the "
+                "database the memory tables live in."
+            ),
+        )
+    if not backend.supports_dense_search:
+        return MemoryHealth(
+            state=MemoryState.DEGRADED,
+            backend=backend_name,
+            detail=(
+                "Recall is keyword-only: the dense vector index is not "
+                "available, so agents get literal term matches instead of "
+                "related memories. See the memory.dense_index.* log "
+                "events for the cause."
+            ),
+        )
+    if memory_slice.consolidation_scheduler is None:
+        return MemoryHealth(
+            state=MemoryState.DEGRADED,
+            backend=backend_name,
+            detail=(
+                "Recall works but maintenance is not running: retention "
+                "and per-agent memory caps are not being enforced, so "
+                "memory grows without bound. Check memory.consolidation_"
+                "interval and the consolidation.scheduler.* log events."
+            ),
+        )
     return MemoryHealth(state=MemoryState.DURABLE, backend=backend_name)
 
 
@@ -308,13 +369,24 @@ def _unavailable_status(app_state: AppState) -> ReadinessStatus:
         ``ReadinessStatus`` instance with every component unknown.
     """
     uptime = round(app_state.clock.monotonic() - app_state.startup_time, 2)
+    # Wiring only: this path exists because the probe TaskGroup already
+    # failed, so probing the backend again would be reporting on the
+    # thing that just broke.
+    memory = _memory_wiring_health(app_state) or MemoryHealth(
+        state=MemoryState.DEGRADED,
+        backend=app_state.config.memory.backend,
+        detail=(
+            "A memory backend is wired but the readiness probe did not "
+            "complete, so its live state is unknown."
+        ),
+    )
     return ReadinessStatus(
         status=ReadinessOutcome.UNAVAILABLE,
         persistence=None,
         message_bus=None,
         providers=None,
         telemetry=_resolve_telemetry_status(app_state),
-        memory=_resolve_memory_health(app_state),
+        memory=memory,
         version=__version__,
         uptime_seconds=uptime,
     )
@@ -419,6 +491,9 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
                     component="providers",
                 ),
             )
+            # Inside the fan-out so a wedged memory store is bounded by
+            # the same probe budget as every other dependency.
+            memory_task = tg.create_task(_resolve_memory_health(app_state))
     except TimeoutError:
         # The probe fan-out exceeded the budget; ``asyncio.timeout``
         # cancelled the TaskGroup and surfaced a bare ``TimeoutError``.
@@ -450,6 +525,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
     bus_ok = bus_task.result()
     providers_ok = providers_task.result()
     telemetry_status = _resolve_telemetry_status(app_state)
+    memory_health = memory_task.result()
 
     # Readiness is a pass/fail: every *configured* dependency must
     # report healthy. Unconfigured (None) is treated as not blocking
@@ -471,6 +547,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         message_bus=bus_ok,
         providers=providers_ok,
         telemetry=telemetry_status.value,
+        memory=memory_health.state.value,
     )
     return ReadinessStatus(
         status=outcome,
@@ -478,7 +555,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         message_bus=bus_ok,
         providers=providers_ok,
         telemetry=telemetry_status,
-        memory=_resolve_memory_health(app_state),
+        memory=memory_health,
         version=__version__,
         uptime_seconds=uptime,
     )

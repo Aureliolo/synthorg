@@ -3,7 +3,6 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.memory_enums import MemoryLevel
 from synthorg.memory.config import (
     CompanyMemoryConfig,
     EmbedderOverrideConfig,
@@ -204,9 +203,6 @@ class TestCompanyMemoryConfig:
     def test_defaults(self) -> None:
         c = CompanyMemoryConfig()
         assert c.backend == "sqlvector"
-        # ``memory.default_level`` is registered with default ``persistent``;
-        # the mirror validator surfaces that value through the Pydantic field.
-        assert c.level is MemoryLevel.PERSISTENT
         assert isinstance(c.storage, MemoryStorageConfig)
         assert isinstance(c.options, MemoryOptionsConfig)
         assert isinstance(c.retrieval, MemoryRetrievalConfig)
@@ -224,15 +220,9 @@ class TestCompanyMemoryConfig:
         with pytest.raises(ValidationError):
             c.backend = "other"  # type: ignore[misc]
 
-    def test_all_memory_levels(self) -> None:
-        for level in MemoryLevel:
-            c = CompanyMemoryConfig(level=level)
-            assert c.level is level
-
     def test_custom_nested_config(self) -> None:
         c = CompanyMemoryConfig(
             backend="sqlvector",
-            level=MemoryLevel.PERSISTENT,
             storage=MemoryStorageConfig(data_dir="/custom"),
             options=MemoryOptionsConfig(retention_days=30),
         )
@@ -242,7 +232,6 @@ class TestCompanyMemoryConfig:
     def test_json_roundtrip(self) -> None:
         c = CompanyMemoryConfig(
             backend="sqlvector",
-            level=MemoryLevel.PERSISTENT,
             options=MemoryOptionsConfig(retention_days=60),
         )
         json_str = c.model_dump_json()

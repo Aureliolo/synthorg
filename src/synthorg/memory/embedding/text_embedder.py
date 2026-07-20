@@ -10,14 +10,34 @@ Provider Binding rule a bare model name is never enough to dispatch, and
 an embedder is no exception: the vectors in the store are only
 comparable to each other if every one of them came from the same model,
 so an ambiguous binding silently corrupts recall rather than failing.
+
+Two properties this call needs that a bare gateway call does not give
+it. It sits on the read path of every recall and the write path of every
+memory, so a single transient rate limit would otherwise fail the whole
+operation: hence bounded retry. And it spends real money on a provider
+quota shared with completion traffic, so every batch is attributed as
+:attr:`LLMCallCategory.EMBEDDING` rather than becoming unattributed
+spend an operator cannot see.
 """
 
+from datetime import UTC, datetime
 from typing import Final
 
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.resilience import GeneralRetryHandler
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.config import EmbedderConfig
 from synthorg.memory.errors import MemoryEmbeddingError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.memory import MEMORY_EMBEDDING_FAILED
+from synthorg.observability.events.memory import (
+    MEMORY_EMBEDDING_COST_RECORD_FAILED,
+    MEMORY_EMBEDDING_FAILED,
+    MEMORY_EMBEDDING_RETRIED,
+)
+from synthorg.providers.cost_recording import resolve_currency
 
 logger = get_logger(__name__)
 
@@ -25,16 +45,59 @@ logger = get_logger(__name__)
 # the joining rule in one place rather than at every call site.
 _PROVIDER_MODEL_SEPARATOR: Final[str] = "/"
 
+# Matches the provider-layer defaults: an embedding endpoint fails the
+# same way a completion endpoint does (429, 5xx, connection reset), so
+# there is no case for a different budget here.
+_RETRY_MAX_ATTEMPTS: Final[int] = 3
+_RETRY_BASE_SECONDS: Final[float] = 0.5
+_RETRY_CAP_SECONDS: Final[float] = 8.0
+
+# Cost attribution needs an owner. Embedding is issued by the memory
+# subsystem on behalf of the whole company rather than by any one agent
+# or task, so it is attributed to the subsystem instead of being charged
+# to whichever agent happened to trigger the recall.
+_SYSTEM_AGENT_ID: Final[NotBlankStr] = NotBlankStr("system:memory")
+_SYSTEM_TASK_ID: Final[NotBlankStr] = NotBlankStr("system:memory:embedding")
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Whether an embedding failure is worth another attempt.
+
+    A malformed response or a dimension mismatch is a configuration
+    fault that repeats identically; everything else reaching here came
+    off the wire.
+
+    Returns:
+        ``True`` when the call should be retried.
+    """
+    return not isinstance(exc, MemoryEmbeddingError)
+
 
 class ProviderTextEmbedder:
     """Embeds text through the configured embedding provider.
 
     Args:
         config: The resolved ``(provider, model, dims)`` binding.
+        cost_tracker: Sink for per-batch spend. ``None`` leaves the call
+            unmetered, which is correct only where no tracker exists
+            (tests, the trackerless eval harness).
     """
 
-    def __init__(self, config: EmbedderConfig) -> None:
+    def __init__(
+        self,
+        config: EmbedderConfig,
+        *,
+        cost_tracker: CostTrackerProtocol | None = None,
+    ) -> None:
         self._config = config
+        self._cost_tracker = cost_tracker
+        self._retry = GeneralRetryHandler(
+            retryable=_is_retryable,
+            max_attempts=_RETRY_MAX_ATTEMPTS,
+            base=_RETRY_BASE_SECONDS,
+            cap=_RETRY_CAP_SECONDS,
+            event=MEMORY_EMBEDDING_RETRIED,
+        )
 
     @property
     def dimensions(self) -> int:
@@ -72,7 +135,9 @@ class ProviderTextEmbedder:
         from litellm import aembedding  # noqa: PLC0415 -- heavy import, call-time
 
         try:
-            response = await aembedding(model=self.model_ref, input=list(texts))
+            response = await self._retry.execute(
+                lambda: aembedding(model=self.model_ref, input=list(texts))
+            )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -85,7 +150,45 @@ class ProviderTextEmbedder:
             )
             msg = f"Embedding call failed for {self.model_ref!r}"
             raise MemoryEmbeddingError(msg) from exc
+        await self._record_cost(response)
         return self._extract(response, expected=len(texts))
+
+    async def _record_cost(self, response: object) -> None:
+        """Attribute one embedding batch's spend to the memory subsystem.
+
+        Best-effort: losing a cost record is not worth losing the
+        embedding, so a tracker failure is reported and the call
+        continues.
+        """
+        if self._cost_tracker is None:
+            return
+        usage = getattr(response, "usage", None)
+        prompt_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
+        cost = getattr(response, "_hidden_params", {}).get("response_cost") or 0.0
+        try:
+            await self._cost_tracker.record(
+                CostRecord(
+                    agent_id=_SYSTEM_AGENT_ID,
+                    task_id=_SYSTEM_TASK_ID,
+                    provider=NotBlankStr(self._config.provider),
+                    model=NotBlankStr(self._config.model),
+                    input_tokens=int(prompt_tokens),
+                    output_tokens=0,
+                    cost=float(cost),
+                    currency=resolve_currency(self._cost_tracker),
+                    timestamp=datetime.now(UTC),
+                    call_category=LLMCallCategory.EMBEDDING,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- accounting side channel
+            reraise_critical(exc)
+            logger.warning(
+                MEMORY_EMBEDDING_COST_RECORD_FAILED,
+                model=self.model_ref,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     def _extract(
         self,

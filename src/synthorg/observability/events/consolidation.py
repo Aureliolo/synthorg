@@ -17,6 +17,20 @@ SCHEDULER_STARTED: Final[str] = "consolidation.scheduler.started"
 SCHEDULER_STOPPED: Final[str] = "consolidation.scheduler.stopped"
 SCHEDULER_FAILED: Final[str] = "consolidation.scheduler.failed"
 SCHEDULER_RAN: Final[str] = "consolidation.scheduler.ran"
+SCHEDULER_DISABLED: Final[str] = "consolidation.scheduler.disabled"
+"""Emitted at INFO when the configured interval is ``never``.
+
+No scheduler is constructed in that state, so its absence is deliberate
+rather than a start failure -- a distinction alerting needs.
+"""
+
+SCHEDULER_START_FAILED: Final[str] = "consolidation.scheduler.start_failed"
+"""Emitted at ERROR when the boot path could not start the scheduler.
+
+Retention bounds and archival stop being enforced from here on, and
+nothing else reports it, so this is the only signal that memory has
+stopped being maintained.
+"""
 
 # ── Consolidation operations ──────────────────────────────────────
 

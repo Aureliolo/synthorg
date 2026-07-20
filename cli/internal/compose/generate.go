@@ -98,14 +98,15 @@ type Params struct {
 	// index digests when the default (trusted) DHI images are in use;
 	// empty when custom registry/tags are in play (no known digest, so
 	// the compose file renders repo:tag without a pin).
-	RegistryHost     string
-	ImageRepoPrefix  string
-	DHIRegistry      string
-	PostgresImageTag string
-	NATSImageTag     string
-	PostgresDigest   string
-	NATSDigest       string
-	NATSURL          string
+	RegistryHost      string
+	ImageRepoPrefix   string
+	DHIRegistry       string
+	PostgresImageName string
+	PostgresImageTag  string
+	NATSImageTag      string
+	PostgresDigest    string
+	NATSDigest        string
+	NATSURL           string
 
 	// DisableDefaultDHIPins, when true, tells applyComposeDefaults not
 	// to autofill PostgresDigest / NATSDigest from the pinned-digest map
@@ -166,7 +167,7 @@ func ParamsFromState(s config.State) (Params, error) {
 	var pgDigest, natsDigest string
 	var digestPins map[string]string
 	if !tun.CustomRegistry {
-		pgKey := tun.DHIRegistry + "/postgres:" + tun.PostgresImageTag
+		pgKey := tun.DHIRegistry + "/" + config.DefaultPostgresImageName + ":" + tun.PostgresImageTag
 		natsKey := tun.DHIRegistry + "/nats:" + tun.NATSImageTag
 		if d, ok := verify.DHIPinnedIndexDigest(pgKey); ok {
 			pgDigest = d
@@ -203,6 +204,7 @@ func ParamsFromState(s config.State) (Params, error) {
 		RegistryHost:          tun.RegistryHost,
 		ImageRepoPrefix:       tun.ImageRepoPrefix,
 		DHIRegistry:           tun.DHIRegistry,
+		PostgresImageName:     config.DefaultPostgresImageName,
 		PostgresImageTag:      tun.PostgresImageTag,
 		NATSImageTag:          tun.NATSImageTag,
 		PostgresDigest:        pgDigest,
@@ -303,6 +305,9 @@ func applyComposeDefaults(p *Params) {
 	if p.DHIRegistry == "" {
 		p.DHIRegistry = config.DefaultDHIRegistry
 	}
+	if p.PostgresImageName == "" {
+		p.PostgresImageName = config.DefaultPostgresImageName
+	}
 	if p.PostgresImageTag == "" {
 		p.PostgresImageTag = config.DefaultPostgresImageTag
 	}
@@ -345,7 +350,7 @@ func trustTransferred(p *Params) bool {
 // design so verification stays disabled.
 func autofillDHIPins(p *Params) {
 	if p.PostgresDigest == "" {
-		pgKey := p.DHIRegistry + "/postgres:" + p.PostgresImageTag
+		pgKey := p.DHIRegistry + "/" + config.DefaultPostgresImageName + ":" + p.PostgresImageTag
 		if d, ok := verify.DHIPinnedIndexDigest(pgKey); ok {
 			p.PostgresDigest = d
 		}
