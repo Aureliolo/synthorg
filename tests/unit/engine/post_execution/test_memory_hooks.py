@@ -100,7 +100,13 @@ def _make_recovery_result() -> MagicMock:
 @pytest.mark.unit
 class TestTryCaptureDistillation:
     async def test_capture_called_when_enabled(self) -> None:
-        """Delegates to capture_distillation when flag and backend set."""
+        """Stores a distillation reflecting the completed run.
+
+        The error-path sibling asserts the stored content, so the happy
+        path holds to the same bar rather than only that store was
+        reached: a capture that persisted the wrong outcome would pass a
+        bare await-count check.
+        """
         backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="dist-1")
         result = _make_completed_result()
@@ -114,6 +120,8 @@ class TestTryCaptureDistillation:
         )
 
         backend.store.assert_awaited_once()
+        store_request = backend.store.call_args.args[1]
+        assert "Task completed successfully" in store_request.content
 
     async def test_skipped_when_disabled(self) -> None:
         """No-op when distillation capture is disabled."""

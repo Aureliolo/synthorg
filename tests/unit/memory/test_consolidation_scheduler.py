@@ -87,6 +87,29 @@ class TestSchedulerCycle:
 
         assert service.run_maintenance.await_count == 2
 
+    async def test_critical_error_nested_in_a_group_propagates(self) -> None:
+        """A per-agent guard must never swallow an interpreter-critical.
+
+        The bare-critical arm is caught before the broad handler, so the
+        one way a ``MemoryError`` reaches ``reraise_critical`` is nested in
+        an ``ExceptionGroup``. It must still take down the cycle rather
+        than being logged as an ordinary agent failure.
+        """
+        from synthorg.memory.consolidation.service import (
+            MemoryConsolidationService,
+        )
+
+        service = mock_of[MemoryConsolidationService]()
+        service.run_maintenance.side_effect = ExceptionGroup("wrapped", [MemoryError()])
+        scheduler = MemoryConsolidationScheduler(
+            service,
+            interval_seconds=3600.0,
+            agent_ids=_supplier(("agent-1",)),
+        )
+
+        with pytest.raises(ExceptionGroup):
+            await scheduler._run_cycle_once()
+
     async def test_no_supplier_is_a_no_op(self) -> None:
         from synthorg.memory.consolidation.service import (
             MemoryConsolidationService,

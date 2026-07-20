@@ -218,12 +218,37 @@ async def reopened_backend(db_path: Path) -> AsyncIterator[SqlVectorBackend]:
         yield backend
 
 
+def _anchor(content: str) -> str:
+    """Return the leading fragment that identifies a corpus memory.
+
+    Matching a memory's whole content couples the eval to the formatter
+    emitting it untruncated: the day a budget squeeze trims an entry's
+    tail, a genuine recall would read as a miss. A short leading fragment
+    survives tail truncation, and ``_ANCHORS`` asserts the fragments stay
+    unique so the mapping remains unambiguous.
+
+    Returns:
+        The first several words of *content*, whitespace-normalised.
+    """
+    return " ".join(re.sub(r"\s+", " ", content).split()[:_ANCHOR_WORDS])
+
+
+_ANCHOR_WORDS: Final[int] = 6
+_ANCHORS: Final[dict[str, str]] = {
+    memory.memory_id: _anchor(memory.content) for memory in CORPUS
+}
+if len({*_ANCHORS.values()}) != len(_ANCHORS):
+    msg = "golden corpus anchors are not unique; widen _ANCHOR_WORDS"
+    raise AssertionError(msg)
+
+
 def _recalled_ids(messages: tuple[object, ...]) -> frozenset[str]:
     """Map injected message text back to the corpus ids it came from.
 
     The formatter emits fenced content rather than identifiers, so the
-    corpus is matched by content. Anchoring on the stored text keeps the
-    eval measuring what actually reached the prompt.
+    corpus is matched by content. Anchoring on a leading fragment keeps
+    the eval measuring what reached the prompt without coupling it to
+    untruncated emission.
 
     Returns:
         Ids of the corpus memories present in the injected messages.
@@ -231,9 +256,7 @@ def _recalled_ids(messages: tuple[object, ...]) -> frozenset[str]:
     blob = "\n".join(str(getattr(message, "content", "") or "") for message in messages)
     normalised = re.sub(r"\s+", " ", blob)
     return frozenset(
-        memory.memory_id
-        for memory in CORPUS
-        if re.sub(r"\s+", " ", memory.content) in normalised
+        memory_id for memory_id, anchor in _ANCHORS.items() if anchor in normalised
     )
 
 

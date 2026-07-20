@@ -14,11 +14,13 @@ from unittest.mock import MagicMock
 import pytest
 
 import synthorg.api.lifecycle_assembly
+from synthorg.memory.consolidation.wiki_export import WikiExporter
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.workers._memory_assembly import (
     build_memory_injection_strategy_or_none,
+    wiki_exporter_or_none,
 )
 from tests._shared import make_app_state
 
@@ -52,6 +54,20 @@ class TestMemoryInjectionStrategyAssembly:
 
         assert app_state.slice(MemoryStateSlice).backend is backend
         assert strategy is not None
+
+
+class TestWikiExporterAssembly:
+    """The wiki exporter backing ``memory.browse_wiki`` tracks the backend."""
+
+    def test_exporter_is_built_when_a_backend_is_wired(self) -> None:
+        app_state = make_app_state(memory_backend=MagicMock(spec=MemoryBackend))
+
+        exporter = wiki_exporter_or_none(app_state)
+
+        assert isinstance(exporter, WikiExporter)
+
+    def test_no_exporter_without_a_backend(self) -> None:
+        assert wiki_exporter_or_none(make_app_state()) is None
 
 
 class TestOrgMemoryWiringOrder:

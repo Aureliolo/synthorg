@@ -16,8 +16,10 @@ import pytest
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.sqlvector import SqlVectorBackend
+from synthorg.memory.backends.sqlvector.adapter import _ORTHOGONAL_SIMILARITY
 from synthorg.memory.errors import MemoryConnectionError
 from synthorg.memory.models import (
+    MemoryEntry,
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
@@ -367,3 +369,34 @@ class TestCrud:
 
             assert await instance.count(_AGENT) == 2
             assert "memory number 0" not in [h.content for h in remaining]
+
+
+class TestDropUnrelated:
+    """Dense hits at or below orthogonal carry no evidence and are dropped.
+
+    Fusing them back in lets a vector no more related than a random one
+    contribute recall, which is the noise the two-stage design exists to
+    keep out. The threshold is exclusive, so a hit exactly at orthogonal
+    is dropped, not kept.
+    """
+
+    @staticmethod
+    def _hit(entry_id: str, relevance_score: float | None) -> MemoryEntry:
+        return MemoryEntry(
+            id=NotBlankStr(entry_id),
+            agent_id=_AGENT,
+            category=MemoryCategory.SEMANTIC,
+            content=NotBlankStr("a hit"),
+            metadata=MemoryMetadata(),
+            created_at=_NOW,
+            relevance_score=relevance_score,
+        )
+
+    def test_keeps_only_hits_above_the_orthogonal_floor(self) -> None:
+        above = self._hit("above", _ORTHOGONAL_SIMILARITY + 0.01)
+        at_floor = self._hit("at", _ORTHOGONAL_SIMILARITY)
+        unscored = self._hit("none", None)
+
+        kept = SqlVectorBackend._drop_unrelated((above, at_floor, unscored))
+
+        assert [h.id for h in kept] == ["above"]

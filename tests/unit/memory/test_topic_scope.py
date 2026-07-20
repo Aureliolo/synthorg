@@ -94,12 +94,16 @@ class TestInTopicScope:
 
         assert in_topic_scope(_entry(tags=()), terms)
 
-    def test_non_procedural_categories_are_untouched(self) -> None:
+    @pytest.mark.parametrize(
+        "category", [MemoryCategory.SEMANTIC, MemoryCategory.EPISODIC]
+    )
+    def test_non_procedural_categories_are_untouched(
+        self, category: MemoryCategory
+    ) -> None:
         """Only procedural lessons are task-specific enough to scope."""
         terms = scope_terms(recall_request(query="retrieval reranking"))
 
-        for category in (MemoryCategory.SEMANTIC, MemoryCategory.EPISODIC):
-            assert in_topic_scope(_entry(tags=("checkout",), category=category), terms)
+        assert in_topic_scope(_entry(tags=("checkout",), category=category), terms)
 
     def test_empty_scope_terms_constrain_nothing(self) -> None:
         """A title of nothing but stop words must not silence recall."""

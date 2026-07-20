@@ -23,6 +23,10 @@ from tests.evals.memory_recall.harness import (
     write_report,
 )
 
+# Marked ``unit`` rather than a bespoke eval tier on purpose: the harness
+# is fast and deterministic (a fake embedder over in-process SQLite), so
+# this must run on every push as a regression guard, not sit in a slow
+# benchmark tier that only runs on demand.
 pytestmark = pytest.mark.unit
 
 

@@ -16,6 +16,8 @@ from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.memory.shared_store import ORG_NAMESPACE, OrgSharedKnowledgeStore
 from tests._shared import mock_of
 
+pytestmark = pytest.mark.unit
+
 _CREATED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 
 
@@ -46,7 +48,6 @@ def _store(*facts: OrgFact) -> tuple[OrgSharedKnowledgeStore, OrgMemoryBackend]:
     return OrgSharedKnowledgeStore(backend), backend
 
 
-@pytest.mark.unit
 class TestOrgSharedKnowledgeStore:
     def test_satisfies_the_shared_knowledge_protocol(self) -> None:
         """The retriever fuses through this protocol, not a concrete type."""

@@ -172,6 +172,23 @@ class TestSupersession:
         assert decision.reason is not None
 
 
+class TestClosestMatchTieBreak:
+    def test_equal_similarity_breaks_on_id(self) -> None:
+        """Two equally-similar duplicates must resolve reproducibly.
+
+        Both score 1.0 against the candidate, so only the id tie-break
+        decides which is reported, and it must be stable across runs.
+        """
+        first = _entry(_LESSON, entry_id="aaa")
+        second = _entry(_LESSON, entry_id="bbb")
+
+        forward = evaluate_write(_LESSON, existing=(first, second))
+        reversed_order = evaluate_write(_LESSON, existing=(second, first))
+
+        assert forward.duplicate_of == "bbb"
+        assert reversed_order.duplicate_of == "bbb"
+
+
 class TestDeterminism:
     def test_same_inputs_give_the_same_decision(self) -> None:
         """No LLM, so the gate must be reproducible."""
