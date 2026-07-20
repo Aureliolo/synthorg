@@ -45,6 +45,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     CoordinationTopology,
@@ -168,19 +169,21 @@ async def _rollback_successor(
     superseded. Restore the pre-replan graph so the operator retries against an
     unchanged initiative rather than one with two live plans: point the project
     back at the still-live *existing* plan (idempotent when the repoint never
-    landed) and delete the orphan successor. Point the project back first so it
-    never names a plan that is about to be deleted.
+    landed) and then delete the orphan successor.
 
-    The two writes are independent best-effort steps: one failing must not skip
-    the other (a relink failure must still let the orphan successor be deleted),
-    and a failure in either is logged and swallowed so the original error is the
-    one surfaced to the caller. The residual is at worst an orphan
-    ``PENDING_REVIEW`` successor carrying no tasks, which the project-delete
-    cascade later supersedes.
+    The delete is GATED on the relink confirming the project points away from
+    the successor: ``link_project_to_plan`` returns the updated project on
+    success and ``None`` when the project is missing, contended out, or errored.
+    Deleting the successor while the project might still name it would leave
+    ``project.plan_id`` dangling at a removed row, which is strictly worse than
+    keeping a live orphan. So on an unconfirmed relink the successor is kept and
+    the project-delete cascade supersedes it later. Both writes are best-effort:
+    failures are logged and swallowed so the original error is the one surfaced.
     """
     persistence = persistence_of(app_state)
+    restored: Project | None = None
     try:
-        await link_project_to_plan(
+        restored = await link_project_to_plan(
             persistence.projects,
             project_id=NotBlankStr(str(existing.project)),
             plan_id=existing.id,
@@ -196,6 +199,17 @@ async def _rollback_successor(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+    if restored is None:
+        # The project may still name the successor; deleting it would dangle
+        # project.plan_id. Keep the orphan for the cascade to supersede.
+        logger.warning(
+            API_PLAN_REPLANNED,
+            plan_id=str(successor.id),
+            supersedes=str(existing.id),
+            project=str(existing.project),
+            note="successor kept: rollback relink unconfirmed",
+        )
+        return
     try:
         await persistence.plans.delete(NotBlankStr(str(successor.id)))
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised, rest best-effort

@@ -276,15 +276,15 @@ class TestReplan:
         assert persisted.status is PlanStatus.EXECUTING
         engine.transition_task.assert_not_called()
 
-    async def test_a_failed_relink_rolls_back_to_one_live_plan(
+    async def test_a_failed_repoint_keeps_the_project_on_a_live_plan(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A repoint failure compensates back rather than leaving two plans.
+        """A repoint failure never dangles the project pointer.
 
-        The successor is already persisted when the project repoint fails, so
-        the rollback deletes it and restores the pointer: the project keeps its
-        single live plan (the still-EXECUTING existing one) and no work is
-        cancelled.
+        The successor is persisted, but the repoint fails; the rollback cannot
+        confirm the project points away from the successor, so it keeps it
+        rather than delete a row the project might name. The project stays on
+        the still-live existing plan and no work is cancelled.
         """
         state, backend, engine = await _seed(PlanStatus.EXECUTING)
         monkeypatch.setattr(
@@ -302,7 +302,11 @@ class TestReplan:
                 state, existing, revision=_REVISION, requested_by="admin"
             )
 
-        await self._assert_one_live_executing_plan(backend)
+        await self._assert_project_points_at_live_plan(backend)
+        project = await backend.projects.get(NotBlankStr(sid(_PROJECT)))
+        assert project is not None
+        # The repoint never landed, so the project stays on the existing plan.
+        assert project.plan_id == as_uuid(_PLAN_ID)
         engine.transition_task.assert_not_called()
 
     async def test_a_failed_supersede_rolls_back_to_one_live_plan(
@@ -335,6 +339,59 @@ class TestReplan:
         project = await backend.projects.get(NotBlankStr(sid(_PROJECT)))
         assert project is not None
         assert project.plan_id == as_uuid(_PLAN_ID)
+        engine.transition_task.assert_not_called()
+
+    async def test_a_failed_rollback_relink_never_dangles_the_pointer(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The repoint lands but the rollback relink fails: no dangling FK.
+
+        The project is repointed at the successor, the retirement then fails,
+        and the rollback's relink-back also fails. The successor must not be
+        deleted while the project still names it, so ``project.plan_id`` keeps
+        resolving to a live plan rather than a removed one.
+        """
+        state, backend, engine = await _seed(PlanStatus.EXECUTING)
+        # sync_status fails, so the compensated block rolls back.
+        monkeypatch.setattr(
+            backend.plans,
+            "update",
+            AsyncMock(
+                spec=backend.plans.update,
+                side_effect=QueryError("supersede failed"),
+            ),
+        )
+        # The initial repoint persists for real; only the rollback relink fails.
+        real_update = backend.projects.update
+        seen = {"calls": 0}
+        relink_error = QueryError("rollback relink failed")
+
+        async def _update(
+            project: object, *, expected_version: int | None = None
+        ) -> None:
+            seen["calls"] += 1
+            if seen["calls"] >= 2:
+                raise relink_error
+            await real_update(project, expected_version=expected_version)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(
+            backend.projects,
+            "update",
+            AsyncMock(spec=backend.projects.update, side_effect=_update),
+        )
+        existing = _plan(PlanStatus.EXECUTING)
+
+        with pytest.raises(QueryError):
+            await replan_initiative(
+                state, existing, revision=_REVISION, requested_by="admin"
+            )
+
+        # The pointer moved to the successor and the rollback could not move it
+        # back, so the successor must still exist: no dangling FK.
+        await self._assert_project_points_at_live_plan(backend)
+        project = await backend.projects.get(NotBlankStr(sid(_PROJECT)))
+        assert project is not None
+        assert project.plan_id != as_uuid(_PLAN_ID)
         engine.transition_task.assert_not_called()
 
     async def test_a_failed_cancellation_leaves_a_coherent_graph(
@@ -379,6 +436,17 @@ class TestReplan:
         assert len(live) == 1
         assert live[0].id == as_uuid(_PLAN_ID)
         assert live[0].status is PlanStatus.EXECUTING
+
+    @staticmethod
+    async def _assert_project_points_at_live_plan(
+        backend: FakePersistenceBackend,
+    ) -> None:
+        project = await backend.projects.get(NotBlankStr(sid(_PROJECT)))
+        assert project is not None
+        assert project.plan_id is not None
+        referenced = await backend.plans.get(NotBlankStr(str(project.plan_id)))
+        assert referenced is not None
+        assert referenced.status is not PlanStatus.SUPERSEDED
 
     @pytest.mark.parametrize(
         "status",
