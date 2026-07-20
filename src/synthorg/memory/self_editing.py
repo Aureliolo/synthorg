@@ -34,7 +34,6 @@ from synthorg.memory.injection import (
     TokenEstimator,
 )
 from synthorg.memory.models import (
-    MemoryEntry,
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
@@ -54,6 +53,10 @@ from synthorg.memory.self_editing_args import (
     RecallMemoryReadArgs,
     RecallMemoryWriteArgs,
     parse_self_editing_args,
+)
+from synthorg.memory.self_editing_format import (
+    format_entries,
+    format_self_editing_error,
 )
 from synthorg.memory.self_editing_models import (
     SelfEditingMemoryConfig,
@@ -82,43 +85,6 @@ logger = get_logger(__name__)
 
 # Auto-tag added to archival/recall writes when write_auto_tag=True.
 _AUTO_TAG: Final[str] = "self_edited"
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _format_self_editing_error(err: object) -> str:
-    """Render a single Pydantic ``errors()`` entry as ``loc: msg``.
-
-    Strips the ``tool`` discriminator from ``loc`` (it's a dispatch
-    concern not surfaced to the LLM caller).
-
-    Returns:
-        Result of type ``str``.
-    """
-    if not isinstance(err, dict):
-        return "<arguments>: invalid"
-    loc_raw = err.get("loc", ())
-    loc_parts = loc_raw if isinstance(loc_raw, tuple) else ()
-    loc = ".".join(str(p) for p in loc_parts if p != "tool") or "<arguments>"
-    msg = err.get("msg", "")
-    return f"{loc}: {msg}" if isinstance(msg, str) else f"{loc}: invalid"
-
-
-def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
-    """Format memory entries as human-readable tool response text.
-
-    Args:
-        entries: Memory entries to format.
-
-    Returns:
-        Formatted multi-line string, or ``"No memories found."`` if empty.
-    """
-    if not entries:
-        return "No memories found."
-    return "\n".join(f"[{e.category.value}] (id={e.id}) {e.content}" for e in entries)
 
 
 # ---------------------------------------------------------------------------
@@ -327,7 +293,7 @@ class SelfEditingMemoryStrategy:
             first = errors[0]
             if first["type"] == "union_tag_invalid":
                 return f"{ERROR_PREFIX} Unknown self-editing tool: {tool_name!r}"
-            details = "; ".join(_format_self_editing_error(e) for e in errors)
+            details = "; ".join(format_self_editing_error(e) for e in errors)
             return f"{ERROR_PREFIX} Invalid arguments: {details}"
 
         try:
@@ -402,7 +368,7 @@ class SelfEditingMemoryStrategy:
             agent_id=agent_id,
             count=len(entries),
         )
-        return _format_entries(entries)
+        return format_entries(entries)
 
     async def _handle_core_memory_write(
         self,
@@ -495,7 +461,7 @@ class SelfEditingMemoryStrategy:
             query_length=len(args.query),
             count=len(entries),
         )
-        return _format_entries(entries)
+        return format_entries(entries)
 
     async def _handle_archival_memory_write(
         self,
