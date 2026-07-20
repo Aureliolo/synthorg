@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.api.lifecycle_helpers.memory_backend_wiring import wire_memory_backend
 from synthorg.api.state import AppState
@@ -21,6 +22,7 @@ from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.consolidation.config import ConsolidationConfig
 from synthorg.memory.enums import ConsolidationInterval
 from synthorg.memory.state import MemoryStateSlice
+from synthorg.observability.events.memory import MEMORY_BACKEND_WIRE_FAILED
 from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.settings.service import SettingsService
@@ -137,6 +139,27 @@ class TestFailLoud:
         await wire_memory_backend(app_state)
 
         assert app_state.slice(MemoryStateSlice).backend is None
+
+    async def test_a_connect_failure_wires_no_backend_and_reports_it(self) -> None:
+        # A backend that builds but cannot connect (e.g. the vector index
+        # cannot be prepared) must be reported and left unwired, never
+        # published half-open.
+        persistence = _persistence()
+        persistence.memory_vectors.ensure_ready = AsyncMock(
+            side_effect=RuntimeError("index build failed")
+        )
+        app_state = make_app_state(
+            persistence=persistence,
+            settings_service=_settings("test-provider", "test-embed-001", 8),
+        )
+
+        with capture_logs() as logs:
+            await wire_memory_backend(app_state)
+
+        assert app_state.slice(MemoryStateSlice).backend is None
+        failures = [e for e in logs if e["event"] == MEMORY_BACKEND_WIRE_FAILED]
+        assert len(failures) == 1
+        assert failures[0]["log_level"] == "error"
 
 
 class TestConsolidationSchedulerWiring:

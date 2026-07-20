@@ -17,12 +17,51 @@ from synthorg.memory.filter import (
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 from synthorg.memory.protocol import MemoryBackend
-from synthorg.memory.ranking import ScoredMemory
+from synthorg.memory.ranking import FusionStrategy, ScoredMemory
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.providers.enums import MessageRole
 from tests._shared import recall_request
+
+
+@pytest.mark.unit
+class TestExceptionGroupHandling:
+    """A system error wrapped by the RRF TaskGroup must still propagate.
+
+    The RRF fan-out runs dense and sparse retrieval in an
+    ``asyncio.TaskGroup``, which re-raises a subtask failure inside an
+    ``ExceptionGroup``. A ``MemoryError`` nested there must be unwrapped
+    and re-raised, never logged as an ordinary degrade, while a domain
+    retrieval error degrades to an empty injection.
+    """
+
+    async def test_system_error_in_the_group_propagates(self) -> None:
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve = AsyncMock(side_effect=MemoryError("out of memory"))
+        backend.supports_sparse_search = False
+        strategy = ContextInjectionStrategy(
+            backend=backend,
+            config=MemoryRetrievalConfig(
+                fusion_strategy=FusionStrategy.RRF, min_relevance=0.0
+            ),
+        )
+
+        with pytest.raises(MemoryError, match="out of memory"):
+            await strategy.prepare_messages(recall_request(token_budget=1000))
+
+    async def test_domain_error_in_the_group_degrades_to_empty(self) -> None:
+        backend = AsyncMock(spec=MemoryBackend)
+        backend.retrieve = AsyncMock(side_effect=MemoryRetrievalError("backend down"))
+        backend.supports_sparse_search = False
+        strategy = ContextInjectionStrategy(
+            backend=backend,
+            config=MemoryRetrievalConfig(
+                fusion_strategy=FusionStrategy.RRF, min_relevance=0.0
+            ),
+        )
+
+        assert await strategy.prepare_messages(recall_request(token_budget=1000)) == ()
 
 
 def _make_entry(

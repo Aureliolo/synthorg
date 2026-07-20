@@ -6,6 +6,7 @@ settings page offered operators control over a process that never ran.
 """
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.cycle_scheduler import (
@@ -15,6 +16,7 @@ from synthorg.memory.consolidation.cycle_scheduler import (
 )
 from synthorg.memory.enums import ConsolidationInterval
 from synthorg.memory.errors import MemoryStoreError
+from synthorg.observability.events.consolidation import SCHEDULER_FAILED
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
@@ -150,3 +152,72 @@ class TestSchedulerCycle:
         )
 
         assert await scheduler._resolve_cycle_enabled() is True
+
+
+class TestFailureEscalation:
+    """A persistently-failing agent escalates from WARNING to ERROR.
+
+    A single stream of identical WARNINGs is easy to tune out, so an
+    agent whose maintenance keeps failing (its memory never gets
+    maintained) must eventually escalate to ERROR; a later success clears
+    the streak so a transient blip never leaves the agent flagged.
+    """
+
+    def _failing_scheduler(
+        self, service_double: object
+    ) -> MemoryConsolidationScheduler:
+        return MemoryConsolidationScheduler(
+            service_double,  # type: ignore[arg-type]  # typed service double
+            interval_seconds=3600.0,
+            agent_ids=_supplier(("agent-1",)),
+        )
+
+    async def test_persistent_failure_escalates_to_error(self) -> None:
+        from synthorg.memory.consolidation.service import (
+            MemoryConsolidationService,
+        )
+
+        service = mock_of[MemoryConsolidationService]()
+        service.run_maintenance.side_effect = MemoryStoreError("boom")
+        scheduler = self._failing_scheduler(service)
+
+        levels: list[str] = []
+        for _ in range(3):
+            with capture_logs() as logs:
+                await scheduler._run_cycle_once()
+            levels.append(
+                next(
+                    entry["log_level"]
+                    for entry in logs
+                    if entry["event"] == SCHEDULER_FAILED
+                )
+            )
+
+        # First two failures warn; the third crosses the threshold and errors.
+        assert levels == ["warning", "warning", "error"]
+
+    async def test_a_success_clears_the_failure_streak(self) -> None:
+        from synthorg.memory.consolidation.service import (
+            MemoryConsolidationService,
+        )
+
+        service = mock_of[MemoryConsolidationService]()
+        # fail, fail, succeed, then fail again: the streak reset means the
+        # post-success failure is a warning, not a straight-to-error.
+        service.run_maintenance.side_effect = [
+            MemoryStoreError("boom"),
+            MemoryStoreError("boom"),
+            None,
+            MemoryStoreError("boom"),
+        ]
+        scheduler = self._failing_scheduler(service)
+
+        levels: list[str] = []
+        for _ in range(4):
+            with capture_logs() as logs:
+                await scheduler._run_cycle_once()
+            failures = [e for e in logs if e["event"] == SCHEDULER_FAILED]
+            if failures:
+                levels.append(failures[0]["log_level"])
+
+        assert levels == ["warning", "warning", "warning"]
