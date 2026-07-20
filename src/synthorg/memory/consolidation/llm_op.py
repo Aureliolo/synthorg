@@ -163,6 +163,7 @@ class LLMSynthesisOp:
         new_id = await self._store_summary(
             synthesized,
             category=group.category,
+            namespace=group.kept.namespace,
             agent_id=context.agent_id,
             outcome=outcome,
         )
@@ -237,6 +238,7 @@ class LLMSynthesisOp:
         content: str,
         *,
         category: MemoryCategory,
+        namespace: NotBlankStr,
         agent_id: NotBlankStr,
         outcome: SynthesisOutcome,
     ) -> NotBlankStr:
@@ -253,6 +255,9 @@ class LLMSynthesisOp:
         store_request = MemoryStoreRequest(
             category=category,
             content=content,
+            # Inherits the source group's namespace so a project's
+            # consolidated knowledge never lands in the shared default.
+            namespace=namespace,
             metadata=MemoryMetadata(
                 source="consolidation",
                 tags=("consolidated", tag),

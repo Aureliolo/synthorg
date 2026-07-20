@@ -21,6 +21,7 @@ from synthorg.memory.models import (
     MemoryQuery,
     MemoryUpdateRequest,
 )
+from synthorg.memory.namespace_scope import ambient_read_namespaces
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.tool_retriever import ERROR_PREFIX
 from synthorg.memory.write_gate import (
@@ -73,6 +74,10 @@ async def comparable_entries(
             MemoryQuery(
                 text=content,
                 categories=frozenset({category}),
+                # Dedup only against entries the write would be visible
+                # beside, so a project write never collapses into another
+                # project's memory it can't see.
+                namespaces=ambient_read_namespaces(),
                 limit=limit,
             ),
         )

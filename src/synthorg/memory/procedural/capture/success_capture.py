@@ -16,6 +16,7 @@ from synthorg.engine.loop_protocol import (
 from synthorg.engine.recovery import RecoveryResult
 from synthorg.memory.filter import NON_INFERABLE_TAG
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
+from synthorg.memory.namespace_scope import ambient_write_namespace
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.procedural.success_proposer import (
     SuccessMemoryProposer,
@@ -113,11 +114,14 @@ class SuccessCaptureStrategy:
             )
             return None
 
-        # Store the memory with success-derived tag
+        # Store the memory with success-derived tag, scoped to the
+        # project the run belongs to so a project's learnings never bleed
+        # into another project's recall.
         tags = (NON_INFERABLE_TAG, "success-derived", *proposal.tags)
         request = MemoryStoreRequest(
             category=MemoryCategory.PROCEDURAL,
             content=self._format_content(proposal),
+            namespace=ambient_write_namespace(),
             metadata=MemoryMetadata(
                 source=f"success:{task_id}",
                 confidence=proposal.confidence,

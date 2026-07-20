@@ -23,6 +23,7 @@ from synthorg.engine.loop_protocol import (
 )
 from synthorg.execution.turn import TurnRecord
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
+from synthorg.memory.namespace_scope import ambient_write_namespace
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.tool_retriever import (
     RECALL_MEMORY_TOOL_NAME,
@@ -262,6 +263,7 @@ async def capture_distillation(
         store_request = MemoryStoreRequest(
             category=MemoryCategory.EPISODIC,
             content=_render_store_content(request),
+            namespace=ambient_write_namespace(),
             metadata=MemoryMetadata(
                 source="distillation",
                 tags=(DISTILLATION_TAG,),

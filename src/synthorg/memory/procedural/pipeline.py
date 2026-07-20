@@ -19,6 +19,7 @@ from synthorg.engine.recovery import RecoveryResult
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.memory.filter import NON_INFERABLE_TAG
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
+from synthorg.memory.namespace_scope import ambient_write_namespace
 from synthorg.memory.procedural.models import (
     FailureAnalysisPayload,
     ProceduralMemoryConfig,
@@ -230,6 +231,7 @@ async def _store_and_materialize(
     request = MemoryStoreRequest(
         category=MemoryCategory.PROCEDURAL,
         content=content,
+        namespace=ambient_write_namespace(),
         metadata=MemoryMetadata(
             source=f"failure:{task_id}",
             confidence=proposal.confidence,

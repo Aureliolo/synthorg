@@ -162,6 +162,10 @@ class TwoTierCompressionStrategy:
                 store_request = MemoryStoreRequest(
                     category=MemoryCategory.EPISODIC,
                     content=content,
+                    # Compressed tier stays in the source entry's namespace
+                    # so a project's compressed memory never lands in the
+                    # shared default.
+                    namespace=entry.namespace,
                     metadata=MemoryMetadata(
                         tags=(_COMPRESSED_TAG,),
                         source=entry.id,

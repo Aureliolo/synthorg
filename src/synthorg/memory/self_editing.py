@@ -39,6 +39,10 @@ from synthorg.memory.models import (
     MemoryQuery,
     MemoryStoreRequest,
 )
+from synthorg.memory.namespace_scope import (
+    ambient_read_namespaces,
+    ambient_write_namespace,
+)
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.ranking import ScoredMemory
 from synthorg.memory.recall_request import MemoryRecallRequest
@@ -171,8 +175,15 @@ class SelfEditingMemoryStrategy:
         """Strategy identifier -- ``"self_editing"``."""
         return InjectionStrategy.SELF_EDITING.value
 
-    def _core_query(self) -> MemoryQuery:
+    def _core_query(
+        self,
+        namespaces: frozenset[NotBlankStr] | None,
+    ) -> MemoryQuery:
         """Return the MemoryQuery for core memory (SEMANTIC + core tag, no text).
+
+        Args:
+            namespaces: Recall scope from the request; keeps a
+                project-scoped agent from reading another project's core.
 
         Returns:
             Result of type ``MemoryQuery``.
@@ -181,6 +192,7 @@ class SelfEditingMemoryStrategy:
             text=None,
             categories=frozenset({MemoryCategory.SEMANTIC}),
             tags=(self._config.core_memory_tag,),
+            namespaces=namespaces,
             limit=self._config.core_max_entries,
         )
 
@@ -217,7 +229,9 @@ class SelfEditingMemoryStrategy:
         """
         agent_id = request.agent_id
         try:
-            entries = await self._backend.retrieve(agent_id, self._core_query())
+            entries = await self._backend.retrieve(
+                agent_id, self._core_query(request.namespaces)
+            )
             if not entries:
                 return ()
             scored = tuple(
@@ -413,7 +427,9 @@ class SelfEditingMemoryStrategy:
             return f"{ERROR_PREFIX} Core memory writes are disabled for this agent."
 
         content = args.content
-        existing = await self._backend.retrieve(agent_id, self._core_query())
+        existing = await self._backend.retrieve(
+            agent_id, self._core_query(ambient_read_namespaces())
+        )
         if len(existing) >= self._config.core_max_entries:
             logger.info(
                 MEMORY_SELF_EDIT_CORE_WRITE_REJECTED,
@@ -431,6 +447,7 @@ class SelfEditingMemoryStrategy:
         request = MemoryStoreRequest(
             category=MemoryCategory.SEMANTIC,
             content=content,
+            namespace=ambient_write_namespace(),
             metadata=MemoryMetadata(tags=(self._config.core_memory_tag,)),
         )
         memory_id = await self._backend.store(agent_id, request)
@@ -466,6 +483,7 @@ class SelfEditingMemoryStrategy:
             MemoryQuery(
                 text=args.query,
                 categories=categories,
+                namespaces=ambient_read_namespaces(),
                 limit=limit,
             ),
         )
@@ -511,6 +529,7 @@ class SelfEditingMemoryStrategy:
         request = MemoryStoreRequest(
             category=category,
             content=args.content,
+            namespace=ambient_write_namespace(),
             metadata=MemoryMetadata(tags=tags),
         )
         memory_id = await self._backend.store(agent_id, request)
@@ -564,6 +583,7 @@ class SelfEditingMemoryStrategy:
         request = MemoryStoreRequest(
             category=MemoryCategory.EPISODIC,
             content=args.content,
+            namespace=ambient_write_namespace(),
             metadata=MemoryMetadata(tags=tags),
         )
         memory_id = await self._backend.store(agent_id, request)

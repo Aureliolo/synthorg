@@ -11,22 +11,21 @@ composition in one place, so every caller produces the same query for
 the same work and cached embeddings stay valid.
 """
 
-from typing import Final
-
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.namespace_scope import (
+    DEFAULT_MEMORY_NAMESPACE,
+    PROJECT_NAMESPACE_PREFIX,
+    read_namespaces,
+)
 
-#: Namespace agent memory lands in by default (mirrors
-#: ``MemoryStoreRequest.namespace``). Recall scoped to a project unions
-#: this with the project namespace so an agent keeps its own memories.
-DEFAULT_MEMORY_NAMESPACE: Final[str] = "default"
-
-#: Prefix that scopes a memory to one project. Project-scoped recall
-#: filters on ``{project}:<id>`` so one project's memory never bleeds
-#: into another's.
-PROJECT_NAMESPACE_PREFIX: Final[str] = "project:"
+__all__ = [
+    "DEFAULT_MEMORY_NAMESPACE",
+    "PROJECT_NAMESPACE_PREFIX",
+    "MemoryRecallRequest",
+]
 
 
 class MemoryRecallRequest(BaseModel):
@@ -103,14 +102,4 @@ class MemoryRecallRequest(BaseModel):
         Returns:
             The namespace scope, or ``None`` when the work is unscoped.
         """
-        if self.project_id is None:
-            return None
-        project = self.project_id.strip()
-        if not project:
-            return None
-        return frozenset(
-            {
-                NotBlankStr(DEFAULT_MEMORY_NAMESPACE),
-                NotBlankStr(f"{PROJECT_NAMESPACE_PREFIX}{project}"),
-            }
-        )
+        return read_namespaces(self.project_id)
