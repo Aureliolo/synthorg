@@ -832,6 +832,12 @@ class AgentEngine(
             )
             if hub is not None:
                 await publish_run_started(hub, task_id=task_id, agent_id=agent_id)
+            # Stream the per-turn LLM calls (with mid-turn cancellation and
+            # steer-interrupt) when the operator setting is on and the model
+            # supports it; else the loop uses the non-streaming call path.
+            streaming_enabled = await self._resolve_streaming_enabled(
+                provider or self._provider, identity
+            )
             # before/after_agent fire around the loop run (no-op when unwired);
             # after_agent is guaranteed in a finally inside the helper so a
             # loop timeout/exception cannot skip the end-of-run cleanup seam.
@@ -856,6 +862,7 @@ class AgentEngine(
                     timeout_seconds=timeout_seconds,
                     provider=provider or self._provider,
                     turn_observer=turn_observer,
+                    streaming_enabled=streaming_enabled,
                 )
 
             try:

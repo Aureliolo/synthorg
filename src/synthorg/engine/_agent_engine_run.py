@@ -17,6 +17,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import FLIGHT_RECORDER_RECORD_FAILED
 from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
 from synthorg.providers.models import CompletionConfig
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from synthorg.core.clock import Clock
@@ -92,6 +93,56 @@ class AgentEngineRunMixin:
             max_tokens=identity.model.max_tokens,
         )
         return base.model_copy(update={"reasoning_effort": reasoning_effort})
+
+    async def _resolve_streaming_enabled(
+        self,
+        provider: CompletionProvider,
+        identity: AgentIdentity,
+    ) -> bool:
+        """Decide whether the run streams its per-turn LLM calls.
+
+        Streams only when the operator setting
+        ``engine.work_loop_streaming_enabled`` (live per run, fail-safe to the
+        default) is on AND the run's model advertises streaming support. A
+        capability-lookup fault fails safe to the non-streaming path so a
+        transient provider hiccup never blocks the run.
+
+        Returns:
+            ``True`` when the run should stream its per-turn calls.
+        """
+        from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+        from synthorg.settings.kill_switch import (  # noqa: PLC0415
+            resolve_bool_with_fallback,
+        )
+
+        if self._config_resolver is None:
+            enabled = True
+        else:
+            enabled = await resolve_bool_with_fallback(
+                resolver=self._config_resolver,
+                namespace=SettingNamespace.ENGINE,
+                key="work_loop_streaming_enabled",
+                fallback=True,
+            )
+        if not enabled:
+            return False
+        try:
+            capabilities = await provider.get_model_capabilities(
+                identity.model.model_id
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- degrade-to-non-streaming wiring
+            reraise_critical(exc)
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=str(identity.id),
+                task_id=None,
+                note="streaming capability lookup failed; using non-streaming",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False
+        return capabilities.supports_streaming
 
     async def _fold_prompt_caching(
         self,

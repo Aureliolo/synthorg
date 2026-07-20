@@ -66,7 +66,6 @@ from .loop_control_helpers import (
 )
 from .loop_helpers import (
     build_result,
-    call_provider,
     check_response_errors,
     classify_step,
     classify_turn,
@@ -82,6 +81,11 @@ from .loop_protocol import (
     TaskCancellationChecker,
     TerminationReason,
     TurnObserver,
+)
+from .loop_streaming import (
+    _TurnInterrupted,
+    fold_interrupt_usage,
+    run_provider_turn,
 )
 from .loop_tool_execution import (
     clear_last_turn_tool_calls,
@@ -176,6 +180,7 @@ class HybridLoop:
         completion_config: CompletionConfig | None = None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
         turn_observer: TurnObserver | None = None,
+        streaming_enabled: bool = False,
     ) -> ExecutionResult:
         """Run the Hybrid Plan + ReAct loop until termination.
 
@@ -191,6 +196,9 @@ class HybridLoop:
             turn_observer: Optional per-run progress callback; fired once
                 per plan step so the AG-UI stream surfaces step-level
                 progress for this loop.
+            streaming_enabled: When ``True``, each step-execution LLM call
+                streams and is interruptible mid-flight (operator
+                cancellation and steering REDIRECT).
 
         Returns:
             Execution result with final context and termination info.
@@ -252,6 +260,7 @@ class HybridLoop:
             shutdown_checker,
             task_cancellation_checker,
             turn_observer,
+            streaming_enabled=streaming_enabled,
         )
 
     # -- Phase orchestration -----------------------------------------------
@@ -304,6 +313,8 @@ class HybridLoop:
         shutdown_checker: ShutdownChecker | None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
         turn_observer: TurnObserver | None = None,
+        *,
+        streaming_enabled: bool = False,
     ) -> ExecutionResult:
         """Iterate through plan steps with checkpointing/replanning.
 
@@ -347,6 +358,7 @@ class HybridLoop:
                 budget_checker,
                 shutdown_checker,
                 task_cancellation_checker,
+                streaming_enabled=streaming_enabled,
             )
 
             if isinstance(step_result, ExecutionResult):
@@ -788,6 +800,8 @@ class HybridLoop:
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
+        *,
+        streaming_enabled: bool = False,
     ) -> tuple[AgentContext, bool] | ExecutionResult:
         """Execute a single plan step via a mini-ReAct sub-loop.
 
@@ -815,6 +829,7 @@ class HybridLoop:
                 budget_checker,
                 shutdown_checker,
                 task_cancellation_checker,
+                streaming_enabled=streaming_enabled,
             )
             step_turns += 1
 
@@ -881,13 +896,15 @@ class HybridLoop:
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
+        *,
+        streaming_enabled: bool = False,
     ) -> AgentContext | ExecutionResult | tuple[AgentContext, bool]:
         """Execute a single turn within a step's mini-ReAct sub-loop.
 
         Returns:
-            ``AgentContext`` to continue the loop, ``(ctx, bool)``
-            for step completion, or ``ExecutionResult`` for
-            termination.
+            ``AgentContext`` to continue the loop (also the re-issue path
+            after a mid-turn steering REDIRECT), ``(ctx, bool)`` for step
+            completion, or ``ExecutionResult`` for termination.
         """
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
         if shutdown_result is not None:
@@ -907,7 +924,7 @@ class HybridLoop:
             ctx = steered
 
         turn_number = ctx.turn_count + 1
-        response = await call_provider(
+        outcome = await run_provider_turn(
             ctx,
             provider,
             model,
@@ -915,9 +932,18 @@ class HybridLoop:
             config,
             turn_number,
             turns,
+            streaming_enabled=streaming_enabled,
+            cancellation_checker=task_cancellation_checker,
+            steering_inbox=self._steering_inbox,
         )
-        if isinstance(response, ExecutionResult):
-            return response
+        if isinstance(outcome, ExecutionResult):
+            return outcome
+        if isinstance(outcome, _TurnInterrupted):
+            # Re-issue the step turn: returning the context continues the
+            # mini-sub-loop, whose top-of-turn steering check then adopts the
+            # REDIRECT the interrupt fired for.
+            return fold_interrupt_usage(ctx, outcome)
+        response = outcome
 
         turns.append(
             make_turn_record(

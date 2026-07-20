@@ -73,6 +73,11 @@ EXECUTION_SHUTDOWN_CHECKPOINT_FAILED: Final[str] = (
 )
 EXECUTION_LOOP_SHUTDOWN: Final[str] = "execution.loop.shutdown"
 EXECUTION_LOOP_TASK_CANCELLED: Final[str] = "execution.loop.task_cancelled"
+EXECUTION_LOOP_TURN_STREAMED: Final[str] = "execution.loop.turn_streamed"
+EXECUTION_LOOP_TURN_CANCELLED_MIDFLIGHT: Final[str] = (
+    "execution.loop.turn_cancelled_midflight"
+)
+EXECUTION_LOOP_TURN_INTERRUPTED: Final[str] = "execution.loop.turn_interrupted"
 
 EXECUTION_PLAN_CREATED: Final[str] = "execution.plan.created"
 EXECUTION_PLAN_STEP_START: Final[str] = "execution.plan.step_start"

@@ -707,6 +707,7 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         async def _generate() -> AsyncGenerator[StreamChunk]:
             """Map raw LiteLLM chunks, appending DONE + pending tool calls."""
             pending: dict[int, _ToolCallAccumulator] = {}
+            raw_finish: str | None = None
             try:
                 async for chunk in raw_stream:
                     for sc in process(
@@ -715,6 +716,9 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
                         model_config,
                     ):
                         yield sc
+                    chunk_finish = _extract_raw_finish_reason(chunk)
+                    if chunk_finish is not None:
+                        raw_finish = chunk_finish
             except Exception as exc:
                 reraise_critical(exc)
                 logger.error(
@@ -733,7 +737,11 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
                 provider=provider,
                 model=model,
             )
-            yield StreamChunk(event_type=StreamEventType.DONE)
+            # Carry the faithful finish reason on the terminal event so a
+            # consumer reassembling the stream recovers it (content chunks
+            # carry none). Left None when the provider never surfaced one.
+            finish = map_finish_reason(raw_finish) if raw_finish is not None else None
+            yield StreamChunk(event_type=StreamEventType.DONE, finish_reason=finish)
 
         return _generate()
 
@@ -874,3 +882,17 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
 
 
 # ── Module-level helpers ─────────────────────────────────────────
+
+
+def _extract_raw_finish_reason(chunk: object) -> str | None:
+    """Read the raw finish-reason string from a LiteLLM stream chunk.
+
+    Returns:
+        The first choice's ``finish_reason`` string when present, else
+        ``None`` (intermediate chunks carry none).
+    """
+    choices = getattr(chunk, "choices", None)
+    if not choices:
+        return None
+    reason = getattr(choices[0], "finish_reason", None)
+    return reason if isinstance(reason, str) else None

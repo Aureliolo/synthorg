@@ -21,7 +21,6 @@ from synthorg.engine.loop_control_helpers import (
 )
 from synthorg.engine.loop_helpers import (
     build_result,
-    call_provider,
     check_response_errors,
     classify_turn,
     make_turn_record,
@@ -33,6 +32,11 @@ from synthorg.engine.loop_protocol import (
     ShutdownChecker,
     TaskCancellationChecker,
     TerminationReason,
+)
+from synthorg.engine.loop_streaming import (
+    _TurnInterrupted,
+    fold_interrupt_usage,
+    run_provider_turn,
 )
 from synthorg.engine.loop_tool_execution import (
     clear_last_turn_tool_calls,
@@ -78,14 +82,17 @@ class PlanExecuteStepMixin:
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
+        *,
+        streaming_enabled: bool = False,
     ) -> AgentContext | ExecutionResult | tuple[AgentContext, bool]:
         """Execute a single turn within a step's mini-ReAct sub-loop.
 
         Returns:
             The updated :class:`AgentContext` to continue the
-            sub-loop, an :class:`ExecutionResult` to terminate
-            execution (shutdown / budget / cancellation), or
-            ``(ctx, True)`` when the step completed successfully.
+            sub-loop (also the re-issue path after a mid-turn steering
+            REDIRECT), an :class:`ExecutionResult` to terminate execution
+            (shutdown / budget / cancellation), or ``(ctx, True)`` when the
+            step completed successfully.
         """
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
         if shutdown_result is not None:
@@ -105,7 +112,7 @@ class PlanExecuteStepMixin:
             ctx = steered
 
         turn_number = ctx.turn_count + 1
-        response = await call_provider(
+        outcome = await run_provider_turn(
             ctx,
             provider,
             model,
@@ -113,9 +120,18 @@ class PlanExecuteStepMixin:
             config,
             turn_number,
             turns,
+            streaming_enabled=streaming_enabled,
+            cancellation_checker=task_cancellation_checker,
+            steering_inbox=self._steering_inbox,
         )
-        if isinstance(response, ExecutionResult):
-            return response
+        if isinstance(outcome, ExecutionResult):
+            return outcome
+        if isinstance(outcome, _TurnInterrupted):
+            # Re-issue the step turn: returning the context continues the
+            # mini-sub-loop, whose top-of-turn steering check then adopts the
+            # REDIRECT the interrupt fired for.
+            return fold_interrupt_usage(ctx, outcome)
+        response = outcome
 
         turns.append(
             make_turn_record(

@@ -513,6 +513,11 @@ class StreamChunk(BaseModel):
         tool_call_delta: Tool call received during streaming (for ``tool_call_delta``).
         usage: Final token usage (for ``usage`` event).
         error_message: Error description (for ``error`` event).
+        finish_reason: Why generation stopped, carried on the terminal
+            ``done`` event so a consumer reassembling the stream into a
+            :class:`CompletionResponse` recovers the faithful finish reason
+            (streaming content chunks carry none). Optional and only ever set
+            on ``done``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -530,6 +535,10 @@ class StreamChunk(BaseModel):
     error_message: str | None = Field(
         default=None,
         description="Error description",
+    )
+    finish_reason: FinishReason | None = Field(
+        default=None,
+        description="Finish reason, carried on the terminal done event",
     )
 
     @model_validator(mode="after")
@@ -572,6 +581,15 @@ class StreamChunk(BaseModel):
             if payload[name] is None:
                 msg = f"{self.event_type.value} event must include {name}"
                 raise ValueError(msg)
+
+        # ``finish_reason`` is an optional field carried only on the terminal
+        # DONE event; reject it on any other event type.
+        if (
+            self.finish_reason is not None
+            and self.event_type is not StreamEventType.DONE
+        ):
+            msg = f"{self.event_type.value} event must not include finish_reason"
+            raise ValueError(msg)
 
         extraneous = sorted(
             name

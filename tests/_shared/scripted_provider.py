@@ -71,6 +71,38 @@ TEST_CAPABILITIES = ModelCapabilities(
 )
 
 
+def _response_to_chunks(response: CompletionResponse) -> tuple[StreamChunk, ...]:
+    """Synthesise stream chunks from a completed response.
+
+    Emits a content-delta (when non-empty), a tool-call-delta per tool call, a
+    usage chunk, and a terminal DONE carrying the response's finish reason, so
+    a scripted stream reassembles back to an equivalent response.
+    """
+    chunks: list[StreamChunk] = []
+    if response.content:
+        chunks.append(
+            StreamChunk(
+                event_type=StreamEventType.CONTENT_DELTA,
+                content=response.content,
+            )
+        )
+    chunks.extend(
+        StreamChunk(
+            event_type=StreamEventType.TOOL_CALL_DELTA,
+            tool_call_delta=tool_call,
+        )
+        for tool_call in response.tool_calls
+    )
+    chunks.append(StreamChunk(event_type=StreamEventType.USAGE, usage=response.usage))
+    chunks.append(
+        StreamChunk(
+            event_type=StreamEventType.DONE,
+            finish_reason=response.finish_reason,
+        )
+    )
+    return tuple(chunks)
+
+
 class ScriptedProvider:
     """Structural ``CompletionProvider`` returning scripted responses."""
 
@@ -101,6 +133,7 @@ class ScriptedProvider:
             self._strategy = SingleResponseStrategy(response=response)
         else:
             self._strategy = None
+        self._explicit_stream_chunks = stream_chunks is not None
         self._stream_chunks: tuple[StreamChunk, ...] = (
             tuple(stream_chunks)
             if stream_chunks is not None
@@ -157,9 +190,22 @@ class ScriptedProvider:
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Return the configured stream chunks (default: a single DONE)."""
-        del messages, model, tools, config
-        chunks = self._stream_chunks
+        """Stream chunks, mirroring the configured completion by default.
+
+        When explicit ``stream_chunks`` were supplied they are replayed
+        verbatim (for streaming-specific tests). Otherwise, when a response /
+        error strategy is configured, the next completion is synthesised into
+        content / tool-call / usage / done chunks so a scripted double behaves
+        consistently whether the caller streams or completes. With neither, a
+        single terminal DONE is emitted.
+        """
+        self.received_messages.append(copy.deepcopy(messages))
+        if self._explicit_stream_chunks or self._strategy is None:
+            chunks = self._stream_chunks
+        else:
+            self._call_count += 1
+            response = self._strategy.next_response(messages, model, tools, config)
+            chunks = _response_to_chunks(response)
 
         async def _iter() -> AsyncIterator[StreamChunk]:
             for chunk in chunks:

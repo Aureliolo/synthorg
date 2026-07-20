@@ -50,6 +50,27 @@ _r.register(
     )
 )
 
+# ── Work-loop streaming ──────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="work_loop_streaming_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Stream each per-turn LLM call in the task-execution loop so an"
+            " operator can cancel or redirect an in-flight call mid-turn,"
+            " instead of only at the turn boundary. Gated per run on the"
+            " model's streaming support; falls back to a non-streaming call"
+            " otherwise. Resolved live per run, so a change applies without a"
+            " restart."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
 # ── Approval gate ────────────────────────────────────────────────
 
 _r.register(

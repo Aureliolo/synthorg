@@ -369,6 +369,9 @@ class TestDoStream:
         assert content_chunks[0].content == "Hello"
         assert content_chunks[1].content == " world"
         assert collected[-1].event_type == StreamEventType.DONE
+        # The terminal DONE chunk carries the faithful finish reason so a
+        # consumer reassembling the stream recovers it.
+        assert collected[-1].finish_reason is FinishReason.STOP
 
     async def test_streaming_with_tool_calls(self) -> None:
         driver = _make_driver()
