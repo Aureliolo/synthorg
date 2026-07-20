@@ -866,8 +866,8 @@
     },
     "src/synthorg/memory/self_editing.py": {
       "cap": 500,
-      "loc": 503,
-      "ratio": 1.006,
+      "loc": 482,
+      "ratio": 0.964,
       "tier": "code"
     },
     "src/synthorg/memory/tool_retriever.py": {
@@ -1634,7 +1634,7 @@
     "synthorg.llm.prompt_purpose": 59,
     "synthorg.memory.embedding.fine_tune_models": 24,
     "synthorg.memory.errors": 26,
-    "synthorg.memory.models": 79,
+    "synthorg.memory.models": 80,
     "synthorg.memory.protocol": 71,
     "synthorg.memory.state": 20,
     "synthorg.meta.chief_of_staff.config": 21,
