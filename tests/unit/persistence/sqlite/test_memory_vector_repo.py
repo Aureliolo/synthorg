@@ -154,8 +154,6 @@ class TestDenseSearch:
     async def test_dense_respects_agent_scope(
         self, repo: SQLiteMemoryVectorRepository
     ) -> None:
-        # The vector index is global; the agent filter is applied when
-        # hydrating rows. A leak here would hand one agent another's memories.
         await repo.upsert(
             _entry("m1", "alpha", agent_id="agent-2"),
             embedding=(1.0, 0.0, 0.0, 0.0),
@@ -170,6 +168,92 @@ class TestDenseSearch:
         )
 
         assert hits == ()
+
+    async def test_other_agents_cannot_crowd_out_the_caller(
+        self, repo: SQLiteMemoryVectorRepository
+    ) -> None:
+        """Ownership must bound the KNN, not filter it afterwards.
+
+        Filtering after the k nearest are chosen spends every slot on
+        whichever agent owns the closest vectors, so a busy neighbour
+        silently reduces everyone else's dense recall to nothing.
+        """
+        for i in range(50):
+            await repo.upsert(
+                _entry(f"other-{i}", "noise", agent_id="agent-2"),
+                embedding=(1.0, 0.001 * i, 0.0, 0.0),
+            )
+        await repo.upsert(
+            _entry("mine", "the one that matters"),
+            embedding=(0.9, 0.4, 0.0, 0.0),
+        )
+
+        hits = await repo.search_dense(
+            MemoryVectorSearchSpec(
+                agent_id=NotBlankStr("agent-1"),
+                embedding=(1.0, 0.0, 0.0, 0.0),
+                limit=10,
+            )
+        )
+
+        assert [h.id for h in hits] == ["mine"]
+
+    async def test_deleted_vector_is_not_inherited_by_a_later_entry(
+        self, repo: SQLiteMemoryVectorRepository
+    ) -> None:
+        """A new memory must never answer for a deleted one's vector.
+
+        SQLite reuses rowids, so correlating the dense index by rowid let
+        a fresh entry inherit the embedding of whichever entry last held
+        that rowid and rank as an exact match for content it never had.
+        """
+        await repo.upsert(_entry("gone", "secret"), embedding=(1.0, 0.0, 0.0, 0.0))
+        await repo.delete(NotBlankStr("agent-1"), NotBlankStr("gone"))
+
+        await repo.upsert(_entry("fresh", "totally unrelated"), embedding=None)
+
+        hits = await repo.search_dense(
+            MemoryVectorSearchSpec(
+                agent_id=NotBlankStr("agent-1"),
+                embedding=(1.0, 0.0, 0.0, 0.0),
+                limit=5,
+            )
+        )
+
+        assert hits == ()
+
+    async def test_rewriting_content_without_an_embedding_drops_the_vector(
+        self, repo: SQLiteMemoryVectorRepository
+    ) -> None:
+        """A stale vector would match content the entry no longer holds."""
+        await repo.upsert(_entry("m1", "rollback"), embedding=(1.0, 0.0, 0.0, 0.0))
+        await repo.upsert(_entry("m1", "something else entirely"), embedding=None)
+
+        hits = await repo.search_dense(
+            MemoryVectorSearchSpec(
+                agent_id=NotBlankStr("agent-1"),
+                embedding=(1.0, 0.0, 0.0, 0.0),
+                limit=5,
+            )
+        )
+
+        assert hits == ()
+
+    async def test_equidistant_hits_order_deterministically(
+        self, repo: SQLiteMemoryVectorRepository
+    ) -> None:
+        for name in ("m3", "m1", "m2"):
+            await repo.upsert(_entry(name, "same"), embedding=(1.0, 0.0, 0.0, 0.0))
+
+        hits = await repo.search_dense(
+            MemoryVectorSearchSpec(
+                agent_id=NotBlankStr("agent-1"),
+                embedding=(1.0, 0.0, 0.0, 0.0),
+                limit=5,
+            )
+        )
+
+        assert [h.id for h in hits] == ["m1", "m2", "m3"]
 
 
 class TestLexicalSearch:

@@ -7,12 +7,14 @@ backends score lexical hits through :mod:`synthorg.memory.bm25`, so the
 two differ only in how rows are fetched, never in how they are ordered.
 """
 
+import asyncio
 import json
 from datetime import datetime
 from typing import Any, Final, LiteralString, NoReturn, cast
 
 import psycopg
-from psycopg.rows import DictRow, dict_row
+from psycopg import AsyncConnection
+from psycopg.rows import DictRow, TupleRow, dict_row
 from psycopg_pool import AsyncConnectionPool
 
 import synthorg.persistence.postgres._memory_vector_sql as sql
@@ -24,6 +26,7 @@ from synthorg.memory.models import MemoryEntry
 from synthorg.memory.vector_spec import MemoryVectorSearchSpec
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
+    MEMORY_DENSE_INDEX_PERMISSION_DENIED,
     MEMORY_DENSE_INDEX_READY,
     MEMORY_DENSE_INDEX_SCAN_FAILED,
     MEMORY_DENSE_INDEX_UNAVAILABLE,
@@ -36,6 +39,10 @@ from synthorg.observability.events.memory import (
 from synthorg.persistence.postgres._memory_vector_rows import rank_lexical, row_to_entry
 
 logger = get_logger(__name__)
+
+#: Row shape the pool hands out. Named so the extension helper can be
+#: annotated without restating psycopg's generic parameter at each use.
+type _PoolConnection = AsyncConnection[TupleRow]
 
 # pgvector's <-> returns L2 distance. 1/(1+d) maps it into the bounded
 # [0, 1] range MemoryEntry.relevance_score requires, monotonically
@@ -58,6 +65,7 @@ class PostgresMemoryVectorRepository:
         self._pool = pool
         self._dimensions: int | None = None
         self._dense_ready = False
+        self._ready_lock = asyncio.Lock()
 
     @property
     def supports_dense_search(self) -> bool:
@@ -81,28 +89,68 @@ class PostgresMemoryVectorRepository:
             dimensions: Embedding width, or ``None`` when no embedder is
                 wired, in which case recall stays lexical-only.
         """
-        if dimensions is not None:
-            self._dimensions = dimensions
-        if self._dimensions is None or self._dense_ready:
-            return
-        try:
-            async with self._pool.connection() as conn:
-                await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-                await conn.execute(
-                    sql.add_vector_column(self._vector_column, self._dimensions)
+        async with self._ready_lock:
+            if dimensions is not None:
+                self._dimensions = dimensions
+            if self._dimensions is None or self._dense_ready:
+                return
+            try:
+                async with self._pool.connection() as conn:
+                    # CREATE INDEX CONCURRENTLY cannot run inside a
+                    # transaction block, and a plain CREATE INDEX would
+                    # hold a lock that blocks memory writes for the whole
+                    # build on an established corpus. Autocommit first,
+                    # before any statement opens a transaction.
+                    original_autocommit = bool(getattr(conn, "autocommit", False))
+                    await conn.set_autocommit(True)
+                    try:
+                        await self._ensure_extension(conn)
+                        await conn.execute(
+                            sql.add_vector_column(self._vector_column, self._dimensions)
+                        )
+                        await conn.execute(sql.create_vector_index(self._vector_column))
+                    finally:
+                        await conn.set_autocommit(original_autocommit)
+            except psycopg.Error as exc:
+                logger.warning(
+                    MEMORY_DENSE_INDEX_UNAVAILABLE,
+                    dimensions=self._dimensions,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                await conn.execute(sql.create_vector_index(self._vector_column))
-        except psycopg.Error as exc:
-            logger.warning(
-                MEMORY_DENSE_INDEX_UNAVAILABLE,
+                return
+            self._dense_ready = True
+            logger.info(MEMORY_DENSE_INDEX_READY, dimensions=self._dimensions)
+            await self._report_orphaned_widths()
+
+    async def _ensure_extension(self, conn: _PoolConnection) -> None:
+        """Install pgvector, distinguishing "absent" from "not permitted".
+
+        ``CREATE EXTENSION`` needs superuser because pgvector is not a
+        trusted extension. A least-privilege production role therefore
+        fails here while CI and the bundled image succeed, which is the
+        one degradation an operator is least likely to expect, so it is
+        reported as its own condition rather than folded into a generic
+        "index unavailable" warning.
+
+        Raises:
+            InsufficientPrivilege: If the role may not create the
+                extension, after reporting it as its own condition.
+            psycopg.Error: If the statement fails for any other reason.
+        """
+        try:
+            await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        except psycopg.errors.InsufficientPrivilege:
+            logger.error(
+                MEMORY_DENSE_INDEX_PERMISSION_DENIED,
                 dimensions=self._dimensions,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                note=(
+                    "the database role may not CREATE EXTENSION vector; install "
+                    "pgvector as a superuser during provisioning, otherwise "
+                    "recall stays lexical-only"
+                ),
             )
-            return
-        self._dense_ready = True
-        logger.info(MEMORY_DENSE_INDEX_READY, dimensions=self._dimensions)
-        await self._report_orphaned_widths()
+            raise
 
     async def _report_orphaned_widths(self) -> None:
         """Log every dense column left populated at a different width.
@@ -168,12 +216,25 @@ class PostgresMemoryVectorRepository:
             async with self._pool.connection() as conn, conn.transaction():
                 await conn.execute(sql.UPSERT_ENTRY, params)
                 await conn.execute(sql.DELETE_TERMS, (entry.id,))
-                for term, count in frequencies.items():
-                    await conn.execute(sql.INSERT_TERM, (entry.id, term, count))
-                if embedding is not None and self._dense_ready:
+                # One round-trip for the whole term batch: a long memory
+                # otherwise issues hundreds inside an open transaction.
+                cursor = conn.cursor()
+                await cursor.executemany(
+                    sql.INSERT_TERM,
+                    [(entry.id, term, count) for term, count in frequencies.items()],
+                )
+                if self._dense_ready:
+                    # A content rewrite that supplies no fresh embedding
+                    # clears the vector rather than keeping one that
+                    # describes text the entry no longer holds.
                     await conn.execute(
                         sql.set_vector(self._vector_column),
-                        (sql.encode_vector(embedding), entry.id),
+                        (
+                            sql.encode_vector(embedding)
+                            if embedding is not None
+                            else None,
+                            entry.id,
+                        ),
                     )
         except psycopg.Error as exc:
             self._fail("upsert", MEMORY_ENTRY_STORE_FAILED, exc, memory_id=entry.id)

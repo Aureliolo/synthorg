@@ -13,7 +13,9 @@ it for the dimension turns an embedder change into a clean re-index
 rather than a silent mix of incompatible vectors.
 """
 
+import asyncio
 import sqlite3
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Final, NoReturn
 
@@ -48,10 +50,11 @@ from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 
-# vec0 returns squared L2 distance. Mapping it to a bounded score with
-# 1/(1+d) keeps the value inside MemoryEntry.relevance_score's [0, 1]
-# range and is monotonically decreasing in distance, which is all the
-# downstream rank-based fusion needs.
+# vec0 returns plain (non-squared) L2 distance, the same metric as
+# pgvector's <->, so both arms feed the shared relevance floor on the
+# same scale. Mapping it with 1/(1+d) keeps the value inside
+# MemoryEntry.relevance_score's [0, 1] range and is monotonically
+# decreasing in distance, which is all the rank-based fusion needs.
 _DISTANCE_TO_SCORE_OFFSET: Final[float] = 1.0
 
 
@@ -78,6 +81,7 @@ class SQLiteMemoryVectorRepository:
         self._write_context = write_context
         self._dimensions: int | None = None
         self._dense_ready = False
+        self._ready_lock = asyncio.Lock()
 
     @property
     def supports_dense_search(self) -> bool:
@@ -102,33 +106,42 @@ class SQLiteMemoryVectorRepository:
             dimensions: Embedding width, or ``None`` when no embedder is
                 wired, in which case recall stays lexical-only.
         """
-        if dimensions is not None:
-            self._dimensions = dimensions
-        if self._dimensions is None or self._dense_ready:
-            return
-        try:
-            import sqlite_vec  # noqa: PLC0415 -- optional runtime extension
+        async with self._ready_lock:
+            if dimensions is not None:
+                self._dimensions = dimensions
+            if self._dimensions is None or self._dense_ready:
+                return
+            try:
+                import sqlite_vec  # noqa: PLC0415 -- optional runtime extension
 
-            # Positional bool is the sqlite3 API's own shape, not ours.
-            await self._db.enable_load_extension(True)  # noqa: FBT003
-            await self._db.load_extension(sqlite_vec.loadable_path())
-            await self._db.enable_load_extension(False)  # noqa: FBT003
-            async with self._write_context():
-                await self._db.execute(
-                    sql.create_vector_table(self._vector_table, self._dimensions)
+                # The extension toggle mutates connection-wide state, so
+                # it belongs under the same write lock as the DDL it
+                # enables rather than racing another writer between them.
+                async with self._write_context():
+                    # Positional bool is the sqlite3 API's own shape.
+                    await self._db.enable_load_extension(True)  # noqa: FBT003
+                    await self._db.load_extension(sqlite_vec.loadable_path())
+                    await self._db.enable_load_extension(False)  # noqa: FBT003
+                    await self._db.execute(
+                        sql.create_vector_table(self._vector_table, self._dimensions)
+                    )
+                    await self._db.commit()
+            except (
+                ImportError,
+                AttributeError,
+                sqlite3.Error,
+                aiosqlite.Error,
+            ) as exc:
+                logger.warning(
+                    MEMORY_DENSE_INDEX_UNAVAILABLE,
+                    dimensions=self._dimensions,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                await self._db.commit()
-        except (ImportError, AttributeError, sqlite3.Error, aiosqlite.Error) as exc:
-            logger.warning(
-                MEMORY_DENSE_INDEX_UNAVAILABLE,
-                dimensions=self._dimensions,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return
-        self._dense_ready = True
-        logger.info(MEMORY_DENSE_INDEX_READY, dimensions=self._dimensions)
-        await self._report_orphaned_widths()
+                return
+            self._dense_ready = True
+            logger.info(MEMORY_DENSE_INDEX_READY, dimensions=self._dimensions)
+            await self._report_orphaned_widths()
 
     async def _report_orphaned_widths(self) -> None:
         """Log every dense index left behind at a different width.
@@ -194,7 +207,7 @@ class SQLiteMemoryVectorRepository:
                     sql.INSERT_TERM,
                     [(entry.id, term, count) for term, count in frequencies.items()],
                 )
-                await self._write_vector(entry.id, embedding)
+                await self._write_vector(entry.id, entry.agent_id, embedding)
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback("upsert")
@@ -203,25 +216,24 @@ class SQLiteMemoryVectorRepository:
     async def _write_vector(
         self,
         memory_id: NotBlankStr,
+        agent_id: NotBlankStr,
         embedding: tuple[float, ...] | None,
     ) -> None:
-        """Replace the dense-index row for one entry, if dense is available."""
-        if embedding is None or not self._dense_ready:
+        """Replace the dense-index row for one entry.
+
+        A content rewrite that supplies no fresh embedding drops the old
+        vector rather than keeping it: a stale vector would keep matching
+        the entry on text it no longer contains.
+        """
+        if not self._dense_ready:
             return
-        row_id = await self._row_id(memory_id)
-        if row_id is None:
+        await self._db.execute(sql.delete_vector(self._vector_table), (memory_id,))
+        if embedding is None:
             return
-        await self._db.execute(sql.delete_vector(self._vector_table), (row_id,))
         await self._db.execute(
             sql.upsert_vector(self._vector_table),
-            (row_id, pack_embedding(embedding)),
+            (memory_id, agent_id, pack_embedding(embedding)),
         )
-
-    async def _row_id(self, memory_id: NotBlankStr) -> int | None:
-        """Return the ``rowid`` correlating an entry to its dense vector."""
-        async with self._db.execute(sql.SELECT_ROWID, (memory_id,)) as cursor:
-            row = await cursor.fetchone()
-        return int(row[0]) if row is not None else None
 
     async def get(
         self,
@@ -262,14 +274,13 @@ class SQLiteMemoryVectorRepository:
         """
         async with self._write_context():
             try:
-                row_id = await self._row_id(memory_id)
                 async with self._db.execute(
                     sql.DELETE_BY_ID, (memory_id, agent_id)
                 ) as cursor:
                     deleted = cursor.rowcount
-                if deleted > 0 and row_id is not None and self._dense_ready:
+                if deleted > 0 and self._dense_ready:
                     await self._db.execute(
-                        sql.delete_vector(self._vector_table), (row_id,)
+                        sql.delete_vector(self._vector_table), (memory_id,)
                     )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -299,15 +310,15 @@ class SQLiteMemoryVectorRepository:
         try:
             async with self._db.execute(
                 sql.dense_match(self._vector_table),
-                (pack_embedding(spec.embedding), spec.limit),
+                (pack_embedding(spec.embedding), spec.limit, spec.agent_id),
             ) as cursor:
                 hits = await cursor.fetchall()
             if not hits:
                 return ()
-            distances = {int(r["memory_rowid"]): float(r["distance"]) for r in hits}
+            distances = {str(r["memory_id"]): float(r["distance"]) for r in hits}
             placeholders = ", ".join("?" for _ in distances)
             async with self._db.execute(
-                sql.select_by_rowids(where, placeholders),
+                sql.select_by_ids(where, placeholders),
                 (*distances.keys(), *params),
             ) as cursor:
                 rows = await cursor.fetchall()
@@ -315,17 +326,20 @@ class SQLiteMemoryVectorRepository:
             self._fail("search_dense", MEMORY_ENTRY_RETRIEVAL_FAILED, exc)
         scored = [
             (
-                distances[int(row["row_id"])],
+                distances[str(row["memory_id"])],
+                str(row["memory_id"]),
                 row_to_entry(
                     row,
                     relevance_score=_DISTANCE_TO_SCORE_OFFSET
-                    / (_DISTANCE_TO_SCORE_OFFSET + distances[int(row["row_id"])]),
+                    / (_DISTANCE_TO_SCORE_OFFSET + distances[str(row["memory_id"])]),
                 ),
             )
             for row in rows
         ]
-        scored.sort(key=lambda pair: pair[0])
-        return tuple(entry for _, entry in scored)
+        # Tie-break on id so equidistant vectors order identically here,
+        # on the Postgres arm, and between runs.
+        scored.sort(key=lambda triple: (triple[0], triple[1]))
+        return tuple(entry for _, _, entry in scored)
 
     async def search_lexical(
         self,
@@ -429,22 +443,31 @@ class SQLiteMemoryVectorRepository:
                     sql.SELECT_EXPIRED_IDS, (format_iso_utc(now),)
                 ) as cursor:
                     expired = [str(r["memory_id"]) for r in await cursor.fetchall()]
-                for memory_id in expired:
-                    await self._purge_one(NotBlankStr(memory_id))
+                if expired:
+                    await self._purge_batch(expired)
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._rollback("purge_expired")
                 self._fail("purge_expired", MEMORY_ENTRY_DELETE_FAILED, exc)
         return len(expired)
 
-    async def _purge_one(self, memory_id: NotBlankStr) -> None:
-        """Remove one entry and its dense-index row inside an open transaction."""
-        row_id = await self._row_id(memory_id)
+    async def _purge_batch(self, memory_ids: Sequence[str]) -> None:
+        """Remove expired entries and their vectors inside an open transaction.
+
+        Batched rather than per-entry: SQLite allows one writer, so a
+        long sweep issuing three statements per row holds off every other
+        writer for the whole loop.
+        """
+        placeholders = ", ".join("?" for _ in memory_ids)
         await self._db.execute(
-            "DELETE FROM memory_entries WHERE memory_id = ?", (memory_id,)
+            sql.delete_entries_by_id(placeholders),
+            tuple(memory_ids),
         )
-        if row_id is not None and self._dense_ready:
-            await self._db.execute(sql.delete_vector(self._vector_table), (row_id,))
+        if self._dense_ready:
+            await self._db.executemany(
+                sql.delete_vector(self._vector_table),
+                [(memory_id,) for memory_id in memory_ids],
+            )
 
     async def oldest_ids(
         self,

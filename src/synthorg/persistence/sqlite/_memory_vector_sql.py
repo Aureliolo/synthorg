@@ -47,8 +47,6 @@ SELECT_BY_ID: Final[str] = (
     "WHERE memory_id = ? AND agent_id = ?"
 )
 
-SELECT_ROWID: Final[str] = "SELECT rowid FROM memory_entries WHERE memory_id = ?"
-
 DELETE_BY_ID: Final[str] = (
     "DELETE FROM memory_entries WHERE memory_id = ? AND agent_id = ?"
 )
@@ -113,6 +111,15 @@ def build_filter_clause(spec: MemoryVectorSearchSpec) -> tuple[str, list[object]
     return " AND ".join(clauses), params
 
 
+def delete_entries_by_id(id_placeholders: str) -> str:
+    """Return the batched entry delete for a set of memory ids.
+
+    Returns:
+        A ``DELETE`` restricted to the given ids.
+    """
+    return f"DELETE FROM memory_entries WHERE memory_id IN ({id_placeholders})"  # noqa: S608 -- placeholders are count-derived
+
+
 def list_filtered(where: str) -> str:
     """Return the metadata-only listing query for a filter fragment.
 
@@ -126,16 +133,16 @@ def list_filtered(where: str) -> str:
     )
 
 
-def select_by_rowids(where: str, rowid_placeholders: str) -> str:
-    """Return the hydration query for a set of dense-search rowids.
+def select_by_ids(where: str, id_placeholders: str) -> str:
+    """Return the hydration query for a set of dense-search memory ids.
 
     Returns:
-        A ``SELECT`` restricted to the given rowids and the filter.
+        A ``SELECT`` restricted to the given ids and the filter.
     """
     cols = ", ".join(f"e.{c.strip()}" for c in ENTRY_COLUMNS.split(","))
     return (
-        f"SELECT e.rowid AS row_id, {cols} FROM memory_entries AS e "  # noqa: S608 -- fragments are repository-built from a typed spec
-        f"WHERE e.rowid IN ({rowid_placeholders}) AND {where}"
+        f"SELECT {cols} FROM memory_entries AS e "  # noqa: S608 -- fragments are repository-built from a typed spec
+        f"WHERE e.memory_id IN ({id_placeholders}) AND {where}"
     )
 
 
@@ -191,12 +198,24 @@ def document_frequency(where: str, term_placeholders: str) -> str:
 def create_vector_table(table: str, dimensions: int) -> str:
     """Return the ``vec0`` DDL for a dimension-specific dense index.
 
+    ``memory_id`` is the primary key rather than a rowid mirror because
+    SQLite reuses rowids: a vector left behind by a delete would
+    otherwise be inherited by whichever entry next claims that rowid,
+    and a fresh memory would rank as an exact match for a deleted one.
+
+    ``agent_id`` is a partition key so ownership is enforced *inside*
+    the KNN. Filtering after the k nearest are chosen spends every slot
+    on whichever agent happens to own the closest vectors, which returns
+    nothing for everyone else once a store holds more than one agent.
+
     Returns:
         A ``CREATE VIRTUAL TABLE IF NOT EXISTS`` statement.
     """
     return (
-        f"CREATE VIRTUAL TABLE IF NOT EXISTS {table} "
-        f"USING vec0(memory_rowid INTEGER PRIMARY KEY, embedding float[{dimensions}])"
+        f"CREATE VIRTUAL TABLE IF NOT EXISTS {table} USING vec0("
+        "memory_id TEXT PRIMARY KEY, "
+        "agent_id TEXT PARTITION KEY, "
+        f"embedding float[{int(dimensions)}])"
     )
 
 
@@ -226,7 +245,7 @@ def upsert_vector(table: str) -> str:
     Returns:
         An ``INSERT`` statement.
     """
-    return f"INSERT INTO {table} (memory_rowid, embedding) VALUES (?, ?)"  # noqa: S608 -- table name is repository-controlled
+    return f"INSERT INTO {table} (memory_id, agent_id, embedding) VALUES (?, ?, ?)"  # noqa: S608 -- table name is repository-controlled
 
 
 def delete_vector(table: str) -> str:
@@ -235,19 +254,23 @@ def delete_vector(table: str) -> str:
     Returns:
         A ``DELETE`` statement.
     """
-    return f"DELETE FROM {table} WHERE memory_rowid = ?"  # noqa: S608 -- table name is repository-controlled
+    return f"DELETE FROM {table} WHERE memory_id = ?"  # noqa: S608 -- table name is repository-controlled
 
 
 def dense_match(table: str) -> str:
-    """Return the KNN query for *table*.
+    """Return the agent-scoped KNN query for *table*.
 
     ``vec0`` takes the neighbour count as a ``k =`` predicate rather
-    than a ``LIMIT``.
+    than a ``LIMIT``, and constrains the search to one partition when
+    the partition key is given, so the k slots hold only this agent's
+    vectors. The remaining spec filters (category, namespace, tags,
+    expiry) still apply during hydration, which the caller's over-fetch
+    multiplier compensates for.
 
     Returns:
-        A ``SELECT`` yielding ``(memory_rowid, distance)``.
+        A ``SELECT`` yielding ``(memory_id, distance)``.
     """
     return (
-        f"SELECT memory_rowid, distance FROM {table} "  # noqa: S608 -- table name is repository-controlled
-        "WHERE embedding MATCH ? AND k = ? ORDER BY distance"
+        f"SELECT memory_id, distance FROM {table} "  # noqa: S608 -- table name is repository-controlled
+        "WHERE embedding MATCH ? AND k = ? AND agent_id = ? ORDER BY distance"
     )

@@ -282,7 +282,9 @@ def dense_match(column: LiteralString, where: LiteralString) -> LiteralString:
         f"e.{column} <-> %s::vector AS distance "
         "FROM memory_entries AS e "
         f"WHERE {where} AND e.{column} IS NOT NULL "
-        "ORDER BY distance LIMIT %s"
+        # memory_id breaks distance ties so equidistant vectors order
+        # identically here, on the SQLite arm, and between runs.
+        "ORDER BY distance, e.memory_id LIMIT %s"
     )
 
 

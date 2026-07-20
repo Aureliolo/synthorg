@@ -52,6 +52,19 @@ rather than raising so persistence stays up for every non-memory
 feature sharing the connection; the memory backend is what turns this
 into a loud failure at its own boundary.
 """
+MEMORY_DENSE_INDEX_PERMISSION_DENIED: Final[str] = (
+    "memory.dense_index.permission_denied"
+)
+"""Emitted at ERROR when the role may not install the vector extension.
+
+pgvector is not a trusted extension, so ``CREATE EXTENSION`` needs
+superuser. A deployment whose application role is correctly
+least-privileged therefore gets lexical-only recall while CI and the
+bundled image, which connect as superuser, get semantic recall: the
+divergence an operator is least likely to anticipate, so it is reported
+as its own condition rather than as a generic unavailable index.
+"""
+
 MEMORY_DENSE_INDEX_WIDTH_CHANGED: Final[str] = "memory.dense_index.width_changed"
 """Emitted at ERROR when a dense index survives from a different width.
 
