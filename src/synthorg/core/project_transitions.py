@@ -27,7 +27,6 @@ from typing import Final
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.state_machine import StateMachine
 from synthorg.observability.events.project import (
-    PROJECT_TRANSITION,
     PROJECT_TRANSITION_CONFIG_ERROR,
     PROJECT_TRANSITION_INVALID,
 )
@@ -46,13 +45,16 @@ VALID_TRANSITIONS: dict[ProjectStatus, frozenset[ProjectStatus]] = {
     ProjectStatus.CANCELLED: frozenset(),  # terminal
 }
 
+# No transition_event: the machine would log the transition INFO from
+# validate(), before the row is written. The writer in
+# ``engine/initiative/project_writes.py`` emits PROJECT_TRANSITION after each
+# hop lands, so the audit trail records transitions that actually happened.
 _MACHINE: Final[StateMachine[ProjectStatus]] = StateMachine(
     VALID_TRANSITIONS,
     name="project_status",
     display_label="project status",
     invalid_event=PROJECT_TRANSITION_INVALID,
     config_event=PROJECT_TRANSITION_CONFIG_ERROR,
-    transition_event=PROJECT_TRANSITION,
     all_states=ProjectStatus,
 )
 

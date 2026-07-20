@@ -4,6 +4,7 @@ import type {
   EditPlanRequest,
   Plan,
   PlanFilters,
+  ReplanRequest,
   RequestPlanChangesRequest,
 } from '../types/plans'
 
@@ -27,6 +28,20 @@ export async function getPlan(planId: string): Promise<Plan> {
 export async function editPlan(planId: string, data: EditPlanRequest): Promise<Plan> {
   const response = await apiClient.patch<ApiResponse<Plan>>(
     `/plans/${encodeURIComponent(planId)}`,
+    data,
+  )
+  return unwrap(response)
+}
+
+/**
+ * Revise a dispatched plan, retiring it in favour of a successor.
+ *
+ * Distinct from `editPlan`: a dispatched plan's items are already building, so
+ * they cannot be rewritten in place. Returns the successor, awaiting review.
+ */
+export async function replanPlan(planId: string, data: ReplanRequest): Promise<Plan> {
+  const response = await apiClient.post<ApiResponse<Plan>>(
+    `/plans/${encodeURIComponent(planId)}/replan`,
     data,
   )
   return unwrap(response)

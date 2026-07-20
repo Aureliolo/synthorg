@@ -125,7 +125,8 @@ class TaskRepository(
         """List tasks matching the filter spec.
 
         Args:
-            filter_spec: Carries optional filters for status, assigned_to, project.
+            filter_spec: Carries optional filters for status, assigned_to,
+                project, and plan.
             limit: Maximum rows to return.
             offset: Rows to skip before the window.
 

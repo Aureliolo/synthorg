@@ -84,9 +84,11 @@ function ProjectCardInner({ project, onToggleSelect, selected = false }: Project
         <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">{project.description}</p>
       )}
 
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        {budget > 0 && <StatPill label="Budget" value={formatCurrency(budget)} />}
-      </div>
+      {budget > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <StatPill label="Budget" value={formatCurrency(budget)} />
+        </div>
+      )}
 
       <ProjectCardFooter teamSize={teamSize} deadline={project.deadline} />
     </Link>

@@ -575,6 +575,7 @@ export type RemoveAllowlistEntryRequest = components['schemas']['RemoveAllowlist
 export type ReorderAgentsRequest = components['schemas']['ReorderAgentsRequest']
 export type ReorderDepartmentsRequest = components['schemas']['ReorderDepartmentsRequest']
 export type ReorderTeamsRequest = components['schemas']['ReorderTeamsRequest']
+export type ReplanRequest = components['schemas']['ReplanRequest']
 export type ReplaySeekView = components['schemas']['ReplaySeekView']
 export type ReportResponse = components['schemas']['ReportResponse']
 export type ReportingLine = components['schemas']['ReportingLine']

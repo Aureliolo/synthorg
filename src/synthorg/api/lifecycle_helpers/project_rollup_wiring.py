@@ -6,8 +6,8 @@ persistence exist, and registers it as a :class:`TaskEngine` observer so a
 task reaching a terminal status advances the plan and project behind it.
 Best-effort and idempotent: a boot missing either dependency leaves the
 service unwired, and re-running after setup brings it online with no restart.
-The observer is registered exactly once (guarded on first wire) so a re-run
-cannot double-register it.
+A re-run after a successful wire is guarded by the state slice, so the observer
+is not registered twice.
 """
 
 from synthorg.api.state import AppState
@@ -58,7 +58,10 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
         )
         # Register the observer BEFORE committing the service to state, so a
         # failure here leaves the service unwired and a re-run retries cleanly
-        # rather than committing a service whose events never reach it.
+        # rather than committing a service whose events never reach it. The
+        # trade is deliberate: a failure between these two lines would let a
+        # re-run register twice, which is why the state write follows
+        # immediately and does no work of its own.
         task_engine.register_observer(service.on_task_state_changed)
         app_state.wire(EngineStateSlice, project_rollup_service=service)
     except Exception as exc:  # noqa: BLE001 -- best-effort wiring: log, continue

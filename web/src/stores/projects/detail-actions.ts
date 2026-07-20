@@ -75,6 +75,10 @@ function applyDetailResults(
     projectProgress: results.progressResult.status === 'fulfilled'
       ? results.progressResult.value
       : null,
+    // A failed progress fetch is not "this project has no plan yet". Tracked
+    // separately so the view can say the progress could not be loaded rather
+    // than asserting a domain state it has no evidence for.
+    projectProgressFailed: results.progressResult.status === 'rejected',
     detailError: partialErrors.length > 0
       ? `Some data failed to load: ${partialErrors.join(', ')}. Displayed data may be incomplete.`
       : null,
@@ -86,12 +90,13 @@ async function fetchProjectDetailImpl(
   id: string,
 ): Promise<void> {
   const token = nextDetailRequestToken()
+  // Keep the currently displayed project in place while the refetch runs. A
+  // WS event on a shared channel can fire for an unrelated plan, and blanking
+  // state here would drop the whole page to a skeleton every time one did.
   set({
     detailLoading: true,
     detailError: null,
-    selectedProject: null,
-    projectTasks: [],
-    projectProgress: null,
+    projectProgressFailed: false,
   })
   try {
     const [projectResult, tasksResult, progressResult] = await Promise.allSettled([

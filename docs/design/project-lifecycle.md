@@ -42,10 +42,35 @@ row has to be written by every actor that creates a child, in the same
 transaction, forever; a scalar upward key is written once by the actor that
 already owns the write. The dead field was removed rather than filled in.
 
-`Project.plan_id` always names the one plan the project is executing. A re-plan
-repoints it in the same write that supersedes the previous revision, and every
-earlier revision stays reachable through `PlanFilterSpec(project=...)`, which
-returns superseded plans too.
+`Project.plan_id` always names the one plan the project is currently working
+through. Every earlier revision stays reachable through
+`PlanFilterSpec(project=...)`, which returns superseded plans too.
+
+## Re-planning a dispatched initiative
+
+A plan under review is edited in place: same entity, bumped version, back to
+pending review. Once a plan is dispatched that is no longer possible, because
+its items are already building and rewriting them would leave running tasks
+implementing items that no longer exist. Revising a dispatched plan is
+therefore a re-plan (`POST /plans/{id}/replan`), which:
+
+1. retires the current revision to `SUPERSEDED`;
+2. cancels the in-flight tasks it dispatched, through their audited
+   lifecycle transitions, so no live work points at a withdrawn revision;
+3. opens a successor plan entity carrying the objective and framing forward,
+   entering `PENDING_REVIEW` because its items hold no approval;
+4. repoints `Project.plan_id` at the successor.
+
+The ordering protects one invariant: a project never has two live plans. If a
+later step fails, the recoverable state is an initiative whose plan is
+superseded and whose successor is missing, which an operator resolves by
+planning again. The alternative ordering would leave two live plans with
+`Project.plan_id` naming one arbitrarily and the rollup deriving status from a
+revision the operator had already abandoned.
+
+The successor is not dispatched by the re-plan. It goes through review like any
+other plan, and approval activates the project and repoints it through the same
+path first dispatch uses, so there is one dispatch path rather than two.
 
 ## Status lifecycles
 
@@ -113,12 +138,23 @@ around one.
 
 The rollup reads **persisted `Task.status`**, never execution outcomes.
 
-That single choice is what makes "an initiative cannot complete on unverified
-work" true by construction. A task only reaches `COMPLETED` through
+That single choice is what keeps an initiative from completing on unverified
+work. Under the wired agent runtime a task reaches `COMPLETED` through
 `ReviewGateService._apply_decision`, which runs the full gate chain (build/test
 oracle, completion-oracle peer review, output policy, red team, vision).
 Requiring `COMPLETED` therefore inherits every one of those gates without the
 rollup making a single oracle call.
+
+This is a property of which writers are wired, not a structural guarantee of
+the status field, and the distinction matters for anyone reasoning about how
+strong the guarantee is. Two other paths reach `COMPLETED` without the oracle
+chain: `LifecycleAdvancingExecutionService`
+(`workers/execution_service/_lifecycle.py`), the lifecycle-only baseline the
+app self-constructs when no agent runtime is installed, and the coordination
+parent rollup below. Both are legitimate in their own context; neither should
+drive an initiative whose completion is meant to be verified. Requiring
+`COMPLETED` is the strongest signal available to a derivation that makes no
+oracle call of its own.
 
 The contrast is load-bearing. The coordination-level parent rollup
 (`engine/coordination/parent_rollup.py`) derives subtask status from

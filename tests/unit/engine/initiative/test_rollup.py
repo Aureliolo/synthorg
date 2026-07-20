@@ -1,11 +1,13 @@
 """Tests for the initiative rollup service."""
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
 
 from synthorg.api.services.plan_service import PlanService
+from synthorg.core.domain_errors import ConflictError
 from synthorg.core.plan import Plan, PlanItem, PlanOption
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.project import Project
@@ -13,18 +15,23 @@ from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.initiative.rollup import ProjectRollupService
+from synthorg.engine.initiative.ports import PlanStatusWriter
+from synthorg.engine.initiative.rollup import _TASK_PAGE_SIZE, ProjectRollupService
 from synthorg.engine.task_engine_models import TaskStateChanged
-from tests._shared import FakeClock, as_uuid, sid
+from synthorg.persistence.plan_protocol import PlanRepository
+from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import FakeClock, as_uuid, mock_of, sid
 from tests.unit.api.fakes_backend import FakePersistenceBackend
 
 pytestmark = pytest.mark.unit
 
 _PLAN_ID = "plan-1"
 _PROJECT = "proj-1"
-_ITEM_A = "11111111-1111-5111-8111-111111111111"
-_ITEM_B = "22222222-2222-5222-8222-222222222222"
-_DECISION = "33333333-3333-5333-8333-333333333333"
+# Plan item ids must already be canonical UUID strings: ``subtask_uuid`` is
+# identity on those, so the item id and its task's id stay the same value.
+_ITEM_A = sid("item-a")
+_ITEM_B = sid("item-b")
+_DECISION = sid("item-decision")
 
 
 def _item(
@@ -289,9 +296,19 @@ class TestGuards:
         assert plan_status is PlanStatus.SUPERSEDED
 
     async def test_missing_plan_is_a_no_op(self) -> None:
-        service, _ = await _seed(_plan(_item(_ITEM_A)))
+        service, backend = await _seed(
+            _plan(_item(_ITEM_A)),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+        )
 
         await service.recompute(as_uuid("plan-absent"))
+
+        # No-op means the seeded initiative is untouched, not merely that the
+        # call did not raise.
+        assert await _statuses(backend) == (
+            PlanStatus.EXECUTING,
+            ProjectStatus.ACTIVE,
+        )
 
 
 class TestObserver:
@@ -326,19 +343,137 @@ class TestObserver:
 
     async def test_a_repository_failure_never_escapes_the_observer(self) -> None:
         """A rollup failure must not stall the engine's task processing."""
-        service, backend = await _seed(
-            _plan(_item(_ITEM_A)),
-            _task(_ITEM_A, TaskStatus.COMPLETED),
+        plans = mock_of[PlanRepository](
+            get=AsyncMock(side_effect=RuntimeError("plans unavailable"))
         )
-
-        async def _boom(*_args: object, **_kwargs: object) -> None:
-            msg = "plans unavailable"
-            raise RuntimeError(msg)
-
-        backend.plans.get = _boom  # type: ignore[method-assign]
+        service = ProjectRollupService(
+            persistence=mock_of[PersistenceBackend](plans=plans),
+            plan_status_writer=mock_of[PlanStatusWriter](),
+            clock=FakeClock(),
+        )
 
         await service.on_task_state_changed(
             _event(_task(_ITEM_A, TaskStatus.COMPLETED))
+        )
+
+        # The failure was reached and swallowed, not skipped before the read.
+        plans.get.assert_awaited()
+
+
+class TestPlanIsolation:
+    """A rollup sees only its own plan's work."""
+
+    async def test_another_plans_tasks_do_not_complete_this_plan(self) -> None:
+        """Cross-plan bleed would complete an initiative off unrelated work.
+
+        Every other test in this file seeds a single plan, so a task query that
+        ignored its plan filter would be indistinguishable from a correct one.
+        """
+        service, backend = await _seed(
+            _plan(_item(_ITEM_A), _item(_ITEM_B)),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+        )
+        # Item B's work belongs to a different plan entirely.
+        other = _task(_ITEM_B, TaskStatus.COMPLETED).model_copy(
+            update={"plan_id": as_uuid("plan-other")}
+        )
+        await backend.tasks.save(other)
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert await _statuses(backend) == (
+            PlanStatus.EXECUTING,
+            ProjectStatus.ACTIVE,
+        )
+
+    async def test_a_full_page_of_tasks_drains_to_the_next_page(self) -> None:
+        """The paging loop's second iteration is otherwise never executed."""
+        items = [
+            _item(sid(f"page-item-{index}")) for index in range(_TASK_PAGE_SIZE + 5)
+        ]
+        service, backend = await _seed(_plan(*items))
+        for item in items:
+            await backend.tasks.save(_task(item.id, TaskStatus.COMPLETED))
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert await _statuses(backend) == (
+            PlanStatus.COMPLETED,
+            ProjectStatus.COMPLETED,
+        )
+
+
+class TestProjectBehindItsPlan:
+    """A project several hops behind its plan walks, it does not jump."""
+
+    async def test_planning_project_walks_through_active_to_completed(self) -> None:
+        """PLANNING -> COMPLETED is not a legal transition.
+
+        The project can be left PLANNING if the dispatch-time link write lost,
+        so the rollup must reach COMPLETED via ACTIVE rather than writing a
+        status the state machine rejects.
+        """
+        service, backend = await _seed(
+            _plan(_item(_ITEM_A)),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+            project_status=ProjectStatus.PLANNING,
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        project = await backend.projects.get(NotBlankStr(sid(_PROJECT)))
+        assert project is not None
+        assert project.status is ProjectStatus.COMPLETED
+        # Two hops, two writes: PLANNING -> ACTIVE -> COMPLETED.
+        assert project.version == 3
+
+    async def test_a_failed_plan_write_still_reconciles_the_project(self) -> None:
+        """A plan-side failure must not strand a project behind its plan."""
+        plans = mock_of[PlanStatusWriter](
+            sync_status=AsyncMock(side_effect=ConflictError("refused"))
+        )
+        backend = FakePersistenceBackend()
+        await backend.plans.save(_plan(_item(_ITEM_A)))
+        await backend.projects.save(
+            Project(
+                id=as_uuid(_PROJECT),
+                name=NotBlankStr("Initiative"),
+                plan_id=as_uuid(_PLAN_ID),
+                status=ProjectStatus.PLANNING,
+            )
+        )
+        await backend.tasks.save(_task(_ITEM_A, TaskStatus.COMPLETED))
+        service = ProjectRollupService(
+            persistence=backend,
+            plan_status_writer=plans,
+            clock=FakeClock(),
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        # The plan write was refused, but the project still catches up to the
+        # plan's current (EXECUTING) status rather than staying PLANNING.
+        project = await backend.projects.get(NotBlankStr(sid(_PROJECT)))
+        assert project is not None
+        assert project.status is ProjectStatus.ACTIVE
+
+    async def test_terminal_plan_still_reconciles_its_project(self) -> None:
+        """The project write must not be gated on the plan being non-terminal.
+
+        A project write can fail on the same event that completes the plan.
+        If a terminal plan short-circuited the whole recompute, no later event
+        could ever repair the project.
+        """
+        service, backend = await _seed(
+            _plan(_item(_ITEM_A), status=PlanStatus.COMPLETED),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert await _statuses(backend) == (
+            PlanStatus.COMPLETED,
+            ProjectStatus.COMPLETED,
         )
 
 

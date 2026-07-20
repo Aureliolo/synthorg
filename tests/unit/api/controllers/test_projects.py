@@ -6,8 +6,8 @@ from uuid import UUID
 import pytest
 import structlog.testing
 
-from synthorg.core.plan import Plan, PlanItem
-from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan import Plan, PlanItem, PlanOption
+from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.state import persistence_of
@@ -637,6 +637,77 @@ class TestProjectProgress:
         ]
         on_path = {item["title"] for item in body["items"] if item["on_critical_path"]}
         assert on_path == {"Scaffold", "Build"}
+
+    async def test_a_decision_item_is_done_when_an_option_is_chosen(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """The assembler applies the decision rule, not just the work rule.
+
+        Decision done-ness is derived in both the rollup and this assembler, so
+        the wire shape is asserted here rather than only in the pure unit.
+        """
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Deciding"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+        backend = persistence_of(async_test_client.app.state.app_state)
+        plan = Plan(
+            id=as_uuid("plan-decision"),
+            project=NotBlankStr(project_id),
+            objective_id=NotBlankStr("obj-decision"),
+            objective_title=NotBlankStr("Pick an approach"),
+            parent_task_id=NotBlankStr(sid("task-root")),
+            items=(
+                PlanItem(
+                    id=NotBlankStr(sid("item-decided")),
+                    title=NotBlankStr("Choose a datastore"),
+                    description=NotBlankStr("Weigh the options"),
+                    acceptance_criteria=(NotBlankStr("decided"),),
+                    kind=PlanItemKind.DECISION,
+                    options=(
+                        PlanOption(
+                            id="opt-a", title="A", summary="first", recommended=True
+                        ),
+                        PlanOption(id="opt-b", title="B", summary="second"),
+                    ),
+                    chosen_option_id=NotBlankStr("opt-a"),
+                ),
+                PlanItem(
+                    id=NotBlankStr(sid("item-open")),
+                    title=NotBlankStr("Choose a queue"),
+                    description=NotBlankStr("Weigh the options"),
+                    acceptance_criteria=(NotBlankStr("decided"),),
+                    kind=PlanItemKind.DECISION,
+                    options=(
+                        PlanOption(
+                            id="opt-c", title="C", summary="third", recommended=True
+                        ),
+                        PlanOption(id="opt-d", title="D", summary="fourth"),
+                    ),
+                ),
+            ),
+            status=PlanStatus.EXECUTING,
+            created_at=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+            updated_at=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+        )
+        await backend.plans.save(plan)
+        project = await backend.projects.get(NotBlankStr(project_id))
+        assert project is not None
+        await backend.projects.save(project.model_copy(update={"plan_id": plan.id}))
+
+        resp = await async_test_client.get(f"/api/v1/projects/{project_id}/progress")
+
+        assert resp.status_code == 200
+        body: JsonDict = resp.json()["data"]
+        by_title = {item["title"]: item for item in body["items"]}
+        assert by_title["Choose a datastore"]["done"] is True
+        assert by_title["Choose a datastore"]["chosen_option_id"] == "opt-a"
+        # A decision never dispatches a task, so it is never "not dispatched".
+        assert by_title["Choose a datastore"]["task_id"] is None
+        assert by_title["Choose a queue"]["done"] is False
+        assert body["counts"]["done"] == 1
 
     async def test_project_without_a_plan_reports_empty_progress(
         self, async_test_client: LoopAsyncClient

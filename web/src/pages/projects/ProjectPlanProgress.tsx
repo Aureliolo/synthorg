@@ -15,6 +15,12 @@ const PERCENT_MAX = 100
 
 interface ProjectPlanProgressProps {
   progress: ProjectProgress | null
+  /**
+   * True when the progress fetch failed rather than the project having no
+   * plan. The store only sets this alongside null progress, so it is read
+   * solely on the empty path.
+   */
+  failed?: boolean
 }
 
 function percentComplete(done: number, total: number): number {
@@ -40,7 +46,7 @@ function ItemRow({ item }: { item: ProjectProgressItem }) {
   return (
     <li
       className={cn(
-        'flex items-center gap-3 rounded-md border px-3 py-2',
+        'flex items-center gap-3 rounded-md border p-card',
         item.on_critical_path ? 'border-accent/50 bg-accent/5' : 'border-border',
       )}
     >
@@ -64,6 +70,7 @@ function ItemRow({ item }: { item: ProjectProgressItem }) {
         <Link
           to={ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(item.task_id))}
           className="text-xs text-accent hover:underline"
+          aria-label={`View task for ${item.title}`}
         >
           Task
         </Link>
@@ -72,16 +79,46 @@ function ItemRow({ item }: { item: ProjectProgressItem }) {
   )
 }
 
-export function ProjectPlanProgress({ progress }: ProjectPlanProgressProps) {
-  if (!progress || progress.plan_id === null) {
-    return (
-      <SectionCard title="Plan progress">
+// A failed fetch and a plan-less project both arrive as null progress, but
+// claiming "no plan yet" when the request simply failed tells the operator
+// something untrue about their initiative.
+function EmptyProgress({ failed }: { failed: boolean }) {
+  return (
+    <SectionCard title="Plan progress">
+      {failed ? (
+        <EmptyState
+          title="Progress unavailable"
+          description="The plan progress for this initiative could not be loaded. It will reappear once the request succeeds."
+        />
+      ) : (
         <EmptyState
           title="No plan yet"
           description="This initiative has no approved plan. Once a plan is approved and dispatched, its items and their progress appear here."
         />
-      </SectionCard>
-    )
+      )}
+    </SectionCard>
+  )
+}
+
+function ProgressSummaryRow({ progress }: { progress: ProjectProgress }) {
+  const { counts } = progress
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      {progress.plan_status && <PlanStatusBadge status={progress.plan_status} />}
+      <StatPill label="Done" value={`${String(counts.done)}/${String(counts.total)}`} />
+      {counts.failed > 0 && (
+        <StatusPill tone="danger">{`${String(counts.failed)} failed`}</StatusPill>
+      )}
+      {counts.blocked > 0 && (
+        <StatusPill tone="warning">{`${String(counts.blocked)} blocked`}</StatusPill>
+      )}
+    </div>
+  )
+}
+
+export function ProjectPlanProgress({ progress, failed = false }: ProjectPlanProgressProps) {
+  if (!progress || progress.plan_id === null) {
+    return <EmptyProgress failed={failed} />
   }
 
   const { counts, items } = progress
@@ -89,16 +126,7 @@ export function ProjectPlanProgress({ progress }: ProjectPlanProgressProps) {
 
   return (
     <SectionCard title="Plan progress">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        {progress.plan_status && <PlanStatusBadge status={progress.plan_status} />}
-        <StatPill label="Done" value={`${String(counts.done)}/${String(counts.total)}`} />
-        {counts.failed > 0 && (
-          <StatusPill tone="danger">{`${String(counts.failed)} failed`}</StatusPill>
-        )}
-        {counts.blocked > 0 && (
-          <StatusPill tone="warning">{`${String(counts.blocked)} blocked`}</StatusPill>
-        )}
-      </div>
+      <ProgressSummaryRow progress={progress} />
 
       {progress.objective_title && (
         <p className="mb-3 text-sm text-muted-foreground">{progress.objective_title}</p>
@@ -112,7 +140,7 @@ export function ProjectPlanProgress({ progress }: ProjectPlanProgressProps) {
         className="mb-4"
       />
 
-      <ul className="flex flex-col gap-2">
+      <ul role="list" className="flex flex-col gap-2">
         {items.map((item) => (
           <ItemRow key={item.item_id} item={item} />
         ))}

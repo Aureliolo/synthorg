@@ -12,6 +12,12 @@ repository.
 Retrying is safe because each write is idempotent in effect: linking recomputes
 the same target plan, and advancing recomputes the same target status from the
 same task facts.
+
+See docs/reference/retry-patterns.md: Pattern C/CAS. The loop is hand-rolled
+rather than driven through ``CASRetryHandler`` because the repository raises
+the persistence-layer ``PersistenceVersionConflictError`` (the handler catches
+the API-boundary twin) and because advancing has branches that skip the write
+entirely as well as a walk that writes once per hop.
 """
 
 from typing import Final
@@ -28,6 +34,7 @@ from synthorg.observability.events.project import (
     PROJECT_ROLLUP_CONFLICT_EXHAUSTED,
     PROJECT_ROLLUP_CONFLICT_RETRY,
     PROJECT_TRANSITION,
+    PROJECT_WRITE_TARGET_MISSING,
 )
 from synthorg.persistence.project_protocol import ProjectRepository
 
@@ -48,8 +55,9 @@ async def link_project_to_plan(
     """Point *project_id* at the plan it is now executing and activate it.
 
     Called at dispatch, before any task starts, so the graph is connected
-    before the first rollup event can observe it. Also used by a replan, where
-    the project repoints at the revision that supersedes the previous one.
+    before the first rollup event can observe it. Also called by a re-plan, to
+    repoint the project at the revision that supersedes the retired one; the
+    activation is a no-op there, since the project is already live.
 
     Returns:
         The persisted project, or ``None`` when the project no longer exists
@@ -58,6 +66,11 @@ async def link_project_to_plan(
     for attempt in range(1, MAX_WRITE_ATTEMPTS + 1):
         project = await repository.get(project_id)
         if project is None:
+            logger.warning(
+                PROJECT_WRITE_TARGET_MISSING,
+                project=str(project_id),
+                operation="link",
+            )
             return None
         target = _activation_target(project.status)
         updated = project.model_copy(
@@ -99,14 +112,22 @@ async def advance_project_status(
     project_id: NotBlankStr,
     target: ProjectStatus,
 ) -> Project | None:
-    """Walk *project_id* to *target*, one legal hop at a time.
+    """Walk *project_id* to *target*, persisting one legal hop at a time.
 
     The project may be several valid hops from its derived status (a project
     still PLANNING whose plan already completed must pass through ACTIVE), so
-    the path is resolved through the state machine rather than assuming a
-    single hop. An unreachable target is a no-op, not an error: it means the
-    project is terminal or was moved by an operator, and the rollup defers to
-    that rather than forcing a status.
+    the path is resolved through the state machine and every hop is persisted
+    in its own version-guarded write. Writing the endpoint directly would
+    store a transition the state machine rejects and lose the intermediate
+    hop from the audit trail.
+
+    The whole walk completes within this call. The caller is the rollup, which
+    stops recomputing once the plan is terminal, so there is no later event to
+    carry an unfinished walk forward.
+
+    An unreachable target is a no-op, not an error: it means the project is
+    terminal or was moved by an operator, and the rollup defers to that rather
+    than forcing a status.
 
     Returns:
         The persisted project, or ``None`` when it no longer exists, the
@@ -115,6 +136,11 @@ async def advance_project_status(
     for attempt in range(1, MAX_WRITE_ATTEMPTS + 1):
         project = await repository.get(project_id)
         if project is None:
+            logger.warning(
+                PROJECT_WRITE_TARGET_MISSING,
+                project=str(project_id),
+                operation="advance",
+            )
             return None
         if project.status == target:
             return project
@@ -128,27 +154,15 @@ async def advance_project_status(
                 note="unreachable; leaving the project as the operator set it",
             )
             return project
-        updated = project.model_copy(
-            update={"status": path[-1], "version": project.version + 1}
-        )
-        try:
-            await repository.update(updated, expected_version=project.version)
-        except PersistenceVersionConflictError:
-            logger.info(
-                PROJECT_ROLLUP_CONFLICT_RETRY,
-                project=str(project_id),
-                attempt=attempt,
-                operation="advance",
-            )
-            continue
+        walked = await _walk_hops(repository, project, path)
+        if walked is not None:
+            return walked
         logger.info(
-            PROJECT_TRANSITION,
+            PROJECT_ROLLUP_CONFLICT_RETRY,
             project=str(project_id),
-            current_state=project.status.value,
-            target_state=updated.status.value,
-            version=updated.version,
+            attempt=attempt,
+            operation="advance",
         )
-        return updated
     logger.warning(
         PROJECT_ROLLUP_CONFLICT_EXHAUSTED,
         project=str(project_id),
@@ -156,6 +170,41 @@ async def advance_project_status(
         attempts=MAX_WRITE_ATTEMPTS,
     )
     return None
+
+
+async def _walk_hops(
+    repository: ProjectRepository,
+    project: Project,
+    path: tuple[ProjectStatus, ...],
+) -> Project | None:
+    """Persist each hop of *path* in its own version-guarded write.
+
+    A hop that loses its write abandons the walk rather than skipping ahead;
+    hops already persisted are legal transitions and stay, and the caller
+    restarts from a fresh read.
+
+    Returns:
+        The project after the final hop, or ``None`` when a concurrent write
+        won and the walk must be restarted.
+    """
+    current = project
+    for hop in path:
+        updated = current.model_copy(
+            update={"status": hop, "version": current.version + 1}
+        )
+        try:
+            await repository.update(updated, expected_version=current.version)
+        except PersistenceVersionConflictError:
+            return None
+        logger.info(
+            PROJECT_TRANSITION,
+            project=str(current.id),
+            current_state=current.status.value,
+            target_state=hop.value,
+            version=updated.version,
+        )
+        current = updated
+    return current
 
 
 def _activation_target(current: ProjectStatus) -> ProjectStatus:

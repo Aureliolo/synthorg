@@ -141,8 +141,22 @@ class TestTaskRepository:
         """The reverse plan-to-tasks lookup the rollup depends on."""
         from synthorg.persistence.task_protocol import TaskFilterSpec
 
-        await backend.tasks.save(make_task(task_id="t1", plan_id=as_uuid("plan-a")))
-        await backend.tasks.save(make_task(task_id="t2", plan_id=as_uuid("plan-b")))
+        # The linkage is a both-or-neither pair, so a dispatched task always
+        # names the item it implements; t3 is a directly filed task.
+        await backend.tasks.save(
+            make_task(
+                task_id="t1",
+                plan_id=as_uuid("plan-a"),
+                plan_item_id=as_uuid("item-a"),
+            )
+        )
+        await backend.tasks.save(
+            make_task(
+                task_id="t2",
+                plan_id=as_uuid("plan-b"),
+                plan_item_id=as_uuid("item-b"),
+            )
+        )
         await backend.tasks.save(make_task(task_id="t3", plan_id=None))
         tasks = await backend.tasks.query(TaskFilterSpec(plan=as_uuid("plan-a")))
         assert len(tasks) == 1
@@ -268,7 +282,7 @@ class TestCostRecordRepository:
             )
 
         total = await backend.cost_records.aggregate(agent_id="agent_1")
-        assert abs(total - 0.6) < 1e-9
+        assert total == pytest.approx(0.6)
 
     async def test_aggregate_empty_returns_zero(
         self, backend: PersistenceBackend

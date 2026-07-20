@@ -1,3 +1,4 @@
+-- transactional: false
 -- Project / plan / task linkage: make a greenlit initiative one connected,
 -- status-rolling graph.
 --
@@ -13,6 +14,12 @@
 --      rather than a re-derivation of the deterministic id mapping.
 --   4. the plans status CHECK gains 'executing' and 'completed' so a plan can
 --      express execution progress past approval.
+--
+-- This migration runs outside a transaction so the plan index can be built
+-- CONCURRENTLY. tasks is the busiest table in the system, and a plain CREATE
+-- INDEX would hold a SHARE lock on it for the whole build; wrapped in one
+-- transaction with the plans CHECK rebuild below, it would hold that lock
+-- alongside an ACCESS EXCLUSIVE lock on plans until commit.
 
 ALTER TABLE projects DROP COLUMN task_ids;
 ALTER TABLE projects ADD COLUMN plan_id TEXT;
@@ -20,7 +27,7 @@ ALTER TABLE projects ADD COLUMN plan_id TEXT;
 ALTER TABLE tasks ADD COLUMN plan_id TEXT;
 ALTER TABLE tasks ADD COLUMN plan_item_id TEXT;
 
-CREATE INDEX idx_tasks_plan_id ON tasks (plan_id);
+CREATE INDEX CONCURRENTLY idx_tasks_plan_id ON tasks (plan_id);
 
 ALTER TABLE plans DROP CONSTRAINT plans_status_check;
 ALTER TABLE plans

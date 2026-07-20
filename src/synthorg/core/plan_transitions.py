@@ -28,7 +28,6 @@ from typing import Final
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.state_machine import StateMachine
 from synthorg.observability.events.plan import (
-    PLAN_TRANSITION,
     PLAN_TRANSITION_CONFIG_ERROR,
     PLAN_TRANSITION_INVALID,
 )
@@ -68,13 +67,15 @@ VALID_TRANSITIONS: dict[PlanStatus, frozenset[PlanStatus]] = {
     PlanStatus.FAILED: frozenset(),  # terminal
 }
 
+# No transition_event: validate() runs before the row is written, so the
+# machine would record a transition that a failed write never made. PlanService
+# emits its own status-transition INFO after the write succeeds.
 _MACHINE: Final[StateMachine[PlanStatus]] = StateMachine(
     VALID_TRANSITIONS,
     name="plan_status",
     display_label="plan status",
     invalid_event=PLAN_TRANSITION_INVALID,
     config_event=PLAN_TRANSITION_CONFIG_ERROR,
-    transition_event=PLAN_TRANSITION,
     all_states=PlanStatus,
 )
 

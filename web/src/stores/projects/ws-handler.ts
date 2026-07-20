@@ -79,6 +79,7 @@ function applyProjectDeleted(
       selectedProject: clearDetail ? null : state.selectedProject,
       projectTasks: clearDetail ? [] : state.projectTasks,
       projectProgress: clearDetail ? null : state.projectProgress,
+      projectProgressFailed: clearDetail ? false : state.projectProgressFailed,
     }
   })
 }

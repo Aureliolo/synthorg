@@ -344,6 +344,25 @@ class Task(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _validate_plan_linkage(self) -> Self:
+        """Ensure the plan linkage fields are set together or not at all.
+
+        Dispatch stamps both; a directly filed task carries neither. A task
+        holding one without the other drops silently out of the initiative
+        rollup's item index instead of failing, so it is rejected here.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If exactly one of the two linkage fields is set.
+        """
+        if (self.plan_id is None) != (self.plan_item_id is None):
+            msg = "plan_id and plan_item_id must be set together"
+            raise ValueError(msg)
+        return self
+
     def with_transition(self, target: TaskStatus, **overrides: object) -> Task:
         """Create a new Task with a validated status transition.
 

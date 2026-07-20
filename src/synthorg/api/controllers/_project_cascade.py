@@ -2,22 +2,68 @@
 
 from typing import Final
 
+from synthorg.api.controllers._task_teardown import terminate_task
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
+from synthorg.core.domain_errors import VersionConflictError
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
+from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import TERMINAL_STATUSES, PlanStatus
-from synthorg.core.task import Task
-from synthorg.core.task_enums import TaskStatus
-from synthorg.core.task_transitions import VALID_TRANSITIONS
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.state import task_engine_of
-from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
-from synthorg.persistence.plan_protocol import PlanFilterSpec
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_PROJECT_CASCADE_CONTENDED
+from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
 from synthorg.persistence.state import persistence_of
 from synthorg.persistence.task_protocol import TaskFilterSpec
 
+logger = get_logger(__name__)
+
 _CASCADE_REASON: Final[str] = "project deleted"
+
+#: Bounded re-read budget for a plan the initiative rollup is writing at the
+#: same time. The rollup is a legitimate concurrent writer of this row, so a
+#: version conflict here is contention, not an error.
+_SUPERSEDE_ATTEMPTS: Final[int] = 3
+
+
+async def _supersede_plan(
+    plan_service: PlanService,
+    repository: PlanRepository,
+    plan: Plan,
+    *,
+    requested_by: str,
+) -> None:
+    """Supersede *plan*, re-reading if the rollup writes it first.
+
+    The initiative rollup advances the same plan row whenever a task under it
+    changes status, so deleting a project while its last task completes can
+    lose the race. Without this, the conflict would abort the whole cascade
+    mid-loop and surface as a 500 on an otherwise valid delete.
+    """
+    current = plan
+    for _ in range(_SUPERSEDE_ATTEMPTS):
+        try:
+            await plan_service.sync_status(
+                current,
+                PlanStatus.SUPERSEDED,
+                requested_by=requested_by,
+                reason=_CASCADE_REASON,
+            )
+        except VersionConflictError:
+            refreshed = await repository.get(NotBlankStr(str(current.id)))
+            if refreshed is None or refreshed.status in TERMINAL_STATUSES:
+                # The winner already resolved it; nothing is left orphaned.
+                return
+            current = refreshed
+            continue
+        return
+    logger.warning(
+        API_PROJECT_CASCADE_CONTENDED,
+        plan_id=str(plan.id),
+        attempts=_SUPERSEDE_ATTEMPTS,
+    )
 
 
 async def cascade_supersede_children(
@@ -63,11 +109,11 @@ async def cascade_supersede_children(
         )
         for plan in plans:
             if plan.status not in TERMINAL_STATUSES:
-                await plan_service.sync_status(
+                await _supersede_plan(
+                    plan_service,
+                    persistence.plans,
                     plan,
-                    PlanStatus.SUPERSEDED,
                     requested_by=requested_by,
-                    reason=_CASCADE_REASON,
                 )
         if len(plans) < DEFAULT_PAGE_SIZE:
             break
@@ -84,51 +130,12 @@ async def cascade_supersede_children(
         )
         for task in tasks:
             if task.status not in TRULY_TERMINAL_STATUSES:
-                await _terminate_project_task(
-                    task_engine, task, requested_by=requested_by
+                await terminate_task(
+                    task_engine,
+                    task,
+                    requested_by=requested_by,
+                    reason=_CASCADE_REASON,
                 )
         if len(tasks) < DEFAULT_PAGE_SIZE:
             break
         offset += DEFAULT_PAGE_SIZE
-
-
-async def _terminate_project_task(
-    task_engine: TaskEngine,
-    task: Task,
-    *,
-    requested_by: str,
-) -> None:
-    """Move a non-terminal task to a terminal state on project delete.
-
-    The task lifecycle forbids ``CREATED -> CANCELLED`` (a created task is
-    rejected, not cancelled) and lets the stuck states (blocked / failed /
-    interrupted / suspended) reach a terminal only via ``ASSIGNED``. This
-    routes each task to the correct terminal so no live work dangles against
-    the deleted project, and every task keeps its audit row.
-
-    Args:
-        task_engine: Engine driving the audited status transitions.
-        task: The non-terminal task to terminate.
-        requested_by: Identity recorded on each transition.
-    """
-    target = (
-        TaskStatus.REJECTED
-        if task.status is TaskStatus.CREATED
-        else TaskStatus.CANCELLED
-    )
-    if target not in VALID_TRANSITIONS[task.status]:
-        # A stuck state can only reach a terminal through ASSIGNED; hop there
-        # first (the task keeps its assignee), then cancel.
-        await task_engine.transition_task(
-            str(task.id),
-            TaskStatus.ASSIGNED,
-            requested_by=requested_by,
-            reason=_CASCADE_REASON,
-        )
-        target = TaskStatus.CANCELLED
-    await task_engine.transition_task(
-        str(task.id),
-        target,
-        requested_by=requested_by,
-        reason=_CASCADE_REASON,
-    )

@@ -3473,6 +3473,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/plans/{plan_id}/replan": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Replan */
+        readonly post: operations["ApiV1PlansPlanIdReplanReplan"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/plans/{plan_id}/request-changes": {
         readonly parameters: {
             readonly query?: never;
@@ -15534,6 +15551,21 @@ export type components = {
             /** @description Ordered team names */
             readonly team_names: readonly string[];
         };
+        /** ReplanRequest */
+        readonly ReplanRequest: {
+            /**
+             * @description Optional override of the coordination topology
+             * @enum {string|null}
+             */
+            readonly coordination_topology?: "sas" | "centralized" | "decentralized" | "context_dependent" | "auto" | null;
+            /** @description The full revised plan item list */
+            readonly items: readonly components["schemas"]["PlanItemPayload"][];
+            /**
+             * @description Optional override of the classified structure
+             * @enum {string|null}
+             */
+            readonly task_structure?: "sequential" | "parallel" | "mixed" | null;
+        };
         /** ReplaySeekView */
         readonly ReplaySeekView: {
             /**
@@ -26628,6 +26660,41 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_PlanItemComment_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1PlansPlanIdReplanReplan: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly plan_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReplanRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Plan_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

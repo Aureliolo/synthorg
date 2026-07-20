@@ -68,7 +68,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 
 | Resource | Path | Purpose |
 |---|---|---|
-| Auth | `/auth` | 9 routes under Auth. |
+| Auth | `/auth` | 12 routes under Auth. |
 | Users | `/users` | 4 routes under Users. |
 
 ### Organisation and agents
@@ -80,7 +80,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Agent Collaboration | `/agents/{agent_id}/collaboration` | 3 routes under Agent Collaboration. |
 | Agent Quality | `/agents/{agent_id}/quality/override` | Agent Quality endpoint. |
 | Agents | `/agents` | 11 routes under Agents. |
-| Charter | `/meta/charters` | 5 routes under Charter. |
+| Charter | `/meta/charters` | 4 routes under Charter. |
 | Clients | `/clients` | 3 routes under Clients. |
 | Company | `/company` | 5 routes under Company. |
 | Departments | `/departments` | 8 routes under Departments. |
@@ -97,23 +97,28 @@ run the generator after `scripts/export_openapi.py` to refresh.
 |---|---|---|
 | Approvals | `/approvals` | 4 routes under Approvals. |
 | Artifacts | `/artifacts` | 3 routes under Artifacts. |
+| Brownfield Intake | `/brownfield/import` | Brownfield Intake endpoint. |
 | Deliverable Receipts | `/projects/{project_id}/docs/{slug}/receipt` | 2 routes under Deliverable Receipts. |
 | Escalations | `/conflicts/escalations` | 4 routes under Escalations. |
+| Kanban Board | `/board` | 2 routes under Kanban Board. |
 | Meetings | `/meetings` | 3 routes under Meetings. |
 | Messages | `/messages` | 3 routes under Messages. |
+| Objectives | `/objectives` | Objectives endpoint. |
+| Plans | `/plans` | 6 routes under Plans. |
 | Project Brain | `/projects/{project_id}/brain` | 4 routes under Project Brain. |
 | Project Docs | `/projects/{project_id}/docs` | 4 routes under Project Docs. |
-| Project Knowledge | `/projects/{project_id}/knowledge` | 3 routes under Project Knowledge. |
-| Projects | `/projects` | 2 routes under Projects. |
+| Project Knowledge | `/projects/{project_id}/knowledge` | 4 routes under Project Knowledge. |
+| Projects | `/projects` | 4 routes under Projects. |
 | Requests | `/requests` | 5 routes under Requests. |
 | Reviews | `/reviews/{task_id}` | 2 routes under Reviews. |
-| Tasks | `/tasks` | 5 routes under Tasks. |
+| Sprints | `/sprints` | 6 routes under Sprints. |
+| Tasks | `/tasks` | 6 routes under Tasks. |
 
 ### Workflows
 
 | Resource | Path | Purpose |
 |---|---|---|
-| Setup | `/setup` | 13 routes under Setup. |
+| Setup | `/setup` | 14 routes under Setup. |
 | Subworkflows | `/subworkflows` | 5 routes under Subworkflows. |
 | Template Packs | `/template-packs` | 2 routes under Template Packs. |
 | Workflow Executions | `/workflow-executions` | 4 routes under Workflow Executions. |
@@ -126,7 +131,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Admin | `/admin` | 15 routes under Admin. |
 | Analytics | `/analytics` | 3 routes under Analytics. |
 | Backups | `/admin/backups` | 3 routes under Backups. |
-| Budget | `/budget` | 11 routes under Budget. |
+| Budget | `/budget` | 15 routes under Budget. |
 | Capabilities | `/capabilities` | Capabilities endpoint. |
 | Ceremony Policy | `/ceremony-policy` | 3 routes under Ceremony Policy. |
 | Cockpit | `/cockpit` | 8 routes under Cockpit. |
@@ -135,18 +140,23 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Demo | `/demo` | Demo endpoint. |
 | Event Stream | `/events` | 2 routes under Event Stream. |
 | Experiments | `/experiments/{experiment}` | 3 routes under Experiments. |
-| Health | `/healthz, /readyz` | 2 routes under Health. |
-| Integrations | `/integrations, /connections, /oauth, /webhooks` | 21 routes under Integrations. |
+| Health | `/healthz, /readyz` | 3 routes under Health. |
+| Integrations | `/integrations, /connections, /oauth, /webhooks` | 26 routes under Integrations. |
 | Interrupts | `/interrupts` | 2 routes under Interrupts. |
 | Knowledge | `/knowledge` | Knowledge endpoint. |
 | Learning | `/learning/curve` | Learning endpoint. |
 | Memory Admin | `/admin/memory` | 12 routes under Memory Admin. |
-| Meta | `/meta` | 18 routes under Meta. |
+| Meta | `/meta` | 16 routes under Meta. |
+| Meta Alerts | `/meta/alerts` | Meta Alerts endpoint. |
 | Meta Analytics | `/meta/analytics` | 3 routes under Meta Analytics. |
+| Meta Chat | `/meta/chat/conversations` | 2 routes under Meta Chat. |
+| Meta Evolution | `/meta/evolution` | 3 routes under Meta Evolution. |
 | Metrics | `/metrics` | Metrics endpoint. |
-| Providers | `/providers` | 20 routes under Providers. |
+| Model Refresh | `/providers/model-refresh` | 5 routes under Model Refresh. |
+| Providers | `/providers` | 34 routes under Providers. |
 | Reports | `/reports` | 2 routes under Reports. |
-| Security | `/security/audit` | Security endpoint. |
+| SSRF Violations | `/providers/ssrf-violations` | 2 routes under SSRF Violations. |
+| Security | `/security` | 3 routes under Security. |
 | Settings | `/settings` | 9 routes under Settings. |
 | Simulations | `/simulations` | 4 routes under Simulations. |
 

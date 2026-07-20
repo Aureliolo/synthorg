@@ -12,7 +12,7 @@ only in the browser.
 
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.project_enums import ProjectStatus
@@ -28,7 +28,7 @@ class ProjectProgressItem(BaseModel):
     item_id: UUID = Field(description="Plan item identifier")
     title: NotBlankStr = Field(description="Plan item title")
     kind: PlanItemKind = Field(description="Work or decision")
-    owner: str | None = Field(default=None, description="Role owning the item")
+    owner: NotBlankStr | None = Field(default=None, description="Role owning the item")
     depends_on: tuple[UUID, ...] = Field(
         default=(),
         description="Plan items this one depends on",
@@ -41,7 +41,7 @@ class ProjectProgressItem(BaseModel):
         default=None,
         description="Persisted status of the implementing task",
     )
-    chosen_option_id: str | None = Field(
+    chosen_option_id: NotBlankStr | None = Field(
         default=None,
         description="Option recorded for a decision item",
     )
@@ -53,6 +53,26 @@ class ProjectProgressItem(BaseModel):
         default=False,
         description="Whether the item lies on the longest dependency chain",
     )
+
+    @model_validator(mode="after")
+    def _validate_kind_fields(self) -> ProjectProgressItem:
+        """Reject an item carrying the other kind's fields.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: When the fields do not match ``kind``.
+        """
+        if self.kind is PlanItemKind.DECISION and (
+            self.task_id is not None or self.task_status is not None
+        ):
+            msg = "A DECISION item carries no task"
+            raise ValueError(msg)
+        if self.kind is PlanItemKind.WORK and self.chosen_option_id is not None:
+            msg = "A WORK item records no chosen option"
+            raise ValueError(msg)
+        return self
 
 
 class ProjectProgressCounts(BaseModel):
@@ -85,7 +105,7 @@ class ProjectProgress(BaseModel):
         default=None,
         description="Status of the executing plan",
     )
-    objective_title: str | None = Field(
+    objective_title: NotBlankStr | None = Field(
         default=None,
         description="What the initiative set out to do",
     )
@@ -101,3 +121,27 @@ class ProjectProgress(BaseModel):
         default=(),
         description="Longest dependency chain through the plan, in order",
     )
+
+    @model_validator(mode="after")
+    def _validate_plan_fields(self) -> ProjectProgress:
+        """Reject a partially populated plan trio.
+
+        The three plan fields describe one fact: which plan the project is
+        executing. They are all set together or all absent, so an independent
+        combination is a producer bug rather than a renderable state.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: When the plan fields are partially populated.
+        """
+        present = {
+            self.plan_id is not None,
+            self.plan_status is not None,
+            self.objective_title is not None,
+        }
+        if len(present) != 1:
+            msg = "plan_id, plan_status and objective_title are all-or-nothing"
+            raise ValueError(msg)
+        return self

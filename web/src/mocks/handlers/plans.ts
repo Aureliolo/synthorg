@@ -4,6 +4,7 @@ import type {
   editPlan,
   getPlan,
   listPlans,
+  replanPlan,
   requestPlanChanges,
 } from '@/api/endpoints/plans'
 import type { Plan, PlanItem } from '@/api/types/plans'
@@ -76,6 +77,21 @@ export const plansHandlers = [
       successFor<typeof editPlan>(
         buildPlan({ id: String(params['id']), version: 2 }),
       ),
+    )
+  }),
+  http.post('/api/v1/plans/:id/replan', async ({ request }) => {
+    const body = (await request.json()) as { items?: readonly unknown[] }
+    if (!body.items || body.items.length === 0) {
+      return HttpResponse.json(apiError("Field 'items' must be non-empty"), {
+        status: 422,
+      })
+    }
+    // A re-plan returns the successor, a new plan entity awaiting review.
+    return HttpResponse.json(
+      successFor<typeof replanPlan>(
+        buildPlan({ id: 'plan-successor', status: 'pending_review' }),
+      ),
+      { status: 201 },
     )
   }),
   http.post('/api/v1/plans/:id/request-changes', async ({ params, request }) => {

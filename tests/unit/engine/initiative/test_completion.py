@@ -14,6 +14,8 @@ from synthorg.engine.initiative.completion import (
 )
 from tests._shared import as_uuid
 
+pytestmark = pytest.mark.unit
+
 
 def _item(
     *,
@@ -30,7 +32,6 @@ def _item(
     )
 
 
-@pytest.mark.unit
 class TestItemDoneness:
     """A WORK item is done when its task passed; a DECISION when chosen."""
 
@@ -81,7 +82,6 @@ class TestItemDoneness:
         assert item_is_done(item) is False
 
 
-@pytest.mark.unit
 class TestSummariseProgress:
     """Derived counts are the operator's attention signal."""
 
@@ -106,7 +106,6 @@ class TestSummariseProgress:
         assert summary.done == 0
 
 
-@pytest.mark.unit
 class TestDerivePlanStatus:
     """A plan completes only when every item is genuinely done."""
 
@@ -164,7 +163,6 @@ class TestDerivePlanStatus:
             assert derive_plan_status(items, current=terminal) is terminal
 
 
-@pytest.mark.unit
 class TestDeriveProjectStatus:
     """A project follows its plan, and never auto-fails."""
 

@@ -30,6 +30,7 @@ export default function ProjectDetailPage() {
     project,
     projectTasks,
     projectProgress,
+    projectProgressFailed,
     loading,
     error,
     wsConnected,
@@ -98,7 +99,10 @@ export default function ProjectDetailPage() {
       </ErrorBoundary>
 
       <ErrorBoundary level="section">
-        <ProjectPlanProgress progress={projectProgress} />
+        <ProjectPlanProgress
+          progress={projectProgress}
+          failed={projectProgressFailed}
+        />
       </ErrorBoundary>
 
       <ProjectDetailSections project={project} projectTasks={projectTasks} />

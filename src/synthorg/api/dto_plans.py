@@ -173,6 +173,34 @@ class EditPlanRequest(BaseModel):
     )
 
 
+class ReplanRequest(BaseModel):
+    """Payload revising a plan that is already dispatched.
+
+    A dispatched plan's items are building, so they cannot be rewritten in
+    place. This retires the current revision, cancels the work it started, and
+    opens a successor under review.
+
+    Attributes:
+        items: The full revised item list (non-empty).
+        task_structure: Optional override of the classified structure.
+        coordination_topology: Optional override of the topology.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    items: tuple[PlanItemPayload, ...] = Field(
+        min_length=1,
+        max_length=_MAX_ITEMS,
+        description="The full revised plan item list",
+    )
+    task_structure: TaskStructure | None = Field(
+        default=None, description="Optional override of the classified structure"
+    )
+    coordination_topology: CoordinationTopology | None = Field(
+        default=None, description="Optional override of the coordination topology"
+    )
+
+
 class RequestPlanChangesRequest(BaseModel):
     """Payload asking the org to revise a plan before approval.
 

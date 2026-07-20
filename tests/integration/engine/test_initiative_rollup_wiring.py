@@ -138,6 +138,9 @@ class TestInitiativeRollupWiring:
                 TaskStatus.COMPLETED,
                 requested_by="reviewer",
             )
+            # Stop drains the observer queue, so the rollup has run by the
+            # time the assertions below read the statuses. The finally is the
+            # cleanup guard; stop() is idempotent, so both calls are safe.
             await engine.stop()
         finally:
             await engine.stop()
@@ -161,6 +164,7 @@ class TestInitiativeRollupWiring:
                 TaskStatus.IN_REVIEW,
                 requested_by="execution",
             )
+            # Drains the observer queue before the assertions; see above.
             await engine.stop()
         finally:
             await engine.stop()

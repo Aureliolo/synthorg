@@ -157,7 +157,15 @@ async def _dispatch_approved_plan(
         # Ordering is load-bearing -- ``coordinate`` below awaits the whole
         # subtask tree, so a rollup event fired mid-dispatch would otherwise
         # observe a project still PLANNING with tasks already running.
-        await _link_initiative(app_state, plan)
+        if not await _link_initiative(app_state, plan):
+            await _fail_dispatch(
+                app_state,
+                approval_id,
+                task_id,
+                decided_by,
+                "project could not be linked to its plan",
+            )
+            return
         # Dispatch from the durable plan so an operator's edits are exactly
         # what builds; the child task tree is rebuilt deterministically from
         # its items (see ``decomposition_from_plan``).
@@ -187,20 +195,30 @@ async def _dispatch_approved_plan(
         )
 
 
-async def _link_initiative(app_state: AppState, plan: Plan) -> None:
+async def _link_initiative(app_state: AppState, plan: Plan) -> bool:
     """Connect the project to the plan it is about to execute.
 
     Points the project at *plan*, activates it, and moves the plan into
     EXECUTING. Both writes use the same audited paths the rollup uses, so the
     graph has one set of status semantics whether dispatch or rollup is
     writing.
+
+    Returns:
+        Whether the project was linked. A failed link must abort the dispatch:
+        proceeding would run the whole task tree against a project that never
+        learned which plan it is executing, so its progress view would report
+        no plan for the life of the initiative and its status would advance
+        from PLANNING only by an illegal jump.
     """
-    await link_project_to_plan(
+    linked = await link_project_to_plan(
         persistence_of(app_state).projects,
         project_id=NotBlankStr(str(plan.project)),
         plan_id=plan.id,
     )
+    if linked is None:
+        return False
     await _sync_plan_status(app_state, str(plan.id), PlanStatus.EXECUTING)
+    return True
 
 
 async def _fail_dispatch(
@@ -220,7 +238,8 @@ async def _fail_dispatch(
     logger.error(
         APPROVAL_GATE_PLAN_DISPATCH_FAILED,
         approval_id=approval_id,
-        note=f"approved plan cannot dispatch: {why}",
+        note="approved plan cannot dispatch",
+        why=why,
     )
     await _mark_task(
         app_state,

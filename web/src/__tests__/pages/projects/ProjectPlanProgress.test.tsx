@@ -128,4 +128,25 @@ describe('ProjectPlanProgress', () => {
 
     expect(screen.getByText('No plan yet')).toBeInTheDocument()
   })
+
+  it('distinguishes a failed progress fetch from a project with no plan', () => {
+    render(
+      <MemoryRouter>
+        <ProjectPlanProgress progress={null} failed />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('Progress unavailable')).toBeInTheDocument()
+    // Claiming "no plan yet" for a request that simply failed would tell the
+    // operator something untrue about their initiative.
+    expect(screen.queryByText('No plan yet')).not.toBeInTheDocument()
+  })
+
+  it('labels each task link with its item so they are distinguishable', () => {
+    renderProgress(makeProgress())
+
+    expect(
+      screen.getByRole('link', { name: 'View task for Scaffold' }),
+    ).toBeInTheDocument()
+  })
 })

@@ -18,6 +18,8 @@ export interface UseProjectDetailDataReturn {
   project: Project | null
   projectTasks: readonly Task[]
   projectProgress: ProjectProgress | null
+  /** True when the progress fetch failed, distinct from having no plan. */
+  projectProgressFailed: boolean
   loading: boolean
   error: string | null
   wsConnected: boolean
@@ -28,6 +30,7 @@ export function useProjectDetailData(projectId: string | undefined): UseProjectD
   const project = useProjectsStore((s) => s.selectedProject)
   const projectTasks = useProjectsStore((s) => s.projectTasks)
   const projectProgress = useProjectsStore((s) => s.projectProgress)
+  const projectProgressFailed = useProjectsStore((s) => s.projectProgressFailed)
   const loading = useProjectsStore((s) => s.detailLoading)
   const error = useProjectsStore((s) => s.detailError)
 
@@ -42,6 +45,13 @@ export function useProjectDetailData(projectId: string | undefined): UseProjectD
     fetchDetail,
     clearDetail,
     channels: DETAIL_CHANNELS,
-    selectors: { project, projectTasks, projectProgress, loading, error },
+    selectors: {
+      project,
+      projectTasks,
+      projectProgress,
+      projectProgressFailed,
+      loading,
+      error,
+    },
   })
 }

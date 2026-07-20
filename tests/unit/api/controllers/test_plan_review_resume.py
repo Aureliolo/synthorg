@@ -123,6 +123,7 @@ async def _seed(  # noqa: PLR0913 -- test seam composing several independent kno
     coordinator_missing: bool = False,
     approval_task_id: str | None = _UNSET,
     save_plan: bool = True,
+    save_project: bool = True,
 ) -> tuple[AppState, _Configured, _Configured, FakePersistenceBackend]:
     resolved_task_id = (
         (str(task.id) if task is not None else None)
@@ -138,6 +139,13 @@ async def _seed(  # noqa: PLR0913 -- test seam composing several independent kno
     await backend.connect()
     if plan is not None and save_plan:
         await backend.plans.save(plan)
+    if save_project:
+        # Dispatch follows a greenlight, so the project always exists by the
+        # time a plan is approved. Without it the link write fails and the
+        # dispatch is refused, which is a different scenario entirely.
+        await backend.projects.save(
+            Project(id=as_uuid("proj-1"), name=NotBlankStr("Initiative"))
+        )
     coordinator = (
         None
         if coordinator_missing
@@ -210,7 +218,6 @@ class TestPlanReviewResume:
         """The graph is connected before any dispatched task can run."""
         parent = _task("parent-1")
         state, _, _, backend = await _seed(task=parent, plan=_durable_plan("parent-1"))
-        await backend.projects.save(Project(id=as_uuid("proj-1"), name="Initiative"))
 
         await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
@@ -220,6 +227,25 @@ class TestPlanReviewResume:
         assert project is not None
         assert project.plan_id == as_uuid(_PLAN_ID)
         assert project.status is ProjectStatus.ACTIVE
+
+    async def test_an_unlinkable_project_refuses_the_dispatch(self) -> None:
+        """Dispatching against a project that never learned its plan is worse
+        than not dispatching: the work runs, but its progress view reports no
+        plan and its status can only advance by an illegal jump.
+        """
+        parent = _task("parent-1")
+        state, coordinator, _, _ = await _seed(
+            task=parent,
+            plan=_durable_plan("parent-1"),
+            save_project=False,
+        )
+
+        handled = await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+
+        assert handled is True
+        coordinator.coordinate.assert_not_called()
 
     async def test_reject_cancels_task_and_marks_plan_rejected(self) -> None:
         parent = _task("parent-1")

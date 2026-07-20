@@ -31,6 +31,7 @@ const defaultHookReturn: UseProjectDetailDataReturn = {
   project,
   projectTasks: [],
   projectProgress: null,
+  projectProgressFailed: false,
   loading: false,
   error: null,
   wsConnected: true,

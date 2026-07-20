@@ -65,6 +65,14 @@ EXECUTION_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
     {PlanStatus.EXECUTING, PlanStatus.COMPLETED}
 )
 
+#: Statuses a re-plan accepts. A dispatched plan cannot be edited in place (its
+#: items are already building), so revising it retires the current revision and
+#: opens a successor. A plan still under review is edited instead, and a
+#: terminal plan has nothing left to revise.
+REPLANNABLE_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
+    {PlanStatus.APPROVED, PlanStatus.EXECUTING}
+)
+
 #: Statuses whose plan may carry an empty item list: the PLANNING shell has not
 #: been filled yet, and a FAILED plan may have failed before any items were
 #: produced. FAILED permits (but does not require) empty items; every other

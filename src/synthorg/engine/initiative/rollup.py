@@ -15,13 +15,20 @@ recompute is idempotent, which means the next event repairs any drift and a
 duplicate event changes nothing. An incremental counter would corrupt
 permanently on a single dropped event.
 
-**It reads persisted task status, never execution outcomes.** A task only
-reaches ``COMPLETED`` through the review gate, which runs the completion-oracle
-chain. Deriving from persisted status therefore composes with the verify gate
-for free: an initiative cannot complete on work that merely executed. The
-coordination-level parent rollup derives from ``DispatchResult`` outcomes
-instead, which report success before verification, so this service deliberately
-does not reuse it.
+**It reads persisted task status, never execution outcomes.** Under the wired
+agent runtime a task reaches ``COMPLETED`` through the review gate, which runs
+the completion-oracle chain, so deriving from persisted status composes with
+the verify gate without this service calling an oracle: an initiative does not
+complete on work that merely executed. The coordination-level parent rollup
+derives from ``DispatchResult`` outcomes instead, which report success before
+verification, so this service deliberately does not reuse it.
+
+That composition is a property of which writers are wired, not a structural
+guarantee of the status field. Two other paths reach ``COMPLETED`` without the
+oracle chain: ``workers/execution_service/_lifecycle.py`` (the lifecycle-only
+baseline the app self-constructs when no agent runtime is installed) and the
+coordination parent rollup above. Both are legitimate in their own context;
+neither should drive an initiative whose completion is meant to be verified.
 """
 
 from typing import Final
@@ -43,13 +50,19 @@ from synthorg.engine.initiative.completion import (
     derive_project_status,
 )
 from synthorg.engine.initiative.ports import PlanStatusWriter
-from synthorg.engine.initiative.project_writes import advance_project_status
+from synthorg.engine.initiative.project_writes import (
+    MAX_WRITE_ATTEMPTS,
+    advance_project_status,
+)
 from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.project import (
     PROJECT_ROLLUP_COMPLETED,
+    PROJECT_ROLLUP_CONFLICT_EXHAUSTED,
+    PROJECT_ROLLUP_CONFLICT_RETRY,
     PROJECT_ROLLUP_FAILED,
     PROJECT_ROLLUP_SKIPPED,
+    PROJECT_ROLLUP_STARTED,
 )
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.task_protocol import TaskFilterSpec
@@ -127,35 +140,48 @@ class ProjectRollupService:
         """
         async with self._locks.acquire(str(plan_id)):
             plan = await self._persistence.plans.get(NotBlankStr(str(plan_id)))
-            if plan is None or plan.status in TERMINAL_STATUSES:
+            if plan is None:
                 logger.debug(
-                    PROJECT_ROLLUP_SKIPPED,
-                    plan_id=str(plan_id),
-                    reason="missing" if plan is None else "terminal",
+                    PROJECT_ROLLUP_SKIPPED, plan_id=str(plan_id), reason="missing"
                 )
                 return
-            items = await self._collect_item_progress(plan)
-            derived = derive_plan_status(items, current=plan.status)
-            if derived is not plan.status:
-                written = await self._advance_plan(plan, derived)
-                if written is None:
-                    return
-                plan = written
+            logger.debug(
+                PROJECT_ROLLUP_STARTED,
+                plan_id=str(plan_id),
+                plan_status=plan.status.value,
+            )
+            started_as = plan.status
+            item_count = 0
+            if plan.status not in TERMINAL_STATUSES:
+                items = await self._collect_item_progress(plan)
+                item_count = len(items)
+                derived = derive_plan_status(items, current=plan.status)
+                if derived is not plan.status:
+                    # A refused or contended plan write leaves *plan* at its
+                    # last known status; the project still reconciles against
+                    # that below rather than being skipped for this event.
+                    plan = await self._advance_plan(plan, derived) or plan
+            # A terminal plan still reconciles its project. The project write
+            # can fail on the very event that terminalises the plan, and if a
+            # terminal plan short-circuited here no later event could ever
+            # repair it: the project would stay behind its plan permanently.
+            before = await self._project_status(plan)
             project = await advance_project_status(
                 self._persistence.projects,
                 project_id=NotBlankStr(str(plan.project)),
-                target=derive_project_status(
-                    plan.status,
-                    current=await self._project_status(plan),
-                ),
+                target=derive_project_status(plan.status, current=before),
             )
-            logger.info(
+            moved = plan.status is not started_as or (
+                project is not None and project.status is not before
+            )
+            emit = logger.info if moved else logger.debug
+            emit(
                 PROJECT_ROLLUP_COMPLETED,
                 plan_id=str(plan_id),
                 plan_status=plan.status.value,
                 project=str(plan.project),
                 project_status=project.status.value if project else None,
-                item_count=len(items),
+                item_count=item_count,
             )
 
     async def _collect_item_progress(self, plan: Plan) -> tuple[ItemProgress, ...]:
@@ -209,21 +235,61 @@ class ProjectRollupService:
     async def _advance_plan(self, plan: Plan, target: PlanStatus) -> Plan | None:
         """Persist the plan's derived status through the audited write path.
 
+        A refused transition and a lost race are different failures and are
+        handled differently. ``ConflictError`` means the derived target is not
+        a legal hop from the plan's status, which is a bug in the derivation:
+        retrying reproduces it, so it is surfaced at ERROR and abandoned. A
+        version conflict is ordinary contention, so the plan is re-read, the
+        target re-derived from the winner's state, and the write retried.
+
         Returns:
-            The persisted plan, or ``None`` when the write was refused or a
-            concurrent write won (the next event recomputes from the winner).
+            The persisted plan, or ``None`` when the transition was refused or
+            the write stayed contended for the whole retry budget.
         """
-        try:
-            return await self._plan_writer.sync_status(
-                plan, target, requested_by=_ACTOR
-            )
-        except (ConflictError, VersionConflictError) as exc:
-            logger.info(
-                PROJECT_ROLLUP_SKIPPED,
-                plan_id=str(plan.id),
-                reason=type(exc).__name__,
-            )
-            return None
+        current = plan
+        for attempt in range(1, MAX_WRITE_ATTEMPTS + 1):
+            try:
+                return await self._plan_writer.sync_status(
+                    current, target, requested_by=_ACTOR
+                )
+            except ConflictError as exc:
+                logger.error(
+                    PROJECT_ROLLUP_SKIPPED,
+                    plan_id=str(current.id),
+                    current_state=current.status.value,
+                    target_state=target.value,
+                    reason="illegal_transition",
+                    error_type=type(exc).__name__,
+                )
+                return None
+            except VersionConflictError:
+                logger.info(
+                    PROJECT_ROLLUP_CONFLICT_RETRY,
+                    plan_id=str(current.id),
+                    attempt=attempt,
+                    operation="plan_status",
+                )
+                refreshed = await self._persistence.plans.get(
+                    NotBlankStr(str(current.id))
+                )
+                if refreshed is None:
+                    return None
+                if refreshed.status in TERMINAL_STATUSES:
+                    # The winner finished the plan; its state is authoritative
+                    # and the project reconcile below runs against it.
+                    return refreshed
+                items = await self._collect_item_progress(refreshed)
+                target = derive_plan_status(items, current=refreshed.status)
+                if target is refreshed.status:
+                    return refreshed
+                current = refreshed
+        logger.warning(
+            PROJECT_ROLLUP_CONFLICT_EXHAUSTED,
+            plan_id=str(plan.id),
+            operation="plan_status",
+            attempts=MAX_WRITE_ATTEMPTS,
+        )
+        return None
 
     async def _project_status(self, plan: Plan) -> ProjectStatus:
         """Read the current status of the plan's project.
@@ -233,4 +299,12 @@ class ProjectRollupService:
             (the subsequent write is then a no-op).
         """
         project = await self._persistence.projects.get(NotBlankStr(str(plan.project)))
-        return project.status if project is not None else ProjectStatus.PLANNING
+        if project is None:
+            logger.debug(
+                PROJECT_ROLLUP_SKIPPED,
+                plan_id=str(plan.id),
+                project=str(plan.project),
+                reason="project_missing",
+            )
+            return ProjectStatus.PLANNING
+        return project.status

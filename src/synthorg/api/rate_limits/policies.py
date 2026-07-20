@@ -214,6 +214,9 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "personalities.update": (30, 60),
     # plans (durable plan-review revision)
     "plans.edit": (30, 60),
+    # A re-plan retires a dispatched plan and cancels its in-flight work, so
+    # it is rarer and far more expensive than an in-place edit.
+    "plans.replan": (10, 60),
     "plans.request_changes": (20, 60),
     "plans.comment": (60, 60),
     # projects

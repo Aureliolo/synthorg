@@ -36,11 +36,8 @@ from synthorg.engine.initiative.completion import (
     summarise_progress,
 )
 from synthorg.engine.initiative.critical_path import longest_dependency_chain
-from synthorg.observability import get_logger
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.task_protocol import TaskFilterSpec
-
-logger = get_logger(__name__)
 
 #: Page size for draining a plan's tasks; a plan's items are bounded well below
 #: this at the request boundary, so one page is the normal case.
