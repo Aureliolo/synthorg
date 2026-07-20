@@ -69,6 +69,7 @@ from synthorg.providers._cost import token_usage_from_response_usage
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
+from synthorg.providers.drivers.litellm_cache import apply_cache_control
 from synthorg.providers.drivers.litellm_capabilities import build_capabilities
 from synthorg.providers.drivers.litellm_image import generate_image_via_litellm
 from synthorg.providers.drivers.litellm_kwargs import (
@@ -587,27 +588,42 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         model_config: ProviderModelConfig,
         config: CompletionConfig | None,
     ) -> _AcompletionKwargs:
-        """Drop request features the target model does not advertise.
+        """Drop or apply request features per the target model's capabilities.
 
-        ``reasoning_effort`` is dropped for a model without reasoning
-        support. Capabilities are resolved once, and only when a gated
-        feature is actually requested, so the common path stays free of the
-        model-info lookup.
+        ``reasoning_effort`` is dropped for a model without reasoning support,
+        and ``cache_control`` breakpoints are placed only for a caching-capable
+        model. Capabilities are resolved once, and only when a gated feature is
+        actually requested, so the common path stays free of the model-info
+        lookup.
 
         Returns:
-            The kwargs mapping with unsupported features removed.
+            The kwargs mapping with unsupported features removed and supported
+            ones applied.
         """
-        if config is None or config.reasoning_effort is None:
+        if config is None:
+            return kwargs
+        wants_reasoning = config.reasoning_effort is not None
+        wants_caching = config.prompt_caching
+        if not wants_reasoning and not wants_caching:
             return kwargs
 
         capabilities = self._build_capabilities(model_config)
-        if not capabilities.supports_reasoning:
+
+        if wants_reasoning and not capabilities.supports_reasoning:
             kwargs.pop("reasoning_effort", None)
             logger.debug(
                 PROVIDER_REASONING_EFFORT_DROPPED,
                 provider=self._provider_name,
                 model=model_config.id,
                 reason="model_lacks_reasoning_support",
+            )
+
+        if wants_caching:
+            apply_cache_control(
+                kwargs,
+                capabilities=capabilities,
+                provider_name=self._provider_name,
+                model_id=model_config.id,
             )
         return kwargs
 

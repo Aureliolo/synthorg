@@ -93,6 +93,46 @@ class AgentEngineRunMixin:
         )
         return base.model_copy(update={"reasoning_effort": reasoning_effort})
 
+    async def _fold_prompt_caching(
+        self,
+        completion_config: CompletionConfig | None,
+        identity: AgentIdentity,
+    ) -> CompletionConfig | None:
+        """Turn on prompt caching for the run when the operator setting allows.
+
+        Reads ``providers.prompt_caching_enabled`` live per run (fail-safe to
+        the registered default on a settings outage). When enabled, sets the
+        caching flag on the run config, building a fresh config that preserves
+        the agent's temperature / max_tokens when the caller passed none. When
+        disabled, leaves the config untouched. The driver still gates the
+        actual ``cache_control`` placement on per-model caching support, so a
+        non-caching model is unaffected either way.
+
+        Returns:
+            The completion config to run with, or ``None`` when unchanged.
+        """
+        from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+        from synthorg.settings.kill_switch import (  # noqa: PLC0415
+            resolve_bool_with_fallback,
+        )
+
+        if self._config_resolver is None:
+            enabled = True
+        else:
+            enabled = await resolve_bool_with_fallback(
+                resolver=self._config_resolver,
+                namespace=SettingNamespace.PROVIDERS,
+                key="prompt_caching_enabled",
+                fallback=True,
+            )
+        if not enabled:
+            return completion_config
+        base = completion_config or CompletionConfig(
+            temperature=identity.model.temperature,
+            max_tokens=identity.model.max_tokens,
+        )
+        return base.model_copy(update={"prompt_caching": True})
+
     async def _record_flight_frames(
         self,
         execution_result: ExecutionResult,

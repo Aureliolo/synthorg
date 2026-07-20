@@ -36,6 +36,24 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
+        key="prompt_caching_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Place cache_control breakpoints on the stable prompt prefix so a"
+            " caching-capable provider reuses it across turns, cutting"
+            " input-token cost and latency. Gated per model on prompt-caching"
+            " capability, so non-caching models are unaffected. Resolved live"
+            " per run, so a change applies without a restart."
+        ),
+        group="Resilience",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
         key="configs",
         type=SettingType.JSON,
         default=None,

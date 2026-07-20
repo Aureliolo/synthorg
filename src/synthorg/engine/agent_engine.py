@@ -600,6 +600,14 @@ class AgentEngine(
                     provider = self._dispatch_client_for(downgraded, provider)
                     identity = downgraded
 
+                # Turn on prompt caching for the run per the operator setting;
+                # the driver still gates the actual cache_control placement on
+                # per-model caching support. Runs after routing / budget so the
+                # final identity's sampling is preserved.
+                completion_config = await self._fold_prompt_caching(
+                    completion_config, identity
+                )
+
                 if self._project_repo is not None:
                     _project_budget = await self._validate_project(
                         task=task,

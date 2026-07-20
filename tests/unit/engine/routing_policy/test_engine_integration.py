@@ -1,5 +1,7 @@
 """AgentEngine stakes-routing integration (the ``_route_stakes`` seam)."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
@@ -17,7 +19,8 @@ from synthorg.engine.routing_policy import (
 from synthorg.providers.models import CompletionConfig
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
-from tests._shared import as_uuid
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import as_uuid, mock_of
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 _PROVIDER = "example-provider"
@@ -200,3 +203,34 @@ class TestFoldStakesReasoning:
         assert folded.temperature == 0.2
         assert folded.max_tokens == 99
         assert folded.top_p == 0.5
+
+
+@pytest.mark.unit
+class TestFoldPromptCaching:
+    """Prompt caching is turned on for the run per the operator setting."""
+
+    async def test_enabled_without_resolver_defaults_on(self) -> None:
+        engine = _engine(stakes=False)
+        folded = await engine._fold_prompt_caching(None, _identity("large"))
+        assert folded is not None
+        assert folded.prompt_caching is True
+
+    async def test_disabled_leaves_config_unchanged(self) -> None:
+        engine = _engine(stakes=False)
+        engine._config_resolver = mock_of[ConfigResolver](
+            get_bool=AsyncMock(return_value=False)
+        )
+        folded = await engine._fold_prompt_caching(None, _identity("large"))
+        assert folded is None
+
+    async def test_enabled_preserves_existing_config(self) -> None:
+        engine = _engine(stakes=False)
+        engine._config_resolver = mock_of[ConfigResolver](
+            get_bool=AsyncMock(return_value=True)
+        )
+        existing = CompletionConfig(temperature=0.3, max_tokens=64)
+        folded = await engine._fold_prompt_caching(existing, _identity("large"))
+        assert folded is not None
+        assert folded.prompt_caching is True
+        assert folded.temperature == 0.3
+        assert folded.max_tokens == 64

@@ -66,6 +66,10 @@ class ModelCapabilities(BaseModel):
         default=False,
         description="Exposes extended reasoning (thinking/o1-style models)",
     )
+    supports_prompt_caching: bool = Field(
+        default=False,
+        description="Can reuse a cached prompt prefix via cache_control",
+    )
     cost_per_1k_input: float = Field(
         ge=0.0,
         description=(
