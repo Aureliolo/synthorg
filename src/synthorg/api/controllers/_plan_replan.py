@@ -3,17 +3,25 @@
 
 Once a plan is dispatched its items are already building, so revising it cannot
 be an in-place edit: the tasks implementing the old items would keep running
-against a plan that no longer describes them. A re-plan therefore retires the
-current revision and opens a new one under review, cancels the work the retired
+against a plan that no longer describes them. A re-plan therefore opens a new
+revision under review, retires the current one, cancels the work the retired
 revision started, and repoints the project at its successor.
 
-Ordering is chosen so the graph is never ambiguous rather than never
-incomplete. The retirement happens first, so a project never has two live plans
-even if a later step fails; the recoverable state is an initiative whose plan is
-superseded and whose successor is missing, which an operator resolves by
-planning again. Two live plans would instead leave ``Project.plan_id`` naming
-one of them arbitrarily, with the rollup deriving status from a plan the
-operator has already abandoned.
+Ordering is chosen so a failure never strands the initiative. The successor is
+built and persisted FIRST, while nothing is yet retired: opening it only reads
+the current revision and inserts a new row, so a failed insert (the likely
+failure, a transient write error) leaves the initiative untouched and the
+operator simply retries. Only once the successor is durable does the retirement
+land, the old work get cancelled (the one irreversible step, since a cancelled
+task cannot be un-cancelled), and the project repoint.
+
+``Project.plan_id`` is never ambiguous through this: it names the current
+revision until the final relink, and the successor carries no tasks and is
+unlinked until then, so the rollup never derives status from it. A true
+transaction across the plan service, the task engine, and the project
+repository is not available (the task-engine cancellations emit observer
+events that cannot be rolled back, and no unit-of-work seam spans the three),
+so failure-safe ordering stands in for atomicity.
 
 The successor enters PENDING_REVIEW, not EXECUTING: its items carry no
 approval. Dispatch repoints and activates the project as it does for any first
@@ -95,10 +103,20 @@ async def replan_initiative(
             rather than replanned.
         ValidationError: The revised items violate a plan invariant.
     """
-    # Reject before the retirement write: a re-plan supersedes the current
-    # revision first, so an ineligible plan must fail with nothing persisted.
+    # Reject before any write: an ineligible plan must fail with nothing
+    # persisted and nothing retired.
     require_replannable(existing)
     service = PlanService(repo=persistence_of(app_state).plans, clock=app_state.clock)
+    # Persist the successor before retiring anything. A failed insert here
+    # leaves *existing* EXECUTING and its work running, so the operator retries
+    # cleanly rather than being stranded with a superseded plan and no
+    # successor.
+    successor = await service.open_successor(
+        existing,
+        items=revision.items,
+        task_structure=revision.task_structure,
+        coordination_topology=revision.coordination_topology,
+    )
     await service.sync_status(
         existing,
         PlanStatus.SUPERSEDED,
@@ -106,12 +124,6 @@ async def replan_initiative(
         reason=_REPLAN_REASON,
     )
     await _cancel_retired_work(app_state, existing, requested_by=requested_by)
-    successor = await service.open_successor(
-        existing,
-        items=revision.items,
-        task_structure=revision.task_structure,
-        coordination_topology=revision.coordination_topology,
-    )
     # The project stays ACTIVE across a re-plan (the initiative is live, it is
     # being re-scoped), so the activation this shares with first dispatch is a
     # no-op here and only the plan pointer moves.

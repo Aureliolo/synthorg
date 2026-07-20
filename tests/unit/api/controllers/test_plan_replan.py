@@ -9,6 +9,7 @@ import pytest
 from synthorg.api.controllers._plan_replan import RevisionInputs, replan_initiative
 from synthorg.api.state import AppState
 from synthorg.core.domain_errors import ConflictError
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
@@ -241,6 +242,39 @@ class TestReplan:
         )
         live = [p for p in plans if p.status is not PlanStatus.SUPERSEDED]
         assert len(live) == 1
+
+    async def test_a_failed_successor_leaves_the_initiative_intact(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A lost successor insert must not strand the initiative.
+
+        The successor is persisted before anything is retired, so a save
+        failure leaves *existing* EXECUTING with its work running: the operator
+        retries rather than being stuck with a superseded plan and no successor.
+        """
+        state, backend, engine = await _seed(
+            PlanStatus.EXECUTING,
+            _task(_ITEM_A, TaskStatus.IN_PROGRESS),
+        )
+        monkeypatch.setattr(
+            backend.plans,
+            "save",
+            AsyncMock(
+                spec=backend.plans.save,
+                side_effect=QueryError("successor insert failed"),
+            ),
+        )
+        existing = _plan(PlanStatus.EXECUTING)
+
+        with pytest.raises(QueryError):
+            await replan_initiative(
+                state, existing, revision=_REVISION, requested_by="admin"
+            )
+
+        persisted = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert persisted is not None
+        assert persisted.status is PlanStatus.EXECUTING
+        engine.transition_task.assert_not_called()
 
     @pytest.mark.parametrize(
         "status",
