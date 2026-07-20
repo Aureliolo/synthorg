@@ -540,11 +540,10 @@ async def _run_startup(  # noqa: PLR0913
         if injected_backend is not None:
             app_state.wire(MemoryStateSlice, backend=injected_backend)
 
-    # Wire durable agent memory before anything downstream reads it. This
-    # used to be a side effect of the training-service auto-wire below,
-    # which published an ephemeral in-process store as the shared backend
-    # and so silently gave every consumer keyword-only recall that died on
-    # restart. Memory now has its own hook and its own failure reporting.
+    # Wire durable agent memory before anything downstream reads it.
+    # Memory owns this hook rather than riding along with the
+    # training-service auto-wire below, so a substrate failure is
+    # reported as a memory failure instead of degrading recall silently.
     from synthorg.api.lifecycle_helpers.memory_backend_wiring import (  # noqa: PLC0415
         wire_memory_backend,
     )

@@ -253,6 +253,21 @@ def create_vector_index(column: LiteralString) -> LiteralString:
     )
 
 
+def encode_vector(embedding: tuple[float, ...]) -> str:
+    """Render an embedding in pgvector's text input format.
+
+    psycopg adapts a Python list to a Postgres ``float8[]``, and there is
+    no ``float8[] -> vector`` cast, so binding the list to a ``%s::vector``
+    placeholder fails at query time. pgvector's own text form parses, and
+    needs no client-side extension registration on every pooled
+    connection.
+
+    Returns:
+        The ``[a,b,c]`` literal pgvector parses.
+    """
+    return f"[{','.join(repr(float(value)) for value in embedding)}]"
+
+
 def dense_match(column: LiteralString, where: LiteralString) -> LiteralString:
     """Return the KNN query over the dense column.
 

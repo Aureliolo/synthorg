@@ -14,16 +14,16 @@ rather than a silent mix of incompatible vectors.
 """
 
 import sqlite3
-from collections.abc import Sequence
 from datetime import datetime
 from typing import Final, NoReturn
 
 import aiosqlite
 
+import synthorg.persistence.sqlite._memory_vector_sql as sql
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.memory.bm25 import normalise_scores, score_document, term_frequencies
+from synthorg.memory.bm25 import term_frequencies
 from synthorg.memory.models import MemoryEntry
 from synthorg.memory.vector_spec import MemoryVectorSearchSpec
 from synthorg.observability import get_logger, safe_error_description
@@ -38,10 +38,10 @@ from synthorg.observability.events.memory import (
     MEMORY_ENTRY_STORE_FAILED,
 )
 from synthorg.persistence._shared import format_iso_utc
-from synthorg.persistence.sqlite import _memory_vector_sql as sql
 from synthorg.persistence.sqlite._memory_vector_rows import (
     encode_tags,
     pack_embedding,
+    rank_lexical,
     row_to_entry,
 )
 from synthorg.persistence.sqlite._shared import WriteContext
@@ -363,51 +363,7 @@ class SQLiteMemoryVectorRepository:
                 frequency_rows = list(await cursor.fetchall())
         except (sqlite3.Error, aiosqlite.Error) as exc:
             self._fail("search_lexical", MEMORY_ENTRY_RETRIEVAL_FAILED, exc)
-        return self._rank_lexical(postings, stats, frequency_rows, limit=spec.limit)
-
-    def _rank_lexical(
-        self,
-        postings: Sequence[aiosqlite.Row],
-        stats: aiosqlite.Row | None,
-        frequency_rows: Sequence[aiosqlite.Row],
-        *,
-        limit: int,
-    ) -> tuple[MemoryEntry, ...]:
-        """Score and order BM25 postings.
-
-        Returns:
-            The top ``limit`` entries by score.
-        """
-        doc_count = int(stats["doc_count"]) if stats is not None else 0
-        avg_length = float(stats["avg_length"]) if stats is not None else 0.0
-        doc_frequencies = {
-            NotBlankStr(str(r["term"])): int(r["doc_frequency"]) for r in frequency_rows
-        }
-        grouped: dict[str, list[aiosqlite.Row]] = {}
-        for row in postings:
-            grouped.setdefault(str(row["memory_id"]), []).append(row)
-
-        scored: list[tuple[float, aiosqlite.Row]] = []
-        for rows in grouped.values():
-            head = rows[0]
-            score = score_document(
-                matched=tuple(
-                    (NotBlankStr(str(r["term"])), int(r["term_frequency"]))
-                    for r in rows
-                ),
-                doc_length=int(head["token_count"]),
-                doc_count=doc_count,
-                doc_frequencies=doc_frequencies,
-                avg_length=avg_length,
-            )
-            scored.append((score, head))
-        scored.sort(key=lambda pair: (-pair[0], str(pair[1]["memory_id"])))
-        top = scored[:limit]
-        normalised = normalise_scores(tuple(score for score, _ in top))
-        return tuple(
-            row_to_entry(row, relevance_score=norm)
-            for (_, row), norm in zip(top, normalised, strict=True)
-        )
+        return rank_lexical(postings, stats, frequency_rows, limit=spec.limit)
 
     async def list_filtered(  # lint-allow: list-pagination -- spec.limit bounds it
         self,

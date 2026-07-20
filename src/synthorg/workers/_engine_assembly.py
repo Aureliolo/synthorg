@@ -33,7 +33,8 @@ from synthorg.integrations.state import IntegrationsStateSlice, connection_catal
 from synthorg.memory.consolidation.wiki_export import WikiExporter
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.injection_factory import build_memory_injection_strategy
-from synthorg.memory.state import MemoryStateSlice
+from synthorg.memory.shared_store import OrgSharedKnowledgeStore
+from synthorg.memory.state import MemoryStateSlice, org_memory_backend_of
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -453,6 +454,11 @@ def _build_memory_injection_strategy(
     ``_retrieve_injected_memory_messages`` short-circuited on every task
     and no agent ever saw a memory it had not explicitly asked for.
 
+    The org layer arrives through ``shared_store``: without it the
+    retrieval config's ``include_shared`` had nothing to include, so
+    company-wide knowledge reached an agent only if it thought to call a
+    Knowledge-Architect tool.
+
     Returns:
         The strategy, or ``None`` when no memory backend is wired, in
         which case the engine keeps its existing no-injection behaviour.
@@ -460,10 +466,14 @@ def _build_memory_injection_strategy(
     backend = app_state.slice(MemoryStateSlice).backend
     if backend is None:
         return None
+    org_backend = org_memory_backend_of(app_state)
     return build_memory_injection_strategy(
         app_state.config.memory.retrieval,
         backend=backend,
         token_estimator=DefaultTokenEstimator(),
+        shared_store=(
+            OrgSharedKnowledgeStore(org_backend) if org_backend is not None else None
+        ),
     )
 
 

@@ -8,7 +8,6 @@ two differ only in how rows are fetched, never in how they are ordered.
 """
 
 import json
-from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, Final, LiteralString, NoReturn, cast
 
@@ -16,10 +15,11 @@ import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool
 
+import synthorg.persistence.postgres._memory_vector_sql as sql
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.memory.bm25 import normalise_scores, score_document, term_frequencies
+from synthorg.memory.bm25 import term_frequencies
 from synthorg.memory.models import MemoryEntry
 from synthorg.memory.vector_spec import MemoryVectorSearchSpec
 from synthorg.observability import get_logger, safe_error_description
@@ -33,8 +33,7 @@ from synthorg.observability.events.memory import (
     MEMORY_ENTRY_RETRIEVAL_FAILED,
     MEMORY_ENTRY_STORE_FAILED,
 )
-from synthorg.persistence.postgres import _memory_vector_sql as sql
-from synthorg.persistence.postgres._memory_vector_rows import row_to_entry
+from synthorg.persistence.postgres._memory_vector_rows import rank_lexical, row_to_entry
 
 logger = get_logger(__name__)
 
@@ -174,7 +173,7 @@ class PostgresMemoryVectorRepository:
                 if embedding is not None and self._dense_ready:
                     await conn.execute(
                         sql.set_vector(self._vector_column),
-                        (list(embedding), entry.id),
+                        (sql.encode_vector(embedding), entry.id),
                     )
         except psycopg.Error as exc:
             self._fail("upsert", MEMORY_ENTRY_STORE_FAILED, exc, memory_id=entry.id)
@@ -246,7 +245,7 @@ class PostgresMemoryVectorRepository:
             async with self._pool.connection() as conn:
                 cursor = await conn.cursor(row_factory=dict_row).execute(
                     sql.dense_match(self._vector_column, where),
-                    (list(spec.embedding), *params, spec.limit),
+                    (sql.encode_vector(spec.embedding), *params, spec.limit),
                 )
                 rows = await cursor.fetchall()
         except psycopg.Error as exc:
@@ -295,7 +294,7 @@ class PostgresMemoryVectorRepository:
         except psycopg.Error as exc:
             self._fail("search_lexical", MEMORY_ENTRY_RETRIEVAL_FAILED, exc)
         stats = stats_rows[0] if stats_rows else None
-        return self._rank_lexical(rows, stats, frequency_rows, limit=spec.limit)
+        return rank_lexical(rows, stats, frequency_rows, limit=spec.limit)
 
     @staticmethod
     async def _fetch(  # type: ignore[explicit-any]  # pool hands back a row-generic connection
@@ -310,50 +309,6 @@ class PostgresMemoryVectorRepository:
         """
         cursor = await conn.cursor(row_factory=dict_row).execute(statement, params)
         return list(await cursor.fetchall())
-
-    def _rank_lexical(
-        self,
-        postings: Sequence[DictRow],
-        stats: DictRow | None,
-        frequency_rows: Sequence[DictRow],
-        *,
-        limit: int,
-    ) -> tuple[MemoryEntry, ...]:
-        """Score and order BM25 postings.
-
-        Returns:
-            The top ``limit`` entries by score.
-        """
-        doc_count = int(stats["doc_count"]) if stats is not None else 0
-        avg_length = float(stats["avg_length"]) if stats is not None else 0.0
-        doc_frequencies = {
-            NotBlankStr(str(r["term"])): int(r["doc_frequency"]) for r in frequency_rows
-        }
-        grouped: dict[str, list[DictRow]] = {}
-        for row in postings:
-            grouped.setdefault(str(row["memory_id"]), []).append(row)
-
-        scored: list[tuple[float, DictRow]] = []
-        for rows in grouped.values():
-            head = rows[0]
-            score = score_document(
-                matched=tuple(
-                    (NotBlankStr(str(r["term"])), int(r["term_frequency"]))
-                    for r in rows
-                ),
-                doc_length=int(head["token_count"]),
-                doc_count=doc_count,
-                doc_frequencies=doc_frequencies,
-                avg_length=avg_length,
-            )
-            scored.append((score, head))
-        scored.sort(key=lambda pair: (-pair[0], str(pair[1]["memory_id"])))
-        top = scored[:limit]
-        normalised = normalise_scores(tuple(score for score, _ in top))
-        return tuple(
-            row_to_entry(row, relevance_score=norm)
-            for (_, row), norm in zip(top, normalised, strict=True)
-        )
 
     async def list_filtered(  # lint-allow: list-pagination -- spec.limit bounds it
         self,

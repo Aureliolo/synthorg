@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 
-import aiosqlite
+import aiosqlite  # lint-allow: persistence-boundary -- opens the connection the repository under test is constructed with  # noqa: E501
 import pytest
 
 from synthorg.core.memory_enums import MemoryCategory

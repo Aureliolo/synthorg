@@ -30,7 +30,6 @@ dependencies = [
     "mcp==1.28.1",
     "mmh3==5.2.1",
     "packaging==26.2",
-    "pgvector==0.5.0",
     "prometheus-client==0.25.0",
     "pydantic==2.13.4",
     "pyjwt[crypto]==2.13.0",

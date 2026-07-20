@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
-import aiosqlite
+import aiosqlite  # lint-allow: persistence-boundary -- opens the connection the repository under measurement is constructed with  # noqa: E501
 
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.inmemory import InMemoryBackend
