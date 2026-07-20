@@ -104,11 +104,29 @@ class PostgresMemoryVectorRepository:
                     original_autocommit = bool(getattr(conn, "autocommit", False))
                     await conn.set_autocommit(True)
                     try:
-                        await self._ensure_extension(conn)
+                        # Serialise builders across processes/pods sharing
+                        # this database: CONCURRENTLY + IF NOT EXISTS is not
+                        # race-free between two simultaneous builds, and a
+                        # crash mid-build can leave an INVALID index. A
+                        # session advisory lock keyed on the column lets at
+                        # most one process build a given width at a time.
                         await conn.execute(
-                            sql.add_vector_column(self._vector_column, self._dimensions)
+                            sql.ACQUIRE_INDEX_BUILD_LOCK, (self._vector_column,)
                         )
-                        await conn.execute(sql.create_vector_index(self._vector_column))
+                        try:
+                            await self._ensure_extension(conn)
+                            await conn.execute(
+                                sql.add_vector_column(
+                                    self._vector_column, self._dimensions
+                                )
+                            )
+                            await conn.execute(
+                                sql.create_vector_index(self._vector_column)
+                            )
+                        finally:
+                            await conn.execute(
+                                sql.RELEASE_INDEX_BUILD_LOCK, (self._vector_column,)
+                            )
                     finally:
                         await conn.set_autocommit(original_autocommit)
             except psycopg.Error as exc:
@@ -303,7 +321,18 @@ class PostgresMemoryVectorRepository:
             return ()
         where, params = sql.build_filter_clause(spec)
         try:
-            async with self._pool.connection() as conn:
+            async with self._pool.connection() as conn, conn.transaction():
+                # Every filter here (namespace, category, tags, expiry) is
+                # applied on top of the HNSW scan, so with the default
+                # ef_search the index can exhaust its candidate window on
+                # rows the filter rejects and return fewer than ``limit``,
+                # or nothing, as the corpus grows. iterative_scan makes the
+                # index keep searching until the filtered LIMIT is met, and
+                # a wider ef_search enlarges the window. SET LOCAL is
+                # transaction-scoped, so it resets on commit and never
+                # leaks to the next borrower of this pooled connection.
+                await conn.execute(sql.SET_DENSE_ITERATIVE_SCAN)
+                await conn.execute(sql.SET_DENSE_EF_SEARCH)
                 cursor = await conn.cursor(row_factory=dict_row).execute(
                     sql.dense_match(self._vector_column, where),
                     (sql.encode_vector(spec.embedding), *params, spec.limit),

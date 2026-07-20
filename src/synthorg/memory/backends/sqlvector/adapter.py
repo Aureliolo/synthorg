@@ -60,6 +60,14 @@ _BACKEND_NAME: Final[NotBlankStr] = NotBlankStr("sqlvector")
 # signal can still reach the fused top-k on the strength of the other.
 # Fusing two already-truncated top-k lists throws that away.
 _RECALL_MULTIPLIER: Final[int] = 3
+# The dense arm over-fetches much wider than the lexical one. Every
+# metadata filter (namespace, category, tags, and the always-on
+# superseded exclusion) is applied AFTER the k nearest are chosen, so a
+# narrow k spends all its slots on rows that a project-scoped or
+# category-scoped query then discards, and dense recall silently goes
+# empty as the corpus grows. Lexical filters inside the query, so it does
+# not need this. Both are still capped at ``MAX_SEARCH_LIMIT``.
+_DENSE_RECALL_MULTIPLIER: Final[int] = 20
 # Dense KNN always returns its k nearest neighbours, however unrelated
 # they are: a nonsense query against a store of one memory still returns
 # that memory. Left unchecked that is the wrong-recall failure mode, and
@@ -403,11 +411,15 @@ class SqlVectorBackend:
         # would surface as "memory recalled nothing" rather than as a
         # configuration error. Clamping keeps a legal settings
         # combination retrievable, just with a narrower over-fetch.
-        recall_limit = min(query.limit * _RECALL_MULTIPLIER, MAX_SEARCH_LIMIT)
+        lexical_limit = min(query.limit * _RECALL_MULTIPLIER, MAX_SEARCH_LIMIT)
+        dense_limit = min(query.limit * _DENSE_RECALL_MULTIPLIER, MAX_SEARCH_LIMIT)
         embedding = await self._query_embedding(query.text) if query.text else None
-        spec = self._spec(agent_id, query, embedding=embedding, limit=recall_limit)
-        dense = self._drop_unrelated(await self._repository.search_dense(spec))
-        lexical = await self._repository.search_lexical(spec)
+        dense_spec = self._spec(agent_id, query, embedding=embedding, limit=dense_limit)
+        lexical_spec = self._spec(
+            agent_id, query, embedding=embedding, limit=lexical_limit
+        )
+        dense = self._drop_unrelated(await self._repository.search_dense(dense_spec))
+        lexical = await self._repository.search_lexical(lexical_spec)
         arms = tuple(arm for arm in (dense, lexical) if arm)
         if not arms:
             return ()

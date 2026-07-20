@@ -99,6 +99,12 @@ def build_filter_clause(spec: MemoryVectorSearchSpec) -> tuple[str, list[object]
         )
         params.append(tag)
     if spec.excluded_tags:
+        # This ``json_each`` subquery re-parses the tags JSON per surviving
+        # row, with no index behind it. Postgres backs the equivalent with
+        # a GIN index (a deliberate, drift-baselined asymmetry: SQLite has
+        # no JSONB/GIN); it stays acceptable here only because
+        # ``max_memories_per_agent`` bounds how many rows reach this clause
+        # after the agent/namespace/category predicates narrow it.
         placeholders = ", ".join("?" for _ in spec.excluded_tags)
         clauses.append(
             "NOT EXISTS (SELECT 1 FROM json_each(e.tags) "  # noqa: S608 -- placeholders are count-derived

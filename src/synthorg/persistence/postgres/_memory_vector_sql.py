@@ -91,6 +91,25 @@ SELECT_OLDEST_IDS: Final[LiteralString] = (
     "ORDER BY created_at ASC, memory_id ASC LIMIT %s"
 )
 
+# Session advisory lock serialising the CONCURRENTLY index build across
+# processes. Keyed on the dimension-suffixed column name via hashtext so
+# each width has its own lock; hashtext's int4 widens to the bigint the
+# single-argument overload takes.
+ACQUIRE_INDEX_BUILD_LOCK: Final[LiteralString] = "SELECT pg_advisory_lock(hashtext(%s))"
+RELEASE_INDEX_BUILD_LOCK: Final[LiteralString] = (
+    "SELECT pg_advisory_unlock(hashtext(%s))"
+)
+
+# Per-transaction HNSW scan tuning for a filtered dense search (pgvector
+# 0.8+). ``iterative_scan`` keeps the index producing candidates until
+# the filtered LIMIT is satisfied instead of stopping at the first
+# ``ef_search`` window; the wider ``ef_search`` enlarges that window.
+# SET LOCAL resets on commit, so neither leaks to the pool.
+SET_DENSE_ITERATIVE_SCAN: Final[LiteralString] = (
+    "SET LOCAL hnsw.iterative_scan = relaxed_order"
+)
+SET_DENSE_EF_SEARCH: Final[LiteralString] = "SET LOCAL hnsw.ef_search = 200"
+
 
 def build_filter_clause(
     spec: MemoryVectorSearchSpec,
@@ -259,12 +278,20 @@ def create_vector_index(column: LiteralString) -> LiteralString:
     performs well on a corpus that grows continuously, which is exactly
     how agent memory accumulates.
 
+    ``CONCURRENTLY`` so building the index on an already-populated table
+    (a re-index after an embedder swap or a restore) does not hold a
+    share lock that blocks every agent's memory writes org-wide for the
+    build's duration. This is why :meth:`ensure_ready` runs it in
+    autocommit: ``CONCURRENTLY`` cannot run inside a transaction block.
+    A crash mid-build can leave an ``INVALID`` index; the advisory lock
+    around the call serialises builders so at most one runs at a time.
+
     Returns:
-        A ``CREATE INDEX IF NOT EXISTS`` statement.
+        A ``CREATE INDEX CONCURRENTLY IF NOT EXISTS`` statement.
     """
     return (
-        f"CREATE INDEX IF NOT EXISTS idx_{column} ON memory_entries "
-        f"USING hnsw ({column} vector_l2_ops)"
+        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_{column} "
+        f"ON memory_entries USING hnsw ({column} vector_l2_ops)"
     )
 
 
