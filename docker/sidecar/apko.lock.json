@@ -200,22 +200,22 @@
       },
       {
         "name": "libmnl",
-        "url": "https://packages.wolfi.dev/os/x86_64/libmnl-1.0.5-r7.apk",
-        "version": "1.0.5-r7",
+        "url": "https://packages.wolfi.dev/os/x86_64/libmnl-1.0.5-r8.apk",
+        "version": "1.0.5-r8",
         "architecture": "x86_64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-6966",
-          "checksum": "sha1-bw6K6ChqgyAlAugFiXr+UM2ZNm4="
+          "range": "bytes=0-7759",
+          "checksum": "sha1-9LbVjt1zrj+v2YahAsBm6eVk2MU="
         },
         "data": {
-          "range": "bytes=6967-19143",
-          "checksum": "sha256-nhAOZsN2dRkKPIGHvCDXqiawnN3j+hFV9rr+Gt3Bq+4="
+          "range": "bytes=7760-19872",
+          "checksum": "sha256-NUEgEh1SweDsUpkEyZB8beXzF4rAcbC/3K9Y0JATO5o="
         },
-        "checksum": "Q1bw6K6ChqgyAlAugFiXr+UM2ZNm4="
+        "checksum": "Q19LbVjt1zrj+v2YahAsBm6eVk2MU="
       },
       {
         "name": "libnftnl",
@@ -428,22 +428,22 @@
       },
       {
         "name": "libmnl",
-        "url": "https://packages.wolfi.dev/os/aarch64/libmnl-1.0.5-r7.apk",
-        "version": "1.0.5-r7",
+        "url": "https://packages.wolfi.dev/os/aarch64/libmnl-1.0.5-r8.apk",
+        "version": "1.0.5-r8",
         "architecture": "aarch64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-7012",
-          "checksum": "sha1-h3noCkUQNN8qIoOwPsZzOIH6caI="
+          "range": "bytes=0-7806",
+          "checksum": "sha1-o/+lcFJvkPJjP0l9i+3UHt08pB4="
         },
         "data": {
-          "range": "bytes=7013-19925",
-          "checksum": "sha256-cZUw2dr4sAPDKmr1B4PdZpdgeKOXFM8pRg+L57trZY8="
+          "range": "bytes=7807-20677",
+          "checksum": "sha256-j6mCgmXUr7t/ik9AsNjSLaV4sOCVWpX4SQhALbw9LQ4="
         },
-        "checksum": "Q1h3noCkUQNN8qIoOwPsZzOIH6caI="
+        "checksum": "Q1o/+lcFJvkPJjP0l9i+3UHt08pB4="
       },
       {
         "name": "libnftnl",
