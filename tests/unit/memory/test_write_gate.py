@@ -16,11 +16,38 @@ from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.write_gate import (
     SUPERSEDED_TAG,
+    WriteDecision,
     WriteDisposition,
     evaluate_write,
 )
 
 pytestmark = pytest.mark.unit
+
+
+class TestWriteDecisionInvariant:
+    """A disposition cannot be built without the field it depends on.
+
+    NOOP and SUPERSEDE are meaningless without the entry they point at, so
+    the constructor rejects the half-built decision rather than letting a
+    caller act on a dangling reference.
+    """
+
+    def test_noop_requires_duplicate_of(self) -> None:
+        with pytest.raises(ValueError, match="duplicate_of"):
+            WriteDecision(disposition=WriteDisposition.NOOP)
+
+    def test_supersede_requires_supersedes(self) -> None:
+        with pytest.raises(ValueError, match="supersedes"):
+            WriteDecision(disposition=WriteDisposition.SUPERSEDE)
+
+    def test_add_needs_no_companion_field(self) -> None:
+        assert WriteDecision(disposition=WriteDisposition.ADD).duplicate_of is None
+
+    def test_noop_with_its_companion_is_accepted(self) -> None:
+        decision = WriteDecision(
+            disposition=WriteDisposition.NOOP, duplicate_of="mem-1"
+        )
+        assert decision.duplicate_of == "mem-1"
 
 
 def _entry(

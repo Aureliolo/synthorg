@@ -15,6 +15,7 @@ import pytest
 from structlog.testing import capture_logs
 
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.vector_spec import MemoryVectorSearchSpec
@@ -600,3 +601,36 @@ class TestDurability:
         assert reported[0]["log_level"] == "error"
         assert reported[0]["orphaned_vectors"] == 1
         assert reported[0]["previous_index"] == f"memory_entries_vec_{_DIMS}"
+
+
+class TestQueryErrorPaths:
+    """A failed statement surfaces as a typed ``QueryError``, never a raw
+    sqlite error crossing the persistence boundary."""
+
+    async def test_read_raises_query_error(self, db_path: Path) -> None:
+        async with aiosqlite.connect(str(db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            await db.executescript(_SCHEMA)
+            await db.commit()
+            repo = SQLiteMemoryVectorRepository(db, write_context=_no_op_write_context)
+            await repo.ensure_ready(_DIMS)
+            # Remove the table out from under the repository to force the
+            # next statement to fail.
+            await db.execute("DROP TABLE memory_entries")
+            await db.commit()
+
+            with pytest.raises(QueryError):
+                await repo.get(NotBlankStr("agent-1"), NotBlankStr("m1"))
+
+    async def test_write_raises_query_error(self, db_path: Path) -> None:
+        async with aiosqlite.connect(str(db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            await db.executescript(_SCHEMA)
+            await db.commit()
+            repo = SQLiteMemoryVectorRepository(db, write_context=_no_op_write_context)
+            await repo.ensure_ready(_DIMS)
+            await db.execute("DROP TABLE memory_entries")
+            await db.commit()
+
+            with pytest.raises(QueryError):
+                await repo.upsert(_entry("m1", "alpha"), embedding=(1.0, 0.0, 0.0, 0.0))

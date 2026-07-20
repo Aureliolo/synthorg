@@ -22,6 +22,7 @@ from psycopg import AsyncConnection
 from psycopg_pool import AsyncConnectionPool
 from structlog.testing import capture_logs
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.vector_spec import MemoryVectorSearchSpec
 from synthorg.observability.events.memory import (
@@ -197,3 +198,46 @@ class TestExtensionDegradation:
 
         assert repo.supports_dense_search is False
         assert log == []
+
+
+class _FailingCursor:
+    """Cursor whose ``execute`` always raises the given psycopg error."""
+
+    def __init__(self, exc: psycopg.Error) -> None:
+        self._exc = exc
+
+    async def execute(self, statement: str, params: object = None) -> object:
+        raise self._exc
+
+
+def _failing_connection(exc: psycopg.Error) -> AsyncConnection:
+    """A connection whose cursor statements raise *exc*."""
+    return mock_of[AsyncConnection](
+        cursor=lambda row_factory=None: _FailingCursor(exc),
+        set_autocommit=_anoop,
+    )
+
+
+class TestQueryErrorPaths:
+    """A failed statement surfaces as a typed ``QueryError``.
+
+    Parity with the SQLite arm: a raw ``psycopg.Error`` must never cross
+    the persistence boundary; the repository wraps it so callers depend on
+    the typed error, not the driver's exception hierarchy.
+    """
+
+    async def test_count_raises_query_error(self) -> None:
+        repo = PostgresMemoryVectorRepository(
+            _pool_over(_failing_connection(psycopg.OperationalError("boom")))
+        )
+
+        with pytest.raises(QueryError):
+            await repo.count(_AGENT)
+
+    async def test_get_raises_query_error(self) -> None:
+        repo = PostgresMemoryVectorRepository(
+            _pool_over(_failing_connection(psycopg.OperationalError("boom")))
+        )
+
+        with pytest.raises(QueryError):
+            await repo.get(_AGENT, NotBlankStr("m1"))
