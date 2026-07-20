@@ -1,11 +1,11 @@
 """Golden recall eval: the proof that retrieval is not naive.
 
-The issue this work closes warns that switching memory on over a naive
-retriever is worse than leaving it off, so "it works" is not a claim
-this repo is allowed to make without a number. These tests are that
-number, and they double as the permanent regression guard against recall
-rot: a change that quietly degrades ranking fails here rather than
-surfacing months later as agents acting on the wrong memory.
+Switching memory on over a naive retriever risks being worse than
+leaving it off, so "it works" is not a claim this suite accepts without
+a number. These tests are that number, and they double as the permanent
+regression guard against recall rot: a change that quietly degrades
+ranking fails here rather than surfacing months later as agents acting
+on the wrong memory.
 """
 
 from pathlib import Path
@@ -65,10 +65,9 @@ def _tuned_config() -> MemoryRetrievalConfig:
 class TestDurableBeatsNaiveBaseline:
     """The acceptance criterion, as a number rather than an assertion.
 
-    The baseline is the substance of the issue, not a config variant:
-    before this work the shared backend was an ephemeral keyword store,
-    so "beats the naive baseline" means the durable hybrid substrate
-    beats term matching on the same corpus and the same questions.
+    The naive baseline is an ephemeral keyword store, so "beats the naive
+    baseline" means the durable hybrid substrate beats term matching on
+    the same corpus and the same questions.
     """
 
     async def test_durable_hybrid_beats_keyword_matching(self, tmp_path: Path) -> None:
@@ -139,10 +138,10 @@ class TestCompoundingAcrossRestart:
     """The acceptance criterion the ephemeral store could never meet.
 
     A second run of a similar objective must benefit from the first
-    across a process restart. The old shared backend was an in-process
-    dict, so its recall was always zero after a restart; this proves the
-    durable substrate answers the same questions after the connection is
-    dropped and a fresh backend opens the same file.
+    across a process restart. An in-process dict backend loses everything
+    on restart; this proves the durable substrate answers the same
+    questions after the connection is dropped and a fresh backend opens
+    the same file.
     """
 
     async def test_recall_survives_a_restart(self, tmp_path: Path) -> None:

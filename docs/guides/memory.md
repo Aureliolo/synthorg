@@ -161,13 +161,16 @@ When an agent needs context, the retrieval pipeline queries the memory backend, 
 | `recency_decay_rate` | float | `0.01` | Exponential decay rate per hour |
 | `personal_boost` | float | `0.1` | Boost for personal memories over shared (0.0--1.0) |
 | `min_relevance` | float | `0.3` | Minimum combined score to include a memory |
-| `max_memories` | int | `20` | Maximum memories to inject (1--100) |
+| `max_memories` | int | `5` | Tuned top-k injected after ranking (1--100) |
 | `include_shared` | bool | `true` | Whether to query shared org memory |
 | `default_relevance` | float | `0.5` | Score for entries missing a relevance score |
 | `injection_point` | string | `"system"` | Where to inject: `"system"` (system prompt) or `"user"` |
 | `memory_filter_strategy` | string | `"off"` | Post-ranking filter: `"off"` (no filter), `"tag_based"` (only non-inferable-tagged memories), or `"passthrough"` (inject all) |
 | `fusion_strategy` | string | `"linear"` | Ranking fusion: `"linear"` (currently supported) |
 | `rrf_k` | int | `60` | RRF smoothing constant (only with RRF strategy, 1--1000) |
+| `diversity_penalty_enabled` | bool | `true` | Apply MMR diversity re-ranking (context strategy only; off for other strategies) |
+| `diversity_lambda` | float | `0.7` | MMR trade-off: `1.0` pure relevance, `0.0` maximum diversity |
+| `candidate_pool_multiplier` | int | `3` | Dense/lexical over-fetch width before ranking narrows to `max_memories` |
 
 ### Weight Tuning
 
@@ -361,7 +364,7 @@ org_memory:
 
 ## Memory Admin API
 
-Operators with the `CEO` or `SYSTEM` role can manage embedding fine-tuning at runtime through the `/admin/memory/fine-tune*` endpoints (controller: `src/synthorg/api/controllers/memory.py`, guarded by `require_roles(HumanRole.CEO, HumanRole.SYSTEM)`).
+Operators with the `CEO` or `SYSTEM` role can manage embedding fine-tuning at runtime through the `/admin/memory/fine-tune*` endpoints (`MemoryFineTuneController` in `src/synthorg/api/controllers/memory/fine_tune.py`, guarded by `require_roles(HumanRole.CEO, HumanRole.SYSTEM)`).
 
 ### Start a fine-tune run
 

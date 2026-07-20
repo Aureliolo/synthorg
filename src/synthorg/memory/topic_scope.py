@@ -3,10 +3,9 @@
 
 Procedural lessons are task-specific: a lesson about recovering a
 checkout flow helps a checkout task and pollutes anything else. Deciding
-which is which by similarity score does not work. Measured against the
-benchmark brief suite, a checkout lesson shares *more* terms with an
-unrelated "retrieval reranking" brief (4) than with the checkout brief
-it came from (2), and every normalisation tried (query coverage, entry
+which is which by similarity score does not work: a checkout lesson can
+share more terms with an unrelated brief than with the checkout brief it
+came from, and every normalisation tried (query coverage, entry
 coverage, Dice, Jaccard) ranks the unrelated brief at or above the true
 one. There is no threshold to pick, which is the same conclusion the
 applied-threshold literature reaches for embedding similarity.

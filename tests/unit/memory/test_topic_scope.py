@@ -1,10 +1,10 @@
 """Tests for topic scoping of procedural recall.
 
 Raw term-overlap scores cannot separate a genuinely relevant procedural
-lesson from an incidentally-worded one: measured against the benchmark
-suite, an unrelated brief shares more terms with a checkout lesson than
-the checkout brief does. Scoping keys on the lesson's own tags instead,
-so precision comes from structure rather than from a threshold.
+lesson from an incidentally-worded one: an unrelated brief can share more
+terms with a checkout lesson than the checkout brief does. Scoping keys
+on the lesson's own tags instead, so precision comes from structure
+rather than from a threshold.
 """
 
 from datetime import UTC, datetime
@@ -113,10 +113,11 @@ class TestInTopicScope:
 class _DenseCapableBackend(InMemoryBackend):
     """The real keyword backend, claiming semantic recall.
 
-    ``supports_dense_search`` is a duck-typed capability rather than a
-    protocol member, so a spec'd double cannot express it. Subclassing a
-    real backend keeps the double protocol-complete while varying only
-    the axis under test.
+    The test drives ``ContextInjectionStrategy.prepare_messages`` end to
+    end, so it needs a backend with working ``store``/``retrieve``, which
+    a ``mock_of[MemoryBackend]`` autospec double does not provide.
+    Subclassing a real backend and overriding one property varies the
+    ``supports_dense_search`` axis while keeping full CRUD behaviour.
     """
 
     supports_dense_search = True

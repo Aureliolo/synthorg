@@ -19,7 +19,7 @@ def recall_request(  # noqa: PLR0913 -- a builder; each field is one test axis
     objective: str = "",
     role: str = "",
     department: str = "",
-    project_id: str = "",
+    project_id: str | None = None,
 ) -> MemoryRecallRequest:
     """Build a recall request from the fields a test actually varies.
 
@@ -35,7 +35,7 @@ def recall_request(  # noqa: PLR0913 -- a builder; each field is one test axis
         objective=objective,
         role=role,
         department=department,
-        project_id=project_id,
+        project_id=NotBlankStr(project_id) if project_id else None,
         token_budget=token_budget,
         categories=categories if categories is not None else frozenset(),
     )

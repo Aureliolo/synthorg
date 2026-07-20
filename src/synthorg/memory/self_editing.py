@@ -1,7 +1,8 @@
 """Self-editing memory injection strategy.
 
-Provides ``SelfEditingMemoryStrategy`` (Strategy 3 from design spec §7.7).
-Agents maintain structured core/archival/recall memory blocks and
+Provides ``SelfEditingMemoryStrategy``, the MemGPT-style self-editing
+tier (the "Self-Editing Memory" injection strategy in the memory design
+doc). Agents maintain structured core/archival/recall memory blocks and
 read/write them via six tools during execution.
 
 Three memory tiers:
@@ -471,7 +472,7 @@ class SelfEditingMemoryStrategy:
         logger.info(
             MEMORY_SELF_EDIT_ARCHIVAL_SEARCH,
             agent_id=agent_id,
-            query=args.query,
+            query_length=len(args.query),
             count=len(entries),
         )
         return _format_entries(entries)

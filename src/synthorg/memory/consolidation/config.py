@@ -433,8 +433,8 @@ class LLMConsolidationConfig(BaseModel):
 
     Attributes:
         group_threshold: Minimum category group size for consolidation.
-            At threshold 3, ``_select_entries`` keeps one entry and
-            ``_synthesize`` receives two -- the smallest input for a
+            At threshold 3, ``HighestRelevanceSelector.select`` keeps one
+            entry and synthesis receives two -- the smallest input for a
             meaningful LLM merge.
         temperature: Sampling temperature for the synthesis LLM call.
         top_p: Nucleus-sampling cap for the synthesis LLM call. Pinned to

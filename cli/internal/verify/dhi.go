@@ -42,7 +42,7 @@ const (
 
 // dhiRegistry is the DHI image registry. Set via Configure; defaults to
 // "dhi.io". Overriding it invalidates the dhiPinnedIndexDigests lookup
-// because digests are keyed on "dhi.io/postgres:..." etc., so consumers
+// because digests are keyed on "dhi.io/pgvector:..." etc., so consumers
 // must skip verification when this differs from the default.
 var dhiRegistry = "dhi.io"
 
@@ -504,12 +504,12 @@ func verifyCosignLayer(layer v1.Layer, desc v1.Descriptor, attDigest string, pub
 func readCosignPayload(layer v1.Layer) ([]byte, error) {
 	reader, err := layer.Uncompressed()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading cosign layer: %w", err)
 	}
 	payload, err := io.ReadAll(io.LimitReader(reader, maxBundleBytes+1))
 	_ = reader.Close()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading cosign payload: %w", err)
 	}
 	if int64(len(payload)) > maxBundleBytes {
 		return nil, fmt.Errorf("cosign payload too large")
@@ -669,10 +669,9 @@ func checkDHIAuth(ctx context.Context) error {
 	if err != nil {
 		if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "UNAUTHORIZED") || strings.Contains(err.Error(), "Unauthorized") {
 			return fmt.Errorf(
-				"not logged in to dhi.io. SynthOrg uses Docker Hardened Images " +
-					"which require a free Docker Hub account.\n\n" +
-					"  Run: docker login dhi.io\n\n" +
-					"Then retry 'synthorg start'")
+				"not logged in to dhi.io: SynthOrg uses Docker Hardened " +
+					"Images, which need a free Docker Hub account, so run " +
+					"'docker login dhi.io' then retry 'synthorg start'")
 		}
 		return fmt.Errorf("cannot reach dhi.io: %w", err)
 	}

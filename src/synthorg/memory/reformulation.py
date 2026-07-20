@@ -172,7 +172,7 @@ class LLMQueryReformulator:
             reraise_critical(exc)
             logger.warning(
                 MEMORY_REFORMULATION_FAILED,
-                original_query=original_query,
+                query_length=len(original_query),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -241,7 +241,7 @@ class LLMSufficiencyChecker:
             reraise_critical(exc)
             logger.warning(
                 MEMORY_SUFFICIENCY_CHECK_FAILED,
-                query=query,
+                query_length=len(query),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

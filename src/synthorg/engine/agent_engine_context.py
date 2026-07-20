@@ -272,7 +272,7 @@ class AgentEngineContextMixin:
             objective=task.description,
             role=identity.role,
             department=identity.department,
-            project_id=task.project or "",
+            project_id=task.project or None,
             token_budget=token_budget,
         )
         try:

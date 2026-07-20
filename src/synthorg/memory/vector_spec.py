@@ -89,18 +89,22 @@ class MemoryVectorSearchSpec(BaseModel):
     )
     now: AwareDatetime | None = Field(
         default=None,
-        description="Reference instant for expiry exclusion",
+        # ``None`` means "do not filter by expiry" (include expired
+        # entries), not "now is unknown". Callers that want live-only
+        # results must pass their clock's instant explicitly.
+        description="Reference instant for expiry exclusion; None includes expired",
     )
 
     @model_validator(mode="after")
-    def _validate_window(self) -> Self:
-        """Reject an inverted time window.
+    def _validate_invariants(self) -> Self:
+        """Reject an inverted time window or a contradictory tag filter.
 
         Returns:
             The validated spec.
 
         Raises:
-            ValueError: If ``since`` is later than ``until``.
+            ValueError: If ``since`` is later than ``until``, or a tag
+                is both required and excluded (an unsatisfiable filter).
         """
         window_inverted = (
             self.since is not None
@@ -109,5 +113,12 @@ class MemoryVectorSearchSpec(BaseModel):
         )
         if window_inverted:
             msg = "since must not be later than until"
+            raise ValueError(msg)
+        contradictory_tags = set(self.tags) & set(self.excluded_tags)
+        if contradictory_tags:
+            msg = (
+                "a tag cannot be both required and excluded: "
+                f"{sorted(contradictory_tags)}"
+            )
             raise ValueError(msg)
         return self

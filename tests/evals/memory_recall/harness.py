@@ -127,10 +127,9 @@ async def _no_op_write_context() -> AsyncIterator[None]:
 async def seeded_naive_backend() -> AsyncIterator[InMemoryBackend]:
     """Yield the discouraged keyword-only backend, seeded identically.
 
-    This is the baseline the issue is measured against: before this
-    work the shared backend was an ephemeral in-process store whose
-    entire matcher was a term test, with no embeddings and nothing
-    surviving a restart.
+    The naive baseline the durable substrate is scored against: an
+    ephemeral in-process store whose entire matcher is a term test, with
+    no embeddings and nothing surviving a restart.
 
     Yields:
         The connected naive backend, seeded and ready to query.

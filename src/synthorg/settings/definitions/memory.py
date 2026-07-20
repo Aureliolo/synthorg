@@ -123,7 +123,7 @@ _r.register(
     )
 )
 
-# ── Kill switches (CFG-1 audit) ──────────────────────────────────
+# ── Kill switches ──────────────────────────────────
 
 _r.register(
     SettingDefinition(

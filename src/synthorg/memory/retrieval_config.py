@@ -50,8 +50,9 @@ class MemoryRetrievalConfig(BaseModel):
         diversity_penalty_enabled: When True, apply MMR-style diversity
             penalty to re-rank retrieval results, reducing redundancy.
             Only consumed by ``ContextInjectionStrategy``; a validator
-            raises if combined with another strategy.  Defaults to
-            False.
+            raises if combined with another strategy.  Defaults to True
+            (a before-validator turns it off for the non-context
+            strategies it does not apply to).
         diversity_lambda: MMR trade-off parameter (0.0-1.0).  ``1.0``
             means pure relevance (no diversity), ``0.0`` means maximum
             diversity.  Defaults to 0.7.  Only consulted when

@@ -378,7 +378,8 @@ The pipeline requires no manual annotation and runs on a single GPU.
    [Memory Learning &rarr; Checkpoint promotion gate](memory-learning.md#checkpoint-promotion-gate)
 
 **Integration design:** fine-tuning is an offline pipeline triggered via
-`POST /admin/memory/fine-tune` (see `MemoryAdminController`). The optional
+`POST /admin/memory/fine-tune` (served by the memory admin sub-controllers
+under `src/synthorg/api/controllers/memory/`). The optional
 `EmbeddingFineTuneConfig` (disabled by default) stores the checkpoint path. When
 `enabled=True` and `checkpoint_path` is set, backend initialisation uses the
 checkpoint path as the model identifier the embedder dispatches on. The embedding

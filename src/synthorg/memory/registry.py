@@ -1,9 +1,8 @@
 """Memory backend registry.
 
 Domain-specific dispatch keyed by ``CompanyMemoryConfig.backend``.  Mirrors
-``PersistenceBackendRegistry`` and replaces the hand-rolled
-``if backend == "...": ... elif ...`` chain previously embedded in
-``synthorg.memory.factory`` and ``CompositeBackend`` child wiring.
+``PersistenceBackendRegistry`` so a new memory backend registers itself
+here rather than every call site branching on the config discriminator.
 """
 
 from collections.abc import Mapping

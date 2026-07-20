@@ -52,7 +52,9 @@ class RedactionResult:
         findings: Names of the pattern classes that matched, sorted and
             deduplicated. Never the matched values themselves: a
             redaction report that quotes the secret it found defeats the
-            redaction.
+            redaction. Enforced by producer discipline (only
+            :func:`redact_for_memory` and its helpers build this), not by
+            the type; every producer appends fixed class-name constants.
     """
 
     content: str

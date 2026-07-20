@@ -1,10 +1,10 @@
 # module-kind: declarative
 """Structured retrieval context for one memory recall.
 
-Replaces the bare query string the injection seam used to pass. A task
-title alone is a terse query, and terse queries under-retrieve: the
-memory that would have helped is often phrased in the vocabulary of the
-objective, the role or the project rather than of the task line itself.
+A task title alone is a terse query, and terse queries under-retrieve:
+the memory that would have helped is often phrased in the vocabulary of
+the objective, the role or the project rather than of the task line
+itself, so recall composes from the full work context, not the title.
 
 Carrying the context as fields rather than pre-joined text keeps the
 composition in one place, so every caller produces the same query for
@@ -50,7 +50,9 @@ class MemoryRecallRequest(BaseModel):
     objective: str = Field(default="", description="Parent objective, when known")
     role: str = Field(default="", description="Agent role title, when known")
     department: str = Field(default="", description="Agent department, when known")
-    project_id: str = Field(default="", description="Owning project, when scoped")
+    project_id: NotBlankStr | None = Field(
+        default=None, description="Owning project, when scoped"
+    )
     token_budget: int = Field(
         default=0,
         ge=0,
@@ -101,6 +103,8 @@ class MemoryRecallRequest(BaseModel):
         Returns:
             The namespace scope, or ``None`` when the work is unscoped.
         """
+        if self.project_id is None:
+            return None
         project = self.project_id.strip()
         if not project:
             return None
