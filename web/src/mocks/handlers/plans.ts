@@ -80,8 +80,14 @@ export const plansHandlers = [
     )
   }),
   http.post('/api/v1/plans/:id/replan', async ({ request }) => {
-    const body = (await request.json()) as { items?: readonly unknown[] }
-    if (!body.items || body.items.length === 0) {
+    // Validate rather than cast: a null body would throw on property access,
+    // and a bare string would satisfy a `.length` check the backend rejects.
+    const body: unknown = await request.json().catch(() => null)
+    const items =
+      body !== null && typeof body === 'object' && 'items' in body
+        ? (body as { items?: unknown }).items
+        : undefined
+    if (!Array.isArray(items) || items.length === 0) {
       return HttpResponse.json(apiError("Field 'items' must be non-empty"), {
         status: 422,
       })

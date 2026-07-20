@@ -27,21 +27,29 @@
 -- the plans CHECK is swapped in a single statement rather than dropped and
 -- re-added across two: there is never a window where the table has no status
 -- constraint.
+--
+-- Every statement is also written to be re-runnable, because a failure part
+-- way through a non-transactional migration is retried from the top: the
+-- column changes are IF [NOT] EXISTS, and the index is dropped before it is
+-- built so a previous run that failed mid-build (which leaves an INVALID
+-- index behind, one CONCURRENTLY cannot simply reuse) does not block the
+-- retry. DROP INDEX CONCURRENTLY keeps the retry non-blocking too.
 
 ALTER TABLE projects
-DROP COLUMN task_ids,
-ADD COLUMN plan_id TEXT;
+DROP COLUMN IF EXISTS task_ids,
+ADD COLUMN IF NOT EXISTS plan_id TEXT;
 
 ALTER TABLE tasks
-ADD COLUMN plan_id TEXT,
-ADD COLUMN plan_item_id TEXT;
+ADD COLUMN IF NOT EXISTS plan_id TEXT,
+ADD COLUMN IF NOT EXISTS plan_item_id TEXT;
 
 ALTER TABLE plans
-DROP CONSTRAINT plans_status_check,
+DROP CONSTRAINT IF EXISTS plans_status_check,
 ADD CONSTRAINT plans_status_check
 CHECK (status IN (
     'planning', 'draft', 'pending_review', 'approved', 'executing',
     'completed', 'rejected', 'superseded', 'failed'
 ));
 
+DROP INDEX CONCURRENTLY IF EXISTS idx_tasks_plan_id;
 CREATE INDEX CONCURRENTLY idx_tasks_plan_id ON tasks (plan_id);

@@ -79,11 +79,12 @@ describe('ProjectDetailPage', () => {
     expect(screen.getByText('Project not found')).toBeInTheDocument()
   })
 
-  it('renders header, team section, oversight section, and task list when project loaded', () => {
+  it('renders header, team, oversight, plan progress, and task list when loaded', () => {
     renderPage()
     expect(screen.getByTestId('project-header')).toBeInTheDocument()
     expect(screen.getByTestId('project-team-section')).toBeInTheDocument()
     expect(screen.getByTestId('project-oversight-section')).toBeInTheDocument()
+    expect(screen.getByTestId('project-plan-progress')).toBeInTheDocument()
     expect(screen.getByTestId('project-task-list')).toBeInTheDocument()
   })
 

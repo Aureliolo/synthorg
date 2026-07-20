@@ -381,7 +381,21 @@ class PlanService:
             )
             msg = f"Successor plan is invalid: {describe_validation_error(exc)}"
             raise ValidationError(msg) from exc
-        await self._repo.save(successor)
+        try:
+            await self._repo.save(successor)
+        except Exception as exc:
+            reraise_critical(exc)
+            # The caller has already retired the current revision, so a lost
+            # successor leaves the initiative with no live plan. Log before
+            # propagating or that state is undiagnosable.
+            logger.warning(
+                API_PLAN_UPDATE_FAILED,
+                plan_id=str(successor.id),
+                supersedes=str(existing.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         logger.info(
             API_PLAN_SUCCESSOR_OPENED,
             plan_id=str(successor.id),

@@ -59,6 +59,8 @@ def _plan(status: PlanStatus) -> Plan:
 
 
 def _task(item_id: str, status: TaskStatus) -> Task:
+    # A CREATED task carries no assignee; anything past it does.
+    assigned = None if status is TaskStatus.CREATED else sid("agent-1")
     return Task(
         id=as_uuid(item_id),
         title="Child",
@@ -69,7 +71,7 @@ def _task(item_id: str, status: TaskStatus) -> Task:
         plan_id=as_uuid(_PLAN_ID),
         plan_item_id=as_uuid(item_id),
         created_by="manager",
-        assigned_to=sid("agent-1"),
+        assigned_to=assigned,
         status=status,
     )
 
@@ -91,7 +93,16 @@ async def _seed(
     )
     for task in tasks:
         await backend.tasks.save(task)
-    engine = mock_of[TaskEngine](transition_task=AsyncMock(return_value=(None, None)))
+
+    async def _get_task(task_id: str) -> Task | None:
+        # Mirror the real engine's read-through so terminate_task sees the
+        # live persisted status rather than the caller's snapshot.
+        return await backend.tasks.get(NotBlankStr(task_id))
+
+    engine = mock_of[TaskEngine](
+        transition_task=AsyncMock(return_value=(None, None)),
+        get_task=AsyncMock(side_effect=_get_task),
+    )
     state = make_app_state(persistence=backend, task_engine=engine)
     return state, backend, engine
 
@@ -169,6 +180,44 @@ class TestReplan:
             PlanStatus.EXECUTING,
             _task(_ITEM_A, TaskStatus.COMPLETED),
         )
+        backend_plan = _plan(PlanStatus.EXECUTING)
+
+        await replan_initiative(
+            state, backend_plan, revision=_REVISION, requested_by="admin"
+        )
+
+        engine.transition_task.assert_not_called()
+
+    async def test_a_created_task_is_rejected_not_cancelled(self) -> None:
+        """The lifecycle forbids CREATED -> CANCELLED; it is rejected."""
+        state, _, engine = await _seed(
+            PlanStatus.EXECUTING,
+            _task(_ITEM_A, TaskStatus.CREATED),
+        )
+        backend_plan = _plan(PlanStatus.EXECUTING)
+
+        await replan_initiative(
+            state, backend_plan, revision=_REVISION, requested_by="admin"
+        )
+
+        targets = [call.args[1] for call in engine.transition_task.await_args_list]
+        assert targets == [TaskStatus.REJECTED]
+
+    async def test_work_finished_during_the_drain_is_skipped(self) -> None:
+        """A task terminal in persistence is not driven through a dead transition.
+
+        The teardown snapshots every task before terminating any; a task can
+        finish in the interim. terminate_task re-reads live state, so the stale
+        IN_PROGRESS snapshot must not force an invalid transition on the row
+        that has since completed.
+        """
+        state, _, engine = await _seed(
+            PlanStatus.EXECUTING,
+            _task(_ITEM_A, TaskStatus.IN_PROGRESS),
+        )
+        # The drain snapshots IN_PROGRESS; the read-through inside
+        # terminate_task sees the row after it completed mid-drain.
+        engine.get_task = AsyncMock(return_value=_task(_ITEM_A, TaskStatus.COMPLETED))
         backend_plan = _plan(PlanStatus.EXECUTING)
 
         await replan_initiative(

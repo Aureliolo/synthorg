@@ -733,4 +733,11 @@ class TestProjectProgress:
         self, async_test_client: LoopAsyncClient
     ) -> None:
         resp = await async_test_client.get("/api/v1/projects/nonexistent/progress")
+
         assert resp.status_code == 404
+        # A deleted route would also 404, so assert the structured
+        # unknown-project error rather than the status alone.
+        body = resp.json()
+        assert body["success"] is False
+        assert body["error_detail"]["error_category"] == "not_found"
+        assert "Project" in body["error"]

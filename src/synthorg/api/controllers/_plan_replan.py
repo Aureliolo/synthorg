@@ -20,6 +20,7 @@ approval. Dispatch repoints and activates the project as it does for any first
 plan, so approval and re-approval share one path.
 """
 
+from collections import Counter
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -32,7 +33,11 @@ from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
-from synthorg.core.task_enums import CoordinationTopology, TaskStructure
+from synthorg.core.task_enums import (
+    CoordinationTopology,
+    TaskStatus,
+    TaskStructure,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.project_writes import link_project_to_plan
 from synthorg.engine.state import task_engine_of
@@ -158,19 +163,24 @@ async def _cancel_retired_work(
             break
         offset += DEFAULT_PAGE_SIZE
 
-    cancelled = 0
+    # terminate_task re-reads each row and routes it to the right terminal, so
+    # the tally counts where work actually landed (a CREATED task is rejected,
+    # not cancelled) rather than assuming every termination is a cancellation.
+    terminated: Counter[TaskStatus] = Counter()
     for task in doomed:
         if task.status not in TRULY_TERMINAL_STATUSES:
-            await terminate_task(
+            reached = await terminate_task(
                 task_engine,
                 task,
                 requested_by=requested_by,
                 reason=_REPLAN_REASON,
             )
-            cancelled += 1
+            if reached is not None:
+                terminated[reached] += 1
     logger.info(
         API_PLAN_REPLANNED,
         plan_id=str(retired.id),
-        note="retired work cancelled",
-        cancelled=cancelled,
+        note="retired work terminated",
+        cancelled=terminated[TaskStatus.CANCELLED],
+        rejected=terminated[TaskStatus.REJECTED],
     )
