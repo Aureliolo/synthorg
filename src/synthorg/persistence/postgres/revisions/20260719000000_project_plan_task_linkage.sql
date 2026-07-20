@@ -20,19 +20,28 @@
 -- INDEX would hold a SHARE lock on it for the whole build; wrapped in one
 -- transaction with the plans CHECK rebuild below, it would hold that lock
 -- alongside an ACCESS EXCLUSIVE lock on plans until commit.
+--
+-- Running outside a transaction means a mid-migration failure leaves the
+-- earlier statements applied, so each change below is expressed as ONE
+-- ALTER TABLE. Every statement is then individually atomic, and in particular
+-- the plans CHECK is swapped in a single statement rather than dropped and
+-- re-added across two: there is never a window where the table has no status
+-- constraint.
 
-ALTER TABLE projects DROP COLUMN task_ids;
-ALTER TABLE projects ADD COLUMN plan_id TEXT;
+ALTER TABLE projects
+DROP COLUMN task_ids,
+ADD COLUMN plan_id TEXT;
 
-ALTER TABLE tasks ADD COLUMN plan_id TEXT;
-ALTER TABLE tasks ADD COLUMN plan_item_id TEXT;
+ALTER TABLE tasks
+ADD COLUMN plan_id TEXT,
+ADD COLUMN plan_item_id TEXT;
 
-CREATE INDEX CONCURRENTLY idx_tasks_plan_id ON tasks (plan_id);
-
-ALTER TABLE plans DROP CONSTRAINT plans_status_check;
 ALTER TABLE plans
+DROP CONSTRAINT plans_status_check,
 ADD CONSTRAINT plans_status_check
 CHECK (status IN (
     'planning', 'draft', 'pending_review', 'approved', 'executing',
     'completed', 'rejected', 'superseded', 'failed'
 ));
+
+CREATE INDEX CONCURRENTLY idx_tasks_plan_id ON tasks (plan_id);
