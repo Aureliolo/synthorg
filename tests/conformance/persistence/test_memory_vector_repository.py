@@ -318,3 +318,26 @@ class TestLifecycle:
         )
 
         assert await repo.count(_AGENT, category=MemoryCategory.PROCEDURAL) == 1
+
+
+class TestEmbeddingWidthChange:
+    """Both backends must survive a width change without a hard failure.
+
+    Whether the orphaned vectors can be counted depends on a dense index
+    existing at all, which needs an extension the bare test image need
+    not carry. What is contractual on every backend is that re-preparing
+    at a new width neither raises nor destroys the durable rows, so the
+    lexical arm keeps serving recall.
+    """
+
+    async def test_reprepare_at_new_width_preserves_entries(
+        self, backend: PersistenceBackend
+    ) -> None:
+        repo = backend.memory_vectors
+        await repo.upsert(_entry("m1", "rollback procedure"), embedding=None)
+
+        await repo.ensure_ready(8)
+        await repo.ensure_ready(16)
+
+        assert await repo.get(_AGENT, NotBlankStr("m1")) is not None
+        assert await repo.count(_AGENT) == 1

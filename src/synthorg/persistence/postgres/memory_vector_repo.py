@@ -10,7 +10,7 @@ two differ only in how rows are fetched, never in how they are ordered.
 import json
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, Final, LiteralString, NoReturn
+from typing import Any, Final, LiteralString, NoReturn, cast
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
@@ -25,7 +25,9 @@ from synthorg.memory.vector_spec import MemoryVectorSearchSpec
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_DENSE_INDEX_READY,
+    MEMORY_DENSE_INDEX_SCAN_FAILED,
     MEMORY_DENSE_INDEX_UNAVAILABLE,
+    MEMORY_DENSE_INDEX_WIDTH_CHANGED,
     MEMORY_ENTRY_COUNT_FAILED,
     MEMORY_ENTRY_DELETE_FAILED,
     MEMORY_ENTRY_RETRIEVAL_FAILED,
@@ -101,6 +103,40 @@ class PostgresMemoryVectorRepository:
             return
         self._dense_ready = True
         logger.info(MEMORY_DENSE_INDEX_READY, dimensions=self._dimensions)
+        await self._report_orphaned_widths()
+
+    async def _report_orphaned_widths(self) -> None:
+        """Log every dense column left populated at a different width.
+
+        Best-effort: this is a diagnostic, so a failure to look must not
+        cost the caller a working dense index.
+        """
+        try:
+            async with self._pool.connection() as conn:
+                cursor = await conn.execute(
+                    sql.SELECT_VECTOR_COLUMNS, (self._vector_column,)
+                )
+                stale = [str(row[0]) for row in await cursor.fetchall()]
+                for column in stale:
+                    # mypy erases LiteralString to str and calls this
+                    # redundant; pyright needs it for psycopg's query types.
+                    literal = cast("LiteralString", column)  # type: ignore[redundant-cast]
+                    cursor = await conn.execute(sql.count_vectors(literal))
+                    row = await cursor.fetchone()
+                    orphaned = int(row[0]) if row is not None else 0
+                    if orphaned:
+                        logger.error(
+                            MEMORY_DENSE_INDEX_WIDTH_CHANGED,
+                            dimensions=self._dimensions,
+                            previous_index=column,
+                            orphaned_vectors=orphaned,
+                        )
+        except psycopg.Error as exc:
+            logger.warning(
+                MEMORY_DENSE_INDEX_SCAN_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def upsert(
         self,

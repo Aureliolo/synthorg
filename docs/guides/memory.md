@@ -20,7 +20,7 @@ The memory system has two concerns:
 graph TD
     Agent["Agent"]
     Retriever["Retrieval Pipeline"]
-    Backend["Memory Backend<br/><small>Mem0 (Qdrant + SQLite)</small>"]
+    Backend["Memory Backend<br/><small>sqlvector (pgvector / sqlite-vec)</small>"]
     OrgMem["Shared Org Memory<br/><small>Core policies + extended facts</small>"]
     Persistence["Persistence Backend<br/><small>SQLite</small>"]
 
@@ -66,12 +66,10 @@ Configure memory in the `memory` section of your company config:
 
 ```yaml
 memory:
-  backend: "mem0"
+  backend: "sqlvector"
   level: session
   storage:
     data_dir: "/data/memory"
-    vector_store: "qdrant"
-    history_store: "sqlite"
   options:
     retention_days: null          # null = keep forever
     max_memories_per_agent: 10000
@@ -93,7 +91,7 @@ memory:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `backend` | string | `"mem0"` | Memory backend (currently only `"mem0"`) |
+| `backend` | string | `"sqlvector"` | Memory backend: `"sqlvector"` (durable, semantic), `"composite"` (per-namespace routing), or `"inmemory"` (ephemeral, discouraged) |
 | `level` | MemoryLevel | `"session"` | Default persistence level |
 | `storage` | MemoryStorageConfig | *(defaults)* | Storage backend settings |
 | `options` | MemoryOptionsConfig | *(defaults)* | Behaviour options |
@@ -106,9 +104,10 @@ memory:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `data_dir` | string | `"/data/memory"` | Directory for memory data (Docker volume mount) |
-| `vector_store` | string | `"qdrant"` | Vector store: `"qdrant"` (embedded) or `"qdrant-external"` |
-| `history_store` | string | `"sqlite"` | History store: `"sqlite"` or `"postgresql"` |
+| `data_dir` | string | `"/data/memory"` | Directory for memory artefacts kept outside the database (Docker volume mount) |
+
+Vectors and their lexical index live in the operational database, so there
+is no separate vector-store or history-store to configure or back up.
 
 !!! note
 
@@ -269,12 +268,10 @@ A complete memory configuration for a research lab that prioritises long-term kn
 
 ```yaml
 memory:
-  backend: "mem0"
+  backend: "sqlvector"
   level: persistent
   storage:
     data_dir: "/data/memory"
-    vector_store: "qdrant"
-    history_store: "sqlite"
   options:
     retention_days: null
     max_memories_per_agent: 50000

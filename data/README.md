@@ -14,7 +14,7 @@ drift in the diff.
 ## `runtime_stats.yaml`
 
 Numeric claims that would otherwise rot in the docs (test count, latest
-release tag, Mem0 star count, provider preset count, subagent count)
+release tag, provider preset count, subagent count)
 live here as `stats.<name>.display` strings. The injector substitutes
 each marker into rendered docs:
 

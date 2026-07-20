@@ -25,6 +25,7 @@ Two rules shape this module:
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.config import EmbedderOverrideConfig
+from synthorg.memory.embedder_port import TextEmbedder
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 
@@ -96,7 +97,7 @@ async def wire_memory_backend(app_state: AppState) -> None:
     )
 
 
-async def _build_embedder(app_state: AppState) -> object | None:
+async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
     """Resolve the embedder, or report loudly why memory stays off.
 
     Returns:

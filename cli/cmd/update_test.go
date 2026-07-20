@@ -411,7 +411,7 @@ func TestMigrateSettingsKey(t *testing.T) {
 		JWTSecret:          "test-jwt-secret-at-least-32-chars-long!!",
 		SettingsKey:        "", // intentionally empty
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 	}
 	if err := config.Save(state); err != nil {
 		t.Fatalf("saving initial config: %v", err)

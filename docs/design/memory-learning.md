@@ -198,10 +198,11 @@ the agent during execution.
     7. Greedy token-budget packing
     8. Format as `ChatMessage`
 
-    BM25 sparse vectors are stored alongside dense vectors in Qdrant using a named sparse
-    vector field with `Modifier.IDF` (Qdrant applies IDF server-side). The `BM25Tokenizer`
-    uses murmurhash3 for vocabulary-free token-to-index mapping; only term frequencies are
-    stored. Sparse search is opt-in via `Mem0BackendConfig.sparse_search_enabled`.
+    Term frequencies are stored in the `memory_entry_terms` inverted-index table
+    beside the entry itself, and BM25 is scored in `memory/bm25.py` using the
+    shared `BM25Tokenizer`. Scoring lives in Python rather than SQL so both
+    persistence backends rank identically: they differ in how rows are fetched,
+    never in how they are ordered.
 
     Shared memories (from `SharedKnowledgeStore`) are fetched in parallel, merged with personal
     memories (no `personal_boost` for shared), and ranked together.

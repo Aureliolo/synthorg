@@ -42,7 +42,7 @@ into three categories:
 | `SYNTHORG_LOG_DIR` | unset | `observability/log_directory` (read-only) | Log output directory. Path-traversal rejected at boot. |
 | `SYNTHORG_TUNNEL_STATE_DIR` | unset | `integrations/tunnel_state_dir` (read-only) | Tunnel runtime state root (downloaded provider binaries, the confined login home for the `devtunnel` CLI). The CLI-generated compose sets `/data/tunnel`; unset means `~/.synthorg`. Path-traversal rejected at boot. |
 | `SYNTHORG_ARTIFACT_DIR` | `/data` | n/a | Filesystem artifact storage root. Must be absolute and free of `..` components. |
-| `SYNTHORG_MEMORY_DIR` | `/data/memory` | n/a | On-disk memory backend root for the local Mem0 backend. Falls back to `/data/memory` (with a warning) when unset or invalid. |
+| `SYNTHORG_MEMORY_DIR` | `/data/memory` | n/a | On-disk memory root for backends that keep files outside the database. Falls back to `/data/memory` (with a warning) when unset or invalid. |
 | `SYNTHORG_CONFIG_PATH` | `company.yaml` | n/a | Path to the company YAML config used by the backup factory. |
 
 ## Sandbox / fine-tune images (init-time only)

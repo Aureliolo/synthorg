@@ -44,7 +44,7 @@ sprints:
       auto_transition: false
 ```
 
-A new policy takes effect at the next `activate_sprint`; there is no live-reload method on the scheduler. To apply the override to a running sprint, deactivate and re-activate it through the scheduler on the `EngineStateSlice`:
+A new policy takes effect at the next `activate_sprint`; there is no live-reload method on the scheduler. Applying the override to a running sprint therefore means deactivating it and re-activating it through the scheduler on the `EngineStateSlice`:
 
 ```python
 from synthorg.engine.state import EngineStateSlice

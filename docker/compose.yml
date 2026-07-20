@@ -123,7 +123,6 @@ services:
       SYNTHORG_LOG_DIR: "${SYNTHORG_LOG_DIR:-/data/logs}"
       SYNTHORG_TUNNEL_STATE_DIR: "/data/tunnel"
       SYNTHORG_LOG_LEVEL: "${SYNTHORG_LOG_LEVEL:-info}"
-      MEM0_TELEMETRY: "${MEM0_TELEMETRY:-false}"
     # Image sets USER 65532 in the Dockerfile; no compose override
     # needed.
     security_opt:

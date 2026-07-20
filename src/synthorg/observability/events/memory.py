@@ -52,6 +52,26 @@ rather than raising so persistence stays up for every non-memory
 feature sharing the connection; the memory backend is what turns this
 into a loud failure at its own boundary.
 """
+MEMORY_DENSE_INDEX_WIDTH_CHANGED: Final[str] = "memory.dense_index.width_changed"
+"""Emitted at ERROR when a dense index survives from a different width.
+
+Embeddings from different models are not comparable, so the index is
+keyed by width. Vectors written under a previous width therefore become
+unreachable the moment the embedding model changes: recall silently
+returns nothing rather than returning something wrong. Reported loudly
+because an operator who is not told will read empty recall as a bug in
+memory rather than as the model swap they just performed.
+"""
+
+MEMORY_DENSE_INDEX_SCAN_FAILED: Final[str] = "memory.dense_index.scan_failed"
+"""Emitted at WARNING when the orphaned-width scan cannot complete.
+
+The dense index is usable either way; what is lost is the ability to
+say whether vectors from a previous embedding width are stranded. Worth
+reporting rather than swallowing, because absence of a width-change
+error would otherwise read as proof that none occurred.
+"""
+
 MEMORY_RRF_PIPELINE_COMPLETED: Final[str] = "memory.rrf.pipeline_completed"
 """Emitted at DEBUG after the RRF hybrid pipeline fuses + filters results.
 

@@ -29,7 +29,9 @@ from synthorg.memory.vector_spec import MemoryVectorSearchSpec
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_DENSE_INDEX_READY,
+    MEMORY_DENSE_INDEX_SCAN_FAILED,
     MEMORY_DENSE_INDEX_UNAVAILABLE,
+    MEMORY_DENSE_INDEX_WIDTH_CHANGED,
     MEMORY_ENTRY_COUNT_FAILED,
     MEMORY_ENTRY_DELETE_FAILED,
     MEMORY_ENTRY_RETRIEVAL_FAILED,
@@ -126,6 +128,36 @@ class SQLiteMemoryVectorRepository:
             return
         self._dense_ready = True
         logger.info(MEMORY_DENSE_INDEX_READY, dimensions=self._dimensions)
+        await self._report_orphaned_widths()
+
+    async def _report_orphaned_widths(self) -> None:
+        """Log every dense index left behind at a different width.
+
+        Best-effort: this is a diagnostic, so a failure to look must not
+        cost the caller a working dense index.
+        """
+        try:
+            async with self._db.execute(
+                sql.SELECT_VECTOR_TABLES, (self._vector_table,)
+            ) as cursor:
+                stale = [str(row[0]) for row in await cursor.fetchall()]
+            for table in stale:
+                async with self._db.execute(sql.count_vectors(table)) as cursor:
+                    row = await cursor.fetchone()
+                orphaned = int(row[0]) if row is not None else 0
+                if orphaned:
+                    logger.error(
+                        MEMORY_DENSE_INDEX_WIDTH_CHANGED,
+                        dimensions=self._dimensions,
+                        previous_index=table,
+                        orphaned_vectors=orphaned,
+                    )
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            logger.warning(
+                MEMORY_DENSE_INDEX_SCAN_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def upsert(
         self,

@@ -200,6 +200,24 @@ def create_vector_table(table: str, dimensions: int) -> str:
     )
 
 
+SELECT_VECTOR_TABLES: Final[str] = (
+    "SELECT name FROM sqlite_master WHERE type = 'table' "
+    "AND name LIKE 'memory_entries_vec_%' AND name <> ? "
+    # vec0 backs each index with shadow tables sharing its name prefix;
+    # only the virtual table itself carries the vectors.
+    "AND sql LIKE 'CREATE VIRTUAL TABLE%'"
+)
+
+
+def count_vectors(table: str) -> str:
+    """Return the row count for a dense index table.
+
+    Returns:
+        A ``SELECT COUNT(*)`` over *table*.
+    """
+    return f"SELECT COUNT(*) FROM {table}"  # noqa: S608 -- table name comes from sqlite_master
+
+
 def upsert_vector(table: str) -> str:
     """Return the dense-index insert for *table*.
 

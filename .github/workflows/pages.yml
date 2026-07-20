@@ -101,7 +101,7 @@ jobs:
 
       - name: Refresh runtime stats
         # Best-effort refresh of data/runtime_stats.yaml (pytest count,
-        # latest release, Mem0 stars, provider count). The script
+        # latest release, provider count). The script
         # preserves committed values when its source calls fail, so
         # this step never blocks the build on transient gh / network
         # issues.

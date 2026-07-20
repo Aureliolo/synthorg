@@ -21,17 +21,14 @@ class TestMemoryStorageConfig:
     def test_defaults(self) -> None:
         c = MemoryStorageConfig()
         assert c.data_dir == "/data/memory"
-        assert c.vector_store == "qdrant"
-        assert c.history_store == "sqlite"
 
     def test_custom_values(self) -> None:
-        c = MemoryStorageConfig(
-            data_dir="/custom/path",
-            vector_store="qdrant-external",
-            history_store="postgresql",
-        )
+        c = MemoryStorageConfig(data_dir="/custom/path")
         assert c.data_dir == "/custom/path"
-        assert c.vector_store == "qdrant-external"
+
+    def test_unknown_field_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Extra inputs"):
+            MemoryStorageConfig(vector_store="qdrant")  # type: ignore[call-arg]
 
     def test_frozen(self) -> None:
         c = MemoryStorageConfig()
@@ -73,30 +70,6 @@ class TestMemoryStorageConfig:
     def test_whitespace_data_dir_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             MemoryStorageConfig(data_dir="   ")
-
-    @pytest.mark.parametrize(
-        "store",
-        ["qdrant", "qdrant-external"],
-    )
-    def test_valid_vector_stores_accepted(self, store: str) -> None:
-        c = MemoryStorageConfig(vector_store=store)
-        assert c.vector_store == store
-
-    def test_unknown_vector_store_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Unknown vector_store"):
-            MemoryStorageConfig(vector_store="invalid-store")
-
-    @pytest.mark.parametrize(
-        "store",
-        ["sqlite", "postgresql"],
-    )
-    def test_valid_history_stores_accepted(self, store: str) -> None:
-        c = MemoryStorageConfig(history_store=store)
-        assert c.history_store == store
-
-    def test_unknown_history_store_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Unknown history_store"):
-            MemoryStorageConfig(history_store="invalid-store")
 
 
 # ── MemoryOptionsConfig ─────────────────────────────────────────

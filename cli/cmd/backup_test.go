@@ -281,7 +281,7 @@ func writeConfigJSON(t *testing.T, dir string, backendPort int) {
 		"web_port":            3000,
 		"log_level":           "info",
 		"persistence_backend": "sqlite",
-		"memory_backend":      "mem0",
+		"memory_backend":      "sqlvector",
 		"jwt_secret":          "test-backup-secret-at-least-32-chars",
 		// encrypt_secrets defaults to true (DefaultState), which now
 		// requires a master_key. These tests target backup behaviour,

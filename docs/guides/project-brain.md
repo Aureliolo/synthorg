@@ -22,7 +22,7 @@ The implementation lives under `src/synthorg/project_brain/` and `src/synthorg/a
 
 There is no boolean toggle and no dedicated settings namespace. The subsystem wires at boot when all three of the following are present: a persistence backend, a project workspace service, and a memory backend. If the memory backend is absent, the endpoints and MCP tools return `503`.
 
-The relevant memory settings (`src/synthorg/settings/definitions/memory.py`) are `memory.backend` (default `mem0`, restart required) and `memory.default_level` (default `persistent`). Search and pagination limits are module constants in `src/synthorg/project_brain/constants.py`.
+The relevant memory settings (`src/synthorg/settings/definitions/memory.py`) are `memory.backend` (default `sqlvector`, restart required) and `memory.default_level` (default `persistent`). Search and pagination limits are module constants in `src/synthorg/project_brain/constants.py`.
 
 ## Endpoints
 

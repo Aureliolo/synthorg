@@ -1,13 +1,13 @@
 ---
 title: Knowledge and Provenance Substrate
-description: Heavy-duty document/knowledge RAG with citation tracking, distinct from Mem0 agent memory. Multi-source ingestion, structure-aware chunking, hybrid retrieval reused from the memory pipeline, and provenance that resolves every claim to an exact source chunk.
+description: Heavy-duty document/knowledge RAG with citation tracking, distinct from agent memory. Multi-source ingestion, structure-aware chunking, hybrid retrieval reused from the memory pipeline, and provenance that resolves every claim to an exact source chunk.
 ---
 
 # Knowledge and Provenance Substrate
 
 SynthOrg separates three storage concerns:
 
-- **Agent memory** (Mem0): what an agent remembers about a run. See
+- **Agent memory**: what an agent remembers about a run. See
   [Memory and Persistence](memory.md).
 - **Living documentation**: the org documenting itself as a dual-purpose wiki
   plus RAG namespace. See [Living Documentation](living-documentation.md).

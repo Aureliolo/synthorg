@@ -218,6 +218,25 @@ def add_vector_column(column: LiteralString, dimensions: int) -> LiteralString:
     )
 
 
+SELECT_VECTOR_COLUMNS: Final[LiteralString] = (
+    "SELECT column_name FROM information_schema.columns "
+    "WHERE table_name = 'memory_entries' "
+    "AND column_name LIKE 'embedding\\_%' AND column_name <> %s"
+)
+
+
+def count_vectors(column: LiteralString) -> LiteralString:
+    """Return the populated-row count for a dense column.
+
+    Returns:
+        A ``SELECT COUNT(*)`` over the non-null values of *column*.
+    """
+    return cast(  # type: ignore[redundant-cast]  # see vector_column
+        "LiteralString",
+        f"SELECT COUNT(*) FROM memory_entries WHERE {column} IS NOT NULL",  # noqa: S608 -- column name comes from information_schema
+    )
+
+
 def create_vector_index(column: LiteralString) -> LiteralString:
     """Return DDL creating the HNSW index over the dense column.
 

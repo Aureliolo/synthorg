@@ -149,11 +149,7 @@ def _create_composite_backend(
                 error_type=type(exc).__name__,
             )
             raise MemoryConfigError(msg) from exc
-    backend = CompositeBackend(
-        children=children,
-        routes=dict(composite_cfg.routes),
-        default=composite_cfg.default,
-    )
+    backend = CompositeBackend(children=children, config=composite_cfg)
     logger.info(
         MEMORY_BACKEND_CREATED,
         backend=COMPOSITE_BACKEND,

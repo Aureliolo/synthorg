@@ -132,7 +132,7 @@ model with a 4k context window compacts at 3.2k tokens. The fixed percentage may
 aggressive for large-context models and too permissive for small ones.
 
 **No memory offloading.** Archived messages are discarded, converted to a 500-char text
-summary. SynthOrg has a `MemoryBackend` (Mem0, Qdrant embedded + SQLite), but compaction
+summary. SynthOrg has a durable `MemoryBackend` with semantic recall, but compaction
 does not write archived content there as episodic memory entries.
 
 ---

@@ -15,7 +15,7 @@ func BenchmarkGenerateDefault(b *testing.B) {
 		WebPort:            3000,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	for b.Loop() {
@@ -39,7 +39,7 @@ func BenchmarkGenerateFullStack(b *testing.B) {
 		PersistenceBackend: "postgres",
 		PostgresPort:       3002,
 		PostgresPassword:   "test-postgres-password-32-chars-min",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "nats",
 		NatsClientPort:     3003,
 		Sandbox:            true,

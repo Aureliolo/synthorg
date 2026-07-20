@@ -12,11 +12,13 @@ from pathlib import Path
 
 import aiosqlite
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.vector_spec import MemoryVectorSearchSpec
+from synthorg.observability.events.memory import MEMORY_DENSE_INDEX_WIDTH_CHANGED
 from synthorg.persistence.sqlite.memory_vector_repo import SQLiteMemoryVectorRepository
 
 pytestmark = pytest.mark.unit
@@ -478,3 +480,39 @@ class TestDurability:
 
         assert survived is not None
         assert [h.id for h in recalled] == ["m1"]
+
+    async def test_width_change_is_reported_not_silently_swallowed(
+        self, db_path: Path
+    ) -> None:
+        """A model swap orphans stored vectors; the operator must be told.
+
+        Recall goes silently empty otherwise, which reads as a memory
+        bug rather than as the consequence of the swap.
+        """
+        async with aiosqlite.connect(str(db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            await db.executescript(_SCHEMA)
+            await db.commit()
+            first = SQLiteMemoryVectorRepository(db, write_context=_no_op_write_context)
+            await first.ensure_ready(_DIMS)
+            await first.upsert(
+                _entry("m1", "rollback procedure"), embedding=(1.0, 0.0, 0.0, 0.0)
+            )
+
+        async with aiosqlite.connect(str(db_path)) as db:
+            db.row_factory = aiosqlite.Row
+            second = SQLiteMemoryVectorRepository(
+                db, write_context=_no_op_write_context
+            )
+            with capture_logs() as logs:
+                await second.ensure_ready(_DIMS + 1)
+
+        reported = [
+            entry
+            for entry in logs
+            if entry["event"] == MEMORY_DENSE_INDEX_WIDTH_CHANGED
+        ]
+        assert len(reported) == 1
+        assert reported[0]["log_level"] == "error"
+        assert reported[0]["orphaned_vectors"] == 1
+        assert reported[0]["previous_index"] == f"memory_entries_vec_{_DIMS}"

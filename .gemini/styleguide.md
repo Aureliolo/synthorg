@@ -109,7 +109,7 @@ these files:
 
 … and matches **only** digits adjacent to specific stat nouns
 (`tests`, `providers`, `agents`, `stars`, `releases`) or stat keywords
-(`Mem0`, `version`, `release`, `current`, `latest`).
+(`version`, `release`, `current`, `latest`).
 
 Generic constants in unrelated docs (e.g. `max_length=512` in an embedding
 guide, `batch_size=128` in a tuning page) are **out of scope** for the

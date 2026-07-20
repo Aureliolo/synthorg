@@ -29,20 +29,15 @@ logger = get_logger(__name__)
 class MemoryStorageConfig(BaseModel):
     """Storage-specific memory configuration.
 
+    Vectors and their lexical index live in the operational database, so
+    the only filesystem path memory still needs is the one backends use
+    for artefacts kept outside it.
+
     Attributes:
         data_dir: Directory path for memory data persistence.
-        vector_store: Vector store backend name.
-        history_store: History store backend name.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    _VALID_VECTOR_STORES: ClassVar[frozenset[str]] = frozenset(
-        {"qdrant", "qdrant-external"},
-    )
-    _VALID_HISTORY_STORES: ClassVar[frozenset[str]] = frozenset(
-        {"sqlite", "postgresql"},
-    )
 
     data_dir: NotBlankStr = Field(
         default="/data/memory",
@@ -52,50 +47,6 @@ class MemoryStorageConfig(BaseModel):
             "for local development."
         ),
     )
-    vector_store: NotBlankStr = Field(
-        default="qdrant",
-        description="Vector store backend name",
-    )
-    history_store: NotBlankStr = Field(
-        default="sqlite",
-        description="History store backend name",
-    )
-
-    @model_validator(mode="after")
-    def _validate_store_names(self) -> Self:
-        """Ensure vector_store and history_store are recognized values.
-
-        Returns:
-            Result of type ``Self``.
-
-        Raises:
-            ValueError: If an argument fails domain validation.
-        """
-        if self.vector_store not in self._VALID_VECTOR_STORES:
-            msg = (
-                f"Unknown vector_store {self.vector_store!r}. "
-                f"Valid stores: {sorted(self._VALID_VECTOR_STORES)}"
-            )
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                field="vector_store",
-                value=self.vector_store,
-                reason=msg,
-            )
-            raise ValueError(msg)
-        if self.history_store not in self._VALID_HISTORY_STORES:
-            msg = (
-                f"Unknown history_store {self.history_store!r}. "
-                f"Valid stores: {sorted(self._VALID_HISTORY_STORES)}"
-            )
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                field="history_store",
-                value=self.history_store,
-                reason=msg,
-            )
-            raise ValueError(msg)
-        return self
 
     @model_validator(mode="after")
     def _reject_traversal(self) -> Self:

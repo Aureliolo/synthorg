@@ -174,7 +174,7 @@ func TestGoldensSurviveDigestRotation(t *testing.T) {
 		WebPort:            3000,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	out, err := Generate(p)

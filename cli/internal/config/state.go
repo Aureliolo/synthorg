@@ -288,7 +288,7 @@ func DefaultState() State {
 		DockerSockGID:      -1,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 		NatsClientPort:     3003,
 		PostgresPort:       3002,
@@ -476,7 +476,13 @@ func loadWith(dataDir string, validate func(State) error) (State, error) {
 }
 
 var validPersistenceBackends = map[string]bool{"sqlite": true, "postgres": true}
-var validMemoryBackends = map[string]bool{"mem0": true}
+var validMemoryBackends = map[string]bool{
+	"sqlvector": true,
+	"composite": true,
+	// Ephemeral keyword-only store: loses everything on restart and cannot
+	// retrieve by meaning. Reachable as a deliberate operator opt-in only.
+	"inmemory": true,
+}
 var validBusBackends = map[string]bool{"internal": true, "nats": true}
 var validChannels = map[string]bool{"stable": true, "dev": true}
 var validLogLevels = map[string]bool{"debug": true, "info": true, "warn": true, "error": true}

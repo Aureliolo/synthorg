@@ -4,6 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.backends.composite import CompositeBackend
+from synthorg.memory.backends.composite.config import CompositeBackendConfig
 from synthorg.memory.backends.inmemory import InMemoryBackend
 from synthorg.memory.backends.sqlvector import SqlVectorBackend
 from synthorg.memory.config import CompanyMemoryConfig, MemoryOptionsConfig
@@ -84,6 +87,51 @@ class TestCreateMemoryBackend:
         )
 
         assert isinstance(backend, InMemoryBackend)
+
+
+class TestCompositeBackend:
+    def test_routes_namespaces_across_child_backends(self) -> None:
+        backend = create_memory_backend(
+            CompanyMemoryConfig(
+                backend="composite",
+                composite=CompositeBackendConfig(
+                    routes={
+                        NotBlankStr("scratch"): NotBlankStr("inmemory"),
+                        NotBlankStr("memories"): NotBlankStr("sqlvector"),
+                    },
+                    default=NotBlankStr("sqlvector"),
+                ),
+            ),
+            deps=MemoryBackendDeps(repository=_repository()),
+        )
+
+        assert isinstance(backend, CompositeBackend)
+
+    def test_unknown_child_backend_raises(self) -> None:
+        with pytest.raises(MemoryConfigError, match="not a recognised backend"):
+            create_memory_backend(
+                CompanyMemoryConfig(
+                    backend="composite",
+                    composite=CompositeBackendConfig(
+                        default=NotBlankStr("nonexistent"),
+                    ),
+                ),
+                deps=MemoryBackendDeps(repository=_repository()),
+            )
+
+    def test_durable_child_without_repository_raises(self) -> None:
+        # The composite must not quietly downgrade a durable route to an
+        # ephemeral one; that is the silent-degradation failure again.
+        with pytest.raises(MemoryConfigError, match="MemoryVectorRepository"):
+            create_memory_backend(
+                CompanyMemoryConfig(
+                    backend="composite",
+                    composite=CompositeBackendConfig(
+                        default=NotBlankStr("sqlvector"),
+                    ),
+                ),
+                deps=MemoryBackendDeps(),
+            )
 
 
 class TestBuildInMemoryBackend:

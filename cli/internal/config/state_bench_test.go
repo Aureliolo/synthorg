@@ -32,7 +32,7 @@ func BenchmarkLoadExisting(b *testing.B) {
 	state.PersistenceBackend = "postgres"
 	state.PostgresPort = 3002
 	state.PostgresPassword = "test-postgres-password-32-chars-min"
-	state.MemoryBackend = "mem0"
+	state.MemoryBackend = "sqlvector"
 	state.BusBackend = "nats"
 	state.Sandbox = true
 	state.FineTuning = true

@@ -828,6 +828,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._refresh_tokens_stub: AsyncMock | None = None
         self._mcp_installations_stub: AsyncMock | None = None
         self._org_facts_stub: AsyncMock | None = None
+        self._memory_vectors_stub: AsyncMock | None = None
         self._ontology_entities_stub: AsyncMock | None = None
         self._ontology_drift_stub: AsyncMock | None = None
         self._project_cost_aggregates_stub: AsyncMock | None = None
@@ -1261,6 +1262,24 @@ class FakePersistenceBackend(PersistenceBackend):
         if self._mcp_installations_stub is None:
             self._mcp_installations_stub = AsyncMock(spec=McpInstallationRepository)
         return self._mcp_installations_stub
+
+    @override
+    @property
+    def memory_vectors(self) -> AsyncMock:
+        """Cached fake agent-memory vector repository."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.persistence.memory_vector_protocol import (
+            MemoryVectorRepository,
+        )
+
+        if self._memory_vectors_stub is None:
+            stub = AsyncMock(spec=MemoryVectorRepository)
+            # Sync on the protocol; a bare child mock would return a
+            # truthy Mock and fake dense support this fake cannot serve.
+            stub.supports_dense_search = False
+            self._memory_vectors_stub = stub
+        return self._memory_vectors_stub
 
     @override
     @property
