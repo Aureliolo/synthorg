@@ -72,6 +72,22 @@ reporting rather than swallowing, because absence of a width-change
 error would otherwise read as proof that none occurred.
 """
 
+MEMORY_WRITE_GATE_DECIDED: Final[str] = "memory.write_gate.decided"
+"""Emitted at INFO for every gated memory write.
+
+Carries the disposition plus the duplicate / superseded ids, so a write
+that was deliberately dropped is distinguishable from one that never
+happened.
+"""
+
+MEMORY_WRITE_GATE_DEGRADED: Final[str] = "memory.write_gate.degraded"
+"""Emitted at WARNING when the gate cannot read comparable entries.
+
+The write still proceeds: failing open risks storing a duplicate, while
+failing closed would discard a real memory, which is the worse loss. The
+event records that deduplication was skipped for this write.
+"""
+
 MEMORY_TOPIC_SCOPE_APPLIED: Final[str] = "memory.topic_scope.applied"
 """Emitted at INFO when topic scoping drops off-topic procedural lessons.
 

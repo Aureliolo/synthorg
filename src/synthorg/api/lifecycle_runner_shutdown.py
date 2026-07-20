@@ -222,6 +222,22 @@ async def _run_shutdown(  # noqa: PLR0913
         timeout=_SIMULATION_TASK_DRAIN_OUTER_SECONDS,
         service="simulation_task_drain",
     )
+    # Stop the consolidation driver before the backend it maintains, so a
+    # tick in flight cannot outlive the store it writes to.
+    consolidation_scheduler = app_state.slice(MemoryStateSlice).consolidation_scheduler
+    if consolidation_scheduler is not None:
+        app_state.swap_slice(
+            app_state.slice(MemoryStateSlice).model_copy(
+                update={"consolidation_scheduler": None}
+            )
+        )
+        await _try_stop(
+            cast("Awaitable[None]", consolidation_scheduler.stop()),
+            API_APP_SHUTDOWN,
+            "Failed to stop memory consolidation scheduler",
+            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="memory_consolidation",
+        )
     # Disconnect the shared agent-memory backend. The field is cleared before
     # disconnecting so a lifespan re-entry can wire a fresh connected backend
     # (``wire_memory_backend`` is idempotent and skips when the slice is

@@ -40,6 +40,7 @@ from synthorg.memory.retriever_fetch import fetch_memories
 from synthorg.memory.retriever_rrf import execute_rrf_pipeline
 from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.memory.topic_scope import in_topic_scope, scope_terms
+from synthorg.memory.write_gate import is_superseded
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_FILTER_INIT,
@@ -282,10 +283,16 @@ class ContextInjectionStrategy:
             )
             return ()
 
-        # Topic scope runs before the reranker: it is a cheap structural
-        # test, and dropping off-topic candidates first keeps them out of
-        # every downstream stage.
-        scoped = tuple(m for m in ranked if in_topic_scope(m.entry, topic_terms))
+        # Topic scope and supersession run before the reranker: both are
+        # cheap structural tests, and dropping candidates here keeps them
+        # out of every downstream stage. A superseded entry is a belief
+        # the agent has already replaced, so recalling it would put a
+        # known-stale claim back in front of the model.
+        scoped = tuple(
+            m
+            for m in ranked
+            if in_topic_scope(m.entry, topic_terms) and not is_superseded(m.entry)
+        )
         if len(scoped) != len(ranked):
             logger.info(
                 MEMORY_TOPIC_SCOPE_APPLIED,

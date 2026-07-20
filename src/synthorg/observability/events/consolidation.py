@@ -11,6 +11,13 @@ MAINTENANCE_START: Final[str] = "consolidation.maintenance.start"
 MAINTENANCE_COMPLETE: Final[str] = "consolidation.maintenance.complete"
 MAINTENANCE_FAILED: Final[str] = "consolidation.maintenance.failed"
 
+# ── Scheduler lifecycle ───────────────────────────────────────────
+
+SCHEDULER_STARTED: Final[str] = "consolidation.scheduler.started"
+SCHEDULER_STOPPED: Final[str] = "consolidation.scheduler.stopped"
+SCHEDULER_FAILED: Final[str] = "consolidation.scheduler.failed"
+SCHEDULER_RAN: Final[str] = "consolidation.scheduler.ran"
+
 # ── Consolidation operations ──────────────────────────────────────
 
 CONSOLIDATION_START: Final[str] = "consolidation.run.start"

@@ -37,6 +37,7 @@ from synthorg.memory.models import (
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
+    MemoryUpdateRequest,
 )
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.ranking import ScoredMemory
@@ -55,6 +56,12 @@ from synthorg.memory.self_editing_models import (
     build_self_editing_tool_definitions,
 )
 from synthorg.memory.tool_retriever import ERROR_PREFIX
+from synthorg.memory.write_gate import (
+    SUPERSEDED_BY_TAG_PREFIX,
+    SUPERSEDED_TAG,
+    WriteDisposition,
+    evaluate_write,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_SELF_EDIT_ARCHIVAL_SEARCH,
@@ -66,6 +73,8 @@ from synthorg.observability.events.memory import (
     MEMORY_SELF_EDIT_RECALL_WRITE,
     MEMORY_SELF_EDIT_TOOL_EXECUTE,
     MEMORY_SELF_EDIT_TOOL_FAILED,
+    MEMORY_WRITE_GATE_DECIDED,
+    MEMORY_WRITE_GATE_DEGRADED,
 )
 from synthorg.providers.models import ChatMessage, ToolDefinition
 
@@ -73,6 +82,7 @@ logger = get_logger(__name__)
 
 # Auto-tag added to archival/recall writes when write_auto_tag=True.
 _AUTO_TAG: Final[str] = "self_edited"
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -490,6 +500,31 @@ class SelfEditingMemoryStrategy:
                 f"Valid values: {valid}."
             )
 
+        comparable = await self._comparable_entries(agent_id, args.content, category)
+        decision = evaluate_write(
+            args.content,
+            existing=comparable,
+            supersedes=args.supersedes,
+        )
+        logger.info(
+            MEMORY_WRITE_GATE_DECIDED,
+            agent_id=agent_id,
+            category=category.value,
+            disposition=decision.disposition.value,
+            duplicate_of=decision.duplicate_of,
+            supersedes=decision.supersedes,
+        )
+        match decision.disposition:
+            case WriteDisposition.REJECT:
+                return f"{ERROR_PREFIX} {decision.reason}."
+            case WriteDisposition.NOOP:
+                return (
+                    "Already remembered; nothing stored "
+                    f"(existing id={decision.duplicate_of})."
+                )
+            case WriteDisposition.ADD | WriteDisposition.SUPERSEDE:
+                pass
+
         tags: tuple[str, ...] = (_AUTO_TAG,) if self._config.write_auto_tag else ()
         request = MemoryStoreRequest(
             category=category,
@@ -503,7 +538,88 @@ class SelfEditingMemoryStrategy:
             category=category.value,
             memory_id=memory_id,
         )
-        return f"Archival memory stored (id={memory_id}, category={category.value})."
+        stored = f"Archival memory stored (id={memory_id}, category={category.value})"
+        if decision.supersedes is None:
+            return f"{stored}."
+        retired = await self._retire_superseded(
+            agent_id, NotBlankStr(decision.supersedes), memory_id
+        )
+        suffix = "" if retired else " (prior entry could not be retired)"
+        return f"{stored}, replacing {decision.supersedes}{suffix}."
+
+    async def _comparable_entries(
+        self,
+        agent_id: NotBlankStr,
+        content: NotBlankStr,
+        category: MemoryCategory,
+    ) -> tuple[MemoryEntry, ...]:
+        """Fetch the entries a candidate write should be judged against.
+
+        Scoped to the same category: a semantic fact and a procedural
+        lesson that happen to share wording are not duplicates of one
+        another.
+
+        Returns:
+            Comparable entries, empty when retrieval fails. Failing open
+            risks a duplicate; failing closed would drop a real memory,
+            which is the worse loss.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
+        try:
+            return await self._backend.retrieve(
+                agent_id,
+                MemoryQuery(
+                    text=content,
+                    categories=frozenset({category}),
+                    limit=self._config.write_gate_candidates,
+                ),
+            )
+        except builtins.MemoryError, RecursionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                MEMORY_WRITE_GATE_DEGRADED,
+                agent_id=agent_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ()
+
+    async def _retire_superseded(
+        self,
+        agent_id: NotBlankStr,
+        superseded_id: NotBlankStr,
+        replacement_id: str,
+    ) -> bool:
+        """Tag a replaced entry so recall stops surfacing it.
+
+        Tagging rather than deleting: the belief was held, and an audit
+        that cannot show what was believed before is worth less than the
+        space it saves.
+
+        Returns:
+            ``True`` when the prior entry was retired.
+        """
+        entry = await self._backend.get(agent_id, superseded_id)
+        if entry is None:
+            return False
+        updated_tags = (
+            *entry.metadata.tags,
+            NotBlankStr(SUPERSEDED_TAG),
+            NotBlankStr(f"{SUPERSEDED_BY_TAG_PREFIX}{replacement_id}"),
+        )
+        result = await self._backend.update(
+            agent_id,
+            superseded_id,
+            MemoryUpdateRequest(
+                metadata=entry.metadata.model_copy(update={"tags": updated_tags})
+            ),
+        )
+        return result is not None
 
     async def _handle_recall_memory_read(
         self,

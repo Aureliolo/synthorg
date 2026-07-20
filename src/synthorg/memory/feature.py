@@ -54,7 +54,9 @@ FEATURE: FeatureModule = FeatureManifest(
     lifecycle_hooks=(),
     ghost_wired_symbols=(
         "FineTuneOrchestrator",
+        "MemoryConsolidationScheduler",
         "ProviderTextEmbedder",
+        "build_memory_injection_strategy",
         "create_memory_backend",
         "resolve_embedder_config",
     ),

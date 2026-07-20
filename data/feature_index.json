@@ -841,7 +841,9 @@
       "directory": "src/synthorg/memory",
       "ghost_wired_symbols": [
         "FineTuneOrchestrator",
+        "MemoryConsolidationScheduler",
         "ProviderTextEmbedder",
+        "build_memory_injection_strategy",
         "create_memory_backend",
         "resolve_embedder_config"
       ],
@@ -878,7 +880,8 @@
         "backend",
         "fine_tune_orchestrator",
         "service",
-        "org_memory_backend"
+        "org_memory_backend",
+        "consolidation_scheduler"
       ]
     },
     {
@@ -1434,6 +1437,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-20T06:41:10.012319Z",
+  "generated_at": "2026-07-20T06:41:37.102313Z",
   "schema_version": 1
 }

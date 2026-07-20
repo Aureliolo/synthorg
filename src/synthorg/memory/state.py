@@ -11,6 +11,9 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.api.state_slices import AppStateSliceMixin
+from synthorg.memory.consolidation.cycle_scheduler import (
+    MemoryConsolidationScheduler,
+)
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,
 )
@@ -28,6 +31,7 @@ class MemoryStateSlice(BaseFeatureStateSlice):
     fine_tune_orchestrator: FineTuneOrchestrator | None = None
     service: MemoryService | None = None
     org_memory_backend: OrgMemoryBackend | None = None
+    consolidation_scheduler: MemoryConsolidationScheduler | None = None
 
 
 def memory_service_of(app_state: AppStateSliceMixin) -> MemoryService:

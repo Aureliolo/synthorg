@@ -172,6 +172,11 @@ async def _build_tool_registry(
         org_memory_backend=app_state.slice(MemoryStateSlice).org_memory_backend,
         org_fact_store=_org_fact_store_or_none(app_state),
         wiki_exporter=_wiki_exporter_or_none(app_state),
+        # The self-editing tools are the agent's own write path. They
+        # build only under the self-editing strategy, whose handler they
+        # dispatch into; under the other strategies there is nothing to
+        # call.
+        memory_injection_strategy=_build_memory_injection_strategy(app_state),
     )
     tools: list[BaseTool] = [*default_tools, *extra_tools]
     return ToolRegistry(tools), len(tools), sandbox_backends

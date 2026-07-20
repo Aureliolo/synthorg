@@ -24,8 +24,11 @@ Two rules shape this module:
 
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.config import EmbedderOverrideConfig
+from synthorg.memory.consolidation.cycle_scheduler import AgentIdSupplier
 from synthorg.memory.embedder_port import TextEmbedder
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 
@@ -95,6 +98,94 @@ async def wire_memory_backend(app_state: AppState) -> None:
         backend=memory_config.backend,
         durable=memory_config.backend != IN_MEMORY_BACKEND,
     )
+    await _wire_consolidation_scheduler(app_state, backend)
+
+
+async def _wire_consolidation_scheduler(
+    app_state: AppState,
+    backend: MemoryBackend,
+) -> None:
+    """Start the periodic consolidation and retention driver.
+
+    Without this the consolidation subsystem is inert: three strategies,
+    a batch-size setting and a kill switch that nothing ever calls, so
+    memory grows unbounded and archival never runs while the settings
+    page advertises otherwise.
+
+    Best-effort: a scheduler that fails to start is reported and the rest
+    of memory stays up, because losing maintenance is worse than losing
+    recall but neither is worth failing boot over.
+    """
+    from synthorg.memory.consolidation.cycle_scheduler import (  # noqa: PLC0415
+        MemoryConsolidationScheduler,
+        interval_seconds_for,
+    )
+    from synthorg.memory.consolidation.service import (  # noqa: PLC0415
+        MemoryConsolidationService,
+    )
+    from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+    # Optional on both the service and the scheduler: without it the
+    # kill switch reads its registered default rather than failing boot.
+    resolver = app_state.slice(SettingsStateSlice).config_resolver
+    consolidation = app_state.config.memory.consolidation
+    interval = interval_seconds_for(consolidation.interval)
+    if interval is None:
+        logger.info(
+            API_APP_STARTUP,
+            service="memory_consolidation",
+            note="interval is 'never'; no scheduler started",
+        )
+        return
+
+    scheduler = MemoryConsolidationScheduler(
+        MemoryConsolidationService(
+            backend=backend,
+            config=consolidation,
+            config_resolver=resolver,
+        ),
+        interval_seconds=interval,
+        agent_ids=_agent_id_supplier(app_state),
+        config_resolver=resolver,
+    )
+    try:
+        await scheduler.start()
+    except Exception as exc:  # noqa: BLE001 -- reported, then startup continues
+        reraise_critical(exc)
+        logger.error(
+            API_APP_STARTUP,
+            service="memory_consolidation",
+            note="scheduler failed to start; memory will not be maintained",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
+    app_state.wire(MemoryStateSlice, consolidation_scheduler=scheduler)
+    logger.info(
+        API_APP_STARTUP,
+        service="memory_consolidation",
+        note="scheduler started",
+        interval_seconds=interval,
+    )
+
+
+def _agent_id_supplier(app_state: AppState) -> AgentIdSupplier:
+    """Build the roster source the scheduler iterates each tick.
+
+    Read fresh per tick rather than captured at boot, so agents hired
+    after startup are maintained too.
+
+    Returns:
+        A supplier of the current agent identifiers.
+    """
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    async def _supply() -> tuple[NotBlankStr, ...]:
+        states = await persistence_of(app_state).agent_states.list_items()
+        return tuple(NotBlankStr(str(state.agent_id)) for state in states)
+
+    return _supply
 
 
 async def _build_embedder(app_state: AppState) -> TextEmbedder | None:
