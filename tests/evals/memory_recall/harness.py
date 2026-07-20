@@ -152,16 +152,19 @@ async def seeded_naive_backend() -> AsyncIterator[InMemoryBackend]:
 
 
 @contextlib.asynccontextmanager
-async def seeded_backend(db_path: Path) -> AsyncIterator[SqlVectorBackend]:
-    """Yield a backend holding the golden corpus.
+async def _durable_backend(
+    db_path: Path, *, create_schema: bool
+) -> AsyncIterator[SqlVectorBackend]:
+    """Yield a durable backend over *db_path*.
 
     Yields:
-        The connected backend, seeded and ready to query.
+        The connected backend, ready to store or query.
     """
     async with aiosqlite.connect(str(db_path)) as db:
         db.row_factory = aiosqlite.Row
-        await db.executescript(_SCHEMA)
-        await db.commit()
+        if create_schema:
+            await db.executescript(_SCHEMA)
+            await db.commit()
         backend = SqlVectorBackend(
             SQLiteMemoryVectorRepository(db, write_context=_no_op_write_context),
             embedder=GoldenEmbedder(),
@@ -169,17 +172,49 @@ async def seeded_backend(db_path: Path) -> AsyncIterator[SqlVectorBackend]:
             clock=FakeClock(start=_NOW),
         )
         await backend.connect()
-        for memory in CORPUS:
-            await backend.store(
-                NotBlankStr(memory.agent_id),
-                MemoryStoreRequest(
-                    category=memory.category,
-                    content=NotBlankStr(memory.content),
-                    metadata=MemoryMetadata(
-                        tags=tuple(NotBlankStr(t) for t in memory.tags)
-                    ),
+        yield backend
+
+
+async def _seed_corpus(backend: SqlVectorBackend) -> None:
+    """Store the golden corpus into *backend*."""
+    for memory in CORPUS:
+        await backend.store(
+            NotBlankStr(memory.agent_id),
+            MemoryStoreRequest(
+                category=memory.category,
+                content=NotBlankStr(memory.content),
+                metadata=MemoryMetadata(
+                    tags=tuple(NotBlankStr(t) for t in memory.tags)
                 ),
-            )
+            ),
+        )
+
+
+@contextlib.asynccontextmanager
+async def seeded_backend(db_path: Path) -> AsyncIterator[SqlVectorBackend]:
+    """Yield a backend holding the golden corpus.
+
+    Yields:
+        The connected backend, seeded and ready to query.
+    """
+    async with _durable_backend(db_path, create_schema=True) as backend:
+        await _seed_corpus(backend)
+        yield backend
+
+
+@contextlib.asynccontextmanager
+async def reopened_backend(db_path: Path) -> AsyncIterator[SqlVectorBackend]:
+    """Yield a fresh backend over an already-seeded database file.
+
+    The point of durable memory: a second process opening the same
+    store recalls what the first wrote. Re-uses the file without
+    re-creating the schema or re-seeding, so anything recalled here
+    genuinely survived the "restart".
+
+    Yields:
+        The connected backend, ready to query.
+    """
+    async with _durable_backend(db_path, create_schema=False) as backend:
         yield backend
 
 

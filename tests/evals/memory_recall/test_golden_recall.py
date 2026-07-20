@@ -16,6 +16,7 @@ from synthorg.memory.injection import InjectionPoint
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from tests.evals.memory_recall.golden_set import CASES, score_recall
 from tests.evals.memory_recall.harness import (
+    reopened_backend,
     run_suite,
     seeded_backend,
     seeded_naive_backend,
@@ -26,25 +27,35 @@ pytestmark = pytest.mark.unit
 
 
 def _stock_config() -> MemoryRetrievalConfig:
-    """The shipped defaults, unchanged: the naive baseline."""
-    return MemoryRetrievalConfig()
+    """The naive baseline: a wide budget with diversity off.
+
+    These were the pre-tuning defaults. They are constructed explicitly
+    here rather than by reaching for ``MemoryRetrievalConfig()`` so the
+    baseline stays fixed as the shipped defaults move; the comparison is
+    only honest if the thing we beat cannot drift toward us.
+    """
+    return MemoryRetrievalConfig(
+        diversity_penalty_enabled=False,
+        max_memories=20,
+        injection_point=InjectionPoint.SYSTEM,
+    )
 
 
 def _tuned_config() -> MemoryRetrievalConfig:
-    """MMR diversity on a bounded budget, injected at a position extremum.
+    """The shipped defaults, measured as-shipped.
 
-    Note what is deliberately *not* varied here. ``fusion_strategy`` is
-    inert for the durable backend: ``SqlVectorBackend`` fuses its dense
-    and BM25 arms with RRF inside ``retrieve``, so by the time the
-    strategy sees results there is a single ranked list and nothing left
-    to fuse. Setting it would look like tuning while changing nothing,
-    which is the kind of claim this eval exists to prevent.
+    This is exactly ``MemoryRetrievalConfig()``: MMR on a bounded
+    top-five budget injected at a position extremum are the shipped
+    values, so the number this eval proves is the number production
+    runs. Note what is deliberately *not* varied: ``fusion_strategy`` is
+    inert for the durable backend, which fuses its dense and BM25 arms
+    with RRF inside ``retrieve`` before the strategy sees them.
     """
-    return MemoryRetrievalConfig(
-        diversity_penalty_enabled=True,
-        max_memories=5,
-        injection_point=InjectionPoint.SYSTEM,
-    )
+    config = MemoryRetrievalConfig()
+    assert config.diversity_penalty_enabled is True
+    assert config.max_memories == 5
+    assert config.injection_point is InjectionPoint.SYSTEM
+    return config
 
 
 class TestDurableBeatsNaiveBaseline:
@@ -118,6 +129,35 @@ class TestRecallQuality:
             score = score_recall(await run_suite(backend, _tuned_config()))
 
         assert score.pollution == 0.0, f"pollution rate {score.pollution:.3f}"
+
+
+class TestCompoundingAcrossRestart:
+    """The acceptance criterion the ephemeral store could never meet.
+
+    A second run of a similar objective must benefit from the first
+    across a process restart. The old shared backend was an in-process
+    dict, so its recall was always zero after a restart; this proves the
+    durable substrate answers the same questions after the connection is
+    dropped and a fresh backend opens the same file.
+    """
+
+    async def test_recall_survives_a_restart(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "compounding.db"
+
+        # Run one: seed the store, then let the connection close.
+        async with seeded_backend(db_path) as backend:
+            first = score_recall(await run_suite(backend, _tuned_config()))
+        assert first.recall == 1.0
+
+        # Run two: a brand-new backend over the same file, no re-seed.
+        async with reopened_backend(db_path) as backend:
+            second = score_recall(await run_suite(backend, _tuned_config()))
+
+        assert second.recall == 1.0, (
+            "memory did not survive the restart: a reopened backend "
+            f"recalled {second.recall:.3f} of the expected memories"
+        )
+        assert second.pollution == 0.0
 
 
 class TestAbstention:

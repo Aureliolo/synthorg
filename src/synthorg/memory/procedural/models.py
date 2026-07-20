@@ -6,6 +6,7 @@ scope enum, and the configuration model for the pipeline.
 """
 
 from enum import StrEnum
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import ClassVar, Self
 
 from pydantic import (
@@ -338,3 +339,29 @@ class ProceduralMemoryConfig(BaseModel):
             The input data with any unset mirror fields populated.
         """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+
+    @model_validator(mode="after")
+    def _reject_skill_md_traversal(self) -> Self:
+        """Reject a SKILL.md directory that escapes via ``..``.
+
+        The value is now a runtime setting, so an operator (or a
+        settings write) supplies it and it feeds ``materialize_skill_md``
+        filesystem writes. A parent-directory component would let those
+        writes land outside the intended tree.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If the directory contains a ``..`` component.
+        """
+        if self.skill_md_directory is None:
+            return self
+        parts = (
+            PureWindowsPath(self.skill_md_directory).parts
+            + PurePosixPath(self.skill_md_directory).parts
+        )
+        if ".." in parts:
+            msg = "skill_md_directory must not contain parent-directory traversal (..)"
+            raise ValueError(msg)
+        return self

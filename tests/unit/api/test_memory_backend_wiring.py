@@ -6,7 +6,9 @@ replaces was a silent fallback to an ephemeral keyword store that looked
 like working memory.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -16,34 +18,36 @@ from synthorg.config.schema import RootConfig
 from synthorg.memory.backends.inmemory import InMemoryBackend
 from synthorg.memory.backends.sqlvector import SqlVectorBackend
 from synthorg.memory.config import CompanyMemoryConfig
+from synthorg.memory.consolidation.config import ConsolidationConfig
+from synthorg.memory.enums import ConsolidationInterval
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
-from tests._shared import make_app_state
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.settings.service import SettingsService
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
 
-def _persistence() -> MagicMock:
+def _persistence() -> Any:  # type: ignore[explicit-any]  # mock ergonomics; see mock_of
     """A connected persistence backend exposing a vector repository."""
-    backend = MagicMock()
-    backend.memory_vectors = MagicMock(spec=MemoryVectorRepository)
-    backend.memory_vectors.ensure_ready = AsyncMock()
-    backend.memory_vectors.supports_dense_search = True
-    return backend
+    repo = mock_of[MemoryVectorRepository](supports_dense_search=True)
+    repo.ensure_ready = AsyncMock(spec=MemoryVectorRepository.ensure_ready)
+    return mock_of[PersistenceBackend](memory_vectors=repo)
 
 
-def _settings(provider: str, model: str, dims: int) -> MagicMock:
+def _settings(provider: str, model: str, dims: int) -> Any:  # type: ignore[explicit-any]  # mock ergonomics; see mock_of
     """A settings service returning an explicit embedder binding."""
-    service = MagicMock()
     values = {
         "embedder_provider": provider,
         "embedder_model": model,
         "embedder_dims": dims,
     }
-    service.get = AsyncMock(
-        side_effect=lambda _ns, key: MagicMock(value=values[key]),
+    return mock_of[SettingsService](
+        get=AsyncMock(
+            side_effect=lambda _ns, key: SimpleNamespace(value=values[key]),
+        ),
     )
-    return service
 
 
 def _ephemeral_app_state() -> AppState:
@@ -133,6 +137,43 @@ class TestFailLoud:
         await wire_memory_backend(app_state)
 
         assert app_state.slice(MemoryStateSlice).backend is None
+
+
+class TestConsolidationSchedulerWiring:
+    """The maintenance driver must actually start, or memory grows forever."""
+
+    async def test_scheduler_is_wired_when_an_interval_is_set(self) -> None:
+        app_state = make_app_state(
+            persistence=_persistence(),
+            settings_service=_settings("test-provider", "test-embed-001", 8),
+        )
+
+        await wire_memory_backend(app_state)
+
+        scheduler = app_state.slice(MemoryStateSlice).consolidation_scheduler
+        assert scheduler is not None
+        # Leave no background task running for the next test.
+        await scheduler.stop()
+
+    async def test_no_scheduler_when_the_interval_is_never(self) -> None:
+        app_state = make_app_state(
+            config=RootConfig(
+                company_name="test",
+                memory=CompanyMemoryConfig(
+                    consolidation=ConsolidationConfig(
+                        interval=ConsolidationInterval.NEVER,
+                    ),
+                ),
+            ),
+            persistence=_persistence(),
+            settings_service=_settings("test-provider", "test-embed-001", 8),
+        )
+
+        await wire_memory_backend(app_state)
+
+        assert app_state.slice(MemoryStateSlice).consolidation_scheduler is None
+        # The backend itself still wired; only maintenance is off.
+        assert app_state.slice(MemoryStateSlice).backend is not None
 
 
 class TestDiscouragedFallback:

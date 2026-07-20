@@ -48,6 +48,10 @@ class InMemoryBackend:
     def backend_name(self) -> str:
         return "in-memory-test"
 
+    @property
+    def supports_dense_search(self) -> bool:
+        return False
+
     async def store(
         self,
         agent_id: str,

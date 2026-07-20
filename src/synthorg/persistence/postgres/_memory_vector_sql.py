@@ -226,7 +226,9 @@ def add_vector_column(column: LiteralString, dimensions: int) -> LiteralString:
 
 SELECT_VECTOR_COLUMNS: Final[LiteralString] = (
     "SELECT column_name FROM information_schema.columns "
-    "WHERE table_name = 'memory_entries' "
+    # Scope to the connection's own schema so a same-named table in
+    # another schema on the search_path cannot surface its columns here.
+    "WHERE table_schema = current_schema() AND table_name = 'memory_entries' "
     "AND column_name LIKE 'embedding\\_%' AND column_name <> %s"
 )
 
