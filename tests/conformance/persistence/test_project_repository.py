@@ -1,5 +1,7 @@
 """Conformance tests for ``ProjectRepository`` (SQLite + Postgres)."""
 
+from uuid import UUID
+
 import pytest
 
 from synthorg.core.autonomy_enums import AutonomyLevel
@@ -25,12 +27,14 @@ def _project(
     name: str = "Test Project",
     status: ProjectStatus = ProjectStatus.PLANNING,
     lead: str | None = None,
+    plan_id: UUID | None = None,
 ) -> Project:
     return Project(
         id=as_uuid(project_id),
         name=NotBlankStr(name),
         description="A test project",
         lead=NotBlankStr(lead) if lead else None,
+        plan_id=plan_id,
         status=status,
     )
 
@@ -47,6 +51,38 @@ class TestProjectRepository:
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         assert await backend.projects.get(NotBlankStr("ghost")) is None
+
+    async def test_plan_id_default_is_none(self, backend: PersistenceBackend) -> None:
+        await backend.projects.save(_project(project_id="proj-unplanned"))
+        fetched = await backend.projects.get(NotBlankStr(sid("proj-unplanned")))
+        assert fetched is not None
+        assert fetched.plan_id is None
+
+    async def test_plan_id_roundtrips(self, backend: PersistenceBackend) -> None:
+        await backend.projects.save(
+            _project(project_id="proj-linked", plan_id=as_uuid("plan-linked"))
+        )
+        fetched = await backend.projects.get(NotBlankStr(sid("proj-linked")))
+        assert fetched is not None
+        assert fetched.plan_id == as_uuid("plan-linked")
+
+    async def test_plan_id_repoints_on_update(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A replan repoints the project at the plan it now executes."""
+        original = _project(project_id="proj-replan", plan_id=as_uuid("plan-first"))
+        await backend.projects.create(original)
+
+        await backend.projects.update(
+            original.model_copy(
+                update={"plan_id": as_uuid("plan-second"), "version": 2}
+            ),
+            expected_version=1,
+        )
+
+        fetched = await backend.projects.get(NotBlankStr(sid("proj-replan")))
+        assert fetched is not None
+        assert fetched.plan_id == as_uuid("plan-second")
 
     async def test_autonomy_mode_default_is_none(
         self, backend: PersistenceBackend

@@ -15,10 +15,13 @@ import {
 import { useProjectsStore } from '@/stores/projects'
 import { ProjectDetailSkeleton } from './projects/ProjectDetailSkeleton'
 import { ProjectHeader } from './projects/ProjectHeader'
+import { ProjectPlanProgress } from './projects/ProjectPlanProgress'
 import { ProjectTeamSection } from './projects/ProjectTeamSection'
 import { ProjectOversightSection } from './projects/ProjectOversightSection'
 import { ProjectTaskList } from './projects/ProjectTaskList'
 import { BrownfieldImportDialog } from './projects/BrownfieldImportDialog'
+import type { Project } from '@/api/types/projects'
+import type { Task } from '@/api/types/tasks'
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -26,6 +29,7 @@ export default function ProjectDetailPage() {
   const {
     project,
     projectTasks,
+    projectProgress,
     loading,
     error,
     wsConnected,
@@ -90,28 +94,44 @@ export default function ProjectDetailPage() {
       <ProjectDetailBanners error={error} wsConnected={wsConnected} loading={loading} wsSetupError={wsSetupError} />
 
       <ErrorBoundary level="section">
-        <ProjectHeader project={project} />
+        <ProjectHeader project={project} taskCount={projectTasks.length} />
       </ErrorBoundary>
 
-      <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
-        <ErrorBoundary level="section">
-          <ProjectTeamSection project={project} />
-        </ErrorBoundary>
+      <ErrorBoundary level="section">
+        <ProjectPlanProgress progress={projectProgress} />
+      </ErrorBoundary>
 
-        <ErrorBoundary level="section">
-          <ProjectOversightSection project={project} />
-        </ErrorBoundary>
-
-        <ErrorBoundary level="section">
-          <ProjectTaskList tasks={projectTasks} />
-        </ErrorBoundary>
-      </div>
+      <ProjectDetailSections project={project} projectTasks={projectTasks} />
 
       <BrownfieldImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
         projectId={project.id}
       />
+    </div>
+  )
+}
+
+function ProjectDetailSections({
+  project,
+  projectTasks,
+}: {
+  project: Project
+  projectTasks: readonly Task[]
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
+      <ErrorBoundary level="section">
+        <ProjectTeamSection project={project} />
+      </ErrorBoundary>
+
+      <ErrorBoundary level="section">
+        <ProjectOversightSection project={project} />
+      </ErrorBoundary>
+
+      <ErrorBoundary level="section">
+        <ProjectTaskList tasks={projectTasks} />
+      </ErrorBoundary>
     </div>
   )
 }

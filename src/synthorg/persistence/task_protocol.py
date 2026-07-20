@@ -1,6 +1,7 @@
 """Task repository protocol."""
 
 from typing import Protocol, override, runtime_checkable
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,6 +31,10 @@ class TaskFilterSpec(BaseModel):
     project: NotBlankStr | None = Field(
         default=None,
         description="Filter by project ID",
+    )
+    plan: UUID | None = Field(
+        default=None,
+        description="Filter by the plan whose dispatch created the task",
     )
 
 

@@ -544,6 +544,7 @@ interruptible
 ip
 iptables
 isort
+itemless
 journaling
 jsdom
 kanban
@@ -565,6 +566,7 @@ locked_in
 lockfile
 lockfiles
 logits
+lookups
 logrotate
 long_term
 loopback
@@ -672,6 +674,7 @@ rate_limit
 rc
 reachability
 reactively
+reassignable
 rebalancing
 rebased
 recommender
@@ -696,7 +699,9 @@ replanning
 replans
 replayable
 repo
+repoint
 repointed
+repoints
 reporting_lines
 repos
 reputational

@@ -6,48 +6,63 @@ from typing import Final
 
 
 class PlanStatus(StrEnum):
-    """Lifecycle status of a decomposed plan through CEO review.
+    """Lifecycle status of a decomposed plan, from greenlight through delivery.
 
     A plan is PLANNING while it is a persisted-at-greenlight shell whose items
     the decomposer has not filled in yet, DRAFT while it is being shaped, and
-    PENDING_REVIEW once it is parked for the operator's decision. APPROVED,
-    REJECTED, SUPERSEDED, and FAILED are terminal: an operator rework or a
-    request-changes is only accepted from a non-terminal status (see
-    :data:`REWORKABLE_STATUSES`). FAILED marks a plan whose run failed to reach
-    review (decomposition failed, or parking the approval failed after it was
-    filled), so a failed run always leaves a visible plan carrying its
-    :attr:`Plan.failure_reason` rather than a silent orphan; a retry is a fresh
-    plan. SUPERSEDED is reserved for a plan retired
-    by a fresh re-plan; the current edit path revises a plan in place (bumping
-    :attr:`Plan.version`) rather than retaining prior revisions.
+    PENDING_REVIEW once it is parked for the operator's decision. APPROVED
+    records the operator's yes and dispatches the plan; EXECUTING covers the
+    window where its items' tasks are in flight; COMPLETED is reached only once
+    every item is genuinely done (a WORK item's task has passed the review
+    gate, a DECISION item has a chosen option), so completion composes with the
+    verify gate rather than restating it.
+
+    REJECTED, SUPERSEDED, COMPLETED, and FAILED are terminal; an operator
+    rework or request-changes is only accepted while the plan is still under
+    review (see :data:`REWORKABLE_STATUSES`). FAILED marks a plan whose run
+    failed to reach review (decomposition failed, or parking the approval
+    failed after it was filled), so a failed run always leaves a visible plan
+    carrying its :attr:`Plan.failure_reason` rather than a silent orphan; a
+    retry is a fresh plan. SUPERSEDED marks a plan retired by a re-plan, at any
+    stage up to and including execution.
     """
 
     PLANNING = "planning"
     DRAFT = "draft"
     PENDING_REVIEW = "pending_review"
     APPROVED = "approved"
+    EXECUTING = "executing"
+    COMPLETED = "completed"
     REJECTED = "rejected"
     SUPERSEDED = "superseded"
     FAILED = "failed"
 
 
 #: Statuses from which an operator rework / request-changes is accepted. A
-#: transient PLANNING shell (no items yet) and every terminal plan (APPROVED /
-#: REJECTED / SUPERSEDED / FAILED) are excluded; edits on them are rejected
-#: with a conflict.
+#: transient PLANNING shell (no items yet), a dispatched plan (APPROVED /
+#: EXECUTING), and every terminal plan are excluded; edits on them are rejected
+#: with a conflict. Reworking a dispatched plan is a re-plan, which supersedes
+#: the current revision rather than editing it in place.
 REWORKABLE_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
     {PlanStatus.DRAFT, PlanStatus.PENDING_REVIEW}
 )
 
-#: Terminal statuses: a decision has been recorded (or the plan failed to
-#: decompose) and the plan is closed to operator rework.
+#: Terminal statuses: the plan has been delivered, declined, retired, or failed
+#: to decompose, and has no remaining lifecycle hops. APPROVED is deliberately
+#: absent: it dispatches into EXECUTING and is therefore mid-lifecycle.
 TERMINAL_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
     {
-        PlanStatus.APPROVED,
+        PlanStatus.COMPLETED,
         PlanStatus.REJECTED,
         PlanStatus.SUPERSEDED,
         PlanStatus.FAILED,
     }
+)
+
+#: Statuses covering a dispatched plan whose work is in flight or delivered.
+#: A project is ACTIVE while its plan is here, and COMPLETED once the plan is.
+EXECUTION_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
+    {PlanStatus.EXECUTING, PlanStatus.COMPLETED}
 )
 
 #: Statuses whose plan may carry an empty item list: the PLANNING shell has not

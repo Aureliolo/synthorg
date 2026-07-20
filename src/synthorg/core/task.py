@@ -62,6 +62,11 @@ class Task(BaseModel):
         type: Classification of the task's work type.
         priority: Task urgency and importance level.
         project: Project ID this task belongs to.
+        plan_id: Plan whose dispatch created this task (``None`` for a task
+            that did not come from a plan, e.g. a directly filed one).
+        plan_item_id: Plan item this task implements (``None`` likewise).
+            Stamped at dispatch so plan items and their tasks correlate as
+            data rather than by re-deriving the deterministic id mapping.
         created_by: Agent name of the task creator.
         requested_by_user_id: User id of the human who filed the task via
             the API (``None`` for agent-internal tasks); gates SSE
@@ -104,6 +109,14 @@ class Task(BaseModel):
     )
     project: NotBlankStr = Field(
         description="Project ID this task belongs to",
+    )
+    plan_id: UUID | None = Field(
+        default=None,
+        description="Plan whose dispatch created this task",
+    )
+    plan_item_id: UUID | None = Field(
+        default=None,
+        description="Plan item this task implements",
     )
     created_by: NotBlankStr = Field(
         description="Agent name of the task creator",

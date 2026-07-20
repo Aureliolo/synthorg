@@ -514,3 +514,152 @@ class TestProjectController:
         assert await _reloaded_status(str(created_task.id)) is TaskStatus.REJECTED
         assert await _reloaded_status(str(running_task.id)) is TaskStatus.CANCELLED
         assert await _reloaded_status(str(stuck_task.id)) is TaskStatus.CANCELLED
+
+
+@pytest.mark.unit
+class TestProjectProgress:
+    """The initiative view: plan items, task status, counts, critical path."""
+
+    async def _seed(self, async_test_client: LoopAsyncClient) -> tuple[str, JsonDict]:
+        """Create a project executing a three-item plan with one task done.
+
+        Returns:
+            The project id and the progress response body.
+        """
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Initiative"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+        backend = persistence_of(async_test_client.app.state.app_state)
+
+        # b depends on a, c is independent: the critical path is a -> b.
+        items = (
+            PlanItem(
+                id=NotBlankStr(sid("item-a")),
+                title=NotBlankStr("Scaffold"),
+                description=NotBlankStr("Set it up"),
+                acceptance_criteria=(NotBlankStr("done"),),
+            ),
+            PlanItem(
+                id=NotBlankStr(sid("item-b")),
+                title=NotBlankStr("Build"),
+                description=NotBlankStr("Build on the scaffold"),
+                acceptance_criteria=(NotBlankStr("done"),),
+                dependencies=(NotBlankStr(sid("item-a")),),
+            ),
+            PlanItem(
+                id=NotBlankStr(sid("item-c")),
+                title=NotBlankStr("Docs"),
+                description=NotBlankStr("Write them"),
+                acceptance_criteria=(NotBlankStr("done"),),
+            ),
+        )
+        plan = Plan(
+            id=as_uuid("plan-progress"),
+            project=NotBlankStr(project_id),
+            objective_id=NotBlankStr("obj-progress"),
+            objective_title=NotBlankStr("Ship the initiative"),
+            parent_task_id=NotBlankStr(sid("task-root")),
+            items=items,
+            status=PlanStatus.EXECUTING,
+            created_at=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+            updated_at=datetime(2026, 4, 1, 10, 0, tzinfo=UTC),
+        )
+        await backend.plans.save(plan)
+
+        project = await backend.projects.get(NotBlankStr(project_id))
+        assert project is not None
+        await backend.projects.save(project.model_copy(update={"plan_id": plan.id}))
+
+        # item-a passed the gate; item-b is still under review (executed but
+        # unverified); item-c never dispatched.
+        for label, status in (
+            ("item-a", TaskStatus.COMPLETED),
+            ("item-b", TaskStatus.IN_REVIEW),
+        ):
+            await backend.tasks.save(
+                make_task(
+                    task_id=label,
+                    project=project_id,
+                    status=status,
+                    assigned_to="alice",
+                ).model_copy(
+                    update={"plan_id": plan.id, "plan_item_id": as_uuid(label)}
+                )
+            )
+
+        resp = await async_test_client.get(f"/api/v1/projects/{project_id}/progress")
+        assert resp.status_code == 200
+        body: JsonDict = resp.json()["data"]
+        return project_id, body
+
+    async def test_reports_plan_and_item_state(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        _, body = await self._seed(async_test_client)
+
+        assert body["plan_status"] == "executing"
+        assert body["objective_title"] == "Ship the initiative"
+        assert len(body["items"]) == 3
+        by_title = {item["title"]: item for item in body["items"]}
+        assert by_title["Scaffold"]["done"] is True
+        assert by_title["Scaffold"]["task_status"] == "completed"
+        # Executed but unverified: not done, which is what stops the project
+        # completing on unverified work.
+        assert by_title["Build"]["done"] is False
+        assert by_title["Build"]["task_status"] == "in_review"
+        # Never dispatched: no task, not done.
+        assert by_title["Docs"]["task_id"] is None
+        assert by_title["Docs"]["done"] is False
+
+    async def test_reports_derived_counts(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        _, body = await self._seed(async_test_client)
+
+        assert body["counts"] == {
+            "total": 3,
+            "done": 1,
+            "failed": 0,
+            "blocked": 0,
+        }
+
+    async def test_reports_the_critical_path(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        _, body = await self._seed(async_test_client)
+
+        assert body["critical_path"] == [
+            str(as_uuid("item-a")),
+            str(as_uuid("item-b")),
+        ]
+        on_path = {item["title"] for item in body["items"] if item["on_critical_path"]}
+        assert on_path == {"Scaffold", "Build"}
+
+    async def test_project_without_a_plan_reports_empty_progress(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """A project created directly renders the same shape, not a 404."""
+        create_resp = await async_test_client.post(
+            "/api/v1/projects",
+            json={"name": "Unplanned"},
+            headers=make_auth_headers("ceo"),
+        )
+        project_id = create_resp.json()["data"]["id"]
+
+        resp = await async_test_client.get(f"/api/v1/projects/{project_id}/progress")
+
+        assert resp.status_code == 200
+        body = resp.json()["data"]
+        assert body["plan_id"] is None
+        assert body["project_status"] == "planning"
+        assert body["items"] == []
+        assert body["counts"]["total"] == 0
+
+    async def test_unknown_project_is_404(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/projects/nonexistent/progress")
+        assert resp.status_code == 404

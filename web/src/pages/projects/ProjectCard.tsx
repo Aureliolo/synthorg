@@ -19,7 +19,6 @@ interface ProjectCardProps {
 interface ProjectCardData {
   detailHref: string
   status: NonNullable<Project['status']> | 'planning'
-  taskCount: number
   budget: number
   teamSize: number
 }
@@ -28,7 +27,6 @@ function deriveProjectCardData(project: Project): ProjectCardData {
   return {
     detailHref: ROUTES.PROJECT_DETAIL.replace(':projectId', encodeURIComponent(project.id)),
     status: project.status,
-    taskCount: project.task_ids.length,
     budget: project.budget,
     teamSize: project.team.length,
   }
@@ -53,7 +51,7 @@ function ProjectCardFooter({
 }
 
 function ProjectCardInner({ project, onToggleSelect, selected = false }: ProjectCardProps) {
-  const { detailHref, status, taskCount, budget, teamSize } = deriveProjectCardData(project)
+  const { detailHref, status, budget, teamSize } = deriveProjectCardData(project)
   return (
     <div className="relative">
       {onToggleSelect && (
@@ -87,7 +85,6 @@ function ProjectCardInner({ project, onToggleSelect, selected = false }: Project
       )}
 
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <StatPill label="Tasks" value={taskCount} />
         {budget > 0 && <StatPill label="Budget" value={formatCurrency(budget)} />}
       </div>
 

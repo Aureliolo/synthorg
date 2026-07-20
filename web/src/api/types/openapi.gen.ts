@@ -3781,6 +3781,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/projects/{project_id}/progress": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetProjectProgress */
+        readonly get: operations["ApiV1ProjectsProjectIdProgressGetProjectProgress"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers": {
         readonly parameters: {
             readonly query?: never;
@@ -7145,6 +7162,14 @@ export type components = {
         /** ApiResponse[ProjectCharter] */
         readonly ApiResponse_ProjectCharter_: {
             readonly data: components["schemas"]["ProjectCharter"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[ProjectProgress] */
+        readonly ApiResponse_ProjectProgress_: {
+            readonly data: components["schemas"]["ProjectProgress"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -14308,24 +14333,29 @@ export type components = {
         };
         /**
          * PlanStatus
-         * @description Lifecycle status of a decomposed plan through CEO review.
+         * @description Lifecycle status of a decomposed plan, from greenlight through delivery.
          *
          *     A plan is PLANNING while it is a persisted-at-greenlight shell whose items
          *     the decomposer has not filled in yet, DRAFT while it is being shaped, and
-         *     PENDING_REVIEW once it is parked for the operator's decision. APPROVED,
-         *     REJECTED, SUPERSEDED, and FAILED are terminal: an operator rework or a
-         *     request-changes is only accepted from a non-terminal status (see
-         *     :data:`REWORKABLE_STATUSES`). FAILED marks a plan whose run failed to reach
-         *     review (decomposition failed, or parking the approval failed after it was
-         *     filled), so a failed run always leaves a visible plan carrying its
-         *     :attr:`Plan.failure_reason` rather than a silent orphan; a retry is a fresh
-         *     plan. SUPERSEDED is reserved for a plan retired
-         *     by a fresh re-plan; the current edit path revises a plan in place (bumping
-         *     :attr:`Plan.version`) rather than retaining prior revisions.
+         *     PENDING_REVIEW once it is parked for the operator's decision. APPROVED
+         *     records the operator's yes and dispatches the plan; EXECUTING covers the
+         *     window where its items' tasks are in flight; COMPLETED is reached only once
+         *     every item is genuinely done (a WORK item's task has passed the review
+         *     gate, a DECISION item has a chosen option), so completion composes with the
+         *     verify gate rather than restating it.
+         *
+         *     REJECTED, SUPERSEDED, COMPLETED, and FAILED are terminal; an operator
+         *     rework or request-changes is only accepted while the plan is still under
+         *     review (see :data:`REWORKABLE_STATUSES`). FAILED marks a plan whose run
+         *     failed to reach review (decomposition failed, or parking the approval
+         *     failed after it was filled), so a failed run always leaves a visible plan
+         *     carrying its :attr:`Plan.failure_reason` rather than a silent orphan; a
+         *     retry is a fresh plan. SUPERSEDED marks a plan retired by a re-plan, at any
+         *     stage up to and including execution.
          * @default draft
          * @enum {string}
          */
-        readonly PlanStatus: "planning" | "draft" | "pending_review" | "approved" | "rejected" | "superseded" | "failed";
+        readonly PlanStatus: "planning" | "draft" | "pending_review" | "approved" | "executing" | "completed" | "rejected" | "superseded" | "failed";
         /** PlanVersionSnapshot */
         readonly PlanVersionSnapshot: {
             /**
@@ -14609,12 +14639,12 @@ export type components = {
             readonly lead: string | null;
             /** @description Project display name */
             readonly name: string;
-            readonly status: components["schemas"]["ProjectStatus"];
             /**
-             * @description IDs of tasks belonging to this project
-             * @default []
+             * Format: uuid
+             * @description Plan this project is currently executing
              */
-            readonly task_ids: readonly string[];
+            readonly plan_id: string | null;
+            readonly status: components["schemas"]["ProjectStatus"];
             /**
              * @description Agent IDs assigned to this project
              * @default []
@@ -14691,6 +14721,104 @@ export type components = {
             readonly updated_at: string;
             /** @default 1 */
             readonly version: number;
+        };
+        /** ProjectProgress */
+        readonly ProjectProgress: {
+            readonly counts: components["schemas"]["ProjectProgressCounts"];
+            /**
+             * @description Longest dependency chain through the plan, in order
+             * @default []
+             */
+            readonly critical_path: readonly string[];
+            /**
+             * @description Plan items with their task status, in plan order
+             * @default []
+             */
+            readonly items: readonly components["schemas"]["ProjectProgressItem"][];
+            /** @description What the initiative set out to do */
+            readonly objective_title: string | null;
+            /**
+             * Format: uuid
+             * @description Plan the project is executing (None before dispatch)
+             */
+            readonly plan_id: string | null;
+            /**
+             * @description Status of the executing plan
+             * @enum {string|null}
+             */
+            readonly plan_status: "planning" | "draft" | "pending_review" | "approved" | "executing" | "completed" | "rejected" | "superseded" | "failed" | null;
+            /**
+             * Format: uuid
+             * @description Project identifier
+             */
+            readonly project_id: string;
+            readonly project_status: components["schemas"]["ProjectStatus"];
+        };
+        /**
+         * ProjectProgressCounts
+         * @description Derived progress and attention counts
+         */
+        readonly ProjectProgressCounts: {
+            /**
+             * @description Items whose task stalled
+             * @default 0
+             */
+            readonly blocked: number;
+            /**
+             * @description Items that are done
+             * @default 0
+             */
+            readonly done: number;
+            /**
+             * @description Items whose task failed
+             * @default 0
+             */
+            readonly failed: number;
+            /**
+             * @description Number of plan items
+             * @default 0
+             */
+            readonly total: number;
+        };
+        /** ProjectProgressItem */
+        readonly ProjectProgressItem: {
+            /** @description Option recorded for a decision item */
+            readonly chosen_option_id: string | null;
+            /**
+             * @description Plan items this one depends on
+             * @default []
+             */
+            readonly depends_on: readonly string[];
+            /**
+             * @description Whether the item satisfies the completion rule
+             * @default false
+             */
+            readonly done: boolean;
+            /**
+             * Format: uuid
+             * @description Plan item identifier
+             */
+            readonly item_id: string;
+            readonly kind: components["schemas"]["PlanItemKind"];
+            /**
+             * @description Whether the item lies on the longest dependency chain
+             * @default false
+             */
+            readonly on_critical_path: boolean;
+            /** @description Role owning the item */
+            readonly owner: string | null;
+            /**
+             * Format: uuid
+             * @description Task implementing this item
+             */
+            readonly task_id: string | null;
+            /**
+             * @description Persisted status of the implementing task
+             * @enum {string|null}
+             */
+            readonly task_status: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required" | "awaiting_input" | null;
+            /** @description Plan item title */
+            readonly title: string;
         };
         /**
          * ProjectStatus
@@ -17052,6 +17180,16 @@ export type components = {
             readonly middleware_override: readonly string[] | null;
             /** @description Parent task ID when created via delegation */
             readonly parent_task_id: string | null;
+            /**
+             * Format: uuid
+             * @description Plan whose dispatch created this task
+             */
+            readonly plan_id: string | null;
+            /**
+             * Format: uuid
+             * @description Plan item this task implements
+             */
+            readonly plan_item_id: string | null;
             readonly priority: components["schemas"]["Priority"];
             /** @description Project ID this task belongs to */
             readonly project: string;
@@ -27176,6 +27314,36 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_tuple_KnowledgeHit_..._"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdProgressGetProjectProgress: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ProjectProgress_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

@@ -38,4 +38,7 @@ def build_task_filter_clauses(
     if filter_spec.project is not None:
         clauses.append(f"project = {placeholder}")
         params.append(filter_spec.project)
+    if filter_spec.plan is not None:
+        clauses.append(f"plan_id = {placeholder}")
+        params.append(str(filter_spec.plan))
     return clauses, params

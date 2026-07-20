@@ -1,6 +1,7 @@
 """Tests for SQLiteProjectRepository."""
 
 from unittest.mock import patch
+from uuid import UUID
 
 import aiosqlite
 import pytest
@@ -25,7 +26,7 @@ def _make_project(  # noqa: PLR0913
     description: str = "A test project",
     team: tuple[str, ...] = (),
     lead: str | None = None,
-    task_ids: tuple[str, ...] = (),
+    plan_id: UUID | None = None,
     deadline: str | None = None,
     budget: float = 0.0,
     status: ProjectStatus = ProjectStatus.PLANNING,
@@ -36,7 +37,7 @@ def _make_project(  # noqa: PLR0913
         description=description,
         team=team,
         lead=lead,
-        task_ids=task_ids,
+        plan_id=plan_id,
         deadline=deadline,
         budget=budget,
         status=status,
@@ -146,18 +147,18 @@ class TestSQLiteProjectRepository:
         deleted = await repo.delete(sid("nonexistent"))
         assert deleted is False
 
-    async def test_roundtrip_preserves_team_and_task_ids(
+    async def test_roundtrip_preserves_team_and_plan_id(
         self, repo: SQLiteProjectRepository
     ) -> None:
         project = _make_project(
             team=("agent-1", "agent-2", "agent-3"),
-            task_ids=("task-1", "task-2"),
+            plan_id=as_uuid("plan-1"),
         )
         await repo.save(project)
         fetched = await repo.get(sid("proj-001"))
         assert fetched is not None
         assert fetched.team == ("agent-1", "agent-2", "agent-3")
-        assert fetched.task_ids == ("task-1", "task-2")
+        assert fetched.plan_id == as_uuid("plan-1")
 
     async def test_roundtrip_preserves_deadline_and_budget(
         self, repo: SQLiteProjectRepository
@@ -182,13 +183,15 @@ class TestSQLiteProjectRepository:
         assert fetched.lead is None
         assert fetched.deadline is None
 
-    async def test_empty_team_and_task_ids(self, repo: SQLiteProjectRepository) -> None:
-        project = _make_project(team=(), task_ids=())
+    async def test_empty_team_and_absent_plan(
+        self, repo: SQLiteProjectRepository
+    ) -> None:
+        project = _make_project(team=(), plan_id=None)
         await repo.save(project)
         fetched = await repo.get(sid("proj-001"))
         assert fetched is not None
         assert fetched.team == ()
-        assert fetched.task_ids == ()
+        assert fetched.plan_id is None
 
     async def test_create_inserts_then_rejects_duplicate(
         self, repo: SQLiteProjectRepository

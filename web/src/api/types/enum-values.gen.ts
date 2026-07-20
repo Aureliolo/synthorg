@@ -690,6 +690,8 @@ export const PLAN_STATUS_VALUES = [
     'draft',
     'pending_review',
     'approved',
+    'executing',
+    'completed',
     'rejected',
     'superseded',
     'failed',

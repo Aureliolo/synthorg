@@ -170,6 +170,7 @@ nav:
       - Verification & Quality: design/verification-quality.md
       - Output-Style Policy: design/output-style-policy.md
       - Plan Review: design/plan-review.md
+      - Project Lifecycle: design/project-lifecycle.md
       - Distributed Runtime: design/distributed-runtime.md
       - Memory: design/memory.md
       - Memory Organizational: design/memory-organizational.md

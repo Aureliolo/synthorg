@@ -73,6 +73,7 @@ function clearDetailImpl(set: ProjectsSet): void {
   set({
     selectedProject: null,
     projectTasks: [],
+    projectProgress: null,
     detailLoading: false,
     detailError: null,
   })

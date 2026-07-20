@@ -27,6 +27,7 @@ from synthorg.core.plan import (
     PlanVersionSnapshot,
 )
 from synthorg.core.plan_enums import REWORKABLE_STATUSES, PlanStatus
+from synthorg.core.plan_transitions import validate_transition
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -293,10 +294,12 @@ class PlanService:
             The persisted, decided plan.
 
         Raises:
+            ConflictError: The transition is not legal for the plan lifecycle.
             VersionConflictError: A concurrent write bumped the version first.
             RecordNotFoundError: The plan disappeared between fetch and write.
             QueryError: Repository write failure (logged before propagating).
         """
+        self._require_legal_transition(existing, status)
         decided = existing.model_copy(
             update={
                 "status": status,
@@ -313,6 +316,34 @@ class PlanService:
             existing.status, decided, requested_by=requested_by, reason=reason
         )
         return decided
+
+    def _require_legal_transition(self, plan: Plan, target: PlanStatus) -> None:
+        """Reject a status write the plan lifecycle does not allow.
+
+        Every plan status write funnels through :meth:`sync_status`, so
+        validating here means an illegal hop (completing a plan that never
+        executed, reopening a terminal one) cannot be persisted from any
+        caller.
+
+        Raises:
+            ConflictError: The transition is not in the plan state machine.
+        """
+        if plan.status == target:
+            return
+        try:
+            validate_transition(plan.status, target)
+        except ValueError as exc:
+            logger.warning(
+                API_PLAN_TRANSITION_REJECTED,
+                plan_id=str(plan.id),
+                status=plan.status.value,
+                target=target.value,
+                reason="illegal_transition",
+            )
+            msg = (
+                f"Plan {plan.id} cannot move from {plan.status.value} to {target.value}"
+            )
+            raise ConflictError(msg) from exc
 
     def _require_reworkable(self, plan: Plan) -> None:
         """Reject an operator rework of a terminal (already-decided) plan.

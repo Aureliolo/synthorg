@@ -86,7 +86,11 @@ stateDiagram-v2
     PENDING_REVIEW --> DRAFT: edit / request-changes
     DRAFT --> SUPERSEDED: superseded by a re-plan
     PENDING_REVIEW --> SUPERSEDED: superseded by a re-plan
-    APPROVED --> [*]
+    APPROVED --> EXECUTING: dispatched
+    APPROVED --> SUPERSEDED: superseded by a re-plan
+    EXECUTING --> COMPLETED: every item done
+    EXECUTING --> SUPERSEDED: superseded by a re-plan
+    COMPLETED --> [*]
     REJECTED --> [*]
     FAILED --> [*]
     SUPERSEDED --> [*]
@@ -110,12 +114,20 @@ directions).
 An edit or request-changes is accepted only from a reworkable status.
 
 `DRAFT` and `PENDING_REVIEW` are the reworkable statuses; `PLANNING` is a transient
-shell (not operator-reworkable); `APPROVED`, `REJECTED`, `SUPERSEDED`, and `FAILED`
+shell (not operator-reworkable); `COMPLETED`, `REJECTED`, `SUPERSEDED`, and `FAILED`
 are terminal. An operator rework or request-changes is accepted only from a
 reworkable status, so a decided or failed plan cannot be revived (a retry is a
 fresh run). Each edit bumps `version`, and every write is version-guarded
 (optimistic concurrency): a stale writer is rejected with a conflict rather than
 silently clobbering a concurrent edit.
+
+**Approval is not the end of the plan's life.** `APPROVED` dispatches the plan and
+hands it to `EXECUTING`, where its items' tasks are in flight; `COMPLETED` is
+reached only once every item is genuinely done. Both transitions are driven by the
+initiative rollup rather than by an operator, and the whole table is enforced by a
+state machine (`core/plan_transitions.py`) that every status write funnels through.
+See [Project lifecycle](project-lifecycle.md) for the completion rule and how it
+composes with the verify gate.
 
 ## Persistence
 

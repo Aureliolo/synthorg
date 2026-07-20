@@ -196,11 +196,15 @@ def _subtask_from_item(item: PlanItem) -> SubtaskDefinition:
     )
 
 
-def _task_from_item(item: PlanItem, *, parent_task: Task) -> Task:
+def _task_from_item(item: PlanItem, *, plan_id: UUID, parent_task: Task) -> Task:
     """Rebuild the child task for a plan item under *parent_task*.
 
     Uses the same deterministic id mapping as the decomposition service, so a
     re-dispatch of the same (possibly edited) plan targets stable task ids.
+
+    The plan and item ids are stamped onto the task so the rollup can query a
+    plan's tasks directly, rather than re-deriving the id mapping at every
+    call site.
 
     Returns:
         A ``CREATED`` child :class:`Task` inheriting the parent's routing
@@ -215,6 +219,8 @@ def _task_from_item(item: PlanItem, *, parent_task: Task) -> Task:
         type=parent_task.type,
         priority=parent_task.priority,
         project=parent_task.project,
+        plan_id=plan_id,
+        plan_item_id=subtask_uuid(item.id),
         created_by=parent_task.created_by,
         parent_task_id=str(parent_task.id),
         delegation_chain=parent_task.delegation_chain,
@@ -271,7 +277,8 @@ def decomposition_from_plan(
     )
     subtasks = tuple(_subtask_from_item(item) for item in dispatchable)
     created_tasks = tuple(
-        _task_from_item(item, parent_task=parent_task) for item in dispatchable
+        _task_from_item(item, plan_id=plan.id, parent_task=parent_task)
+        for item in dispatchable
     )
     edges = tuple((dep, item.id) for item in dispatchable for dep in item.dependencies)
     decomposition_plan = DecompositionPlan(

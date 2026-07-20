@@ -20,6 +20,9 @@ vi.mock('@/pages/projects/ProjectOversightSection', () => ({
 vi.mock('@/pages/projects/ProjectTaskList', () => ({
   ProjectTaskList: () => <div data-testid="project-task-list" />,
 }))
+vi.mock('@/pages/projects/ProjectPlanProgress', () => ({
+  ProjectPlanProgress: () => <div data-testid="project-plan-progress" />,
+}))
 
 
 const project = makeProject('proj-001')
@@ -27,6 +30,7 @@ const project = makeProject('proj-001')
 const defaultHookReturn: UseProjectDetailDataReturn = {
   project,
   projectTasks: [],
+  projectProgress: null,
   loading: false,
   error: null,
   wsConnected: true,

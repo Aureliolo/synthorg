@@ -2,10 +2,15 @@ import { http, HttpResponse } from 'msw'
 import type {
   createProject,
   getProject,
+  getProjectProgress,
   listProjects,
   setProjectAutonomyMode,
 } from '@/api/endpoints/projects'
-import type { Project, ProjectAutonomyModeRequest } from '@/api/types/projects'
+import type {
+  Project,
+  ProjectAutonomyModeRequest,
+  ProjectProgress,
+} from '@/api/types/projects'
 import {
   apiError,
   emptyPage,
@@ -21,12 +26,26 @@ function buildProject(overrides: Partial<Project> = {}): Project {
     description: '',
     team: [],
     lead: null,
-    task_ids: [],
+    plan_id: null,
     deadline: null,
     budget: 0,
     status: 'planning',
     autonomy_mode: null,
     version: 1,
+    ...overrides,
+  }
+}
+
+function buildProgress(overrides: Partial<ProjectProgress> = {}): ProjectProgress {
+  return {
+    project_id: 'project-default',
+    project_status: 'planning',
+    plan_id: null,
+    plan_status: null,
+    objective_title: null,
+    items: [],
+    counts: { total: 0, done: 0, failed: 0, blocked: 0 },
+    critical_path: [],
     ...overrides,
   }
 }
@@ -39,6 +58,13 @@ export const projectsHandlers = [
   http.get('/api/v1/projects/:id', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getProject>(buildProject({ id: String(params['id']) })),
+    ),
+  ),
+  http.get('/api/v1/projects/:id/progress', ({ params }) =>
+    HttpResponse.json(
+      successFor<typeof getProjectProgress>(
+        buildProgress({ project_id: String(params['id']) }),
+      ),
     ),
   ),
   http.post('/api/v1/projects', async ({ request }) => {

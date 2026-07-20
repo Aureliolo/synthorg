@@ -32,6 +32,8 @@ function makeTask(overrides: Partial<Task> & { id: string; title: string }): Tas
     metadata: {},
     hard_ceiling: null,
     forecast_id: null,
+    plan_id: null,
+    plan_item_id: null,
     created_at: new Date(FIXED_BASE.getTime() - 3_600_000).toISOString(),
     updated_at: FIXED_BASE.toISOString(),
     ...overrides,

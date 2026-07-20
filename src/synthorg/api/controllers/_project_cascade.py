@@ -5,7 +5,7 @@ from typing import Final
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
-from synthorg.core.plan_enums import REWORKABLE_STATUSES, PlanStatus
+from synthorg.core.plan_enums import TERMINAL_STATUSES, PlanStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.task_transitions import VALID_TRANSITIONS
@@ -62,7 +62,7 @@ async def cascade_supersede_children(
             offset=offset,
         )
         for plan in plans:
-            if plan.status in REWORKABLE_STATUSES:
+            if plan.status not in TERMINAL_STATUSES:
                 await plan_service.sync_status(
                     plan,
                     PlanStatus.SUPERSEDED,

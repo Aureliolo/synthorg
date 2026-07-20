@@ -561,6 +561,7 @@
         "ceremony_scheduler",
         "kanban_board_service",
         "sprint_service",
+        "project_rollup_service",
         "intake_entry_adapter",
         "objective_entry_adapter",
         "brownfield_entry_adapter",
@@ -1431,6 +1432,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-19T22:23:53.671309Z",
+  "generated_at": "2026-07-20T04:34:34.544589Z",
   "schema_version": 1
 }

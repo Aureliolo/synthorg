@@ -40,7 +40,7 @@ class TestProjectConstruction:
             description="A complete project",
             team=("agent-1", "agent-2"),
             lead="agent-1",
-            task_ids=("task-1", "task-2"),
+            plan_id=as_uuid("plan-1"),
             deadline="2026-12-31",
             budget=100.0,
             status=ProjectStatus.ACTIVE,
@@ -48,7 +48,7 @@ class TestProjectConstruction:
         assert project.description == "A complete project"
         assert project.team == ("agent-1", "agent-2")
         assert project.lead == "agent-1"
-        assert project.task_ids == ("task-1", "task-2")
+        assert project.plan_id == as_uuid("plan-1")
         assert project.deadline == "2026-12-31"
         assert project.budget == 100.0
         assert project.status is ProjectStatus.ACTIVE
@@ -58,7 +58,7 @@ class TestProjectConstruction:
         assert project.description == ""
         assert project.team == ()
         assert project.lead is None
-        assert project.task_ids == ()
+        assert project.plan_id is None
         assert project.deadline is None
         assert project.budget == 0.0
         assert project.status is ProjectStatus.PLANNING
@@ -127,9 +127,10 @@ class TestProjectStringValidation:
         with pytest.raises(ValidationError, match="whitespace-only"):
             _make_project(team=("agent-1", "   "))
 
-    def test_empty_task_id_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="at least 1 character"):
-            _make_project(task_ids=("task-1", ""))
+    def test_unknown_field_rejected(self) -> None:
+        """A project never stores its children; tasks are queried by project."""
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            _make_project(task_ids=("task-1", "task-2"))
 
 
 # ── Duplicate Validation ─────────────────────────────────────────
@@ -141,17 +142,9 @@ class TestProjectDuplicates:
         with pytest.raises(ValidationError, match="Duplicate entries in team"):
             _make_project(team=("agent-1", "agent-2", "agent-1"))
 
-    def test_duplicate_task_ids_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Duplicate entries in task_ids"):
-            _make_project(task_ids=("task-1", "task-2", "task-1"))
-
     def test_unique_team_members(self) -> None:
         project = _make_project(team=("agent-1", "agent-2", "agent-3"))
         assert len(project.team) == 3
-
-    def test_unique_task_ids(self) -> None:
-        project = _make_project(task_ids=("task-1", "task-2", "task-3"))
-        assert len(project.task_ids) == 3
 
 
 # ── Budget ───────────────────────────────────────────────────────
@@ -211,7 +204,7 @@ class TestProjectSerialization:
             description="Test JSON roundtrip",
             team=("agent-1", "agent-2"),
             lead="agent-1",
-            task_ids=("task-1",),
+            plan_id=as_uuid("plan-rt"),
             deadline="2026-06-30",
             budget=25.0,
             status=ProjectStatus.ACTIVE,
@@ -222,7 +215,7 @@ class TestProjectSerialization:
         assert restored.name == project.name
         assert restored.team == project.team
         assert restored.lead == project.lead
-        assert restored.task_ids == project.task_ids
+        assert restored.plan_id == project.plan_id
         assert restored.budget == project.budget
         assert restored.status is project.status
 

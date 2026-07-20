@@ -75,6 +75,8 @@ CREATE TABLE tasks (
     type TEXT NOT NULL,
     priority TEXT NOT NULL DEFAULT 'medium',
     project TEXT NOT NULL,
+    plan_id TEXT,
+    plan_item_id TEXT,
     created_by TEXT NOT NULL,
     requested_by_user_id TEXT,
     assigned_to TEXT,
@@ -101,6 +103,7 @@ CREATE TABLE tasks (
 CREATE INDEX idx_tasks_status ON tasks (status);
 CREATE INDEX idx_tasks_assigned_to ON tasks (assigned_to);
 CREATE INDEX idx_tasks_project ON tasks (project);
+CREATE INDEX idx_tasks_plan_id ON tasks (plan_id);
 
 -- ── Cost records ──────────────────────────────────────────────
 CREATE TABLE cost_records (
@@ -529,7 +532,7 @@ CREATE TABLE projects (
     description TEXT NOT NULL DEFAULT '',
     team TEXT NOT NULL DEFAULT '[]',
     lead TEXT,
-    task_ids TEXT NOT NULL DEFAULT '[]',
+    plan_id TEXT,
     deadline TEXT,
     budget REAL NOT NULL DEFAULT 0.0 CHECK (budget >= 0.0),
     status TEXT NOT NULL DEFAULT 'planning',
@@ -2560,8 +2563,8 @@ CREATE TABLE plans (
     coordination_topology TEXT NOT NULL DEFAULT 'auto',
     status TEXT NOT NULL DEFAULT 'draft'
     CHECK (status IN (
-        'planning', 'draft', 'pending_review', 'approved', 'rejected',
-        'superseded', 'failed'
+        'planning', 'draft', 'pending_review', 'approved', 'executing',
+        'completed', 'rejected', 'superseded', 'failed'
     )),
     failure_reason TEXT CHECK (failure_reason IS NULL OR LENGTH(TRIM(failure_reason)) > 0),
     forecast_id TEXT,

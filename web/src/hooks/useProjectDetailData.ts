@@ -1,15 +1,23 @@
 import { useCallback } from 'react'
 import { useProjectsStore } from '@/stores/projects'
 import { useDetailData } from '@/hooks/useDetailData'
-import type { Project } from '@/api/types/projects'
+import type { Project, ProjectProgress } from '@/api/types/projects'
 import type { Task } from '@/api/types/tasks'
 import type { WsChannel } from '@/api/types/websocket'
 
-const DETAIL_CHANNELS = ['projects', 'tasks'] as const satisfies readonly WsChannel[]
+// `plans` is subscribed alongside `projects` and `tasks` so a plan status
+// change (an item completing, a replan) refreshes the initiative view live,
+// rather than only on the next poll.
+const DETAIL_CHANNELS = [
+  'projects',
+  'tasks',
+  'plans',
+] as const satisfies readonly WsChannel[]
 
 export interface UseProjectDetailDataReturn {
   project: Project | null
   projectTasks: readonly Task[]
+  projectProgress: ProjectProgress | null
   loading: boolean
   error: string | null
   wsConnected: boolean
@@ -19,6 +27,7 @@ export interface UseProjectDetailDataReturn {
 export function useProjectDetailData(projectId: string | undefined): UseProjectDetailDataReturn {
   const project = useProjectsStore((s) => s.selectedProject)
   const projectTasks = useProjectsStore((s) => s.projectTasks)
+  const projectProgress = useProjectsStore((s) => s.projectProgress)
   const loading = useProjectsStore((s) => s.detailLoading)
   const error = useProjectsStore((s) => s.detailError)
 
@@ -33,6 +42,6 @@ export function useProjectDetailData(projectId: string | undefined): UseProjectD
     fetchDetail,
     clearDetail,
     channels: DETAIL_CHANNELS,
-    selectors: { project, projectTasks, loading, error },
+    selectors: { project, projectTasks, projectProgress, loading, error },
   })
 }

@@ -20,6 +20,7 @@ export const useProjectsStore = create<ProjectsState>()((set, get) => ({
 
   selectedProject: null,
   projectTasks: [],
+  projectProgress: null,
   detailLoading: false,
   detailError: null,
   autonomyModeSaving: false,

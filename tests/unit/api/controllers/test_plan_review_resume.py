@@ -17,6 +17,8 @@ from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalS
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
     CoordinationTopology,
@@ -51,7 +53,7 @@ def _task(label: str, *, status: TaskStatus = TaskStatus.ASSIGNED) -> Task:
         description=f"Description for {label}",
         type=TaskType.DEVELOPMENT,
         priority=Priority.MEDIUM,
-        project="proj-1",
+        project=sid("proj-1"),
         created_by="manager",
         assigned_to=str(as_uuid("agent-1")),
         status=status,
@@ -71,7 +73,7 @@ def _durable_plan(parent_label: str) -> Plan:
     )
     return Plan(
         id=as_uuid(_PLAN_ID),
-        project=NotBlankStr("proj-1"),
+        project=NotBlankStr(sid("proj-1")),
         objective_id=NotBlankStr("obj-1"),
         objective_title=NotBlankStr("Ship the game"),
         parent_task_id=NotBlankStr(str(as_uuid(parent_label))),
@@ -194,10 +196,30 @@ class TestPlanReviewResume:
         assert dispatched_ids == set(_SUB_IDS)
         # Rebuilt child tasks are fresh CREATED work parented on the objective.
         assert all(t.status is TaskStatus.CREATED for t in precomputed.created_tasks)
-        # The decision is reflected onto the durable plan.
+        # Every dispatched task carries its plan linkage, so the rollup can
+        # find a plan's tasks without re-deriving the id mapping.
+        assert all(t.plan_id == as_uuid(_PLAN_ID) for t in precomputed.created_tasks)
+        assert all(t.plan_item_id is not None for t in precomputed.created_tasks)
+        # Approval dispatches the plan, so it moves past the decision into
+        # execution rather than resting on the recorded verdict.
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
-        assert stored.status is PlanStatus.APPROVED
+        assert stored.status is PlanStatus.EXECUTING
+
+    async def test_approve_links_and_activates_the_project(self) -> None:
+        """The graph is connected before any dispatched task can run."""
+        parent = _task("parent-1")
+        state, _, _, backend = await _seed(task=parent, plan=_durable_plan("parent-1"))
+        await backend.projects.save(Project(id=as_uuid("proj-1"), name="Initiative"))
+
+        await try_plan_review_resume(
+            state, sid("appr-1"), approved=True, decided_by="admin"
+        )
+
+        project = await backend.projects.get(NotBlankStr(sid("proj-1")))
+        assert project is not None
+        assert project.plan_id == as_uuid(_PLAN_ID)
+        assert project.status is ProjectStatus.ACTIVE
 
     async def test_reject_cancels_task_and_marks_plan_rejected(self) -> None:
         parent = _task("parent-1")
@@ -274,12 +296,14 @@ class TestPlanReviewResume:
         engine.transition_task.assert_awaited_once()
         assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
 
-    async def test_dispatch_failure_marks_task_failed_and_keeps_plan_approved(
+    async def test_dispatch_failure_marks_task_failed_without_rolling_back(
         self,
     ) -> None:
         # A dispatch failure must not 5xx the approval-decision request: the flow
-        # still owns the decision (True), marks the task FAILED, and the plan
-        # stays APPROVED (the decision stands; the dispatch failure is on the task).
+        # still owns the decision (True) and marks the task FAILED. The plan is
+        # left EXECUTING rather than rolled back: the decision stands, the
+        # failure belongs to the task, and it surfaces as a failed-item count on
+        # the project rather than by rewinding the plan's lifecycle.
         parent = _task("parent-1")
         state, coordinator, engine, backend = await _seed(
             task=parent,
@@ -295,4 +319,4 @@ class TestPlanReviewResume:
         assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
-        assert stored.status is PlanStatus.APPROVED
+        assert stored.status is PlanStatus.EXECUTING
