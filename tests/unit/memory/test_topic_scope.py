@@ -13,7 +13,8 @@ import pytest
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
-from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.backends.inmemory import InMemoryBackend
+from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryStoreRequest
 from synthorg.memory.topic_scope import in_topic_scope, scope_terms
 from tests._shared import recall_request
 
@@ -103,3 +104,58 @@ class TestInTopicScope:
     def test_empty_scope_terms_constrain_nothing(self) -> None:
         """A title of nothing but stop words must not silence recall."""
         assert in_topic_scope(_entry(tags=("checkout",)), frozenset())
+
+
+class _DenseCapableBackend(InMemoryBackend):
+    """The real keyword backend, claiming semantic recall.
+
+    ``supports_dense_search`` is a duck-typed capability rather than a
+    protocol member, so a spec'd double cannot express it. Subclassing a
+    real backend keeps the double protocol-complete while varying only
+    the axis under test.
+    """
+
+    supports_dense_search = True
+
+
+class TestScopeAppliesOnlyWithoutSemanticRecall:
+    """Tag overlap is lexical, so it must not gate a dense backend.
+
+    A lesson about rolling back a deployment shares no term with
+    "revert the release". Gating on tags would drop exactly the match
+    dense retrieval was bought to find, so the guard applies only where
+    meaning-similarity is unavailable.
+    """
+
+    async def _recall_with(self, *, dense: bool) -> tuple[object, ...]:
+        """Seed one off-tag lesson and recall it by a synonym query.
+
+        Returns:
+            The messages the strategy would inject.
+        """
+        from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+        from synthorg.memory.retriever import ContextInjectionStrategy
+
+        backend = _DenseCapableBackend() if dense else InMemoryBackend()
+        await backend.connect()
+        await backend.store(
+            NotBlankStr("agent-1"),
+            MemoryStoreRequest(
+                category=MemoryCategory.PROCEDURAL,
+                content=NotBlankStr("Roll back the release before draining."),
+                metadata=MemoryMetadata(tags=(NotBlankStr("rollback"),)),
+            ),
+        )
+        strategy = ContextInjectionStrategy(
+            backend=backend,
+            config=MemoryRetrievalConfig(min_relevance=0.0),
+        )
+        return await strategy.prepare_messages(
+            recall_request(query="revert the release", token_budget=2000)
+        )
+
+    async def test_dense_backend_keeps_an_off_tag_semantic_match(self) -> None:
+        assert await self._recall_with(dense=True)
+
+    async def test_keyword_backend_still_drops_an_off_tag_lesson(self) -> None:
+        assert await self._recall_with(dense=False) == ()

@@ -12,6 +12,8 @@ Provider Binding rule every dispatch resolves a concrete
 ``(provider, model)`` pair, so a bare model name is never enough.
 """
 
+from typing import Final
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
@@ -19,7 +21,7 @@ from synthorg.core.types import NotBlankStr
 # Width of the most common general-purpose embedding models. Only a
 # starting point for a caller that has not resolved a real model; the
 # store is always built for whatever width is actually resolved.
-DEFAULT_EMBEDDING_DIMENSIONS = 1536
+DEFAULT_EMBEDDING_DIMENSIONS: Final[int] = 1536
 
 
 class EmbedderConfig(BaseModel):

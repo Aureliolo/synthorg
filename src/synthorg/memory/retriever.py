@@ -39,8 +39,7 @@ from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever_fetch import fetch_memories
 from synthorg.memory.retriever_rrf import execute_rrf_pipeline
 from synthorg.memory.shared import SharedKnowledgeStore
-from synthorg.memory.topic_scope import in_topic_scope, scope_terms
-from synthorg.memory.write_gate import is_superseded
+from synthorg.memory.topic_scope import admissible, scope_terms
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_FILTER_INIT,
@@ -283,15 +282,14 @@ class ContextInjectionStrategy:
             )
             return ()
 
-        # Topic scope and supersession run before the reranker: both are
-        # cheap structural tests, and dropping candidates here keeps them
-        # out of every downstream stage. A superseded entry is a belief
-        # the agent has already replaced, so recalling it would put a
-        # known-stale claim back in front of the model.
-        scoped = tuple(
-            m
-            for m in ranked
-            if in_topic_scope(m.entry, topic_terms) and not is_superseded(m.entry)
+        # Tag overlap is a lexical test, so it only applies where the
+        # backend has no semantic recall of its own; applying it to
+        # dense hits would discard the synonym matches that arm exists
+        # to find.
+        scoped = admissible(
+            ranked,
+            terms=topic_terms,
+            scope_applies=not getattr(self._backend, "supports_dense_search", False),
         )
         if len(scoped) != len(ranked):
             logger.info(

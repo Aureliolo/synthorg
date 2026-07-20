@@ -15,12 +15,22 @@ So scoping keys on structure the lesson already carries: its tags. A
 lesson tagged ``checkout`` reaches a task whose title mentions checkout
 and abstains elsewhere. Abstention is the intended outcome, not a
 failure to retrieve.
+
+It applies only where it is needed. Tag overlap is itself a lexical
+test, so on a backend with real semantic recall it would throw away the
+better signal: a lesson about rolling back a deployment shares no term
+with "revert the release", and gating on tags would drop precisely the
+match dense retrieval was bought to find. Where meaning-similarity is
+available it already establishes topicality; the tag gate exists to
+compensate for its absence.
 """
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.bm25 import tokenize_for_index
 from synthorg.memory.models import MemoryEntry
+from synthorg.memory.ranking import ScoredMemory
 from synthorg.memory.recall_request import MemoryRecallRequest
+from synthorg.memory.write_gate import is_superseded
 
 
 def scope_terms(request: MemoryRecallRequest) -> frozenset[str]:
@@ -38,6 +48,37 @@ def scope_terms(request: MemoryRecallRequest) -> frozenset[str]:
         Lowercase topic terms, empty when the title carries none.
     """
     return frozenset(tokenize_for_index(request.task_title))
+
+
+def admissible(
+    ranked: tuple[ScoredMemory, ...],
+    *,
+    terms: frozenset[str],
+    scope_applies: bool,
+) -> tuple[ScoredMemory, ...]:
+    """Drop candidates that must not reach the prompt.
+
+    Both tests are cheap and structural, so they run before any
+    reranking: an entry excluded here should not cost a downstream
+    stage anything. A superseded entry is a belief the agent has already
+    replaced, and recalling it would put a known-stale claim back in
+    front of the model.
+
+    Args:
+        ranked: Candidates in ranked order.
+        terms: Topic terms from :func:`scope_terms`.
+        scope_applies: Whether topic scoping is in force for this
+            backend.
+
+    Returns:
+        The admissible candidates, order preserved.
+    """
+    return tuple(
+        memory
+        for memory in ranked
+        if (not scope_applies or in_topic_scope(memory.entry, terms))
+        and not is_superseded(memory.entry)
+    )
 
 
 def in_topic_scope(entry: MemoryEntry, terms: frozenset[str]) -> bool:
