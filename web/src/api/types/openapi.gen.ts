@@ -12440,8 +12440,8 @@ export type components = {
          *     Attributes:
          *         DURABLE: Wired on a store that survives restart and retrieves
          *             by meaning.
-         *         DEGRADED: Wired, but on the ephemeral keyword store an operator
-         *             selected explicitly.
+         *         DEGRADED: Wired, but not fully: the ephemeral keyword store, a
+         *             failed probe, a missing dense index, or maintenance off.
          *         OFF: Not wired. Usually no embedding model resolved, which the
          *             startup log records at ERROR.
          * @enum {string}

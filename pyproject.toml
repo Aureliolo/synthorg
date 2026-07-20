@@ -840,7 +840,7 @@ filterwarnings = [
     # ``error`` filter promotes the deprecation to an error. nats-py 2.15.0
     # (the pinned release) has migrated to ``inspect.iscoroutinefunction``,
     # but several transitive deps still call the deprecated function under
-    # Python 3.14 (aiohttp, starlette, qdrant-client, backoff, posthog).
+    # Python 3.14 (aiohttp, starlette, backoff, posthog).
     # The filter is scoped by message text (unique to
     # asyncio.iscoroutinefunction) rather than by module, because Python's
     # stacklevel-based module attribution varies between the C and Python

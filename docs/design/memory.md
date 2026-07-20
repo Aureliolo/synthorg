@@ -126,12 +126,18 @@ mid-context.
 ## Memory Levels
 
 Memory persistence is configurable per agent, from no persistence to fully persistent storage.
+The persistence level lives on each agent's `MemoryConfig.type` (default `session`); it is not a
+company-wide memory setting.
 
 ???+ note "Memory Level Configuration"
 
     ```yaml
+    # Per agent, under the agent's identity card:
     memory:
-      level: "persistent"            # none | session | project | persistent (default: session)
+      type: "persistent"            # none | session | project | persistent (default: session)
+
+    # Company-wide, under the memory namespace:
+    memory:
       backend: "sqlvector"          # sqlvector (default); also composite, inmemory
       options:
         retention_days: null         # null = forever
@@ -265,7 +271,6 @@ single except clause.
 ```yaml
 memory:
   backend: "sqlvector"             # sqlvector, composite, inmemory
-  level: "persistent"              # none, session, project, persistent (default: session)
   options:
     retention_days: null            # null = forever
     max_memories_per_agent: 10000

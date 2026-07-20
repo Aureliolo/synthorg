@@ -28,7 +28,6 @@ from synthorg.memory.ranking import (
 from synthorg.memory.ranking_mmr import apply_diversity_penalty
 from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.memory.retrieval.models import (
-    RetrievalCandidate,
     RetrievalQuery,
 )
 from synthorg.memory.retrieval.protocol import HierarchicalRetriever
@@ -37,6 +36,7 @@ from synthorg.memory.retrieval.reranking.protocol import (
 )
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever_fetch import fetch_memories
+from synthorg.memory.retriever_rerank import apply_query_reranking
 from synthorg.memory.retriever_rrf import execute_rrf_pipeline
 from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.memory.topic_scope import admissible, scope_terms
@@ -314,7 +314,7 @@ class ContextInjectionStrategy:
         # Post-ranking: query-specific re-ranking (opt-in)
         if self._config.query_specific_rerank_enabled and self._reranker is not None:
             try:
-                ranked = await self._apply_reranking(
+                ranked = await apply_query_reranking(
                     reranker=self._reranker,
                     query_text=query_text,
                     agent_id=agent_id,
@@ -392,50 +392,6 @@ class ContextInjectionStrategy:
                 is_shared=c.is_shared,
             )
             for c in result.candidates
-        )
-
-    async def _apply_reranking(
-        self,
-        *,
-        reranker: QuerySpecificReranker,
-        query_text: NotBlankStr,
-        agent_id: NotBlankStr,
-        ranked: tuple[ScoredMemory, ...],
-    ) -> tuple[ScoredMemory, ...]:
-        """Apply query-specific re-ranking to scored memories.
-
-        Args:
-            reranker: The wired re-ranker, narrowed non-``None`` by the
-                caller's config + presence guard.
-            query_text: The query string.
-            agent_id: Owning agent for the retrieval query.
-            ranked: Pre-rerank scored memories.
-
-        Returns:
-            Tuple of ``ScoredMemory``.
-        """
-        query = RetrievalQuery(text=query_text, agent_id=agent_id)
-        candidates = tuple(
-            RetrievalCandidate(
-                entry=s.entry,
-                relevance_score=s.relevance_score,
-                recency_score=s.recency_score,
-                combined_score=s.combined_score,
-                source_worker="flat",
-                is_shared=s.is_shared,
-            )
-            for s in ranked
-        )
-        reranked = await reranker.rerank(query, candidates)
-        return tuple(
-            ScoredMemory(
-                entry=c.entry,
-                relevance_score=c.relevance_score,
-                recency_score=c.recency_score,
-                combined_score=c.combined_score,
-                is_shared=c.is_shared,
-            )
-            for c in reranked
         )
 
     def _compute_pool_limit(self) -> int:

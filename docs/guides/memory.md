@@ -67,7 +67,6 @@ Configure memory in the `memory` section of your company config:
 ```yaml
 memory:
   backend: "sqlvector"
-  level: session
   storage:
     data_dir: "/data/memory"
   options:
@@ -79,19 +78,22 @@ memory:
     relevance_weight: 0.7
     recency_weight: 0.3
     min_relevance: 0.3
-    max_memories: 20
+    max_memories: 5               # tuned top-k after ranking; MMR on by default
+    diversity_penalty_enabled: true
     include_shared: true
   consolidation:
     interval: daily
     max_memories_per_agent: 10000
 ```
 
+The per-agent persistence level lives on the agent's `MemoryConfig.type` (default `session`), not
+in this company-wide section.
+
 ### Top-Level Memory Fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `backend` | string | `"sqlvector"` | Memory backend: `"sqlvector"` (durable, semantic), `"composite"` (per-namespace routing), or `"inmemory"` (ephemeral, discouraged) |
-| `level` | MemoryLevel | `"session"` | Default persistence level |
 | `storage` | MemoryStorageConfig | *(defaults)* | Storage backend settings |
 | `options` | MemoryOptionsConfig | *(defaults)* | Behaviour options |
 | `retrieval` | MemoryRetrievalConfig | *(defaults)* | Retrieval pipeline settings |

@@ -4,6 +4,7 @@ from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import structlog.testing
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import FinishReason
@@ -22,6 +23,7 @@ from synthorg.execution.turn import TurnRecord
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
 from synthorg.memory.protocol import MemoryBackend
+from synthorg.observability.events.procedural_memory import PROCEDURAL_MEMORY_ERROR
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import as_uuid, mock_of
 
@@ -235,10 +237,13 @@ class TestTryProceduralMemory:
         proposer = AsyncMock()
         backend = AsyncMock(spec=MemoryBackend)
 
-        with patch(
-            "synthorg.memory.procedural.pipeline.propose_procedural_memory",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            patch(
+                "synthorg.memory.procedural.pipeline.propose_procedural_memory",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+            structlog.testing.capture_logs() as cap,
         ):
             # Should not raise.
             await try_procedural_memory(
@@ -249,6 +254,10 @@ class TestTryProceduralMemory:
                 procedural_proposer=proposer,
                 memory_backend=backend,
             )
+
+        # Swallowed, but not silently: a best-effort hook that eats an
+        # error without a trace is how the original bug hid.
+        assert any(e.get("event") == PROCEDURAL_MEMORY_ERROR for e in cap)
 
     async def test_memory_error_propagates(self) -> None:
         """MemoryError is never swallowed."""

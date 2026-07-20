@@ -321,15 +321,47 @@ the agent during execution.
     controls core token budget, archival search limit, per-category write access, and a safety
     valve (``allow_core_writes: bool``) for restricting core memory edits on locked-down agents.
 
+    The self-editing tools are bound to their agent per request, never at boot: a boot-time
+    registry is shared by every agent, so binding the write tools there would give the whole
+    organisation one memory bucket. `registry_with_memory_tools()` binds them to the acting
+    agent's identity when it augments that agent's registry.
+
+### The deterministic write gate
+
+The agent decides *what* mattered in its own run; it is unreliable at the other half. The STALE
+benchmark shows models scoring 76% at spotting an outdated belief under direct questioning
+collapse to 4% when a query merely presupposes it. So every agent write passes
+`memory.write_gate.evaluate_write` before it lands, which owns the two things the agent cannot:
+
+- **Dedup** against semantically comparable existing entries (Dice overlap over the same
+  tokenisation the durable index uses), so the same fact written twice in different words
+  collapses to a `NOOP` rather than accumulating.
+- **Supersession**, which is *declared*, never inferred: a replacement lands only when the writer
+  names the entry it replaces and that entry exists. The retired entry is tagged `superseded` and
+  kept for audit, but every backend excludes it from recall unless a caller opts in via
+  `MemoryQuery.include_superseded`.
+
+The gate is deterministic: no LLM call, so no per-write cost and no non-determinism on a
+correctness-critical path. A retired belief coexisting with its correction without arbitration is
+the production failure this prevents.
+
+Candidate content is redacted before it can be stored: `MemoryStoreRequest` /
+`MemoryUpdateRequest` run every write through `memory.redaction.redact_for_memory`, masking
+credentials and email addresses so a secret in a tool result never becomes a durable memory that
+is re-injected into later prompts.
+
 ### MemoryInjectionStrategy Protocol
 
-All strategies implement `MemoryInjectionStrategy`:
+All strategies implement `MemoryInjectionStrategy`. `prepare_messages` takes a structured
+`MemoryRecallRequest` (task title, objective, role, department, project) rather than a bare query
+string, so the query is composed from the whole work context and project scope is applied by
+namespace rather than embedded as noise:
 
 ```python
 class MemoryInjectionStrategy(Protocol):
 
     async def prepare_messages(
-        self, agent_id: NotBlankStr, query_text: NotBlankStr, token_budget: int
+        self, request: MemoryRecallRequest
     ) -> tuple[ChatMessage, ...]: ...
 
     def get_tool_definitions(self) -> tuple[ToolDefinition, ...]: ...
