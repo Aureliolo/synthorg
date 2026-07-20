@@ -7,17 +7,49 @@ the memory seam, which decides what an agent recalls before it acts, is
 reviewable on its own.
 """
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.text_estimation import DefaultTokenEstimator
+from synthorg.core.types import NotBlankStr
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.memory.consolidation.wiki_export import WikiExporter
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.injection_factory import build_memory_injection_strategy
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.memory.reformulation import (
+    LLMQueryReformulator,
+    LLMSufficiencyChecker,
+    QueryReformulator,
+    SufficiencyChecker,
+)
+from synthorg.memory.retrieval.factory import create_hierarchical_retriever
+from synthorg.memory.retrieval.protocol import HierarchicalRetriever
+from synthorg.memory.retrieval.reranking.llm_reranker import LLMQuerySpecificReranker
+from synthorg.memory.retrieval.reranking.protocol import QuerySpecificReranker
+from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.memory.shared_store import OrgSharedKnowledgeStore
 from synthorg.memory.state import MemoryStateSlice, org_memory_backend_of
+from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.structured_text import complete_text
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+
+# A retrieval retry call is a system-owned completion with no per-task
+# attribution, so its cost records key on a fixed synthetic task id.
+_RETRIEVAL_RETRY_TASK_ID: NotBlankStr = NotBlankStr("system:memory:retrieval_retry")
+
+# The reformulation and sufficiency prompts are self-contained (they
+# carry their own instructions and format), so the system message only
+# has to keep the model on task and terse.
+_RETRIEVAL_SYSTEM_PROMPT = (
+    "You assist a memory-retrieval pipeline. Follow the instructions in the "
+    "message exactly and reply with only what they ask for, nothing else."
+)
 
 
 def wiki_exporter_or_none(app_state: AppState) -> WikiExporter | None:
@@ -35,8 +67,115 @@ def wiki_exporter_or_none(app_state: AppState) -> WikiExporter | None:
     )
 
 
+def _retrieval_completion_fn(
+    *,
+    provider: CompletionProvider,
+    model: NotBlankStr,
+    cost_tracker: CostTrackerProtocol | None,
+) -> Callable[[str], Awaitable[str]]:
+    """Adapt an explicit ``(provider, model)`` pair to a completion callback.
+
+    The reformulator and sufficiency checker consume a bare
+    prompt-in/text-out callable; this binds the pinned model, purpose
+    attribution and cost recording behind that shape so both dispatch on
+    the engine's provider rather than picking a client themselves.
+
+    Returns:
+        An async callable taking a prompt and returning the response text.
+    """
+
+    async def _complete(prompt: str) -> str:
+        content, _ = await complete_text(
+            provider,
+            model,
+            system=_RETRIEVAL_SYSTEM_PROMPT,
+            user=prompt,
+            task_id=_RETRIEVAL_RETRY_TASK_ID,
+            purpose=PromptPurposeId.MEMORY_RETRIEVAL_RETRY,
+            cost_tracker=cost_tracker,
+        )
+        return content
+
+    return _complete
+
+
+def _build_reranker(
+    config: MemoryRetrievalConfig,
+    *,
+    provider: CompletionProvider,
+    cost_tracker: CostTrackerProtocol | None,
+) -> QuerySpecificReranker | None:
+    """Build the query-specific reranker when the config asks for it.
+
+    Returns:
+        The reranker, or ``None`` when reranking is disabled.
+    """
+    if not config.query_specific_rerank_enabled:
+        return None
+    return LLMQuerySpecificReranker(
+        provider=provider,
+        model=pin_for(PromptPurposeId.MEMORY_RERANK).model,
+        cost_tracker=cost_tracker,
+    )
+
+
+def _build_hierarchical_retriever(
+    config: MemoryRetrievalConfig,
+    *,
+    backend: MemoryBackend,
+    provider: CompletionProvider,
+    shared_store: SharedKnowledgeStore | None,
+) -> HierarchicalRetriever | None:
+    """Build the hierarchical retriever when the config selects it.
+
+    Returns:
+        The retriever, or ``None`` when the flat retriever is in use.
+    """
+    if config.retriever != "hierarchical":
+        return None
+    return create_hierarchical_retriever(
+        config=config,
+        backend=backend,
+        provider=provider,
+        model=pin_for(PromptPurposeId.MEMORY_RETRIEVAL_ROUTE).model,
+        shared_store=shared_store,
+    )
+
+
+def _build_reformulation(
+    config: MemoryRetrievalConfig,
+    *,
+    provider: CompletionProvider,
+    cost_tracker: CostTrackerProtocol | None,
+) -> tuple[QueryReformulator | None, SufficiencyChecker | None]:
+    """Build the reformulator and sufficiency checker as a wired pair.
+
+    Both or neither: the tool-based strategy runs its Search-and-Ask loop
+    only when both are present, so pairing them here keeps that contract
+    from depending on partial wiring.
+
+    Returns:
+        The ``(reformulator, sufficiency_checker)`` pair, both ``None``
+        when reformulation is disabled.
+    """
+    if not config.query_reformulation_enabled:
+        return None, None
+    completion_fn = _retrieval_completion_fn(
+        provider=provider,
+        model=pin_for(PromptPurposeId.MEMORY_RETRIEVAL_RETRY).model,
+        cost_tracker=cost_tracker,
+    )
+    return (
+        LLMQueryReformulator(completion_fn=completion_fn),
+        LLMSufficiencyChecker(completion_fn=completion_fn),
+    )
+
+
 def build_memory_injection_strategy_or_none(
     app_state: AppState,
+    *,
+    provider: CompletionProvider,
+    cost_tracker: CostTrackerProtocol | None,
 ) -> MemoryInjectionStrategy | None:
     """Build the strategy that seeds memory into an agent's context.
 
@@ -50,6 +189,14 @@ def build_memory_injection_strategy_or_none(
     company-wide knowledge reaches an agent only if it thinks to call a
     Knowledge-Architect tool.
 
+    The three LLM collaborators (reranker, hierarchical retriever,
+    reformulation pair) are constructed here from the same explicit
+    provider the engine dispatches on, each on its pinned model, whenever
+    the retrieval config turns its stage on. Without this the strategy
+    constructor raises the moment an operator enables ``rerank`` or
+    ``hierarchical`` retrieval, taking down boot; the flags default off,
+    so the crash was a latent one.
+
     Returns:
         The strategy, or ``None`` when no memory backend is wired, in
         which case the engine keeps its no-injection behaviour.
@@ -57,14 +204,26 @@ def build_memory_injection_strategy_or_none(
     backend = app_state.slice(MemoryStateSlice).backend
     if backend is None:
         return None
+    config = app_state.config.memory.retrieval
     org_backend = org_memory_backend_of(app_state)
+    shared_store: SharedKnowledgeStore | None = (
+        OrgSharedKnowledgeStore(org_backend) if org_backend is not None else None
+    )
+    reformulator, sufficiency_checker = _build_reformulation(
+        config, provider=provider, cost_tracker=cost_tracker
+    )
     return build_memory_injection_strategy(
-        app_state.config.memory.retrieval,
+        config,
         backend=backend,
         token_estimator=DefaultTokenEstimator(),
-        shared_store=(
-            OrgSharedKnowledgeStore(org_backend) if org_backend is not None else None
+        shared_store=shared_store,
+        hierarchical_retriever=_build_hierarchical_retriever(
+            config, backend=backend, provider=provider, shared_store=shared_store
         ),
+        reranker=_build_reranker(config, provider=provider, cost_tracker=cost_tracker),
+        reformulator=reformulator,
+        sufficiency_checker=sufficiency_checker,
+        self_editing_config=app_state.config.memory.self_editing,
     )
 
 

@@ -16,6 +16,7 @@ from synthorg.memory.backends.composite.config import (
 from synthorg.memory.consolidation.config import ConsolidationConfig
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.self_editing_models import SelfEditingMemoryConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.settings.enums import SettingNamespace
@@ -238,6 +239,15 @@ class CompanyMemoryConfig(BaseModel):
         description=(
             "Composite backend routing configuration.  "
             "Required when backend is ``'composite'``."
+        ),
+    )
+    self_editing: SelfEditingMemoryConfig = Field(
+        default_factory=SelfEditingMemoryConfig,
+        description=(
+            "MemGPT-style self-editing memory settings, used when "
+            "``retrieval.strategy`` is ``self_editing``: which categories "
+            "the agent may write, whether core writes are allowed, and the "
+            "per-tier entry caps."
         ),
     )
 

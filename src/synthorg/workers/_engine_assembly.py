@@ -533,7 +533,11 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         security_config_provider=lambda: app_state.security_runtime_config.current,
         audit_log=app_state.slice(SecurityStateSlice).audit_log,
         memory_backend=app_state.slice(MemoryStateSlice).backend,
-        memory_injection_strategy=build_memory_injection_strategy_or_none(app_state),
+        memory_injection_strategy=build_memory_injection_strategy_or_none(
+            app_state,
+            provider=provider,
+            cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+        ),
         # The write side: without these an agent recalls but never
         # learns, so a second run of the same objective starts from
         # nothing. The engine re-reads the capture switch per task, so
