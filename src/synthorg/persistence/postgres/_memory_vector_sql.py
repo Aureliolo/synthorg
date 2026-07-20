@@ -157,15 +157,22 @@ def _qualified_columns() -> LiteralString:
     return ", ".join(f"e.{c.strip()}" for c in ENTRY_COLUMNS.split(","))
 
 
-def list_filtered(where: LiteralString) -> LiteralString:
+def list_filtered(where: LiteralString, *, oldest_first: bool = False) -> LiteralString:
     """Return the metadata-only listing query.
 
+    Args:
+        where: The pre-built, parameterised filter fragment.
+        oldest_first: Order oldest-first (for cap eviction) rather than
+            the default newest-first.
+
     Returns:
-        A ``SELECT`` ordered newest-first for determinism.
+        A ``SELECT`` ordered by creation time (direction per
+        ``oldest_first``), with ``memory_id`` breaking ties.
     """
+    direction: LiteralString = "ASC" if oldest_first else "DESC"
     return (
         f"SELECT {_qualified_columns()} FROM memory_entries AS e "  # noqa: S608 -- fragment is repository-built from a typed spec
-        f"WHERE {where} ORDER BY e.created_at DESC, e.memory_id ASC LIMIT %s"
+        f"WHERE {where} ORDER BY e.created_at {direction}, e.memory_id ASC LIMIT %s"
     )
 
 

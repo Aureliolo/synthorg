@@ -347,18 +347,27 @@ class PostgresMemoryVectorRepository:
                 # between the three queries and yield a score computed
                 # from an inconsistent corpus.
                 await conn.set_isolation_level(psycopg.IsolationLevel.REPEATABLE_READ)
-                async with conn.transaction():
-                    rows = await self._fetch(
-                        conn, sql.lexical_postings(where), (terms, *params)
-                    )
-                    if not rows:
-                        return ()
-                    stats_rows = await self._fetch(
-                        conn, sql.corpus_stats(where), tuple(params)
-                    )
-                    frequency_rows = await self._fetch(
-                        conn, sql.document_frequency(where), (terms, *params)
-                    )
+                try:
+                    async with conn.transaction():
+                        rows = await self._fetch(
+                            conn, sql.lexical_postings(where), (terms, *params)
+                        )
+                        if not rows:
+                            return ()
+                        stats_rows = await self._fetch(
+                            conn, sql.corpus_stats(where), tuple(params)
+                        )
+                        frequency_rows = await self._fetch(
+                            conn, sql.document_frequency(where), (terms, *params)
+                        )
+                finally:
+                    # psycopg keeps this on the connection object, applied
+                    # to every later transaction, and the pool has no
+                    # reset hook; without this restore an unrelated later
+                    # borrower would silently run under REPEATABLE READ and
+                    # hit sporadic serialization failures it never asked
+                    # for. Reset outside the transaction, always.
+                    await conn.set_isolation_level(None)
         except psycopg.Error as exc:
             self._fail("search_lexical", MEMORY_ENTRY_RETRIEVAL_FAILED, exc)
         stats = stats_rows[0] if stats_rows else None
@@ -395,7 +404,9 @@ class PostgresMemoryVectorRepository:
         try:
             async with self._pool.connection() as conn:
                 rows = await self._fetch(
-                    conn, sql.list_filtered(where), (*params, spec.limit)
+                    conn,
+                    sql.list_filtered(where, oldest_first=spec.oldest_first),
+                    (*params, spec.limit),
                 )
         except psycopg.Error as exc:
             self._fail("list_filtered", MEMORY_ENTRY_RETRIEVAL_FAILED, exc)

@@ -269,7 +269,11 @@ class MemoryConsolidationService:
                 effective_limit = min(
                     remaining, max_enforce_batch, _MEMORY_QUERY_MAX_LIMIT
                 )
-                query = MemoryQuery(limit=effective_limit)
+                # Oldest-first: cap enforcement keeps the agent's most
+                # recent learning and evicts the stale tail. A default
+                # (newest-first) listing would delete exactly what a
+                # second run needs.
+                query = MemoryQuery(limit=effective_limit, oldest_first=True)
                 entries = await self._backend.retrieve(agent_id, query)
                 fresh = [e for e in entries if str(e.id) not in seen]
                 if not fresh:

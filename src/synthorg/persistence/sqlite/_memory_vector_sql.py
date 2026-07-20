@@ -127,16 +127,24 @@ def delete_entries_by_id(id_placeholders: str) -> str:
     return f"DELETE FROM memory_entries WHERE memory_id IN ({id_placeholders})"  # noqa: S608 -- placeholders are count-derived
 
 
-def list_filtered(where: str) -> str:
+def list_filtered(where: str, *, oldest_first: bool = False) -> str:
     """Return the metadata-only listing query for a filter fragment.
 
+    Args:
+        where: The pre-built, parameterised filter fragment.
+        oldest_first: Order oldest-first (for cap eviction) rather than
+            the default newest-first.
+
     Returns:
-        A ``SELECT`` ordered newest-first for determinism.
+        A ``SELECT`` ordered by creation time (direction per
+        ``oldest_first``), with ``memory_id`` breaking ties for
+        determinism.
     """
     cols = ", ".join(f"e.{c.strip()}" for c in ENTRY_COLUMNS.split(","))
+    direction = "ASC" if oldest_first else "DESC"
     return (
         f"SELECT {cols} FROM memory_entries AS e "  # noqa: S608 -- fragment is repository-built from a typed spec
-        f"WHERE {where} ORDER BY e.created_at DESC, e.memory_id ASC LIMIT ?"
+        f"WHERE {where} ORDER BY e.created_at {direction}, e.memory_id ASC LIMIT ?"
     )
 
 

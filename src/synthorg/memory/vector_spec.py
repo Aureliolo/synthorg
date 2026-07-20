@@ -79,6 +79,10 @@ class MemoryVectorSearchSpec(BaseModel):
         le=MAX_SEARCH_LIMIT,
         description="Maximum rows in this ranked list",
     )
+    oldest_first: bool = Field(
+        default=False,
+        description="Order a metadata-only listing oldest-first, for eviction",
+    )
     since: AwareDatetime | None = Field(
         default=None,
         description="Only entries created at or after this instant",

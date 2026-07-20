@@ -23,6 +23,22 @@ spend an operator cannot see.
 from datetime import UTC, datetime
 from typing import Final
 
+from litellm.exceptions import (
+    APIConnectionError as LiteLLMConnectionError,
+)
+from litellm.exceptions import (
+    InternalServerError as LiteLLMInternalError,
+)
+from litellm.exceptions import (
+    RateLimitError as LiteLLMRateLimit,
+)
+from litellm.exceptions import (
+    ServiceUnavailableError as LiteLLMUnavailable,
+)
+from litellm.exceptions import (
+    Timeout as LiteLLMTimeout,
+)
+
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
@@ -60,17 +76,31 @@ _SYSTEM_AGENT_ID: Final[NotBlankStr] = NotBlankStr("system:memory")
 _SYSTEM_TASK_ID: Final[NotBlankStr] = NotBlankStr("system:memory:embedding")
 
 
+# LiteLLM's own transient exception types. A deterministic fault
+# (auth, bad request, model-not-found, content policy) is NOT here: it
+# repeats identically, so retrying it only burns the backoff budget on
+# the read + write hot path and masks the real cause behind a generic
+# retry-exhausted error. Mirrors the completion driver's own mapping.
+_RETRYABLE_EMBEDDING_ERRORS: Final[tuple[type[Exception], ...]] = (
+    LiteLLMRateLimit,
+    LiteLLMTimeout,
+    LiteLLMUnavailable,
+    LiteLLMInternalError,
+    LiteLLMConnectionError,
+)
+
+
 def _is_retryable(exc: Exception) -> bool:
     """Whether an embedding failure is worth another attempt.
 
-    A malformed response or a dimension mismatch is a configuration
-    fault that repeats identically; everything else reaching here came
-    off the wire.
+    Only genuinely transient provider faults (rate limit, timeout, 5xx,
+    connection reset) retry; a deterministic misconfiguration surfaces
+    immediately instead of repeating three times.
 
     Returns:
         ``True`` when the call should be retried.
     """
-    return not isinstance(exc, MemoryEmbeddingError)
+    return isinstance(exc, _RETRYABLE_EMBEDDING_ERRORS)
 
 
 class ProviderTextEmbedder:

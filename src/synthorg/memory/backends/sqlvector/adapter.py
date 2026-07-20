@@ -121,7 +121,11 @@ class SqlVectorBackend:
         self._max_memories_per_agent = max_memories_per_agent
         self._clock = clock or SystemClock()
         self._connected = False
-        self._cap_lock = asyncio.Lock()
+        # Per-agent, not global: cap enforcement is a per-agent
+        # read-then-write, so one busy agent's eviction must not serialise
+        # every other agent's stores. ``setdefault`` is atomic here (no
+        # await between check and insert on a single event loop).
+        self._cap_locks: dict[NotBlankStr, asyncio.Lock] = {}
 
     @property
     def is_connected(self) -> bool:
@@ -306,10 +310,11 @@ class SqlVectorBackend:
         Count, select-oldest and delete are three round trips, so two
         concurrent stores for one agent would each compute ``excess``
         from the same pre-delete count and evict twice as much as either
-        needed. Serialising the whole sequence keeps it read-then-write
-        consistent.
+        needed. Serialising the whole sequence per agent keeps it
+        read-then-write consistent without blocking other agents.
         """
-        async with self._cap_lock:
+        lock = self._cap_locks.setdefault(agent_id, asyncio.Lock())
+        async with lock:
             total = await self._repository.count(agent_id)
             excess = total - self._max_memories_per_agent
             if excess <= 0:
@@ -342,6 +347,7 @@ class SqlVectorBackend:
                 () if query.include_superseded else (NotBlankStr(SUPERSEDED_TAG),)
             ),
             limit=limit,
+            oldest_first=query.oldest_first,
             since=query.since,
             until=query.until,
             now=self._clock.now(),
@@ -505,12 +511,13 @@ class SqlVectorBackend:
         elif request.expires_at is not None:
             updates["expires_at"] = request.expires_at
         updated = existing.model_copy(update=updates)
-        # Re-embed only when the text actually changed: embedding is the
-        # expensive part of a write, and a metadata-only edit leaves the
-        # vector valid.
-        embedding = (
-            await self._embed(updated.content) if request.content is not None else None
-        )
+        # Always re-embed the (possibly unchanged) content. The repository
+        # treats ``embedding=None`` as "drop the dense row", so passing
+        # None on a metadata-only edit (tags, expiry) would silently strip
+        # the entry from dense recall while it stays lexically findable,
+        # splitting the two RRF arms. Re-embedding the same content
+        # reproduces the same vector, so the dense row is preserved.
+        embedding = await self._embed(updated.content)
         try:
             await self._repository.upsert(updated, embedding=embedding)
         except PersistenceError as exc:

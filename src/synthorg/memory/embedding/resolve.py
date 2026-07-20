@@ -28,6 +28,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
     MEMORY_EMBEDDER_AUTO_SELECTED,
+    MEMORY_EMBEDDER_PROVIDER_INFERRED,
 )
 
 logger = get_logger(__name__)
@@ -151,9 +152,19 @@ def resolve_embedder_config(
         )
         raise MemoryConfigError(msg)
 
-    # Provider defaults to model for local embedder setups
-    # (e.g. Ollama serves models by name).
+    # An LMEB-auto-selected open model is served by name (the local /
+    # self-hosted convention litellm dispatches directly), so the
+    # provider mirrors the model. Log the inference rather than doing it
+    # silently: for a hosted provider this same-name assumption is wrong,
+    # and an operator who sees the model fail to embed needs the boot log
+    # to say "the provider was guessed" rather than debugging an opaque
+    # auth error. Set memory.embedder_provider to bind it explicitly.
     if provider is None:
+        logger.info(
+            MEMORY_EMBEDDER_PROVIDER_INFERRED,
+            model=model,
+            reason="auto-selected model has no explicit provider; using model name",
+        )
         provider = model
 
     return EmbedderConfig(

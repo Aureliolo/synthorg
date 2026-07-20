@@ -201,6 +201,7 @@ operator needs when the dashboard reports memory off.
 
 MEMORY_EMBEDDER_AUTO_SELECTED: Final[str] = "memory.embedder.auto_selected"
 MEMORY_EMBEDDER_AUTO_SELECT_FAILED: Final[str] = "memory.embedder.auto_select_failed"
+MEMORY_EMBEDDER_PROVIDER_INFERRED: Final[str] = "memory.embedder.provider_inferred"
 MEMORY_EMBEDDER_CHECKPOINT_ACTIVE: Final[str] = "memory.embedder.checkpoint_active"
 MEMORY_EMBEDDER_CHECKPOINT_MISSING: Final[str] = "memory.embedder.checkpoint_missing"
 

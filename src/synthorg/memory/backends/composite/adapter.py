@@ -335,10 +335,21 @@ class CompositeBackend:
             query,
             targets,
         )
-        all_entries.sort(
-            key=lambda e: e.relevance_score if e.relevance_score is not None else 0.0,
-            reverse=True,
-        )
+        if query.oldest_first:
+            # A cap sweep evicts the oldest, so merge children oldest-first
+            # by creation time rather than by relevance.
+            all_entries.sort(key=lambda e: (e.created_at, str(e.id)))
+        else:
+            # id breaks relevance ties so the merged order is deterministic
+            # across fan-out completion (a metadata-only query leaves every
+            # relevance_score None, i.e. a full tie).
+            all_entries.sort(
+                key=lambda e: (
+                    e.relevance_score if e.relevance_score is not None else 0.0,
+                    str(e.id),
+                ),
+                reverse=True,
+            )
         return tuple(all_entries[: query.limit])
 
     async def get(

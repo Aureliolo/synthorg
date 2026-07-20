@@ -120,8 +120,14 @@ class SQLiteMemoryVectorRepository:
                 async with self._write_context():
                     # Positional bool is the sqlite3 API's own shape.
                     await self._db.enable_load_extension(True)  # noqa: FBT003
-                    await self._db.load_extension(sqlite_vec.loadable_path())
-                    await self._db.enable_load_extension(False)  # noqa: FBT003
+                    try:
+                        await self._db.load_extension(sqlite_vec.loadable_path())
+                    finally:
+                        # Always re-disable, even if load_extension raises:
+                        # the connection is shared by every repository, so
+                        # leaving extension-loading enabled for the process
+                        # life is a durable capability leak on failure.
+                        await self._db.enable_load_extension(False)  # noqa: FBT003
                     await self._db.execute(
                         sql.create_vector_table(self._vector_table, self._dimensions)
                     )
@@ -395,7 +401,8 @@ class SQLiteMemoryVectorRepository:
         where, params = sql.build_filter_clause(spec)
         try:
             async with self._db.execute(
-                sql.list_filtered(where), (*params, spec.limit)
+                sql.list_filtered(where, oldest_first=spec.oldest_first),
+                (*params, spec.limit),
             ) as cursor:
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

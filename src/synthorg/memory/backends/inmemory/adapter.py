@@ -297,7 +297,13 @@ class InMemoryBackend:
                 hits = scored
             else:
                 hits = [e for e in agent_store.values() if matches(e, query, now)]
-                hits.sort(key=lambda e: e.created_at, reverse=True)
+                # id ASC breaks creation-time ties identically in both
+                # directions (a stable secondary pass), matching the
+                # durable arm's ``created_at <dir>, memory_id ASC``.
+                # Oldest-first when a cap sweep asks for it (it evicts the
+                # oldest); newest-first otherwise.
+                hits.sort(key=lambda e: str(e.id))
+                hits.sort(key=lambda e: e.created_at, reverse=not query.oldest_first)
             result = tuple(hits[: query.limit])
         logger.debug(
             MEMORY_ENTRY_RETRIEVED,

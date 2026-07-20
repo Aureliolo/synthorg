@@ -367,6 +367,15 @@ class MemoryQuery(BaseModel):
             "history views opt back in."
         ),
     )
+    oldest_first: bool = Field(
+        default=False,
+        description=(
+            "Order a metadata-only listing oldest-first instead of the "
+            "default newest-first. Cap enforcement evicts the oldest, so "
+            "it must see them first; ignored once ranking (text/embedding) "
+            "orders the result by relevance."
+        ),
+    )
 
     @field_validator("tags", mode="after")
     @classmethod
