@@ -74,8 +74,9 @@ def inverse_document_frequency(*, doc_count: int, doc_frequency: int) -> float:
 
     Returns:
         The IDF weight. Non-negative: the ``1 +`` inside the logarithm
-        keeps a term appearing in every document at zero rather than
-        negative, so a ubiquitous term cannot penalise a document.
+        keeps a term appearing in every document near zero (exactly zero
+        only as the corpus grows) rather than negative, so a ubiquitous
+        term cannot penalise a document.
     """
     numerator = doc_count - doc_frequency + 0.5
     denominator = doc_frequency + 0.5

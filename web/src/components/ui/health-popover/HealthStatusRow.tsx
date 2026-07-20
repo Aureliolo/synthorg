@@ -10,6 +10,8 @@ export interface HealthStatusRowProps {
   description: string
   state: SubsystemState
   detail?: string | undefined
+  /** Extra classes on the card, e.g. a grid column span. */
+  className?: string | undefined
   /**
    * Optional recovery action (e.g. "Retry now"). Rendered as a small
    * button inside the card footer; only surfaced when the subsystem is
@@ -25,6 +27,7 @@ export function HealthStatusRow({
   state,
   detail,
   action,
+  className,
 }: HealthStatusRowProps) {
   const meta = STATE_META[state]
   return (
@@ -33,6 +36,7 @@ export function HealthStatusRow({
         'flex flex-col gap-2 rounded-lg border p-card transition-colors',
         meta.borderClass,
         meta.bgClass,
+        className,
       )}
     >
       <div className="flex items-start justify-between gap-3">

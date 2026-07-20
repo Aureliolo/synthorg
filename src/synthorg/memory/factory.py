@@ -10,6 +10,8 @@ durable backend cannot invent for itself: a
 the backend never reaches across the persistence boundary itself.
 """
 
+from typing import Final
+
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.memory.backend_deps import MemoryBackendDeps
 from synthorg.memory.config import CompanyMemoryConfig
@@ -25,9 +27,9 @@ from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 
-SQL_VECTOR_BACKEND = "sqlvector"
-IN_MEMORY_BACKEND = "inmemory"
-COMPOSITE_BACKEND = "composite"
+SQL_VECTOR_BACKEND: Final[str] = "sqlvector"
+IN_MEMORY_BACKEND: Final[str] = "inmemory"
+COMPOSITE_BACKEND: Final[str] = "composite"
 
 
 def _create_sqlvector_backend(
@@ -86,7 +88,7 @@ def _create_inmemory_backend(config: CompanyMemoryConfig) -> MemoryBackend:
     """Create the ephemeral, keyword-only backend.
 
     Retained as an explicit operator opt-in, never an automatic
-    fallback: it loses every memory on restart and matches by substring
+    fallback: it loses every memory on restart and ranks by shared terms
     rather than meaning, so silently selecting it would look like
     working memory while quietly recalling the wrong things.
 

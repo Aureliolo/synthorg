@@ -9,16 +9,16 @@ Knowledge-Architect tools, the ontology sync). Adapting one to the other
 is what makes the org layer reachable from a working agent's context
 rather than only from a tool the agent has to think to call.
 
-Category mapping is deliberate, not incidental: an org fact is a
-convention, procedure or definition, which is semantic or procedural
-knowledge, never one agent's episode.
+Category mapping is deliberate, not incidental: every org-fact category
+(core policy, ADR, procedure, convention, entity definition) is semantic
+or procedural knowledge, never one agent's episode.
 """
 
 from typing import Final
 
 from synthorg.core.domain_errors import FeatureNotImplementedError
 from synthorg.core.memory_enums import MemoryCategory
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, require_not_blank
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.models import (
     MemoryEntry,
@@ -100,7 +100,10 @@ class OrgSharedKnowledgeStore:
         role: NotBlankStr = _DEFAULT_AUTHOR_ROLE,
     ) -> None:
         self._backend = backend
-        self._role = role
+        # ``NotBlankStr`` only enforces inside a Pydantic model, so a
+        # caller passing a blank role on this plain __init__ would slip
+        # through to the org write as the author's role. Validate here.
+        self._role = NotBlankStr(require_not_blank(role, "role"))
 
     async def publish(
         self,

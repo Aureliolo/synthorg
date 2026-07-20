@@ -17,10 +17,10 @@ class TestCompositeBackendConfig:
 
     def test_custom_routes(self) -> None:
         cfg = CompositeBackendConfig(
-            routes={"memories": "mem0", "scratch": "inmemory"},
+            routes={"memories": "sqlvector", "scratch": "inmemory"},
             default="inmemory",
         )
-        assert cfg.routes["memories"] == "mem0"
+        assert cfg.routes["memories"] == "sqlvector"
         assert cfg.routes["scratch"] == "inmemory"
 
     def test_frozen(self) -> None:

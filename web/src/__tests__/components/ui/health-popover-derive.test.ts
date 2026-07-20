@@ -72,6 +72,20 @@ describe('deriveHealthSubsystemStates memory mapping', () => {
     expect(states.memoryDetail).toBeUndefined()
   })
 
+  it('holds memory unknown (not down) when the probe itself errored', () => {
+    // A failed /health probe says nothing about memory specifically, so
+    // it must read as unknown rather than falsely accusing the memory
+    // subsystem of being down.
+    const states = deriveHealthSubsystemStates(
+      { state: 'error', message: 'network', fetchedAt: new Date(0) },
+      true,
+      false,
+      false,
+    )
+    expect(states.memoryState).toBe('unknown')
+    expect(states.memoryDetail).toBeUndefined()
+  })
+
   it('falls back to no detail when the backend name is blank', () => {
     const states = deriveHealthSubsystemStates(
       okLoadState({ state: 'durable', backend: '  ', detail: null }),

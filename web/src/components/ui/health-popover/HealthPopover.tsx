@@ -77,7 +77,7 @@ export function HealthPopover({ children }: HealthPopoverProps) {
   // Live-updating "X seconds ago" ticker. Starts when the dialog opens,
   // stops when it closes, so we never hold a background timer for a
   // closed modal. 1-second cadence is fine at this scale: the dialog
-  // shows at most 4 subsystem cards and a small metadata block.
+  // shows at most 5 subsystem cards and a small metadata block.
   useEffect(() => {
     if (!open) return
     const id = setInterval(() => setNowMs(Date.now()), 1000)

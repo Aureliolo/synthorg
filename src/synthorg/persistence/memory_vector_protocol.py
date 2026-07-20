@@ -33,11 +33,15 @@ from synthorg.memory.vector_spec import MemoryVectorSearchSpec
 class MemoryVectorRepository(Protocol):
     """Durable agent-memory storage with hybrid dense + lexical retrieval.
 
-    Implementations back the vector index with pgvector (Postgres) or
-    sqlite-vec (SQLite) and the lexical index with ``tsvector`` or FTS5
-    respectively, keeping both backends at API parity.
+    Implementations back the dense index with pgvector (Postgres) or
+    sqlite-vec (SQLite), and the lexical index with the same declarative
+    ``memory_entry_terms`` inverted index on both, scored by the shared
+    BM25 code (neither FTS5 nor tsvector), so the two backends rank
+    identically and stay at API parity.
 
-    Every method raises ``PersistenceError`` on failure.
+    Every method raises ``PersistenceError`` on failure, except
+    :meth:`ensure_ready`, which deliberately degrades rather than raising
+    (see its docstring).
     """
 
     async def ensure_ready(self, dimensions: int | None = None) -> None:

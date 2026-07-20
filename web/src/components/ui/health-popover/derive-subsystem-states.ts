@@ -1,7 +1,6 @@
 /** Hook deriving the five subsystem states (and overall) from health + WS state. */
 
-import type { MemoryHealth } from '@/api/types/dtos.gen'
-import type { MemoryState } from '@/api/types/enum-values.gen'
+import type { MemoryHealth, MemoryState } from '@/api/types/system'
 import type { LoadState, SubsystemState } from './health-popover.utils'
 
 export interface DerivedSubsystemStates {

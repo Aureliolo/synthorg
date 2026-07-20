@@ -196,9 +196,9 @@ class SelfEditingMemoryConfig(BaseModel):
         le=100,
         description=(
             "How many existing entries a candidate write is compared "
-            "against for deduplication. Matches the top-k the Mem0 "
-            "consolidation result uses; larger widens the duplicate net "
-            "at the cost of one bigger read per write."
+            "against for deduplication. Ten follows the consolidation "
+            "literature's top-k; larger widens the duplicate net at the "
+            "cost of one bigger read per write."
         ),
     )
 

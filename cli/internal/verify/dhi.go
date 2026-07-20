@@ -78,7 +78,7 @@ Fxa4333s1KsL9ISjtmRzGNih9lNRsqfRVjgFgJIdL6EQ9dohdanvn7r2cg==
 // is skipped for non-default registries; see the dhiRegistry doc comment).
 var dhiPinnedIndexDigests = map[string]string{
 	"dhi.io/" + config.DefaultPostgresImageName + ":" + config.DefaultPostgresImageTag: config.DefaultPostgresImageDigest,
-	"dhi.io/nats:" + config.DefaultNATSImageTag:         config.DefaultNATSImageDigest,
+	"dhi.io/nats:" + config.DefaultNATSImageTag:                                        config.DefaultNATSImageDigest,
 }
 
 // DHIPinnedIndexDigest returns the pinned index digest for a DHI image.
@@ -162,12 +162,30 @@ func verifyOneDHI(ctx context.Context, image string, pubKey *ecdsa.PublicKey) DH
 	}
 	r.Digest = platformDigest
 
+	// 3-6. Verify SLSA provenance and the cosign signature over it.
+	verifyDHIProvenanceAndSignature(ctx, repo, platformDigest, pubKey, &r)
+
+	return r
+}
+
+// verifyDHIProvenanceAndSignature runs the attestation and signature
+// half of the DHI check (steps 3-6), recording every outcome on r. Split
+// from verifyOneDHI so each half stays within the function-size budget;
+// it writes results through the pointer rather than returning them
+// because the two halves share the one accumulating DHIVerifyResult.
+func verifyDHIProvenanceAndSignature(
+	ctx context.Context,
+	repo string,
+	platformDigest string,
+	pubKey *ecdsa.PublicKey,
+	r *DHIVerifyResult,
+) {
 	// 3. Discover SLSA v1 provenance attestation via referrers API.
 	attDigest, err := findSLSAv1Attestation(ctx, repo, platformDigest)
 	if err != nil {
 		r.SLSAErr = err
 		r.SigErr = fmt.Errorf("discovering SLSA attestation: %w", err)
-		return r
+		return
 	}
 	r.AttDigest = attDigest
 
@@ -175,7 +193,7 @@ func verifyOneDHI(ctx context.Context, image string, pubKey *ecdsa.PublicKey) DH
 	if err := verifyAttestationContent(ctx, repo, attDigest, platformDigest); err != nil {
 		r.SLSAErr = err
 		r.SigErr = fmt.Errorf("attestation verification: %w", err)
-		return r
+		return
 	}
 	r.SLSAOK = true
 
@@ -183,7 +201,7 @@ func verifyOneDHI(ctx context.Context, image string, pubKey *ecdsa.PublicKey) DH
 	sigDesc, err := findCosignSignatureOnAttestation(ctx, repo, attDigest)
 	if err != nil {
 		r.SigErr = fmt.Errorf("discovering cosign signature: %w", err)
-		return r
+		return
 	}
 	r.SigDigest = sigDesc.Digest.String()
 
@@ -191,12 +209,10 @@ func verifyOneDHI(ctx context.Context, image string, pubKey *ecdsa.PublicKey) DH
 	rekorIdx, err := verifyCosignDHISignature(ctx, repo, sigDesc, attDigest, pubKey)
 	if err != nil {
 		r.SigErr = fmt.Errorf("signature verification: %w", err)
-		return r
+		return
 	}
 	r.SigOK = true
 	r.RekorLogIndex = rekorIdx
-
-	return r
 }
 
 // ── Index resolution ───────────────────────────────────────────────

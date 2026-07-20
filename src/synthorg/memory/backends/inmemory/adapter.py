@@ -153,7 +153,7 @@ class InMemoryBackend:
 
     @property
     def supports_vector_search(self) -> bool:
-        """No embedding model -- substring matching only."""
+        """No embedding model -- term-overlap ranking only."""
         return False
 
     @property
@@ -384,7 +384,7 @@ class InMemoryBackend:
         async with self._store_lock:
             # Sample the clock under the lock so a stale instant captured
             # while waiting on contention cannot revive an entry that
-            # expired during the wait (mirrors store() and mem0 update()).
+            # expired during the wait (mirrors store()).
             now = self._clock.now()
             agent_store = self._store.get(str(agent_id), {})
             entry = agent_store.get(str(memory_id))

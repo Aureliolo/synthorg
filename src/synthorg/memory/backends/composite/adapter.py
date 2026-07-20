@@ -2,7 +2,7 @@
 
 Dispatches each memory operation to a child backend based on the
 ``namespace`` field of the request/query.  Memory IDs are prefixed
-with the backend name (``"mem0:abc123"``) so that ``get()`` and
+with the backend name (``"sqlvector:abc123"``) so that ``get()`` and
 ``delete()`` can route in O(1) without scanning all children.
 """
 
@@ -54,7 +54,7 @@ class CompositeBackend:
     by delegating to child backends based on the ``namespace`` field.
 
     Args:
-        children: Named backend instances (e.g. ``{"mem0": ...,
+        children: Named backend instances (e.g. ``{"sqlvector": ...,
             "inmemory": ...}``).
         config: Routing configuration.
 

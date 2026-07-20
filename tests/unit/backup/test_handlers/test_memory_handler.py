@@ -11,13 +11,17 @@ from synthorg.backup.models import BackupComponent
 
 
 def _populate_memory_dir(path: Path) -> int:
-    """Create a fake memory directory tree and return total bytes."""
+    """Create a fake memory directory tree and return total bytes.
+
+    Mirrors the on-disk artefacts backends keep outside the operational
+    database: materialised skill files and embedding checkpoints.
+    """
     path.mkdir(parents=True, exist_ok=True)
-    sub = path / "qdrant"
+    sub = path / "checkpoints"
     sub.mkdir()
-    f1 = path / "history.db"
+    f1 = path / "SKILL.md"
     f1.write_bytes(b"x" * 100)
-    f2 = sub / "collection.bin"
+    f2 = sub / "embedder.bin"
     f2.write_bytes(b"y" * 200)
     return 300
 
@@ -53,8 +57,8 @@ class TestBackup:
 
         assert size == expected_size
         # Verify the copied tree structure
-        assert (target_dir / "memory" / "history.db").exists()
-        assert (target_dir / "memory" / "qdrant" / "collection.bin").exists()
+        assert (target_dir / "memory" / "SKILL.md").exists()
+        assert (target_dir / "memory" / "checkpoints" / "embedder.bin").exists()
 
     async def test_returns_zero_if_source_missing(self, tmp_path: Path) -> None:
         handler = MemoryComponentHandler(tmp_path / "nonexistent")
@@ -105,8 +109,8 @@ class TestRestore:
         await handler.restore(backup_dir)
 
         # Live dir should now contain restored data
-        assert (live_dir / "history.db").exists()
-        assert (live_dir / "qdrant" / "collection.bin").exists()
+        assert (live_dir / "SKILL.md").exists()
+        assert (live_dir / "checkpoints" / "embedder.bin").exists()
         # Old file should be gone (replaced by backup copy)
         assert not (live_dir / "old_file.txt").exists()
 
@@ -162,7 +166,7 @@ class TestRestore:
         await handler.restore(backup_dir)
 
         assert live_dir.exists()
-        assert (live_dir / "history.db").exists()
+        assert (live_dir / "SKILL.md").exists()
 
 
 # -- validate_source -----------------------------------------------------------
