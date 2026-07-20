@@ -394,7 +394,9 @@ class SelfEditingMemoryStrategy:
         Returns:
             Result of type ``str``.
         """
-        entries = await self._backend.retrieve(agent_id, self._core_query())
+        entries = await self._backend.retrieve(
+            agent_id, self._core_query(ambient_read_namespaces())
+        )
         logger.info(
             MEMORY_SELF_EDIT_CORE_READ,
             agent_id=agent_id,

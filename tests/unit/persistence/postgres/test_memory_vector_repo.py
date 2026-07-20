@@ -212,10 +212,11 @@ class _FailingCursor:
 
 def _failing_connection(exc: psycopg.Error) -> AsyncConnection:
     """A connection whose cursor statements raise *exc*."""
-    return mock_of[AsyncConnection](
+    conn: AsyncConnection = mock_of[AsyncConnection](
         cursor=lambda row_factory=None: _FailingCursor(exc),
         set_autocommit=_anoop,
     )
+    return conn
 
 
 class TestQueryErrorPaths:
