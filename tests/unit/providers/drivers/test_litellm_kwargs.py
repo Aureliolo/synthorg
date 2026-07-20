@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.providers.drivers.litellm_kwargs import (
     _AcompletionKwargs,
     _apply_completion_config,
@@ -61,3 +62,17 @@ class TestApplyCompletionConfig:
         assert "max_tokens" not in result
         assert "timeout" not in result
         assert "stop" not in result
+
+    def test_reasoning_effort_emitted_when_set(self) -> None:
+        """A set ``reasoning_effort`` maps to the litellm kwarg as its value."""
+        result = _apply_completion_config(
+            _base_kwargs(),
+            CompletionConfig(reasoning_effort=ReasoningEffort.HIGH),
+        )
+
+        assert result["reasoning_effort"] == "high"
+
+    def test_reasoning_effort_absent_by_default(self) -> None:
+        result = _apply_completion_config(_base_kwargs(), CompletionConfig())
+
+        assert "reasoning_effort" not in result

@@ -60,6 +60,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_CONNECTION_ERROR,
     PROVIDER_QUOTA_EXCEEDED,
     PROVIDER_RATE_LIMITED,
+    PROVIDER_REASONING_EFFORT_DROPPED,
     PROVIDER_STREAM_CHUNK_NO_DELTA,
     PROVIDER_STREAM_DONE,
 )
@@ -315,10 +316,9 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
             await self._ensure_credentials_resolved()
             model_config = self._resolve_model(model)
             await self._ensure_vram_capacity(model_config.id)
-            litellm_model = f"{self._routing_key}/{model_config.id}"
             kwargs = self._build_kwargs(
                 messages,
-                litellm_model,
+                model_config,
                 tools=tools,
                 config=config,
             )
@@ -359,10 +359,9 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
             await self._ensure_credentials_resolved()
             model_config = self._resolve_model(model)
             await self._ensure_vram_capacity(model_config.id)
-            litellm_model = f"{self._routing_key}/{model_config.id}"
             kwargs = self._build_kwargs(
                 messages,
-                litellm_model,
+                model_config,
                 tools=tools,
                 config=config,
                 stream=True,
@@ -532,7 +531,7 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
     def _build_kwargs(
         self,
         messages: list[ChatMessage],
-        litellm_model: str,
+        model_config: ProviderModelConfig,
         *,
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
@@ -544,6 +543,7 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
             A kwargs dict for ``litellm.acompletion`` with credentials,
             base URL, and completion config merged in.
         """
+        litellm_model = f"{self._routing_key}/{model_config.id}"
         kwargs: _AcompletionKwargs = {
             "model": litellm_model,
             "messages": messages_to_dicts(messages),
@@ -578,7 +578,38 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
                 if self._config.keep_alive is not None
                 else _OLLAMA_DEFAULT_KEEP_ALIVE
             )
-        return _apply_completion_config(kwargs, config)
+        merged = _apply_completion_config(kwargs, config)
+        return self._apply_capability_gated_features(merged, model_config, config)
+
+    def _apply_capability_gated_features(
+        self,
+        kwargs: _AcompletionKwargs,
+        model_config: ProviderModelConfig,
+        config: CompletionConfig | None,
+    ) -> _AcompletionKwargs:
+        """Drop request features the target model does not advertise.
+
+        ``reasoning_effort`` is dropped for a model without reasoning
+        support. Capabilities are resolved once, and only when a gated
+        feature is actually requested, so the common path stays free of the
+        model-info lookup.
+
+        Returns:
+            The kwargs mapping with unsupported features removed.
+        """
+        if config is None or config.reasoning_effort is None:
+            return kwargs
+
+        capabilities = self._build_capabilities(model_config)
+        if not capabilities.supports_reasoning:
+            kwargs.pop("reasoning_effort", None)
+            logger.debug(
+                PROVIDER_REASONING_EFFORT_DROPPED,
+                provider=self._provider_name,
+                model=model_config.id,
+                reason="model_lacks_reasoning_support",
+            )
+        return kwargs
 
     # ── Response mapping ─────────────────────────────────────────
 

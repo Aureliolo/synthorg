@@ -3,15 +3,18 @@
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
 from synthorg.core.types import ModelTier
+from synthorg.engine._agent_engine_run import AgentEngineRunMixin
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.routing_policy import (
     StakesModelUnavailableError,
     StakesRoutingConfig,
     build_stakes_router,
 )
+from synthorg.providers.models import CompletionConfig
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 from tests._shared import as_uuid
@@ -84,7 +87,7 @@ class TestRouteStakesSeam:
 
     async def test_low_stakes_downgrades(self) -> None:
         engine = _engine(stakes=True)
-        adjusted = await engine._route_stakes(
+        adjusted, _effort = await engine._route_stakes(
             _identity("large"),
             _task(Stakes.LOW),
         )
@@ -92,20 +95,30 @@ class TestRouteStakesSeam:
 
     async def test_high_stakes_upgrades(self) -> None:
         engine = _engine(stakes=True)
-        adjusted = await engine._route_stakes(
+        adjusted, effort = await engine._route_stakes(
             _identity("small"),
             _task(Stakes.HIGH),
         )
         assert adjusted.model.model_tier == "large"
+        assert effort is ReasoningEffort.MEDIUM
 
     async def test_normal_stakes_keeps_medium(self) -> None:
         engine = _engine(stakes=True)
         identity = _identity("medium")
-        adjusted = await engine._route_stakes(
+        adjusted, effort = await engine._route_stakes(
             identity,
             _task(Stakes.NORMAL),
         )
         assert adjusted.model == identity.model
+        assert effort is ReasoningEffort.LOW
+
+    async def test_low_stakes_leaves_reasoning_unset(self) -> None:
+        engine = _engine(stakes=True)
+        _adjusted, effort = await engine._route_stakes(
+            _identity("small"),
+            _task(Stakes.LOW),
+        )
+        assert effort is None
 
     def test_engine_accepts_no_router(self) -> None:
         engine = _engine(stakes=False)
@@ -138,3 +151,52 @@ class TestRouteStakesSeam:
         )
         with pytest.raises(StakesModelUnavailableError):
             await engine._route_stakes(_identity("small"), _task(Stakes.HIGH))
+
+
+@pytest.mark.unit
+class TestFoldStakesReasoning:
+    """The stakes-driven reasoning effort folds into the run config."""
+
+    def test_none_effort_leaves_config_unchanged(self) -> None:
+        assert (
+            AgentEngineRunMixin._fold_stakes_reasoning(None, _identity("large"), None)
+            is None
+        )
+        existing = CompletionConfig(temperature=0.4)
+        assert (
+            AgentEngineRunMixin._fold_stakes_reasoning(
+                existing, _identity("large"), None
+            )
+            is existing
+        )
+
+    def test_builds_config_preserving_model_sampling(self) -> None:
+        identity = _identity("large").model_copy(
+            update={
+                "model": ModelConfig(
+                    provider=_PROVIDER,
+                    model_id=_TIER_MODEL_IDS["large"],
+                    model_tier="large",
+                    temperature=0.9,
+                    max_tokens=2048,
+                ),
+            },
+        )
+        folded = AgentEngineRunMixin._fold_stakes_reasoning(
+            None, identity, ReasoningEffort.HIGH
+        )
+        assert folded is not None
+        assert folded.reasoning_effort is ReasoningEffort.HIGH
+        assert folded.temperature == 0.9
+        assert folded.max_tokens == 2048
+
+    def test_preserves_existing_config_fields(self) -> None:
+        existing = CompletionConfig(temperature=0.2, max_tokens=99, top_p=0.5)
+        folded = AgentEngineRunMixin._fold_stakes_reasoning(
+            existing, _identity("large"), ReasoningEffort.MEDIUM
+        )
+        assert folded is not None
+        assert folded.reasoning_effort is ReasoningEffort.MEDIUM
+        assert folded.temperature == 0.2
+        assert folded.max_tokens == 99
+        assert folded.top_p == 0.5

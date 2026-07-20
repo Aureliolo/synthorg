@@ -13,6 +13,7 @@ from synthorg.budget.coordination_store import (
     CoordinationMetricsStore,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Stakes, TaskType
@@ -25,6 +26,7 @@ from synthorg.engine.routing_policy import (
     StakesTierRequirement,
     build_stakes_router,
 )
+from synthorg.engine.routing_policy.config import StakesReasoning
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 from tests._shared import as_uuid, coerce_id
@@ -297,6 +299,58 @@ class TestFlatStrategy:
         assert decision.selected_model == identity.model
         assert decision.red_team_required is False
         assert decision.source == "flat"
+
+    async def test_flat_leaves_reasoning_effort_unset(self) -> None:
+        decision = await FlatStrategy().route(
+            task=_task(Stakes.CRITICAL),
+            identity=_identity("large"),
+        )
+        assert decision.reasoning_effort is None
+
+
+@pytest.mark.unit
+class TestStakesReasoning:
+    """Stakes drives the reasoning-effort dial on the decision."""
+
+    @pytest.mark.parametrize(
+        ("stakes", "expected"),
+        [
+            (Stakes.LOW, None),
+            (Stakes.NORMAL, ReasoningEffort.LOW),
+            (Stakes.HIGH, ReasoningEffort.MEDIUM),
+            (Stakes.CRITICAL, ReasoningEffort.HIGH),
+        ],
+    )
+    async def test_decision_carries_stakes_reasoning(
+        self,
+        stakes: Stakes,
+        expected: ReasoningEffort | None,
+    ) -> None:
+        decision = await _strategy().route(
+            task=_task(stakes),
+            identity=_identity("large"),
+        )
+        assert decision.reasoning_effort == expected
+
+    async def test_for_stakes_honours_config_override(self) -> None:
+        reasoning = StakesReasoning(
+            low=ReasoningEffort.MINIMAL,
+            normal=ReasoningEffort.MINIMAL,
+            high=ReasoningEffort.HIGH,
+            critical=ReasoningEffort.HIGH,
+        )
+        assert reasoning.for_stakes(Stakes.LOW) is ReasoningEffort.MINIMAL
+        assert reasoning.for_stakes(Stakes.CRITICAL) is ReasoningEffort.HIGH
+
+    async def test_override_flows_through_strategy(self) -> None:
+        config = StakesRoutingConfig(
+            stakes_reasoning=StakesReasoning(high=ReasoningEffort.HIGH)
+        )
+        decision = await _strategy(config=config).route(
+            task=_task(Stakes.HIGH),
+            identity=_identity("large"),
+        )
+        assert decision.reasoning_effort is ReasoningEffort.HIGH
 
 
 @pytest.mark.unit

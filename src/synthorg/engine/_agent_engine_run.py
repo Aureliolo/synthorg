@@ -8,6 +8,7 @@ sit off the per-turn hot path and are mixed into the engine.
 from typing import TYPE_CHECKING
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.engine.context import DEFAULT_MAX_TURNS
@@ -15,6 +16,7 @@ from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import FLIGHT_RECORDER_RECORD_FAILED
 from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
+from synthorg.providers.models import CompletionConfig
 
 if TYPE_CHECKING:
     from synthorg.core.clock import Clock
@@ -40,27 +42,56 @@ class AgentEngineRunMixin:
         self,
         identity: AgentIdentity,
         task: Task,
-    ) -> AgentIdentity:
+    ) -> tuple[AgentIdentity, ReasoningEffort | None]:
         """Apply stakes-aware routing, returning the adjusted identity.
 
         Delegates to the injected :class:`StakesRouter` to pick a model
-        tier matched to ``task.stakes``; this method only adjusts the
-        model the subtask runs with. The review pipeline independently
-        gates the red-team review on the task's persisted ``task.stakes``
-        (see ``run_completion_gates`` / ``red_team_min_stakes``), so the
-        routing decision's ``red_team_required`` flag is not threaded from
-        here.
+        tier matched to ``task.stakes``; this method adjusts the model the
+        subtask runs with and surfaces the stakes-driven reasoning effort so
+        the caller can fold it into the run's completion config. The review
+        pipeline independently gates the red-team review on the task's
+        persisted ``task.stakes`` (see ``run_completion_gates`` /
+        ``red_team_min_stakes``), so the routing decision's
+        ``red_team_required`` flag is not threaded from here.
 
         Returns:
-            ``identity`` with its model replaced when the router picks
-            a different one; the original ``identity`` is returned
-            unchanged when the router's selection matches.
+            A ``(identity, reasoning_effort)`` pair: ``identity`` with its
+            model replaced when the router picks a different one (else the
+            original), and the stakes-driven reasoning effort (``None`` when
+            the provider default should stand).
         """
         assert self._stakes_router is not None  # noqa: S101  # caller checks
         decision = await self._stakes_router.route(task=task, identity=identity)
+        reasoning_effort = decision.reasoning_effort
         if decision.selected_model == identity.model:
-            return identity
-        return identity.model_copy(update={"model": decision.selected_model})
+            return identity, reasoning_effort
+        routed = identity.model_copy(update={"model": decision.selected_model})
+        return routed, reasoning_effort
+
+    @staticmethod
+    def _fold_stakes_reasoning(
+        completion_config: CompletionConfig | None,
+        identity: AgentIdentity,
+        reasoning_effort: ReasoningEffort | None,
+    ) -> CompletionConfig | None:
+        """Fold the stakes-driven reasoning effort into the run config.
+
+        Leaves the config untouched (possibly ``None``, so the loop builds
+        its own default) when no reasoning effort is requested. Otherwise
+        builds on the caller-supplied config, or a fresh one carrying the
+        agent's temperature / max_tokens, so those are preserved alongside
+        the reasoning dial.
+
+        Returns:
+            The completion config to run with, or ``None`` when unchanged.
+        """
+        if reasoning_effort is None:
+            return completion_config
+        base = completion_config or CompletionConfig(
+            temperature=identity.model.temperature,
+            max_tokens=identity.model.max_tokens,
+        )
+        return base.model_copy(update={"reasoning_effort": reasoning_effort})
 
     async def _record_flight_frames(
         self,

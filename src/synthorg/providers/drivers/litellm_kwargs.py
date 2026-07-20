@@ -7,9 +7,14 @@ signature so ``litellm_driver`` stays focused on dispatch and response
 mapping.
 """
 
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from synthorg.providers.models import CompletionConfig
+
+# LiteLLM types ``reasoning_effort`` as a Literal; the values SynthOrg emits
+# are a subset of it (see ``ReasoningEffort``), so the kwarg is typed to that
+# subset rather than a bare ``str`` to keep the ``acompletion`` splat typed.
+ReasoningEffortKwarg = Literal["minimal", "low", "medium", "high"]
 
 
 class _AcompletionRequiredKwargs(TypedDict):
@@ -42,6 +47,9 @@ class _AcompletionKwargs(_AcompletionRequiredKwargs, total=False):
     stop: list[str]
     top_p: float
     timeout: float
+    # Provider-agnostic reasoning depth; LiteLLM maps it to each backend's
+    # own dial. Only set for a model that advertises reasoning support.
+    reasoning_effort: ReasoningEffortKwarg
     # Ollama-only: keeps a model loaded for the given duration after a call.
     keep_alive: str
 
@@ -69,4 +77,6 @@ def _apply_completion_config(
         merged["top_p"] = config.top_p
     if config.timeout is not None:
         merged["timeout"] = config.timeout
+    if config.reasoning_effort is not None:
+        merged["reasoning_effort"] = config.reasoning_effort.value
     return merged

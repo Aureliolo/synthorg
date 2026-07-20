@@ -51,6 +51,11 @@ PROVIDER_TOOL_CALL_MISSING_FUNCTION: Final[str] = "provider.tool_call.missing_fu
 PROVIDER_FINISH_REASON_UNKNOWN: Final[str] = "provider.finish_reason.unknown"
 PROVIDER_EMPTY_COMPLETION: Final[str] = "provider.completion.empty"
 
+# ── Capability-gated request features ────────────────────────────
+PROVIDER_REASONING_EFFORT_DROPPED: Final[str] = "provider.reasoning_effort.dropped"
+PROVIDER_PROMPT_CACHING_SKIPPED: Final[str] = "provider.prompt_caching.skipped"
+PROVIDER_PROMPT_CACHING_APPLIED: Final[str] = "provider.prompt_caching.applied"
+
 # ── Runtime tool-call failure feedback ───────────────────────
 PROVIDER_TOOL_CALL_FAILURE_OBSERVED: Final[str] = (
     "provider.tool_call_feedback.failure_observed"

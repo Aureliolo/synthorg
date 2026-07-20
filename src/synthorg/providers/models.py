@@ -12,7 +12,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.completion_enums import FinishReason
+from synthorg.core.completion_enums import FinishReason, ReasoningEffort
 from synthorg.core.tool_disclosure import (
     ToolL1Metadata,
     ToolL2Body,
@@ -369,6 +369,13 @@ class CompletionConfig(BaseModel):
         stop_sequences: Sequences that stop generation.
         top_p: Nucleus sampling threshold.
         timeout: Request timeout in seconds.
+        reasoning_effort: Depth of extended reasoning ("thinking") to
+            request. ``None`` leaves it unset (provider default). Only
+            emitted for a model that advertises reasoning support.
+        prompt_caching: Whether to place ``cache_control`` breakpoints on
+            the stable prompt prefix (system, tools, and the conversation
+            head) so a caching-capable provider can reuse them across turns.
+            Only applied for a model that advertises prompt-caching support.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -404,6 +411,20 @@ class CompletionConfig(BaseModel):
         default=None,
         gt=0.0,
         description="Request timeout in seconds",
+    )
+    reasoning_effort: ReasoningEffort | None = Field(
+        default=None,
+        description=(
+            "Depth of extended reasoning to request; dropped for a model "
+            "that does not advertise reasoning support"
+        ),
+    )
+    prompt_caching: bool = Field(
+        default=False,
+        description=(
+            "Place cache_control breakpoints on the stable prompt prefix "
+            "for a caching-capable model"
+        ),
     )
 
 

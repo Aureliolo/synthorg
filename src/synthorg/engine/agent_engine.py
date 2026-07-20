@@ -553,11 +553,19 @@ class AgentEngine(
                 # cost attribution (identity.model.provider) and the API
                 # actually called are the same provider.
                 if self._stakes_router is not None:
-                    routed = await self._route_stakes(identity, task)
+                    routed, reasoning_effort = await self._route_stakes(identity, task)
                     provider, identity = self._resolve_provider_instance(
                         routed,
                         identity,
                         provider,
+                    )
+                    # Fold the stakes-driven reasoning depth into the run
+                    # config so higher-stakes work thinks harder, not only
+                    # on a stronger tier. temperature / max_tokens are stable
+                    # across the budget downgrade below, so folding here is
+                    # safe.
+                    completion_config = self._fold_stakes_reasoning(
+                        completion_config, identity, reasoning_effort
                     )
 
                 if self._budget_enforcer:

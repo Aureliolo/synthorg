@@ -19,3 +19,20 @@ class FinishReason(StrEnum):
     TOOL_USE = "tool_use"
     CONTENT_FILTER = "content_filter"
     ERROR = "error"
+
+
+class ReasoningEffort(StrEnum):
+    """Provider-agnostic depth of extended reasoning ("thinking") to request.
+
+    Maps 1:1 to LiteLLM's ``reasoning_effort`` request parameter, which each
+    provider translates to its own dial (an Anthropic thinking-token budget,
+    an OpenAI reasoning effort). The values are ordered from cheapest /
+    shallowest to most thorough. A request only carries this when the target
+    model advertises reasoning support; otherwise it is dropped so a
+    non-reasoning model never receives an unsupported parameter.
+    """
+
+    MINIMAL = "minimal"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
