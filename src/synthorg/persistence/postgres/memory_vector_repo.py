@@ -236,11 +236,15 @@ class PostgresMemoryVectorRepository:
                 await conn.execute(sql.DELETE_TERMS, (entry.id,))
                 # One round-trip for the whole term batch: a long memory
                 # otherwise issues hundreds inside an open transaction.
-                cursor = conn.cursor()
-                await cursor.executemany(
-                    sql.INSERT_TERM,
-                    [(entry.id, term, count) for term, count in frequencies.items()],
-                )
+                if frequencies:
+                    cursor = conn.cursor()
+                    await cursor.executemany(
+                        sql.INSERT_TERM,
+                        [
+                            (entry.id, term, count)
+                            for term, count in frequencies.items()
+                        ],
+                    )
                 if self._dense_ready:
                     # A content rewrite that supplies no fresh embedding
                     # clears the vector rather than keeping one that
@@ -474,8 +478,13 @@ class PostgresMemoryVectorRepository:
             The number of rows deleted.
 
         Raises:
-            QueryError: If the delete fails.
+            QueryError: If ``now`` is naive or the delete fails.
         """
+        # A naive datetime bound to a TIMESTAMPTZ comparison is read in the
+        # session timezone, silently shifting which rows the cutoff deletes.
+        if now.tzinfo is None:
+            msg = f"purge_expired requires a timezone-aware 'now', got {now!r}"
+            raise QueryError(msg)
         try:
             async with self._pool.connection() as conn:
                 cursor = await conn.execute(sql.DELETE_EXPIRED, (now,))

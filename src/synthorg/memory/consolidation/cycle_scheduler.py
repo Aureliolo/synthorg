@@ -145,6 +145,14 @@ class MemoryConsolidationScheduler(AsyncCycleScheduler):
             logger.debug(SCHEDULER_RAN, agents=0, note="no_agent_supplier")
             return
         agent_ids = await self._agent_ids()
+        # Drop failure state for agents no longer supplied, or a deleted
+        # agent's streak lingers forever in a long-lived process with churn.
+        supplied = set(agent_ids)
+        self._consecutive_failures = {
+            agent_id: streak
+            for agent_id, streak in self._consecutive_failures.items()
+            if agent_id in supplied
+        }
         maintained = 0
         failed = 0
         for agent_id in agent_ids:

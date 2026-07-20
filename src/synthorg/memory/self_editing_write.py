@@ -21,7 +21,10 @@ from synthorg.memory.models import (
     MemoryQuery,
     MemoryUpdateRequest,
 )
-from synthorg.memory.namespace_scope import ambient_read_namespaces
+from synthorg.memory.namespace_scope import (
+    ambient_read_namespaces,
+    ambient_write_namespace,
+)
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.tool_retriever import ERROR_PREFIX
 from synthorg.memory.write_gate import (
@@ -117,6 +120,12 @@ async def gate_archival_write(  # noqa: PLR0913 -- the gate's full input surface
         The decision, plus a caller response when the write must not
         proceed (``None`` when the caller should go on to store).
     """
+    # Supersession may only retire a belief in the same namespace the
+    # write lands in; otherwise a project-scoped write could retire another
+    # project's memory (or the shared default's) that it should never touch.
+    superseded = (
+        await backend.get(agent_id, supersedes) if supersedes is not None else None
+    )
     decision = evaluate_write(
         content,
         existing=await comparable_entries(
@@ -124,8 +133,7 @@ async def gate_archival_write(  # noqa: PLR0913 -- the gate's full input surface
         ),
         supersedes=supersedes,
         supersedes_exists=(
-            supersedes is not None
-            and await backend.get(agent_id, supersedes) is not None
+            superseded is not None and superseded.namespace == ambient_write_namespace()
         ),
     )
     logger.info(
@@ -170,7 +178,9 @@ async def retire_superseded(
         ``True`` when the prior entry was retired.
     """
     entry = await backend.get(agent_id, superseded_id)
-    if entry is None:
+    # Defence in depth alongside the gate: never retire a belief that lives
+    # outside the namespace this write lands in.
+    if entry is None or entry.namespace != ambient_write_namespace():
         return False
     updated_tags = (
         *entry.metadata.tags,

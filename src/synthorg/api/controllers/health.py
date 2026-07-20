@@ -320,6 +320,35 @@ async def _resolve_readiness_probe_timeout(app_state: AppState) -> float:
         return boot_value
 
 
+def _memory_readiness(memory_health: MemoryHealth) -> bool | None:
+    """Fold agent memory into the readiness verdict.
+
+    A durable backend that wired but came up DEGRADED (a failed probe, a
+    lost dense index, or maintenance off) is the silent-memory failure
+    this surface exists to catch: keyword-only recall answers every
+    query, so it reads as working memory while returning the wrong
+    things. That fails readiness.
+
+    An unwired backend (``OFF``) does not: the config default is
+    ``sqlvector``, so a minimal or not-yet-configured deployment reports
+    ``OFF`` without any durable memory ever having been wired, and
+    blocking on it would fail every such stack's readiness probe.
+    ``inmemory`` is degraded by design and likewise never blocks.
+
+    Returns:
+        ``False`` when a durable backend is wired but DEGRADED, ``True``
+        when it is DURABLE, or ``None`` (does not block) for an unwired
+        or inmemory store.
+    """
+    from synthorg.memory.factory import IN_MEMORY_BACKEND  # noqa: PLC0415
+
+    if memory_health.backend == IN_MEMORY_BACKEND:
+        return None
+    if memory_health.state is MemoryState.OFF:
+        return None
+    return memory_health.state is MemoryState.DURABLE
+
+
 async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
     """Probe every configured dependency and compute the readiness status.
 
@@ -407,12 +436,13 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
     providers_ok = providers_task.result()
     telemetry_status = _resolve_telemetry_status(app_state)
     memory_health = memory_task.result()
+    memory_ready = _memory_readiness(memory_health)
 
     # Readiness is a pass/fail: every *configured* dependency must
     # report healthy. Unconfigured (None) is treated as not blocking
     # -- dev stacks without a bus still report ready.
     configured_checks = [
-        v for v in (persistence_ok, bus_ok, providers_ok) if v is not None
+        v for v in (persistence_ok, bus_ok, providers_ok, memory_ready) if v is not None
     ]
     ready = bool(configured_checks) and all(configured_checks)
     outcome = (

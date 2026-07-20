@@ -13,8 +13,10 @@ from synthorg.memory.redaction import RedactionResult, redact_for_memory
 
 pytestmark = pytest.mark.unit
 
-# A GitHub PAT the shared credential detector recognises.
-_TOKEN = "ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD"
+# A synthetic PAT-shaped token the credential detector recognises,
+# assembled at runtime so no contiguous token literal is committed (the
+# secret scanner would flag one, even in a test fixture).
+_TOKEN = "ghp_" + "x" * 36
 _EMAIL = "alice@example.com"
 
 

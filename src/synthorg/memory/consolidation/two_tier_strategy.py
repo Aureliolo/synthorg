@@ -123,12 +123,21 @@ class TwoTierCompressionStrategy:
                 prompt, output, feedback, trace = self._parse_detailed_content(
                     entry.content
                 )
+                # Context is fetched once across the agent, but compression
+                # of a project's entry must only see that project's memory,
+                # or another project's context would shape the compressed
+                # result.
+                namespace_context = tuple(
+                    other
+                    for other in context_entries
+                    if other.namespace == entry.namespace
+                )
                 compressed = await self._compressor.compress(
                     prompt=prompt,
                     output=output,
                     verification_feedback=feedback,
                     reasoning_trace=trace,
-                    memory_context=context_entries,
+                    memory_context=namespace_context,
                     agent_id=agent_id,
                     source_artifact_ids=(entry.id,),
                 )

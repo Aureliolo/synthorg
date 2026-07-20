@@ -154,11 +154,20 @@ class LLMSynthesisOp:
         Returns:
             Result of type ``OpResult``.
         """
+        # The trajectory context is fetched once per run across the whole
+        # agent, but synthesis must stay inside the group's namespace: an
+        # entry from another project feeding the prompt would let that
+        # project's memory shape this one's generated summary.
+        namespace_context = tuple(
+            entry
+            for entry in context.trajectory_context
+            if entry.namespace == group.kept.namespace
+        )
         synthesized, outcome, summarized = await self._synthesize(
             group.to_remove,
             agent_id=context.agent_id,
             category=group.category,
-            trajectory_context=context.trajectory_context,
+            trajectory_context=namespace_context,
         )
         new_id = await self._store_summary(
             synthesized,
@@ -175,7 +184,7 @@ class LLMSynthesisOp:
                 entry_count=len(summarized),
                 summary_id=new_id,
                 model=self._model,
-                trajectory_context_count=len(context.trajectory_context),
+                trajectory_context_count=len(namespace_context),
             )
         removed_ids = await self._delete_consolidated(
             summarized,

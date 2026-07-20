@@ -517,6 +517,35 @@ class TestCrud:
         assert purged == 1
         assert await repo.get(NotBlankStr("agent-1"), NotBlankStr("live")) is not None
 
+    async def test_purge_expired_chunks_beyond_bind_param_limit(
+        self,
+        repo: SQLiteMemoryVectorRepository,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A sweep wider than the bind-param ceiling deletes across chunks.
+
+        With the ceiling forced low, more expired ids than one statement
+        can bind still purge cleanly, proving the delete is split rather
+        than issued as one over-long ``IN (?, ...)``.
+        """
+        monkeypatch.setattr(
+            "synthorg.persistence.sqlite.memory_vector_repo._SQLITE_MAX_BIND_PARAMS",
+            2,
+        )
+        expired_count = 5
+        for i in range(expired_count):
+            await repo.upsert(
+                _entry(f"stale-{i}", "alpha", expires_at=_NOW + timedelta(hours=1)),
+                embedding=None,
+            )
+        await repo.upsert(_entry("live", "beta"), embedding=None)
+
+        purged = await repo.purge_expired(_NOW + timedelta(hours=2))
+
+        assert purged == expired_count
+        assert await repo.count(NotBlankStr("agent-1")) == 1
+        assert await repo.get(NotBlankStr("agent-1"), NotBlankStr("live")) is not None
+
     async def test_oldest_ids_returns_oldest_first(
         self, repo: SQLiteMemoryVectorRepository
     ) -> None:

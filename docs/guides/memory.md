@@ -22,7 +22,7 @@ graph TD
     Retriever["Retrieval Pipeline"]
     Backend["Memory Backend<br/><small>sqlvector (pgvector / sqlite-vec)</small>"]
     OrgMem["Shared Org Memory<br/><small>Core policies + extended facts</small>"]
-    Persistence["Persistence Backend<br/><small>SQLite</small>"]
+    Persistence["Persistence Backend<br/><small>SQLite / Postgres</small>"]
 
     Agent -->|"recall"| Retriever
     Agent -->|"store"| Backend
@@ -324,7 +324,6 @@ A complete memory configuration for a research lab that prioritises long-term kn
 ```yaml
 memory:
   backend: "sqlvector"
-  level: persistent
   storage:
     data_dir: "/data/memory"
   options:

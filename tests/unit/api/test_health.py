@@ -12,9 +12,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from synthorg.api.controllers._memory_health import MemoryState
+from synthorg.api.controllers._memory_health import MemoryHealth, MemoryState
 from synthorg.api.controllers.health import (
     TelemetryStatus,
+    _memory_readiness,
     _probe_persistence,
     _resolve_memory_health,
     _resolve_telemetry_status,
@@ -340,6 +341,39 @@ class TestResolveMemoryHealth:
     async def test_unwired_backend_is_off(self) -> None:
         result = await _resolve_memory_health(self._app_state(backend=None))
         assert result.state is MemoryState.OFF
+
+
+@pytest.mark.unit
+class TestMemoryReadiness:
+    """Memory joins the readiness verdict only when a durable store was asked.
+
+    A configured sqlvector backend that came up OFF/DEGRADED must fail
+    ``/readyz`` (503); the inmemory store is degraded by design and never
+    blocks, so dev stacks stay ready.
+    """
+
+    @staticmethod
+    def _health(*, backend: str, state: MemoryState) -> MemoryHealth:
+        return MemoryHealth(state=state, backend=backend)
+
+    def test_inmemory_never_blocks(self) -> None:
+        health = self._health(backend="inmemory", state=MemoryState.DEGRADED)
+        assert _memory_readiness(health) is None
+
+    def test_durable_backend_when_durable_is_ready(self) -> None:
+        health = self._health(backend="sqlvector", state=MemoryState.DURABLE)
+        assert _memory_readiness(health) is True
+
+    def test_durable_backend_degraded_fails_readiness(self) -> None:
+        health = self._health(backend="sqlvector", state=MemoryState.DEGRADED)
+        assert _memory_readiness(health) is False
+
+    def test_unwired_backend_does_not_block(self) -> None:
+        # OFF is a minimal or not-yet-configured deployment (the config
+        # default is sqlvector), not a runtime failure, so it must not
+        # fail the readiness probe of every memory-less stack.
+        health = self._health(backend="sqlvector", state=MemoryState.OFF)
+        assert _memory_readiness(health) is None
 
 
 @pytest.mark.unit

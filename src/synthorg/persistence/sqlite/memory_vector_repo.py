@@ -57,6 +57,14 @@ logger = get_logger(__name__)
 # decreasing in distance, which is all the rank-based fusion needs.
 _DISTANCE_TO_SCORE_OFFSET: Final[float] = 1.0
 
+# A single statement binding more host parameters than SQLite's
+# SQLITE_MAX_VARIABLE_NUMBER raises OperationalError. The compile-time
+# default is 999 on builds before 3.32 and 32766 after; the amalgamation
+# a given aiosqlite links against is not known here, so an unbounded
+# `WHERE id IN (?, ...)` over an expiry sweep is chunked to the
+# conservative floor that every build accepts.
+_SQLITE_MAX_BIND_PARAMS: Final[int] = 999
+
 
 class SQLiteMemoryVectorRepository:
     """SQLite-backed durable agent memory.
@@ -209,10 +217,14 @@ class SQLiteMemoryVectorRepository:
             try:
                 await self._db.execute(sql.UPSERT_ENTRY, params)
                 await self._db.execute(sql.DELETE_TERMS, (entry.id,))
-                await self._db.executemany(
-                    sql.INSERT_TERM,
-                    [(entry.id, term, count) for term, count in frequencies.items()],
-                )
+                if frequencies:
+                    await self._db.executemany(
+                        sql.INSERT_TERM,
+                        [
+                            (entry.id, term, count)
+                            for term, count in frequencies.items()
+                        ],
+                    )
                 await self._write_vector(entry.id, entry.agent_id, embedding)
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -463,18 +475,22 @@ class SQLiteMemoryVectorRepository:
 
         Batched rather than per-entry: SQLite allows one writer, so a
         long sweep issuing three statements per row holds off every other
-        writer for the whole loop.
+        writer for the whole loop. Each delete binds one host parameter
+        per id, so the batch is chunked to stay under SQLite's bind-param
+        ceiling on an unbounded expiry sweep.
         """
-        placeholders = ", ".join("?" for _ in memory_ids)
-        await self._db.execute(
-            sql.delete_entries_by_id(placeholders),
-            tuple(memory_ids),
-        )
-        if self._dense_ready:
-            await self._db.executemany(
-                sql.delete_vector(self._vector_table),
-                [(memory_id,) for memory_id in memory_ids],
+        for start in range(0, len(memory_ids), _SQLITE_MAX_BIND_PARAMS):
+            chunk = memory_ids[start : start + _SQLITE_MAX_BIND_PARAMS]
+            placeholders = ", ".join("?" for _ in chunk)
+            await self._db.execute(
+                sql.delete_entries_by_id(placeholders),
+                tuple(chunk),
             )
+            if self._dense_ready:
+                await self._db.executemany(
+                    sql.delete_vector(self._vector_table),
+                    [(memory_id,) for memory_id in chunk],
+                )
 
     async def oldest_ids(
         self,

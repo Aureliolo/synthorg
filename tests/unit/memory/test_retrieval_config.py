@@ -269,7 +269,7 @@ class TestMemoryRetrievalConfigDiversity:
 
     def test_diversity_lambda_default_when_disabled_no_warning(self) -> None:
         with structlog.testing.capture_logs() as cap:
-            MemoryRetrievalConfig()
+            MemoryRetrievalConfig(diversity_penalty_enabled=False)
         events = [
             e
             for e in cap

@@ -6,6 +6,7 @@ stays within its size budget; these are the two pure formatters its tool
 handlers return text through, with no dependency on the strategy itself.
 """
 
+from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY, wrap_untrusted
 from synthorg.memory.models import MemoryEntry
 
 
@@ -38,7 +39,14 @@ def format_entries(entries: tuple[MemoryEntry, ...]) -> str:
     """
     if not entries:
         return "No memories found."
-    return "\n".join(f"[{e.category.value}] (id={e.id}) {e.content}" for e in entries)
+    # Stored content is model-writable, so a prior write could have planted
+    # instructions; fence each entry as untrusted before it reaches the
+    # model that reads this back (SEC-1).
+    return "\n".join(
+        f"[{e.category.value}] (id={e.id}) "
+        f"{wrap_untrusted(TAG_MEMORY_ENTRY, e.content)}"
+        for e in entries
+    )
 
 
 __all__ = ["format_entries", "format_self_editing_error"]

@@ -270,8 +270,11 @@ class InMemoryBackend:
             MemoryConnectionError: If not connected.
         """
         self._require_connected()
-        now = self._clock.now()
         async with self._store_lock:
+            # Sample the clock under the lock, as store()/update() do: a
+            # timestamp taken before contention could judge an entry
+            # unexpired that lapsed while this call waited for the lock.
+            now = self._clock.now()
             agent_store = self._store.get(str(agent_id), {})
             if query.text:
                 # Score each surviving entry once here rather than
@@ -444,8 +447,10 @@ class InMemoryBackend:
             MemoryConnectionError: If not connected.
         """
         self._require_connected()
-        now = self._clock.now()
         async with self._store_lock:
+            # Sample the clock under the lock so an entry that expired while
+            # this call waited on contention is not counted as live.
+            now = self._clock.now()
             agent_store = self._store.get(str(agent_id), {})
             if category is None:
                 total = sum(1 for e in agent_store.values() if not is_expired(e, now))

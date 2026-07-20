@@ -87,6 +87,7 @@ class TestCreateMemoryBackend:
         )
 
         assert isinstance(backend, InMemoryBackend)
+        assert backend.max_memories_per_agent == 7
 
 
 class TestCompositeBackend:

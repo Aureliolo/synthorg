@@ -2611,12 +2611,12 @@ ON plan_item_comments (reply_to_id)
 WHERE reply_to_id IS NOT NULL;
 
 CREATE TABLE memory_entries (
-    memory_id TEXT NOT NULL PRIMARY KEY,
-    agent_id TEXT NOT NULL,
-    namespace TEXT NOT NULL DEFAULT 'default',
-    category TEXT NOT NULL,
-    content TEXT NOT NULL,
-    source TEXT,
+    memory_id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(memory_id)) > 0),
+    agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(agent_id)) > 0),
+    namespace TEXT NOT NULL DEFAULT 'default' CHECK (LENGTH(TRIM(namespace)) > 0),
+    category TEXT NOT NULL CHECK (LENGTH(TRIM(category)) > 0),
+    content TEXT NOT NULL CHECK (LENGTH(TRIM(content)) > 0),
+    source TEXT CHECK (source IS NULL OR LENGTH(TRIM(source)) > 0),
     confidence REAL NOT NULL DEFAULT 1.0
     CHECK (confidence >= 0.0 AND confidence <= 1.0),
     tags TEXT NOT NULL DEFAULT '[]',
@@ -2634,7 +2634,7 @@ WHERE expires_at IS NOT NULL;
 CREATE TABLE memory_entry_terms (
     memory_id TEXT NOT NULL
     REFERENCES memory_entries (memory_id) ON DELETE CASCADE,
-    term TEXT NOT NULL,
+    term TEXT NOT NULL CHECK (LENGTH(TRIM(term)) > 0),
     term_frequency INTEGER NOT NULL CHECK (term_frequency > 0),
     PRIMARY KEY (memory_id, term)
 );

@@ -131,12 +131,16 @@ company-wide memory setting.
 
 ???+ note "Memory Level Configuration"
 
+    Per agent, under the agent's identity card:
+
     ```yaml
-    # Per agent, under the agent's identity card:
     memory:
       type: "persistent"            # none | session | project | persistent (default: session)
+    ```
 
-    # Company-wide, under the memory namespace:
+    Company-wide, under the memory namespace:
+
+    ```yaml
     memory:
       backend: "sqlvector"          # sqlvector (default); also composite, inmemory
       options:

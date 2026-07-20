@@ -16,7 +16,8 @@ _r.register(
             "Memory backend implementation. 'sqlvector' is durable and"
             " semantically searchable. 'inmemory' is DISCOURAGED: it ranks"
             " by shared terms rather than by meaning, and loses every"
-            " memory on restart."
+            " memory on restart. 'composite' routes namespaces across"
+            " several wired backends, aggregating their capabilities."
         ),
         group="General",
         enum_values=("sqlvector", "composite", "inmemory"),

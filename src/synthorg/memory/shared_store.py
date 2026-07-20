@@ -48,6 +48,34 @@ _PROCEDURAL_CATEGORIES: Final[frozenset[OrgFactCategory]] = frozenset(
     {OrgFactCategory.PROCEDURE},
 )
 
+
+def _org_categories_for(
+    categories: frozenset[MemoryCategory] | None,
+) -> frozenset[OrgFactCategory] | None:
+    """Map requested personal categories onto org-fact categories.
+
+    Inverts :func:`_to_entry`'s category mapping so a category-scoped
+    recall filters org knowledge at the source rather than mixing every
+    category in and truncating by relevance afterwards.
+
+    Returns:
+        The matching org categories (empty when none map), or ``None``
+        when the recall is category-agnostic.
+    """
+    if categories is None:
+        return None
+    return frozenset(
+        org_category
+        for org_category in OrgFactCategory
+        if (
+            MemoryCategory.PROCEDURAL
+            if org_category in _PROCEDURAL_CATEGORIES
+            else MemoryCategory.SEMANTIC
+        )
+        in categories
+    )
+
+
 #: Org facts an agent publishes are conventions by default: a procedure
 #: is a deliberate authoring act through the Knowledge-Architect surface,
 #: not a by-product of a task.
@@ -137,9 +165,10 @@ class OrgSharedKnowledgeStore:
         """Search org knowledge, optionally skipping one author.
 
         Args:
-            query: Search parameters; only text and limit carry over,
-                because org memory filters by fact category rather than
-                by the memory categories a personal query speaks.
+            query: Search parameters; text, limit and category scope carry
+                over, the last mapped onto org-fact categories so a
+                procedural recall cannot pull semantic org facts (and vice
+                versa).
             exclude_agent: Author to omit, normally the querying agent,
                 whose own writes already arrive through personal recall.
 
@@ -149,8 +178,18 @@ class OrgSharedKnowledgeStore:
         Raises:
             OrgMemoryQueryError: If the query fails.
         """
+        org_categories = _org_categories_for(query.categories)
+        # A category scope that maps to no org category means the recall
+        # asked only for categories org memory never holds, so it matches
+        # nothing rather than falling through to an unfiltered query.
+        if org_categories is not None and not org_categories:
+            return ()
         facts = await self._backend.query(
-            OrgMemoryQuery(context=query.text, limit=query.limit),
+            OrgMemoryQuery(
+                context=query.text,
+                categories=org_categories,
+                limit=query.limit,
+            ),
         )
         entries = tuple(_to_entry(fact) for fact in facts)
         if exclude_agent is None:

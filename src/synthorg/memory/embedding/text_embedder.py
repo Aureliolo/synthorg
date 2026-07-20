@@ -247,11 +247,29 @@ class ProviderTextEmbedder:
         if not isinstance(data, list):
             msg = f"Embedding response from {self.model_ref!r} has no data list"
             raise MemoryEmbeddingError(msg)
-        vectors: list[tuple[float, ...]] = []
+        # Bind every vector to its declared ``index`` rather than trusting
+        # list order: providers (and LiteLLM's cache-merge path) can return
+        # items reordered or duplicated, and a silently-misaligned batch
+        # would store each memory against another's vector, corrupting
+        # recall in a way no later stage can detect.
+        slots: list[tuple[float, ...] | None] = [None] * expected
         for item in data:
             raw = item.get("embedding") if isinstance(item, dict) else None
-            if not isinstance(raw, list):
+            index = item.get("index") if isinstance(item, dict) else None
+            if not isinstance(raw, list) or not isinstance(index, int):
                 msg = f"Embedding response from {self.model_ref!r} is malformed"
+                raise MemoryEmbeddingError(msg)
+            if not 0 <= index < expected:
+                msg = (
+                    f"Embedder {self.model_ref!r} returned index {index} outside "
+                    f"the expected range for {expected} inputs"
+                )
+                raise MemoryEmbeddingError(msg)
+            if slots[index] is not None:
+                msg = (
+                    f"Embedder {self.model_ref!r} returned a duplicate vector "
+                    f"for index {index}"
+                )
                 raise MemoryEmbeddingError(msg)
             vector = tuple(float(value) for value in raw)
             if len(vector) != self._config.dims:
@@ -261,13 +279,16 @@ class ProviderTextEmbedder:
                     f"stored index would be incomparable"
                 )
                 raise MemoryEmbeddingError(msg)
-            vectors.append(vector)
-        if len(vectors) != expected:
-            msg = (
-                f"Embedder {self.model_ref!r} returned {len(vectors)} vectors "
-                f"for {expected} inputs"
-            )
-            raise MemoryEmbeddingError(msg)
+            slots[index] = vector
+        vectors: list[tuple[float, ...]] = []
+        for position, filled in enumerate(slots):
+            if filled is None:
+                msg = (
+                    f"Embedder {self.model_ref!r} returned no vector for input "
+                    f"{position} of {expected}"
+                )
+                raise MemoryEmbeddingError(msg)
+            vectors.append(filled)
         return tuple(vectors)
 
 

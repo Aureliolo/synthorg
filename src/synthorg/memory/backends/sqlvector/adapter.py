@@ -277,6 +277,7 @@ class SqlVectorBackend:
 
         Raises:
             MemoryConnectionError: If the backend is not connected.
+            MemoryEmbeddingError: If the embedder fails.
             MemoryStoreError: If the write fails.
         """
         self._require_connected("store")
@@ -303,7 +304,21 @@ class SqlVectorBackend:
             )
             msg = f"Failed to store memory for agent {agent_id!r}"
             raise MemoryStoreError(msg) from exc
-        await self._enforce_cap(agent_id)
+        # The write already succeeded; cap eviction is best-effort hygiene.
+        # Letting its failure propagate would report the store as failed,
+        # and a caller retrying on that would persist a second entry under a
+        # fresh id, silently duplicating the memory.
+        try:
+            await self._enforce_cap(agent_id)
+        except PersistenceError as exc:
+            logger.warning(
+                MEMORY_ENTRY_STORE_FAILED,
+                backend=_BACKEND_NAME,
+                agent_id=agent_id,
+                operation="enforce_cap",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
         logger.debug(
             MEMORY_ENTRY_STORED,
             backend=_BACKEND_NAME,
@@ -418,8 +433,29 @@ class SqlVectorBackend:
         lexical_spec = self._spec(
             agent_id, query, embedding=embedding, limit=lexical_limit
         )
-        dense = self._drop_unrelated(await self._repository.search_dense(dense_spec))
-        lexical = await self._repository.search_lexical(lexical_spec)
+        # Two independent reads: fan them out so hybrid recall costs one
+        # round trip's latency, not two. The dense arm is only launched
+        # when there is a vector to search with, so a no-signal query never
+        # queues it.
+        try:
+            async with asyncio.TaskGroup() as group:
+                dense_task = (
+                    group.create_task(self._repository.search_dense(dense_spec))
+                    if embedding is not None
+                    else None
+                )
+                lexical_task = group.create_task(
+                    self._repository.search_lexical(lexical_spec)
+                )
+        except* PersistenceError as group_error:
+            # TaskGroup re-raises an arm's failure inside an ExceptionGroup;
+            # unwrap it so retrieve()'s handler maps it to
+            # MemoryRetrievalError exactly as the sequential path did.
+            raise group_error.exceptions[0] from None
+        dense = (
+            self._drop_unrelated(dense_task.result()) if dense_task is not None else ()
+        )
+        lexical = lexical_task.result()
         arms = tuple(arm for arm in (dense, lexical) if arm)
         if not arms:
             return ()
@@ -462,6 +498,14 @@ class SqlVectorBackend:
         try:
             return await self._repository.get(agent_id, memory_id)
         except PersistenceError as exc:
+            logger.warning(
+                MEMORY_ENTRY_RETRIEVAL_FAILED,
+                backend=_BACKEND_NAME,
+                agent_id=agent_id,
+                operation="get",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = f"Failed to fetch memory {memory_id!r}"
             raise MemoryRetrievalError(msg) from exc
 
@@ -483,6 +527,14 @@ class SqlVectorBackend:
         try:
             deleted = await self._repository.delete(agent_id, memory_id)
         except PersistenceError as exc:
+            logger.warning(
+                MEMORY_ENTRY_STORE_FAILED,
+                backend=_BACKEND_NAME,
+                agent_id=agent_id,
+                operation="delete",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = f"Failed to delete memory {memory_id!r}"
             raise MemoryStoreError(msg) from exc
         if deleted:
@@ -507,6 +559,7 @@ class SqlVectorBackend:
 
         Raises:
             MemoryConnectionError: If the backend is not connected.
+            MemoryEmbeddingError: If the embedder fails.
             MemoryStoreError: If the write fails.
         """
         self._require_connected("update")
@@ -533,6 +586,14 @@ class SqlVectorBackend:
         try:
             await self._repository.upsert(updated, embedding=embedding)
         except PersistenceError as exc:
+            logger.warning(
+                MEMORY_ENTRY_STORE_FAILED,
+                backend=_BACKEND_NAME,
+                agent_id=agent_id,
+                operation="update",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = f"Failed to update memory {memory_id!r}"
             raise MemoryStoreError(msg) from exc
         return updated
@@ -556,6 +617,14 @@ class SqlVectorBackend:
         try:
             return await self._repository.count(agent_id, category=category)
         except PersistenceError as exc:
+            logger.warning(
+                MEMORY_ENTRY_RETRIEVAL_FAILED,
+                backend=_BACKEND_NAME,
+                agent_id=agent_id,
+                operation="count",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = f"Failed to count memories for agent {agent_id!r}"
             raise MemoryRetrievalError(msg) from exc
 

@@ -255,6 +255,7 @@ class ContextInjectionStrategy:
                 agent_id=agent_id,
                 query_text=query_text,
                 categories=categories,
+                namespaces=namespaces,
             )
         else:
             pool_limit = self._compute_pool_limit()
@@ -363,6 +364,7 @@ class ContextInjectionStrategy:
         agent_id: NotBlankStr,
         query_text: NotBlankStr,
         categories: frozenset[MemoryCategory] | None,
+        namespaces: frozenset[NotBlankStr] | None,
     ) -> tuple[ScoredMemory, ...]:
         """Delegate to hierarchical retriever and convert results.
 
@@ -372,6 +374,9 @@ class ContextInjectionStrategy:
             agent_id: Owning agent for the retrieval query.
             query_text: The query string.
             categories: Optional category filter.
+            namespaces: Optional namespace scope, threaded through so the
+                hierarchical workers apply the same project isolation as
+                the flat path rather than reading across projects.
 
         Returns:
             Tuple of ``ScoredMemory``.
@@ -380,6 +385,7 @@ class ContextInjectionStrategy:
             text=query_text,
             agent_id=agent_id,
             categories=categories,
+            namespaces=namespaces,
             max_results=self._config.max_memories,
         )
         result = await retriever.retrieve(query)

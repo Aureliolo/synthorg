@@ -340,6 +340,7 @@ func trustTransferred(p *Params) bool {
 		p.RegistryHost != config.DefaultRegistryHost ||
 		p.ImageRepoPrefix != config.DefaultImageRepoPrefix ||
 		p.DHIRegistry != config.DefaultDHIRegistry ||
+		p.PostgresImageName != config.DefaultPostgresImageName ||
 		p.PostgresImageTag != config.DefaultPostgresImageTag ||
 		p.NATSImageTag != config.DefaultNATSImageTag
 }
@@ -350,7 +351,7 @@ func trustTransferred(p *Params) bool {
 // design so verification stays disabled.
 func autofillDHIPins(p *Params) {
 	if p.PostgresDigest == "" {
-		pgKey := p.DHIRegistry + "/" + config.DefaultPostgresImageName + ":" + p.PostgresImageTag
+		pgKey := p.DHIRegistry + "/" + p.PostgresImageName + ":" + p.PostgresImageTag
 		if d, ok := verify.DHIPinnedIndexDigest(pgKey); ok {
 			p.PostgresDigest = d
 		}
