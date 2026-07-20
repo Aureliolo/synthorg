@@ -124,10 +124,16 @@ class TestPrepareMessages:
         assert result == ()
 
     async def test_backend_called_with_correct_query(self) -> None:
+        # Diversity is off here so the query limit is exactly
+        # max_memories; with MMR on the pool over-fetches (see
+        # test_diversity_over_fetches_the_candidate_pool).
         backend = _make_backend(())
         strategy = ContextInjectionStrategy(
             backend=backend,
-            config=MemoryRetrievalConfig(max_memories=15),
+            config=MemoryRetrievalConfig(
+                max_memories=15,
+                diversity_penalty_enabled=False,
+            ),
         )
         await strategy.prepare_messages(
             recall_request(query="search text", token_budget=500),
@@ -138,6 +144,21 @@ class TestPrepareMessages:
         query: MemoryQuery = call_args[0][1]
         assert query.text == "search text"
         assert query.limit == 15
+
+    async def test_diversity_over_fetches_the_candidate_pool(self) -> None:
+        # With MMR on, the backend query over-fetches by the pool
+        # multiplier so diverse candidates below the top-k cutoff can
+        # still be promoted.
+        backend = _make_backend(())
+        config = MemoryRetrievalConfig(max_memories=5)
+        strategy = ContextInjectionStrategy(backend=backend, config=config)
+
+        await strategy.prepare_messages(
+            recall_request(query="search text", token_budget=500),
+        )
+
+        query: MemoryQuery = backend.retrieve.call_args[0][1]
+        assert query.limit == 5 * config.candidate_pool_multiplier
 
     async def test_categories_passed_through(self) -> None:
         backend = _make_backend(())

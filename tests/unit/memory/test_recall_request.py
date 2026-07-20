@@ -56,10 +56,19 @@ class TestQueryComposition:
 
         assert request.query_text == "Roll back the failed deploy"
 
-    def test_project_scopes_the_query(self) -> None:
+    def test_project_id_is_not_embedded_in_the_query(self) -> None:
+        # An opaque id is noise in an embedding, not vocabulary.
         request = _request(project_id="checkout-revamp")
 
-        assert "checkout-revamp" in request.query_text
+        assert "checkout-revamp" not in request.query_text
+
+    def test_project_scopes_recall_by_namespace(self) -> None:
+        request = _request(project_id="checkout-revamp")
+
+        assert request.namespaces == frozenset({"default", "project:checkout-revamp"})
+
+    def test_unscoped_work_has_no_namespace_filter(self) -> None:
+        assert _request().namespaces is None
 
     def test_composition_is_stable(self) -> None:
         """A drifting query silently invalidates every cached embedding."""

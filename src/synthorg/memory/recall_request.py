@@ -11,10 +11,22 @@ composition in one place, so every caller produces the same query for
 the same work and cached embeddings stay valid.
 """
 
+from typing import Final
+
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
+
+#: Namespace agent memory lands in by default (mirrors
+#: ``MemoryStoreRequest.namespace``). Recall scoped to a project unions
+#: this with the project namespace so an agent keeps its own memories.
+DEFAULT_MEMORY_NAMESPACE: Final[str] = "default"
+
+#: Prefix that scopes a memory to one project. Project-scoped recall
+#: filters on ``{project}:<id>`` so one project's memory never bleeds
+#: into another's.
+PROJECT_NAMESPACE_PREFIX: Final[str] = "project:"
 
 
 class MemoryRecallRequest(BaseModel):
@@ -56,9 +68,14 @@ class MemoryRecallRequest(BaseModel):
 
         The task leads because it is the strongest anchor; the remaining
         context follows to widen recall toward memories phrased in the
-        vocabulary of the objective, role or project. Blank fields are
+        vocabulary of the objective, role or department. Blank fields are
         dropped rather than joined, so an absent field contributes no
         separator noise to the embedding.
+
+        The project id is deliberately absent: it is an opaque
+        identifier, not vocabulary, so embedding it would inject noise
+        rather than signal. The project instead scopes recall through
+        :attr:`namespaces`.
 
         Returns:
             The composed query text.
@@ -68,6 +85,28 @@ class MemoryRecallRequest(BaseModel):
             self.objective,
             self.role,
             self.department,
-            self.project_id,
         )
         return ". ".join(part.strip() for part in parts if part.strip())
+
+    @computed_field
+    @property
+    def namespaces(self) -> frozenset[NotBlankStr] | None:
+        """Storage namespaces recall is scoped to.
+
+        ``None`` (all namespaces) for unscoped work. For a project, the
+        agent's own default namespace unioned with the project's, so an
+        agent working inside a project recalls both its personal memories
+        and that project's, and never another project's.
+
+        Returns:
+            The namespace scope, or ``None`` when the work is unscoped.
+        """
+        project = self.project_id.strip()
+        if not project:
+            return None
+        return frozenset(
+            {
+                NotBlankStr(DEFAULT_MEMORY_NAMESPACE),
+                NotBlankStr(f"{PROJECT_NAMESPACE_PREFIX}{project}"),
+            }
+        )

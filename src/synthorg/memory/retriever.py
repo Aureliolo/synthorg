@@ -181,6 +181,7 @@ class ContextInjectionStrategy:
                 query_text=query_text,
                 token_budget=token_budget,
                 categories=request.categories or None,
+                namespaces=request.namespaces,
                 topic_terms=scope_terms(request),
             )
         except builtins.MemoryError, RecursionError:
@@ -226,13 +227,14 @@ class ContextInjectionStrategy:
             )
             return ()
 
-    async def _execute_pipeline(
+    async def _execute_pipeline(  # noqa: PLR0913 -- one query axis per parameter
         self,
         *,
         agent_id: NotBlankStr,
         query_text: NotBlankStr,
         token_budget: int,
         categories: frozenset[MemoryCategory] | None,
+        namespaces: frozenset[NotBlankStr] | None,
         topic_terms: frozenset[str],
     ) -> tuple[ChatMessage, ...]:
         """Execute the retrieval -> rank -> filter -> diversity -> format pipeline.
@@ -259,6 +261,7 @@ class ContextInjectionStrategy:
             query = MemoryQuery(
                 text=query_text,
                 categories=categories,
+                namespaces=namespaces,
                 limit=pool_limit,
             )
             if self._config.fusion_strategy == FusionStrategy.RRF:
