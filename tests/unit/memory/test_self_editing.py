@@ -22,6 +22,7 @@ from synthorg.memory.self_editing_models import (
     SelfEditingMemoryConfig,
 )
 from synthorg.providers.enums import MessageRole
+from tests._shared import recall_request
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -194,9 +195,7 @@ class TestSelfEditingMemoryStrategyPrepareMessages:
         strategy = _make_strategy(backend=backend)
 
         messages = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="current task",
-            token_budget=2048,
+            recall_request(query="current task", token_budget=2048),
         )
 
         # Two messages: directive SYSTEM message + core memory message.
@@ -214,9 +213,7 @@ class TestSelfEditingMemoryStrategyPrepareMessages:
         strategy = _make_strategy(backend=backend)
 
         messages = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="task",
-            token_budget=0,
+            recall_request(query="task", token_budget=0),
         )
 
         assert messages == ()
@@ -226,9 +223,7 @@ class TestSelfEditingMemoryStrategyPrepareMessages:
         strategy = _make_strategy(backend=backend)
 
         messages = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="anything",
-            token_budget=1024,
+            recall_request(query="anything", token_budget=1024),
         )
 
         assert messages == ()
@@ -240,9 +235,7 @@ class TestSelfEditingMemoryStrategyPrepareMessages:
         strategy = _make_strategy(backend=backend, config=config)
 
         await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="anything",
-            token_budget=1024,
+            recall_request(query="anything", token_budget=1024),
         )
 
         call_args = backend.retrieve.call_args
@@ -258,9 +251,7 @@ class TestSelfEditingMemoryStrategyPrepareMessages:
         strategy = _make_strategy(backend=backend)
 
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="anything",
-            token_budget=1024,
+            recall_request(query="anything", token_budget=1024),
         )
 
         assert result == ()

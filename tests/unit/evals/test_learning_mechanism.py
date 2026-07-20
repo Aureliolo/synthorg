@@ -48,7 +48,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
-from tests._shared import as_uuid
+from tests._shared import as_uuid, recall_request
 
 pytestmark = pytest.mark.unit
 
@@ -187,9 +187,11 @@ async def _retrieve_lesson_messages(
         config=MemoryRetrievalConfig(),
     )
     return await strategy.prepare_messages(
-        NotBlankStr(str(_AGENT_UUID)),
-        NotBlankStr(_DOMAIN_TOKEN),
-        token_budget=2000,
+        recall_request(
+            agent_id=str(_AGENT_UUID),
+            query=_DOMAIN_TOKEN,
+            token_budget=2000,
+        )
     )
 
 

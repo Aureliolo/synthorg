@@ -72,6 +72,14 @@ reporting rather than swallowing, because absence of a width-change
 error would otherwise read as proof that none occurred.
 """
 
+MEMORY_TOPIC_SCOPE_APPLIED: Final[str] = "memory.topic_scope.applied"
+"""Emitted at INFO when topic scoping drops off-topic procedural lessons.
+
+Carries the candidate and retained counts so an operator can see that
+abstention was deliberate. Without it, a lesson correctly withheld from
+an unrelated task is indistinguishable from memory failing to recall.
+"""
+
 MEMORY_RRF_PIPELINE_COMPLETED: Final[str] = "memory.rrf.pipeline_completed"
 """Emitted at DEBUG after the RRF hybrid pipeline fuses + filters results.
 

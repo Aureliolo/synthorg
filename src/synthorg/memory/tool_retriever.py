@@ -21,6 +21,7 @@ from synthorg.memory.filter import MemoryFilterStrategy
 from synthorg.memory.injection import TokenEstimator
 from synthorg.memory.models import MemoryEntry
 from synthorg.memory.protocol import MemoryBackend
+from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.memory.reformulation import (
     QueryReformulator,
     SufficiencyChecker,
@@ -201,24 +202,21 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
 
     async def prepare_messages(
         self,
-        agent_id: NotBlankStr,  # noqa: ARG002
-        query_text: NotBlankStr,  # noqa: ARG002
-        token_budget: int,
+        request: MemoryRecallRequest,
     ) -> tuple[ChatMessage, ...]:
         """Return a brief instruction message about available tools.
 
         Tool-based strategies inject minimal context up front;
-        the agent retrieves memories on-demand via tool calls.
+        the agent retrieves memories on-demand via tool calls, so the
+        request's query context is not consulted here.
 
         Args:
-            agent_id: The agent requesting memories.
-            query_text: Text for semantic retrieval (unused).
-            token_budget: Maximum tokens for memory content.
+            request: The recall context; only its budget applies.
 
         Returns:
             Single instruction message, or empty if budget is zero.
         """
-        if token_budget <= 0:
+        if request.token_budget <= 0:
             return ()
         return (
             ChatMessage(

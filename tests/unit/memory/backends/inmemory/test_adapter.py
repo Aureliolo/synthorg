@@ -501,6 +501,37 @@ class TestRetrieve:
         assert len(result) == 1
         assert "brown" in result[0].content
 
+    async def test_retrieve_matches_any_query_term(
+        self,
+        connected: InMemoryBackend,
+    ) -> None:
+        """A composed multi-term query must not have to match verbatim.
+
+        Recall queries carry task, role and project context, so a
+        whole-string containment test would match nothing at all and
+        this backend would silently recall zero entries.
+        """
+        await connected.store("a", _req(content="the quick brown fox"))
+        await connected.store("a", _req(content="lazy dog"))
+
+        result = await connected.retrieve(
+            "a",
+            MemoryQuery(text="Chase the brown fox. Developer. Engineering"),
+        )
+
+        assert len(result) == 1
+        assert "brown" in result[0].content
+
+    async def test_retrieve_text_with_no_shared_term_returns_nothing(
+        self,
+        connected: InMemoryBackend,
+    ) -> None:
+        await connected.store("a", _req(content="the quick brown fox"))
+
+        result = await connected.retrieve("a", MemoryQuery(text="unrelated subject"))
+
+        assert result == ()
+
     async def test_retrieve_respects_limit(
         self,
         connected: InMemoryBackend,

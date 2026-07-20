@@ -40,6 +40,7 @@ from synthorg.memory.models import (
 )
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.ranking import ScoredMemory
+from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.memory.self_editing_args import (
     ArchivalMemorySearchArgs,
     ArchivalMemoryWriteArgs,
@@ -179,9 +180,7 @@ class SelfEditingMemoryStrategy:
 
     async def prepare_messages(
         self,
-        agent_id: NotBlankStr,
-        query_text: NotBlankStr,  # noqa: ARG002
-        token_budget: int,
+        request: MemoryRecallRequest,
     ) -> tuple[ChatMessage, ...]:
         """Return the core memory block as a SYSTEM message.
 
@@ -190,11 +189,11 @@ class SelfEditingMemoryStrategy:
         backend error (fails open -- missing core memory is not a
         crash condition).
 
+        The request's query context is not consulted: core memory is
+        tag-filtered rather than semantically retrieved.
+
         Args:
-            agent_id: Agent requesting memories.
-            query_text: Ignored -- core memory is tag-filtered, not
-                semantic.
-            token_budget: Maximum tokens for the core memory block.
+            request: The recall context; its agent and budget apply.
 
         Returns:
             ``(directive_message, core_memory_message)`` when at least
@@ -210,6 +209,7 @@ class SelfEditingMemoryStrategy:
             MemoryError: If the related operation fails.
             RecursionError: If the related operation fails.
         """
+        agent_id = request.agent_id
         try:
             entries = await self._backend.retrieve(agent_id, self._core_query())
             if not entries:
@@ -226,7 +226,7 @@ class SelfEditingMemoryStrategy:
             return format_memory_context_with_directive(
                 scored,
                 estimator=self._token_estimator,
-                token_budget=token_budget,
+                token_budget=request.token_budget,
             )
         except builtins.MemoryError, RecursionError:
             raise

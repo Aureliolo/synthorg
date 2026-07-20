@@ -14,7 +14,12 @@ from typing import Final
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
-from synthorg.memory.backends.inmemory.query import is_expired, matches, prune_expired
+from synthorg.memory.backends.inmemory.query import (
+    is_expired,
+    matches,
+    prune_expired,
+    text_overlap_score,
+)
 from synthorg.memory.errors import (
     MemoryConnectionError,
     MemoryStoreError,
@@ -241,15 +246,18 @@ class InMemoryBackend:
     ) -> tuple[MemoryEntry, ...]:
         """Retrieve memories matching the query.
 
-        Text search uses case-insensitive substring matching
-        (no embedding model available).
+        Text search scores by term overlap with the query (no embedding
+        model available), so ordering is by match strength rather than
+        recency whenever a query text is given.
 
         Args:
             agent_id: Owning agent identifier.
             query: Retrieval parameters.
 
         Returns:
-            Matching entries ordered by ``created_at`` descending.
+            Matching entries, ordered by term-overlap score then
+            ``created_at`` descending when the query carries text, and
+            by ``created_at`` descending otherwise.
 
         Raises:
             MemoryConnectionError: If not connected.
@@ -259,7 +267,22 @@ class InMemoryBackend:
         async with self._store_lock:
             agent_store = self._store.get(str(agent_id), {})
             hits = [e for e in agent_store.values() if matches(e, query, now)]
-            hits.sort(key=lambda e: e.created_at, reverse=True)
+            if query.text:
+                hits = [
+                    e.model_copy(
+                        update={"relevance_score": text_overlap_score(e, query.text)}
+                    )
+                    for e in hits
+                ]
+                # Term overlap is the only relevance signal this backend
+                # has; ordering by it lets the ranking pipeline's
+                # min_relevance filter out incidental single-word hits.
+                hits.sort(
+                    key=lambda e: (e.relevance_score or 0.0, e.created_at),
+                    reverse=True,
+                )
+            else:
+                hits.sort(key=lambda e: e.created_at, reverse=True)
             result = tuple(hits[: query.limit])
         logger.debug(
             MEMORY_ENTRY_RETRIEVED,

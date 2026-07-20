@@ -22,6 +22,7 @@ from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.memory.shared import SharedKnowledgeStore
 from synthorg.providers.enums import MessageRole
+from tests._shared import recall_request
 
 
 def _make_entry(
@@ -100,9 +101,7 @@ class TestPrepareMessages:
             config=MemoryRetrievalConfig(min_relevance=0.0),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="what do I know",
-            token_budget=1000,
+            recall_request(query="what do I know"),
         )
         # Two messages: directive SYSTEM message + memory message.
         assert len(result) == 2
@@ -120,9 +119,7 @@ class TestPrepareMessages:
             config=MemoryRetrievalConfig(),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=1000,
+            recall_request(),
         )
         assert result == ()
 
@@ -133,9 +130,7 @@ class TestPrepareMessages:
             config=MemoryRetrievalConfig(max_memories=15),
         )
         await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="search text",
-            token_budget=500,
+            recall_request(query="search text", token_budget=500),
         )
         backend.retrieve.assert_called_once()
         call_args = backend.retrieve.call_args
@@ -152,10 +147,7 @@ class TestPrepareMessages:
         )
         cats = frozenset({MemoryCategory.SEMANTIC, MemoryCategory.EPISODIC})
         await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=500,
-            categories=cats,
+            recall_request(token_budget=500, categories=cats),
         )
         query: MemoryQuery = backend.retrieve.call_args[0][1]
         assert query.categories == cats
@@ -175,9 +167,7 @@ class TestSharedStoreMerge:
             shared_store=_make_shared_store((shared,)),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         assert len(result) == 2
         _, memory_message = result
@@ -195,9 +185,7 @@ class TestSharedStoreMerge:
             shared_store=shared_store,
         )
         await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=1000,
+            recall_request(),
         )
         shared_store.search_shared.assert_not_called()
 
@@ -211,9 +199,7 @@ class TestSharedStoreMerge:
             ),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=1000,
+            recall_request(),
         )
         assert len(result) == 2
         _, memory_message = result
@@ -237,9 +223,7 @@ class TestGracefulDegradation:
             config=MemoryRetrievalConfig(),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=1000,
+            recall_request(),
         )
         assert result == ()
 
@@ -258,9 +242,7 @@ class TestGracefulDegradation:
             shared_store=shared_store,
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=1000,
+            recall_request(),
         )
         assert len(result) == 2
         _, memory_message = result
@@ -278,9 +260,7 @@ class TestGracefulDegradation:
             config=MemoryRetrievalConfig(),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=1000,
+            recall_request(),
         )
         assert result == ()
 
@@ -295,9 +275,7 @@ class TestGracefulDegradation:
         )
         with pytest.raises(MemoryError, match="out of memory"):
             await strategy.prepare_messages(
-                agent_id="agent-1",
-                query_text="query",
-                token_budget=1000,
+                recall_request(),
             )
 
     async def test_recursion_error_propagates(self) -> None:
@@ -309,9 +287,7 @@ class TestGracefulDegradation:
         )
         with pytest.raises(RecursionError):
             await strategy.prepare_messages(
-                agent_id="agent-1",
-                query_text="query",
-                token_budget=1000,
+                recall_request(),
             )
 
     async def test_shared_builtin_memory_error_propagates(self) -> None:
@@ -328,9 +304,7 @@ class TestGracefulDegradation:
         )
         with pytest.raises(MemoryError, match="out of memory"):
             await strategy.prepare_messages(
-                agent_id="agent-1",
-                query_text="query",
-                token_budget=1000,
+                recall_request(),
             )
 
     async def test_shared_recursion_error_propagates(self) -> None:
@@ -347,9 +321,7 @@ class TestGracefulDegradation:
         )
         with pytest.raises(RecursionError):
             await strategy.prepare_messages(
-                agent_id="agent-1",
-                query_text="query",
-                token_budget=1000,
+                recall_request(),
             )
 
     async def test_shared_generic_exception_returns_personal_only(self) -> None:
@@ -368,9 +340,7 @@ class TestGracefulDegradation:
             shared_store=shared_store,
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=1000,
+            recall_request(),
         )
         assert len(result) == 2
         _, memory_message = result
@@ -394,9 +364,7 @@ class TestGracefulDegradation:
             shared_store=shared_store,
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=1000,
+            recall_request(),
         )
         assert result == ()
 
@@ -414,9 +382,7 @@ class TestTokenBudget:
             token_estimator=DefaultTokenEstimator(),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=1000,
+            recall_request(),
         )
         assert len(result) == 2
 
@@ -427,9 +393,7 @@ class TestTokenBudget:
             config=MemoryRetrievalConfig(),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=0,
+            recall_request(token_budget=0),
         )
         assert result == ()
 
@@ -462,9 +426,7 @@ class TestMemoryFilterIntegration:
             memory_filter=TagBasedMemoryFilter(),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         assert len(result) == 2
         _, memory_message = result
@@ -482,9 +444,7 @@ class TestMemoryFilterIntegration:
             memory_filter=None,
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         assert len(result) == 2
         _, memory_message = result
@@ -501,9 +461,7 @@ class TestMemoryFilterIntegration:
             memory_filter=TagBasedMemoryFilter(),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         assert result == ()
 
@@ -525,9 +483,7 @@ class TestMemoryFilterIntegration:
             ),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         _, memory_message = result
         content = memory_message.content
@@ -553,9 +509,7 @@ class TestMemoryFilterIntegration:
             ),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         _, memory_message = result
         content = memory_message.content
@@ -585,9 +539,7 @@ class TestMemoryFilterIntegration:
             memory_filter=_BrokenFilter(),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         assert result == ()
 
@@ -613,9 +565,7 @@ class TestMemoryFilterIntegration:
         )
         with pytest.raises(MemoryError):
             await strategy.prepare_messages(
-                agent_id="agent-1",
-                query_text="query",
-                token_budget=5000,
+                recall_request(token_budget=5000),
             )
 
 
@@ -637,9 +587,7 @@ class TestCandidatePoolMultiplier:
             ),
         )
         await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=500,
+            recall_request(token_budget=500),
         )
         query: MemoryQuery = backend.retrieve.call_args[0][1]
         assert query.limit == 30
@@ -654,9 +602,7 @@ class TestCandidatePoolMultiplier:
             ),
         )
         await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=500,
+            recall_request(token_budget=500),
         )
         query: MemoryQuery = backend.retrieve.call_args[0][1]
         assert query.limit == 10

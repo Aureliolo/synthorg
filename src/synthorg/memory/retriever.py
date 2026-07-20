@@ -6,6 +6,9 @@ budget-fit → format.  Implements ``MemoryInjectionStrategy`` protocol.
 
 import builtins
 from datetime import UTC, datetime
+from typing import Final
+
+from pydantic import TypeAdapter
 
 import synthorg.memory.errors as memory_errors
 from synthorg.core.critical_errors import reraise_critical
@@ -23,6 +26,7 @@ from synthorg.memory.ranking import (
     rank_memories,
 )
 from synthorg.memory.ranking_mmr import apply_diversity_penalty
+from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.memory.retrieval.models import (
     RetrievalCandidate,
     RetrievalQuery,
@@ -35,6 +39,7 @@ from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever_fetch import fetch_memories
 from synthorg.memory.retriever_rrf import execute_rrf_pipeline
 from synthorg.memory.shared import SharedKnowledgeStore
+from synthorg.memory.topic_scope import in_topic_scope, scope_terms
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_FILTER_INIT,
@@ -42,10 +47,16 @@ from synthorg.observability.events.memory import (
     MEMORY_RETRIEVAL_DEGRADED,
     MEMORY_RETRIEVAL_SKIPPED,
     MEMORY_RETRIEVAL_START,
+    MEMORY_TOPIC_SCOPE_APPLIED,
 )
 from synthorg.providers.models import ChatMessage, ToolDefinition
 
 logger = get_logger(__name__)
+
+# The composed query is non-blank whenever the task title is, which the
+# request model already guarantees; the adapter re-narrows the computed
+# str back to the NotBlankStr the pipeline speaks.
+_NB_ADAPTER: Final[TypeAdapter[NotBlankStr]] = TypeAdapter(NotBlankStr)
 
 
 class ContextInjectionStrategy:
@@ -127,11 +138,7 @@ class ContextInjectionStrategy:
 
     async def prepare_messages(
         self,
-        agent_id: NotBlankStr,
-        query_text: NotBlankStr,
-        token_budget: int,
-        *,
-        categories: frozenset[MemoryCategory] | None = None,
+        request: MemoryRecallRequest,
     ) -> tuple[ChatMessage, ...]:
         """Full pipeline: retrieve → rank → budget-fit → format.
 
@@ -140,10 +147,8 @@ class ContextInjectionStrategy:
         Re-raises ``builtins.MemoryError`` and ``RecursionError``.
 
         Args:
-            agent_id: The agent requesting memories.
-            query_text: Text for semantic retrieval.
-            token_budget: Maximum tokens for memory content.
-            categories: Optional category filter.
+            request: The recall context; its composed ``query_text`` is
+                what reaches the backend.
 
         Returns:
             Tuple of ``ChatMessage`` instances (may be empty).
@@ -152,6 +157,8 @@ class ContextInjectionStrategy:
             MemoryError: If the related operation fails.
             RecursionError: If the related operation fails.
         """
+        agent_id = request.agent_id
+        token_budget = request.token_budget
         logger.info(
             MEMORY_RETRIEVAL_START,
             agent_id=agent_id,
@@ -167,12 +174,14 @@ class ContextInjectionStrategy:
             )
             return ()
 
+        query_text = _NB_ADAPTER.validate_python(request.query_text)
         try:
             return await self._execute_pipeline(
                 agent_id=agent_id,
                 query_text=query_text,
                 token_budget=token_budget,
-                categories=categories,
+                categories=request.categories or None,
+                topic_terms=scope_terms(request),
             )
         except builtins.MemoryError, RecursionError:
             logger.error(
@@ -223,6 +232,7 @@ class ContextInjectionStrategy:
         query_text: NotBlankStr,
         token_budget: int,
         categories: frozenset[MemoryCategory] | None,
+        topic_terms: frozenset[str],
     ) -> tuple[ChatMessage, ...]:
         """Execute the retrieval -> rank -> filter -> diversity -> format pipeline.
 
@@ -269,6 +279,26 @@ class ContextInjectionStrategy:
                 MEMORY_RETRIEVAL_SKIPPED,
                 agent_id=agent_id,
                 reason="all below min_relevance",
+            )
+            return ()
+
+        # Topic scope runs before the reranker: it is a cheap structural
+        # test, and dropping off-topic candidates first keeps them out of
+        # every downstream stage.
+        scoped = tuple(m for m in ranked if in_topic_scope(m.entry, topic_terms))
+        if len(scoped) != len(ranked):
+            logger.info(
+                MEMORY_TOPIC_SCOPE_APPLIED,
+                agent_id=agent_id,
+                candidates=len(ranked),
+                retained=len(scoped),
+            )
+        ranked = scoped
+        if not ranked:
+            logger.info(
+                MEMORY_RETRIEVAL_SKIPPED,
+                agent_id=agent_id,
+                reason="all out of topic scope",
             )
             return ()
 

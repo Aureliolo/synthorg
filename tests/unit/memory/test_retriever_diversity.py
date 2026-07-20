@@ -18,6 +18,7 @@ from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.ranking import ScoredMemory
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
+from tests._shared import recall_request
 
 
 def _make_entry(
@@ -103,9 +104,7 @@ class TestDiversityPenaltyPipelineIntegration:
                 max_memories=20,
             ),
         )
-        messages = await strategy.prepare_messages(
-            "agent-1", "query", token_budget=2000
-        )
+        messages = await strategy.prepare_messages(recall_request(token_budget=2000))
 
         assert calls, "enabled pipeline did not call apply_diversity_penalty"
         assert calls[0] == (3, 0.4)
@@ -159,9 +158,7 @@ class TestDiversityPenaltyPipelineIntegration:
                 min_relevance=0.0,
             ),
         )
-        messages = await strategy.prepare_messages(
-            "agent-1", "query", token_budget=2000
-        )
+        messages = await strategy.prepare_messages(recall_request(token_budget=2000))
         content = "\n".join((m.content or "") for m in messages)
         pos_a = content.find("one two three")
         pos_b = content.find("four five six")
