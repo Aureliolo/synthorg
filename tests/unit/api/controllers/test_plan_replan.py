@@ -276,6 +276,110 @@ class TestReplan:
         assert persisted.status is PlanStatus.EXECUTING
         engine.transition_task.assert_not_called()
 
+    async def test_a_failed_relink_rolls_back_to_one_live_plan(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A repoint failure compensates back rather than leaving two plans.
+
+        The successor is already persisted when the project repoint fails, so
+        the rollback deletes it and restores the pointer: the project keeps its
+        single live plan (the still-EXECUTING existing one) and no work is
+        cancelled.
+        """
+        state, backend, engine = await _seed(PlanStatus.EXECUTING)
+        monkeypatch.setattr(
+            backend.projects,
+            "update",
+            AsyncMock(
+                spec=backend.projects.update,
+                side_effect=QueryError("project repoint failed"),
+            ),
+        )
+        existing = _plan(PlanStatus.EXECUTING)
+
+        with pytest.raises(QueryError):
+            await replan_initiative(
+                state, existing, revision=_REVISION, requested_by="admin"
+            )
+
+        await self._assert_one_live_executing_plan(backend)
+        engine.transition_task.assert_not_called()
+
+    async def test_a_failed_supersede_rolls_back_to_one_live_plan(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A retirement failure after the repoint compensates fully back.
+
+        The project was repointed at the successor and the retirement then
+        fails; the rollback restores the pointer to the existing plan and
+        deletes the orphan successor, so one live plan remains and no work is
+        cancelled.
+        """
+        state, backend, engine = await _seed(PlanStatus.EXECUTING)
+        monkeypatch.setattr(
+            backend.plans,
+            "update",
+            AsyncMock(
+                spec=backend.plans.update,
+                side_effect=QueryError("supersede failed"),
+            ),
+        )
+        existing = _plan(PlanStatus.EXECUTING)
+
+        with pytest.raises(QueryError):
+            await replan_initiative(
+                state, existing, revision=_REVISION, requested_by="admin"
+            )
+
+        await self._assert_one_live_executing_plan(backend)
+        project = await backend.projects.get(NotBlankStr(sid(_PROJECT)))
+        assert project is not None
+        assert project.plan_id == as_uuid(_PLAN_ID)
+        engine.transition_task.assert_not_called()
+
+    async def test_a_failed_cancellation_leaves_a_coherent_graph(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cancellation is past the point of no return: no rollback, but coherent.
+
+        The old plan is durably superseded and the project already names the
+        successor before cancellation runs, so a cancellation failure surfaces
+        without stranding the project on a dead plan: it points at the live
+        successor, with the retired work left for a later sweep.
+        """
+        state, backend, engine = await _seed(
+            PlanStatus.EXECUTING,
+            _task(_ITEM_A, TaskStatus.IN_PROGRESS),
+        )
+        # Configure the existing autospec'd mock rather than replacing it.
+        engine.transition_task.side_effect = QueryError("cancellation failed")
+        existing = _plan(PlanStatus.EXECUTING)
+
+        with pytest.raises(QueryError):
+            await replan_initiative(
+                state, existing, revision=_REVISION, requested_by="admin"
+            )
+
+        retired = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
+        assert retired is not None
+        assert retired.status is PlanStatus.SUPERSEDED
+        project = await backend.projects.get(NotBlankStr(sid(_PROJECT)))
+        assert project is not None
+        assert project.plan_id is not None
+        assert project.plan_id != as_uuid(_PLAN_ID)
+
+    @staticmethod
+    async def _assert_one_live_executing_plan(
+        backend: FakePersistenceBackend,
+    ) -> None:
+        plans = await backend.plans.query(
+            PlanFilterSpec(project=NotBlankStr(sid(_PROJECT))), limit=50
+        )
+        live = [p for p in plans if p.status is not PlanStatus.SUPERSEDED]
+        assert len(live) == 1
+        assert live[0].id == as_uuid(_PLAN_ID)
+        assert live[0].status is PlanStatus.EXECUTING
+
     @pytest.mark.parametrize(
         "status",
         [

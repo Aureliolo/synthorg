@@ -7,21 +7,25 @@ against a plan that no longer describes them. A re-plan therefore opens a new
 revision under review, retires the current one, cancels the work the retired
 revision started, and repoints the project at its successor.
 
-Ordering is chosen so a failure never strands the initiative. The successor is
-built and persisted FIRST, while nothing is yet retired: opening it only reads
-the current revision and inserts a new row, so a failed insert (the likely
-failure, a transient write error) leaves the initiative untouched and the
-operator simply retries. Only once the successor is durable does the retirement
-land, the old work get cancelled (the one irreversible step, since a cancelled
-task cannot be un-cancelled), and the project repoint.
+A true transaction across the plan service, the task engine, and the project
+repository is not available (the task-engine cancellations emit observer events
+that cannot be rolled back, and no unit-of-work seam spans the three), so the
+single-live-plan invariant is held by failure-safe ordering plus compensation
+rather than by atomicity.
 
-``Project.plan_id`` is never ambiguous through this: it names the current
-revision until the final relink, and the successor carries no tasks and is
-unlinked until then, so the rollup never derives status from it. A true
-transaction across the plan service, the task engine, and the project
-repository is not available (the task-engine cancellations emit observer
-events that cannot be rolled back, and no unit-of-work seam spans the three),
-so failure-safe ordering stands in for atomicity.
+The successor is persisted FIRST, while nothing is yet retired: opening it only
+reads the current revision and inserts a new row, so a failed insert (the
+likely failure, a transient write error) leaves the initiative untouched and
+the operator simply retries. The project is then repointed and the old revision
+retired inside a compensated block: both writes are reversible (the link by
+relinking, the supersede because a failed ``sync_status`` is atomic and never
+lands), so any failure there rolls back to the pre-replan graph, deleting the
+orphan successor rather than leaving two live plans. Only past that block, with
+the old plan durably superseded and the project already naming the successor,
+does the one irreversible step run, cancelling the retired work; a partial
+failure there leaves a coherent graph (one live plan the project points at)
+with at worst some retired work still running, never a project pointing at a
+dead plan.
 
 The successor enters PENDING_REVIEW, not EXECUTING: its items carry no
 approval. Dispatch repoints and activates the project as it does for any first
@@ -37,6 +41,7 @@ from synthorg.api.controllers._task_teardown import terminate_task
 from synthorg.api.services._plan_revision import require_replannable
 from synthorg.api.services.plan_service import PlanService
 from synthorg.api.state import AppState
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
@@ -50,7 +55,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.project_writes import link_project_to_plan
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.task_engine_apply_helpers import TRULY_TERMINAL_STATUSES
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_PLAN_REPLANNED
 from synthorg.persistence.state import persistence_of
 from synthorg.persistence.task_protocol import TaskFilterSpec
@@ -117,21 +122,30 @@ async def replan_initiative(
         task_structure=revision.task_structure,
         coordination_topology=revision.coordination_topology,
     )
-    await service.sync_status(
-        existing,
-        PlanStatus.SUPERSEDED,
-        requested_by=requested_by,
-        reason=_REPLAN_REASON,
-    )
+    # Repoint the project, then retire the old revision. Both are reversible
+    # (the link by relinking, the supersede because a failed sync_status is
+    # atomic and never lands), so a failure here compensates back to the
+    # pre-replan graph rather than leaving two live plans. The project is
+    # repointed FIRST so that once the old plan is durably superseded the
+    # project already names the successor; the irreversible cancellation then
+    # runs outside this block, where a partial failure leaves a coherent graph
+    # (one live plan) rather than a project pointing at a dead one.
+    try:
+        await link_project_to_plan(
+            persistence_of(app_state).projects,
+            project_id=NotBlankStr(str(existing.project)),
+            plan_id=successor.id,
+        )
+        await service.sync_status(
+            existing,
+            PlanStatus.SUPERSEDED,
+            requested_by=requested_by,
+            reason=_REPLAN_REASON,
+        )
+    except Exception:
+        await _rollback_successor(app_state, existing, successor)
+        raise
     await _cancel_retired_work(app_state, existing, requested_by=requested_by)
-    # The project stays ACTIVE across a re-plan (the initiative is live, it is
-    # being re-scoped), so the activation this shares with first dispatch is a
-    # no-op here and only the plan pointer moves.
-    await link_project_to_plan(
-        persistence_of(app_state).projects,
-        project_id=NotBlankStr(str(existing.project)),
-        plan_id=successor.id,
-    )
     logger.info(
         API_PLAN_REPLANNED,
         plan_id=str(successor.id),
@@ -140,6 +154,61 @@ async def replan_initiative(
         requested_by=requested_by,
     )
     return successor
+
+
+async def _rollback_successor(
+    app_state: AppState,
+    existing: Plan,
+    successor: Plan,
+) -> None:
+    """Undo a partial re-plan whose retirement never completed.
+
+    ``open_successor`` persisted *successor* and the project may have been
+    repointed at it, but a later write failed before *existing* was durably
+    superseded. Restore the pre-replan graph so the operator retries against an
+    unchanged initiative rather than one with two live plans: point the project
+    back at the still-live *existing* plan (idempotent when the repoint never
+    landed) and delete the orphan successor. Point the project back first so it
+    never names a plan that is about to be deleted.
+
+    The two writes are independent best-effort steps: one failing must not skip
+    the other (a relink failure must still let the orphan successor be deleted),
+    and a failure in either is logged and swallowed so the original error is the
+    one surfaced to the caller. The residual is at worst an orphan
+    ``PENDING_REVIEW`` successor carrying no tasks, which the project-delete
+    cascade later supersedes.
+    """
+    persistence = persistence_of(app_state)
+    try:
+        await link_project_to_plan(
+            persistence.projects,
+            project_id=NotBlankStr(str(existing.project)),
+            plan_id=existing.id,
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised, rest best-effort
+        reraise_critical(exc)
+        logger.warning(
+            API_PLAN_REPLANNED,
+            plan_id=str(successor.id),
+            supersedes=str(existing.id),
+            project=str(existing.project),
+            note="rollback relink failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+    try:
+        await persistence.plans.delete(NotBlankStr(str(successor.id)))
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised, rest best-effort
+        reraise_critical(exc)
+        logger.warning(
+            API_PLAN_REPLANNED,
+            plan_id=str(successor.id),
+            supersedes=str(existing.id),
+            project=str(existing.project),
+            note="rollback successor delete failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def _cancel_retired_work(
