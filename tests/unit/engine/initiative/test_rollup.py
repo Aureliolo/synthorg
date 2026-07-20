@@ -457,6 +457,26 @@ class TestProjectBehindItsPlan:
         assert project is not None
         assert project.status is ProjectStatus.ACTIVE
 
+    async def test_an_approved_plan_completes_through_executing(self) -> None:
+        """APPROVED -> COMPLETED is not a legal hop.
+
+        Dispatch normally moves the plan to EXECUTING first, but that write is
+        a CAS whose exhaustion is swallowed, so a plan can be APPROVED while
+        its tasks run. Completing it must walk through EXECUTING rather than
+        jump, or the plan stalls one hop short of done.
+        """
+        service, backend = await _seed(
+            _plan(_item(_ITEM_A), status=PlanStatus.APPROVED),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert await _statuses(backend) == (
+            PlanStatus.COMPLETED,
+            ProjectStatus.COMPLETED,
+        )
+
     async def test_terminal_plan_still_reconciles_its_project(self) -> None:
         """The project write must not be gated on the plan being non-terminal.
 

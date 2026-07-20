@@ -40,6 +40,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import TERMINAL_STATUSES, PlanItemKind, PlanStatus
+from synthorg.core.plan_transitions import transition_path
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -235,9 +236,16 @@ class ProjectRollupService:
     async def _advance_plan(self, plan: Plan, target: PlanStatus) -> Plan | None:
         """Persist the plan's derived status through the audited write path.
 
+        The target may be several legal hops away, so it is walked rather than
+        jumped, exactly as ``advance_project_status`` walks the project. A plan
+        that never reached EXECUTING (its dispatch-time sync lost its race)
+        completes through EXECUTING rather than attempting the illegal
+        ``APPROVED -> COMPLETED`` jump, so the initiative recovers instead of
+        stalling one hop short.
+
         A refused transition and a lost race are different failures and are
-        handled differently. ``ConflictError`` means the derived target is not
-        a legal hop from the plan's status, which is a bug in the derivation:
+        handled differently. ``ConflictError`` means the derivation produced a
+        target the state machine rejects even hop by hop, which is a bug:
         retrying reproduces it, so it is surfaced at ERROR and abandoned. A
         version conflict is ordinary contention, so the plan is re-read, the
         target re-derived from the winner's state, and the write retried.
@@ -249,9 +257,7 @@ class ProjectRollupService:
         current = plan
         for attempt in range(1, MAX_WRITE_ATTEMPTS + 1):
             try:
-                return await self._plan_writer.sync_status(
-                    current, target, requested_by=_ACTOR
-                )
+                return await self._walk_plan_to(current, target)
             except ConflictError as exc:
                 logger.error(
                     PROJECT_ROLLUP_SKIPPED,
@@ -290,6 +296,27 @@ class ProjectRollupService:
             attempts=MAX_WRITE_ATTEMPTS,
         )
         return None
+
+    async def _walk_plan_to(self, plan: Plan, target: PlanStatus) -> Plan:
+        """Move *plan* to *target* one legal hop at a time.
+
+        Returns:
+            The plan after the final hop.
+
+        Raises:
+            ConflictError: *target* is unreachable from the plan's status.
+            VersionConflictError: A concurrent write won a hop.
+        """
+        path = transition_path(plan.status, target)
+        if path is None:
+            msg = f"Plan {plan.id} cannot reach {target.value} from {plan.status.value}"
+            raise ConflictError(msg)
+        current = plan
+        for hop in path:
+            current = await self._plan_writer.sync_status(
+                current, hop, requested_by=_ACTOR
+            )
+        return current
 
     async def _project_status(self, plan: Plan) -> ProjectStatus:
         """Read the current status of the plan's project.

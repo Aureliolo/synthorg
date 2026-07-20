@@ -31,6 +31,7 @@ from synthorg.api.state import AppState
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.task import Task
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.project_writes import link_project_to_plan
@@ -138,27 +139,35 @@ async def _cancel_retired_work(
     """
     persistence = persistence_of(app_state)
     task_engine = task_engine_of(app_state)
+    # Drain every page BEFORE terminating any task. Cancelling as we page
+    # would mutate the rows the offset walks over; the ordering happens to be
+    # stable today (ORDER BY id, and cancelling changes only status), but a
+    # teardown that silently skips live work if that ever stops holding is not
+    # worth the one saved list.
+    doomed: list[Task] = []
     offset = 0
-    cancelled = 0
     # lint-allow: long-running-loop-kill-switch -- bounded by plan item count
     while True:
-        tasks = await persistence.tasks.query(
+        page = await persistence.tasks.query(
             TaskFilterSpec(plan=retired.id),
             limit=DEFAULT_PAGE_SIZE,
             offset=offset,
         )
-        for task in tasks:
-            if task.status not in TRULY_TERMINAL_STATUSES:
-                await terminate_task(
-                    task_engine,
-                    task,
-                    requested_by=requested_by,
-                    reason=_REPLAN_REASON,
-                )
-                cancelled += 1
-        if len(tasks) < DEFAULT_PAGE_SIZE:
+        doomed.extend(page)
+        if len(page) < DEFAULT_PAGE_SIZE:
             break
         offset += DEFAULT_PAGE_SIZE
+
+    cancelled = 0
+    for task in doomed:
+        if task.status not in TRULY_TERMINAL_STATUSES:
+            await terminate_task(
+                task_engine,
+                task,
+                requested_by=requested_by,
+                reason=_REPLAN_REASON,
+            )
+            cancelled += 1
     logger.info(
         API_PLAN_REPLANNED,
         plan_id=str(retired.id),
