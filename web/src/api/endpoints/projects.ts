@@ -5,6 +5,7 @@ import type {
   Project,
   ProjectAutonomyModeRequest,
   ProjectFilters,
+  ProjectProgress,
 } from '../types/projects'
 
 export async function listProjects(filters?: ProjectFilters): Promise<PaginatedResult<Project>> {
@@ -14,6 +15,13 @@ export async function listProjects(filters?: ProjectFilters): Promise<PaginatedR
 
 export async function getProject(projectId: string): Promise<Project> {
   const response = await apiClient.get<ApiResponse<Project>>(`/projects/${encodeURIComponent(projectId)}`)
+  return unwrap(response)
+}
+
+export async function getProjectProgress(projectId: string): Promise<ProjectProgress> {
+  const response = await apiClient.get<ApiResponse<ProjectProgress>>(
+    `/projects/${encodeURIComponent(projectId)}/progress`,
+  )
   return unwrap(response)
 }
 

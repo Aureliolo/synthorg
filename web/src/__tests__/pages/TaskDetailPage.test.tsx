@@ -35,6 +35,8 @@ const mockTask: Task = {
   metadata: {},
   hard_ceiling: null,
   forecast_id: null,
+  plan_id: null,
+  plan_item_id: null,
   version: 1,
   created_at: '2026-03-20T10:00:00Z',
   updated_at: '2026-03-25T14:00:00Z',

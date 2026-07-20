@@ -1,6 +1,7 @@
 """Task repository protocol."""
 
 from typing import Protocol, override, runtime_checkable
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,6 +31,10 @@ class TaskFilterSpec(BaseModel):
     project: NotBlankStr | None = Field(
         default=None,
         description="Filter by project ID",
+    )
+    plan: UUID | None = Field(
+        default=None,
+        description="Filter by the plan whose dispatch created the task",
     )
 
 
@@ -120,7 +125,8 @@ class TaskRepository(
         """List tasks matching the filter spec.
 
         Args:
-            filter_spec: Carries optional filters for status, assigned_to, project.
+            filter_spec: Carries optional filters for status, assigned_to,
+                project, and plan.
             limit: Maximum rows to return.
             offset: Rows to skip before the window.
 

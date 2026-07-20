@@ -20,6 +20,7 @@ from synthorg.engine.classification.taxonomy_store_protocol import (
     ErrorTaxonomyStore,
 )
 from synthorg.engine.evolution.service import EvolutionService
+from synthorg.engine.initiative.rollup import ProjectRollupService
 from synthorg.engine.pipeline.entry.objective_adapter import (
     ObjectiveSubmission,
 )
@@ -70,6 +71,7 @@ class EngineStateSlice(BaseFeatureStateSlice):
     ceremony_scheduler: CeremonyScheduler | None = None
     kanban_board_service: KanbanBoardService | None = None
     sprint_service: SprintService | None = None
+    project_rollup_service: ProjectRollupService | None = None
     intake_entry_adapter: WorkEntryAdapter[ClientRequest] | None = None
     objective_entry_adapter: WorkEntryAdapter[ObjectiveSubmission] | None = None
     brownfield_entry_adapter: WorkEntryAdapter[CodebaseImportSubmission] | None = None

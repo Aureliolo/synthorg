@@ -6,6 +6,9 @@ export type {
   CreateProjectRequest,
   Project,
   ProjectAutonomyModeRequest,
+  ProjectProgress,
+  ProjectProgressCounts,
+  ProjectProgressItem,
 } from './dtos.gen'
 
 /** Frontend-only query filter (not a Pydantic DTO). */

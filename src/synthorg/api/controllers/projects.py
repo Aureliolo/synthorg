@@ -16,12 +16,14 @@ from synthorg.api.controllers._project_autonomy import (
     guard_full_autonomy_optin,
 )
 from synthorg.api.controllers._project_cascade import cascade_supersede_children
+from synthorg.api.controllers._project_progress import ProjectProgressAssembler
 from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.dto import (
     ApiResponse,
     CreateProjectRequest,
     PaginatedResponse,
 )
+from synthorg.api.dto_project_progress import ProjectProgress
 from synthorg.api.guards import require_read_access, require_write_access, role_of
 from synthorg.api.pagination import (
     CursorLimit,
@@ -170,6 +172,39 @@ class ProjectController(Controller):
         )
         return Response(
             content=ApiResponse[Project](data=project),
+            status_code=200,
+        )
+
+    @get("/{project_id:str}/progress", guards=[require_read_access])
+    async def get_project_progress(
+        self,
+        state: State,
+        project_id: PathId,
+    ) -> Response[ApiResponse[ProjectProgress]]:
+        """Get an initiative's plan and task progress.
+
+        Args:
+            state: Application state.
+            project_id: Project identifier.
+
+        Returns:
+            The project's plan items with their task status, derived counts,
+            and critical path, or 404 if the project is not found.
+        """
+        project = require_resource_or_404(
+            await _service(state).get(project_id),
+            resource_type="Project",
+            identifier=project_id,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="read",
+        )
+        assembler = ProjectProgressAssembler(
+            persistence=persistence_of(state.app_state)
+        )
+        return Response(
+            content=ApiResponse[ProjectProgress](
+                data=await assembler.for_project(project)
+            ),
             status_code=200,
         )
 

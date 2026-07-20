@@ -62,6 +62,11 @@ class Task(BaseModel):
         type: Classification of the task's work type.
         priority: Task urgency and importance level.
         project: Project ID this task belongs to.
+        plan_id: Plan whose dispatch created this task (``None`` for a task
+            that did not come from a plan, e.g. a directly filed one).
+        plan_item_id: Plan item this task implements (``None`` likewise).
+            Stamped at dispatch so plan items and their tasks correlate as
+            data rather than by re-deriving the deterministic id mapping.
         created_by: Agent name of the task creator.
         requested_by_user_id: User id of the human who filed the task via
             the API (``None`` for agent-internal tasks); gates SSE
@@ -104,6 +109,14 @@ class Task(BaseModel):
     )
     project: NotBlankStr = Field(
         description="Project ID this task belongs to",
+    )
+    plan_id: UUID | None = Field(
+        default=None,
+        description="Plan whose dispatch created this task",
+    )
+    plan_item_id: UUID | None = Field(
+        default=None,
+        description="Plan item this task implements",
     )
     created_by: NotBlankStr = Field(
         description="Agent name of the task creator",
@@ -328,6 +341,25 @@ class Task(BaseModel):
             raise ValueError(msg)
         if self.status in requires_assignee and self.assigned_to is None:
             msg = f"assigned_to is required when status is {self.status.value!r}"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_plan_linkage(self) -> Self:
+        """Ensure the plan linkage fields are set together or not at all.
+
+        Dispatch stamps both; a directly filed task carries neither. A task
+        holding one without the other drops silently out of the initiative
+        rollup's item index instead of failing, so it is rejected here.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If exactly one of the two linkage fields is set.
+        """
+        if (self.plan_id is None) != (self.plan_item_id is None):
+            msg = "plan_id and plan_item_id must be set together"
             raise ValueError(msg)
         return self
 

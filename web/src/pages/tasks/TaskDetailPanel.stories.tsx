@@ -36,6 +36,8 @@ const mockTask: DashboardTask = {
   metadata: {},
   hard_ceiling: null,
   forecast_id: null,
+  plan_id: null,
+  plan_item_id: null,
   version: 3,
   created_at: '2026-03-25T10:00:00.000Z',
   updated_at: '2026-03-27T14:30:00.000Z',

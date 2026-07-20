@@ -46,6 +46,8 @@ CREATE TABLE tasks (
     type TEXT NOT NULL,
     priority TEXT NOT NULL DEFAULT 'medium',
     project TEXT NOT NULL,
+    plan_id TEXT,
+    plan_item_id TEXT,
     created_by TEXT NOT NULL,
     requested_by_user_id TEXT,
     assigned_to TEXT,
@@ -72,6 +74,7 @@ CREATE TABLE tasks (
 CREATE INDEX idx_tasks_status ON tasks (status);
 CREATE INDEX idx_tasks_assigned_to ON tasks (assigned_to);
 CREATE INDEX idx_tasks_project ON tasks (project);
+CREATE INDEX idx_tasks_plan_id ON tasks (plan_id);
 
 -- ── Cost records ──────────────────────────────────────────────
 -- Composite (rowid, timestamp) primary key: TimescaleDB hypertables
@@ -535,7 +538,7 @@ CREATE TABLE projects (
     description TEXT NOT NULL DEFAULT '',
     team JSONB NOT NULL DEFAULT '[]'::JSONB,
     lead TEXT,
-    task_ids JSONB NOT NULL DEFAULT '[]'::JSONB,
+    plan_id TEXT,
     deadline TIMESTAMPTZ,
     budget DOUBLE PRECISION NOT NULL DEFAULT 0.0 CHECK (budget >= 0.0),
     status TEXT NOT NULL DEFAULT 'planning',
@@ -2454,8 +2457,8 @@ CREATE TABLE plans (
     coordination_topology TEXT NOT NULL DEFAULT 'auto',
     status TEXT NOT NULL DEFAULT 'draft'
     CONSTRAINT plans_status_check CHECK (status IN (
-        'planning', 'draft', 'pending_review', 'approved', 'rejected',
-        'superseded', 'failed'
+        'planning', 'draft', 'pending_review', 'approved', 'executing',
+        'completed', 'rejected', 'superseded', 'failed'
     )),
     forecast_id TEXT,
     review JSONB,

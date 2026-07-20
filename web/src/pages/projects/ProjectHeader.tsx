@@ -6,9 +6,11 @@ import type { Project } from '@/api/types/projects'
 
 interface ProjectHeaderProps {
   project: Project
+  /** Tasks fetched for this project; the source of the Tasks count. */
+  taskCount: number
 }
 
-function buildProjectMetadata(project: Project) {
+function buildProjectMetadata(project: Project, taskCount: number) {
   return [
     {
       label: 'Status',
@@ -31,7 +33,7 @@ function buildProjectMetadata(project: Project) {
     },
     {
       label: 'Tasks',
-      value: String(project.task_ids.length),
+      value: String(taskCount),
       valueClassName: 'font-mono text-xs',
     },
     {
@@ -46,8 +48,8 @@ function buildProjectMetadata(project: Project) {
   ]
 }
 
-export function ProjectHeader({ project }: ProjectHeaderProps) {
-  const metadataItems = buildProjectMetadata(project)
+export function ProjectHeader({ project, taskCount }: ProjectHeaderProps) {
+  const metadataItems = buildProjectMetadata(project, taskCount)
 
   return (
     <SectionCard title={project.name}>

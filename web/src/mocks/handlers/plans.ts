@@ -4,6 +4,7 @@ import type {
   editPlan,
   getPlan,
   listPlans,
+  replanPlan,
   requestPlanChanges,
 } from '@/api/endpoints/plans'
 import type { Plan, PlanItem } from '@/api/types/plans'
@@ -76,6 +77,27 @@ export const plansHandlers = [
       successFor<typeof editPlan>(
         buildPlan({ id: String(params['id']), version: 2 }),
       ),
+    )
+  }),
+  http.post('/api/v1/plans/:id/replan', async ({ request }) => {
+    // Validate rather than cast: a null body would throw on property access,
+    // and a bare string would satisfy a `.length` check the backend rejects.
+    const body: unknown = await request.json().catch(() => null)
+    const items =
+      body !== null && typeof body === 'object' && 'items' in body
+        ? (body as { items?: unknown }).items
+        : undefined
+    if (!Array.isArray(items) || items.length === 0) {
+      return HttpResponse.json(apiError("Field 'items' must be non-empty"), {
+        status: 422,
+      })
+    }
+    // A re-plan returns the successor, a new plan entity awaiting review.
+    return HttpResponse.json(
+      successFor<typeof replanPlan>(
+        buildPlan({ id: 'plan-successor', status: 'pending_review' }),
+      ),
+      { status: 201 },
     )
   }),
   http.post('/api/v1/plans/:id/request-changes', async ({ params, request }) => {

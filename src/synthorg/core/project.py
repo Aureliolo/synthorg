@@ -27,7 +27,11 @@ class Project(BaseModel):
         description: Detailed project description.
         team: Agent IDs assigned to this project.
         lead: Agent ID of the project lead.
-        task_ids: IDs of tasks belonging to this project.
+        plan_id: The plan this project is currently executing, or ``None``
+            before one has been approved and dispatched. Repointed by the same
+            write that supersedes a retired revision, so it always names the
+            live plan; earlier revisions stay reachable by querying plans
+            filtered on this project.
         deadline: Optional deadline (ISO 8601 string or ``None``).
         budget: Total budget in base currency (configurable, defaults to EUR).
         status: Current project status.
@@ -57,9 +61,9 @@ class Project(BaseModel):
         default=None,
         description="Agent ID of the project lead",
     )
-    task_ids: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="IDs of tasks belonging to this project",
+    plan_id: UUID | None = Field(
+        default=None,
+        description="Plan this project is currently executing",
     )
     deadline: str | None = Field(
         default=None,
@@ -107,15 +111,10 @@ class Project(BaseModel):
             The validated instance (Pydantic ``model_validator`` contract).
 
         Raises:
-            ValueError: If ``team`` or ``task_ids`` contain duplicate
-                entries.
+            ValueError: If ``team`` contains duplicate entries.
         """
         if len(self.team) != len(set(self.team)):
             dupes = sorted(m for m, c in Counter(self.team).items() if c > 1)
             msg = f"Duplicate entries in team: {dupes}"
-            raise ValueError(msg)
-        if len(self.task_ids) != len(set(self.task_ids)):
-            dupes = sorted(t for t, c in Counter(self.task_ids).items() if c > 1)
-            msg = f"Duplicate entries in task_ids: {dupes}"
             raise ValueError(msg)
         return self

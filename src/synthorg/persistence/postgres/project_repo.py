@@ -43,7 +43,6 @@ def _row_to_project(row: DictRow) -> Project:
     data = dict(row)
     data["status"] = ProjectStatus(data["status"])
     data["team"] = tuple(data.get("team") or [])
-    data["task_ids"] = tuple(data.get("task_ids") or [])
     return Project.model_validate(data)
 
 
@@ -70,7 +69,7 @@ class PostgresProjectRepository:
             project.description,
             Jsonb(list(project.team)),
             project.lead,
-            Jsonb(list(project.task_ids)),
+            str(project.plan_id) if project.plan_id is not None else None,
             project.deadline,
             project.budget,
             project.status.value,
@@ -90,7 +89,7 @@ class PostgresProjectRepository:
                 await cur.execute(
                     """
                     INSERT INTO projects (id, name, description, team, lead,
-                                          task_ids, deadline, budget, status,
+                                          plan_id, deadline, budget, status,
                                           autonomy_mode, version)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
@@ -137,7 +136,7 @@ class PostgresProjectRepository:
             project.description,
             Jsonb(list(project.team)),
             project.lead,
-            Jsonb(list(project.task_ids)),
+            str(project.plan_id) if project.plan_id is not None else None,
             project.deadline,
             project.budget,
             project.status.value,
@@ -152,7 +151,7 @@ class PostgresProjectRepository:
         # Fixed columns + guard literal; values fully parameterized.
         query = (
             "UPDATE projects SET name=%s, description=%s, team=%s, lead=%s, "  # noqa: S608
-            "task_ids=%s, deadline=%s, budget=%s, status=%s, autonomy_mode=%s, "
+            "plan_id=%s, deadline=%s, budget=%s, status=%s, autonomy_mode=%s, "
             "version=%s "
             f"WHERE id=%s{guard}"
         )
@@ -213,7 +212,7 @@ class PostgresProjectRepository:
                 await cur.execute(
                     """
                     INSERT INTO projects (id, name, description, team, lead,
-                                          task_ids, deadline, budget, status,
+                                          plan_id, deadline, budget, status,
                                           autonomy_mode, version)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT(id) DO UPDATE SET
@@ -221,7 +220,7 @@ class PostgresProjectRepository:
                         description=EXCLUDED.description,
                         team=EXCLUDED.team,
                         lead=EXCLUDED.lead,
-                        task_ids=EXCLUDED.task_ids,
+                        plan_id=EXCLUDED.plan_id,
                         deadline=EXCLUDED.deadline,
                         budget=EXCLUDED.budget,
                         status=EXCLUDED.status,

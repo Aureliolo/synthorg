@@ -71,14 +71,17 @@ class SQLiteTaskRepository:
 
     _UPSERT_SQL = """\
 INSERT INTO tasks (
-    id, title, description, type, priority, project, created_by,
+    id, title, description, type, priority, project, plan_id, plan_item_id,
+    created_by,
     requested_by_user_id, assigned_to, status, estimated_complexity,
     budget_limit, deadline, max_retries, parent_task_id, task_structure,
     coordination_topology, reviewers, dependencies, artifacts_expected,
     acceptance_criteria, delegation_chain,
     hard_ceiling, forecast_id, source, middleware_override, metadata
 ) VALUES (
-    :id, :title, :description, :type, :priority, :project, :created_by,
+    :id, :title, :description, :type, :priority, :project, :plan_id,
+    :plan_item_id,
+    :created_by,
     :requested_by_user_id, :assigned_to, :status, :estimated_complexity,
     :budget_limit, :deadline, :max_retries, :parent_task_id, :task_structure,
     :coordination_topology, :reviewers, :dependencies, :artifacts_expected,
@@ -91,6 +94,8 @@ ON CONFLICT(id) DO UPDATE SET
     type=excluded.type,
     priority=excluded.priority,
     project=excluded.project,
+    plan_id=excluded.plan_id,
+    plan_item_id=excluded.plan_item_id,
     created_by=excluded.created_by,
     requested_by_user_id=excluded.requested_by_user_id,
     assigned_to=excluded.assigned_to,
@@ -231,7 +236,8 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
 
     _TASK_COLUMNS = """\
-id, title, description, type, priority, project, created_by,
+id, title, description, type, priority, project, plan_id, plan_item_id,
+       created_by,
        requested_by_user_id, assigned_to, status, estimated_complexity,
        budget_limit, deadline, max_retries, parent_task_id, task_structure,
        coordination_topology, reviewers, dependencies, artifacts_expected,

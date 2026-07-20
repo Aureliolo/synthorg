@@ -180,6 +180,11 @@ class TaskFactory(ModelFactory[Task]):
     parent_task_id = None
     dependencies = ()
     deadline = None
+    # The plan linkage is a both-or-neither pair. Polyfactory fills optional
+    # fields independently, which would build a half-linked task the model
+    # rejects; a directly filed task carries neither.
+    plan_id = None
+    plan_item_id = None
 
 
 class ProjectFactory(ModelFactory[Project]):

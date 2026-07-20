@@ -20,6 +20,9 @@ vi.mock('@/pages/projects/ProjectOversightSection', () => ({
 vi.mock('@/pages/projects/ProjectTaskList', () => ({
   ProjectTaskList: () => <div data-testid="project-task-list" />,
 }))
+vi.mock('@/pages/projects/ProjectPlanProgress', () => ({
+  ProjectPlanProgress: () => <div data-testid="project-plan-progress" />,
+}))
 
 
 const project = makeProject('proj-001')
@@ -27,6 +30,8 @@ const project = makeProject('proj-001')
 const defaultHookReturn: UseProjectDetailDataReturn = {
   project,
   projectTasks: [],
+  projectProgress: null,
+  projectProgressFailed: false,
   loading: false,
   error: null,
   wsConnected: true,
@@ -74,11 +79,12 @@ describe('ProjectDetailPage', () => {
     expect(screen.getByText('Project not found')).toBeInTheDocument()
   })
 
-  it('renders header, team section, oversight section, and task list when project loaded', () => {
+  it('renders header, team, oversight, plan progress, and task list when loaded', () => {
     renderPage()
     expect(screen.getByTestId('project-header')).toBeInTheDocument()
     expect(screen.getByTestId('project-team-section')).toBeInTheDocument()
     expect(screen.getByTestId('project-oversight-section')).toBeInTheDocument()
+    expect(screen.getByTestId('project-plan-progress')).toBeInTheDocument()
     expect(screen.getByTestId('project-task-list')).toBeInTheDocument()
   })
 

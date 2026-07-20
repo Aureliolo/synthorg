@@ -56,6 +56,8 @@ def _task_params(task: Task) -> dict[str, object]:
         "type": _enum_value(task.type),
         "priority": _enum_value(task.priority),
         "project": task.project,
+        "plan_id": dumped["plan_id"],
+        "plan_item_id": dumped["plan_item_id"],
         "created_by": task.created_by,
         "requested_by_user_id": task.requested_by_user_id,
         "assigned_to": task.assigned_to,
@@ -99,7 +101,8 @@ class PostgresTaskRepository:
 
     _UPSERT_SQL = """
                     INSERT INTO tasks (
-                        id, title, description, type, priority, project, created_by,
+                        id, title, description, type, priority, project,
+                        plan_id, plan_item_id, created_by,
                         requested_by_user_id, assigned_to, status,
                         estimated_complexity, budget_limit,
                         deadline, max_retries, parent_task_id, task_structure,
@@ -109,7 +112,8 @@ class PostgresTaskRepository:
                         metadata
                     ) VALUES (
                         %(id)s, %(title)s, %(description)s, %(type)s, %(priority)s,
-                        %(project)s, %(created_by)s, %(requested_by_user_id)s,
+                        %(project)s, %(plan_id)s, %(plan_item_id)s,
+                        %(created_by)s, %(requested_by_user_id)s,
                         %(assigned_to)s, %(status)s,
                         %(estimated_complexity)s, %(budget_limit)s, %(deadline)s,
                         %(max_retries)s, %(parent_task_id)s, %(task_structure)s,
@@ -125,6 +129,8 @@ class PostgresTaskRepository:
                         type=EXCLUDED.type,
                         priority=EXCLUDED.priority,
                         project=EXCLUDED.project,
+                        plan_id=EXCLUDED.plan_id,
+                        plan_item_id=EXCLUDED.plan_item_id,
                         created_by=EXCLUDED.created_by,
                         requested_by_user_id=EXCLUDED.requested_by_user_id,
                         assigned_to=EXCLUDED.assigned_to,
@@ -194,7 +200,8 @@ class PostgresTaskRepository:
             raise QueryError(msg) from exc
 
     _TASK_COLUMNS = (
-        "id, title, description, type, priority, project, created_by, "
+        "id, title, description, type, priority, project, plan_id, "
+        "plan_item_id, created_by, "
         "requested_by_user_id, assigned_to, status, estimated_complexity, "
         "budget_limit, deadline, "
         "max_retries, parent_task_id, task_structure, coordination_topology, "

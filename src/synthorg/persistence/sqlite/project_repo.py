@@ -50,7 +50,6 @@ def _row_to_project(row: aiosqlite.Row) -> Project:
     data = dict(row)
     data["status"] = ProjectStatus(data["status"])
     data["team"] = tuple(json.loads(data["team"]))
-    data["task_ids"] = tuple(json.loads(data["task_ids"]))
     return Project.model_validate(data)
 
 
@@ -93,7 +92,7 @@ class SQLiteProjectRepository:
             project.description,
             json.dumps(list(project.team)),
             project.lead,
-            json.dumps(list(project.task_ids)),
+            str(project.plan_id) if project.plan_id is not None else None,
             project.deadline,
             project.budget,
             project.status.value,
@@ -116,7 +115,7 @@ class SQLiteProjectRepository:
                 await self._db.execute(
                     """\
 INSERT INTO projects (id, name, description, team, lead,
-                      task_ids, deadline, budget, status, autonomy_mode, version)
+                      plan_id, deadline, budget, status, autonomy_mode, version)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     self._row_params(project),
                 )
@@ -197,7 +196,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             project.description,
             json.dumps(list(project.team)),
             project.lead,
-            json.dumps(list(project.task_ids)),
+            str(project.plan_id) if project.plan_id is not None else None,
             project.deadline,
             project.budget,
             project.status.value,
@@ -211,7 +210,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             params.append(expected_version)
         query = (
             "UPDATE projects SET name=?, description=?, team=?, lead=?, "  # noqa: S608
-            "task_ids=?, deadline=?, budget=?, status=?, autonomy_mode=?, version=? "
+            "plan_id=?, deadline=?, budget=?, status=?, autonomy_mode=?, version=? "
             f"WHERE id=?{guard}"
         )
         async with self._write_context():
@@ -275,14 +274,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 await self._db.execute(
                     """\
 INSERT INTO projects (id, name, description, team, lead,
-                      task_ids, deadline, budget, status, autonomy_mode, version)
+                      plan_id, deadline, budget, status, autonomy_mode, version)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
     name=excluded.name,
     description=excluded.description,
     team=excluded.team,
     lead=excluded.lead,
-    task_ids=excluded.task_ids,
+    plan_id=excluded.plan_id,
     deadline=excluded.deadline,
     budget=excluded.budget,
     status=excluded.status,

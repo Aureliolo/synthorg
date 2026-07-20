@@ -31,6 +31,8 @@ const baseTask: DashboardTask = {
   metadata: {},
   hard_ceiling: null,
   forecast_id: null,
+  plan_id: null,
+  plan_item_id: null,
   version: 1,
   created_at: '2026-04-19T09:00:00Z',
   updated_at: '2026-04-20T11:30:00Z',

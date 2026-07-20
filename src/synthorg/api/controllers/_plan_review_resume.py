@@ -24,8 +24,10 @@ from synthorg.core.domain_errors import ResourceNotFoundError, VersionConflictEr
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task_enums import TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.models import CoordinationContext
 from synthorg.engine.decomposition.plan_mapping import decomposition_from_plan
+from synthorg.engine.initiative.project_writes import link_project_to_plan
 from synthorg.engine.state import task_engine_of
 from synthorg.hr.state import agent_registry_of
 from synthorg.observability import (
@@ -150,6 +152,20 @@ async def _dispatch_approved_plan(
         # choices survive the strip-decisions step in ``decomposition_from_plan``
         # rather than vanishing when only work items build.
         await record_plan_decisions(app_state, plan, decided_by=decided_by)
+        # Connect the graph before any task starts: the project points at the
+        # plan it is executing and goes ACTIVE, and the plan enters EXECUTING.
+        # Ordering is load-bearing -- ``coordinate`` below awaits the whole
+        # subtask tree, so a rollup event fired mid-dispatch would otherwise
+        # observe a project still PLANNING with tasks already running.
+        if not await _link_initiative(app_state, plan):
+            await _fail_dispatch(
+                app_state,
+                approval_id,
+                task_id,
+                decided_by,
+                "project could not be linked to its plan",
+            )
+            return
         # Dispatch from the durable plan so an operator's edits are exactly
         # what builds; the child task tree is rebuilt deterministically from
         # its items (see ``decomposition_from_plan``).
@@ -179,6 +195,32 @@ async def _dispatch_approved_plan(
         )
 
 
+async def _link_initiative(app_state: AppState, plan: Plan) -> bool:
+    """Connect the project to the plan it is about to execute.
+
+    Points the project at *plan*, activates it, and moves the plan into
+    EXECUTING. Both writes use the same audited paths the rollup uses, so the
+    graph has one set of status semantics whether dispatch or rollup is
+    writing.
+
+    Returns:
+        Whether the project was linked. A failed link must abort the dispatch:
+        proceeding would run the whole task tree against a project that never
+        learned which plan it is executing, so its progress view would report
+        no plan for the life of the initiative and its status would advance
+        from PLANNING only by an illegal jump.
+    """
+    linked = await link_project_to_plan(
+        persistence_of(app_state).projects,
+        project_id=NotBlankStr(str(plan.project)),
+        plan_id=plan.id,
+    )
+    if linked is None:
+        return False
+    await _sync_plan_status(app_state, str(plan.id), PlanStatus.EXECUTING)
+    return True
+
+
 async def _fail_dispatch(
     app_state: AppState,
     approval_id: str,
@@ -196,7 +238,8 @@ async def _fail_dispatch(
     logger.error(
         APPROVAL_GATE_PLAN_DISPATCH_FAILED,
         approval_id=approval_id,
-        note=f"approved plan cannot dispatch: {why}",
+        note="approved plan cannot dispatch",
+        why=why,
     )
     await _mark_task(
         app_state,
