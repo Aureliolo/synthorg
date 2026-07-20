@@ -520,13 +520,27 @@ async def _run_startup(  # noqa: PLR0913
         if has_active_provider(app_state):
             raise
 
+    # Wire durable agent memory before anything downstream reads it, and
+    # before the training-service fallback below: the durable backend is
+    # authoritative. If it wired first via a training-service-injected
+    # ephemeral store, ``wire_memory_backend``'s "already wired" guard
+    # would skip the durable substrate AND its consolidation scheduler,
+    # trading durable memory for an in-process store on every restart.
+    # Memory owns this hook rather than riding along with the
+    # training-service auto-wire below, so a substrate failure is
+    # reported as a memory failure instead of degrading recall silently.
+    from synthorg.api.lifecycle_helpers.memory_backend_wiring import (  # noqa: PLC0415
+        wire_memory_backend,
+    )
+
+    await wire_memory_backend(app_state)
+
     # When an external caller already supplied a ``TrainingService`` to
     # ``create_app()``, we skip the auto-wire below but the injected service
-    # still owns a live ``MemoryBackend``. Pull it out and publish it on
-    # ``app_state`` so the DELETE memory controller and MCP tool path see
-    # ``has_memory_backend == True`` -- otherwise an injected-service deployment
-    # would surface as 501 / unsupported even though a connected backend is
-    # right there.
+    # still owns a live ``MemoryBackend``. Publish it ONLY when durable
+    # wiring produced nothing, so the DELETE memory controller and MCP tool
+    # path see ``has_memory_backend == True`` on an injected-service
+    # deployment rather than surfacing 501 / unsupported.
     hr_slice = app_state.slice(HrStateSlice)
     if (
         hr_slice.training_service is not None
@@ -539,16 +553,6 @@ async def _run_startup(  # noqa: PLR0913
         )
         if injected_backend is not None:
             app_state.wire(MemoryStateSlice, backend=injected_backend)
-
-    # Wire durable agent memory before anything downstream reads it.
-    # Memory owns this hook rather than riding along with the
-    # training-service auto-wire below, so a substrate failure is
-    # reported as a memory failure instead of degrading recall silently.
-    from synthorg.api.lifecycle_helpers.memory_backend_wiring import (  # noqa: PLC0415
-        wire_memory_backend,
-    )
-
-    await wire_memory_backend(app_state)
 
     # On-startup auto-wire: TrainingService.
     # Needs agent_registry, tool_invocation_tracker, and performance_tracker

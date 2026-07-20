@@ -17,6 +17,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.inmemory.query import (
     is_expired,
     matches,
+    matches_non_text,
+    matches_window,
     prune_expired,
     text_overlap_score,
 )
@@ -271,22 +273,30 @@ class InMemoryBackend:
         now = self._clock.now()
         async with self._store_lock:
             agent_store = self._store.get(str(agent_id), {})
-            hits = [e for e in agent_store.values() if matches(e, query, now)]
             if query.text:
-                hits = [
-                    e.model_copy(
-                        update={"relevance_score": text_overlap_score(e, query.text)}
-                    )
-                    for e in hits
-                ]
-                # Term overlap is the only relevance signal this backend
-                # has; ordering by it lets the ranking pipeline's
-                # min_relevance filter out incidental single-word hits.
-                hits.sort(
+                # Score each surviving entry once here rather than
+                # scoring in the filter and again when ranking: term
+                # overlap is the backend's only relevance signal, so
+                # ordering by it lets the pipeline's min_relevance drop
+                # incidental single-word hits.
+                scored = []
+                for entry in agent_store.values():
+                    if not (
+                        matches_window(entry, query, now)
+                        and matches_non_text(entry, query)
+                    ):
+                        continue
+                    score = text_overlap_score(entry, query.text)
+                    if score <= 0.0:
+                        continue
+                    scored.append(entry.model_copy(update={"relevance_score": score}))
+                scored.sort(
                     key=lambda e: (e.relevance_score or 0.0, e.created_at),
                     reverse=True,
                 )
+                hits = scored
             else:
+                hits = [e for e in agent_store.values() if matches(e, query, now)]
                 hits.sort(key=lambda e: e.created_at, reverse=True)
             result = tuple(hits[: query.limit])
         logger.debug(
