@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from synthorg.api.controllers._memory_health import MemoryState
 from synthorg.api.controllers.health import (
-    MemoryState,
     TelemetryStatus,
     _probe_persistence,
     _resolve_memory_health,
