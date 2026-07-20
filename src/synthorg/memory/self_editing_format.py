@@ -41,7 +41,7 @@ def format_entries(entries: tuple[MemoryEntry, ...]) -> str:
         return "No memories found."
     # Stored content is model-writable, so a prior write could have planted
     # instructions; fence each entry as untrusted before it reaches the
-    # model that reads this back (SEC-1).
+    # model that reads this back.
     return "\n".join(
         f"[{e.category.value}] (id={e.id}) "
         f"{wrap_untrusted(TAG_MEMORY_ENTRY, e.content)}"

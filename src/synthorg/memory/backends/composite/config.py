@@ -2,7 +2,7 @@
 
 import copy
 from collections.abc import Iterator, Mapping
-from typing import Self
+from typing import Self, override
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -25,15 +25,19 @@ class _FrozenRoutes(Mapping[NotBlankStr, NotBlankStr]):
     def __init__(self, data: Mapping[NotBlankStr, NotBlankStr]) -> None:
         self._data: dict[NotBlankStr, NotBlankStr] = dict(data)
 
+    @override
     def __getitem__(self, key: NotBlankStr) -> NotBlankStr:
         return self._data[key]
 
+    @override
     def __iter__(self) -> Iterator[NotBlankStr]:
         return iter(self._data)
 
+    @override
     def __len__(self) -> int:
         return len(self._data)
 
+    @override
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self._data!r})"
 
