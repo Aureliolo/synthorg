@@ -1,5 +1,7 @@
-/** Hook deriving the four subsystem states (and overall) from health + WS state. */
+/** Hook deriving the five subsystem states (and overall) from health + WS state. */
 
+import type { MemoryHealth } from '@/api/types/dtos.gen'
+import type { MemoryState } from '@/api/types/enum-values.gen'
 import type { LoadState, SubsystemState } from './health-popover.utils'
 
 export interface DerivedSubsystemStates {
@@ -7,8 +9,16 @@ export interface DerivedSubsystemStates {
   readonly wsState: SubsystemState
   readonly persistenceState: SubsystemState
   readonly busState: SubsystemState
+  readonly memoryState: SubsystemState
+  readonly memoryDetail: string | undefined
   readonly overallState: SubsystemState
   readonly wsDetail: string | undefined
+}
+
+const _MEMORY_STATES: Record<MemoryState, SubsystemState> = {
+  durable: 'ok',
+  degraded: 'degraded',
+  off: 'down',
 }
 
 function _apiStateFor(loadState: LoadState): SubsystemState {
@@ -50,6 +60,18 @@ function _booleanProbeState(loadState: LoadState, value: boolean | null | undefi
   return 'unknown'
 }
 
+function _memoryStateFor(loadState: LoadState, memory: MemoryHealth | null): SubsystemState {
+  if (loadState.state === 'loading') return 'loading'
+  if (loadState.state !== 'ok' || memory === null) return 'unknown'
+  return _MEMORY_STATES[memory.state]
+}
+
+function _memoryDetailFor(memory: MemoryHealth | null): string | undefined {
+  if (memory === null) return undefined
+  const backend = memory.backend.trim()
+  return memory.detail ?? (backend === '' ? undefined : backend)
+}
+
 function _overallStateOf(states: readonly SubsystemState[]): SubsystemState {
   if (states.includes('down')) return 'down'
   if (states.includes('degraded')) return 'degraded'
@@ -69,8 +91,26 @@ export function deriveHealthSubsystemStates(
   const wsDetail = _wsDetailFor(wsConnected, wsReconnectExhausted, sseFallbackActive)
   const persistence = loadState.state === 'ok' ? loadState.data.persistence : null
   const messageBus = loadState.state === 'ok' ? loadState.data.message_bus : null
+  const memory = loadState.state === 'ok' ? loadState.data.memory : null
   const persistenceState = _booleanProbeState(loadState, persistence)
   const busState = _booleanProbeState(loadState, messageBus)
-  const overallState = _overallStateOf([apiState, wsState, persistenceState, busState])
-  return { apiState, wsState, persistenceState, busState, overallState, wsDetail }
+  const memoryState = _memoryStateFor(loadState, memory)
+  const memoryDetail = _memoryDetailFor(memory)
+  const overallState = _overallStateOf([
+    apiState,
+    wsState,
+    persistenceState,
+    busState,
+    memoryState,
+  ])
+  return {
+    apiState,
+    wsState,
+    persistenceState,
+    busState,
+    memoryState,
+    memoryDetail,
+    overallState,
+    wsDetail,
+  }
 }

@@ -12416,12 +12416,37 @@ export type components = {
             readonly type: components["schemas"]["MemoryLevel"];
         };
         /**
+         * MemoryHealth
+         * @description Agent-memory substrate state
+         */
+        readonly MemoryHealth: {
+            /** @description Configured memory backend name */
+            readonly backend: string;
+            /** @description Operator-facing remedy, when action is needed */
+            readonly detail: string | null;
+            readonly state: components["schemas"]["MemoryState"];
+        };
+        /**
          * MemoryLevel
          * @description Memory persistence level for an agent (§7.3).
          * @default session
          * @enum {string}
          */
         readonly MemoryLevel: "persistent" | "project" | "session" | "none";
+        /**
+         * MemoryState
+         * @description How agent memory is running, for the operator-facing banner.
+         *
+         *     Attributes:
+         *         DURABLE: Wired on a store that survives restart and retrieves
+         *             by meaning.
+         *         DEGRADED: Wired, but on the ephemeral keyword store an operator
+         *             selected explicitly.
+         *         OFF: Not wired. Usually no embedding model resolved, which the
+         *             startup log records at ERROR.
+         * @enum {string}
+         */
+        readonly MemoryState: "durable" | "degraded" | "off";
         /** Message */
         readonly Message: {
             /**
@@ -15259,6 +15284,7 @@ export type components = {
         };
         /** ReadinessStatus */
         readonly ReadinessStatus: {
+            readonly memory: components["schemas"]["MemoryHealth"];
             /** @description Message bus running (None if not configured) */
             readonly message_bus: boolean | null;
             /** @description Persistence backend healthy (None if not configured) */

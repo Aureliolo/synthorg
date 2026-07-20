@@ -251,6 +251,32 @@ class TestHealthDetail:
 
 
 @pytest.mark.unit
+class TestMemoryHealth:
+    """Memory that never wired must be visible, not silently absent.
+
+    An operator whose embedder failed to resolve previously saw a
+    healthy system that simply never remembered anything.
+    """
+
+    async def test_unwired_memory_reports_off_with_a_remedy(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        response = await async_test_client.get("/api/v1/health")
+
+        memory = response.json()["data"]["memory"]
+
+        assert memory["state"] == "off"
+        assert "embedder" in (memory["detail"] or "")
+
+    async def test_state_names_the_configured_backend(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        response = await async_test_client.get("/api/v1/health")
+
+        assert response.json()["data"]["memory"]["backend"] == "sqlvector"
+
+
+@pytest.mark.unit
 class TestProbePersistence:
     """``_probe_persistence`` distinguishes absent-by-design from failure."""
 

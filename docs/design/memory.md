@@ -136,8 +136,9 @@ Memory persistence is configurable per agent, from no persistence to fully persi
       options:
         retention_days: null         # null = forever
         max_memories_per_agent: 10000
-        consolidation_interval: "daily"  # compress old memories
         shared_knowledge_base: true      # agents can access shared facts
+      consolidation:
+        interval: "daily"                # compress old memories
     ```
 
 ---
@@ -268,8 +269,9 @@ memory:
   options:
     retention_days: null            # null = forever
     max_memories_per_agent: 10000
-    consolidation_interval: "daily"
     shared_knowledge_base: true
+  consolidation:
+    interval: "daily"               # drives the consolidation scheduler
 
 # The embedder binding is resolved at boot from settings
 # (memory.embedder_provider / embedder_model / embedder_dims), the YAML

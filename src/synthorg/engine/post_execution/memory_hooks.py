@@ -32,8 +32,47 @@ from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_ERROR,
     PROCEDURAL_MEMORY_SKIPPED,
 )
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
+
+
+async def _live_procedural_config(
+    config: ProceduralMemoryConfig | None,
+    config_resolver: ConfigResolver | None,
+) -> ProceduralMemoryConfig | None:
+    """Re-resolve the per-capture procedural knobs against live settings.
+
+    Returns:
+        The config with ``enabled`` and ``min_confidence`` refreshed from
+        settings, or ``None`` when procedural memory is switched off. With
+        no resolver wired, or when the settings read fails, the boot
+        config's own ``enabled`` decides: a failure never flips the switch
+        on.
+    """
+    if config is None:
+        return None
+    if config_resolver is None:
+        return config if config.enabled else None
+    try:
+        enabled = await config_resolver.get_bool("memory", "procedural_enabled")
+        min_confidence = await config_resolver.get_float(
+            "memory",
+            "procedural_min_confidence",
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort settings read
+        reraise_critical(exc)
+        logger.warning(
+            PROCEDURAL_MEMORY_ERROR,
+            phase="settings_resolution",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return config if config.enabled else None
+    if not enabled:
+        return None
+    return config.model_copy(update={"min_confidence": min_confidence})
 
 
 async def try_capture_distillation(
@@ -107,10 +146,12 @@ async def try_procedural_memory(  # noqa: PLR0913
     procedural_proposer: ProceduralMemoryProposer | None,
     memory_backend: MemoryBackend | None,
     procedural_memory_config: ProceduralMemoryConfig | None = None,
+    config_resolver: ConfigResolver | None = None,
 ) -> None:
     """Run procedural memory pipeline (non-critical, never fatal).
 
-    Skips when proposer is absent or no recovery occurred.  System
+    Skips when the proposer is absent, no recovery occurred, or the
+    ``memory.procedural_enabled`` switch is off at capture time. System
     errors and cancellation propagate; all others are swallowed.
 
     Raises:
@@ -135,6 +176,18 @@ async def try_procedural_memory(  # noqa: PLR0913
             reason="no_memory_backend",
         )
         return
+    live_config = await _live_procedural_config(
+        procedural_memory_config,
+        config_resolver,
+    )
+    if procedural_memory_config is not None and live_config is None:
+        logger.debug(
+            PROCEDURAL_MEMORY_SKIPPED,
+            agent_id=agent_id,
+            task_id=task_id,
+            reason="disabled",
+        )
+        return
     try:
         from pydantic import TypeAdapter  # noqa: PLC0415
 
@@ -151,7 +204,7 @@ async def try_procedural_memory(  # noqa: PLR0913
             _nb.validate_python(task_id),
             proposer=procedural_proposer,
             memory_backend=memory_backend,
-            config=procedural_memory_config,
+            config=live_config,
         )
     except asyncio.CancelledError:
         raise

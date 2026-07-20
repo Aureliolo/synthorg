@@ -368,6 +368,12 @@ class ConsolidationConfig(BaseModel):
             key="consolidation_enabled",
             parse=parse_bool,
         ),
+        MirrorField(
+            field="interval",
+            namespace=SettingNamespace.MEMORY,
+            key="consolidation_interval",
+            parse=ConsolidationInterval,
+        ),
     )
 
     enabled: bool = Field(

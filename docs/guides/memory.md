@@ -73,7 +73,6 @@ memory:
   options:
     retention_days: null          # null = keep forever
     max_memories_per_agent: 10000
-    consolidation_interval: daily
     shared_knowledge_base: true
   retrieval:
     strategy: context
@@ -97,6 +96,23 @@ memory:
 | `options` | MemoryOptionsConfig | *(defaults)* | Behaviour options |
 | `retrieval` | MemoryRetrievalConfig | *(defaults)* | Retrieval pipeline settings |
 | `consolidation` | ConsolidationConfig | *(defaults)* | Consolidation settings |
+| `procedural` | ProceduralMemoryConfig | *(defaults)* | Procedural skill auto-generation |
+
+### Checking Memory Health
+
+`GET /health` reports memory in one of three states, shown as a card in the
+dashboard's system-health popover:
+
+| State | Meaning |
+|-------|---------|
+| `durable` | Memories survive restarts and are retrieved by meaning |
+| `degraded` | Running on the ephemeral keyword backend: recall is substring-only and every memory is lost on restart |
+| `off` | No embedding model resolved, so no backend was built and agents receive no memory |
+
+`off` is deliberate rather than a silent fallback: memory that quietly degrades to
+substring matching over a dict looks healthy while recalling the wrong thing.
+Configure an embedding provider (or set the `memory.embedder_*` overrides) to move
+from `off` to `durable`.
 
 ---
 
@@ -121,8 +137,11 @@ is no separate vector-store or history-store to configure or back up.
 |-------|------|---------|-------------|
 | `retention_days` | int or null | `null` | Days to retain memories (`null` = forever) |
 | `max_memories_per_agent` | int | `10000` | Upper bound on memories per agent |
-| `consolidation_interval` | string | `"daily"` | How often to consolidate: `hourly`, `daily`, `weekly`, `never` |
 | `shared_knowledge_base` | bool | `true` | Whether shared knowledge is enabled |
+
+The consolidation cadence is `consolidation.interval`, not an option here:
+that is the field the scheduler reads and the `memory.consolidation_interval`
+setting mirrors.
 
 ---
 
@@ -262,6 +281,37 @@ The archival system classifies each memory by density score and routes to the ap
 
 ---
 
+## Procedural Memory
+
+When an agent fails a task and recovers, the procedural pipeline asks a model what
+it would do differently, and stores the answer as a reusable skill. Later tasks
+recall that skill instead of rediscovering the same workaround.
+
+```yaml
+procedural:
+  enabled: true
+  model: null                 # unset: the proposer makes no LLM call
+  temperature: 0.3
+  max_tokens: 1500
+  min_confidence: 0.5
+  skill_md_directory: null    # set to also write portable SKILL.md files
+```
+
+| Field | Setting key | Applies | Description |
+|-------|-------------|---------|-------------|
+| `enabled` | `memory.procedural_enabled` | Next task | Master switch. When off, every capture short-circuits and no LLM call is made |
+| `min_confidence` | `memory.procedural_min_confidence` | Next task | Quality floor: proposals rated below it are discarded |
+| `temperature` | `memory.procedural_temperature` | Next restart | Sampling temperature for the proposer |
+| `max_tokens` | `memory.procedural_max_tokens` | Next restart | Response token budget for the proposer |
+| `skill_md_directory` | `memory.procedural_skill_md_directory` | Next restart | Directory for `SKILL.md` materialisation; unset keeps skills in the backend only |
+| `model` | (company config) | Next restart | Proposer model. Unset means the proposer skips rather than guessing a model |
+
+`enabled` and `min_confidence` are re-resolved on every capture, so pausing skill
+generation or tightening the quality floor takes effect on the next task. The rest
+are baked into the frozen proposer config at startup.
+
+---
+
 ## Practical Example
 
 A complete memory configuration for a research lab that prioritises long-term knowledge retention:
@@ -275,7 +325,6 @@ memory:
   options:
     retention_days: null
     max_memories_per_agent: 50000
-    consolidation_interval: weekly
     shared_knowledge_base: true
   retrieval:
     strategy: context

@@ -81,20 +81,28 @@ class TestMemoryOptionsConfig:
         c = MemoryOptionsConfig()
         assert c.retention_days is None
         assert c.max_memories_per_agent == 10_000
-        assert c.consolidation_interval is ConsolidationInterval.DAILY
         assert c.shared_knowledge_base is True
 
     def test_custom_values(self) -> None:
         c = MemoryOptionsConfig(
             retention_days=90,
             max_memories_per_agent=5000,
-            consolidation_interval=ConsolidationInterval.WEEKLY,
             shared_knowledge_base=False,
         )
         assert c.retention_days == 90
         assert c.max_memories_per_agent == 5000
-        assert c.consolidation_interval is ConsolidationInterval.WEEKLY
         assert c.shared_knowledge_base is False
+
+    def test_cadence_is_not_duplicated_here(self) -> None:
+        """The scheduler reads ConsolidationConfig.interval.
+
+        A second copy on this model would be an operator-visible knob
+        that changes nothing.
+        """
+        with pytest.raises(ValidationError, match="Extra inputs"):
+            MemoryOptionsConfig(
+                consolidation_interval=ConsolidationInterval.WEEKLY,  # type: ignore[call-arg]
+            )
 
     def test_frozen(self) -> None:
         c = MemoryOptionsConfig()
@@ -120,11 +128,6 @@ class TestMemoryOptionsConfig:
     def test_max_memories_minimum_accepted(self) -> None:
         c = MemoryOptionsConfig(max_memories_per_agent=1)
         assert c.max_memories_per_agent == 1
-
-    def test_consolidation_interval_all_values(self) -> None:
-        for interval in ConsolidationInterval:
-            c = MemoryOptionsConfig(consolidation_interval=interval)
-            assert c.consolidation_interval is interval
 
 
 # ── EmbedderOverrideConfig ──────────────────────────────────────

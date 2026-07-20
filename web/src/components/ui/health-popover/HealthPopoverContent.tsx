@@ -1,5 +1,6 @@
 import { Dialog } from '@base-ui/react/dialog'
 import {
+  Brain,
   Clock,
   Database,
   RefreshCw,
@@ -130,6 +131,13 @@ function HealthSubsystemGrid({
         label="Message bus"
         description="Internal async queue carrying inter-agent messages and engine events."
         state={states.busState}
+      />
+      <HealthStatusRow
+        icon={Brain}
+        label="Memory"
+        description="Org, agent, and project recall injected into working agents. Durable requires an embedding model."
+        state={states.memoryState}
+        detail={states.memoryDetail}
       />
     </div>
   )

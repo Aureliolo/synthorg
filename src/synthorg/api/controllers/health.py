@@ -105,6 +105,46 @@ class ReadinessProbe(BaseModel):
     uptime_seconds: float = Field(ge=0.0, description="Seconds since startup")
 
 
+class MemoryState(StrEnum):
+    """How agent memory is running, for the operator-facing banner.
+
+    Attributes:
+        DURABLE: Wired on a store that survives restart and retrieves
+            by meaning.
+        DEGRADED: Wired, but on the ephemeral keyword store an operator
+            selected explicitly.
+        OFF: Not wired. Usually no embedding model resolved, which the
+            startup log records at ERROR.
+    """
+
+    DURABLE = "durable"
+    DEGRADED = "degraded"
+    OFF = "off"
+
+
+class MemoryHealth(BaseModel):
+    """Agent-memory substrate state.
+
+    Memory failing silently is the defect this whole surface exists to
+    prevent: an operator whose memory never wired saw a healthy system
+    that simply never remembered anything.
+
+    Attributes:
+        state: How memory is running.
+        backend: Configured backend name.
+        detail: What an operator should do about it, when anything.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    state: MemoryState = Field(description="How agent memory is running")
+    backend: str = Field(description="Configured memory backend name")
+    detail: str | None = Field(
+        default=None,
+        description="Operator-facing remedy, when action is needed",
+    )
+
+
 class ReadinessStatus(BaseModel):
     """Readiness response payload.
 
@@ -136,6 +176,9 @@ class ReadinessStatus(BaseModel):
     )
     telemetry: TelemetryStatus = Field(
         description="Project telemetry delivery state",
+    )
+    memory: MemoryHealth = Field(
+        description="Agent-memory substrate state",
     )
     version: str = Field(description="Application version")
     uptime_seconds: float = Field(ge=0.0, description="Seconds since startup")
@@ -218,6 +261,42 @@ def _resolve_telemetry_status(app_state: AppState) -> TelemetryStatus:
     )
 
 
+def _resolve_memory_health(app_state: AppState) -> MemoryHealth:
+    """Report whether agent memory is actually running.
+
+    Returns:
+        ``MemoryHealth`` describing the substrate and, when it is not
+        durable, what the operator should do.
+    """
+    from synthorg.memory.factory import IN_MEMORY_BACKEND  # noqa: PLC0415
+    from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
+
+    backend_name = app_state.config.memory.backend
+    if app_state.slice(MemoryStateSlice).backend is None:
+        return MemoryHealth(
+            state=MemoryState.OFF,
+            backend=backend_name,
+            detail=(
+                "No memory backend is wired, so agents start every task "
+                "with no recall. The usual cause is that no embedding "
+                "model resolved: set memory.embedder_provider and "
+                "memory.embedder_model, or connect a provider that "
+                "offers an embedding model."
+            ),
+        )
+    if backend_name == IN_MEMORY_BACKEND:
+        return MemoryHealth(
+            state=MemoryState.DEGRADED,
+            backend=backend_name,
+            detail=(
+                "The ephemeral backend matches by term and loses every "
+                "memory on restart. Switch memory.backend to 'sqlvector' "
+                "for durable, meaning-based recall."
+            ),
+        )
+    return MemoryHealth(state=MemoryState.DURABLE, backend=backend_name)
+
+
 def _unavailable_status(app_state: AppState) -> ReadinessStatus:
     """Build a 503 ``unavailable`` readiness status.
 
@@ -235,6 +314,7 @@ def _unavailable_status(app_state: AppState) -> ReadinessStatus:
         message_bus=None,
         providers=None,
         telemetry=_resolve_telemetry_status(app_state),
+        memory=_resolve_memory_health(app_state),
         version=__version__,
         uptime_seconds=uptime,
     )
@@ -398,6 +478,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         message_bus=bus_ok,
         providers=providers_ok,
         telemetry=telemetry_status,
+        memory=_resolve_memory_health(app_state),
         version=__version__,
         uptime_seconds=uptime,
     )

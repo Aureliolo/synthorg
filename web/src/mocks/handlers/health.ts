@@ -39,6 +39,7 @@ export const healthHandlers = [
         message_bus: true,
         providers: true,
         telemetry: 'disabled',
+        memory: { state: 'durable', backend: 'sqlvector', detail: null },
         version: '0.6.4',
         uptime_seconds: 0,
       }),

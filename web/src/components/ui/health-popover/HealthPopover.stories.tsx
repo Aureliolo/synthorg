@@ -25,6 +25,7 @@ const BASE_PAYLOAD = {
   message_bus: true,
   providers: true,
   telemetry: 'disabled' as const,
+  memory: { state: 'durable' as const, backend: 'sqlvector', detail: null },
   version: '0.6.4',
   uptime_seconds: 847_200,
 }

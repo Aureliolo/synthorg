@@ -385,11 +385,10 @@ class AgentEngine(
         self._personality_trim_notifier = personality_trim_notifier
         self._coordination_metrics_collector = coordination_metrics_collector
         self._procedural_proposer: ProceduralMemoryProposer | None = None
-        if (
-            procedural_memory_config is not None
-            and procedural_memory_config.enabled
-            and memory_backend is not None
-        ):
+        # Constructed regardless of ``enabled`` so the switch stays live: the
+        # post-execution hook re-resolves it per capture, and constructing a
+        # proposer costs nothing until a capture actually dispatches.
+        if procedural_memory_config is not None and memory_backend is not None:
             from synthorg.memory.procedural.proposer import (  # noqa: PLC0415
                 ProceduralMemoryProposer,
             )

@@ -15,7 +15,6 @@ from synthorg.memory.backends.composite.config import (
     CompositeBackendConfig,
 )
 from synthorg.memory.consolidation.config import ConsolidationConfig
-from synthorg.memory.enums import ConsolidationInterval
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.observability import get_logger
@@ -76,10 +75,14 @@ class MemoryStorageConfig(BaseModel):
 class MemoryOptionsConfig(BaseModel):
     """Memory behaviour options.
 
+    The consolidation cadence lives on ``ConsolidationConfig.interval``,
+    which is the field the scheduler reads and the
+    ``memory.consolidation_interval`` setting mirrors. A second copy
+    here would be a knob an operator could turn with no effect.
+
     Attributes:
         retention_days: Days to retain memories (``None`` = forever).
         max_memories_per_agent: Maximum memories per agent.
-        consolidation_interval: How often to consolidate memories.
         shared_knowledge_base: Whether shared knowledge is enabled.
     """
 
@@ -94,10 +97,6 @@ class MemoryOptionsConfig(BaseModel):
         default=10_000,
         ge=1,
         description="Maximum memories per agent",
-    )
-    consolidation_interval: ConsolidationInterval = Field(
-        default=ConsolidationInterval.DAILY,
-        description="How often to consolidate memories",
     )
     shared_knowledge_base: bool = Field(
         default=True,

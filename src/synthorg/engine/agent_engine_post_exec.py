@@ -69,6 +69,7 @@ if TYPE_CHECKING:
         CheckpointRepository,
         HeartbeatRepository,
     )
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -103,6 +104,7 @@ class AgentEnginePostExecMixin:
     _memory_backend: MemoryBackend | None
     _procedural_memory_config: ProceduralMemoryConfig | None
     _procedural_proposer: ProceduralMemoryProposer | None
+    _config_resolver: ConfigResolver | None
     _capture_strategy: CaptureStrategy | None
     _evolution_service: EvolutionService | None
     _provider: CompletionProvider
@@ -388,6 +390,7 @@ class AgentEnginePostExecMixin:
             procedural_proposer=self._procedural_proposer,
             memory_backend=self._memory_backend,
             procedural_memory_config=self._procedural_memory_config,
+            config_resolver=self._config_resolver,
         )
 
     async def _try_capture_success(
