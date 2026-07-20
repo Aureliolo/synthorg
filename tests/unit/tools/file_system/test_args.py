@@ -103,6 +103,54 @@ class TestEditFileArgs:
         with pytest.raises(ValidationError):
             EditFileArgs(path="x.py", old_text="", new_text="bar")
 
+    @pytest.mark.unit
+    def test_replace_all_defaults_false(self) -> None:
+        args = EditFileArgs(path="x.py", old_text="foo", new_text="bar")
+        assert args.replace_all is False
+
+    @pytest.mark.unit
+    def test_batch_edits_construction(self) -> None:
+        args = EditFileArgs(
+            path="x.py",
+            edits=(
+                {"old_text": "a", "new_text": "b"},  # type: ignore[arg-type]
+                {"old_text": "c", "new_text": "d", "replace_all": True},  # type: ignore[arg-type]
+            ),
+        )
+        hunks = args.normalized_hunks()
+        assert len(hunks) == 2
+        assert hunks[1].replace_all is True
+
+    @pytest.mark.unit
+    def test_single_edit_normalizes_to_one_hunk(self) -> None:
+        args = EditFileArgs(
+            path="x.py", old_text="foo", new_text="bar", replace_all=True
+        )
+        hunks = args.normalized_hunks()
+        assert len(hunks) == 1
+        assert hunks[0].old_text == "foo"
+        assert hunks[0].replace_all is True
+
+    @pytest.mark.unit
+    def test_both_modes_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            EditFileArgs(
+                path="x.py",
+                old_text="foo",
+                new_text="bar",
+                edits=({"old_text": "a", "new_text": "b"},),  # type: ignore[arg-type]
+            )
+
+    @pytest.mark.unit
+    def test_neither_mode_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            EditFileArgs(path="x.py")
+
+    @pytest.mark.unit
+    def test_old_text_without_new_text_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            EditFileArgs(path="x.py", old_text="foo")
+
 
 class TestDeleteFileArgs:
     @pytest.mark.unit
