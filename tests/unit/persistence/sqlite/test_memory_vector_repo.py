@@ -546,6 +546,15 @@ class TestCrud:
         assert await repo.count(NotBlankStr("agent-1")) == 1
         assert await repo.get(NotBlankStr("agent-1"), NotBlankStr("live")) is not None
 
+    async def test_purge_expired_rejects_naive_now(
+        self, repo: SQLiteMemoryVectorRepository
+    ) -> None:
+        # A naive cutoff would be compared against a session-local instant,
+        # so it is rejected at the boundary as the Postgres arm does.
+        naive = datetime(2026, 7, 20, 12, 0)  # noqa: DTZ001 -- naive on purpose
+        with pytest.raises(QueryError, match="timezone-aware"):
+            await repo.purge_expired(naive)
+
     async def test_oldest_ids_returns_oldest_first(
         self, repo: SQLiteMemoryVectorRepository
     ) -> None:

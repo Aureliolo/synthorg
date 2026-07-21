@@ -271,7 +271,11 @@ class ProviderTextEmbedder:
                     f"for index {index}"
                 )
                 raise MemoryEmbeddingError(msg)
-            vector = tuple(float(value) for value in raw)
+            try:
+                vector = tuple(float(value) for value in raw)
+            except (TypeError, ValueError) as exc:
+                msg = f"Embedding response from {self.model_ref!r} is malformed"
+                raise MemoryEmbeddingError(msg) from exc
             if len(vector) != self._config.dims:
                 msg = (
                     f"Embedder {self.model_ref!r} returned a {len(vector)}-dim "

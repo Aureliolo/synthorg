@@ -21,10 +21,7 @@ from synthorg.memory.models import (
     MemoryQuery,
     MemoryUpdateRequest,
 )
-from synthorg.memory.namespace_scope import (
-    ambient_read_namespaces,
-    ambient_write_namespace,
-)
+from synthorg.memory.namespace_scope import ambient_write_namespace
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.tool_retriever import ERROR_PREFIX
 from synthorg.memory.write_gate import (
@@ -77,10 +74,12 @@ async def comparable_entries(
             MemoryQuery(
                 text=content,
                 categories=frozenset({category}),
-                # Dedup only against entries the write would be visible
-                # beside, so a project write never collapses into another
-                # project's memory it can't see.
-                namespaces=ambient_read_namespaces(),
+                # Dedup only within the namespace the write lands in, matching
+                # supersession: an unscoped run must not collapse its write
+                # into a project-private memory it should never see, and a
+                # project write keeps its own copy rather than folding into
+                # the shared default's.
+                namespaces=frozenset({ambient_write_namespace()}),
                 limit=limit,
             ),
         )

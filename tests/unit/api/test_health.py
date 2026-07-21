@@ -347,9 +347,11 @@ class TestResolveMemoryHealth:
 class TestMemoryReadiness:
     """Memory joins the readiness verdict only when a durable store was asked.
 
-    A configured sqlvector backend that came up OFF/DEGRADED must fail
-    ``/readyz`` (503); the inmemory store is degraded by design and never
-    blocks, so dev stacks stay ready.
+    A wired durable backend (e.g. sqlvector) in DEGRADED state fails
+    ``/readyz`` (503). An unwired backend (OFF) does not block: the config
+    default is sqlvector, so a minimal or not-yet-configured deployment
+    reports OFF without durable memory ever wiring. The inmemory store is
+    degraded by design and likewise never blocks, so dev stacks stay ready.
     """
 
     @staticmethod

@@ -107,14 +107,15 @@ dashboard's system-health popover:
 
 | State | Meaning |
 |-------|---------|
-| `durable` | Memories survive restarts and are retrieved by meaning |
-| `degraded` | Running on the ephemeral keyword backend: recall is substring-only and every memory is lost on restart |
-| `off` | No embedding model resolved, so no backend was built and agents receive no memory |
+| `durable` | Wired on a store that survives restarts and retrieves by meaning |
+| `degraded` | Wired, but not fully durable: the ephemeral keyword backend, a failed health probe, a missing dense index (keyword-only recall), or maintenance disabled |
+| `off` | No backend wired at all, whatever the configured type. Usually no embedding model resolved |
 
-`off` is deliberate rather than a silent fallback: memory that quietly degrades to
-substring matching over a dict looks healthy while recalling the wrong thing.
-Configure an embedding provider (or set the `memory.embedder_*` overrides) to move
-from `off` to `durable`.
+`degraded` and `off` are surfaced rather than silently tolerated: memory that
+quietly degrades to substring matching looks healthy while recalling the wrong
+thing. Configure an embedding provider (or set the `memory.embedder_*` overrides)
+to move from `off` to `durable`; a wired-but-`degraded` durable backend fails the
+readiness probe so the fault is visible.
 
 ---
 
@@ -166,7 +167,7 @@ When an agent needs context, the retrieval pipeline queries the memory backend, 
 | `default_relevance` | float | `0.5` | Score for entries missing a relevance score |
 | `injection_point` | string | `"system"` | Where to inject: `"system"` (system prompt) or `"user"` |
 | `memory_filter_strategy` | string | `"off"` | Post-ranking filter: `"off"` (no filter), `"tag_based"` (only non-inferable-tagged memories), or `"passthrough"` (inject all) |
-| `fusion_strategy` | string | `"linear"` | Ranking fusion: `"linear"` (currently supported) |
+| `fusion_strategy` | string | `"linear"` | Ranking fusion: `"linear"` (relevance + recency) or `"rrf"` (Reciprocal Rank Fusion over multiple ranked lists) |
 | `rrf_k` | int | `60` | RRF smoothing constant (only with RRF strategy, 1--1000) |
 | `diversity_penalty_enabled` | bool | `true` | Apply MMR diversity re-ranking (context strategy only; off for other strategies) |
 | `diversity_lambda` | float | `0.7` | MMR trade-off: `1.0` pure relevance, `0.0` maximum diversity |

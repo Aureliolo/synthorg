@@ -391,6 +391,7 @@ class SqlVectorBackend:
 
         Raises:
             MemoryConnectionError: If the backend is not connected.
+            MemoryEmbeddingError: If the embedder fails.
             MemoryRetrievalError: If the retrieval fails.
         """
         self._require_connected("retrieve")
@@ -447,6 +448,10 @@ class SqlVectorBackend:
                 lexical_task = group.create_task(
                     self._repository.search_lexical(lexical_spec)
                 )
+        except* (MemoryError, RecursionError) as critical_group:
+            # A system-level failure from an arm must propagate unwrapped,
+            # never be folded into the persistence-error mapping below.
+            raise critical_group.exceptions[0] from None
         except* PersistenceError as group_error:
             # TaskGroup re-raises an arm's failure inside an ExceptionGroup;
             # unwrap it so retrieve()'s handler maps it to

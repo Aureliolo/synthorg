@@ -454,8 +454,13 @@ class SQLiteMemoryVectorRepository:
             The number of rows deleted.
 
         Raises:
-            QueryError: If the delete fails.
+            QueryError: If ``now`` is naive or the delete fails.
         """
+        # Reject a naive datetime at the boundary, as the Postgres arm does,
+        # so a caller cannot silently compare against a session-local instant.
+        if now.tzinfo is None:
+            msg = f"purge_expired requires a timezone-aware 'now', got {now!r}"
+            raise QueryError(msg)
         async with self._write_context():
             try:
                 async with self._db.execute(
