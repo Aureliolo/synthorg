@@ -21,6 +21,7 @@ def _config(  # noqa: PLR0913 -- keyword-only test factory
     tools: bool = False,
     vision: bool = False,
     reasoning: bool = False,
+    prompt_caching: bool = False,
     embeddings: bool = False,
     image_generation: bool = False,
     max_context: int = 8192,
@@ -33,6 +34,7 @@ def _config(  # noqa: PLR0913 -- keyword-only test factory
             supports_tools=tools,
             supports_vision=vision,
             supports_reasoning=reasoning,
+            supports_prompt_caching=prompt_caching,
             supports_embeddings=embeddings,
             supports_image_generation=image_generation,
         ),
@@ -58,6 +60,11 @@ def test_ollama_capabilities_come_from_probe_metadata() -> None:
     # With no litellm streaming info, ollama models default to streaming-capable.
     assert caps.supports_streaming is True
     assert caps.provider == "test-provider"
+
+
+def test_prompt_caching_flag_threaded_from_metadata() -> None:
+    assert _ollama_caps(_config("m", prompt_caching=True)).supports_prompt_caching
+    assert not _ollama_caps(_config("m")).supports_prompt_caching
 
 
 def test_ollama_embedding_flag_from_metadata() -> None:

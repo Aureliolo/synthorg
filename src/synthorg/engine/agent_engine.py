@@ -102,6 +102,7 @@ if TYPE_CHECKING:
     )
     from synthorg.engine.coordination.models import CoordinationContext
     from synthorg.engine.coordination.service import MultiAgentCoordinator
+    from synthorg.engine.delegation.protocol import SubAgentRunner
     from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.hybrid_models import HybridLoopConfig
@@ -123,6 +124,7 @@ if TYPE_CHECKING:
     from synthorg.engine.session import EventReader
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
+    from synthorg.hr.registry_protocol import AgentRegistryProtocol
     from synthorg.memory.injection import MemoryInjectionStrategy
     from synthorg.memory.procedural.capture.protocol import CaptureStrategy
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
@@ -258,6 +260,7 @@ class AgentEngine(
             StructureMapToolFactoryProvider | None
         ) = None,
         stakes_router: StakesRouter | None = None,
+        agent_registry: AgentRegistryProtocol | None = None,
         flight_recorder_sink: FlightRecorderSink | None = None,
         clock: Clock | None = None,
     ) -> None:
@@ -399,6 +402,22 @@ class AgentEngine(
             )
         self._audit_log = audit_log if audit_log is not None else AuditLog()
         self._project_repo = project_repo
+        self._agent_registry = agent_registry
+        # Blocking-delegation runner dispatches child runs back through this
+        # same engine (``AgentEngine.run`` holds no per-run instance state, so
+        # the nested call is re-entrant). Wired only when both the task engine
+        # and the agent registry are present; ``None`` disables delegation.
+        self._sub_agent_runner: SubAgentRunner | None = None
+        if task_engine is not None and agent_registry is not None:
+            from synthorg.engine.delegation.runner import (  # noqa: PLC0415
+                InProcessSubAgentRunner,
+            )
+
+            self._sub_agent_runner = InProcessSubAgentRunner(
+                engine=self,
+                task_engine=task_engine,
+                agent_registry=agent_registry,
+            )
         logger.debug(
             EXECUTION_ENGINE_CREATED,
             loop_type=(
@@ -414,6 +433,7 @@ class AgentEngine(
             has_plan_execute_config=self._plan_execute_config is not None,
             has_hybrid_loop_config=self._hybrid_loop_config is not None,
             has_personality_trim_notifier=self._personality_trim_notifier is not None,
+            has_sub_agent_runner=self._sub_agent_runner is not None,
         )
 
     @property
@@ -553,11 +573,19 @@ class AgentEngine(
                 # cost attribution (identity.model.provider) and the API
                 # actually called are the same provider.
                 if self._stakes_router is not None:
-                    routed = await self._route_stakes(identity, task)
+                    routed, reasoning_effort = await self._route_stakes(identity, task)
                     provider, identity = self._resolve_provider_instance(
                         routed,
                         identity,
                         provider,
+                    )
+                    # Fold the stakes-driven reasoning depth into the run
+                    # config so higher-stakes work thinks harder, not only
+                    # on a stronger tier. temperature / max_tokens are stable
+                    # across the budget downgrade below, so folding here is
+                    # safe.
+                    completion_config = self._fold_stakes_reasoning(
+                        completion_config, identity, reasoning_effort
                     )
 
                 if self._budget_enforcer:
@@ -591,6 +619,14 @@ class AgentEngine(
                     # for the fallback / recovery path to reuse.
                     provider = self._dispatch_client_for(downgraded, provider)
                     identity = downgraded
+
+                # Turn on prompt caching for the run per the operator setting;
+                # the driver still gates the actual cache_control placement on
+                # per-model caching support. Runs after routing / budget so the
+                # final identity's sampling is preserved.
+                completion_config = await self._fold_prompt_caching(
+                    completion_config, identity
+                )
 
                 if self._project_repo is not None:
                     _project_budget = await self._validate_project(
@@ -816,6 +852,12 @@ class AgentEngine(
             )
             if hub is not None:
                 await publish_run_started(hub, task_id=task_id, agent_id=agent_id)
+            # Stream the per-turn LLM calls (with mid-turn cancellation and
+            # steer-interrupt) when the operator setting is on and the model
+            # supports it; else the loop uses the non-streaming call path.
+            streaming_enabled = await self._resolve_streaming_enabled(
+                provider or self._provider, identity, task_id=task_id
+            )
             # before/after_agent fire around the loop run (no-op when unwired);
             # after_agent is guaranteed in a finally inside the helper so a
             # loop timeout/exception cannot skip the end-of-run cleanup seam.
@@ -840,6 +882,7 @@ class AgentEngine(
                     timeout_seconds=timeout_seconds,
                     provider=provider or self._provider,
                     turn_observer=turn_observer,
+                    streaming_enabled=streaming_enabled,
                 )
 
             try:

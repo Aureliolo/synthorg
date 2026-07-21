@@ -124,7 +124,7 @@ class TestRegistryExpandCategory:
             ("deploy", 2),
             ("comms", 2),
             ("budget", 2),
-            ("org", 3),
+            ("org", 4),
             ("db", 3),
             ("arch", 1),
             ("browser", 5),

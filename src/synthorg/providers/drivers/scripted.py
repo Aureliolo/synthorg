@@ -288,11 +288,22 @@ class ScriptedDriver(ImageGenerationMixin, BaseCompletionProvider):
                     event_type=StreamEventType.CONTENT_DELTA,
                     content=response.content,
                 )
+            for tool_call in response.tool_calls:
+                yield StreamChunk(
+                    event_type=StreamEventType.TOOL_CALL_DELTA,
+                    tool_call_delta=tool_call,
+                )
             yield StreamChunk(
                 event_type=StreamEventType.USAGE,
                 usage=response.usage,
             )
-            yield StreamChunk(event_type=StreamEventType.DONE)
+            # Carry the faithful finish reason on the terminal event so a
+            # consumer reassembling the stream recovers it, matching the
+            # real driver.
+            yield StreamChunk(
+                event_type=StreamEventType.DONE,
+                finish_reason=response.finish_reason,
+            )
 
         return _chunks()
 

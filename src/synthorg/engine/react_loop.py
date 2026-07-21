@@ -47,7 +47,6 @@ from .loop_control_helpers import (
 )
 from .loop_helpers import (
     build_result,
-    call_provider,
     check_response_errors,
     classify_step,
     classify_turn,
@@ -62,6 +61,11 @@ from .loop_protocol import (
     TaskCancellationChecker,
     TerminationReason,
     TurnObserver,
+)
+from .loop_streaming import (
+    _TurnInterrupted,
+    fold_interrupt_usage,
+    run_provider_turn,
 )
 from .loop_tool_execution import (
     clear_last_turn_tool_calls,
@@ -244,6 +248,7 @@ class ReactLoop:
         completion_config: CompletionConfig | None = None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
         turn_observer: TurnObserver | None = None,
+        streaming_enabled: bool = False,
     ) -> ExecutionResult:
         """Run the ReAct loop until termination.
 
@@ -261,6 +266,9 @@ class ReactLoop:
                 it takes precedence over the construction-time observer so
                 a per-execution stream (e.g. AG-UI task progress) can be
                 wired without rebuilding the shared loop.
+            streaming_enabled: When ``True``, each per-turn LLM call streams
+                and is interruptible mid-flight (operator cancellation and
+                steering REDIRECT); otherwise a non-streaming call is used.
 
         Returns:
             Execution result with final context and termination info.
@@ -301,7 +309,7 @@ class ReactLoop:
             tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
 
             turn_number = ctx.turn_count + 1
-            response = await call_provider(
+            outcome = await run_provider_turn(
                 ctx,
                 provider,
                 model_id,
@@ -309,9 +317,19 @@ class ReactLoop:
                 config,
                 turn_number,
                 turns,
+                streaming_enabled=streaming_enabled,
+                cancellation_checker=task_cancellation_checker,
+                steering_inbox=self._steering_inbox,
             )
-            if isinstance(response, ExecutionResult):
-                return await self._attach_whole_run_signals(response, turns)
+            if isinstance(outcome, ExecutionResult):
+                return await self._attach_whole_run_signals(outcome, turns)
+            if isinstance(outcome, _TurnInterrupted):
+                # A steering REDIRECT aborted the in-flight call; fold the
+                # partial usage and re-issue the turn so the top-of-loop
+                # steering check adopts the directive into context.
+                ctx = fold_interrupt_usage(ctx, outcome)
+                continue
+            response = outcome
 
             turns.append(
                 make_turn_record(

@@ -573,6 +573,22 @@ class TestStreamChunk:
     def test_done_event(self) -> None:
         chunk = StreamChunk(event_type=StreamEventType.DONE)
         assert chunk.event_type == StreamEventType.DONE
+        assert chunk.finish_reason is None
+
+    def test_done_carries_finish_reason(self) -> None:
+        chunk = StreamChunk(
+            event_type=StreamEventType.DONE,
+            finish_reason=FinishReason.TOOL_USE,
+        )
+        assert chunk.finish_reason is FinishReason.TOOL_USE
+
+    def test_finish_reason_rejected_on_non_done_event(self) -> None:
+        with pytest.raises(ValidationError, match="must not include finish_reason"):
+            StreamChunk(
+                event_type=StreamEventType.CONTENT_DELTA,
+                content="Hello",
+                finish_reason=FinishReason.STOP,
+            )
 
     def test_done_rejects_extraneous_content(self) -> None:
         with pytest.raises(ValidationError, match="must not include"):

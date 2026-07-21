@@ -16,6 +16,10 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.task_limits import (
+    MAX_TASK_DESCRIPTION_LENGTH,
+    MAX_TASK_TITLE_LENGTH,
+)
 
 MutationType = Literal["create", "update", "transition", "delete", "cancel"]
 """Discriminator literal for all mutation request types."""
@@ -23,11 +27,8 @@ MutationType = Literal["create", "update", "transition", "delete", "cancel"]
 TaskErrorCode = Literal["not_found", "version_conflict", "validation", "internal"]
 """Machine-readable error classification for mutation results."""
 
-_MAX_TITLE_LENGTH: Final[int] = 256
-"""Maximum length for task titles (matches API-layer ``CreateTaskRequest``)."""
-
-_MAX_DESCRIPTION_LENGTH: Final[int] = 4096
-"""Maximum length for task descriptions (matches API-layer ``CreateTaskRequest``)."""
+_MAX_TITLE_LENGTH: Final[int] = MAX_TASK_TITLE_LENGTH
+_MAX_DESCRIPTION_LENGTH: Final[int] = MAX_TASK_DESCRIPTION_LENGTH
 
 _VALID_TASK_FIELDS: frozenset[str] = frozenset(Task.model_fields)
 """Field names accepted by ``model_fields`` on :class:`Task`.

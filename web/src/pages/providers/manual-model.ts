@@ -69,6 +69,7 @@ function buildManualModel(v: ParsedModelValues): ProviderModelConfig {
       supports_reasoning: false,
       supports_embeddings: /embed/i.test(v.idTrimmed),
       supports_image_generation: v.imageCost !== null,
+      supports_prompt_caching: false,
       max_output_tokens: null,
       parameter_count: null,
       cost_tier: null,

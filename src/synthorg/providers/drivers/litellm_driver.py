@@ -65,10 +65,15 @@ from synthorg.observability.events.provider import (
 )
 from synthorg.providers import errors
 from synthorg.providers._cost import token_usage_from_response_usage
+from synthorg.providers._resilience import aclose_quietly
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
 from synthorg.providers.drivers.litellm_capabilities import build_capabilities
+from synthorg.providers.drivers.litellm_features import (
+    apply_capability_gated_features,
+    extract_raw_finish_reason,
+)
 from synthorg.providers.drivers.litellm_image import generate_image_via_litellm
 from synthorg.providers.drivers.litellm_kwargs import (
     _AcompletionKwargs,
@@ -80,6 +85,7 @@ from synthorg.providers.drivers.litellm_model_catalog import (
     resolve_model,
 )
 from synthorg.providers.drivers.litellm_quota import is_quota_exhaustion
+from synthorg.providers.drivers.litellm_response import map_response
 from synthorg.providers.drivers.litellm_tool_accumulator import (
     _ToolCallAccumulator,
     accumulate_tool_call_deltas,
@@ -104,10 +110,8 @@ from synthorg.providers.resilience.retry import RetryHandler
 
 from .mappers import (
     extract_retry_after,
-    extract_tool_calls,
     map_finish_reason,
     messages_to_dicts,
-    normalize_empty_finish,
     tools_to_dicts,
 )
 
@@ -315,10 +319,9 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
             await self._ensure_credentials_resolved()
             model_config = self._resolve_model(model)
             await self._ensure_vram_capacity(model_config.id)
-            litellm_model = f"{self._routing_key}/{model_config.id}"
             kwargs = self._build_kwargs(
                 messages,
-                litellm_model,
+                model_config,
                 tools=tools,
                 config=config,
             )
@@ -328,7 +331,7 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         except Exception as exc:
             reraise_critical(exc)
             raise self._map_exception(exc, model) from exc
-        return self._map_response(response, model_config)
+        return map_response(response, model_config, provider_name=self._provider_name)
 
     @override
     async def _do_stream(
@@ -359,10 +362,9 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
             await self._ensure_credentials_resolved()
             model_config = self._resolve_model(model)
             await self._ensure_vram_capacity(model_config.id)
-            litellm_model = f"{self._routing_key}/{model_config.id}"
             kwargs = self._build_kwargs(
                 messages,
-                litellm_model,
+                model_config,
                 tools=tools,
                 config=config,
                 stream=True,
@@ -532,7 +534,7 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
     def _build_kwargs(
         self,
         messages: list[ChatMessage],
-        litellm_model: str,
+        model_config: ProviderModelConfig,
         *,
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
@@ -544,6 +546,7 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
             A kwargs dict for ``litellm.acompletion`` with credentials,
             base URL, and completion config merged in.
         """
+        litellm_model = f"{self._routing_key}/{model_config.id}"
         kwargs: _AcompletionKwargs = {
             "model": litellm_model,
             "messages": messages_to_dicts(messages),
@@ -578,65 +581,13 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
                 if self._config.keep_alive is not None
                 else _OLLAMA_DEFAULT_KEEP_ALIVE
             )
-        return _apply_completion_config(kwargs, config)
-
-    # ── Response mapping ─────────────────────────────────────────
-
-    def _map_response(
-        self,
-        response: object,
-        model_config: ProviderModelConfig,
-    ) -> CompletionResponse:
-        """Map a LiteLLM ``ModelResponse`` to ``CompletionResponse``.
-
-        Returns:
-            A ``CompletionResponse`` populated from the first choice's
-            content, tool calls, finish reason, token usage, and cost.
-
-        Raises:
-            ProviderInternalError: If the LiteLLM response has no choices.
-        """
-        choices = getattr(response, "choices", [])
-        if not choices:
-            logger.error(
-                PROVIDER_CALL_ERROR,
-                provider=self._provider_name,
-                model=model_config.id,
-                error="empty_choices_in_response",
-            )
-            msg = f"Provider returned empty choices for model {model_config.id!r}"
-            raise errors.ProviderInternalError(
-                msg, context={"provider": self._provider_name, "model": model_config.id}
-            )
-
-        choice = choices[0]
-        message = choice.message
-
-        content: str | None = getattr(message, "content", None)
-        raw_tc = getattr(message, "tool_calls", None)
-        tool_calls = extract_tool_calls(raw_tc)
-        finish = normalize_empty_finish(
-            content=content,
-            tool_calls=tool_calls,
-            finish=map_finish_reason(getattr(choice, "finish_reason", None)),
-            provider=self._provider_name,
-            model=model_config.id,
-            had_raw_tool_calls=bool(raw_tc),
-        )
-
-        usage = token_usage_from_response_usage(
-            getattr(response, "usage", None),
-            cost_per_1k_input=model_config.cost_per_1k_input,
-            cost_per_1k_output=model_config.cost_per_1k_output,
-        )
-
-        return CompletionResponse(
-            content=content,
-            tool_calls=tool_calls,
-            finish_reason=finish,
-            usage=usage,
-            model=model_config.id,
-            provider_request_id=getattr(response, "id", None) or None,
+        merged = _apply_completion_config(kwargs, config)
+        return apply_capability_gated_features(
+            merged,
+            model_config,
+            config,
+            capabilities_provider=self._build_capabilities,
+            provider_name=self._provider_name,
         )
 
     # ── Streaming ────────────────────────────────────────────────
@@ -660,33 +611,52 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         async def _generate() -> AsyncGenerator[StreamChunk]:
             """Map raw LiteLLM chunks, appending DONE + pending tool calls."""
             pending: dict[int, _ToolCallAccumulator] = {}
+            raw_finish: str | None = None
+            # Close the underlying LiteLLM/HTTP stream on every exit, including
+            # an early consumer abort (the mid-turn cancel / steer-interrupt
+            # path): a bare ``async for`` does NOT call ``.aclose()`` on the
+            # abandoned iterator when it exits via ``GeneratorExit``, leaking
+            # the open provider connection. ``aclose_quietly`` no-ops when the
+            # raw stream has no ``aclose`` and never masks the ``GeneratorExit``.
             try:
-                async for chunk in raw_stream:
-                    for sc in process(
-                        chunk,
-                        pending,
-                        model_config,
-                    ):
-                        yield sc
-            except Exception as exc:
-                reraise_critical(exc)
-                logger.error(
-                    PROVIDER_CALL_ERROR,
+                try:
+                    async for chunk in raw_stream:
+                        for sc in process(
+                            chunk,
+                            pending,
+                            model_config,
+                        ):
+                            yield sc
+                        chunk_finish = extract_raw_finish_reason(chunk)
+                        if chunk_finish is not None:
+                            raw_finish = chunk_finish
+                except Exception as exc:
+                    reraise_critical(exc)
+                    logger.error(
+                        PROVIDER_CALL_ERROR,
+                        provider=provider,
+                        model=model,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    raise handle_exc(exc, model) from exc
+
+                for sc in emit_pending_tool_calls(pending):
+                    yield sc
+                logger.debug(
+                    PROVIDER_STREAM_DONE,
                     provider=provider,
                     model=model,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
-                raise handle_exc(exc, model) from exc
-
-            for sc in emit_pending_tool_calls(pending):
-                yield sc
-            logger.debug(
-                PROVIDER_STREAM_DONE,
-                provider=provider,
-                model=model,
-            )
-            yield StreamChunk(event_type=StreamEventType.DONE)
+                # Carry the faithful finish reason on the terminal event so a
+                # consumer reassembling the stream recovers it (content chunks
+                # carry none). Left None when the provider never surfaced one.
+                finish = (
+                    map_finish_reason(raw_finish) if raw_finish is not None else None
+                )
+                yield StreamChunk(event_type=StreamEventType.DONE, finish_reason=finish)
+            finally:
+                await aclose_quietly(raw_stream, model=model)
 
         return _generate()
 

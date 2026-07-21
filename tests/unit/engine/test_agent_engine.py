@@ -34,6 +34,7 @@ from synthorg.observability.correlation import (
     clear_correlation_ids,
 )
 from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
+from synthorg.providers.models import CompletionConfig
 from tests._shared import JsonDict, as_uuid, mock_of
 
 if TYPE_CHECKING:
@@ -753,7 +754,12 @@ class TestAgentEngineCompletionConfig:
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """A provided CompletionConfig reaches the execution loop."""
+        """A provided CompletionConfig reaches the loop, with caching folded in.
+
+        The engine applies the prompt-caching policy per run (default on with
+        no resolver wired), so the config the loop receives preserves the
+        caller's fields and carries ``prompt_caching=True``.
+        """
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
             task=sample_task_with_criteria,
@@ -780,7 +786,7 @@ class TestAgentEngineCompletionConfig:
             get_loop_type=MagicMock(return_value="custom"),
         )
 
-        config = MagicMock()
+        config = CompletionConfig(temperature=0.42, max_tokens=123)
         provider = mock_provider_factory([])
         engine = AgentEngine(
             provider=provider,
@@ -793,8 +799,10 @@ class TestAgentEngineCompletionConfig:
             completion_config=config,
         )
 
-        call_kwargs = mock_loop.execute.call_args.kwargs
-        assert call_kwargs["completion_config"] is config
+        forwarded = mock_loop.execute.call_args.kwargs["completion_config"]
+        assert forwarded.temperature == 0.42
+        assert forwarded.max_tokens == 123
+        assert forwarded.prompt_caching is True
 
 
 @pytest.mark.unit

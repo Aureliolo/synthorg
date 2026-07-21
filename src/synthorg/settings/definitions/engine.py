@@ -50,6 +50,106 @@ _r.register(
     )
 )
 
+# ── Work-loop streaming ──────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="work_loop_streaming_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Stream each per-turn LLM call in the task-execution loop so an"
+            " operator can cancel or redirect an in-flight call mid-turn,"
+            " instead of only at the turn boundary. Gated per run on the"
+            " model's streaming support; falls back to a non-streaming call"
+            " otherwise. Resolved live per run, so a change applies without a"
+            " restart."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+# ── Blocking delegation ──────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="delegation_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Expose the blocking delegate_and_await tool so an agent can"
+            " offload a focused sub-task to another agent, run it to"
+            " completion inline, and consume its transcript in the same"
+            " turn. Resolved live per delegation call, so a change applies"
+            " without a restart."
+        ),
+        group="Delegation",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="delegation_max_turns",
+        type=SettingType.INTEGER,
+        default="10",
+        description=(
+            "Hard cap on the number of LLM turns a delegated child agent"
+            " may take. Bounds the cost and latency of a single"
+            " delegate_and_await call; read live per delegation."
+        ),
+        group="Delegation",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=200,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="delegation_max_depth",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "Maximum depth of the parent-task chain a delegate_and_await call"
+            " may sit at. Bounds nested delegation so a chain of agents"
+            " delegating to one another cannot recurse without limit; a"
+            " delegation whose target already appears as an ancestor's"
+            " assignee (a cycle, including self-delegation) is refused"
+            " regardless. Read live per delegation."
+        ),
+        group="Delegation",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=20,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="delegation_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="0.0",
+        description=(
+            "Wall-clock ceiling for a single delegated child run. Because a"
+            " delegate_and_await call blocks the supervisor's own turn, a"
+            " child that stalls on a slow provider would otherwise hold the"
+            " parent open indefinitely. 0 means no wall-clock limit (bounded"
+            " only by delegation_max_turns). Read live per delegation."
+        ),
+        group="Delegation",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=3600.0,
+    )
+)
+
 # ── Approval gate ────────────────────────────────────────────────
 
 _r.register(

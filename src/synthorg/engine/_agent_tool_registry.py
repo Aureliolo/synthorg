@@ -14,13 +14,16 @@ from typing import TYPE_CHECKING
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
+from synthorg.engine.delegation.protocol import SubAgentRunner
 from synthorg.observability import get_logger
 from synthorg.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
 from synthorg.observability.events.tool import (
     CHAT_TOOL_GRANTED,
+    DELEGATE_TOOL_GRANTED,
     FORGE_TOOL_GRANTED,
 )
 from synthorg.security.risk_map import default_risk_classifier
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.base import BaseTool
 from synthorg.tools.chat._runtime import ChatToolsRuntime
 from synthorg.tools.forge._runtime import ForgeToolsRuntime
@@ -131,7 +134,62 @@ def registry_with_chat_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
     return ToolRegistry([*existing, *chat_tools])
 
 
+def registry_with_delegate_tool(  # noqa: PLR0913 -- run-scoped wiring inputs
+    tool_registry: ToolRegistry,
+    runner: SubAgentRunner | None,
+    config_resolver: ConfigResolver | None,
+    identity: AgentIdentity,
+    task_id: str | None = None,
+    project_id: str | None = None,
+) -> ToolRegistry:
+    """Add the blocking ``delegate_and_await`` tool when it can be wired.
+
+    Bound to the supervisor's identity, task, and project so the child
+    task records the correct creator / parent / scope. Live-gating on
+    ``engine.delegation_enabled`` happens inside the tool per call, so the
+    tool is added whenever a runner, resolver, task, and project scope all
+    exist; an operator disabling the feature makes it refuse at call time
+    rather than vanishing mid-run.
+
+    Returns:
+        A :class:`ToolRegistry` with ``delegate_and_await`` appended when
+        the runner, resolver, task id, and project scope are all present;
+        otherwise the original registry unchanged.
+    """
+    # Blank task / project ids are treated like a missing id: the tool binds
+    # them into a NotBlankStr-typed SubAgentDelegationSpec, so registering it
+    # with a whitespace-only scope would only fail later at execute time.
+    if (
+        runner is None
+        or config_resolver is None
+        or not (task_id and task_id.strip())
+        or not (project_id and project_id.strip())
+    ):
+        return tool_registry
+
+    from synthorg.tools.communication.delegate_tools import (  # noqa: PLC0415
+        DelegateAndAwaitTool,
+    )
+
+    delegate_tool = DelegateAndAwaitTool(
+        runner=runner,
+        config_resolver=config_resolver,
+        requested_by=str(identity.id),
+        parent_task_id=task_id,
+        project=project_id,
+    )
+    logger.debug(
+        DELEGATE_TOOL_GRANTED,
+        agent_id=str(identity.id),
+        task_id=task_id,
+        project_id=project_id,
+    )
+    existing = list(tool_registry.all_tools())
+    return ToolRegistry([*existing, delegate_tool])
+
+
 __all__ = [
     "registry_with_chat_tools",
+    "registry_with_delegate_tool",
     "registry_with_forge_tools",
 ]

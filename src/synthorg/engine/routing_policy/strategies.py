@@ -241,6 +241,7 @@ class StakesAwareStrategy:
             selected_model=selected_model,
             red_team_required=red_team_required,
             stakes=stakes,
+            reasoning_effort=self._config.stakes_reasoning.for_stakes(stakes),
             reason=reason,
             source=source,
         )

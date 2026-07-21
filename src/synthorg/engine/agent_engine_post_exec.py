@@ -533,6 +533,7 @@ class AgentEnginePostExecMixin:
         timeout_seconds: float | None,
         provider: CompletionProvider | None = None,
         turn_observer: TurnObserver | None = None,
+        streaming_enabled: bool = False,
     ) -> ExecutionResult:
         """Execute the loop, using ``asyncio.wait`` for timeout control.
 
@@ -552,6 +553,7 @@ class AgentEnginePostExecMixin:
             completion_config=completion_config,
             task_cancellation_checker=self._make_task_cancellation_checker(task_id),
             turn_observer=turn_observer,
+            streaming_enabled=streaming_enabled,
         )
         if timeout_seconds is None:
             return await coro

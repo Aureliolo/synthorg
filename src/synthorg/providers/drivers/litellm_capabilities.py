@@ -91,6 +91,7 @@ def build_capabilities(
         supports_embeddings=supports_embeddings,
         supports_image_generation=supports_image_generation,
         supports_reasoning=metadata.supports_reasoning,
+        supports_prompt_caching=metadata.supports_prompt_caching,
         cost_per_1k_input=model_config.cost_per_1k_input,
         cost_per_1k_output=model_config.cost_per_1k_output,
     )
