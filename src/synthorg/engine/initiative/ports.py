@@ -13,6 +13,7 @@ from typing import Protocol, runtime_checkable
 
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.project import Project
 
 
 @runtime_checkable
@@ -36,4 +37,20 @@ class PlanStatusWriter(Protocol):
         Returns:
             The persisted plan carrying the new status.
         """
+        ...
+
+
+@runtime_checkable
+class RetroCapturePort(Protocol):
+    """The SHIP-time retrospective trigger, as the rollup needs it.
+
+    Structurally satisfied by
+    ``engine.initiative.retro_capture.ShipRetroCaptureService``. The rollup
+    calls this exactly once, on the edge a project first reaches COMPLETED, so
+    finished work feeds back into memory. It must not block or raise: the call
+    schedules detached work and returns immediately.
+    """
+
+    def schedule(self, *, plan: Plan, project: Project) -> None:
+        """Schedule retrospective capture for a just-completed objective."""
         ...

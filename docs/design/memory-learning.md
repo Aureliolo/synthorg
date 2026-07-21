@@ -158,6 +158,68 @@ future pruning).
 
 ---
 
+## Retrospective Capture on SHIP
+
+Procedural auto-generation (above) learns from a single task's failure or
+success. The **retrospective** learns from a whole finished *objective*: when
+the initiative rollup moves a project to `COMPLETED`, the accountable lead
+distils what the organisation should carry forward, closing the loop from
+finished work back into standing memory. Without it a later run of the same
+objective would start from nothing.
+
+### The distillation session
+
+Judging a completed objective and distilling reusable learnings is a
+non-trivial chokepoint, so it is an **owner-run agent session**, not a single
+completion call (the same principle as owner-run planning). `RetroDistiller`
+(`engine/initiative/retro_session.py`) runs a bounded `ReactLoop` **as the
+project lead**: the lead is granted a read-only `search_memory` tool (fusing its
+own memory with org knowledge, via `build_memory_recall_tool`) so it can recall
+prior retros and avoid restating them, is fed a fenced summary of the objective,
+its acceptance criteria, and the completed plan items, and finally calls the
+terminal `submit_retrospective` tool. The session is bounded by a turn cap, a
+per-session cost ceiling, and a wall-clock timeout; it runs on the lead's own
+bound provider (the explicit `providers.default_provider` when that is
+unresolvable). When no lead is staffed the most senior team member stands in, so
+an owned initiative always has an accountable author.
+
+### The write side and its governance
+
+`submit_retrospective` yields a `RetrospectiveDraft` of `{summary, org_learnings,
+agent_learnings}`, written by `engine/initiative/retro_writes.py`:
+
+- **Org learnings** are reusable, company-wide lessons, written as agent-authored
+  `PROCEDURE` / `CONVENTION` org facts (the taxonomy as designed, never
+  `CORE_POLICY`, which stays human-only). The lead is the author, so a lead whose
+  role does not hold the `memory.write` capability is refused at the org access
+  gate: the capability gate is the hard control, direct writes are the default,
+  and there is no proposal queue in the path (the loop closes without a human).
+- **Agent learnings** are per-contributor lessons, written as `EPISODIC` entries
+  into each member's own memory, and only for agents actually on the initiative
+  (a hallucinated agent id lands nowhere).
+
+Every entry is redacted at the store boundary, deduped by the write gate, and
+tagged `retro` + `objective:<uuid5(project_id)>`. Writes are per-item
+best-effort: one refused or failed learning never loses the rest.
+
+### Idempotency and isolation from the loop
+
+Capture fires **exactly once**, on the edge a project first reaches `COMPLETED`
+(`ProjectRollupService._maybe_capture_retro`); a terminal project never
+re-triggers it. A restart mid-capture is caught by an org-memory backstop that
+skips a project already carrying its `objective:` tag. Because the rollup is a
+best-effort, bounded-queue observer, capture runs **detached** on a tracked
+background task with the wall-clock ceiling, so it never blocks or fails task
+processing.
+
+Wired at boot by `api/lifecycle_helpers/project_rollup_wiring.py` (only when both
+the agent-memory and org-memory backends are present) and gated by
+`memory.retro_capture_enabled` (default on, hot-reloadable), with
+`memory.retro_session_max_turns` / `_cost_ceiling` / `_timeout_seconds` tuning the
+session.
+
+---
+
 ## Memory Injection Strategies
 
 Agent memory reaches agents through pluggable injection strategies behind the

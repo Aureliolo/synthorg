@@ -15,7 +15,7 @@ from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.initiative.ports import PlanStatusWriter
+from synthorg.engine.initiative.ports import PlanStatusWriter, RetroCapturePort
 from synthorg.engine.initiative.rollup import _TASK_PAGE_SIZE, ProjectRollupService
 from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.persistence.plan_protocol import PlanRepository
@@ -91,6 +91,7 @@ async def _seed(
     plan: Plan,
     *tasks: Task,
     project_status: ProjectStatus = ProjectStatus.ACTIVE,
+    ship_retro_capture: RetroCapturePort | None = None,
 ) -> tuple[ProjectRollupService, FakePersistenceBackend]:
     backend = FakePersistenceBackend()
     await backend.plans.save(plan)
@@ -109,8 +110,20 @@ async def _seed(
         persistence=backend,
         plan_status_writer=PlanService(repo=backend.plans, clock=clock),
         clock=clock,
+        ship_retro_capture=ship_retro_capture,
     )
     return service, backend
+
+
+class _RecordingRetroCapture:
+    """A retro-capture port that records the projects it was fired for."""
+
+    def __init__(self) -> None:
+        self.fired: list[str] = []
+
+    def schedule(self, *, plan: Plan, project: Project) -> None:
+        del plan
+        self.fired.append(str(project.id))
 
 
 async def _statuses(
@@ -495,6 +508,51 @@ class TestProjectBehindItsPlan:
             PlanStatus.COMPLETED,
             ProjectStatus.COMPLETED,
         )
+
+
+class TestRetroTrigger:
+    """The retrospective fires exactly once, on the edge into COMPLETED."""
+
+    async def test_fires_when_the_project_first_completes(self) -> None:
+        retro = _RecordingRetroCapture()
+        service, _ = await _seed(
+            _plan(_item(_ITEM_A), _item(_ITEM_B)),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+            _task(_ITEM_B, TaskStatus.COMPLETED),
+            ship_retro_capture=retro,
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert retro.fired == [sid(_PROJECT)]
+
+    async def test_does_not_fire_while_work_is_in_flight(self) -> None:
+        retro = _RecordingRetroCapture()
+        service, _ = await _seed(
+            _plan(_item(_ITEM_A), _item(_ITEM_B)),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+            _task(_ITEM_B, TaskStatus.IN_REVIEW),
+            ship_retro_capture=retro,
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert retro.fired == []
+
+    async def test_does_not_refire_for_an_already_completed_project(self) -> None:
+        """A recompute over a terminal project must not re-trigger the retro."""
+        retro = _RecordingRetroCapture()
+        service, _ = await _seed(
+            _plan(_item(_ITEM_A), _item(_ITEM_B), status=PlanStatus.COMPLETED),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+            _task(_ITEM_B, TaskStatus.COMPLETED),
+            project_status=ProjectStatus.COMPLETED,
+            ship_retro_capture=retro,
+        )
+
+        await service.recompute(as_uuid(_PLAN_ID))
+
+        assert retro.fired == []
 
 
 def _event(task: Task) -> TaskStateChanged:

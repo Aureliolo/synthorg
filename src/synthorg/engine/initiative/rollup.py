@@ -41,6 +41,7 @@ from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import TERMINAL_STATUSES, PlanItemKind, PlanStatus
 from synthorg.core.plan_transitions import transition_path
+from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -50,7 +51,7 @@ from synthorg.engine.initiative.completion import (
     derive_plan_status,
     derive_project_status,
 )
-from synthorg.engine.initiative.ports import PlanStatusWriter
+from synthorg.engine.initiative.ports import PlanStatusWriter, RetroCapturePort
 from synthorg.engine.initiative.project_writes import (
     MAX_WRITE_ATTEMPTS,
     advance_project_status,
@@ -88,9 +89,18 @@ class ProjectRollupService:
         plan_status_writer: The audited plan-status write path (injected so the
             engine does not import the api service layer).
         clock: Clock seam, retained for the service lifecycle contract.
+        ship_retro_capture: Optional trigger fired once, on the edge a project
+            first reaches COMPLETED, so finished work feeds a retrospective back
+            into memory. ``None`` leaves the loop's consuming tail unwired.
     """
 
-    __slots__ = ("_clock", "_locks", "_persistence", "_plan_writer")
+    __slots__ = (
+        "_clock",
+        "_locks",
+        "_persistence",
+        "_plan_writer",
+        "_ship_retro_capture",
+    )
 
     def __init__(
         self,
@@ -98,10 +108,12 @@ class ProjectRollupService:
         persistence: PersistenceBackend,
         plan_status_writer: PlanStatusWriter,
         clock: Clock,
+        ship_retro_capture: RetroCapturePort | None = None,
     ) -> None:
         self._persistence = persistence
         self._plan_writer = plan_status_writer
         self._clock = clock
+        self._ship_retro_capture = ship_retro_capture
         # Serialises same-process recomputes for one plan so concurrent task
         # completions do not each read the pre-write state. Cross-process
         # safety comes from the version-guarded writes, not this lock.
@@ -172,6 +184,7 @@ class ProjectRollupService:
                 project_id=NotBlankStr(str(plan.project)),
                 target=derive_project_status(plan.status, current=before),
             )
+            self._maybe_capture_retro(plan, project, before=before)
             moved = plan.status is not started_as or (
                 project is not None and project.status is not before
             )
@@ -184,6 +197,29 @@ class ProjectRollupService:
                 project_status=project.status.value if project else None,
                 item_count=item_count,
             )
+
+    def _maybe_capture_retro(
+        self,
+        plan: Plan,
+        project: Project | None,
+        *,
+        before: ProjectStatus,
+    ) -> None:
+        """Fire the retrospective trigger on the edge into COMPLETED.
+
+        Only the transition fires it, never a project already terminal, so a
+        redelivered event or a recompute over a finished project does not
+        re-trigger. The trigger schedules detached work and never raises, so it
+        is safe on this best-effort path.
+        """
+        if (
+            self._ship_retro_capture is None
+            or project is None
+            or before is ProjectStatus.COMPLETED
+            or project.status is not ProjectStatus.COMPLETED
+        ):
+            return
+        self._ship_retro_capture.schedule(plan=plan, project=project)
 
     async def _collect_item_progress(self, plan: Plan) -> tuple[ItemProgress, ...]:
         """Pair each plan item with the live status of its dispatched task.

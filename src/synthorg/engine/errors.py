@@ -87,6 +87,14 @@ class DecompositionDepthError(DecompositionError):
     """Raised when decomposition exceeds the maximum nesting depth."""
 
 
+class RetrospectiveError(EngineError):
+    """Base exception for objective-retrospective capture failures."""
+
+
+class RetrospectiveParseError(RetrospectiveError):
+    """Raised when a submitted retrospective cannot be parsed."""
+
+
 class PlanReviewError(EngineError):
     """Base exception for stakeholder plan-review failures."""
 
