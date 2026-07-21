@@ -99,20 +99,28 @@ def _write_sync(resolved: Path, new_content: str) -> None:
     corrupt the original file. ``mkstemp`` creates the temporary file
     owner-only, so its permission bits are set to the target's before the
     replace: editing an executable or group-readable file must not silently
-    narrow its mode (POSIX; ``chmod`` is a near-no-op on Windows).
+    narrow its mode. The mode is applied via ``os.fchmod`` on the still-open
+    descriptor so no window exists in which the temp *path* could be swapped
+    for a symlink in a writable parent directory; only where ``fchmod`` is
+    absent (Windows) is a path chmod used, and there ``chmod`` merely toggles
+    the read-only bit so the race is not meaningful.
 
     Raises:
         OSError: For OS-level I/O failures.
         BaseException: Re-raised after unlinking the temp file on any failure.
     """
     mode = stat.S_IMODE(resolved.stat().st_mode)
+    fchmod = getattr(os, "fchmod", None)
     fd, tmp_path = tempfile.mkstemp(dir=str(resolved.parent), suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(new_content)
             fh.flush()
             os.fsync(fh.fileno())
-        Path(tmp_path).chmod(mode)
+            if fchmod is not None:
+                fchmod(fh.fileno(), mode)
+        if fchmod is None:
+            Path(tmp_path).chmod(mode)
         pathlib.Path(tmp_path).replace(resolved)
     except BaseException:
         pathlib.Path(tmp_path).unlink(missing_ok=True)
