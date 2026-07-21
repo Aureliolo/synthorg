@@ -261,6 +261,13 @@ Two enforcement points maintain this boundary:
 
 See also: [Engine > Brain / Hands / Session](agent-execution.md#brain-hands-session).
 
+The [credentialed-tool MCP boundary](credentialed-mcp.md) extends this same
+invariant to an embedded coding harness: the harness receives only tool
+schemas and already-fenced results, while credential brokering, the approval
+gate, the action signature and the egress pin all run host-side in the API
+process. A credential never crosses into the sandbox, and every write parks
+a `ConnectionApprovalGate` approval bound to the calling actor.
+
 ## Approval Timeout Policy
 
 When an action requires human approval (per autonomy level), the agent must wait. The

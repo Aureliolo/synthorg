@@ -27,8 +27,9 @@ Each published image is signed with **cosign keyless** via GitHub OIDC in `.gith
 | Image | Purpose | Base |
 |-------|---------|------|
 | `desktop` | Headless virtual-desktop sandbox the agent drives via the desktop tool (Xvfb + fluxbox + xdotool + scrot, plus Python/Tk for GUI deliverables). Spawned on demand by the backend; the `desktop_image_pin` setting defaults to `ghcr.io/aureliolo/synthorg-desktop:latest` | `debian:trixie-slim` pinned by digest in `docker/desktop/Dockerfile`. Debian rather than apko/Wolfi because the X11/GUI toolchain (Xvfb, fluxbox, Tk) is packaged for glibc Debian, not Wolfi |
+| `openhands` | Sandbox variant for the [OpenHands execution loop](openhands-loop.md): the sandbox base plus the `openhands-sdk` + `agent_server` bundled into an isolated venv at `/opt/openhands`. The adapter drives the in-container `agent_server` over REST/WS | The published `sandbox` base plus a thin `docker/openhands/Dockerfile` layering the SDK. The SDK closure is resolved in-image only, never the main venv, so the litellm / pyo3-3.14 pin holds do not apply. Egress stays locked to the gateway + credentialed-MCP endpoints by the sidecar |
 
-Unlike the published images above, `desktop` is **not built or published by `.github/workflows/docker.yml`**, so it is not cosign-signed or SLSA-attested. Its base-image digest is kept fresh by Renovate (the `dockerfile` manager scans every Dockerfile). Because it is absent from the publish + signing matrix, the desktop tool's `desktop_image_pin` default does not resolve to a published image (tracked in #2033).
+Unlike the published images above, `desktop` and `openhands` are **not built or published by `.github/workflows/docker.yml`**, so neither is cosign-signed or SLSA-attested. Their base-image digests are kept fresh by Renovate (the `dockerfile` manager scans every Dockerfile). Because they are absent from the publish + signing matrix, the desktop tool's `desktop_image_pin` default does not resolve to a published image (tracked in #2033), and the OpenHands loop stays unavailable until an operator builds and pins its image.
 
 ## apko-composed base images
 

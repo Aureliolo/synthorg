@@ -96,6 +96,16 @@ mandatory_rules:
     header: Explicit Provider Binding
     gate: scripts/check_no_provider_auto_pick.py
 
+  - id: claude-md::llm-gateway-binding
+    file: CLAUDE.md
+    header: LLM Gateway Binding
+    gate: scripts/check_gateway_explicit_binding.py
+
+  - id: claude-md::credentialed-mcp-governance
+    file: CLAUDE.md
+    header: Credentialed-MCP Governance
+    gate: scripts/check_credentialed_mcp_governed.py
+
   - id: claude-md::error-code-uniqueness
     file: CLAUDE.md
     header: Error-Code Uniqueness

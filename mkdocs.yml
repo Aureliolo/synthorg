@@ -165,6 +165,9 @@ nav:
       - Communication Event Stream: design/communication-events.md
       - Engine: design/engine.md
       - Agent Execution: design/agent-execution.md
+      - OpenHands Execution Loop: design/openhands-loop.md
+      - LLM Gateway: design/llm-gateway.md
+      - Credentialed-tool MCP: design/credentialed-mcp.md
       - Mid-Flight Steering: design/mid-flight-steering.md
       - Coordination & Resilience: design/coordination.md
       - Verification & Quality: design/verification-quality.md

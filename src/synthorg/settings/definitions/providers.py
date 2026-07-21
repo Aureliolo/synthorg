@@ -328,6 +328,64 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
+        key="gateway_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Enable the OpenAI-compatible LLM gateway: an in-process HTTP"
+            " surface that fronts the provider registry so an embedded coding"
+            " harness (OpenHands) can route its LLM calls through SynthOrg's"
+            " cost attribution, Explicit Provider Binding, hard token budget"
+            " and secret-redacted logging. Off by default. Enabling opens an"
+            " egress path, so the deliberate confirm+reason+actor guardrail"
+            " applies to the enable transition. Re-read live per request, so"
+            " toggling takes effect on the next call without a restart."
+        ),
+        group="Gateway",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="gateway_token_ttl_seconds",
+        type=SettingType.INTEGER,
+        default="3600",
+        description=(
+            "Lifetime in seconds of a per-run gateway bearer token. A run that"
+            " outlives its token re-mints on resume, so this bounds how long a"
+            " leaked token stays usable. Re-read live when a run token is"
+            " minted."
+        ),
+        group="Gateway",
+        level=SettingLevel.ADVANCED,
+        min_value=60,
+        max_value=86400,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="gateway_base_url",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Base URL the in-sandbox harness uses to reach the LLM gateway"
+            " (the app address reachable through the sandbox sidecar egress"
+            " allowlist, e.g. http://host.docker.internal:8000). Empty by"
+            " default, which leaves the OpenHands execution loop unavailable"
+            " until an operator sets a reachable address. Re-read live."
+        ),
+        group="Gateway",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
         key="cassette_path",
         type=SettingType.STRING,
         default=None,

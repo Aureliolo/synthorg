@@ -16,6 +16,8 @@ from synthorg._demo.controller import DemoController
 from synthorg.api.a2a.gateway import A2AGatewayController
 from synthorg.api.a2a.well_known import WellKnownAgentCardController
 from synthorg.api.controllers import ALL_CONTROLLERS, ws_handler
+from synthorg.api.gateway.controller import GatewayController
+from synthorg.api.mcp_gateway.controller import CredentialedMcpController
 
 pytestmark = pytest.mark.unit
 
@@ -59,6 +61,8 @@ def _expected_controllers() -> set[type[Controller]]:
         *ALL_CONTROLLERS,
         WellKnownAgentCardController,
         A2AGatewayController,
+        GatewayController,
+        CredentialedMcpController,
         DemoController,
     }
 

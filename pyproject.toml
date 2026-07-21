@@ -605,6 +605,14 @@ module = "d2.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# openhands-sdk is bundled only in the OpenHands sandbox image, never the
+# main venv, so it is absent at type-check time. The single importer
+# (engine/openhands/sdk_runtime.py) guards the import and fails loud when
+# the SDK is missing; this shim keeps the guarded module type-checkable.
+module = "openhands.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # pydantic's ``@computed_field`` stacks on ``@property`` by design; mypy
 # cannot model the pass-through and flags ``prop-decorator`` at every site.
 module = "synthorg.*"
@@ -632,6 +640,11 @@ extend_exclude = [
 package_module_name_map = { "pyjwt" = "jwt", "tree-sitter-language-pack" = "tree_sitter_language_pack" }
 
 [tool.deptry.per_rule_ignores]
+# DEP001: imported-but-not-declared. ``openhands-sdk`` is bundled ONLY in
+# the OpenHands sandbox image, never the main venv (it would drag in the
+# litellm / pyo3-3.14 pin holds); its sole importer guards the import and
+# fails loud when absent, so it is intentionally undeclared here.
+DEP001 = ["openhands"]
 # DEP002: declared-but-not-imported. The mismatch is intentional for
 # transitive type-stub packages and optional runtime extras.
 DEP002 = [

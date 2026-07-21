@@ -778,3 +778,65 @@ _r.register(
         max_value=300.0,
     )
 )
+
+# ── Credentialed-tool MCP server (harness boundary) ──────────────
+# Exposes the governed forge / chat tools as an MCP server an embedded
+# coding harness (OpenHands) consumes. Tool execution + credential
+# brokering + the connection approval gate all run host-side, so
+# credentials never enter the sandbox. Reuses the forge_tools_* /
+# chat_tools_* connection + timeout settings above.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="credentialed_mcp_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Enable the credentialed-tool MCP server so an embedded harness can"
+            " call the governed forge / chat tools over MCP. Off by default."
+            " Enabling exposes credentialed actions to the harness, so the"
+            " deliberate confirm+reason+actor guardrail applies to the enable"
+            " transition. Re-read live per request; the connection approval"
+            " gate still parks every write."
+        ),
+        group="Credentialed MCP",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="credentialed_mcp_capabilities",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Comma-separated capability patterns the harness is granted on the"
+            " credentialed-tool MCP server (e.g. 'forge:read,chat:read'; '*' for"
+            " everything). Empty grants nothing (secure default): the harness"
+            " sees no credentialed tools until an operator opts in. Patterns"
+            " follow the MCP scoper form domain:action with '*' wildcards."
+        ),
+        group="Credentialed MCP",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="credentialed_mcp_base_url",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Sandbox-reachable base URL of the credentialed-tool MCP server the"
+            " embedded harness connects to (e.g. 'http://host.internal:8000/"
+            "mcp-gateway'). Empty leaves the OpenHands loop unavailable: it"
+            " fails loud when selected rather than reaching an unset endpoint."
+            " Set together with providers.gateway_base_url."
+        ),
+        group="Credentialed MCP",
+        level=SettingLevel.ADVANCED,
+    )
+)

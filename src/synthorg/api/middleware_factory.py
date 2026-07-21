@@ -256,6 +256,17 @@ def _build_auth_exclude_paths(
     # match this ingest-only exclusion and bypass auth. Fail-safe (mandatory)
     # so a custom ``auth.exclude_paths`` cannot accidentally re-gate ingest.
     webhooks_path = f"^{prefix}/webhooks/(?!receipts/)[^/]+/(?!activity$)[^/]+$"
+    # The LLM gateway authenticates with its own per-run signed bearer (verified
+    # inside the handler), not a session cookie, and is reachable only over the
+    # sandbox sidecar egress. Exclude it from session/bearer auth so the request
+    # reaches the handler's token check; the handler 503s when the gateway is
+    # disabled. Fail-safe (mandatory) so a custom exclude list cannot re-gate it.
+    gateway_path = f"^{prefix}/gateway"
+    # The credentialed-tool MCP server authenticates with the same per-run
+    # bearer (verified inside the handler) and is reachable only over the
+    # sandbox sidecar egress; exclude it from session/bearer auth so the
+    # request reaches the handler's token check. Fail-safe (mandatory).
+    mcp_gateway_path = f"^{prefix}/mcp-gateway"
     exclude_paths = (
         auth.exclude_paths
         if auth.exclude_paths is not None
@@ -294,6 +305,8 @@ def _build_auth_exclude_paths(
         ws_path,
         oauth_callback_path,
         webhooks_path,
+        gateway_path,
+        mcp_gateway_path,
     ]
     if a2a_enabled:
         mandatory_paths.extend((f"^{prefix}/a2a", r"^/\.well-known"))

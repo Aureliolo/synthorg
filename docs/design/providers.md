@@ -481,8 +481,22 @@ selection is transparent to the strategy layer.
 
 ---
 
+## LLM Gateway (embedded-harness boundary)
+
+An embedded coding harness (the [OpenHands loop](openhands-loop.md)) cannot
+call the in-process `ProviderRegistry` directly, so the [LLM gateway](llm-gateway.md)
+exposes an OpenAI-compatible HTTP surface that fronts the registry. Every
+gateway call inherits the provider-layer governance described above: Explicit
+Provider Binding (resolved from a per-run signed token, never the request's
+`model`), cost + prompt-purpose attribution through `cost_recording_scope`,
+and SEC-1 log redaction, plus a hard per-run token-budget kill. Provider
+agnosticism thus becomes a property of the gateway, not the harness.
+
+---
+
 ## See Also
 
+- [LLM Gateway](llm-gateway.md) -- the OpenAI-compatible governance boundary over this provider layer
 - [Budget & Cost Management](budget.md) -- token metering, cost tracking, CFO optimisation, quota degradation
 - [Tools](tools.md) -- tool categories, sandboxing, MCP integration
 - [Design Overview](index.md) -- full index
