@@ -20,6 +20,7 @@ quota shared with completion traffic, so every batch is attributed as
 spend an operator cannot see.
 """
 
+import math
 from datetime import UTC, datetime
 from typing import Final
 
@@ -273,9 +274,15 @@ class ProviderTextEmbedder:
                 raise MemoryEmbeddingError(msg)
             try:
                 vector = tuple(float(value) for value in raw)
-            except (TypeError, ValueError) as exc:
+            except (TypeError, ValueError, OverflowError) as exc:
                 msg = f"Embedding response from {self.model_ref!r} is malformed"
                 raise MemoryEmbeddingError(msg) from exc
+            # A NaN or infinity survives ``float()`` without raising, yet an
+            # embedding carrying one is unusable: distance maths against it is
+            # meaningless and the store forbids non-finite components.
+            if not all(math.isfinite(component) for component in vector):
+                msg = f"Embedding response from {self.model_ref!r} is malformed"
+                raise MemoryEmbeddingError(msg)
             if len(vector) != self._config.dims:
                 msg = (
                     f"Embedder {self.model_ref!r} returned a {len(vector)}-dim "

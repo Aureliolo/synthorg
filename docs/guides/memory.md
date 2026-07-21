@@ -113,9 +113,12 @@ dashboard's system-health popover:
 
 `degraded` and `off` are surfaced rather than silently tolerated: memory that
 quietly degrades to substring matching looks healthy while recalling the wrong
-thing. Configure an embedding provider (or set the `memory.embedder_*` overrides)
-to move from `off` to `durable`; a wired-but-`degraded` durable backend fails the
-readiness probe so the fault is visible.
+thing. Reaching `durable` takes more than embedder configuration: a durable
+backend must be wired on a store that survives restarts, an embedding model must
+resolve for semantic recall, and the readiness probe must pass. Setting the
+`memory.embedder_*` overrides alone lifts `off` only when a durable backend is
+already wired; a wired-but-`degraded` durable backend still fails the readiness
+probe, so the fault stays visible rather than masquerading as healthy.
 
 ---
 

@@ -76,3 +76,22 @@ class TestExtractOrdering:
         response = _response([{"index": 0, "embedding": [None, 2.0]}])
         with pytest.raises(MemoryEmbeddingError, match="malformed"):
             embedder._extract(response, expected=1)
+
+    def test_nan_embedding_value_is_malformed(self) -> None:
+        embedder = _embedder()
+        response = _response([{"index": 0, "embedding": [float("nan"), 2.0]}])
+        with pytest.raises(MemoryEmbeddingError, match="malformed"):
+            embedder._extract(response, expected=1)
+
+    def test_infinite_embedding_value_is_malformed(self) -> None:
+        embedder = _embedder()
+        response = _response([{"index": 0, "embedding": [float("inf"), 2.0]}])
+        with pytest.raises(MemoryEmbeddingError, match="malformed"):
+            embedder._extract(response, expected=1)
+
+    def test_oversized_embedding_value_is_malformed(self) -> None:
+        # ``float(10**400)`` raises OverflowError rather than returning inf.
+        embedder = _embedder()
+        response = _response([{"index": 0, "embedding": [10**400, 2.0]}])
+        with pytest.raises(MemoryEmbeddingError, match="malformed"):
+            embedder._extract(response, expected=1)
