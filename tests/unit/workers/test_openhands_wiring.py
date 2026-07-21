@@ -12,9 +12,36 @@ from synthorg.workers._openhands_wiring import (
     _egress_allowlist,
     _host_port,
     _merge_complexity_rules,
+    _missing_pieces,
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_missing_pieces_empty_when_all_wired() -> None:
+    assert _missing_pieces(object(), "http://gw", "http://mcp") == ()
+
+
+def test_missing_pieces_names_absent_signer() -> None:
+    assert _missing_pieces(None, "http://gw", "http://mcp") == ("gateway_signer",)
+
+
+def test_missing_pieces_names_blank_endpoints() -> None:
+    assert _missing_pieces(object(), "", "http://mcp") == (
+        "providers.gateway_base_url",
+    )
+    assert _missing_pieces(object(), "http://gw", "") == (
+        "tools.credentialed_mcp_base_url",
+    )
+
+
+def test_missing_pieces_reports_every_absent_piece() -> None:
+    # A cold boot with nothing wired names all three so the log is actionable.
+    assert _missing_pieces(None, "", "") == (
+        "gateway_signer",
+        "providers.gateway_base_url",
+        "tools.credentialed_mcp_base_url",
+    )
 
 
 def test_host_port_infers_scheme_default_ports() -> None:
