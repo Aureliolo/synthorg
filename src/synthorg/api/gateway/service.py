@@ -30,6 +30,7 @@ from synthorg.api.gateway.translation import (
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.prompt_safety import scan_injection_heuristics
 from synthorg.llm.gateway_errors import (
@@ -37,9 +38,14 @@ from synthorg.llm.gateway_errors import (
     GatewayTokenInvalidError,
 )
 from synthorg.llm.gateway_token import GatewaySigner, GatewayTokenClaims
-from synthorg.observability import get_logger, scrub_secret_tokens
+from synthorg.observability import (
+    get_logger,
+    safe_error_description,
+    scrub_secret_tokens,
+)
 from synthorg.observability.events.gateway import (
     GATEWAY_BUDGET_KILL,
+    GATEWAY_DISPATCH_FAILED,
     GATEWAY_INJECTION_SUSPECTED,
     GATEWAY_PROVIDER_UNAVAILABLE,
     GATEWAY_REQUEST_RECEIVED,
@@ -201,12 +207,49 @@ class GatewayService:
                     if chunk.event_type is StreamEventType.USAGE and (
                         chunk.usage is not None
                     ):
-                        await self._ledger.add(claims.execution_id, chunk.usage.cost)
+                        total = await self._ledger.add(
+                            claims.execution_id, chunk.usage.cost
+                        )
+                        # Enforce the hard token budget mid-stream: the cost
+                        # chokepoint only fires on terminal drain, so a single
+                        # long stream must be cut the moment its running total
+                        # crosses the ceiling rather than blowing past it.
+                        if self._ceiling_crossed(claims, total):
+                            logger.warning(
+                                GATEWAY_BUDGET_KILL,
+                                execution_id=claims.execution_id,
+                                spent=total,
+                                ceiling=claims.cost_ceiling,
+                                surface="gateway-stream",
+                            )
+                            await self._ledger.reset(claims.execution_id)
+                            break
                     frame = self._stream_frame(chunk, response_id, created, claims)
                     if frame is not None:
                         yield frame
+            except Exception as exc:
+                reraise_critical(exc)
+                # A provider failure after the first frame otherwise reaches
+                # the client as a truncated stream with no server-side trace.
+                logger.warning(
+                    GATEWAY_DISPATCH_FAILED,
+                    surface="gateway-stream",
+                    execution_id=claims.execution_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise
             finally:
                 await aclose_quietly(stream, model=claims.model_id)
+
+    @staticmethod
+    def _ceiling_crossed(claims: GatewayTokenClaims, total: float) -> bool:
+        """Return whether *total* has reached the run's hard cost ceiling.
+
+        Returns:
+            ``True`` when a ceiling is set and the running total meets it.
+        """
+        return claims.cost_ceiling is not None and total >= claims.cost_ceiling
 
     def _prepare(
         self,

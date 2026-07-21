@@ -15,6 +15,9 @@
 docker/
 !docker/sidecar/
 !docker/sandbox/healthz.py
+# OpenHands image copies its entrypoint + hash-pinned lock from the context.
+!docker/openhands/run_task.py
+!docker/openhands/requirements.lock
 
 # Tests
 tests/

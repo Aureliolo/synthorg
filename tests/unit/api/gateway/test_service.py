@@ -344,6 +344,44 @@ async def test_stream_yields_frames_then_done_and_records_usage() -> None:
     assert await ledger.total("exec-1") == pytest.approx(0.03)
 
 
+async def test_stream_killed_when_running_total_crosses_ceiling_mid_stream() -> None:
+    service, signer, ledger = _service()
+    chunks = (
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="before"),
+        StreamChunk(
+            event_type=StreamEventType.USAGE,
+            usage=TokenUsage(input_tokens=3, output_tokens=2, cost=0.06),
+        ),
+        # Everything past the ceiling crossing must be cut, not streamed.
+        StreamChunk(event_type=StreamEventType.CONTENT_DELTA, content="afterkill"),
+        StreamChunk(event_type=StreamEventType.DONE),
+    )
+    provider = _ScriptedProvider(chunks=chunks)
+    resolver: ProviderResolver = _FakeResolver({_PROVIDER: provider})
+    stream_request: dict[str, object] = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+    }
+
+    frames = [
+        frame
+        async for frame in service.stream(
+            token=_token(signer, cost_ceiling=0.05),
+            raw_request=stream_request,
+            registry=resolver,
+            cost_tracker=None,
+            enabled=True,
+        )
+    ]
+
+    assert any('"content":"before"' in f for f in frames)
+    assert not any("afterkill" in f for f in frames)  # cut at the ceiling
+    assert frames[-1] == "data: [DONE]\n\n"
+    # The kill resets the run ledger so a stale over-budget total is not left.
+    assert await ledger.total("exec-1") == pytest.approx(0.0)
+
+
 async def test_stream_disabled_gateway_raises() -> None:
     service, signer, _ = _service()
     resolver: ProviderResolver = _FakeResolver({_PROVIDER: _ScriptedProvider()})

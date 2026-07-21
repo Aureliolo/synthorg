@@ -98,6 +98,9 @@ _TURN_COST_KINDS: Final[frozenset[OpenHandsEventKind]] = frozenset(
     {OpenHandsEventKind.ACTION, OpenHandsEventKind.MESSAGE}
 )
 
+# Cap the unknown-kind value logged from an untrusted container line.
+_MAX_KIND_LOG_CHARS: Final[int] = 64
+
 
 def _spec_line(spec: OpenHandsRunSpec) -> str:
     """Render the container-facing spec as one newline-terminated JSON line.
@@ -136,9 +139,22 @@ def _parse_event(line: str, prev_cost: float) -> tuple[OpenHandsEvent | None, fl
         )
         return None, prev_cost
     if not isinstance(payload, dict):
+        logger.warning(
+            EXECUTION_LOOP_ERROR,
+            loop_type="openhands",
+            note="container event line was not a JSON object",
+        )
         return None, prev_cost
     kind = _KIND_BY_NAME.get(str(payload.get("kind", "")))
     if kind is None:
+        # A protocol-skew (an event kind this host does not know) must not
+        # vanish silently: log the kind so a version mismatch is discoverable.
+        logger.warning(
+            EXECUTION_LOOP_ERROR,
+            loop_type="openhands",
+            note="unknown container event kind",
+            kind=str(payload.get("kind", ""))[:_MAX_KIND_LOG_CHARS],
+        )
         return None, prev_cost
     accumulated = _non_negative_float(payload.get("cost"))
     # Attribute the per-turn cost delta only on turn kinds (ACTION / MESSAGE);
@@ -213,8 +229,13 @@ class _ContainerConversation:
                     continue
                 if event.kind is OpenHandsEventKind.FINISHED:
                     finished = True
-                if not await self._sink(event):
+                # Attribute a sink-side failure (a bug in a boundary checker /
+                # turn observer) to event handling, not the container transport.
+                if not await self._handle_event(event):
                     break
+        except OpenHandsRuntimeError:
+            # Already attributed (sink-side failure); do not re-wrap as transport.
+            raise
         except SandboxError as exc:
             logger.warning(
                 EXECUTION_LOOP_ERROR,
@@ -240,6 +261,30 @@ class _ContainerConversation:
             # or cancellation of the awaiting coroutine.
             await stream.aclose()
         return OpenHandsOutcome(finished=finished)
+
+    async def _handle_event(self, event: OpenHandsEvent) -> bool:
+        """Forward one event to the sink, attributing a sink-side failure.
+
+        Returns:
+            ``True`` to keep streaming, ``False`` to stop.
+
+        Raises:
+            OpenHandsRuntimeError: When the sink itself raises (a boundary /
+                observer bug), so it is not mis-reported as a transport error.
+        """
+        try:
+            return await self._sink(event)
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                EXECUTION_LOOP_ERROR,
+                loop_type="openhands",
+                note="event sink raised",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "OpenHands event handling failed"
+            raise OpenHandsRuntimeError(msg) from exc
 
 
 async def build_container_conversation(

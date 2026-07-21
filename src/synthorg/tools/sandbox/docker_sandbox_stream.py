@@ -18,7 +18,6 @@ propagates.
 """
 
 import asyncio
-import contextlib
 from collections.abc import AsyncGenerator, AsyncIterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
@@ -161,26 +160,33 @@ class DockerSandboxStreamMixin:
         effective_root = await self._project_root(
             str(project_id) if project_id is not None else None
         )
-        handle = await self._spawn_stream_container(
-            docker,
-            command=command,
-            args=args,
-            effective_root=effective_root,
-            category=category,
-        )
-        stream = handle_stream = None
+        handle: ContainerHandle | None = None
+        stream: Stream | None = None
         try:
+            # Spawn inside the try so a cancellation/failure at any step after
+            # the container is created still reaches the teardown finally;
+            # ``_spawn_stream_container`` additionally self-cleans on its own
+            # post-create failure (the handle is not yet visible here).
+            handle = await self._spawn_stream_container(
+                docker,
+                command=command,
+                args=args,
+                effective_root=effective_root,
+                category=category,
+            )
             stream = self._attach_stream(docker, handle.container_id)
-            handle_stream = stream
             await self._start_container(docker, handle.container_id)
             await stream.write_in(stdin_line.encode("utf-8"))
             async for line in self._iter_lines(stream, idle_timeout_seconds):
                 yield line
+            # Natural EOF: surface an abnormal container exit for
+            # diagnosability (the host maps a missing ``finished`` to ERROR).
+            await self._log_exit_status(docker, handle.container_id)
         finally:
-            if handle_stream is not None:
-                with contextlib.suppress(Exception):
-                    await handle_stream.close()
-            await self._destroy_handle(handle)
+            if stream is not None:
+                await self._close_stream(stream)
+            if handle is not None:
+                await self._destroy_handle(handle)
 
     async def _spawn_stream_container(
         self,
@@ -235,12 +241,20 @@ class DockerSandboxStreamMixin:
             )
             msg = f"Failed to create streaming container: {error_desc}"
             raise SandboxStartError(msg) from exc
-        await self._track_container(container.id, sidecar_id)
-        return ContainerHandle(
+        handle = ContainerHandle(
             container_id=container.id,
             sidecar_id=sidecar_id,
             network_mode=network_mode or self._config.network,
         )
+        # Tracking is best-effort persistence, but a cancellation while it
+        # awaits would strand the just-created container before the caller
+        # can see the handle; destroy it on any failure (incl. cancellation).
+        try:
+            await self._track_container(container.id, sidecar_id)
+        except BaseException:
+            await self._destroy_handle(handle)
+            raise
+        return handle
 
     @staticmethod
     def _attach_stream(docker: aiodocker.Docker, container_id: str) -> Stream:
@@ -281,24 +295,31 @@ class DockerSandboxStreamMixin:
     ) -> AsyncIterator[str]:
         """Yield complete stdout lines from a multiplexed attach stream.
 
-        stderr frames are logged (container diagnostics) but never yielded.
-        A read that exceeds ``idle_timeout_seconds`` is treated as a hung
-        run and terminates the stream.
+        stderr frames are logged (container diagnostics) but never yielded,
+        and crucially do **not** extend the idle deadline: only real stdout
+        progress resets it, so a hung container that keeps emitting stderr
+        chatter still trips the timeout (and the host's boundary checks stay
+        responsive) rather than being kept alive forever.
 
         Yields:
             Each newline-delimited stdout line, newline stripped.
 
         Raises:
-            SandboxStartError: If the stream idles past the timeout.
+            SandboxStartError: If no stdout frame arrives within the timeout.
         """
         buffer = ""
+        now = asyncio.get_running_loop().time
+        deadline = now() + idle_timeout_seconds
         # lint-allow: long-running-loop-kill-switch -- EOF (read_out None) +
-        # per-read idle timeout + consumer break all terminate the stream.
+        # stdout-only idle deadline + consumer break all terminate the stream.
         while True:
+            remaining = deadline - now()
+            if remaining <= 0:
+                logger.warning(DOCKER_EXECUTE_TIMEOUT, timeout=idle_timeout_seconds)
+                msg = f"Streaming container idle past {idle_timeout_seconds}s"
+                raise SandboxStartError(msg)
             try:
-                message = await asyncio.wait_for(
-                    stream.read_out(), timeout=idle_timeout_seconds
-                )
+                message = await asyncio.wait_for(stream.read_out(), timeout=remaining)
             except TimeoutError as exc:
                 logger.warning(DOCKER_EXECUTE_TIMEOUT, timeout=idle_timeout_seconds)
                 msg = f"Streaming container idle past {idle_timeout_seconds}s"
@@ -309,6 +330,8 @@ class DockerSandboxStreamMixin:
             if message.stream == _STREAM_STDERR:
                 self._log_stderr(text)
                 continue
+            # Real stdout progress: extend the idle deadline.
+            deadline = now() + idle_timeout_seconds
             buffer += text
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
@@ -340,4 +363,51 @@ class DockerSandboxStreamMixin:
                 DOCKER_EXECUTE_FAILED,
                 surface="openhands-container-stderr",
                 stderr=trimmed[:_MAX_STDERR_LOG_CHARS],
+            )
+
+    @staticmethod
+    async def _close_stream(stream: Stream) -> None:
+        """Close the attach stream, logging (not swallowing) any close error."""
+        try:
+            await stream.close()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.debug(
+                DOCKER_EXECUTE_FAILED,
+                surface="openhands-stream-close",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
+    async def _log_exit_status(
+        self, docker: aiodocker.Docker, container_id: str
+    ) -> None:
+        """Log the container's exit code when it ended abnormally.
+
+        Called after the stdout stream reaches EOF: an OOM-kill / non-zero
+        exit that the container could not report on its own event stream is
+        otherwise invisible, so surface the exit code + OOM flag for triage.
+        Best-effort: an inspect failure is logged, never raised.
+        """
+        try:
+            info = await docker.containers.container(container_id).show()  # pyright: ignore[reportAttributeAccessIssue]
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.debug(
+                DOCKER_EXECUTE_FAILED,
+                surface="openhands-exit-status",
+                container_id=container_id[:12],
+                error_type=type(exc).__name__,
+            )
+            return
+        state = info.get("State", {}) if isinstance(info, dict) else {}
+        exit_code = state.get("ExitCode")
+        oom_killed = bool(state.get("OOMKilled", False))
+        if oom_killed or (isinstance(exit_code, int) and exit_code != 0):
+            logger.warning(
+                DOCKER_EXECUTE_FAILED,
+                surface="openhands-container-exit",
+                container_id=container_id[:12],
+                exit_code=exit_code,
+                oom_killed=oom_killed,
             )

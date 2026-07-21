@@ -134,6 +134,11 @@ def _run(spec: dict[str, object]) -> None:
     def _callback(event: object) -> None:
         normalized = _normalize(event)
         if normalized is None:
+            # An SDK event outside the four adapter-relevant classes is not
+            # forwarded, but log it to stderr (the host captures container
+            # stderr at DEBUG) so a new/unhandled event type is discoverable
+            # rather than vanishing without a trace.
+            sys.stderr.write(f"unrecognized SDK event: {type(event).__name__}\n")
             return
         conversation = holder.get("conversation")
         if conversation is not None:

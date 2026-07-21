@@ -3,7 +3,7 @@
 # SynthOrg OpenHands sandbox -- sandbox base + bundled openhands-sdk
 # =============================================================================
 # Extends the apko-composed sandbox base (docker/sandbox, python-3.14 +
-# nodejs + git) and layers the OpenHands V1 SDK (openhands-sdk +
+# nodejs + git + bash + tmux) and layers the OpenHands V1 SDK (openhands-sdk +
 # openhands-tools) into a DEDICATED, isolated virtualenv at /opt/openhands.
 #
 # The SDK lives ONLY in this image, never the main package venv. This is a
@@ -55,6 +55,11 @@ WORKDIR /workspace
 USER 10001
 
 ENV OPENHANDS_SUPPRESS_BANNER=1
+
+# The container's egress is pinned to the gateway + credentialed-MCP hosts, so
+# litellm's default attempt to fetch its remote model-cost map is a doomed
+# call the sidecar blocks on every run; force the bundled local map instead.
+ENV LITELLM_LOCAL_MODEL_COST_MAP=True
 
 # One task per container: the host adapter feeds the run spec on stdin and
 # reads normalized JSON events from stdout, then tears the container down. A

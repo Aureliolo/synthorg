@@ -430,17 +430,20 @@ async def guard_security_delete(
     resolve_fallback: Callable[[SettingDefinition], Awaitable[SettingValue]],
     get_entry: Callable[[str, str], Awaitable[SettingValue]],
 ) -> None:
-    """Hard-block a delete that would weaken a security setting.
+    """Hard-block a delete that would weaken a governed setting.
 
-    Deleting a security override reverts the key to its env > default fallback,
-    so a delete that would drop a currently-secure toggle to a weaker effective
+    Deleting an override reverts the key to its env > default fallback, so a
+    delete that would drop a currently-secure toggle to a weaker effective
     value must go through the explicit confirm+reason set path, never a silent
-    delete. The guarded value is the real env>default fallback (resolved via
-    *resolve_fallback*), not the bare code default, so a weakening env override
-    is not missed. A no-op for any non-security namespace.
+    delete. This holds across every governed namespace (``security``,
+    ``engine``, ``tools``, ``output_style``, ``providers``): deleting, say, the
+    ``tools.credentialed_mcp_enabled`` or ``providers.gateway_enabled``
+    override would otherwise revert to a broader env/default value, bypassing
+    the set-path guardrail. The guarded value is the real env>default fallback
+    (resolved via *resolve_fallback*), not the bare code default, so a
+    weakening env override is not missed. ``governance=None`` is passed so a
+    weakening delete is hard-blocked rather than confirmable inline.
     """
-    if namespace != _SECURITY_NS:
-        return
     items = [
         (namespace, definition.key, (await resolve_fallback(definition)).value)
         for definition in definitions

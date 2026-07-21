@@ -25,6 +25,7 @@ from synthorg.api.mcp_gateway.tools import (
 )
 from synthorg.api.state import AppState
 from synthorg.approval.state import approval_store_of
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     DomainError,
     ServiceUnavailableError,
@@ -196,20 +197,29 @@ async def _build_context(
         app_state.slice(IntegrationsStateSlice).connection_catalog,
         "connection catalog",
     )
-    async with asyncio.TaskGroup() as tg:
-        forge_conn = tg.create_task(
-            resolver.get_str(_TOOLS_NS, "forge_tools_connection")
-        )
-        chat_conn = tg.create_task(resolver.get_str(_TOOLS_NS, "chat_tools_connection"))
-        forge_timeout = tg.create_task(
-            resolver.get_float(_TOOLS_NS, "forge_tools_timeout_seconds")
-        )
-        chat_timeout = tg.create_task(
-            resolver.get_float(_TOOLS_NS, "chat_tools_timeout_seconds")
-        )
-        forge_read = tg.create_task(
-            resolver.get_int(_TOOLS_NS, "forge_tools_max_read_chars")
-        )
+    try:
+        async with asyncio.TaskGroup() as tg:
+            forge_conn = tg.create_task(
+                resolver.get_str(_TOOLS_NS, "forge_tools_connection")
+            )
+            chat_conn = tg.create_task(
+                resolver.get_str(_TOOLS_NS, "chat_tools_connection")
+            )
+            forge_timeout = tg.create_task(
+                resolver.get_float(_TOOLS_NS, "forge_tools_timeout_seconds")
+            )
+            chat_timeout = tg.create_task(
+                resolver.get_float(_TOOLS_NS, "chat_tools_timeout_seconds")
+            )
+            forge_read = tg.create_task(
+                resolver.get_int(_TOOLS_NS, "forge_tools_max_read_chars")
+            )
+    except ExceptionGroup as eg:
+        # Surface the first underlying error (e.g. a DomainError from a
+        # settings read) so the caller's ``except DomainError`` mapping runs
+        # rather than a raw ExceptionGroup escaping to the generic handler.
+        reraise_critical(eg)
+        raise eg.exceptions[0] from eg
     interceptor = make_security_interceptor(
         app_state.security_runtime_config.current,
         audit_log_of(app_state),
