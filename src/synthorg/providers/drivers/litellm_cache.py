@@ -1,10 +1,10 @@
 # module-kind: adapter
 """Prompt-caching breakpoint placement for the LiteLLM driver.
 
-Anthropic-family models reuse a cached prompt prefix when the request marks
-stable blocks with ``cache_control: {"type": "ephemeral"}``. LiteLLM forwards
-those markers through for caching-capable models. This module rewrites the
-already-assembled ``acompletion`` kwargs to place breakpoints on the stable
+Prompt-caching-capable models reuse a cached prompt prefix when the request
+marks stable blocks with ``cache_control: {"type": "ephemeral"}``. LiteLLM
+forwards those markers through for caching-capable models. This module rewrites
+the already-assembled ``acompletion`` kwargs to place breakpoints on the stable
 prefix (the last system block, the tool definitions, and a rolling breakpoint
 at the end of the conversation so far), which is what earns the cache hit on
 the next turn.
@@ -26,9 +26,9 @@ from synthorg.providers.drivers.litellm_kwargs import _AcompletionKwargs
 
 logger = get_logger(__name__)
 
-# Anthropic permits at most four cache breakpoints per request; the placement
-# below uses at most three (system + tools + rolling tail), so the cap is a
-# defensive ceiling rather than a live constraint.
+# The prompt-caching provider family permits at most four cache breakpoints per
+# request; the placement below uses at most three (system + tools + rolling
+# tail), so the cap is a defensive ceiling rather than a live constraint.
 _MAX_CACHE_BREAKPOINTS: Final[int] = 4
 
 _EPHEMERAL: Final[dict[str, str]] = {"type": "ephemeral"}

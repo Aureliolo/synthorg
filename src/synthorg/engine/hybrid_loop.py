@@ -812,10 +812,17 @@ class HybridLoop:
         ctx = ctx.with_message(build_step_message(step))
         step_start_idx = len(turns)
         step_corrections = 0
-        step_turns = 0
+        # Count COMPLETED turns via ``ctx.turn_count`` delta rather than an
+        # independent per-call counter: a mid-turn steering REDIRECT re-issues
+        # the turn (``_TurnInterrupted``) without advancing ``ctx.turn_count``,
+        # so it must not consume the per-step turn budget.
+        step_start_turn_count = ctx.turn_count
         max_step_turns = self._config.max_turns_per_step
 
-        while ctx.has_turns_remaining and step_turns < max_step_turns:
+        while (
+            ctx.has_turns_remaining
+            and ctx.turn_count - step_start_turn_count < max_step_turns
+        ):
             # Refresh tool defs so newly loaded tools appear
             tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
             result = await self._run_step_turn(
@@ -831,7 +838,6 @@ class HybridLoop:
                 task_cancellation_checker,
                 streaming_enabled=streaming_enabled,
             )
-            step_turns += 1
 
             if isinstance(result, ExecutionResult):
                 return result

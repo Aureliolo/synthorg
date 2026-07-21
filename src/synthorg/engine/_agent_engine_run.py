@@ -98,6 +98,8 @@ class AgentEngineRunMixin:
         self,
         provider: CompletionProvider,
         identity: AgentIdentity,
+        *,
+        task_id: str,
     ) -> bool:
         """Decide whether the run streams its per-turn LLM calls.
 
@@ -136,7 +138,7 @@ class AgentEngineRunMixin:
             logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=str(identity.id),
-                task_id=None,
+                task_id=task_id,
                 note="streaming capability lookup failed; using non-streaming",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

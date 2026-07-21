@@ -47,7 +47,6 @@ from synthorg.providers.models import (
     ToolCall,
     ToolDefinition,
 )
-from synthorg.providers.protocol import CompletionProvider
 from tests._shared.ids import as_uuid
 
 _TEST_MODEL = "test-model-001"
@@ -224,10 +223,6 @@ class ScriptedProvider:
     ) -> Mapping[str, ModelCapabilities | None]:
         """Return the configured capabilities keyed by each model."""
         return {model: copy.deepcopy(self._capabilities) for model in models}
-
-
-# Verify the double satisfies the runtime-checkable protocol.
-assert isinstance(ScriptedProvider([]), CompletionProvider)
 
 
 def build_tool_call_response(  # noqa: PLR0913

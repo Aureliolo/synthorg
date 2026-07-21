@@ -607,7 +607,7 @@ class TestSecurityContextConstruction:
         assert pre_ctx.task_id == scan_ctx.task_id
 
 
-# ── Gap 1: Non-recoverable errors from scan propagate ────────────
+# ── Non-recoverable errors from scan propagate ────────────
 
 
 @pytest.mark.unit
@@ -641,7 +641,7 @@ class TestOutputScanNonRecoverableErrors:
             await invoker.invoke(tool_call)
 
 
-# ── Gap 2: Tool execution error skips output scan ────────────────
+# ── Tool execution error skips output scan ────────────────
 
 
 @pytest.mark.unit
@@ -665,7 +665,7 @@ class TestOutputScanSkippedOnToolError:
         interceptor.scan_output.assert_not_awaited()
 
 
-# ── Gap 3: scan_output receives tool result content ──────────────
+# ── scan_output receives tool result content ──────────────
 
 
 @pytest.mark.unit
@@ -692,7 +692,7 @@ class TestOutputScanContentPassing:
         assert scan_call_args[1] == "executed: ls"
 
 
-# ── Gap 4: invoke_all output scanning ────────────────────────────
+# ── invoke_all output scanning ────────────────────────────
 
 
 @pytest.mark.unit
@@ -750,7 +750,7 @@ class TestInvokeAllOutputScanning:
         assert all(r.is_error is False for r in results)
 
 
-# ── Gap 5: Soft error content is scanned ─────────────────────────
+# ── Soft error content is scanned ─────────────────────────
 
 
 @pytest.mark.unit

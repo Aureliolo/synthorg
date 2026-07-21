@@ -276,3 +276,172 @@ class TestEditFileExecution:
         )
         assert result.is_error
         assert "too large" in result.content.lower()
+
+    async def test_noop_hunk_with_nonunique_text_skips_uniqueness_check(
+        self, workspace: Path, edit_tool: EditFileTool
+    ) -> None:
+        """A no-op hunk (old==new) is skipped before the uniqueness check.
+
+        The no-op's ``old_text`` appears many times, which would otherwise be
+        rejected as non-unique; skipping it must neither reject the batch nor
+        inflate the occurrence counts, and the real hunk still applies.
+        """
+        (workspace / "batch.txt").write_text("dup dup dup real", encoding="utf-8")
+        result = await edit_tool.execute(
+            arguments={
+                "path": "batch.txt",
+                "edits": [
+                    {"old_text": "dup", "new_text": "dup"},
+                    {"old_text": "real", "new_text": "DONE"},
+                ],
+            }
+        )
+        assert not result.is_error
+        content = (workspace / "batch.txt").read_text(encoding="utf-8")
+        assert content == "dup dup dup DONE"
+        assert result.metadata["occurrences_found"] == 1
+        assert result.metadata["occurrences_replaced"] == 1
+
+    async def test_replace_all_hunk_aggregates_across_batch(
+        self, workspace: Path, edit_tool: EditFileTool
+    ) -> None:
+        """A replace_all hunk hitting 3 matches aggregates with a plain hunk."""
+        (workspace / "agg.txt").write_text("x x x once", encoding="utf-8")
+        result = await edit_tool.execute(
+            arguments={
+                "path": "agg.txt",
+                "edits": [
+                    {"old_text": "x", "new_text": "Y", "replace_all": True},
+                    {"old_text": "once", "new_text": "twice"},
+                ],
+            }
+        )
+        assert not result.is_error
+        content = (workspace / "agg.txt").read_text(encoding="utf-8")
+        assert content == "Y Y Y twice"
+        # 3 from the replace_all hunk + 1 from the plain hunk.
+        assert result.metadata["occurrences_found"] == 4
+        assert result.metadata["occurrences_replaced"] == 4
+
+    async def test_not_unique_reports_actual_match_count(
+        self, workspace: Path, edit_tool: EditFileTool
+    ) -> None:
+        """The non-unique rejection reports the true match count beyond two."""
+        (workspace / "trip.txt").write_text("aa bb aa cc aa", encoding="utf-8")
+        result = await edit_tool.execute(
+            arguments={
+                "path": "trip.txt",
+                "old_text": "aa",
+                "new_text": "zz",
+            }
+        )
+        assert result.is_error
+        assert "3 matches" in result.content
+
+    async def test_length_changing_hunk_does_not_disturb_later_hunk(
+        self, workspace: Path, edit_tool: EditFileTool
+    ) -> None:
+        """A hunk that lengthens the text leaves a later hunk's match intact."""
+        (workspace / "len.txt").write_text("short then tail", encoding="utf-8")
+        result = await edit_tool.execute(
+            arguments={
+                "path": "len.txt",
+                "edits": [
+                    {"old_text": "short", "new_text": "a much longer replacement"},
+                    {"old_text": "tail", "new_text": "END"},
+                ],
+            }
+        )
+        assert not result.is_error
+        content = (workspace / "len.txt").read_text(encoding="utf-8")
+        assert content == "a much longer replacement then END"
+
+    async def test_hunk_creates_match_a_later_hunk_consumes(
+        self, workspace: Path, edit_tool: EditFileTool
+    ) -> None:
+        """A later hunk may target text an earlier hunk produced."""
+        (workspace / "chain.txt").write_text("seed", encoding="utf-8")
+        result = await edit_tool.execute(
+            arguments={
+                "path": "chain.txt",
+                "edits": [
+                    {"old_text": "seed", "new_text": "grown"},
+                    {"old_text": "grown", "new_text": "harvested"},
+                ],
+            }
+        )
+        assert not result.is_error
+        content = (workspace / "chain.txt").read_text(encoding="utf-8")
+        assert content == "harvested"
+
+    async def test_empty_new_text_deletion_inside_batch(
+        self, workspace: Path, edit_tool: EditFileTool
+    ) -> None:
+        """An empty new_text deletes matched text when used as a batch hunk."""
+        (workspace / "del.txt").write_text("keep DROP keep", encoding="utf-8")
+        result = await edit_tool.execute(
+            arguments={
+                "path": "del.txt",
+                "edits": [
+                    {"old_text": " DROP", "new_text": ""},
+                    {"old_text": "keep keep", "new_text": "kept"},
+                ],
+            }
+        )
+        assert not result.is_error
+        content = (workspace / "del.txt").read_text(encoding="utf-8")
+        assert content == "kept"
+
+    async def test_edit_of_already_violating_file_is_not_blocked(
+        self,
+        workspace: Path,
+        edit_tool: EditFileTool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The guard blocks only a violation the edit introduces.
+
+        With the output policy stubbed so a marker string counts as a hard
+        violation, introducing it into a clean file is blocked, while editing
+        elsewhere in a file that already carries it is allowed: the
+        ``before.blocked`` short-circuit stops an already-imperfect file from
+        being frozen against every further edit.
+        """
+        from types import SimpleNamespace
+
+        from synthorg.engine import output_style
+
+        def fake_evaluate(text: str, ctx: object) -> object | None:
+            del ctx
+            if "VIOLATION" in text:
+                return SimpleNamespace(blocked=True, summary="hard-rule violation")
+            return None
+
+        monkeypatch.setattr(output_style, "evaluate_output_policy", fake_evaluate)
+
+        (workspace / "clean.py").write_text("a = 1\nold = 2\n", encoding="utf-8")
+        introduced = await edit_tool.execute(
+            arguments={
+                "path": "clean.py",
+                "old_text": "a = 1",
+                "new_text": "a = 1  # VIOLATION",
+            }
+        )
+        assert introduced.is_error
+        assert (workspace / "clean.py").read_text(
+            encoding="utf-8"
+        ) == "a = 1\nold = 2\n"
+
+        (workspace / "viol.py").write_text(
+            "a = 1  # VIOLATION\nold = 2\n", encoding="utf-8"
+        )
+        result = await edit_tool.execute(
+            arguments={
+                "path": "viol.py",
+                "old_text": "old = 2",
+                "new_text": "renamed = 2",
+            }
+        )
+        assert not result.is_error
+        content = (workspace / "viol.py").read_text(encoding="utf-8")
+        assert "renamed = 2" in content
+        assert "VIOLATION" in content

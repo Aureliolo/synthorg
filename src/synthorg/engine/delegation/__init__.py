@@ -7,10 +7,14 @@ answer plus a bounded transcript back into the supervisor's turn.
 """
 
 from synthorg.engine.delegation.errors import (
-    DelegationError,
-    DelegationTargetNotFoundError,
+    SubAgentDelegationDepthExceededError,
+    SubAgentDelegationError,
+    SubAgentDelegationTargetNotFoundError,
 )
-from synthorg.engine.delegation.models import DelegationResult, DelegationSpec
+from synthorg.engine.delegation.models import (
+    SubAgentDelegationResult,
+    SubAgentDelegationSpec,
+)
 from synthorg.engine.delegation.protocol import SubAgentRunner
 
 # NOTE: ``InProcessSubAgentRunner`` is deliberately NOT imported here.
@@ -21,9 +25,10 @@ from synthorg.engine.delegation.protocol import SubAgentRunner
 # ``synthorg.engine.delegation.runner`` directly (the engine does so lazily).
 
 __all__ = [
-    "DelegationError",
-    "DelegationResult",
-    "DelegationSpec",
-    "DelegationTargetNotFoundError",
+    "SubAgentDelegationDepthExceededError",
+    "SubAgentDelegationError",
+    "SubAgentDelegationResult",
+    "SubAgentDelegationSpec",
+    "SubAgentDelegationTargetNotFoundError",
     "SubAgentRunner",
 ]

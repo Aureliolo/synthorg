@@ -26,11 +26,20 @@ floor, not a fabricated estimate).
 
 ``run_provider_turn`` is the single dispatcher the loops call: it streams when
 streaming is enabled for the run, else falls back to ``call_provider``.
+
+Resilience trade-off (accepted): ``provider.complete()`` retries the whole call
+through the ``BaseCompletionProvider`` ``RetryHandler``, whereas a stream only
+retries its initial connection setup: a retryable error surfacing mid-generation
+(after content has streamed) terminates the turn ``ERROR`` rather than
+transparently retrying, because the partial output has already been consumed and
+re-issuing could duplicate side effects. This is why streaming is opt-in
+(``engine.work_loop_streaming_enabled``) and capability-gated, with the
+non-streaming ``call_provider`` path always available as the fallback.
 """
 
 import copy
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 from synthorg.core.completion_enums import FinishReason
@@ -206,6 +215,123 @@ def _reassemble_response(
     )
 
 
+@dataclass
+class _StreamAccumulator:
+    """Mutable in-flight reassembly state for one streamed turn.
+
+    Held by the caller (not just the drain loop) so a mid-stream exception
+    still leaves whatever usage / content the stream surfaced before the
+    failure visible for cost folding.
+    """
+
+    content_parts: list[str] = field(default_factory=list)
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    usage: TokenUsage = ZERO_TOKEN_USAGE
+    finish_reason: FinishReason | None = None
+
+
+async def _check_interrupt(  # noqa: PLR0913
+    ctx: AgentContext,
+    turn_number: int,
+    usage: TokenUsage,
+    turns: list[TurnRecord],
+    *,
+    cancellation_checker: TaskCancellationChecker | None,
+    steering_inbox: SteeringInbox | None,
+) -> ExecutionResult | _TurnInterrupted | None:
+    """Poll cancellation and steering, reporting either as an early exit.
+
+    Returns:
+        A ``CANCELLED`` :class:`ExecutionResult` when the operator
+        cancelled; a :class:`_TurnInterrupted` when a steering REDIRECT is
+        pending; or ``None`` when neither fired and draining should continue.
+    """
+    if await _is_cancelled(cancellation_checker):
+        logger.info(
+            EXECUTION_LOOP_TURN_CANCELLED_MIDFLIGHT,
+            execution_id=ctx.execution_id,
+            turn=turn_number,
+        )
+        return build_result(
+            _fold_usage(ctx, usage),
+            TerminationReason.CANCELLED,
+            turns,
+        )
+    if await _has_pending_redirect(ctx, steering_inbox):
+        logger.info(
+            EXECUTION_LOOP_TURN_INTERRUPTED,
+            execution_id=ctx.execution_id,
+            turn=turn_number,
+            reason="steering_redirect",
+        )
+        return _TurnInterrupted(usage)
+    return None
+
+
+async def _drain_stream(  # noqa: PLR0913
+    stream: AsyncIterator[StreamChunk],
+    acc: _StreamAccumulator,
+    ctx: AgentContext,
+    turn_number: int,
+    turns: list[TurnRecord],
+    *,
+    cancellation_checker: TaskCancellationChecker | None,
+    steering_inbox: SteeringInbox | None,
+) -> ExecutionResult | _TurnInterrupted | None:
+    """Drain *stream* into *acc*, polling for interruption between chunks.
+
+    Mutates *acc* in place as chunks arrive, so a caller still sees the
+    partial reassembly if this raises.
+
+    Returns:
+        ``None`` on normal stream completion (the reassembly is in *acc*);
+        an ``ERROR`` :class:`ExecutionResult` on a provider ``ERROR`` event;
+        or whatever :func:`_check_interrupt` reports on an operator
+        cancellation or a pending steering REDIRECT.
+    """
+    index = 0
+    async for chunk in stream:
+        _accumulate_chunk(chunk, acc.content_parts, acc.tool_calls)
+        if chunk.event_type is StreamEventType.USAGE and chunk.usage:
+            acc.usage = chunk.usage
+        elif (
+            chunk.event_type is StreamEventType.DONE and chunk.finish_reason is not None
+        ):
+            acc.finish_reason = chunk.finish_reason
+        elif chunk.event_type is StreamEventType.ERROR:
+            stream_error = (
+                f"Provider stream error on turn {turn_number}: {chunk.error_message}"
+            )
+            logger.warning(
+                EXECUTION_LOOP_ERROR,
+                execution_id=ctx.execution_id,
+                turn=turn_number,
+                error=stream_error,
+            )
+            # Fold whatever usage the stream billed before the error so
+            # cost is not under-counted (parity with the cancel path).
+            return build_result(
+                _fold_usage(ctx, acc.usage),
+                TerminationReason.ERROR,
+                turns,
+                error_message=stream_error,
+            )
+
+        if index % _INTERRUPT_POLL_EVERY_N_CHUNKS == 0:
+            interrupt = await _check_interrupt(
+                ctx,
+                turn_number,
+                acc.usage,
+                turns,
+                cancellation_checker=cancellation_checker,
+                steering_inbox=steering_inbox,
+            )
+            if interrupt is not None:
+                return interrupt
+        index += 1
+    return None
+
+
 async def stream_provider(  # noqa: PLR0913
     ctx: AgentContext,
     provider: CompletionProvider,
@@ -244,10 +370,7 @@ async def stream_provider(  # noqa: PLR0913
         streaming=True,
     )
 
-    content_parts: list[str] = []
-    tool_calls: list[ToolCall] = []
-    usage: TokenUsage = ZERO_TOKEN_USAGE
-    finish_reason: FinishReason | None = None
+    acc = _StreamAccumulator()
     try:
         stream = await provider.stream(
             messages=copy.deepcopy(list(ctx.conversation)),
@@ -256,48 +379,15 @@ async def stream_provider(  # noqa: PLR0913
             config=copy.deepcopy(config),
         )
         try:
-            index = 0
-            async for chunk in stream:
-                _accumulate_chunk(chunk, content_parts, tool_calls)
-                if chunk.event_type is StreamEventType.USAGE and chunk.usage:
-                    usage = chunk.usage
-                elif (
-                    chunk.event_type is StreamEventType.DONE
-                    and chunk.finish_reason is not None
-                ):
-                    finish_reason = chunk.finish_reason
-                elif chunk.event_type is StreamEventType.ERROR:
-                    return build_result(
-                        ctx,
-                        TerminationReason.ERROR,
-                        turns,
-                        error_message=(
-                            f"Provider stream error on turn {turn_number}: "
-                            f"{chunk.error_message}"
-                        ),
-                    )
-
-                if index % _INTERRUPT_POLL_EVERY_N_CHUNKS == 0:
-                    if await _is_cancelled(cancellation_checker):
-                        logger.info(
-                            EXECUTION_LOOP_TURN_CANCELLED_MIDFLIGHT,
-                            execution_id=ctx.execution_id,
-                            turn=turn_number,
-                        )
-                        return build_result(
-                            _fold_usage(ctx, usage),
-                            TerminationReason.CANCELLED,
-                            turns,
-                        )
-                    if await _has_pending_redirect(ctx, steering_inbox):
-                        logger.info(
-                            EXECUTION_LOOP_TURN_INTERRUPTED,
-                            execution_id=ctx.execution_id,
-                            turn=turn_number,
-                            reason="steering_redirect",
-                        )
-                        return _TurnInterrupted(usage)
-                index += 1
+            early_exit = await _drain_stream(
+                stream,
+                acc,
+                ctx,
+                turn_number,
+                turns,
+                cancellation_checker=cancellation_checker,
+                steering_inbox=steering_inbox,
+            )
         finally:
             await _aclose_quietly(stream)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
@@ -314,22 +404,30 @@ async def stream_provider(  # noqa: PLR0913
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        # Fold any usage the stream surfaced before the exception so a
+        # mid-stream failure does not silently under-count provider spend.
         return build_result(
-            ctx, TerminationReason.ERROR, turns, error_message=error_msg
+            _fold_usage(ctx, acc.usage),
+            TerminationReason.ERROR,
+            turns,
+            error_message=error_msg,
         )
+
+    if early_exit is not None:
+        return early_exit
 
     logger.debug(
         EXECUTION_LOOP_TURN_STREAMED,
         execution_id=ctx.execution_id,
         turn=turn_number,
-        content_chars=sum(len(part) for part in content_parts),
-        tool_calls=len(tool_calls),
+        content_chars=sum(len(part) for part in acc.content_parts),
+        tool_calls=len(acc.tool_calls),
     )
     return _reassemble_response(
-        content_parts=content_parts,
-        tool_calls=tool_calls,
-        usage=usage,
-        finish_reason=finish_reason,
+        content_parts=acc.content_parts,
+        tool_calls=acc.tool_calls,
+        usage=acc.usage,
+        finish_reason=acc.finish_reason,
         model_id=model_id,
     )
 

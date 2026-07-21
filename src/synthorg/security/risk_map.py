@@ -56,6 +56,10 @@ DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProxy
         ActionType.EXTERNAL_DATA_REQUEST: ApprovalRiskLevel.HIGH,
         ActionType.BUDGET_EXCEED: ApprovalRiskLevel.HIGH,
         ActionType.TOOL_CREATE: ApprovalRiskLevel.HIGH,
+        # Spawning a full budgeted, tool-capable child agent run is a far
+        # higher blast radius than an ordinary internal message, so it is
+        # classified HIGH rather than inheriting the COMMS_INTERNAL default.
+        ActionType.ORG_DELEGATE: ApprovalRiskLevel.HIGH,
         # MEDIUM
         ActionType.CODE_CREATE: ApprovalRiskLevel.MEDIUM,
         ActionType.CODE_WRITE: ApprovalRiskLevel.MEDIUM,

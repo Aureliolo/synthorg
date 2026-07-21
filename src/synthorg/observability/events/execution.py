@@ -83,6 +83,9 @@ EXECUTION_DELEGATION_STARTED: Final[str] = "execution.delegation.started"
 EXECUTION_DELEGATION_CHILD_COMPLETED: Final[str] = (
     "execution.delegation.child_completed"
 )
+EXECUTION_DELEGATION_CHILD_CANCELLED: Final[str] = (
+    "execution.delegation.child_cancelled"
+)
 EXECUTION_DELEGATION_DISABLED: Final[str] = "execution.delegation.disabled"
 EXECUTION_DELEGATION_FAILED: Final[str] = "execution.delegation.failed"
 

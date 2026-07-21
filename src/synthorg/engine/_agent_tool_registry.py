@@ -19,6 +19,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
 from synthorg.observability.events.tool import (
     CHAT_TOOL_GRANTED,
+    DELEGATE_TOOL_GRANTED,
     FORGE_TOOL_GRANTED,
 )
 from synthorg.security.risk_map import default_risk_classifier
@@ -173,6 +174,12 @@ def registry_with_delegate_tool(  # noqa: PLR0913 -- run-scoped wiring inputs
         requested_by=str(identity.id),
         parent_task_id=task_id,
         project=project_id,
+    )
+    logger.debug(
+        DELEGATE_TOOL_GRANTED,
+        agent_id=str(identity.id),
+        task_id=task_id,
+        project_id=project_id,
     )
     existing = list(tool_registry.all_tools())
     return ToolRegistry([*existing, delegate_tool])

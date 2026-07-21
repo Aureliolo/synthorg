@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
@@ -13,7 +14,10 @@ from synthorg.core.agent import (
     ToolPermissions,
 )
 from synthorg.engine._agent_tool_registry import registry_with_delegate_tool
-from synthorg.engine.delegation.models import DelegationResult, DelegationSpec
+from synthorg.engine.delegation.models import (
+    SubAgentDelegationResult,
+    SubAgentDelegationSpec,
+)
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry_protocol import AgentRegistryProtocol
@@ -21,6 +25,8 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.registry import ToolRegistry
 from tests._shared import mock_of
 from tests._shared.ids import as_uuid
+
+pytestmark = pytest.mark.unit
 
 _DELEGATE_TOOL = "delegate_and_await"
 
@@ -30,21 +36,22 @@ class _NoopRunner:
 
     async def run(
         self,
-        spec: DelegationSpec,
+        spec: SubAgentDelegationSpec,
         *,
         max_turns: int,
-    ) -> DelegationResult:
+        max_depth: int = 5,
+        timeout_seconds: float | None = None,
+    ) -> SubAgentDelegationResult:
         """Return a trivial result (unused by wiring tests)."""
-        del spec, max_turns
-        return DelegationResult(
+        del spec, max_turns, max_depth, timeout_seconds
+        return SubAgentDelegationResult(
             child_task_id="c",
             child_execution_id="e",
             target_agent_id="a",
             termination_reason=TerminationReason.COMPLETED,
-            is_success=True,
             transcript_summary="",
             total_cost=0.0,
-            currency="USD",
+            currency=DEFAULT_CURRENCY,
             total_turns=0,
         )
 
@@ -67,13 +74,12 @@ def _resolver() -> ConfigResolver:
     return cast(
         ConfigResolver,
         mock_of[ConfigResolver](
-            get_bool=AsyncMock(return_value=True),
-            get_int=AsyncMock(return_value=5),
+            get_bool=AsyncMock(spec=ConfigResolver.get_bool, return_value=True),
+            get_int=AsyncMock(spec=ConfigResolver.get_int, return_value=5),
         ),
     )
 
 
-@pytest.mark.unit
 class TestRegistryWithDelegateTool:
     def test_adds_tool_when_fully_wired(self) -> None:
         registry = registry_with_delegate_tool(
@@ -131,7 +137,6 @@ class TestRegistryWithDelegateTool:
         assert _DELEGATE_TOOL not in registry
 
 
-@pytest.mark.unit
 class TestEngineRunnerBuild:
     def test_engine_builds_runner_when_registry_wired(self) -> None:
         from synthorg.engine.agent_engine import AgentEngine
@@ -139,10 +144,15 @@ class TestEngineRunnerBuild:
 
         engine = AgentEngine(
             provider=ScriptedProvider([]),
-            task_engine=mock_of[TaskEngine](),
-            agent_registry=mock_of[AgentRegistryProtocol](
-                get=AsyncMock(return_value=None),
-                get_by_name=AsyncMock(return_value=None),
+            task_engine=cast(TaskEngine, mock_of[TaskEngine]()),
+            agent_registry=cast(
+                AgentRegistryProtocol,
+                mock_of[AgentRegistryProtocol](
+                    get=AsyncMock(spec=AgentRegistryProtocol.get, return_value=None),
+                    get_by_name=AsyncMock(
+                        spec=AgentRegistryProtocol.get_by_name, return_value=None
+                    ),
+                ),
             ),
         )
         assert engine._sub_agent_runner is not None
@@ -153,6 +163,6 @@ class TestEngineRunnerBuild:
 
         engine = AgentEngine(
             provider=ScriptedProvider([]),
-            task_engine=mock_of[TaskEngine](),
+            task_engine=cast(TaskEngine, mock_of[TaskEngine]()),
         )
         assert engine._sub_agent_runner is None

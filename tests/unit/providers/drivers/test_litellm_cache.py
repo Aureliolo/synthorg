@@ -80,6 +80,24 @@ class TestApplyCacheControl:
         # An untouched middle message keeps its plain string content.
         assert messages[1]["content"] == "one"
 
+    def test_marks_last_of_stacked_system_messages(self) -> None:
+        """With an org + per-task system block, only the last is marked.
+
+        Marking the first would place the cache breakpoint before the stable
+        prefix ends, silently breaking the prefix match with no hard error.
+        """
+        messages: list[dict[str, object]] = [
+            {"role": "system", "content": "org policy"},
+            {"role": "system", "content": "task instructions"},
+            {"role": "user", "content": "go"},
+        ]
+        _apply(_kwargs(messages), supports_prompt_caching=True)
+
+        assert messages[0]["content"] == "org policy"
+        assert _last_block_cache_control(messages[1]["content"]) == {
+            "type": "ephemeral"
+        }
+
     def test_marks_last_tool(self) -> None:
         messages: list[dict[str, object]] = [{"role": "user", "content": "hi"}]
         tools: list[dict[str, object]] = [

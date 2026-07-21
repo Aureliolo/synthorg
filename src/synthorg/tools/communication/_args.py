@@ -26,6 +26,10 @@ from typing import Annotated, Final, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.task_limits import (
+    MAX_TASK_DESCRIPTION_LENGTH,
+    MAX_TASK_TITLE_LENGTH,
+)
 from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
@@ -37,11 +41,8 @@ _ARGS_CONFIG = ConfigDict(
     extra="forbid",
 )
 
-_MAX_DELEGATION_TITLE_LENGTH: Final[int] = 256
-"""Delegation title cap; matches ``CreateTaskData`` / ``DelegationSpec``."""
-
-_MAX_DELEGATION_DESCRIPTION_LENGTH: Final[int] = 4096
-"""Delegation description cap; matches ``CreateTaskData`` / ``DelegationSpec``."""
+_MAX_DELEGATION_TITLE_LENGTH: Final[int] = MAX_TASK_TITLE_LENGTH
+_MAX_DELEGATION_DESCRIPTION_LENGTH: Final[int] = MAX_TASK_DESCRIPTION_LENGTH
 
 
 # ── Email ───────────────────────────────────────────────────────────

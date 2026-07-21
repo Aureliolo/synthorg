@@ -86,8 +86,20 @@ A `REDIRECT` additionally records a checkpointed
 consume it at the next **step boundary** via the existing `do_replan()` and
 clear it; a crash between adoption and the step boundary preserves the
 pending-replan so the forced re-plan still fires on resume. ReAct has no plan
-and ignores the field. The current LLM turn and tool batch always finish
-first: there is no mid-tool cancellation.
+and ignores the field. The tool batch always finishes first: there is no
+mid-tool cancellation.
+
+The in-flight **LLM call** is interruptible when the streaming work loop is
+active (`engine.work_loop_streaming_enabled` and the model advertises
+`supports_streaming`). Consuming `provider.stream()`, the loop polls the
+cancellation checker and the steering inbox between chunks: a terminal task
+status aborts the call and terminates `CANCELLED`, and a pending `REDIRECT`
+aborts the call and re-issues the turn with the directive adopted (the aborted
+turn is not recorded, but the partial token usage the stream surfaced is folded
+into the run's cost so a discarded call is never under-counted). When streaming
+is off or unsupported the loop falls back to the buffered `complete()` call,
+where the current LLM turn always finishes first and steering is adopted only at
+the next turn boundary.
 
 ## Superseding obsolete work
 

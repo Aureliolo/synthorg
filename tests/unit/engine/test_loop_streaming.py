@@ -86,6 +86,30 @@ class _RedirectInbox:
         return (_redirect_directive(),)
 
 
+class _DelayedRedirectInbox:
+    """Returns no directive on the first poll, then a REDIRECT thereafter.
+
+    Lets a test prove the interrupt poll recurs past the index-0 boundary:
+    a directive that only becomes pending after the first poll is caught at
+    the next poll (chunk index 8), not missed and not polled every chunk.
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def pending(
+        self,
+        *,
+        project_id: str,
+        task_id: str | None = None,
+        agent_id: str | None = None,
+        already_adopted: frozenset[str] = frozenset(),
+    ) -> tuple[ActiveSteeringDirective, ...]:
+        del project_id, task_id, agent_id, already_adopted
+        self.calls += 1
+        return () if self.calls == 1 else (_redirect_directive(),)
+
+
 async def _stream(
     ctx: AgentContext,
     chunks: list[StreamChunk],
@@ -162,6 +186,21 @@ class TestStreamProviderReassembly:
         assert isinstance(result, ExecutionResult)
         assert result.termination_reason is TerminationReason.ERROR
 
+    async def test_stream_error_folds_partial_usage(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        # Tokens the provider billed before signalling an ERROR chunk must be
+        # folded into the ERROR result's cost (parity with the cancel path), so
+        # a mid-stream failure does not under-count spend.
+        before = sample_agent_context.accumulated_cost.input_tokens
+        error_chunk = StreamChunk(
+            event_type=StreamEventType.ERROR, error_message="boom"
+        )
+        result = await _stream(sample_agent_context, [_usage_chunk(), error_chunk])
+        assert isinstance(result, ExecutionResult)
+        assert result.termination_reason is TerminationReason.ERROR
+        assert result.context.accumulated_cost.input_tokens == before + 100
+
 
 class TestStreamProviderInterruption:
     async def test_hard_cancel_terminates_cancelled(
@@ -209,6 +248,22 @@ class TestStreamProviderInterruption:
             [_content("done"), _done(FinishReason.STOP)],
         )
         assert isinstance(result, CompletionResponse)
+
+    async def test_redirect_caught_at_next_poll_boundary_not_every_chunk(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        # The poll runs at chunk index 0, 8, 16... A directive that becomes
+        # pending only after the first poll must still be caught at the next
+        # boundary (index 8): proving the poll recurs (not index-0 only) and is
+        # batched (not once per chunk). Nine content chunks -> polls at 0 and 8.
+        inbox = _DelayedRedirectInbox()
+        result = await _stream(
+            sample_agent_context,
+            [_content(str(i)) for i in range(9)],
+            steering_inbox=inbox,
+        )
+        assert isinstance(result, _TurnInterrupted)
+        assert inbox.calls == 2
 
 
 class TestRunProviderTurnDispatch:

@@ -109,6 +109,47 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="delegation_max_depth",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "Maximum depth of the parent-task chain a delegate_and_await call"
+            " may sit at. Bounds nested delegation so a chain of agents"
+            " delegating to one another cannot recurse without limit; a"
+            " delegation whose target already appears as an ancestor's"
+            " assignee (a cycle, including self-delegation) is refused"
+            " regardless. Read live per delegation."
+        ),
+        group="Delegation",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=20,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="delegation_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="0.0",
+        description=(
+            "Wall-clock ceiling for a single delegated child run. Because a"
+            " delegate_and_await call blocks the supervisor's own turn, a"
+            " child that stalls on a slow provider would otherwise hold the"
+            " parent open indefinitely. 0 means no wall-clock limit (bounded"
+            " only by delegation_max_turns). Read live per delegation."
+        ),
+        group="Delegation",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+        max_value=3600.0,
+    )
+)
+
 # ── Approval gate ────────────────────────────────────────────────
 
 _r.register(

@@ -374,9 +374,10 @@ class CompletionConfig(BaseModel):
             request. ``None`` leaves it unset (provider default). Only
             emitted for a model that advertises reasoning support.
         prompt_caching: Whether to place ``cache_control`` breakpoints on
-            the stable prompt prefix (system, tools, and the conversation
-            head) so a caching-capable provider can reuse them across turns.
-            Only applied for a model that advertises prompt-caching support.
+            the stable prompt prefix (system, tools, and a rolling breakpoint
+            at the trailing end of the conversation so far) so a caching-capable
+            provider can reuse them across turns. Only applied for a model that
+            advertises prompt-caching support.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

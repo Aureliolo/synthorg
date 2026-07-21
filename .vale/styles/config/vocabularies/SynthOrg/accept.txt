@@ -369,7 +369,9 @@ ceremony_velocity_calculator
 chatbot
 check_run
 checkpointed
+checkpointing
 chokepoint
+chokepoints
 chown
 chowns
 chunker
@@ -716,6 +718,7 @@ rerank
 rescan
 research_autonomous
 research_lab
+resumability
 retag
 retention_days
 retryable

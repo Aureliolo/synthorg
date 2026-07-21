@@ -65,6 +65,7 @@ from synthorg.observability.events.provider import (
 )
 from synthorg.providers import errors
 from synthorg.providers._cost import token_usage_from_response_usage
+from synthorg.providers._resilience import aclose_quietly
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
@@ -611,40 +612,51 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
             """Map raw LiteLLM chunks, appending DONE + pending tool calls."""
             pending: dict[int, _ToolCallAccumulator] = {}
             raw_finish: str | None = None
+            # Close the underlying LiteLLM/HTTP stream on every exit, including
+            # an early consumer abort (the mid-turn cancel / steer-interrupt
+            # path): a bare ``async for`` does NOT call ``.aclose()`` on the
+            # abandoned iterator when it exits via ``GeneratorExit``, leaking
+            # the open provider connection. ``aclose_quietly`` no-ops when the
+            # raw stream has no ``aclose`` and never masks the ``GeneratorExit``.
             try:
-                async for chunk in raw_stream:
-                    for sc in process(
-                        chunk,
-                        pending,
-                        model_config,
-                    ):
-                        yield sc
-                    chunk_finish = extract_raw_finish_reason(chunk)
-                    if chunk_finish is not None:
-                        raw_finish = chunk_finish
-            except Exception as exc:
-                reraise_critical(exc)
-                logger.error(
-                    PROVIDER_CALL_ERROR,
+                try:
+                    async for chunk in raw_stream:
+                        for sc in process(
+                            chunk,
+                            pending,
+                            model_config,
+                        ):
+                            yield sc
+                        chunk_finish = extract_raw_finish_reason(chunk)
+                        if chunk_finish is not None:
+                            raw_finish = chunk_finish
+                except Exception as exc:
+                    reraise_critical(exc)
+                    logger.error(
+                        PROVIDER_CALL_ERROR,
+                        provider=provider,
+                        model=model,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    raise handle_exc(exc, model) from exc
+
+                for sc in emit_pending_tool_calls(pending):
+                    yield sc
+                logger.debug(
+                    PROVIDER_STREAM_DONE,
                     provider=provider,
                     model=model,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
-                raise handle_exc(exc, model) from exc
-
-            for sc in emit_pending_tool_calls(pending):
-                yield sc
-            logger.debug(
-                PROVIDER_STREAM_DONE,
-                provider=provider,
-                model=model,
-            )
-            # Carry the faithful finish reason on the terminal event so a
-            # consumer reassembling the stream recovers it (content chunks
-            # carry none). Left None when the provider never surfaced one.
-            finish = map_finish_reason(raw_finish) if raw_finish is not None else None
-            yield StreamChunk(event_type=StreamEventType.DONE, finish_reason=finish)
+                # Carry the faithful finish reason on the terminal event so a
+                # consumer reassembling the stream recovers it (content chunks
+                # carry none). Left None when the provider never surfaced one.
+                finish = (
+                    map_finish_reason(raw_finish) if raw_finish is not None else None
+                )
+                yield StreamChunk(event_type=StreamEventType.DONE, finish_reason=finish)
+            finally:
+                await aclose_quietly(raw_stream, model=model)
 
         return _generate()
 

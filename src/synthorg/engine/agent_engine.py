@@ -433,6 +433,7 @@ class AgentEngine(
             has_plan_execute_config=self._plan_execute_config is not None,
             has_hybrid_loop_config=self._hybrid_loop_config is not None,
             has_personality_trim_notifier=self._personality_trim_notifier is not None,
+            has_sub_agent_runner=self._sub_agent_runner is not None,
         )
 
     @property
@@ -855,7 +856,7 @@ class AgentEngine(
             # steer-interrupt) when the operator setting is on and the model
             # supports it; else the loop uses the non-streaming call path.
             streaming_enabled = await self._resolve_streaming_enabled(
-                provider or self._provider, identity
+                provider or self._provider, identity, task_id=task_id
             )
             # before/after_agent fire around the loop run (no-op when unwired);
             # after_agent is guaranteed in a finally inside the helper so a
