@@ -45,8 +45,11 @@ class _EditPlan(NamedTuple):
 
     ``resulting`` equals ``original`` whenever nothing was (or could be)
     changed, so the write step is skipped for a no-op or a rejected plan.
-    On rejection ``error_kind`` names the failure and ``error_hunk_index``
-    /``error_count`` locate it for the operator-facing message.
+    ``edits_applied`` counts only the hunks that actually changed the file
+    (no-op hunks whose ``old_text`` equals ``new_text`` are skipped), so the
+    applied-edit report never over-counts. On rejection ``error_kind`` names
+    the failure and ``error_hunk_index`` /``error_count`` locate it for the
+    operator-facing message.
     """
 
     original: str
@@ -56,6 +59,7 @@ class _EditPlan(NamedTuple):
     error_kind: str | None = None
     error_hunk_index: int | None = None
     error_count: int = 0
+    edits_applied: int = 0
 
 
 def _plan_edits_sync(resolved: Path, hunks: tuple[EditHunk, ...]) -> _EditPlan:
@@ -86,6 +90,7 @@ def _plan_edits_sync(resolved: Path, hunks: tuple[EditHunk, ...]) -> _EditPlan:
     working = original
     found_total = 0
     replaced_total = 0
+    applied_total = 0
     for index, hunk in enumerate(hunks):
         if hunk.old_text == hunk.new_text:
             continue
@@ -95,13 +100,16 @@ def _plan_edits_sync(resolved: Path, hunks: tuple[EditHunk, ...]) -> _EditPlan:
         if count > 1 and not hunk.replace_all:
             return _EditPlan(original, original, 0, 0, _ERROR_NOT_UNIQUE, index, count)
         found_total += count
+        applied_total += 1
         if hunk.replace_all:
             working = working.replace(hunk.old_text, hunk.new_text)
             replaced_total += count
         else:
             working = working.replace(hunk.old_text, hunk.new_text, 1)
             replaced_total += 1
-    return _EditPlan(original, working, found_total, replaced_total)
+    return _EditPlan(
+        original, working, found_total, replaced_total, edits_applied=applied_total
+    )
 
 
 def _write_sync(resolved: Path, new_content: str) -> None:
@@ -369,17 +377,24 @@ class EditFileTool(BaseFileSystemTool):
         )
 
     def _success_result(
-        self, user_path: str, plan: _EditPlan, hunk_count: int
+        self, user_path: str, plan: _EditPlan, submitted_count: int
     ) -> ToolExecutionResult:
         """Build the applied-edit result after a successful write.
+
+        ``submitted_count`` (the number of hunks the caller passed) only
+        selects single- vs batch-mode phrasing; the reported edit count is
+        ``plan.edits_applied``, which excludes no-op hunks so a batch mixing
+        a no-op with a real hunk never claims more edits than it made.
 
         Returns:
             A non-error ``ToolExecutionResult`` summarising the applied edit.
         """
         replaced = plan.occurrences_replaced
-        if hunk_count > 1:
+        applied = plan.edits_applied
+        if submitted_count > 1:
             content = (
-                f"Applied {hunk_count} edits ({replaced} "
+                f"Applied {applied} {'edit' if applied == 1 else 'edits'} "
+                f"({replaced} "
                 f"{'occurrence' if replaced == 1 else 'occurrences'} replaced) "
                 f"in {user_path}"
             )
@@ -394,7 +409,7 @@ class EditFileTool(BaseFileSystemTool):
             path=user_path,
             occurrences_found=plan.occurrences_found,
             occurrences_replaced=replaced,
-            hunks=hunk_count,
+            hunks=applied,
         )
         return ToolExecutionResult(
             content=content,
@@ -402,7 +417,7 @@ class EditFileTool(BaseFileSystemTool):
                 "path": user_path,
                 "occurrences_found": plan.occurrences_found,
                 "occurrences_replaced": replaced,
-                "edits_applied": hunk_count,
+                "edits_applied": applied,
             },
         )
 

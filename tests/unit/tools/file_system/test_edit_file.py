@@ -301,6 +301,9 @@ class TestEditFileExecution:
         assert content == "dup dup dup DONE"
         assert result.metadata["occurrences_found"] == 1
         assert result.metadata["occurrences_replaced"] == 1
+        # The no-op hunk is skipped, so only the real hunk counts as applied.
+        assert result.metadata["edits_applied"] == 1
+        assert "Applied 1 edit " in result.content
 
     async def test_replace_all_hunk_aggregates_across_batch(
         self, workspace: Path, edit_tool: EditFileTool
