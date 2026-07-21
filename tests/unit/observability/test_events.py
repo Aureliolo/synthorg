@@ -401,6 +401,9 @@ class TestEventConstants:
             # OpenHands loop: request / budget-kill / injection-suspected /
             # provider-unavailable / dispatch-failed events.
             "gateway",
+            # SHIP-time retrospective capture: distil / write / dedup events
+            # for the objective retro that feeds org + agent memory.
+            "retrospective",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

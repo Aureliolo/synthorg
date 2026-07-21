@@ -53,6 +53,14 @@ _ALLOWLIST: frozenset[str] = frozenset(
         # strict typed args model would duplicate that schema and reject the
         # retry-friendly partial submissions the parser is designed to accept.
         "synthorg.engine.plan_review.review_tool.SubmitPlanReviewTool",
+        # Terminal submit tool for the SHIP-time retrospective session.
+        # Reuses the hand-rolled ``build_retrospective_tool`` schema and the
+        # ``args_to_retrospective`` parser (which raises a typed
+        # ``RetrospectiveError`` the lead corrects and resubmits within the
+        # session), mirroring the two submit tools above; a strict typed args
+        # model would duplicate that schema and reject the retry-friendly
+        # partial submissions the parser is designed to accept and correct.
+        "synthorg.engine.initiative.retro_session.SubmitRetrospectiveTool",
     }
 )
 
