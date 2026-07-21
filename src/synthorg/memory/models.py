@@ -20,9 +20,33 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.utils import deduplicate_tags
 from synthorg.observability import get_logger
-from synthorg.observability.events.memory import MEMORY_MODEL_INVALID
+from synthorg.observability.events.memory import (
+    MEMORY_CONTENT_REDACTED,
+    MEMORY_MODEL_INVALID,
+)
 
 logger = get_logger(__name__)
+
+
+def _redacted(value: NotBlankStr, *, model: str) -> NotBlankStr:
+    """Strip credentials and personal data out of candidate memory text.
+
+    Enforced on the request models rather than inside a backend so no
+    write path can be added later that bypasses it: memory is written
+    from agent tools, capture hooks, consolidation and the org layer,
+    and every one of them constructs one of these models.
+
+    Returns:
+        The text cleared for storage.
+    """
+    from synthorg.memory.redaction import redact_for_memory  # noqa: PLC0415
+
+    result = redact_for_memory(value)
+    if result.redacted:
+        # Finding names only. Logging the matched text would move the
+        # secret from the memory store into the log.
+        logger.warning(MEMORY_CONTENT_REDACTED, model=model, findings=result.findings)
+    return NotBlankStr(result.content)
 
 
 class MemoryMetadata(BaseModel):
@@ -97,6 +121,16 @@ class MemoryStoreRequest(BaseModel):
         description="Optional expiration timestamp",
     )
 
+    @field_validator("content", mode="after")
+    @classmethod
+    def _redact_content(cls, value: NotBlankStr) -> NotBlankStr:
+        """Mask secrets and personal data before the text can be stored.
+
+        Returns:
+            The storable text.
+        """
+        return _redacted(value, model="MemoryStoreRequest")
+
 
 class MemoryUpdateRequest(BaseModel):
     """Input to ``MemoryBackend.update()``.
@@ -134,6 +168,18 @@ class MemoryUpdateRequest(BaseModel):
         default=False,
         description="Remove any existing expiration",
     )
+
+    @field_validator("content", mode="after")
+    @classmethod
+    def _redact_content(cls, value: NotBlankStr | None) -> NotBlankStr | None:
+        """Mask secrets and personal data before the text can be stored.
+
+        Returns:
+            The storable text, or ``None`` when content is unchanged.
+        """
+        if value is None:
+            return None
+        return _redacted(value, model="MemoryUpdateRequest")
 
     @model_validator(mode="after")
     def _validate_update_request(self) -> Self:
@@ -269,6 +315,8 @@ class MemoryQuery(BaseModel):
         limit: Maximum number of results.
         since: Only memories created at or after this timestamp.
         until: Only memories created before this timestamp.
+        include_superseded: Whether beliefs an agent has explicitly
+            replaced may be returned.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -308,6 +356,25 @@ class MemoryQuery(BaseModel):
     until: AwareDatetime | None = Field(
         default=None,
         description="Only memories created before this timestamp",
+    )
+    include_superseded: bool = Field(
+        default=False,
+        description=(
+            "Whether replaced beliefs may be returned. Excluding them is "
+            "the default because a stale belief coexisting with its "
+            "correction, with nothing arbitrating between them, is the "
+            "failure the write-time gate exists to prevent. Audit and "
+            "history views opt back in."
+        ),
+    )
+    oldest_first: bool = Field(
+        default=False,
+        description=(
+            "Order a metadata-only listing oldest-first instead of the "
+            "default newest-first. Cap enforcement evicts the oldest, so "
+            "it must see them first; ignored once ranking (text/embedding) "
+            "orders the result by relevance."
+        ),
     )
 
     @field_validator("tags", mode="after")

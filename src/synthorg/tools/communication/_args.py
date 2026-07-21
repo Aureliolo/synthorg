@@ -21,11 +21,15 @@ Tools wired to consume these models:
 """
 
 import copy
-from typing import Annotated, Literal, Self
+from typing import Annotated, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.task_limits import (
+    MAX_TASK_DESCRIPTION_LENGTH,
+    MAX_TASK_TITLE_LENGTH,
+)
 from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
@@ -36,6 +40,9 @@ _ARGS_CONFIG = ConfigDict(
     allow_inf_nan=False,
     extra="forbid",
 )
+
+_MAX_DELEGATION_TITLE_LENGTH: Final[int] = MAX_TASK_TITLE_LENGTH
+_MAX_DELEGATION_DESCRIPTION_LENGTH: Final[int] = MAX_TASK_DESCRIPTION_LENGTH
 
 
 # ── Email ───────────────────────────────────────────────────────────
@@ -151,6 +158,24 @@ class StartAsyncTaskArgs(BaseModel):
     description: NotBlankStr = Field(description="Detailed task description")
 
 
+class DelegateAndAwaitArgs(BaseModel):
+    """Args for ``delegate_and_await``."""
+
+    model_config = _ARGS_CONFIG
+
+    agent_id: NotBlankStr = Field(
+        description="Target agent to delegate to, by id or by name",
+    )
+    title: NotBlankStr = Field(
+        max_length=_MAX_DELEGATION_TITLE_LENGTH,
+        description="Short title for the delegated sub-task",
+    )
+    description: NotBlankStr = Field(
+        max_length=_MAX_DELEGATION_DESCRIPTION_LENGTH,
+        description="The sub-task the delegated agent must complete",
+    )
+
+
 class CheckAsyncTaskArgs(BaseModel):
     """Args for ``check_async_task``."""
 
@@ -192,6 +217,7 @@ class ListAsyncTasksArgs(BaseModel):
 __all__ = [
     "CancelAsyncTaskArgs",
     "CheckAsyncTaskArgs",
+    "DelegateAndAwaitArgs",
     "EmailSenderArgs",
     "ListAsyncTasksArgs",
     "NotificationSenderArgs",

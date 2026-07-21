@@ -192,6 +192,8 @@ const TASK_NULLABLE_STRING_FIELDS = [
   'deadline',
   'parent_task_id',
   'forecast_id',
+  'plan_id',
+  'plan_item_id',
 ] as const
 
 const TASK_REQUIRED_FINITE_NUMERIC_FIELDS = [
@@ -320,6 +322,8 @@ function sanitizeNullableStrings(c: DashboardTask) {
     parent_task_id: sanitizeNullable(c.parent_task_id ?? null, 128),
     deadline: sanitizeNullable(c.deadline ?? null, 64),
     forecast_id: sanitizeNullable(c.forecast_id ?? null, 64),
+    plan_id: sanitizeNullable(c.plan_id ?? null, 64),
+    plan_item_id: sanitizeNullable(c.plan_item_id ?? null, 64),
     created_at: sanitizeOptional(c.created_at, 64),
     updated_at: sanitizeOptional(c.updated_at, 64),
   }

@@ -22,7 +22,7 @@ func TestBuildState_EncryptSecretsDefault(t *testing.T) {
 		dockerSock:         "",
 		logLevel:           "info",
 		persistenceBackend: "sqlite",
-		memoryBackend:      "mem0",
+		memoryBackend:      "sqlvector",
 		busBackend:         "internal",
 		encryptSecrets:     true,
 	}
@@ -64,7 +64,7 @@ func TestBuildState_EncryptSecretsDisabled(t *testing.T) {
 		dockerSock:         "",
 		logLevel:           "info",
 		persistenceBackend: "sqlite",
-		memoryBackend:      "mem0",
+		memoryBackend:      "sqlvector",
 		busBackend:         "internal",
 		encryptSecrets:     false,
 	}

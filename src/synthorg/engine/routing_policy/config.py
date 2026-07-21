@@ -15,6 +15,7 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.completion_enums import ReasoningEffort, reasoning_effort_rank
 from synthorg.core.task_enums import Stakes
 from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.engine.routing_policy.tiers import tier_rank
@@ -96,6 +97,76 @@ class StakesTierRequirement(BaseModel):
         return mapping[stakes]
 
 
+class StakesReasoning(BaseModel):
+    """Per-stakes reasoning depth requested from the model.
+
+    Higher-stakes work asks the model to think harder, not just run on a
+    stronger tier. ``None`` for a stakes level leaves reasoning unset (the
+    provider default), so routine work carries no extra thinking cost. The
+    request is only honoured for a model that advertises reasoning support;
+    otherwise it is dropped at the driver boundary.
+
+    Attributes:
+        low: Reasoning effort for LOW-stakes subtasks.
+        normal: Reasoning effort for NORMAL-stakes subtasks.
+        high: Reasoning effort for HIGH-stakes subtasks.
+        critical: Reasoning effort for CRITICAL-stakes subtasks.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    low: ReasoningEffort | None = Field(default=None)
+    normal: ReasoningEffort | None = Field(default=ReasoningEffort.LOW)
+    high: ReasoningEffort | None = Field(default=ReasoningEffort.MEDIUM)
+    critical: ReasoningEffort | None = Field(default=ReasoningEffort.HIGH)
+
+    @model_validator(mode="after")
+    def _validate_reasoning_ordered(self) -> Self:
+        """Reject reasoning efforts that invert the stakes hierarchy.
+
+        A lower-stakes subtask must never request deeper reasoning than a
+        higher-stakes one; otherwise routing would spend thinking budget on
+        trivial work and under-think consequential work. ``None`` (unset)
+        ranks below any configured effort.
+
+        Returns:
+            ``self`` unchanged when the efforts are non-decreasing across the
+            stakes ladder.
+
+        Raises:
+            ValueError: When the configured efforts violate
+                ``low <= normal <= high <= critical`` by reasoning rank.
+        """
+
+        def rank(effort: ReasoningEffort | None) -> int:
+            return -1 if effort is None else reasoning_effort_rank(effort)
+
+        ranks = (
+            rank(self.low),
+            rank(self.normal),
+            rank(self.high),
+            rank(self.critical),
+        )
+        if not ranks[0] <= ranks[1] <= ranks[2] <= ranks[3]:
+            msg = (
+                "stakes reasoning efforts must be non-decreasing: "
+                f"low={self.low} <= normal={self.normal} <= "
+                f"high={self.high} <= critical={self.critical}"
+            )
+            raise ValueError(msg)
+        return self
+
+    def for_stakes(self, stakes: Stakes) -> ReasoningEffort | None:
+        """Return the reasoning effort for *stakes* (``None`` if unset)."""
+        mapping: dict[Stakes, ReasoningEffort | None] = {
+            Stakes.LOW: self.low,
+            Stakes.NORMAL: self.normal,
+            Stakes.HIGH: self.high,
+            Stakes.CRITICAL: self.critical,
+        }
+        return mapping[stakes]
+
+
 class StakesRoutingConfig(BaseModel):
     """Configuration for the stakes-aware routing strategy.
 
@@ -104,6 +175,7 @@ class StakesRoutingConfig(BaseModel):
             (``"stakes_aware"`` default, or ``"flat"`` for the no-op
             control / opt-out).
         stakes_tiers: Per-stakes required minimum model tier.
+        stakes_reasoning: Per-stakes reasoning depth requested from the model.
         red_team_min_stakes: Lowest stakes level that requires the
             red-team gate and forbids downgrading below the agent's
             configured tier.
@@ -124,6 +196,10 @@ class StakesRoutingConfig(BaseModel):
     stakes_tiers: StakesTierRequirement = Field(
         default_factory=StakesTierRequirement,
         description="Per-stakes required minimum model tier",
+    )
+    stakes_reasoning: StakesReasoning = Field(
+        default_factory=StakesReasoning,
+        description="Per-stakes reasoning depth requested from the model",
     )
     red_team_min_stakes: Stakes = Field(
         default=Stakes.HIGH,

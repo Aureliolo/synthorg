@@ -133,7 +133,7 @@ class TestMultiProviderAttributionParity:
         identity = _identity(
             provider=_DEFAULT_PROVIDER, model_id="default-small-001", tier="small"
         )
-        routed = await engine._route_stakes(identity, _task(Stakes.HIGH))
+        routed, _effort = await engine._route_stakes(identity, _task(Stakes.HIGH))
         provider, final_identity = engine._resolve_provider_instance(
             routed, identity, default_client
         )
@@ -269,7 +269,7 @@ class TestDispatchClientResolution:
             provider=_CHEAP_PROVIDER, model_id="cheap-large-001", tier="large"
         )
         dispatched = engine._dispatch_client_for(identity, default_client)
-        routed = await engine._route_stakes(identity, _task(Stakes.HIGH))
+        routed, _effort = await engine._route_stakes(identity, _task(Stakes.HIGH))
         resolved, final_identity = engine._resolve_provider_instance(
             routed, identity, dispatched
         )

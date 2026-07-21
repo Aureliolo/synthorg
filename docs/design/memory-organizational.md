@@ -122,9 +122,17 @@ All backends implement the `OrgMemoryBackend` protocol:
 - `list_policies() -> tuple[OrgFact, ...]`
 - Lifecycle methods: `connect`, `disconnect`, `health_check`, `is_connected`, `backend_name`
 
-The default backend is the Hybrid Prompt + Retrieval implementation. The selected memory layer
-backend Mem0 ([Decision Log](../architecture/decisions.md)) provides optional graph memory via
-Neo4j/FalkorDB, which could reduce implementation effort for the research direction backends.
+The default backend is the Hybrid Prompt + Retrieval implementation.
+
+!!! warning "No licence-clean graph backend exists today"
+    The graph research directions above would need a graph store, and every
+    currently available option fails the Licence Compatibility rule or the
+    self-hosting constraint: Neo4j Community is GPLv3, FalkorDB is SSPL, Kuzu
+    (the one permissively-licensed embedded option) is deprecated by its
+    consumers, and Amazon Neptune is a managed cloud service. A temporal or
+    relational memory layer should therefore be weighed against building a
+    relationship table in the existing Postgres/SQLite stack, not against
+    adopting a graph driver.
 
 !!! tip "Write Access Control"
 

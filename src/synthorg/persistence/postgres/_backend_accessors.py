@@ -97,6 +97,7 @@ from synthorg.persistence.meeting_cooldown_protocol import (
     MeetingCooldownRepository,
 )
 from synthorg.persistence.memory_protocol import OrgFactRepository
+from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
 from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.model_tool_call_signal_protocol import (
     ModelToolCallSignalRepository,
@@ -137,6 +138,9 @@ from synthorg.persistence.postgres.idempotency_repo import (
 )
 from synthorg.persistence.postgres.mcp_installation_repo import (
     PostgresMcpInstallationRepository,
+)
+from synthorg.persistence.postgres.memory_vector_repo import (
+    PostgresMemoryVectorRepository,
 )
 from synthorg.persistence.postgres.oauth_state_repo import (
     PostgresOAuthStateRepository,
@@ -307,6 +311,7 @@ class _PostgresBackendRepositoryAccessors:
     _mcp_installations: PostgresMcpInstallationRepository | None
     _custom_rules: PostgresCustomRuleRepository | None
     _org_facts: PostgresOrgFactRepository | None
+    _memory_vectors: PostgresMemoryVectorRepository | None
     _ontology_entities: PostgresOntologyEntityRepository | None
     _ontology_drift: PostgresOntologyDriftReportRepository | None
     _connections: PostgresConnectionRepository | None
@@ -782,6 +787,11 @@ class _PostgresBackendRepositoryAccessors:
     def org_facts(self) -> OrgFactRepository:
         """Repository for organizational fact persistence (MVCC)."""
         return self._require_connected(self._org_facts, "org_facts")
+
+    @property
+    def memory_vectors(self) -> MemoryVectorRepository:
+        """Repository for durable agent memory with hybrid retrieval."""
+        return self._require_connected(self._memory_vectors, "memory_vectors")
 
     @property
     def ontology_entities(self) -> OntologyEntityRepository:

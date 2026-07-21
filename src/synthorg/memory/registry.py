@@ -1,9 +1,8 @@
 """Memory backend registry.
 
 Domain-specific dispatch keyed by ``CompanyMemoryConfig.backend``.  Mirrors
-``PersistenceBackendRegistry`` and replaces the hand-rolled
-``if backend == "...": ... elif ...`` chain previously embedded in
-``synthorg.memory.factory`` and ``CompositeBackend`` child wiring.
+``PersistenceBackendRegistry`` so a new memory backend registers itself
+here rather than every call site branching on the config discriminator.
 """
 
 from collections.abc import Mapping
@@ -12,7 +11,7 @@ from typing import Protocol
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
-from synthorg.memory.backends.mem0.config import Mem0EmbedderConfig
+from synthorg.memory.backend_deps import MemoryBackendDeps
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
@@ -34,16 +33,16 @@ class _MemoryFactory(Protocol):
         self,
         config: CompanyMemoryConfig,
         *,
-        embedder: Mem0EmbedderConfig | None,
+        deps: MemoryBackendDeps,
     ) -> MemoryBackend: ...
 
 
 class MemoryBackendRegistry:
     """Immutable registry mapping backend names to memory-backend factories.
 
-    Each factory accepts a ``CompanyMemoryConfig`` and an optional
-    ``Mem0EmbedderConfig`` (kwarg ``embedder``) and returns a
-    disconnected :class:`synthorg.memory.protocol.MemoryBackend`.
+    Each factory accepts a ``CompanyMemoryConfig`` and a
+    ``MemoryBackendDeps`` (kwarg ``deps``) and returns a disconnected
+    :class:`synthorg.memory.protocol.MemoryBackend`.
     """
 
     _KIND = "memory_backend"
@@ -72,17 +71,17 @@ class MemoryBackendRegistry:
         name: str,
         config: CompanyMemoryConfig,
         *,
-        embedder: Mem0EmbedderConfig | None = None,
+        deps: MemoryBackendDeps,
     ) -> MemoryBackend:
         """Dispatch to the factory registered for *name*.
 
         Args:
-            name: Backend discriminator (e.g. ``"mem0"``, ``"inmemory"``,
-                ``"composite"``).
+            name: Backend discriminator (``"sqlvector"``, ``"inmemory"``
+                or ``"composite"``).
             config: Company memory configuration.
-            embedder: Optional embedder config forwarded to factories
-                that need it (currently only ``mem0`` and the composite
-                wrapper for its mem0 children).
+            deps: Collaborators forwarded to the factory. ``sqlvector``
+                requires a repository; the composite wrapper passes them
+                through to each child.
 
         Returns:
             A new, disconnected backend instance.
@@ -109,7 +108,7 @@ class MemoryBackendRegistry:
                 context={"kind": self._KIND, "name": name},
             )
         try:
-            backend = factory(config, embedder=embedder)
+            backend = factory(config, deps=deps)
         except Exception as exc:
             reraise_critical(exc)
             # Memory factories may close over an embedder containing

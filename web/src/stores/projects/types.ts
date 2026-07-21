@@ -3,6 +3,7 @@ import type { AutonomyLevel } from '@/api/types/enums'
 import type {
   CreateProjectRequest,
   Project,
+  ProjectProgress,
   ProjectStatus,
   Task,
   WsEvent,
@@ -32,6 +33,14 @@ export interface ProjectsState {
   // Detail page
   selectedProject: Project | null
   projectTasks: readonly Task[]
+  /** Plan + task progress for the selected project; null before it loads. */
+  projectProgress: ProjectProgress | null
+  /**
+   * True when the progress fetch failed, as opposed to the project genuinely
+   * having no plan. Both leave `projectProgress` null, and the two must not
+   * render the same way.
+   */
+  projectProgressFailed: boolean
   detailLoading: boolean
   detailError: string | null
   /** True while an autonomy-mode PATCH is in flight (disables the control). */

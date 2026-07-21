@@ -477,9 +477,8 @@ class TestFeatureWiringProposerDegradation:
         noop = AsyncMock()
         for name in (
             "_wire_docs_engine",
-            "_wire_project_brain",
+            "wire_project_brain",
             "_wire_steering_service",
-            "wire_org_memory_backend",
             "wire_knowledge_engine",
             "_wire_custom_rules_service",
             "_wire_budget_versions_service",

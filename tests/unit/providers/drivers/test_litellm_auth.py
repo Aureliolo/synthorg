@@ -63,7 +63,7 @@ def _build_kwargs(
     messages = [ChatMessage(role=MessageRole.USER, content="ping")]
     return driver._build_kwargs(
         messages,
-        "test-provider/test-model-001",
+        driver._resolve_model("test-model-001"),
     )
 
 
@@ -103,7 +103,7 @@ class TestLiteLLMDriverAuth:
         driver._resolved_credentials = {}
         messages = [ChatMessage(role=MessageRole.USER, content="ping")]
         with pytest.raises(errors.AuthenticationError):
-            driver._build_kwargs(messages, "test-provider/test-model-001")
+            driver._build_kwargs(messages, driver._resolve_model("test-model-001"))
 
     def test_build_kwargs_custom_header_auth(self) -> None:
         config = _make_config(

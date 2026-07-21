@@ -35,7 +35,7 @@ def _req(
 
 @pytest.fixture
 def durable() -> InMemoryBackend:
-    """Simulates durable backend (like Mem0)."""
+    """Simulates the durable backend (like sqlvector)."""
     return InMemoryBackend()
 
 

@@ -24,7 +24,7 @@ func TestDevComposeYAMLImageSync(t *testing.T) {
 		tag       string
 		constName string
 	}{
-		{"postgres", "dhi.io/postgres", config.DefaultPostgresImageTag, "Postgres"},
+		{"postgres", "dhi.io/pgvector", config.DefaultPostgresImageTag, "Postgres"},
 		{"nats", "dhi.io/nats", config.DefaultNATSImageTag, "NATS"},
 	}
 

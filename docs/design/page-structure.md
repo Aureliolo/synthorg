@@ -109,9 +109,9 @@ Agent profiles as card grid. Each card shows name, role, department, status dot,
 
 #### Projects (`/projects`)
 
-Project list with card grid, search, and status filter. "Create Project" button opens a slide-in drawer with name, description, team (tag input), lead, deadline, and budget fields. Each card shows status badge, description, task count, budget, team size, and deadline.
+Project list with card grid, search, and status filter. "Create Project" button opens a slide-in drawer with name, description, team (tag input), lead, deadline, and budget fields. Each card shows status badge, description, budget, team size, and deadline.
 
-Detail page (`/projects/{projectId}`) shows project header with status badge and key metrics, team section with avatar grid and lead badge, an oversight-mode control (sets the initiative's operator-set autonomy tier), and a linked task list with status indicators.
+Detail page (`/projects/{projectId}`) is the initiative cockpit: project header with status badge and key metrics, a plan-progress section (plan status, per-item task status, done / failed / blocked counts, and the critical path through the plan's item DAG), team section with avatar grid and lead badge, an oversight-mode control (sets the initiative's operator-set autonomy tier), and a linked task list with status indicators. Progress is computed server-side and served whole by `GET /projects/{id}/progress`, so the same view is reachable by any API client. See [Project lifecycle](project-lifecycle.md).
 
 Living-documentation page (`/projects/{projectId}/docs`, optional `/{slug}`) is the per-project wiki: a two-column layout with a doc-list sidebar (type-filter chips for status report / deliverable / knowledge note /
 codebase analysis / run narrative) and a `DocViewer` that renders a `LivingDocument`'s typed blocks one renderer per block kind. Docs are written by agents (tools + MCP), git-versioned on the `synthorg/docs` branch, and chunked into the `PROJECT_DOC` memory namespace for retrieval. See [Living Documentation](living-documentation.md).
@@ -125,9 +125,10 @@ codebase analysis / run narrative) and a `DocViewer` that renders a `LivingDocum
 - **Team section**: avatar grid with links to agent detail pages, lead badge
 - **Oversight mode**: sets the initiative's operator-set autonomy tier the SecOps gate resolves against; the gate-off `full` option is CEO-only and confirmed
 - **Task list**: linked tasks with status indicators and assignee display
+- **Plan progress**: per-item task status, done / failed / blocked counts, and critical-path highlighting for the plan the project is executing
 
-**API endpoints**: `GET /projects`, `GET /projects/{id}`, `POST /projects`, `PATCH /projects/{id}/autonomy-mode`, `DELETE /projects/{id}`, `GET /projects/{id}/docs`, `GET /projects/{id}/docs/{slug}`, `GET /projects/{id}/docs/{slug}/history`, `GET /projects/{id}/docs/search`
-**WS channels**: `projects` (emits `project.created`, `project.deleted`, `project.autonomy_mode_changed`), `tasks`
+**API endpoints**: `GET /projects`, `GET /projects/{id}`, `GET /projects/{id}/progress`, `POST /projects`, `PATCH /projects/{id}/autonomy-mode`, `DELETE /projects/{id}`, `GET /projects/{id}/docs`, `GET /projects/{id}/docs/{slug}`, `GET /projects/{id}/docs/{slug}/history`, `GET /projects/{id}/docs/search`
+**WS channels**: `projects` (emits `project.created`, `project.deleted`, `project.autonomy_mode_changed`), `tasks`, `plans` (a plan status change refreshes the progress section)
 
 #### Artifacts (`/artifacts`)
 

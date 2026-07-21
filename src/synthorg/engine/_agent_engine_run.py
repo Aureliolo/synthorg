@@ -8,6 +8,7 @@ sit off the per-turn hot path and are mixed into the engine.
 from typing import TYPE_CHECKING
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.engine.context import DEFAULT_MAX_TURNS
@@ -15,6 +16,8 @@ from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import FLIGHT_RECORDER_RECORD_FAILED
 from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
+from synthorg.providers.models import CompletionConfig
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from synthorg.core.clock import Clock
@@ -40,27 +43,154 @@ class AgentEngineRunMixin:
         self,
         identity: AgentIdentity,
         task: Task,
-    ) -> AgentIdentity:
+    ) -> tuple[AgentIdentity, ReasoningEffort | None]:
         """Apply stakes-aware routing, returning the adjusted identity.
 
         Delegates to the injected :class:`StakesRouter` to pick a model
-        tier matched to ``task.stakes``; this method only adjusts the
-        model the subtask runs with. The review pipeline independently
-        gates the red-team review on the task's persisted ``task.stakes``
-        (see ``run_completion_gates`` / ``red_team_min_stakes``), so the
-        routing decision's ``red_team_required`` flag is not threaded from
-        here.
+        tier matched to ``task.stakes``; this method adjusts the model the
+        subtask runs with and surfaces the stakes-driven reasoning effort so
+        the caller can fold it into the run's completion config. The review
+        pipeline independently gates the red-team review on the task's
+        persisted ``task.stakes`` (see ``run_completion_gates`` /
+        ``red_team_min_stakes``), so the routing decision's
+        ``red_team_required`` flag is not threaded from here.
 
         Returns:
-            ``identity`` with its model replaced when the router picks
-            a different one; the original ``identity`` is returned
-            unchanged when the router's selection matches.
+            A ``(identity, reasoning_effort)`` pair: ``identity`` with its
+            model replaced when the router picks a different one (else the
+            original), and the stakes-driven reasoning effort (``None`` when
+            the provider default should stand).
         """
         assert self._stakes_router is not None  # noqa: S101  # caller checks
         decision = await self._stakes_router.route(task=task, identity=identity)
+        reasoning_effort = decision.reasoning_effort
         if decision.selected_model == identity.model:
-            return identity
-        return identity.model_copy(update={"model": decision.selected_model})
+            return identity, reasoning_effort
+        routed = identity.model_copy(update={"model": decision.selected_model})
+        return routed, reasoning_effort
+
+    @staticmethod
+    def _fold_stakes_reasoning(
+        completion_config: CompletionConfig | None,
+        identity: AgentIdentity,
+        reasoning_effort: ReasoningEffort | None,
+    ) -> CompletionConfig | None:
+        """Fold the stakes-driven reasoning effort into the run config.
+
+        Leaves the config untouched (possibly ``None``, so the loop builds
+        its own default) when no reasoning effort is requested. Otherwise
+        builds on the caller-supplied config, or a fresh one carrying the
+        agent's temperature / max_tokens, so those are preserved alongside
+        the reasoning dial.
+
+        Returns:
+            The completion config to run with, or ``None`` when unchanged.
+        """
+        if reasoning_effort is None:
+            return completion_config
+        base = completion_config or CompletionConfig(
+            temperature=identity.model.temperature,
+            max_tokens=identity.model.max_tokens,
+        )
+        return base.model_copy(update={"reasoning_effort": reasoning_effort})
+
+    async def _resolve_live_bool(
+        self, namespace: str, key: str, *, fallback: bool = True
+    ) -> bool:
+        """Resolve a boolean setting live, fail-safe to ``fallback`` unwired.
+
+        Shared by the per-run streaming / caching gates so both read the same
+        DB > env > default chain without duplicating the outage fallback.
+
+        Returns:
+            The resolved flag, or ``fallback`` when no resolver is wired.
+        """
+        if self._config_resolver is None:
+            return fallback
+        from synthorg.settings.kill_switch import (  # noqa: PLC0415
+            resolve_bool_with_fallback,
+        )
+
+        return await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace=namespace,
+            key=key,
+            fallback=fallback,
+        )
+
+    async def _resolve_streaming_enabled(
+        self,
+        provider: CompletionProvider,
+        identity: AgentIdentity,
+        *,
+        task_id: str,
+    ) -> bool:
+        """Decide whether the run streams its per-turn LLM calls.
+
+        Streams only when the operator setting
+        ``engine.work_loop_streaming_enabled`` (live per run, fail-safe to the
+        default) is on AND the run's model advertises streaming support. A
+        capability-lookup fault fails safe to the non-streaming path so a
+        transient provider hiccup never blocks the run.
+
+        Returns:
+            ``True`` when the run should stream its per-turn calls.
+        """
+        from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+
+        enabled = await self._resolve_live_bool(
+            SettingNamespace.ENGINE, "work_loop_streaming_enabled"
+        )
+        if not enabled:
+            return False
+        try:
+            capabilities = await provider.get_model_capabilities(
+                identity.model.model_id
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- degrade-to-non-streaming wiring
+            reraise_critical(exc)
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=str(identity.id),
+                task_id=task_id,
+                note="streaming capability lookup failed; using non-streaming",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False
+        return capabilities.supports_streaming
+
+    async def _fold_prompt_caching(
+        self,
+        completion_config: CompletionConfig | None,
+        identity: AgentIdentity,
+    ) -> CompletionConfig | None:
+        """Turn on prompt caching for the run when the operator setting allows.
+
+        Reads ``providers.prompt_caching_enabled`` live per run (fail-safe to
+        the registered default on a settings outage). When enabled, sets the
+        caching flag on the run config, building a fresh config that preserves
+        the agent's temperature / max_tokens when the caller passed none. When
+        disabled, leaves the config untouched. The driver still gates the
+        actual ``cache_control`` placement on per-model caching support, so a
+        non-caching model is unaffected either way.
+
+        Returns:
+            The completion config to run with, or ``None`` when unchanged.
+        """
+        from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+
+        enabled = await self._resolve_live_bool(
+            SettingNamespace.PROVIDERS, "prompt_caching_enabled"
+        )
+        if not enabled:
+            return completion_config
+        base = completion_config or CompletionConfig(
+            temperature=identity.model.temperature,
+            max_tokens=identity.model.max_tokens,
+        )
+        return base.model_copy(update={"prompt_caching": True})
 
     async def _record_flight_frames(
         self,

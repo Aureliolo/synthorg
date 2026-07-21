@@ -11,9 +11,9 @@ layers. Four shapes live here so each pattern is written once:
   session time zone would otherwise corrupt the instant. The persistence
   layer re-exports these from ``persistence/_shared/datetime_marshaller``.
 * :func:`parse_iso_assume_utc` -- for externally-authored timestamps that
-  may legitimately omit an offset (Mem0 records, OAuth provider
-  metadata): a naive value is assumed UTC rather than rejected, and an
-  already-aware value is preserved as-is.
+  may legitimately omit an offset (OAuth provider metadata, third-party
+  API payloads): a naive value is assumed UTC rather than rejected, and
+  an already-aware value is preserved as-is.
 * :func:`parse_git_log_timestamp` -- for ``git log`` author/commit dates,
   which always carry an explicit offset: a naive value signals a
   malformed row and is rejected (``None``), and the original offset is

@@ -2,7 +2,7 @@
 
 Dispatches each memory operation to a child backend based on the
 ``namespace`` field of the request/query.  Memory IDs are prefixed
-with the backend name (``"mem0:abc123"``) so that ``get()`` and
+with the backend name (``"sqlvector:abc123"``) so that ``get()`` and
 ``delete()`` can route in O(1) without scanning all children.
 """
 
@@ -54,7 +54,7 @@ class CompositeBackend:
     by delegating to child backends based on the ``namespace`` field.
 
     Args:
-        children: Named backend instances (e.g. ``{"mem0": ...,
+        children: Named backend instances (e.g. ``{"sqlvector": ...,
             "inmemory": ...}``).
         config: Routing configuration.
 
@@ -219,6 +219,16 @@ class CompositeBackend:
         """Human-readable backend identifier."""
         return NotBlankStr("composite")
 
+    @property
+    def supports_dense_search(self) -> bool:
+        """Whether every child ranks by meaning.
+
+        Deliberately unanimous rather than "any": a caller uses this to
+        decide it can drop a crude keyword pre-filter, and a route into
+        the one keyword-only child would then return unfiltered noise.
+        """
+        return all(b.supports_dense_search for b in self._unique_backends)
+
     # -- Capabilities -------------------------------------------------
 
     @property
@@ -325,10 +335,21 @@ class CompositeBackend:
             query,
             targets,
         )
-        all_entries.sort(
-            key=lambda e: e.relevance_score if e.relevance_score is not None else 0.0,
-            reverse=True,
-        )
+        if query.oldest_first:
+            # A cap sweep evicts the oldest, so merge children oldest-first
+            # by creation time rather than by relevance.
+            all_entries.sort(key=lambda e: (e.created_at, str(e.id)))
+        else:
+            # id breaks relevance ties so the merged order is deterministic
+            # across fan-out completion (a metadata-only query leaves every
+            # relevance_score None, i.e. a full tie).
+            all_entries.sort(
+                key=lambda e: (
+                    e.relevance_score if e.relevance_score is not None else 0.0,
+                    str(e.id),
+                ),
+                reverse=True,
+            )
         return tuple(all_entries[: query.limit])
 
     async def get(

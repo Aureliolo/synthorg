@@ -28,11 +28,19 @@ export async function getReadiness(): Promise<ReadinessProbe> {
 
 /**
  * Authenticated component-health detail -- the full per-subsystem
- * breakdown (persistence / message bus / providers / telemetry) for the
- * dashboard health popover. 200 healthy / 503 unavailable. Requires a
- * read-access role; unauthenticated callers must use `getReadiness()`.
+ * breakdown (persistence / message bus / providers / telemetry / memory)
+ * for the dashboard health popover. 200 healthy / 503 unavailable.
+ * Requires a read-access role; unauthenticated callers must use
+ * `getReadiness()`.
+ *
+ * A 503 still carries the full breakdown body: that is precisely when an
+ * operator needs to know which subsystem is down, so `validateStatus`
+ * accepts it and the body is unwrapped rather than thrown away as a
+ * generic request failure.
  */
 export async function getHealthDetail(): Promise<ReadinessStatus> {
-  const response = await apiClient.get<ApiResponse<ReadinessStatus>>('/health')
+  const response = await apiClient.get<ApiResponse<ReadinessStatus>>('/health', {
+    validateStatus: (status) => status === 200 || status === 503,
+  })
   return unwrap(response)
 }

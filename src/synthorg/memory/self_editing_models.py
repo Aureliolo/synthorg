@@ -136,6 +136,8 @@ class SelfEditingMemoryConfig(BaseModel):
             empty (both enforced by validators).
         write_auto_tag: When ``True``, automatically adds the
             ``"self_edited"`` tag to archival and recall writes.
+        write_gate_candidates: How many existing entries a candidate
+            write is deduplicated against.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -186,6 +188,17 @@ class SelfEditingMemoryConfig(BaseModel):
         description=(
             "When True, automatically adds 'self_edited' tag to "
             "archival and recall writes."
+        ),
+    )
+    write_gate_candidates: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description=(
+            "How many existing entries a candidate write is compared "
+            "against for deduplication. Ten follows the consolidation "
+            "literature's top-k; larger widens the duplicate net at the "
+            "cost of one bigger read per write."
         ),
     )
 

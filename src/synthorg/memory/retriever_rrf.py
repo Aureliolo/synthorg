@@ -7,9 +7,9 @@ Fetches dense and sparse candidates in parallel, fuses them via
 """
 
 import asyncio
-import builtins
 from datetime import UTC, datetime
 
+from synthorg.core.critical_errors import reraise_critical_unwrapped
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.protocol import MemoryBackend
@@ -72,10 +72,11 @@ async def execute_rrf_pipeline(
         async with asyncio.TaskGroup() as tg:
             dense_task = tg.create_task(dense_coro)
             sparse_task = tg.create_task(sparse_coro)
-    except* builtins.MemoryError as eg:
-        raise eg.exceptions[0] from eg
-    except* RecursionError as eg:
-        raise eg.exceptions[0] from eg
+    # TaskGroup wraps task exceptions in ExceptionGroup;
+    # unwrap system-level errors so callers see bare exceptions.
+    except BaseExceptionGroup as eg:
+        reraise_critical_unwrapped(eg)
+        raise
 
     dense_personal, dense_shared = dense_task.result()
     sparse_personal, sparse_shared = sparse_task.result()

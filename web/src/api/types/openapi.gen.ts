@@ -3473,6 +3473,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/plans/{plan_id}/replan": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Replan */
+        readonly post: operations["ApiV1PlansPlanIdReplanReplan"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/plans/{plan_id}/request-changes": {
         readonly parameters: {
             readonly query?: never;
@@ -3773,6 +3790,23 @@ export type paths = {
         };
         /** Search */
         readonly get: operations["ApiV1ProjectsProjectIdKnowledgeSearchSearch"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/projects/{project_id}/progress": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetProjectProgress */
+        readonly get: operations["ApiV1ProjectsProjectIdProgressGetProjectProgress"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -7145,6 +7179,14 @@ export type components = {
         /** ApiResponse[ProjectCharter] */
         readonly ApiResponse_ProjectCharter_: {
             readonly data: components["schemas"]["ProjectCharter"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[ProjectProgress] */
+        readonly ApiResponse_ProjectProgress_: {
+            readonly data: components["schemas"]["ProjectProgress"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -10728,7 +10770,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8057 | 8058;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3030 | 3031 | 3032 | 3033 | 3034 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4028 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8049 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8057 | 8058;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -12374,12 +12416,37 @@ export type components = {
             readonly type: components["schemas"]["MemoryLevel"];
         };
         /**
+         * MemoryHealth
+         * @description Agent-memory substrate state
+         */
+        readonly MemoryHealth: {
+            /** @description Configured memory backend name */
+            readonly backend: string;
+            /** @description Operator-facing remedy, when action is needed */
+            readonly detail: string | null;
+            readonly state: components["schemas"]["MemoryState"];
+        };
+        /**
          * MemoryLevel
          * @description Memory persistence level for an agent (§7.3).
          * @default session
          * @enum {string}
          */
         readonly MemoryLevel: "persistent" | "project" | "session" | "none";
+        /**
+         * MemoryState
+         * @description How agent memory is running, for the operator-facing banner.
+         *
+         *     Attributes:
+         *         DURABLE: Wired on a store that survives restart and retrieves
+         *             by meaning.
+         *         DEGRADED: Wired, but not fully: the ephemeral keyword store, a
+         *             failed probe, a missing dense index, or maintenance off.
+         *         OFF: Not wired. Usually no embedding model resolved, which the
+         *             startup log records at ERROR.
+         * @enum {string}
+         */
+        readonly MemoryState: "durable" | "degraded" | "off";
         /** Message */
         readonly Message: {
             /**
@@ -12566,6 +12633,8 @@ export type components = {
             readonly supports_embeddings: boolean;
             /** @default false */
             readonly supports_image_generation: boolean;
+            /** @default false */
+            readonly supports_prompt_caching: boolean;
             /** @default false */
             readonly supports_reasoning: boolean;
             /** @default false */
@@ -14308,24 +14377,29 @@ export type components = {
         };
         /**
          * PlanStatus
-         * @description Lifecycle status of a decomposed plan through CEO review.
+         * @description Lifecycle status of a decomposed plan, from greenlight through delivery.
          *
          *     A plan is PLANNING while it is a persisted-at-greenlight shell whose items
          *     the decomposer has not filled in yet, DRAFT while it is being shaped, and
-         *     PENDING_REVIEW once it is parked for the operator's decision. APPROVED,
-         *     REJECTED, SUPERSEDED, and FAILED are terminal: an operator rework or a
-         *     request-changes is only accepted from a non-terminal status (see
-         *     :data:`REWORKABLE_STATUSES`). FAILED marks a plan whose run failed to reach
-         *     review (decomposition failed, or parking the approval failed after it was
-         *     filled), so a failed run always leaves a visible plan carrying its
-         *     :attr:`Plan.failure_reason` rather than a silent orphan; a retry is a fresh
-         *     plan. SUPERSEDED is reserved for a plan retired
-         *     by a fresh re-plan; the current edit path revises a plan in place (bumping
-         *     :attr:`Plan.version`) rather than retaining prior revisions.
+         *     PENDING_REVIEW once it is parked for the operator's decision. APPROVED
+         *     records the operator's yes and dispatches the plan; EXECUTING covers the
+         *     window where its items' tasks are in flight; COMPLETED is reached only once
+         *     every item is genuinely done (a WORK item's task has passed the review
+         *     gate, a DECISION item has a chosen option), so completion composes with the
+         *     verify gate rather than restating it.
+         *
+         *     REJECTED, SUPERSEDED, COMPLETED, and FAILED are terminal; an operator
+         *     rework or request-changes is only accepted while the plan is still under
+         *     review (see :data:`REWORKABLE_STATUSES`). FAILED marks a plan whose run
+         *     failed to reach review (decomposition failed, or parking the approval
+         *     failed after it was filled), so a failed run always leaves a visible plan
+         *     carrying its :attr:`Plan.failure_reason` rather than a silent orphan; a
+         *     retry is a fresh plan. SUPERSEDED marks a plan retired by a re-plan, at any
+         *     stage up to and including execution.
          * @default draft
          * @enum {string}
          */
-        readonly PlanStatus: "planning" | "draft" | "pending_review" | "approved" | "rejected" | "superseded" | "failed";
+        readonly PlanStatus: "planning" | "draft" | "pending_review" | "approved" | "executing" | "completed" | "rejected" | "superseded" | "failed";
         /** PlanVersionSnapshot */
         readonly PlanVersionSnapshot: {
             /**
@@ -14609,12 +14683,12 @@ export type components = {
             readonly lead: string | null;
             /** @description Project display name */
             readonly name: string;
-            readonly status: components["schemas"]["ProjectStatus"];
             /**
-             * @description IDs of tasks belonging to this project
-             * @default []
+             * Format: uuid
+             * @description Plan this project is currently executing
              */
-            readonly task_ids: readonly string[];
+            readonly plan_id: string | null;
+            readonly status: components["schemas"]["ProjectStatus"];
             /**
              * @description Agent IDs assigned to this project
              * @default []
@@ -14691,6 +14765,104 @@ export type components = {
             readonly updated_at: string;
             /** @default 1 */
             readonly version: number;
+        };
+        /** ProjectProgress */
+        readonly ProjectProgress: {
+            readonly counts: components["schemas"]["ProjectProgressCounts"];
+            /**
+             * @description Longest dependency chain through the plan, in order
+             * @default []
+             */
+            readonly critical_path: readonly string[];
+            /**
+             * @description Plan items with their task status, in plan order
+             * @default []
+             */
+            readonly items: readonly components["schemas"]["ProjectProgressItem"][];
+            /** @description What the initiative set out to do */
+            readonly objective_title: string | null;
+            /**
+             * Format: uuid
+             * @description Plan the project is executing (None before dispatch)
+             */
+            readonly plan_id: string | null;
+            /**
+             * @description Status of the executing plan
+             * @enum {string|null}
+             */
+            readonly plan_status: "planning" | "draft" | "pending_review" | "approved" | "executing" | "completed" | "rejected" | "superseded" | "failed" | null;
+            /**
+             * Format: uuid
+             * @description Project identifier
+             */
+            readonly project_id: string;
+            readonly project_status: components["schemas"]["ProjectStatus"];
+        };
+        /**
+         * ProjectProgressCounts
+         * @description Derived progress and attention counts
+         */
+        readonly ProjectProgressCounts: {
+            /**
+             * @description Items whose task stalled
+             * @default 0
+             */
+            readonly blocked: number;
+            /**
+             * @description Items that are done
+             * @default 0
+             */
+            readonly done: number;
+            /**
+             * @description Items whose task failed
+             * @default 0
+             */
+            readonly failed: number;
+            /**
+             * @description Number of plan items
+             * @default 0
+             */
+            readonly total: number;
+        };
+        /** ProjectProgressItem */
+        readonly ProjectProgressItem: {
+            /** @description Option recorded for a decision item */
+            readonly chosen_option_id: string | null;
+            /**
+             * @description Plan items this one depends on
+             * @default []
+             */
+            readonly depends_on: readonly string[];
+            /**
+             * @description Whether the item satisfies the completion rule
+             * @default false
+             */
+            readonly done: boolean;
+            /**
+             * Format: uuid
+             * @description Plan item identifier
+             */
+            readonly item_id: string;
+            readonly kind: components["schemas"]["PlanItemKind"];
+            /**
+             * @description Whether the item lies on the longest dependency chain
+             * @default false
+             */
+            readonly on_critical_path: boolean;
+            /** @description Role owning the item */
+            readonly owner: string | null;
+            /**
+             * Format: uuid
+             * @description Task implementing this item
+             */
+            readonly task_id: string | null;
+            /**
+             * @description Persisted status of the implementing task
+             * @enum {string|null}
+             */
+            readonly task_status: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required" | "awaiting_input" | null;
+            /** @description Plan item title */
+            readonly title: string;
         };
         /**
          * ProjectStatus
@@ -15114,6 +15286,7 @@ export type components = {
         };
         /** ReadinessStatus */
         readonly ReadinessStatus: {
+            readonly memory: components["schemas"]["MemoryHealth"];
             /** @description Message bus running (None if not configured) */
             readonly message_bus: boolean | null;
             /** @description Persistence backend healthy (None if not configured) */
@@ -15405,6 +15578,21 @@ export type components = {
         readonly ReorderTeamsRequest: {
             /** @description Ordered team names */
             readonly team_names: readonly string[];
+        };
+        /** ReplanRequest */
+        readonly ReplanRequest: {
+            /**
+             * @description Optional override of the coordination topology
+             * @enum {string|null}
+             */
+            readonly coordination_topology?: "sas" | "centralized" | "decentralized" | "context_dependent" | "auto" | null;
+            /** @description The full revised plan item list */
+            readonly items: readonly components["schemas"]["PlanItemPayload"][];
+            /**
+             * @description Optional override of the classified structure
+             * @enum {string|null}
+             */
+            readonly task_structure?: "sequential" | "parallel" | "mixed" | null;
         };
         /** ReplaySeekView */
         readonly ReplaySeekView: {
@@ -17052,6 +17240,16 @@ export type components = {
             readonly middleware_override: readonly string[] | null;
             /** @description Parent task ID when created via delegation */
             readonly parent_task_id: string | null;
+            /**
+             * Format: uuid
+             * @description Plan whose dispatch created this task
+             */
+            readonly plan_id: string | null;
+            /**
+             * Format: uuid
+             * @description Plan item this task implements
+             */
+            readonly plan_item_id: string | null;
             readonly priority: components["schemas"]["Priority"];
             /** @description Project ID this task belongs to */
             readonly project: string;
@@ -26502,6 +26700,41 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1PlansPlanIdReplanReplan: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly plan_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReplanRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Plan_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1PlansPlanIdRequestChangesRequestChanges: {
         readonly parameters: {
             readonly query?: never;
@@ -27176,6 +27409,36 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_tuple_KnowledgeHit_..._"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdProgressGetProjectProgress: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ProjectProgress_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

@@ -137,6 +137,44 @@ class TestTaskRepository:
         assert len(tasks) == 1
         assert tasks[0].id == as_uuid("t1")
 
+    async def test_list_filter_by_plan(self, backend: PersistenceBackend) -> None:
+        """The reverse plan-to-tasks lookup the rollup depends on."""
+        from synthorg.persistence.task_protocol import TaskFilterSpec
+
+        # The linkage is a both-or-neither pair, so a dispatched task always
+        # names the item it implements; t3 is a directly filed task.
+        await backend.tasks.save(
+            make_task(
+                task_id="t1",
+                plan_id=as_uuid("plan-a"),
+                plan_item_id=as_uuid("item-a"),
+            )
+        )
+        await backend.tasks.save(
+            make_task(
+                task_id="t2",
+                plan_id=as_uuid("plan-b"),
+                plan_item_id=as_uuid("item-b"),
+            )
+        )
+        await backend.tasks.save(make_task(task_id="t3", plan_id=None))
+        tasks = await backend.tasks.query(TaskFilterSpec(plan=as_uuid("plan-a")))
+        assert len(tasks) == 1
+        assert tasks[0].id == as_uuid("t1")
+
+    async def test_plan_linkage_roundtrips(self, backend: PersistenceBackend) -> None:
+        await backend.tasks.save(
+            make_task(
+                task_id="t-linked",
+                plan_id=as_uuid("plan-a"),
+                plan_item_id=as_uuid("item-a"),
+            )
+        )
+        fetched = await backend.tasks.get(sid("t-linked"))
+        assert fetched is not None
+        assert fetched.plan_id == as_uuid("plan-a")
+        assert fetched.plan_item_id == as_uuid("item-a")
+
     async def test_list_filter_by_status(self, backend: PersistenceBackend) -> None:
         from synthorg.persistence.task_protocol import TaskFilterSpec
 
@@ -244,7 +282,7 @@ class TestCostRecordRepository:
             )
 
         total = await backend.cost_records.aggregate(agent_id="agent_1")
-        assert abs(total - 0.6) < 1e-9
+        assert total == pytest.approx(0.6)
 
     async def test_aggregate_empty_returns_zero(
         self, backend: PersistenceBackend

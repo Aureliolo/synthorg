@@ -176,6 +176,7 @@ class ExecutionLoop(Protocol):
         completion_config: CompletionConfig | None = None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
         turn_observer: TurnObserver | None = None,
+        streaming_enabled: bool = False,
     ) -> ExecutionResult:
         """Run the execution loop.
 
@@ -197,6 +198,9 @@ class ExecutionLoop(Protocol):
                 with ``(index, labels)`` per the ``TurnObserver`` contract
                 (the labels are tool names or step descriptions depending on
                 the loop; see its type doc for the two conventions).
+            streaming_enabled: When ``True``, each per-turn LLM call streams
+                and is interruptible mid-flight (operator cancellation and
+                steering REDIRECT); otherwise a non-streaming call is used.
 
         Returns:
             Execution result with final context and termination reason.

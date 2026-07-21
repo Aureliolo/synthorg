@@ -50,7 +50,12 @@ class HighestRelevanceSelector:
         self,
         entries: tuple[MemoryEntry, ...],
     ) -> tuple[SelectionGroup, ...]:
-        """Group by category and split each eligible group keep/remove.
+        """Group by namespace + category and split each keep/remove.
+
+        Namespace joins the group key so a project's memories consolidate
+        only with their own: without it a single summary would merge
+        entries from different projects and land back in one namespace,
+        bleeding one project's knowledge into another.
 
         Entries with a ``None`` relevance score are treated as ``0.0``;
         ties are broken by most-recent ``created_at``. Groups smaller
@@ -62,8 +67,9 @@ class HighestRelevanceSelector:
         if not entries:
             return ()
         groups: list[SelectionGroup] = []
-        sorted_entries = sorted(entries, key=attrgetter("category"))
-        for category, group_iter in groupby(sorted_entries, key=attrgetter("category")):
+        key = attrgetter("namespace", "category")
+        sorted_entries = sorted(entries, key=key)
+        for (_namespace, category), group_iter in groupby(sorted_entries, key=key):
             group = list(group_iter)
             if len(group) < self._group_threshold:
                 continue

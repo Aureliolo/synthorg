@@ -312,7 +312,7 @@ Memory configuration is covered in detail in the [Memory Configuration](memory.m
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `backend` | string | `"mem0"` | Memory backend |
+| `backend` | string | `"sqlvector"` | Memory backend |
 | `level` | MemoryLevel | `"persistent"` | Default persistence level |
 | `storage` | MemoryStorageConfig | *(defaults)* | Storage paths |
 | `options` | MemoryOptionsConfig | *(defaults)* | Behaviour options |
@@ -610,7 +610,7 @@ SynthOrg enforces the following cross-field validation rules at load time:
       initial_level: standard
 
     memory:
-      backend: "mem0"
+      backend: "sqlvector"
       level: session
       options:
         retention_days: null  # keep forever

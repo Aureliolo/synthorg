@@ -76,7 +76,7 @@ func TestGenerateDataInitOwnership(t *testing.T) {
 				NatsClientPort:     tc.natsClientPort,
 				LogLevel:           "info",
 				PersistenceBackend: tc.persistenceBackend,
-				MemoryBackend:      "mem0",
+				MemoryBackend:      "sqlvector",
 				BusBackend:         tc.busBackend,
 				PostgresPort:       tc.postgresPort,
 				PostgresPassword:   "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -245,7 +245,7 @@ func TestResolveNATSURL_InvalidURLPropagatesToValidation(t *testing.T) {
 			SettingsKey:        "settings-key",
 			CursorSecret:       "test-cursor-secret-stable-value",
 			PersistenceBackend: "sqlite",
-			MemoryBackend:      "mem0",
+			MemoryBackend:      "sqlvector",
 			BusBackend:         "nats",
 		}
 	}

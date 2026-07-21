@@ -38,6 +38,14 @@ class TestCompletionProviderProtocol:
     def test_fake_provider_is_instance(self, fake_provider: FakeProvider) -> None:
         assert isinstance(fake_provider, CompletionProvider)
 
+    def test_scripted_provider_double_is_instance(self) -> None:
+        # The shared ScriptedProvider double must satisfy the runtime-checkable
+        # protocol; checked here rather than at module import so a mismatch
+        # surfaces as a single test failure, not a collection-time ImportError.
+        from tests._shared.scripted_provider import ScriptedProvider
+
+        assert isinstance(ScriptedProvider([]), CompletionProvider)
+
     def test_non_provider_not_instance(self) -> None:
         assert not isinstance("not a provider", CompletionProvider)
 

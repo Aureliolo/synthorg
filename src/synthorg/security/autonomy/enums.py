@@ -57,6 +57,7 @@ class ActionType(StrEnum):
     ORG_HIRE = "org:hire"
     ORG_FIRE = "org:fire"
     ORG_PROMOTE = "org:promote"
+    ORG_DELEGATE = "org:delegate"
     VCS_READ = "vcs:read"
     DB_QUERY = "db:query"
     DB_MUTATE = "db:mutate"

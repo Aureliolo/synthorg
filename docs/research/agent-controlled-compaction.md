@@ -131,9 +131,11 @@ uniformly. A model with a 200k token context window starts compacting at 160k to
 model with a 4k context window compacts at 3.2k tokens. The fixed percentage may be too
 aggressive for large-context models and too permissive for small ones.
 
-**No memory offloading.** Archived messages are discarded, converted to a 500-char text
-summary. SynthOrg has a `MemoryBackend` (Mem0, Qdrant embedded + SQLite), but compaction
-does not write archived content there as episodic memory entries.
+**Optional memory offloading.** Archived messages are converted to a 500-char text
+summary. When `memory_offload_enabled` is set and a `MemoryBackend` is available,
+compaction also offloads the archived batch into durable memory as a `PROCEDURAL`
+entry (tagged `compaction:offloaded`); where offloading is disabled or no backend is
+wired, the archived content is not retained beyond the summary.
 
 ---
 

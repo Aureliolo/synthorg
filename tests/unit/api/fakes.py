@@ -5,6 +5,7 @@ import contextlib
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 from pydantic import AwareDatetime
 
@@ -117,6 +118,7 @@ class FakeTaskRepository:
             getattr(filter_spec, "status", None),
             getattr(filter_spec, "assigned_to", None),
             getattr(filter_spec, "project", None),
+            getattr(filter_spec, "plan", None),
         )
         return tuple(result[offset : offset + limit])
 
@@ -126,6 +128,7 @@ class FakeTaskRepository:
                 getattr(filter_spec, "status", None),
                 getattr(filter_spec, "assigned_to", None),
                 getattr(filter_spec, "project", None),
+                getattr(filter_spec, "plan", None),
             )
         )
 
@@ -134,6 +137,7 @@ class FakeTaskRepository:
         status: TaskStatus | None,
         assigned_to: str | None,
         project: str | None,
+        plan: UUID | None = None,
     ) -> list[Task]:
         result = sorted(self._tasks.values(), key=lambda t: t.id)
         if status is not None:
@@ -142,6 +146,8 @@ class FakeTaskRepository:
             result = [t for t in result if t.assigned_to == assigned_to]
         if project is not None:
             result = [t for t in result if t.project == project]
+        if plan is not None:
+            result = [t for t in result if t.plan_id == plan]
         return result
 
     async def delete(self, entity_id: str) -> bool:

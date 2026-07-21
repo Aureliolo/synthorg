@@ -1,20 +1,23 @@
 """Embedder config resolution with priority chain.
 
-Resolves a ``Mem0EmbedderConfig`` from the priority chain:
+Resolves an :class:`EmbedderConfig` from the priority chain:
 
 1. Settings override (runtime-editable via dashboard)
 2. YAML config override (``CompanyMemoryConfig.embedder``)
 3. Auto-selection from available models using LMEB rankings
 
-Callers use ``resolve_embedder_config()`` instead of constructing
-``Mem0EmbedderConfig`` manually.
+Callers use ``resolve_embedder_config()`` instead of constructing an
+:class:`EmbedderConfig` manually. Resolution failing is deliberately an
+error rather than a silent default: memory that cannot embed cannot
+retrieve by meaning, and degrading quietly to keyword matching is how a
+dead memory layer stays unnoticed.
 """
 
-from synthorg.memory.backends.mem0.config import Mem0EmbedderConfig
 from synthorg.memory.config import (
     CompanyMemoryConfig,
     EmbedderOverrideConfig,
 )
+from synthorg.memory.embedding.config import EmbedderConfig
 from synthorg.memory.embedding.rankings import DeploymentTier
 from synthorg.memory.embedding.selector import (
     infer_deployment_tier,
@@ -25,6 +28,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
     MEMORY_EMBEDDER_AUTO_SELECTED,
+    MEMORY_EMBEDDER_PROVIDER_INFERRED,
 )
 
 logger = get_logger(__name__)
@@ -91,7 +95,7 @@ def resolve_embedder_config(
     provider_preset_name: str | None = None,
     has_gpu: bool | None = None,
     settings_override: EmbedderOverrideConfig | None = None,
-) -> Mem0EmbedderConfig:
+) -> EmbedderConfig:
     """Resolve the effective embedder configuration.
 
     Priority chain (highest first):
@@ -109,7 +113,7 @@ def resolve_embedder_config(
         settings_override: Runtime settings override (highest priority).
 
     Returns:
-        A fully-populated ``Mem0EmbedderConfig``.
+        A fully-populated ``EmbedderConfig``.
 
     Raises:
         MemoryConfigError: If no embedding model can be resolved
@@ -148,12 +152,22 @@ def resolve_embedder_config(
         )
         raise MemoryConfigError(msg)
 
-    # Provider defaults to model for local embedder setups
-    # (e.g. Ollama serves models by name).
+    # An LMEB-auto-selected open model is served by name (the local /
+    # self-hosted convention litellm dispatches directly), so the
+    # provider mirrors the model. Log the inference rather than doing it
+    # silently: for a hosted provider this same-name assumption is wrong,
+    # and an operator who sees the model fail to embed needs the boot log
+    # to say "the provider was guessed" rather than debugging an opaque
+    # auth error. Set memory.embedder_provider to bind it explicitly.
     if provider is None:
+        logger.info(
+            MEMORY_EMBEDDER_PROVIDER_INFERRED,
+            model=model,
+            reason="auto-selected model has no explicit provider; using model name",
+        )
         provider = model
 
-    return Mem0EmbedderConfig(
+    return EmbedderConfig(
         provider=provider,
         model=model,
         dims=dims,

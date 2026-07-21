@@ -163,9 +163,13 @@ const (
 	DefaultRegistryHost    = "ghcr.io"
 	DefaultImageRepoPrefix = "aureliolo/synthorg-"
 	DefaultDHIRegistry     = "dhi.io"
-	// renovate: datasource=docker depName=dhi.io/postgres
-	DefaultPostgresImageTag    = "18-debian13"
-	DefaultPostgresImageDigest = "sha256:a807e832c1fc9ded731956abcb53dc98ed003fd82e27275eaef8dcf52fb90236"
+	// The pgvector variant of the hardened Postgres image: agent memory
+	// stores embeddings in this database, so the vector extension must
+	// ship with it. Same DHI family, so the hardened posture is kept.
+	DefaultPostgresImageName = "pgvector"
+	// renovate: datasource=docker depName=dhi.io/pgvector
+	DefaultPostgresImageTag    = "0.8-pg18-debian13"
+	DefaultPostgresImageDigest = "sha256:374f7b2b39fd75d559013f44dd24781d187686c6ea708dc1c8f54c7fae05f958"
 	// renovate: datasource=docker depName=dhi.io/nats
 	DefaultNATSImageTag    = "2.14-debian13"
 	DefaultNATSImageDigest = "sha256:c3ea257c0fb9b96d3693c65c364c2a226f03e805dede8a914eb893ed2d6c2ea9"
@@ -284,7 +288,7 @@ func DefaultState() State {
 		DockerSockGID:      -1,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 		NatsClientPort:     3003,
 		PostgresPort:       3002,
@@ -472,7 +476,13 @@ func loadWith(dataDir string, validate func(State) error) (State, error) {
 }
 
 var validPersistenceBackends = map[string]bool{"sqlite": true, "postgres": true}
-var validMemoryBackends = map[string]bool{"mem0": true}
+var validMemoryBackends = map[string]bool{
+	"sqlvector": true,
+	"composite": true,
+	// Ephemeral keyword-only store: loses everything on restart and cannot
+	// retrieve by meaning. Reachable as a deliberate operator opt-in only.
+	"inmemory": true,
+}
 var validBusBackends = map[string]bool{"internal": true, "nats": true}
 var validChannels = map[string]bool{"stable": true, "dev": true}
 var validLogLevels = map[string]bool{"debug": true, "info": true, "warn": true, "error": true}

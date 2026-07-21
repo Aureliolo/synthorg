@@ -149,6 +149,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         completion_config: CompletionConfig | None = None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
         turn_observer: TurnObserver | None = None,
+        streaming_enabled: bool = False,
     ) -> ExecutionResult:
         """Run the Plan-and-Execute loop until termination.
 
@@ -165,6 +166,9 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             turn_observer: Optional per-run progress callback; fired once
                 per plan step so the AG-UI stream surfaces step-level
                 progress for this loop.
+            streaming_enabled: When ``True``, each step-execution LLM call
+                streams and is interruptible mid-flight (operator
+                cancellation and steering REDIRECT).
 
         Returns:
             Execution result with final context and termination info.
@@ -228,6 +232,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             shutdown_checker,
             task_cancellation_checker,
             turn_observer,
+            streaming_enabled=streaming_enabled,
         )
 
     async def _run_steps(  # noqa: PLR0913
@@ -247,6 +252,8 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         shutdown_checker: ShutdownChecker | None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
         turn_observer: TurnObserver | None = None,
+        *,
+        streaming_enabled: bool = False,
     ) -> ExecutionResult:
         """Iterate through plan steps, handling failures and replanning.
 
@@ -290,6 +297,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
                 budget_checker,
                 shutdown_checker,
                 task_cancellation_checker,
+                streaming_enabled=streaming_enabled,
             )
 
             if isinstance(step_result, ExecutionResult):
@@ -424,6 +432,8 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
+        *,
+        streaming_enabled: bool = False,
     ) -> tuple[AgentContext, bool] | ExecutionResult:
         """Execute a single plan step via a mini-ReAct sub-loop.
 
@@ -463,6 +473,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
                 budget_checker,
                 shutdown_checker,
                 task_cancellation_checker,
+                streaming_enabled=streaming_enabled,
             )
             if isinstance(result, ExecutionResult):
                 return result

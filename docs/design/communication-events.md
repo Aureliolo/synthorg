@@ -219,6 +219,31 @@ Soft cap (default 3) emits `DELEGATION_ROUND_SOFT_LIMIT` warning.
 Hard abort at 2x soft cap (default 6) raises `DelegationRoundLimitError`.
 Prevents delegation runaway in multi-hop delegation chains.
 
+### Blocking Delegation (`delegate_and_await`)
+
+The async tools above are fire-and-forget: the supervisor keeps running while a
+background subagent works. Its blocking counterpart is the `delegate_and_await`
+tool (Communication domain), for a task that must offload a self-contained
+sub-investigation and consume its result inline. Rather than claiming a worker
+slot, it runs a child agent **in-process** via a wired `SubAgentRunner`
+(`InProcessSubAgentRunner` reuses `AgentEngine.run` re-entrantly), so there is no
+worker slot and no cross-process deadlock:
+
+- The runner resolves the target agent, creates a child `Task` (giving audit +
+  resumability lineage through `parent_task_id`), and awaits its
+  `ExecutionResult`, returning the child's final answer plus a bounded transcript
+  summary.
+- The child inherits budget, compaction, the `NO_OP` invariant, stakes routing,
+  and checkpointing; its cost accrues under the parent's cost scope; it runs on
+  its own `execution_id`.
+- A depth + cycle guard walks the parent-task chain and rejects the call
+  (`SubAgentDelegationDepthExceededError`) when the chain is at
+  `engine.delegation_max_depth` or the target already sits in an ancestor's
+  assignees (self-delegation / cycle), because each hop is a full budgeted agent
+  run. `engine.delegation_max_turns` bounds the child; the tool is gated on
+  `engine.delegation_enabled` **and** a wired runner, and classified
+  `ActionType.ORG_DELEGATE` (HIGH risk) for the autonomy layer.
+
 ### Citation Tracking
 
 Research tasks need deduplicated citation tracking across parallel

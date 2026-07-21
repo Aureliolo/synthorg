@@ -22,7 +22,7 @@ The following table compares major multi-agent frameworks that informed the desi
 | Full company simulation | Partial | Partial | No | **Yes: complete** |
 | HR (hiring/firing) | No | No | No | **Yes** |
 | Budget management (CFO) | No | No | No | **Yes** |
-| Persistent agent memory | No | No | Basic | **Yes: Mem0 initial, custom stack future** |
+| Persistent agent memory | No | No | Basic | **Yes: hybrid dense + BM25 retrieval in the operational database** |
 | Agent personalities | Basic | Basic | Basic | **Deep: traits, styles, evolution** |
 | Dynamic team scaling | No | No | Manual | **Yes: auto + manual** |
 | Multiple company types | No | No | Manual | **Yes: templates + builder** |
@@ -69,7 +69,7 @@ Rather than forking a framework, SynthOrg builds on battle-tested libraries:
 | Library | Role |
 |---------|------|
 | **LiteLLM** | Provider abstraction (<!--RS:providers_via_litellm-->95+<!--/RS--> providers, unified API) |
-| **Mem0** | Agent memory (initial backend; custom stack future) |
+| **pgvector / sqlite-vec** | Vector search for agent memory, inside the operational database |
 | **Litestar** | API layer (see [Tech Stack](../architecture/tech-stack.md#why-litestar-over-fastapi) for rationale) |
 | **MCP** | Tool integration standard |
 | **Pydantic** | Config validation and data models |
@@ -84,7 +84,8 @@ Rather than forking a framework, SynthOrg builds on battle-tested libraries:
 - [CrewAI](https://github.com/crewAIInc/crewAI): role-based agent collaboration framework
 - [AutoGen](https://github.com/microsoft/autogen): Microsoft async multi-agent framework
 - [LiteLLM](https://github.com/BerriAI/litellm): unified LLM API gateway (<!--RS:providers_via_litellm-->95+<!--/RS--> providers)
-- [Mem0](https://github.com/mem0ai/mem0): universal memory layer for AI agents
+- [pgvector](https://github.com/pgvector/pgvector): vector similarity search for PostgreSQL
+- [sqlite-vec](https://github.com/asg017/sqlite-vec): vector search as a SQLite extension
 - [A2A Protocol](https://github.com/a2aproject/A2A): Agent-to-Agent protocol (Linux Foundation)
 - [MCP Specification](https://modelcontextprotocol.io/specification/2025-11-25): Model Context Protocol
 - [Langfuse Agent Comparison](https://langfuse.com/blog/2025-03-19-ai-agent-comparison): framework comparison

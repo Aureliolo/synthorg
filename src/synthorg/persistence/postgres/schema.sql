@@ -46,6 +46,8 @@ CREATE TABLE tasks (
     type TEXT NOT NULL,
     priority TEXT NOT NULL DEFAULT 'medium',
     project TEXT NOT NULL,
+    plan_id TEXT,
+    plan_item_id TEXT,
     created_by TEXT NOT NULL,
     requested_by_user_id TEXT,
     assigned_to TEXT,
@@ -72,6 +74,7 @@ CREATE TABLE tasks (
 CREATE INDEX idx_tasks_status ON tasks (status);
 CREATE INDEX idx_tasks_assigned_to ON tasks (assigned_to);
 CREATE INDEX idx_tasks_project ON tasks (project);
+CREATE INDEX idx_tasks_plan_id ON tasks (plan_id);
 
 -- ── Cost records ──────────────────────────────────────────────
 -- Composite (rowid, timestamp) primary key: TimescaleDB hypertables
@@ -535,7 +538,7 @@ CREATE TABLE projects (
     description TEXT NOT NULL DEFAULT '',
     team JSONB NOT NULL DEFAULT '[]'::JSONB,
     lead TEXT,
-    task_ids JSONB NOT NULL DEFAULT '[]'::JSONB,
+    plan_id TEXT,
     deadline TIMESTAMPTZ,
     budget DOUBLE PRECISION NOT NULL DEFAULT 0.0 CHECK (budget >= 0.0),
     status TEXT NOT NULL DEFAULT 'planning',
@@ -2454,8 +2457,8 @@ CREATE TABLE plans (
     coordination_topology TEXT NOT NULL DEFAULT 'auto',
     status TEXT NOT NULL DEFAULT 'draft'
     CONSTRAINT plans_status_check CHECK (status IN (
-        'planning', 'draft', 'pending_review', 'approved', 'rejected',
-        'superseded', 'failed'
+        'planning', 'draft', 'pending_review', 'approved', 'executing',
+        'completed', 'rejected', 'superseded', 'failed'
     )),
     forecast_id TEXT,
     review JSONB,
@@ -2502,3 +2505,34 @@ ON plan_item_comments (plan_id, item_id, created_at);
 CREATE INDEX idx_plan_item_comments_reply
 ON plan_item_comments (reply_to_id)
 WHERE reply_to_id IS NOT NULL;
+
+CREATE TABLE memory_entries (
+    memory_id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(memory_id)) > 0),
+    agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(agent_id)) > 0),
+    namespace TEXT NOT NULL DEFAULT 'default' CHECK (LENGTH(TRIM(namespace)) > 0),
+    category TEXT NOT NULL CHECK (LENGTH(TRIM(category)) > 0),
+    content TEXT NOT NULL CHECK (LENGTH(TRIM(content)) > 0),
+    source TEXT CHECK (source IS NULL OR LENGTH(TRIM(source)) > 0),
+    confidence DOUBLE PRECISION NOT NULL DEFAULT 1.0
+    CHECK (confidence >= 0.0 AND confidence <= 1.0),
+    tags JSONB NOT NULL DEFAULT '[]'::JSONB,
+    token_count INTEGER NOT NULL DEFAULT 0 CHECK (token_count >= 0),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ
+);
+CREATE INDEX idx_memory_entries_agent ON memory_entries (agent_id, created_at DESC);
+CREATE INDEX idx_memory_entries_agent_category ON memory_entries (agent_id, category);
+CREATE INDEX idx_memory_entries_namespace ON memory_entries (agent_id, namespace);
+CREATE INDEX idx_memory_entries_expires ON memory_entries (expires_at)
+WHERE expires_at IS NOT NULL;
+CREATE INDEX idx_memory_entries_tags ON memory_entries USING GIN (tags);
+
+CREATE TABLE memory_entry_terms (
+    memory_id TEXT NOT NULL
+    REFERENCES memory_entries (memory_id) ON DELETE CASCADE,
+    term TEXT NOT NULL CHECK (LENGTH(TRIM(term)) > 0),
+    term_frequency INTEGER NOT NULL CHECK (term_frequency > 0),
+    PRIMARY KEY (memory_id, term)
+);
+CREATE INDEX idx_memory_entry_terms_term ON memory_entry_terms (term);

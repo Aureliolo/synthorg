@@ -120,6 +120,7 @@ The NotFound hierarchy is rooted at `NotFoundError`. Each resource has a dedicat
 | 3031 | `TRAINING_SESSION_NOT_FOUND` | Training session record |
 | 3032 | `SPRINT_NOT_FOUND` | Sprint record |
 | 3033 | `OUTPUT_STYLE_PACK_NOT_FOUND` | Output-style rule pack |
+| 3034 | `DELEGATION_TARGET_NOT_FOUND` | Blocking-delegation target agent |
 
 All share the same `type` URI; the numeric code is the discriminator.
 
@@ -157,6 +158,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4029 | `ROLLBACK_MUTATION_DENIED` | Rollback mutator's underlying store refused the write |
 | 4030 | `UPGRADE_RECOMMENDATION_ALREADY_DECIDED` | Approving/rejecting an already-decided recommendation |
 | 4031 | `TURN_SEQUENCE_CONFLICT` | Conversation-turn append lost the `(conversation_id, sequence)` uniqueness race after the retry budget (retryable) |
+| 4036 | `SUB_AGENT_DELEGATION_DEPTH_EXCEEDED` | Blocking delegation refused: chain at its depth limit or would form a cycle |
 
 ## Rate Limit (5xxx)
 

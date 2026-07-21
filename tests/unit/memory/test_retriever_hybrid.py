@@ -15,6 +15,7 @@ from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.ranking import FusionStrategy
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
+from tests._shared import recall_request
 
 
 def _make_entry(
@@ -84,9 +85,7 @@ class TestHybridSearchPipeline:
             config=config,
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         assert len(result) == 2
         _, memory_message = result
@@ -109,9 +108,7 @@ class TestHybridSearchPipeline:
             config=config,
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         assert len(result) == 2
         _, memory_message = result
@@ -145,9 +142,7 @@ class TestHybridSearchPipeline:
             config=config,
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         assert len(result) == 2
         _, memory_message = result
@@ -172,9 +167,7 @@ class TestHybridSearchPipeline:
             config=config,
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         assert len(result) == 2
         _, memory_message = result
@@ -195,9 +188,7 @@ class TestHybridSearchPipeline:
             config=config,
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         assert len(result) == 2
         _, memory_message = result
@@ -225,9 +216,7 @@ class TestHybridSearchPipeline:
             config=config,
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=5000,
+            recall_request(token_budget=5000),
         )
         assert len(result) == 2
         _, memory_message = result

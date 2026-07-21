@@ -128,15 +128,11 @@ Beyond the `capability_gap` handler surface (idioms 1-2, in the tables
 above), this inventory covers the wider "declared but unshipped" idioms 3-7
 across `src/synthorg`. No unshipped concrete surface remains:
 
-- **Idiom 3 (`NotImplementedError` in a concrete class).** Every one of the
-  31 `raise NotImplementedError` sites (across 11 modules, e.g. the
-  `OrgAgentMutationsMixin` / `OrgDepartmentMutationsMixin` seams, the Postgres
-  backend connection / migration bases, the Docker-sandbox lifecycle /
-  sidecar bases, the mem0 adapter base, `budget/tracker_summary.py`,
-  `core/scheduler.py`) is an abstract base / mixin seam: marked
-  `@abstractmethod`, `# pragma: no cover - see concrete`, or documented as
-  "raised if the subclass does not implement", and overridden by its concrete
-  subclass. No concrete class ships an unimplemented operation.
+- **Idiom 3 (`NotImplementedError` in a concrete class).** None exist in
+  `src/synthorg/`. Abstract seams declare themselves with `abc.ABC` plus
+  `@abstractmethod`, and a genuinely absent capability raises
+  `FeatureNotImplementedError`, so a bare `raise NotImplementedError` is
+  banned outright and enforced by `check_no_stubs.py`.
 - **Idioms 4-5 (`TODO` / `FIXME` / `HACK` / `XXX` markers).** None exist in
   `src/synthorg/`; forensic and deferral markers in source are forbidden by
   convention and enforced by the comment gates.

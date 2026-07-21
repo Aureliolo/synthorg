@@ -91,21 +91,124 @@ class WriteFileArgs(BaseModel):
     )
 
 
-class EditFileArgs(BaseModel):
-    """Args for ``edit_file``.
+class EditHunk(BaseModel):
+    """A single find-and-replace within a multi-hunk ``edit_file`` call.
 
     ``new_text`` may be the empty string (deletes the matched
     ``old_text``).  ``old_text`` requires at least one character so the
-    edit has something to anchor on.
+    edit has something to anchor on.  When ``replace_all`` is false the
+    match must be unique in the working content at the point this hunk is
+    applied, otherwise the whole edit is rejected.
+    """
+
+    model_config = _ARGS_CONFIG
+
+    old_text: str = Field(min_length=1, description="Exact text to find")
+    new_text: str = Field(
+        description="Replacement text (empty string to delete the match)",
+    )
+    replace_all: bool = Field(
+        default=False,
+        description=(
+            "Replace every occurrence. When false the match must be unique"
+            " or the edit is rejected."
+        ),
+    )
+
+
+class EditFileArgs(BaseModel):
+    """Args for ``edit_file``.
+
+    Two mutually exclusive modes:
+
+    * **Single edit**: supply ``old_text`` (+ ``new_text``, optionally
+      ``replace_all``). ``new_text`` may be the empty string (deletes the
+      match). When ``replace_all`` is false the match must be unique.
+    * **Batch edit**: supply ``edits`` (a non-empty list of hunks) applied
+      in order, atomically (all-or-nothing) to one file. Each hunk sees the
+      result of the preceding hunks.
+
+    Exactly one mode must be used: supplying both ``old_text`` and
+    ``edits``, or neither, is rejected at the boundary.
     """
 
     model_config = _ARGS_CONFIG
 
     path: NotBlankStr = Field(description="File path relative to workspace")
-    old_text: str = Field(min_length=1, description="Exact text to find")
-    new_text: str = Field(
-        description="Replacement text (empty string to delete the match)",
+    old_text: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Exact text to find (single-edit mode)",
     )
+    new_text: str | None = Field(
+        default=None,
+        description=(
+            "Replacement text for single-edit mode (empty string to delete"
+            " the match); required when ``old_text`` is set"
+        ),
+    )
+    replace_all: bool = Field(
+        default=False,
+        description=(
+            "Single-edit mode: replace every occurrence. When false the"
+            " match must be unique or the edit is rejected."
+        ),
+    )
+    edits: tuple[EditHunk, ...] = Field(
+        default=(),
+        description="Ordered hunks applied atomically (batch-edit mode)",
+    )
+
+    @model_validator(mode="after")
+    def _validate_mode(self) -> Self:
+        """Enforce single-vs-batch mutual exclusion and single-mode shape.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If both modes are supplied, neither is supplied,
+                single-edit mode omits ``new_text``, or batch mode carries a
+                stray single-edit field.
+        """
+        single = self.old_text is not None
+        batch = bool(self.edits)
+        if single and batch:
+            msg = "provide either old_text/new_text or edits, not both"
+            raise ValueError(msg)
+        if not single and not batch:
+            msg = "provide old_text/new_text (single edit) or edits (batch)"
+            raise ValueError(msg)
+        if single and self.new_text is None:
+            msg = "new_text is required when old_text is set"
+            raise ValueError(msg)
+        # Reject a stray single-edit field alongside ``edits`` so a caller
+        # never has ``new_text`` / ``replace_all`` silently dropped in batch
+        # mode (``old_text`` is already covered by the both-modes check above).
+        if batch and (self.new_text is not None or self.replace_all):
+            msg = "new_text/replace_all are single-edit fields; omit them with edits"
+            raise ValueError(msg)
+        return self
+
+    def normalized_hunks(self) -> tuple[EditHunk, ...]:
+        """Return the edit hunks for either mode as one ordered tuple.
+
+        Returns:
+            The ``edits`` tuple in batch mode, or a single-element tuple
+            built from ``old_text``/``new_text``/``replace_all`` in
+            single-edit mode. The mode validator guarantees exactly one is
+            populated, so ``new_text`` is non-``None`` in the single-edit
+            branch.
+        """
+        if self.edits:
+            return self.edits
+        return (
+            EditHunk(
+                old_text=self.old_text or "",
+                new_text=self.new_text or "",
+                replace_all=self.replace_all,
+            ),
+        )
 
 
 class DeleteFileArgs(BaseModel):
@@ -144,6 +247,7 @@ class ListDirectoryArgs(BaseModel):
 __all__ = [
     "DeleteFileArgs",
     "EditFileArgs",
+    "EditHunk",
     "ListDirectoryArgs",
     "ReadFileArgs",
     "WriteFileArgs",

@@ -6,7 +6,7 @@
 # HTTP routes, not Postgres or NATS internals. Running DAST against
 # SQLite + the in-process (`internal`) bus is therefore production-
 # representative at the surface that matters AND removes the runtime
-# dependency on `dhi.io/postgres` and `dhi.io/nats`, which require a
+# dependency on `dhi.io/pgvector` and `dhi.io/nats`, which require a
 # Docker Hardened Images subscription as of 2026-04.
 #
 # Both `sqlite` and `internal` are first-class production-supported

@@ -50,8 +50,9 @@ class MemoryRetrievalConfig(BaseModel):
         diversity_penalty_enabled: When True, apply MMR-style diversity
             penalty to re-rank retrieval results, reducing redundancy.
             Only consumed by ``ContextInjectionStrategy``; a validator
-            raises if combined with another strategy.  Defaults to
-            False.
+            raises if combined with another strategy.  Defaults to True
+            (a before-validator turns it off for the non-context
+            strategies it does not apply to).
         diversity_lambda: MMR trade-off parameter (0.0-1.0).  ``1.0``
             means pure relevance (no diversity), ``0.0`` means maximum
             diversity.  Defaults to 0.7.  Only consulted when
@@ -103,10 +104,17 @@ class MemoryRetrievalConfig(BaseModel):
         description="Minimum combined (relevance + recency) score to include",
     )
     max_memories: int = Field(
-        default=20,
+        default=5,
         ge=1,
         le=100,
-        description="Maximum candidates to retrieve",
+        description=(
+            "Maximum memories injected after ranking. Five, not twenty: "
+            "the lost-in-the-middle and context-rot evidence shows each "
+            "extra distractor compounds accuracy loss, so a tight, "
+            "well-ranked budget beats a large one. The golden recall "
+            "eval measures this shipped value against the larger naive "
+            "baseline."
+        ),
     )
     include_shared: bool = Field(
         default=True,
@@ -146,10 +154,12 @@ class MemoryRetrievalConfig(BaseModel):
         description="RRF smoothing constant k (only used with RRF strategy)",
     )
     diversity_penalty_enabled: bool = Field(
-        default=False,
+        default=True,
         description=(
-            "When True, apply MMR-style diversity penalty to re-rank "
-            "retrieval results, reducing redundancy"
+            "When True, apply an MMR-style diversity penalty to re-rank "
+            "retrieval results, reducing redundancy. On by default: with "
+            "a tight injection budget, spending two of five slots on the "
+            "same paraphrased fact is the failure MMR exists to prevent."
         ),
     )
     diversity_lambda: float = Field(
@@ -250,6 +260,36 @@ class MemoryRetrievalConfig(BaseModel):
             "(only used when ``query_specific_rerank_enabled`` is True)."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _diversity_defaults_off_for_non_context(cls, data: object) -> object:
+        """Turn the diversity default off for a strategy that ignores it.
+
+        Diversity is on by default so the shipped context strategy runs
+        MMR, but only ``ContextInjectionStrategy`` applies it. A caller
+        selecting another strategy without mentioning diversity gets it
+        off rather than a construction error over a field their strategy
+        would never read; an *explicit* True on such a strategy is still
+        rejected downstream, because that is a real misconfiguration.
+
+        Returns:
+            The input, with ``diversity_penalty_enabled`` defaulted off
+            when the strategy is non-context and the caller left it
+            unset.
+        """
+        if not isinstance(data, dict) or "diversity_penalty_enabled" in data:
+            return data
+        strategy = data.get("strategy")
+        if strategy is None:
+            return data
+        non_context = strategy not in (
+            InjectionStrategy.CONTEXT,
+            InjectionStrategy.CONTEXT.value,
+        )
+        if non_context:
+            return {**data, "diversity_penalty_enabled": False}
+        return data
 
     @model_validator(mode="after")
     def _validate_weight_sum(self) -> Self:

@@ -12,13 +12,14 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.completion_enums import FinishReason
+from synthorg.core.completion_enums import FinishReason, ReasoningEffort
 from synthorg.core.tool_disclosure import (
     ToolL1Metadata,
     ToolL2Body,
     ToolL3Resource,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.providers._stream_chunk_validation import validate_stream_chunk_fields
 
 from .enums import (
     ImageDetail,
@@ -369,6 +370,14 @@ class CompletionConfig(BaseModel):
         stop_sequences: Sequences that stop generation.
         top_p: Nucleus sampling threshold.
         timeout: Request timeout in seconds.
+        reasoning_effort: Depth of extended reasoning ("thinking") to
+            request. ``None`` leaves it unset (provider default). Only
+            emitted for a model that advertises reasoning support.
+        prompt_caching: Whether to place ``cache_control`` breakpoints on
+            the stable prompt prefix (system, tools, and a rolling breakpoint
+            at the trailing end of the conversation so far) so a caching-capable
+            provider can reuse them across turns. Only applied for a model that
+            advertises prompt-caching support.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -404,6 +413,20 @@ class CompletionConfig(BaseModel):
         default=None,
         gt=0.0,
         description="Request timeout in seconds",
+    )
+    reasoning_effort: ReasoningEffort | None = Field(
+        default=None,
+        description=(
+            "Depth of extended reasoning to request; dropped for a model "
+            "that does not advertise reasoning support"
+        ),
+    )
+    prompt_caching: bool = Field(
+        default=False,
+        description=(
+            "Place cache_control breakpoints on the stable prompt prefix "
+            "for a caching-capable model"
+        ),
     )
 
 
@@ -492,6 +515,11 @@ class StreamChunk(BaseModel):
         tool_call_delta: Tool call received during streaming (for ``tool_call_delta``).
         usage: Final token usage (for ``usage`` event).
         error_message: Error description (for ``error`` event).
+        finish_reason: Why generation stopped, carried on the terminal
+            ``done`` event so a consumer reassembling the stream into a
+            :class:`CompletionResponse` recovers the faithful finish reason
+            (streaming content chunks carry none). Optional and only ever set
+            on ``done``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -510,13 +538,14 @@ class StreamChunk(BaseModel):
         default=None,
         description="Error description",
     )
+    finish_reason: FinishReason | None = Field(
+        default=None,
+        description="Finish reason, carried on the terminal done event",
+    )
 
     @model_validator(mode="after")
     def _validate_event_fields(self) -> Self:
         """Ensure only the relevant fields are populated for each event_type.
-
-        Each event type requires specific fields and rejects extraneous
-        payload fields to maintain strict discriminated-union semantics.
 
         Returns:
             The validated instance (Pydantic ``model_validator`` contract).
@@ -525,40 +554,12 @@ class StreamChunk(BaseModel):
             ValueError: If required fields are missing or extraneous
                 fields are set.
         """
-        payload: dict[str, object] = {
-            "content": self.content,
-            "tool_call_delta": self.tool_call_delta,
-            "usage": self.usage,
-            "error_message": self.error_message,
-        }
-        required: set[str] = set()
-        match self.event_type:
-            case StreamEventType.CONTENT_DELTA:
-                required = {"content"}
-            case StreamEventType.TOOL_CALL_DELTA:
-                required = {"tool_call_delta"}
-            case StreamEventType.USAGE:
-                required = {"usage"}
-            case StreamEventType.ERROR:
-                required = {"error_message"}
-            case StreamEventType.DONE:
-                pass  # Terminal event, no required payload fields.
-            case _:
-                msg = f"Unhandled stream event type: {self.event_type}"  # type: ignore[unreachable]
-                raise ValueError(msg)
-
-        for name in required:
-            if payload[name] is None:
-                msg = f"{self.event_type.value} event must include {name}"
-                raise ValueError(msg)
-
-        extraneous = sorted(
-            name
-            for name, value in payload.items()
-            if name not in required and value is not None
+        validate_stream_chunk_fields(
+            event_type=self.event_type,
+            content=self.content,
+            tool_call_delta=self.tool_call_delta,
+            usage=self.usage,
+            error_message=self.error_message,
+            finish_reason=self.finish_reason,
         )
-        if extraneous:
-            fields = ", ".join(extraneous)
-            msg = f"{self.event_type.value} event must not include {fields}"
-            raise ValueError(msg)
         return self

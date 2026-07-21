@@ -69,6 +69,7 @@ if TYPE_CHECKING:
         CheckpointRepository,
         HeartbeatRepository,
     )
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -103,6 +104,7 @@ class AgentEnginePostExecMixin:
     _memory_backend: MemoryBackend | None
     _procedural_memory_config: ProceduralMemoryConfig | None
     _procedural_proposer: ProceduralMemoryProposer | None
+    _config_resolver: ConfigResolver | None
     _capture_strategy: CaptureStrategy | None
     _evolution_service: EvolutionService | None
     _provider: CompletionProvider
@@ -335,6 +337,7 @@ class AgentEnginePostExecMixin:
             agent_id,
             task_id,
             distillation_capture_enabled=self._distillation_capture_enabled,
+            config_resolver=self._config_resolver,
             memory_backend=self._memory_backend,
         )
 
@@ -388,6 +391,7 @@ class AgentEnginePostExecMixin:
             procedural_proposer=self._procedural_proposer,
             memory_backend=self._memory_backend,
             procedural_memory_config=self._procedural_memory_config,
+            config_resolver=self._config_resolver,
         )
 
     async def _try_capture_success(
@@ -529,6 +533,7 @@ class AgentEnginePostExecMixin:
         timeout_seconds: float | None,
         provider: CompletionProvider | None = None,
         turn_observer: TurnObserver | None = None,
+        streaming_enabled: bool = False,
     ) -> ExecutionResult:
         """Execute the loop, using ``asyncio.wait`` for timeout control.
 
@@ -548,6 +553,7 @@ class AgentEnginePostExecMixin:
             completion_config=completion_config,
             task_cancellation_checker=self._make_task_cancellation_checker(task_id),
             turn_observer=turn_observer,
+            streaming_enabled=streaming_enabled,
         )
         if timeout_seconds is None:
             return await coro

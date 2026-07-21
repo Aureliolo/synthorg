@@ -123,7 +123,8 @@ configuration reference.
 | **Role** | A job definition with required skills, responsibilities, authority level, and tool access |
 | **Skill** | A capability an agent possesses (coding, writing, analysis, design, etc.) |
 | **Task** | A unit of work assigned to one or more agents |
-| **Project** | A collection of related tasks with a goal, deadline, and assigned team |
+| **Project** | An initiative with a goal, deadline, and assigned team, executing one plan whose items become tasks. Its status advances from that work (see [Project lifecycle](project-lifecycle.md)) |
+| **Plan** | The reviewed decomposition of an objective into ordered items; approving one dispatches its work items as tasks (see [Plan Review](plan-review.md)) |
 | **Meeting** | A structured multi-agent interaction for decisions, reviews, or planning |
 | **Artifact** | Any output produced by agents: code, documents, designs, reports, etc. |
 
@@ -143,9 +144,15 @@ DeptHead: "Department Head\n(Agent, optional)"
 Departments -> Members
 Members: "Members (Agent[])"
 
+Projects -> Plan
+Plan: "Plan (current)"
 Projects -> Tasks
 Projects -> Team
 Team: "Team (Agent[])"
+
+Plan -> PlanItems
+PlanItems: "Items (work / decision)"
+PlanItems -> Tasks {style.stroke-dash: 5}
 
 Tasks -> Assigned
 Assigned: "Assigned Agent(s)"

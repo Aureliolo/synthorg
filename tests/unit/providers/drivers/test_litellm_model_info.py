@@ -17,6 +17,7 @@ class TestExtractModelMetadata:
                 "supports_function_calling": True,
                 "supports_vision": True,
                 "supports_reasoning": True,
+                "supports_prompt_caching": True,
                 "max_output_tokens": 4096,
             },
             litellm_provider="example-provider",
@@ -26,6 +27,7 @@ class TestExtractModelMetadata:
         assert meta.supports_tools is True
         assert meta.supports_vision is True
         assert meta.supports_reasoning is True
+        assert meta.supports_prompt_caching is True
         assert meta.max_output_tokens == 4096
         assert meta.family == "examplemodel"
         assert meta.generation == 2.0
@@ -41,6 +43,7 @@ class TestExtractModelMetadata:
         assert meta.supports_tools is False
         assert meta.supports_vision is False
         assert meta.supports_reasoning is False
+        assert meta.supports_prompt_caching is False
         assert meta.max_output_tokens is None
         assert meta.metadata_source == "litellm"
 

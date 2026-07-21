@@ -3,6 +3,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.agent import ModelConfig
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task_enums import Stakes
 from synthorg.core.types import NotBlankStr
 
@@ -18,6 +19,10 @@ class StakesRoutingDecision(BaseModel):
             adversarial red-team gate before completion. Set for stakes
             at or above the configured threshold.
         stakes: The stakes level that drove the decision.
+        reasoning_effort: Reasoning depth to request for this subtask, or
+            ``None`` to leave it at the provider default. Driven by stakes,
+            so higher-stakes work asks the model to think harder rather than
+            only running on a stronger tier.
         reason: Human-readable explanation for surfacing/audit.
         source: Machine-readable provenance, e.g. ``"stakes_aware:floor"``,
             ``"stakes_aware:nudge"``, ``"stakes_aware:noop"``, ``"flat"``.
@@ -30,5 +35,9 @@ class StakesRoutingDecision(BaseModel):
         description="Whether the red-team gate must run for this subtask",
     )
     stakes: Stakes = Field(description="Stakes level driving the decision")
+    reasoning_effort: ReasoningEffort | None = Field(
+        default=None,
+        description="Reasoning depth to request (None = provider default)",
+    )
     reason: NotBlankStr = Field(description="Human-readable explanation")
     source: NotBlankStr = Field(description="Machine-readable decision provenance")

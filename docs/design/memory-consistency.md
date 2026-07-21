@@ -137,7 +137,7 @@ Implementation:
 Deviation note: MVCC methods live on `OrgFactRepository` rather than `SharedKnowledgeStore`
 because organisational facts are a separate storage layer from cross-agent memory. The
 operation log and snapshot are implementation details of the org fact store, not of the
-Mem0-based shared knowledge system.
+vector-backed shared knowledge system.
 
 ### Phase 2 (future): Distributed consistency
 

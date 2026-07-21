@@ -15,11 +15,14 @@ from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg.api.channels import CHANNEL_PLANS, publish_ws_event
+from synthorg.api.controllers._plan_replan import RevisionInputs, replan_initiative
+from synthorg.api.controllers._requester import extract_requester
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_plans import (
     EditPlanRequest,
     PlanItemPayload,
+    ReplanRequest,
     RequestPlanChangesRequest,
 )
 from synthorg.api.guards import require_read_access, require_write_access
@@ -243,6 +246,67 @@ class PlanController(Controller):
             },
         )
         return Response(content=ApiResponse[Plan](data=revised), status_code=200)
+
+    @post(
+        "/{plan_id:str}/replan",
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("plans.replan", key="user"),
+        ],
+    )
+    async def replan(
+        self,
+        request: Request[object, object, State],
+        state: State,
+        plan_id: PathId,
+        data: ReplanRequest,
+    ) -> Response[ApiResponse[Plan]]:
+        """Revise a dispatched plan, retiring it in favour of a successor.
+
+        Args:
+            request: The incoming request.
+            state: Application state.
+            plan_id: Plan identifier.
+            data: The revised item list plus optional structure overrides.
+
+        Returns:
+            The successor plan, awaiting review.
+
+        Raises:
+            NotFoundError: No plan with ``plan_id`` exists.
+            ConflictError: The plan is not dispatched, so it is edited instead.
+            ValidationError: The revised items violate a plan invariant.
+        """
+        service = _service(state)
+        existing = require_resource_or_404(
+            await service.get(plan_id),
+            resource_type="Plan",
+            identifier=plan_id,
+            log_event=API_RESOURCE_NOT_FOUND,
+            operation="update",
+        )
+        successor = await replan_initiative(
+            state.app_state,
+            existing,
+            revision=RevisionInputs(
+                items=tuple(_item_from_payload(item) for item in data.items),
+                task_structure=data.task_structure,
+                coordination_topology=data.coordination_topology,
+            ),
+            requested_by=extract_requester(state),
+        )
+        publish_ws_event(
+            request,
+            WsEventType.PLAN_UPDATED,
+            CHANNEL_PLANS,
+            {
+                "plan_id": str(successor.id),
+                "supersedes": str(existing.id),
+                "version": successor.version,
+                "status": successor.status.value,
+            },
+        )
+        return Response(content=ApiResponse[Plan](data=successor), status_code=201)
 
     @post(
         "/{plan_id:str}/request-changes",

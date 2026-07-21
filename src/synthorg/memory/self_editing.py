@@ -1,7 +1,8 @@
 """Self-editing memory injection strategy.
 
-Provides ``SelfEditingMemoryStrategy`` (Strategy 3 from design spec §7.7).
-Agents maintain structured core/archival/recall memory blocks and
+Provides ``SelfEditingMemoryStrategy``, the MemGPT-style self-editing
+tier (the "Self-Editing Memory" injection strategy in the memory design
+doc). Agents maintain structured core/archival/recall memory blocks and
 read/write them via six tools during execution.
 
 Three memory tiers:
@@ -33,13 +34,17 @@ from synthorg.memory.injection import (
     TokenEstimator,
 )
 from synthorg.memory.models import (
-    MemoryEntry,
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
 )
+from synthorg.memory.namespace_scope import (
+    ambient_read_namespaces,
+    ambient_write_namespace,
+)
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.ranking import ScoredMemory
+from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.memory.self_editing_args import (
     ArchivalMemorySearchArgs,
     ArchivalMemoryWriteArgs,
@@ -49,9 +54,17 @@ from synthorg.memory.self_editing_args import (
     RecallMemoryWriteArgs,
     parse_self_editing_args,
 )
+from synthorg.memory.self_editing_format import (
+    format_entries,
+    format_self_editing_error,
+)
 from synthorg.memory.self_editing_models import (
     SelfEditingMemoryConfig,
     build_self_editing_tool_definitions,
+)
+from synthorg.memory.self_editing_write import (
+    gate_archival_write,
+    retire_superseded,
 )
 from synthorg.memory.tool_retriever import ERROR_PREFIX
 from synthorg.observability import get_logger, safe_error_description
@@ -72,42 +85,6 @@ logger = get_logger(__name__)
 
 # Auto-tag added to archival/recall writes when write_auto_tag=True.
 _AUTO_TAG: Final[str] = "self_edited"
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _format_self_editing_error(err: object) -> str:
-    """Render a single Pydantic ``errors()`` entry as ``loc: msg``.
-
-    Strips the ``tool`` discriminator from ``loc`` (it's a dispatch
-    concern not surfaced to the LLM caller).
-
-    Returns:
-        Result of type ``str``.
-    """
-    if not isinstance(err, dict):
-        return "<arguments>: invalid"
-    loc_raw = err.get("loc", ())
-    loc_parts = loc_raw if isinstance(loc_raw, tuple) else ()
-    loc = ".".join(str(p) for p in loc_parts if p != "tool") or "<arguments>"
-    msg = err.get("msg", "")
-    return f"{loc}: {msg}" if isinstance(msg, str) else f"{loc}: invalid"
-
-
-def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
-    """Format memory entries as human-readable tool response text.
-
-    Args:
-        entries: Memory entries to format.
-
-    Returns:
-        Formatted multi-line string, or ``"No memories found."`` if empty.
-    """
-    if not entries:
-        return "No memories found."
-    return "\n".join(f"[{e.category.value}] (id={e.id}) {e.content}" for e in entries)
 
 
 # ---------------------------------------------------------------------------
@@ -164,8 +141,15 @@ class SelfEditingMemoryStrategy:
         """Strategy identifier -- ``"self_editing"``."""
         return InjectionStrategy.SELF_EDITING.value
 
-    def _core_query(self) -> MemoryQuery:
+    def _core_query(
+        self,
+        namespaces: frozenset[NotBlankStr] | None,
+    ) -> MemoryQuery:
         """Return the MemoryQuery for core memory (SEMANTIC + core tag, no text).
+
+        Args:
+            namespaces: Recall scope from the request; keeps a
+                project-scoped agent from reading another project's core.
 
         Returns:
             Result of type ``MemoryQuery``.
@@ -174,14 +158,13 @@ class SelfEditingMemoryStrategy:
             text=None,
             categories=frozenset({MemoryCategory.SEMANTIC}),
             tags=(self._config.core_memory_tag,),
+            namespaces=namespaces,
             limit=self._config.core_max_entries,
         )
 
     async def prepare_messages(
         self,
-        agent_id: NotBlankStr,
-        query_text: NotBlankStr,  # noqa: ARG002
-        token_budget: int,
+        request: MemoryRecallRequest,
     ) -> tuple[ChatMessage, ...]:
         """Return the core memory block as a SYSTEM message.
 
@@ -190,11 +173,11 @@ class SelfEditingMemoryStrategy:
         backend error (fails open -- missing core memory is not a
         crash condition).
 
+        The request's query context is not consulted: core memory is
+        tag-filtered rather than semantically retrieved.
+
         Args:
-            agent_id: Agent requesting memories.
-            query_text: Ignored -- core memory is tag-filtered, not
-                semantic.
-            token_budget: Maximum tokens for the core memory block.
+            request: The recall context; its agent and budget apply.
 
         Returns:
             ``(directive_message, core_memory_message)`` when at least
@@ -210,8 +193,11 @@ class SelfEditingMemoryStrategy:
             MemoryError: If the related operation fails.
             RecursionError: If the related operation fails.
         """
+        agent_id = request.agent_id
         try:
-            entries = await self._backend.retrieve(agent_id, self._core_query())
+            entries = await self._backend.retrieve(
+                agent_id, self._core_query(request.namespaces)
+            )
             if not entries:
                 return ()
             scored = tuple(
@@ -226,7 +212,7 @@ class SelfEditingMemoryStrategy:
             return format_memory_context_with_directive(
                 scored,
                 estimator=self._token_estimator,
-                token_budget=token_budget,
+                token_budget=request.token_budget,
             )
         except builtins.MemoryError, RecursionError:
             raise
@@ -307,7 +293,7 @@ class SelfEditingMemoryStrategy:
             first = errors[0]
             if first["type"] == "union_tag_invalid":
                 return f"{ERROR_PREFIX} Unknown self-editing tool: {tool_name!r}"
-            details = "; ".join(_format_self_editing_error(e) for e in errors)
+            details = "; ".join(format_self_editing_error(e) for e in errors)
             return f"{ERROR_PREFIX} Invalid arguments: {details}"
 
         try:
@@ -374,13 +360,15 @@ class SelfEditingMemoryStrategy:
         Returns:
             Result of type ``str``.
         """
-        entries = await self._backend.retrieve(agent_id, self._core_query())
+        entries = await self._backend.retrieve(
+            agent_id, self._core_query(ambient_read_namespaces())
+        )
         logger.info(
             MEMORY_SELF_EDIT_CORE_READ,
             agent_id=agent_id,
             count=len(entries),
         )
-        return _format_entries(entries)
+        return format_entries(entries)
 
     async def _handle_core_memory_write(
         self,
@@ -407,7 +395,9 @@ class SelfEditingMemoryStrategy:
             return f"{ERROR_PREFIX} Core memory writes are disabled for this agent."
 
         content = args.content
-        existing = await self._backend.retrieve(agent_id, self._core_query())
+        existing = await self._backend.retrieve(
+            agent_id, self._core_query(ambient_read_namespaces())
+        )
         if len(existing) >= self._config.core_max_entries:
             logger.info(
                 MEMORY_SELF_EDIT_CORE_WRITE_REJECTED,
@@ -425,6 +415,7 @@ class SelfEditingMemoryStrategy:
         request = MemoryStoreRequest(
             category=MemoryCategory.SEMANTIC,
             content=content,
+            namespace=ambient_write_namespace(),
             metadata=MemoryMetadata(tags=(self._config.core_memory_tag,)),
         )
         memory_id = await self._backend.store(agent_id, request)
@@ -460,16 +451,17 @@ class SelfEditingMemoryStrategy:
             MemoryQuery(
                 text=args.query,
                 categories=categories,
+                namespaces=ambient_read_namespaces(),
                 limit=limit,
             ),
         )
         logger.info(
             MEMORY_SELF_EDIT_ARCHIVAL_SEARCH,
             agent_id=agent_id,
-            query=args.query,
+            query_length=len(args.query),
             count=len(entries),
         )
-        return _format_entries(entries)
+        return format_entries(entries)
 
     async def _handle_archival_memory_write(
         self,
@@ -490,10 +482,22 @@ class SelfEditingMemoryStrategy:
                 f"Valid values: {valid}."
             )
 
+        decision, refusal = await gate_archival_write(
+            self._backend,
+            agent_id,
+            args.content,
+            category,
+            supersedes=args.supersedes,
+            candidates=self._config.write_gate_candidates,
+        )
+        if refusal is not None:
+            return refusal
+
         tags: tuple[str, ...] = (_AUTO_TAG,) if self._config.write_auto_tag else ()
         request = MemoryStoreRequest(
             category=category,
             content=args.content,
+            namespace=ambient_write_namespace(),
             metadata=MemoryMetadata(tags=tags),
         )
         memory_id = await self._backend.store(agent_id, request)
@@ -503,7 +507,14 @@ class SelfEditingMemoryStrategy:
             category=category.value,
             memory_id=memory_id,
         )
-        return f"Archival memory stored (id={memory_id}, category={category.value})."
+        stored = f"Archival memory stored (id={memory_id}, category={category.value})"
+        if decision.supersedes is None:
+            return f"{stored}."
+        retired = await retire_superseded(
+            self._backend, agent_id, NotBlankStr(decision.supersedes), memory_id
+        )
+        suffix = "" if retired else " (prior entry could not be retired)"
+        return f"{stored}, replacing {decision.supersedes}{suffix}."
 
     async def _handle_recall_memory_read(
         self,
@@ -540,6 +551,7 @@ class SelfEditingMemoryStrategy:
         request = MemoryStoreRequest(
             category=MemoryCategory.EPISODIC,
             content=args.content,
+            namespace=ambient_write_namespace(),
             metadata=MemoryMetadata(tags=tags),
         )
         memory_id = await self._backend.store(agent_id, request)

@@ -45,6 +45,9 @@ class ModelMetadata(BaseModel):
             manual operator re-enable.
         supports_vision: Model accepts image inputs.
         supports_reasoning: Model exposes extended reasoning.
+        supports_prompt_caching: Model can reuse a cached prompt prefix
+            (``cache_control`` breakpoints), cutting input-token cost and
+            latency on repeated prefixes.
         supports_embeddings: Model is an embedding model (vector output).
         supports_image_generation: Model generates images from text prompts
             (image output modality).
@@ -74,6 +77,7 @@ class ModelMetadata(BaseModel):
     )
     supports_vision: bool = Field(default=False)
     supports_reasoning: bool = Field(default=False)
+    supports_prompt_caching: bool = Field(default=False)
     supports_embeddings: bool = Field(default=False)
     supports_image_generation: bool = Field(default=False)
     max_output_tokens: int | None = Field(

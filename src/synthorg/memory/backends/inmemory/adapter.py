@@ -14,7 +14,14 @@ from typing import Final
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
-from synthorg.memory.backends.inmemory.query import is_expired, matches, prune_expired
+from synthorg.memory.backends.inmemory.query import (
+    is_expired,
+    matches,
+    matches_non_text,
+    matches_window,
+    prune_expired,
+    text_overlap_score,
+)
 from synthorg.memory.errors import (
     MemoryConnectionError,
     MemoryStoreError,
@@ -124,6 +131,11 @@ class InMemoryBackend:
         """Human-readable backend identifier."""
         return NotBlankStr("inmemory")
 
+    @property
+    def supports_dense_search(self) -> bool:
+        """Always ``False``: ranking here is term overlap, not meaning."""
+        return False
+
     # -- Capabilities -------------------------------------------------
 
     @property
@@ -143,7 +155,7 @@ class InMemoryBackend:
 
     @property
     def supports_vector_search(self) -> bool:
-        """No embedding model -- substring matching only."""
+        """No embedding model -- term-overlap ranking only."""
         return False
 
     @property
@@ -241,25 +253,60 @@ class InMemoryBackend:
     ) -> tuple[MemoryEntry, ...]:
         """Retrieve memories matching the query.
 
-        Text search uses case-insensitive substring matching
-        (no embedding model available).
+        Text search scores by term overlap with the query (no embedding
+        model available), so ordering is by match strength rather than
+        recency whenever a query text is given.
 
         Args:
             agent_id: Owning agent identifier.
             query: Retrieval parameters.
 
         Returns:
-            Matching entries ordered by ``created_at`` descending.
+            Matching entries, ordered by term-overlap score then
+            ``created_at`` descending when the query carries text, and
+            by ``created_at`` descending otherwise.
 
         Raises:
             MemoryConnectionError: If not connected.
         """
         self._require_connected()
-        now = self._clock.now()
         async with self._store_lock:
+            # Sample the clock under the lock, as store()/update() do: a
+            # timestamp taken before contention could judge an entry
+            # unexpired that lapsed while this call waited for the lock.
+            now = self._clock.now()
             agent_store = self._store.get(str(agent_id), {})
-            hits = [e for e in agent_store.values() if matches(e, query, now)]
-            hits.sort(key=lambda e: e.created_at, reverse=True)
+            if query.text:
+                # Score each surviving entry once here rather than
+                # scoring in the filter and again when ranking: term
+                # overlap is the backend's only relevance signal, so
+                # ordering by it lets the pipeline's min_relevance drop
+                # incidental single-word hits.
+                scored = []
+                for entry in agent_store.values():
+                    if not (
+                        matches_window(entry, query, now)
+                        and matches_non_text(entry, query)
+                    ):
+                        continue
+                    score = text_overlap_score(entry, query.text)
+                    if score <= 0.0:
+                        continue
+                    scored.append(entry.model_copy(update={"relevance_score": score}))
+                scored.sort(
+                    key=lambda e: (e.relevance_score or 0.0, e.created_at),
+                    reverse=True,
+                )
+                hits = scored
+            else:
+                hits = [e for e in agent_store.values() if matches(e, query, now)]
+                # id ASC breaks creation-time ties identically in both
+                # directions (a stable secondary pass), matching the
+                # durable arm's ``created_at <dir>, memory_id ASC``.
+                # Oldest-first when a cap sweep asks for it (it evicts the
+                # oldest); newest-first otherwise.
+                hits.sort(key=lambda e: str(e.id))
+                hits.sort(key=lambda e: e.created_at, reverse=not query.oldest_first)
             result = tuple(hits[: query.limit])
         logger.debug(
             MEMORY_ENTRY_RETRIEVED,
@@ -356,7 +403,7 @@ class InMemoryBackend:
         async with self._store_lock:
             # Sample the clock under the lock so a stale instant captured
             # while waiting on contention cannot revive an entry that
-            # expired during the wait (mirrors store() and mem0 update()).
+            # expired during the wait (mirrors store()).
             now = self._clock.now()
             agent_store = self._store.get(str(agent_id), {})
             entry = agent_store.get(str(memory_id))
@@ -400,8 +447,10 @@ class InMemoryBackend:
             MemoryConnectionError: If not connected.
         """
         self._require_connected()
-        now = self._clock.now()
         async with self._store_lock:
+            # Sample the clock under the lock so an entry that expired while
+            # this call waited on contention is not counted as live.
+            now = self._clock.now()
             agent_store = self._store.get(str(agent_id), {})
             if category is None:
                 total = sum(1 for e in agent_store.values() if not is_expired(e, now))

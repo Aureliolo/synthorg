@@ -9,6 +9,7 @@ from synthorg.memory.injection import (
     MemoryInjectionStrategy,
     TokenEstimator,
 )
+from synthorg.memory.recall_request import MemoryRecallRequest
 
 # ── InjectionStrategy enum ──────────────────────────────────────
 
@@ -109,9 +110,7 @@ class TestMemoryInjectionStrategy:
         class FakeStrategy:
             async def prepare_messages(
                 self,
-                agent_id: str,
-                query_text: str,
-                token_budget: int,
+                request: MemoryRecallRequest,
             ) -> tuple[object, ...]:
                 return ()
 
@@ -129,7 +128,7 @@ class TestMemoryInjectionStrategy:
 
         class Incomplete:
             async def prepare_messages(
-                self, agent_id: str, query_text: str, token_budget: int
+                self, request: MemoryRecallRequest
             ) -> tuple[object, ...]:
                 return ()
 

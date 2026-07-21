@@ -679,7 +679,7 @@ type thirdPartyImage struct {
 func thirdPartyImages(state config.State) []thirdPartyImage {
 	var images []thirdPartyImage
 	if state.PersistenceBackend == "postgres" {
-		images = append(images, thirdPartyImage{"postgres", "dhi.io/postgres:" + config.DefaultPostgresImageTag})
+		images = append(images, thirdPartyImage{"postgres", "dhi.io/" + config.DefaultPostgresImageName + ":" + config.DefaultPostgresImageTag})
 	}
 	if state.BusBackend == "nats" {
 		images = append(images, thirdPartyImage{"nats", "dhi.io/nats:" + config.DefaultNATSImageTag})

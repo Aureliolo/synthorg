@@ -6,7 +6,8 @@ scope enum, and the configuration model for the pipeline.
 """
 
 from enum import StrEnum
-from typing import Self
+from pathlib import PurePosixPath, PureWindowsPath
+from typing import ClassVar, Self
 
 from pydantic import (
     AwareDatetime,
@@ -21,6 +22,14 @@ from synthorg.core.task_enums import TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.utils import deduplicate_tags
 from synthorg.observability import get_logger
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.mirrors import (
+    MirrorField,
+    apply_settings_mirrors,
+    parse_bool,
+    parse_float,
+    parse_int,
+)
 
 logger = get_logger(__name__)
 
@@ -247,6 +256,39 @@ class ProceduralMemoryConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
+    _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
+        MirrorField(
+            field="enabled",
+            namespace=SettingNamespace.MEMORY,
+            key="procedural_enabled",
+            parse=parse_bool,
+        ),
+        MirrorField(
+            field="min_confidence",
+            namespace=SettingNamespace.MEMORY,
+            key="procedural_min_confidence",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="temperature",
+            namespace=SettingNamespace.MEMORY,
+            key="procedural_temperature",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="max_tokens",
+            namespace=SettingNamespace.MEMORY,
+            key="procedural_max_tokens",
+            parse=parse_int,
+        ),
+        MirrorField(
+            field="skill_md_directory",
+            namespace=SettingNamespace.MEMORY,
+            key="procedural_skill_md_directory",
+            only_if_env_set=True,
+        ),
+    )
+
     enabled: bool = Field(
         default=True,
         description="Whether procedural memory generation is active",
@@ -287,3 +329,39 @@ class ProceduralMemoryConfig(BaseModel):
             "When set, proposals are written as portable SKILL.md files."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_mirrors(cls, data: object) -> object:
+        """Apply mirrors.
+
+        Returns:
+            The input data with any unset mirror fields populated.
+        """
+        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+
+    @model_validator(mode="after")
+    def _reject_skill_md_traversal(self) -> Self:
+        """Reject a SKILL.md directory that escapes via ``..``.
+
+        The value is now a runtime setting, so an operator (or a
+        settings write) supplies it and it feeds ``materialize_skill_md``
+        filesystem writes. A parent-directory component would let those
+        writes land outside the intended tree.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If the directory contains a ``..`` component.
+        """
+        if self.skill_md_directory is None:
+            return self
+        parts = (
+            PureWindowsPath(self.skill_md_directory).parts
+            + PurePosixPath(self.skill_md_directory).parts
+        )
+        if ".." in parts:
+            msg = "skill_md_directory must not contain parent-directory traversal (..)"
+            raise ValueError(msg)
+        return self

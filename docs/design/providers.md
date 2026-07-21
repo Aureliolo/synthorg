@@ -170,7 +170,41 @@ The framework uses **LiteLLM** as the provider abstraction layer:
 - Automatic retries and fallbacks
 - Load balancing across providers
 - Chat completions-compatible interface (all providers normalised)
-- **Model database**: `litellm.model_cost` provides pricing and context window data for all known models. Used at provider creation to dynamically populate model lists with up-to-date metadata. At discovery each model is enriched with a `ModelMetadata` record (capability flags -- tools / vision / reasoning / embeddings, `max_output_tokens`, and a parsed `family` + sortable `generation`) which is persisted on `ProviderModelConfig` so the capability-aware matcher works offline afterwards. **Ollama bypasses this DB entirely**: it has no entry for locally-pulled models and would overwrite the real `/api/show` probe capabilities with all-False guesses, so `build_capabilities` (in `providers/drivers/litellm_capabilities.py`) forces `info = {}` for the ollama routing key and resolves capabilities from the persisted probe metadata instead. Provider-specific version filters (`MODEL_VERSION_FILTERS`, keyed by LiteLLM provider) exclude older generations; family/generation parsing is driven by `MODEL_FAMILY_RULES` with a generic fallback. Deduplicates dated model variants (e.g. prefers `example-large-002` over `example-large-002-20260205`). Falls back to preset `default_models` when no models are found in the database.
+- **Model database**: `litellm.model_cost` provides pricing and context window data for all known models. Used at provider creation to dynamically populate model lists with up-to-date metadata. At discovery each model is enriched with a `ModelMetadata` record (capability flags -- tools / vision / reasoning / embeddings / prompt caching, `max_output_tokens`, and a parsed `family` + sortable `generation`) which is persisted on `ProviderModelConfig` so the capability-aware matcher works offline afterwards. **Ollama bypasses this DB entirely**: it has no entry for locally-pulled models and would overwrite the real `/api/show` probe capabilities with all-False guesses, so `build_capabilities` (in `providers/drivers/litellm_capabilities.py`) forces `info = {}` for the ollama routing key and resolves capabilities from the persisted probe metadata instead. Provider-specific version filters (`MODEL_VERSION_FILTERS`, keyed by LiteLLM provider) exclude older generations; family/generation parsing is driven by `MODEL_FAMILY_RULES` with a generic fallback. Deduplicates dated model variants (e.g. prefers `example-large-002` over `example-large-002-20260205`). Falls back to preset `default_models` when no models are found in the database.
+
+### Completion controls (reasoning, caching, streaming)
+
+Three model-behaviour controls tune the LiteLLM call, each gated on a capability
+so a model that does not support the feature is left untouched. Two are
+`CompletionConfig` fields the driver maps onto the call (`reasoning_effort` and
+the `prompt_caching` flag); streaming is a loop-level behaviour driven by a
+setting plus the model's streaming capability, not a `CompletionConfig` field:
+
+- **`reasoning_effort`** (`ReasoningEffort` enum: `minimal` / `low` / `medium` /
+  `high`): mapped 1:1 to LiteLLM's `reasoning_effort` kwarg, emitted only when the
+  resolved model advertises `supports_reasoning`. Stakes routing drives it through
+  a per-stakes `StakesReasoning` policy (sibling to `StakesTierRequirement`): the
+  routing decision's effort is folded into the run's `CompletionConfig` while the
+  agent's `temperature` / `max_tokens` are preserved. The policy is validated
+  non-decreasing across the stakes ladder, so low-stakes work never requests deeper
+  reasoning than high-stakes work.
+- **Prompt caching** (`providers.prompt_caching_enabled`, default on): when the
+  model advertises `supports_prompt_caching`, `drivers/litellm_cache.py` rewrites
+  the stable prefix (system block, tools block, and a rolling breakpoint before the
+  live tail) into the content-block form carrying
+  `cache_control: {type: ephemeral}` before the call, so a multi-turn run stops
+  re-billing the unchanged prefix at full input-token cost. Non-caching models
+  (Ollama, unknown) default the flag false and are never rewritten.
+- **Streaming work loop** (`engine.work_loop_streaming_enabled`, default on):
+  when the model advertises `supports_streaming` the loops consume
+  `provider.stream()` through one `run_provider_turn()` dispatcher, reassembling a
+  `CompletionResponse` faithful to `complete()` (content, tool-call deltas, usage,
+  and a `finish_reason` carried on the terminal `DONE` chunk) while polling
+  cancellation and steering between chunks. See
+  [Mid-Flight Steering](mid-flight-steering.md) for the mid-turn cancel /
+  steer-interrupt semantics. The retry / rate-limit / cost chokepoints stay in
+  `BaseCompletionProvider`; the loop falls back to `complete()` when streaming is
+  off or unsupported.
 
 ## Provider Management
 

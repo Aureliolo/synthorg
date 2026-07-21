@@ -1,7 +1,7 @@
-import { getProject } from '@/api/endpoints/projects'
+import { getProject, getProjectProgress } from '@/api/endpoints/projects'
 import { listTasks } from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
-import type { Project } from '@/api/types/projects'
+import type { Project, ProjectProgress } from '@/api/types/projects'
 import type { Task } from '@/api/types/tasks'
 import {
   isStaleDetailRequest,
@@ -18,6 +18,7 @@ const TASKS_DRAIN_PAGE_LIMIT = 50
 interface DetailResults {
   projectResult: PromiseSettledResult<Project>
   tasksResult: PromiseSettledResult<{ data: Task[] }>
+  progressResult: PromiseSettledResult<ProjectProgress>
 }
 
 async function drainProjectTasks(projectId: string): Promise<Task[]> {
@@ -34,6 +35,18 @@ async function drainProjectTasks(projectId: string): Promise<Task[]> {
     cursor = page.nextCursor
   }
   return collected
+}
+
+/** Collect a label per companion fetch that failed, for the partial banner. */
+function collectPartialErrors(results: DetailResults): string[] {
+  const partial: string[] = []
+  if (results.tasksResult.status === 'rejected') {
+    partial.push(`tasks: ${getErrorMessage(results.tasksResult.reason)}`)
+  }
+  if (results.progressResult.status === 'rejected') {
+    partial.push(`progress: ${getErrorMessage(results.progressResult.reason)}`)
+  }
+  return partial
 }
 
 function applyDetailResults(
@@ -53,15 +66,19 @@ function applyDetailResults(
     })
     return
   }
-  const partialErrors: string[] = []
-  if (results.tasksResult.status === 'rejected') {
-    partialErrors.push(`tasks: ${getErrorMessage(results.tasksResult.reason)}`)
-  }
+  const partialErrors = collectPartialErrors(results)
   set({
     selectedProject: project,
     projectTasks: results.tasksResult.status === 'fulfilled'
       ? results.tasksResult.value.data
       : [],
+    projectProgress: results.progressResult.status === 'fulfilled'
+      ? results.progressResult.value
+      : null,
+    // A failed progress fetch is not "this project has no plan yet". Tracked
+    // separately so the view can say the progress could not be loaded rather
+    // than asserting a domain state it has no evidence for.
+    projectProgressFailed: results.progressResult.status === 'rejected',
     detailError: partialErrors.length > 0
       ? `Some data failed to load: ${partialErrors.join(', ')}. Displayed data may be incomplete.`
       : null,
@@ -73,21 +90,24 @@ async function fetchProjectDetailImpl(
   id: string,
 ): Promise<void> {
   const token = nextDetailRequestToken()
+  // Keep the currently displayed project in place while the refetch runs. A
+  // WS event on a shared channel can fire for an unrelated plan, and blanking
+  // state here would drop the whole page to a skeleton every time one did.
   set({
     detailLoading: true,
     detailError: null,
-    selectedProject: null,
-    projectTasks: [],
+    projectProgressFailed: false,
   })
   try {
-    const [projectResult, tasksResult] = await Promise.allSettled([
+    const [projectResult, tasksResult, progressResult] = await Promise.allSettled([
       getProject(id),
       // Drain every page so the detail view shows the full task list
       // for the project rather than truncating at the first page.
       drainProjectTasks(id).then((data) => ({ data })),
+      getProjectProgress(id),
     ])
     if (isStaleDetailRequest(token)) return
-    applyDetailResults(set, { projectResult, tasksResult })
+    applyDetailResults(set, { projectResult, tasksResult, progressResult })
   } finally {
     if (!isStaleDetailRequest(token)) set({ detailLoading: false })
   }

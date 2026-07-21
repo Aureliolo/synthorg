@@ -1,120 +1,140 @@
 """Tests for memory backend factory."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
 import pytest
-from pydantic import ValidationError
-from typeguard import suppress_type_checks
 
-from synthorg.memory.backends.mem0.adapter import Mem0MemoryBackend
-from synthorg.memory.backends.mem0.config import Mem0EmbedderConfig
-from synthorg.memory.config import (
-    CompanyMemoryConfig,
-    MemoryOptionsConfig,
-    MemoryStorageConfig,
-)
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.backends.composite import CompositeBackend
+from synthorg.memory.backends.composite.config import CompositeBackendConfig
+from synthorg.memory.backends.inmemory import InMemoryBackend
+from synthorg.memory.backends.sqlvector import SqlVectorBackend
+from synthorg.memory.config import CompanyMemoryConfig, MemoryOptionsConfig
 from synthorg.memory.errors import MemoryConfigError
-from synthorg.memory.factory import create_memory_backend
+from synthorg.memory.factory import (
+    MemoryBackendDeps,
+    build_in_memory_backend,
+    create_memory_backend,
+)
+from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
+
+pytestmark = pytest.mark.unit
 
 
-def _test_embedder() -> Mem0EmbedderConfig:
-    """Vendor-agnostic embedder config for tests."""
-    return Mem0EmbedderConfig(
-        provider="test-provider",
-        model="test-embedding-001",
-    )
+def _repository() -> MemoryVectorRepository:
+    """A typed stand-in for the durable vector store."""
+    return MagicMock(spec=MemoryVectorRepository)
 
 
-@pytest.mark.unit
 class TestCreateMemoryBackend:
-    def test_mem0_creates_backend(self) -> None:
-        config = CompanyMemoryConfig(backend="mem0")
-        backend = create_memory_backend(config, embedder=_test_embedder())
-        assert isinstance(backend, Mem0MemoryBackend)
-        assert backend.is_connected is False
-        assert backend.backend_name == "mem0"
-
-    def test_mem0_passes_max_memories(self) -> None:
-        config = CompanyMemoryConfig(
-            backend="mem0",
-            options=MemoryOptionsConfig(max_memories_per_agent=500),
+    def test_sqlvector_is_the_default_backend(self) -> None:
+        backend = create_memory_backend(
+            CompanyMemoryConfig(),
+            deps=MemoryBackendDeps(repository=_repository()),
         )
-        backend = create_memory_backend(config, embedder=_test_embedder())
-        assert isinstance(backend, Mem0MemoryBackend)
-        assert backend.max_memories_per_agent == 500
+
+        assert isinstance(backend, SqlVectorBackend)
+
+    def test_sqlvector_without_repository_raises(self) -> None:
+        # Failing loud here is deliberate: the alternative is silently
+        # handing back an ephemeral store that looks like working memory
+        # while losing everything on restart.
+        with pytest.raises(MemoryConfigError, match="MemoryVectorRepository"):
+            create_memory_backend(
+                CompanyMemoryConfig(backend="sqlvector"),
+                deps=MemoryBackendDeps(),
+            )
+
+    def test_sqlvector_without_embedder_builds_lexical_only(self) -> None:
+        backend = create_memory_backend(
+            CompanyMemoryConfig(backend="sqlvector"),
+            deps=MemoryBackendDeps(repository=_repository()),
+        )
+
+        assert isinstance(backend, SqlVectorBackend)
+        assert backend.supports_dense_search is False
+
+    def test_inmemory_backend_is_selectable(self) -> None:
+        backend = create_memory_backend(
+            CompanyMemoryConfig(backend="inmemory"),
+            deps=MemoryBackendDeps(),
+        )
+
+        assert isinstance(backend, InMemoryBackend)
+
+    def test_deps_are_optional_for_backends_that_need_none(self) -> None:
+        backend = create_memory_backend(CompanyMemoryConfig(backend="inmemory"))
+
+        assert isinstance(backend, InMemoryBackend)
 
     def test_unknown_backend_rejected_by_config_validation(self) -> None:
-        """Unknown backends are rejected by config validation."""
-        with pytest.raises(ValidationError, match="Unknown memory backend"):
+        with pytest.raises(ValueError, match="Unknown memory backend"):
             CompanyMemoryConfig(backend="nonexistent")
 
-    def test_mem0_without_embedder_raises(self) -> None:
-        config = CompanyMemoryConfig(backend="mem0")
-        with pytest.raises(MemoryConfigError, match="requires an embedder"):
-            create_memory_backend(config)
-
-    def test_mem0_wrong_embedder_type_raises(self) -> None:
-        config = CompanyMemoryConfig(backend="mem0")
-        with (
-            suppress_type_checks(),
-            pytest.raises(MemoryConfigError, match="must be a Mem0EmbedderConfig"),
-        ):
-            create_memory_backend(config, embedder="not-a-config")  # type: ignore[arg-type]
-
-    def test_config_build_error_wraps_as_memory_config_error(self) -> None:
-        """ValueError from build_config_from_company_config wraps."""
-        storage = MemoryStorageConfig.model_construct(
-            vector_store="chroma",
-            history_store="sqlite",
-            data_dir="/data/memory",
-        )
-        config = CompanyMemoryConfig.model_construct(
-            backend="mem0",
-            storage=storage,
-        )
-        with pytest.raises(MemoryConfigError, match="Invalid Mem0 configuration"):
-            create_memory_backend(config, embedder=_test_embedder())
-
-    def test_backend_init_value_error_wraps(self) -> None:
-        """ValueError from Mem0MemoryBackend() constructor wraps."""
-        config = CompanyMemoryConfig(backend="mem0")
-        with (
-            patch(
-                "synthorg.memory.backends.mem0.Mem0MemoryBackend",
-                side_effect=ValueError("init boom"),
-            ),
-            pytest.raises(MemoryConfigError, match="Failed to create Mem0"),
-        ):
-            create_memory_backend(config, embedder=_test_embedder())
-
-    def test_backend_init_validation_error_wraps(self) -> None:
-        """ValidationError from Mem0MemoryBackend() constructor wraps."""
-        from pydantic import BaseModel
-
-        class _Dummy(BaseModel):
-            x: int
-
-        side_effect: ValidationError | None = None
-        try:
-            _Dummy(x="not-an-int")  # type: ignore[arg-type]
-        except ValidationError as ve:
-            side_effect = ve
-        assert side_effect is not None  # always set -- narrows type for pyright
-
-        config = CompanyMemoryConfig(backend="mem0")
-        with (
-            patch(
-                "synthorg.memory.backends.mem0.Mem0MemoryBackend",
-                side_effect=side_effect,
-            ),
-            pytest.raises(MemoryConfigError, match="Failed to create Mem0"),
-        ):
-            create_memory_backend(config, embedder=_test_embedder())
-
     def test_unknown_backend_bypassing_validation_raises(self) -> None:
-        """Defensive guard when model_construct bypasses validation."""
-        config = CompanyMemoryConfig.model_construct(
-            backend="nonexistent",
-        )
+        config = CompanyMemoryConfig(backend="inmemory")
+        smuggled = config.model_copy(update={"backend": "nonexistent"})
+
         with pytest.raises(MemoryConfigError, match="Unknown memory backend"):
-            create_memory_backend(config, embedder=_test_embedder())
+            create_memory_backend(smuggled)
+
+    def test_max_memories_is_threaded_through(self) -> None:
+        backend = create_memory_backend(
+            CompanyMemoryConfig(
+                backend="inmemory",
+                options=MemoryOptionsConfig(max_memories_per_agent=7),
+            ),
+        )
+
+        assert isinstance(backend, InMemoryBackend)
+        assert backend.max_memories_per_agent == 7
+
+
+class TestCompositeBackend:
+    def test_routes_namespaces_across_child_backends(self) -> None:
+        backend = create_memory_backend(
+            CompanyMemoryConfig(
+                backend="composite",
+                composite=CompositeBackendConfig(
+                    routes={
+                        NotBlankStr("scratch"): NotBlankStr("inmemory"),
+                        NotBlankStr("memories"): NotBlankStr("sqlvector"),
+                    },
+                    default=NotBlankStr("sqlvector"),
+                ),
+            ),
+            deps=MemoryBackendDeps(repository=_repository()),
+        )
+
+        assert isinstance(backend, CompositeBackend)
+
+    def test_unknown_child_backend_raises(self) -> None:
+        with pytest.raises(MemoryConfigError, match="not a recognised backend"):
+            create_memory_backend(
+                CompanyMemoryConfig(
+                    backend="composite",
+                    composite=CompositeBackendConfig(
+                        default=NotBlankStr("nonexistent"),
+                    ),
+                ),
+                deps=MemoryBackendDeps(repository=_repository()),
+            )
+
+    def test_durable_child_without_repository_raises(self) -> None:
+        # The composite must not quietly downgrade a durable route to an
+        # ephemeral one; that is the silent-degradation failure again.
+        with pytest.raises(MemoryConfigError, match="MemoryVectorRepository"):
+            create_memory_backend(
+                CompanyMemoryConfig(
+                    backend="composite",
+                    composite=CompositeBackendConfig(
+                        default=NotBlankStr("sqlvector"),
+                    ),
+                ),
+                deps=MemoryBackendDeps(),
+            )
+
+
+class TestBuildInMemoryBackend:
+    def test_builds_the_ephemeral_backend(self) -> None:
+        assert isinstance(build_in_memory_backend(), InMemoryBackend)

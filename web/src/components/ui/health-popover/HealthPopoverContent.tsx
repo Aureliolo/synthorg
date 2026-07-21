@@ -1,5 +1,6 @@
 import { Dialog } from '@base-ui/react/dialog'
 import {
+  Brain,
   Clock,
   Database,
   RefreshCw,
@@ -131,6 +132,16 @@ function HealthSubsystemGrid({
         description="Internal async queue carrying inter-agent messages and engine events."
         state={states.busState}
       />
+      {/* Fifth card fills the final row rather than sitting alone in a
+          half-width column at the sm two-column breakpoint. */}
+      <HealthStatusRow
+        className="sm:col-span-2"
+        icon={Brain}
+        label="Memory"
+        description="Org, agent, and project recall injected into working agents. Durable requires an embedding model."
+        state={states.memoryState}
+        detail={states.memoryDetail}
+      />
     </div>
   )
 }
@@ -203,7 +214,7 @@ export function HealthPopoverContent({
         </div>
       )}
       <HealthSubsystemGrid states={states} />
-      <div className="mt-6 grid grid-cols-1 gap-3 border-t border-border pt-4 sm:grid-cols-3">
+      <div className="mt-6 grid grid-cols-1 gap-grid-gap border-t border-border pt-4 sm:grid-cols-3">
         <HealthMetadataRow icon={Tag} label="Backend version" value={backendVersion} />
         <HealthMetadataRow icon={Clock} label="Uptime" value={uptime} />
         <HealthMetadataRow icon={RefreshCw} label="Last probed" value={fetchedAtLabel ?? '--'} />

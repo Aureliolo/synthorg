@@ -33,6 +33,8 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     metadata: {},
     hard_ceiling: null,
     forecast_id: null,
+    plan_id: null,
+    plan_item_id: null,
     version: 1,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

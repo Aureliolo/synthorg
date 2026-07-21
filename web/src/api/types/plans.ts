@@ -15,6 +15,7 @@ export type {
   PlanReviewerVerdict,
   PlanReviewFinding,
   PlanVersionSnapshot,
+  ReplanRequest,
   RequestPlanChangesRequest,
 } from './dtos.gen'
 

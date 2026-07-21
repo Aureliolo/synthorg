@@ -20,9 +20,9 @@ The memory system has two concerns:
 graph TD
     Agent["Agent"]
     Retriever["Retrieval Pipeline"]
-    Backend["Memory Backend<br/><small>Mem0 (Qdrant + SQLite)</small>"]
+    Backend["Memory Backend<br/><small>sqlvector (pgvector / sqlite-vec)</small>"]
     OrgMem["Shared Org Memory<br/><small>Core policies + extended facts</small>"]
-    Persistence["Persistence Backend<br/><small>SQLite</small>"]
+    Persistence["Persistence Backend<br/><small>SQLite / Postgres</small>"]
 
     Agent -->|"recall"| Retriever
     Agent -->|"store"| Backend
@@ -66,39 +66,59 @@ Configure memory in the `memory` section of your company config:
 
 ```yaml
 memory:
-  backend: "mem0"
-  level: session
+  backend: "sqlvector"
   storage:
     data_dir: "/data/memory"
-    vector_store: "qdrant"
-    history_store: "sqlite"
   options:
     retention_days: null          # null = keep forever
     max_memories_per_agent: 10000
-    consolidation_interval: daily
     shared_knowledge_base: true
   retrieval:
     strategy: context
     relevance_weight: 0.7
     recency_weight: 0.3
     min_relevance: 0.3
-    max_memories: 20
+    max_memories: 5               # tuned top-k after ranking; MMR on by default
+    diversity_penalty_enabled: true
     include_shared: true
   consolidation:
     interval: daily
     max_memories_per_agent: 10000
 ```
 
+The per-agent persistence level lives on the agent's `MemoryConfig.type` (default `session`), not
+in this company-wide section.
+
 ### Top-Level Memory Fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `backend` | string | `"mem0"` | Memory backend (currently only `"mem0"`) |
-| `level` | MemoryLevel | `"session"` | Default persistence level |
+| `backend` | string | `"sqlvector"` | Memory backend: `"sqlvector"` (durable, semantic), `"composite"` (per-namespace routing), or `"inmemory"` (ephemeral, discouraged) |
 | `storage` | MemoryStorageConfig | *(defaults)* | Storage backend settings |
 | `options` | MemoryOptionsConfig | *(defaults)* | Behaviour options |
 | `retrieval` | MemoryRetrievalConfig | *(defaults)* | Retrieval pipeline settings |
 | `consolidation` | ConsolidationConfig | *(defaults)* | Consolidation settings |
+| `procedural` | ProceduralMemoryConfig | *(defaults)* | Procedural skill auto-generation |
+
+### Checking Memory Health
+
+`GET /health` reports memory in one of three states, shown as a card in the
+dashboard's system-health popover:
+
+| State | Meaning |
+|-------|---------|
+| `durable` | Wired on a store that survives restarts and retrieves by meaning |
+| `degraded` | Wired, but not fully durable: the ephemeral keyword backend, a failed health probe, a missing dense index (keyword-only recall), or maintenance disabled |
+| `off` | No backend wired at all, whatever the configured type. Usually no embedding model resolved |
+
+`degraded` and `off` are surfaced rather than silently tolerated: memory that
+quietly degrades to substring matching looks healthy while recalling the wrong
+thing. Reaching `durable` takes more than embedder configuration: a durable
+backend must be wired on a store that survives restarts, an embedding model must
+resolve for semantic recall, and the readiness probe must pass. Setting the
+`memory.embedder_*` overrides alone lifts `off` only when a durable backend is
+already wired; a wired-but-`degraded` durable backend still fails the readiness
+probe, so the fault stays visible rather than masquerading as healthy.
 
 ---
 
@@ -106,9 +126,10 @@ memory:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `data_dir` | string | `"/data/memory"` | Directory for memory data (Docker volume mount) |
-| `vector_store` | string | `"qdrant"` | Vector store: `"qdrant"` (embedded) or `"qdrant-external"` |
-| `history_store` | string | `"sqlite"` | History store: `"sqlite"` or `"postgresql"` |
+| `data_dir` | string | `"/data/memory"` | Directory for memory artefacts kept outside the database (Docker volume mount) |
+
+Vectors and their lexical index live in the operational database, so there
+is no separate vector-store or history-store to configure or back up.
 
 !!! note
 
@@ -122,8 +143,11 @@ memory:
 |-------|------|---------|-------------|
 | `retention_days` | int or null | `null` | Days to retain memories (`null` = forever) |
 | `max_memories_per_agent` | int | `10000` | Upper bound on memories per agent |
-| `consolidation_interval` | string | `"daily"` | How often to consolidate: `hourly`, `daily`, `weekly`, `never` |
 | `shared_knowledge_base` | bool | `true` | Whether shared knowledge is enabled |
+
+The consolidation cadence is `consolidation.interval`, not an option here:
+that is the field the scheduler reads and the `memory.consolidation_interval`
+setting mirrors.
 
 ---
 
@@ -141,13 +165,16 @@ When an agent needs context, the retrieval pipeline queries the memory backend, 
 | `recency_decay_rate` | float | `0.01` | Exponential decay rate per hour |
 | `personal_boost` | float | `0.1` | Boost for personal memories over shared (0.0--1.0) |
 | `min_relevance` | float | `0.3` | Minimum combined score to include a memory |
-| `max_memories` | int | `20` | Maximum memories to inject (1--100) |
+| `max_memories` | int | `5` | Tuned top-k injected after ranking (1--100) |
 | `include_shared` | bool | `true` | Whether to query shared org memory |
 | `default_relevance` | float | `0.5` | Score for entries missing a relevance score |
 | `injection_point` | string | `"system"` | Where to inject: `"system"` (system prompt) or `"user"` |
 | `memory_filter_strategy` | string | `"off"` | Post-ranking filter: `"off"` (no filter), `"tag_based"` (only non-inferable-tagged memories), or `"passthrough"` (inject all) |
-| `fusion_strategy` | string | `"linear"` | Ranking fusion: `"linear"` (currently supported) |
+| `fusion_strategy` | string | `"linear"` | Ranking fusion: `"linear"` (relevance + recency) or `"rrf"` (Reciprocal Rank Fusion over multiple ranked lists) |
 | `rrf_k` | int | `60` | RRF smoothing constant (only with RRF strategy, 1--1000) |
+| `diversity_penalty_enabled` | bool | `true` | Apply MMR diversity re-ranking (context strategy only; off for other strategies) |
+| `diversity_lambda` | float | `0.7` | MMR trade-off: `1.0` pure relevance, `0.0` maximum diversity |
+| `candidate_pool_multiplier` | int | `3` | Dense/lexical over-fetch width before ranking narrows to `max_memories` |
 
 ### Weight Tuning
 
@@ -263,22 +290,49 @@ The archival system classifies each memory by density score and routes to the ap
 
 ---
 
+## Procedural Memory
+
+When an agent fails a task and recovers, the procedural pipeline asks a model what
+it would do differently, and stores the answer as a reusable skill. Later tasks
+recall that skill instead of rediscovering the same workaround.
+
+```yaml
+procedural:
+  enabled: true
+  model: null                 # unset: the proposer makes no LLM call
+  temperature: 0.3
+  max_tokens: 1500
+  min_confidence: 0.5
+  skill_md_directory: null    # set to also write portable SKILL.md files
+```
+
+| Field | Setting key | Applies | Description |
+|-------|-------------|---------|-------------|
+| `enabled` | `memory.procedural_enabled` | Next task | Master switch. When off, every capture short-circuits and no LLM call is made |
+| `min_confidence` | `memory.procedural_min_confidence` | Next task | Quality floor: proposals rated below it are discarded |
+| `temperature` | `memory.procedural_temperature` | Next restart | Sampling temperature for the proposer |
+| `max_tokens` | `memory.procedural_max_tokens` | Next restart | Response token budget for the proposer |
+| `skill_md_directory` | `memory.procedural_skill_md_directory` | Next restart | Directory for `SKILL.md` materialisation; unset keeps skills in the backend only |
+| `model` | (company config) | Next restart | Proposer model. Unset means the proposer skips rather than guessing a model |
+
+`enabled` and `min_confidence` are re-resolved on every capture, so pausing skill
+generation or tightening the quality floor takes effect on the next task. The rest
+are baked into the frozen proposer config at startup.
+
+---
+
 ## Practical Example
 
 A complete memory configuration for a research lab that prioritises long-term knowledge retention:
 
 ```yaml
 memory:
-  backend: "mem0"
-  level: persistent
+  backend: "sqlvector"
   storage:
     data_dir: "/data/memory"
-    vector_store: "qdrant"
-    history_store: "sqlite"
   options:
     retention_days: null
     max_memories_per_agent: 50000
-    consolidation_interval: weekly
     shared_knowledge_base: true
   retrieval:
     strategy: context
@@ -313,7 +367,7 @@ org_memory:
 
 ## Memory Admin API
 
-Operators with the `CEO` or `SYSTEM` role can manage embedding fine-tuning at runtime through the `/admin/memory/fine-tune*` endpoints (controller: `src/synthorg/api/controllers/memory.py`, guarded by `require_roles(HumanRole.CEO, HumanRole.SYSTEM)`).
+Operators with the `CEO` or `SYSTEM` role can manage embedding fine-tuning at runtime through the `/admin/memory/fine-tune*` endpoints (`MemoryFineTuneController` in `src/synthorg/api/controllers/memory/fine_tune.py`, guarded by `require_roles(HumanRole.CEO, HumanRole.SYSTEM)`).
 
 ### Start a fine-tune run
 

@@ -33,6 +33,8 @@ function makeTask(id: string, title: string, overrides: Partial<DashboardTask> =
     metadata: {},
     hard_ceiling: null,
     forecast_id: null,
+    plan_id: null,
+    plan_item_id: null,
     ...overrides,
   }
 }

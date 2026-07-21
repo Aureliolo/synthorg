@@ -20,9 +20,9 @@ func TestParseDHIRef(t *testing.T) {
 	}{
 		{
 			name:     "valid postgres",
-			input:    "dhi.io/postgres:" + config.DefaultPostgresImageTag,
+			input:    "dhi.io/pgvector:" + config.DefaultPostgresImageTag,
 			wantReg:  "dhi.io",
-			wantRepo: "postgres",
+			wantRepo: "pgvector",
 			wantTag:  config.DefaultPostgresImageTag,
 		},
 		{
@@ -121,7 +121,7 @@ func TestDHIPinnedIndexDigest(t *testing.T) {
 	// canonical image-tag constants so a Renovate bump that updates one
 	// place but misses the other fails this test instead of silently
 	// dropping verification at runtime.
-	d, ok := DHIPinnedIndexDigest("dhi.io/postgres:" + config.DefaultPostgresImageTag)
+	d, ok := DHIPinnedIndexDigest("dhi.io/pgvector:" + config.DefaultPostgresImageTag)
 	if !ok {
 		t.Error("postgres should have a pinned digest")
 	}

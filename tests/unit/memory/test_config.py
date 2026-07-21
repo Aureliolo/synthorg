@@ -3,7 +3,6 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.memory_enums import MemoryLevel
 from synthorg.memory.config import (
     CompanyMemoryConfig,
     EmbedderOverrideConfig,
@@ -21,17 +20,14 @@ class TestMemoryStorageConfig:
     def test_defaults(self) -> None:
         c = MemoryStorageConfig()
         assert c.data_dir == "/data/memory"
-        assert c.vector_store == "qdrant"
-        assert c.history_store == "sqlite"
 
     def test_custom_values(self) -> None:
-        c = MemoryStorageConfig(
-            data_dir="/custom/path",
-            vector_store="qdrant-external",
-            history_store="postgresql",
-        )
+        c = MemoryStorageConfig(data_dir="/custom/path")
         assert c.data_dir == "/custom/path"
-        assert c.vector_store == "qdrant-external"
+
+    def test_unknown_field_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Extra inputs"):
+            MemoryStorageConfig(vector_store="qdrant")  # type: ignore[call-arg]
 
     def test_frozen(self) -> None:
         c = MemoryStorageConfig()
@@ -74,30 +70,6 @@ class TestMemoryStorageConfig:
         with pytest.raises(ValidationError, match="whitespace-only"):
             MemoryStorageConfig(data_dir="   ")
 
-    @pytest.mark.parametrize(
-        "store",
-        ["qdrant", "qdrant-external"],
-    )
-    def test_valid_vector_stores_accepted(self, store: str) -> None:
-        c = MemoryStorageConfig(vector_store=store)
-        assert c.vector_store == store
-
-    def test_unknown_vector_store_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Unknown vector_store"):
-            MemoryStorageConfig(vector_store="invalid-store")
-
-    @pytest.mark.parametrize(
-        "store",
-        ["sqlite", "postgresql"],
-    )
-    def test_valid_history_stores_accepted(self, store: str) -> None:
-        c = MemoryStorageConfig(history_store=store)
-        assert c.history_store == store
-
-    def test_unknown_history_store_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Unknown history_store"):
-            MemoryStorageConfig(history_store="invalid-store")
-
 
 # ── MemoryOptionsConfig ─────────────────────────────────────────
 
@@ -108,20 +80,28 @@ class TestMemoryOptionsConfig:
         c = MemoryOptionsConfig()
         assert c.retention_days is None
         assert c.max_memories_per_agent == 10_000
-        assert c.consolidation_interval is ConsolidationInterval.DAILY
         assert c.shared_knowledge_base is True
 
     def test_custom_values(self) -> None:
         c = MemoryOptionsConfig(
             retention_days=90,
             max_memories_per_agent=5000,
-            consolidation_interval=ConsolidationInterval.WEEKLY,
             shared_knowledge_base=False,
         )
         assert c.retention_days == 90
         assert c.max_memories_per_agent == 5000
-        assert c.consolidation_interval is ConsolidationInterval.WEEKLY
         assert c.shared_knowledge_base is False
+
+    def test_cadence_is_not_duplicated_here(self) -> None:
+        """The scheduler reads ConsolidationConfig.interval.
+
+        A second copy on this model would be an operator-visible knob
+        that changes nothing.
+        """
+        with pytest.raises(ValidationError, match="Extra inputs"):
+            MemoryOptionsConfig(
+                consolidation_interval=ConsolidationInterval.WEEKLY,  # type: ignore[call-arg]
+            )
 
     def test_frozen(self) -> None:
         c = MemoryOptionsConfig()
@@ -147,11 +127,6 @@ class TestMemoryOptionsConfig:
     def test_max_memories_minimum_accepted(self) -> None:
         c = MemoryOptionsConfig(max_memories_per_agent=1)
         assert c.max_memories_per_agent == 1
-
-    def test_consolidation_interval_all_values(self) -> None:
-        for interval in ConsolidationInterval:
-            c = MemoryOptionsConfig(consolidation_interval=interval)
-            assert c.consolidation_interval is interval
 
 
 # ── EmbedderOverrideConfig ──────────────────────────────────────
@@ -227,17 +202,14 @@ class TestEmbedderOverrideConfig:
 class TestCompanyMemoryConfig:
     def test_defaults(self) -> None:
         c = CompanyMemoryConfig()
-        assert c.backend == "mem0"
-        # ``memory.default_level`` is registered with default ``persistent``;
-        # the mirror validator surfaces that value through the Pydantic field.
-        assert c.level is MemoryLevel.PERSISTENT
+        assert c.backend == "sqlvector"
         assert isinstance(c.storage, MemoryStorageConfig)
         assert isinstance(c.options, MemoryOptionsConfig)
         assert isinstance(c.retrieval, MemoryRetrievalConfig)
 
     def test_valid_backend_accepted(self) -> None:
-        c = CompanyMemoryConfig(backend="mem0")
-        assert c.backend == "mem0"
+        c = CompanyMemoryConfig(backend="sqlvector")
+        assert c.backend == "sqlvector"
 
     def test_unknown_backend_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Unknown memory backend"):
@@ -248,15 +220,9 @@ class TestCompanyMemoryConfig:
         with pytest.raises(ValidationError):
             c.backend = "other"  # type: ignore[misc]
 
-    def test_all_memory_levels(self) -> None:
-        for level in MemoryLevel:
-            c = CompanyMemoryConfig(level=level)
-            assert c.level is level
-
     def test_custom_nested_config(self) -> None:
         c = CompanyMemoryConfig(
-            backend="mem0",
-            level=MemoryLevel.PERSISTENT,
+            backend="sqlvector",
             storage=MemoryStorageConfig(data_dir="/custom"),
             options=MemoryOptionsConfig(retention_days=30),
         )
@@ -265,8 +231,7 @@ class TestCompanyMemoryConfig:
 
     def test_json_roundtrip(self) -> None:
         c = CompanyMemoryConfig(
-            backend="mem0",
-            level=MemoryLevel.PERSISTENT,
+            backend="sqlvector",
             options=MemoryOptionsConfig(retention_days=60),
         )
         json_str = c.model_dump_json()

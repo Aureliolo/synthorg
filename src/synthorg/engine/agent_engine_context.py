@@ -19,6 +19,7 @@ from synthorg.engine.errors import (
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.task_sync import transition_task_if_needed
+from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
@@ -187,6 +188,7 @@ class AgentEngineContextMixin:
         injected = await self._retrieve_injected_memory_messages(
             agent_id=agent_id,
             task=task,
+            identity=identity,
         )
         for msg in (*injected, *memory_messages):
             ctx = ctx.with_message(msg)
@@ -238,18 +240,22 @@ class AgentEngineContextMixin:
         *,
         agent_id: str,
         task: Task,
+        identity: AgentIdentity,
     ) -> tuple[ChatMessage, ...]:
         """Retrieve memories to inject into context via the wired strategy.
 
         Presence-gated: returns ``()`` when no ``memory_injection_strategy`` is
         wired (the default), so construction sites that do not opt in are
         unaffected.  A CONTEXT strategy returns formatted, marker-wrapped
-        memories keyed on the task title (the task's salient retrieval anchor);
-        a TOOL_BASED strategy returns ``()`` (it surfaces memories via agent
-        tools, not pre-execution context).  ``prepare_messages`` degrades
-        gracefully on retrieval failure; system errors propagate, and any
-        other unexpected error is swallowed so memory enrichment never fails
-        the run.
+        memories; a TOOL_BASED strategy returns ``()`` (it surfaces memories
+        via agent tools, not pre-execution context).  ``prepare_messages``
+        degrades gracefully on retrieval failure; system errors propagate, and
+        any other unexpected error is swallowed so memory enrichment never
+        fails the run.
+
+        The recall query carries the surrounding work context, not the task
+        title alone: the memory that helps is often phrased in the vocabulary
+        of the description, the role or the project rather than of the title.
 
         Returns:
             The memory messages to thread into the agent's context (possibly
@@ -260,14 +266,19 @@ class AgentEngineContextMixin:
         token_budget = await self._resolve_memory_token_budget(
             agent_id=agent_id, task_id=str(task.id)
         )
+        request = MemoryRecallRequest(
+            agent_id=_NB_ADAPTER.validate_python(agent_id),
+            task_title=_NB_ADAPTER.validate_python(task.title),
+            objective=task.description,
+            role=identity.role,
+            department=identity.department,
+            project_id=task.project or None,
+            token_budget=token_budget,
+        )
         try:
             messages: tuple[
                 ChatMessage, ...
-            ] = await self._memory_injection_strategy.prepare_messages(
-                _NB_ADAPTER.validate_python(agent_id),
-                _NB_ADAPTER.validate_python(task.title),
-                token_budget,
-            )
+            ] = await self._memory_injection_strategy.prepare_messages(request)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- best-effort memory hook
             reraise_critical(exc)

@@ -255,8 +255,9 @@ class TestAgentEngineProcedural:
     async def test_no_procedural_memory_when_disabled(self) -> None:
         """No procedural memory when config.enabled is False.
 
-        Verifies the proposer is never constructed (not just that
-        store is not called).
+        The proposer is still constructed, because the switch is
+        re-resolved per capture rather than frozen at engine build; what
+        must not happen is a proposal reaching the backend.
         """
         identity = _make_identity()
         provider = _make_provider()
@@ -272,9 +273,6 @@ class TestAgentEngineProcedural:
             procedural_memory_config=config,
             memory_backend=memory_backend,
         )
-
-        # Proposer should not be constructed when disabled
-        assert engine._procedural_proposer is None
 
         error_result = _make_error_execution_result(identity)
 

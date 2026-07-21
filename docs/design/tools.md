@@ -18,7 +18,7 @@ Agents act on the world through tools. SynthOrg defines a pluggable tool system 
 | **Database** | Query, migrate, admin | Backend devs, DBAs |
 | **Terminal** | Shell commands (sandboxed) | DevOps, senior devs |
 | **Design** | Image generation, mockup tools | Designers |
-| **Communication** | Email / notification dispatcher tools (the Slack notification sink lives here; agent-invocable Slack access is the `chat_*` tools under External Data) | PMs, executives |
+| **Communication** | Email / notification dispatcher tools (the Slack notification sink lives here; agent-invocable Slack access is the `chat_*` tools under External Data) plus `delegate_and_await`, the blocking sub-agent delegation tool that runs a child Task inline and returns its transcript (gated on a wired `SubAgentRunner`) | PMs, executives |
 | **Analytics** | Metrics, dashboards, reporting | Data analysts, CFO |
 | **Deployment** | CI/CD, container management | DevOps, SRE |
 | **Memory** | Search memory, recall by ID | All agents (tool-based strategy) |
@@ -575,7 +575,7 @@ Action types classify agent actions for use by autonomy presets (see [Security &
 SecOps validation, and tiered timeout policies
 ([Decision Log](../architecture/decisions.md) D1).
 
-**Registry:** `StrEnum` for ~41 built-in action types (type safety, autocomplete, typos caught
+**Registry:** `StrEnum` for 43 built-in action types (type safety, autocomplete, typos caught
 by static type checking and config-load-time validation) + `ActionTypeRegistry` for custom
 types via explicit registration. Unknown strings are rejected at config load time; a typo
 in `human_approval` list silently meaning "skip approval" is a critical safety concern.
@@ -584,7 +584,7 @@ in `human_approval` list silently meaning "skip approval" is a critical safety c
 actions in that category (e.g., `auto_approve: ["code"]` expands to all `code:*` actions).
 Fine-grained overrides are supported (e.g., `human_approval: ["code:create"]`).
 
-**Taxonomy (41 leaf types):**
+**Taxonomy (43 leaf types):**
 
 ```text
 code:read, code:write, code:create, code:delete, code:refactor
@@ -594,7 +594,7 @@ vcs:read, vcs:commit, vcs:push, vcs:branch
 deploy:staging, deploy:production
 comms:internal, comms:external
 budget:spend, budget:exceed
-org:hire, org:fire, org:promote
+org:hire, org:fire, org:promote, org:delegate
 db:query, db:mutate, db:admin
 arch:decide
 tool:create
@@ -602,6 +602,7 @@ memory:read
 knowledge:ingest, knowledge:reindex
 browser:navigate, browser:screenshot, browser:diff, browser:accessibility_scan, browser:spec
 external_data:request
+research:run
 desktop:launch, desktop:click, desktop:type, desktop:key, desktop:screenshot, desktop:scroll
 ```
 

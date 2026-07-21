@@ -615,6 +615,13 @@ export const MEMORY_LEVEL_VALUES = [
 ] as const
 export type MemoryLevel = (typeof MEMORY_LEVEL_VALUES)[number]
 
+export const MEMORY_STATE_VALUES = [
+    'durable',
+    'degraded',
+    'off',
+] as const
+export type MemoryState = (typeof MEMORY_STATE_VALUES)[number]
+
 export const MESSAGE_PRIORITY_VALUES = [
     'low',
     'normal',
@@ -690,6 +697,8 @@ export const PLAN_STATUS_VALUES = [
     'draft',
     'pending_review',
     'approved',
+    'executing',
+    'completed',
     'rejected',
     'superseded',
     'failed',

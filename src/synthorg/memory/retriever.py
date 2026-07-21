@@ -6,6 +6,9 @@ budget-fit → format.  Implements ``MemoryInjectionStrategy`` protocol.
 
 import builtins
 from datetime import UTC, datetime
+from typing import Final
+
+from pydantic import TypeAdapter
 
 import synthorg.memory.errors as memory_errors
 from synthorg.core.critical_errors import reraise_critical
@@ -23,8 +26,8 @@ from synthorg.memory.ranking import (
     rank_memories,
 )
 from synthorg.memory.ranking_mmr import apply_diversity_penalty
+from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.memory.retrieval.models import (
-    RetrievalCandidate,
     RetrievalQuery,
 )
 from synthorg.memory.retrieval.protocol import HierarchicalRetriever
@@ -33,19 +36,27 @@ from synthorg.memory.retrieval.reranking.protocol import (
 )
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever_fetch import fetch_memories
+from synthorg.memory.retriever_rerank import apply_query_reranking
 from synthorg.memory.retriever_rrf import execute_rrf_pipeline
 from synthorg.memory.shared import SharedKnowledgeStore
-from synthorg.observability import get_logger
+from synthorg.memory.topic_scope import admissible, scope_terms
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_FILTER_INIT,
     MEMORY_RETRIEVAL_COMPLETE,
     MEMORY_RETRIEVAL_DEGRADED,
     MEMORY_RETRIEVAL_SKIPPED,
     MEMORY_RETRIEVAL_START,
+    MEMORY_TOPIC_SCOPE_APPLIED,
 )
 from synthorg.providers.models import ChatMessage, ToolDefinition
 
 logger = get_logger(__name__)
+
+# The composed query is non-blank whenever the task title is, which the
+# request model already guarantees; the adapter re-narrows the computed
+# str back to the NotBlankStr the pipeline speaks.
+_NB_ADAPTER: Final[TypeAdapter[NotBlankStr]] = TypeAdapter(NotBlankStr)
 
 
 class ContextInjectionStrategy:
@@ -127,11 +138,7 @@ class ContextInjectionStrategy:
 
     async def prepare_messages(
         self,
-        agent_id: NotBlankStr,
-        query_text: NotBlankStr,
-        token_budget: int,
-        *,
-        categories: frozenset[MemoryCategory] | None = None,
+        request: MemoryRecallRequest,
     ) -> tuple[ChatMessage, ...]:
         """Full pipeline: retrieve → rank → budget-fit → format.
 
@@ -140,10 +147,8 @@ class ContextInjectionStrategy:
         Re-raises ``builtins.MemoryError`` and ``RecursionError``.
 
         Args:
-            agent_id: The agent requesting memories.
-            query_text: Text for semantic retrieval.
-            token_budget: Maximum tokens for memory content.
-            categories: Optional category filter.
+            request: The recall context; its composed ``query_text`` is
+                what reaches the backend.
 
         Returns:
             Tuple of ``ChatMessage`` instances (may be empty).
@@ -152,6 +157,8 @@ class ContextInjectionStrategy:
             MemoryError: If the related operation fails.
             RecursionError: If the related operation fails.
         """
+        agent_id = request.agent_id
+        token_budget = request.token_budget
         logger.info(
             MEMORY_RETRIEVAL_START,
             agent_id=agent_id,
@@ -167,12 +174,15 @@ class ContextInjectionStrategy:
             )
             return ()
 
+        query_text = _NB_ADAPTER.validate_python(request.query_text)
         try:
             return await self._execute_pipeline(
                 agent_id=agent_id,
                 query_text=query_text,
                 token_budget=token_budget,
-                categories=categories,
+                categories=request.categories or None,
+                namespaces=request.namespaces,
+                topic_terms=scope_terms(request),
             )
         except builtins.MemoryError, RecursionError:
             logger.error(
@@ -213,16 +223,19 @@ class ContextInjectionStrategy:
                 source="pipeline",
                 agent_id=agent_id,
                 error_type=type(exc).__qualname__,
+                error=safe_error_description(exc),
             )
             return ()
 
-    async def _execute_pipeline(
+    async def _execute_pipeline(  # noqa: PLR0913 -- one query axis per parameter
         self,
         *,
         agent_id: NotBlankStr,
         query_text: NotBlankStr,
         token_budget: int,
         categories: frozenset[MemoryCategory] | None,
+        namespaces: frozenset[NotBlankStr] | None,
+        topic_terms: frozenset[str],
     ) -> tuple[ChatMessage, ...]:
         """Execute the retrieval -> rank -> filter -> diversity -> format pipeline.
 
@@ -242,12 +255,14 @@ class ContextInjectionStrategy:
                 agent_id=agent_id,
                 query_text=query_text,
                 categories=categories,
+                namespaces=namespaces,
             )
         else:
             pool_limit = self._compute_pool_limit()
             query = MemoryQuery(
                 text=query_text,
                 categories=categories,
+                namespaces=namespaces,
                 limit=pool_limit,
             )
             if self._config.fusion_strategy == FusionStrategy.RRF:
@@ -272,10 +287,35 @@ class ContextInjectionStrategy:
             )
             return ()
 
+        # Tag overlap is a lexical test, so it only applies where the
+        # backend has no semantic recall of its own; applying it to
+        # dense hits would discard the synonym matches that arm exists
+        # to find.
+        scoped = admissible(
+            ranked,
+            terms=topic_terms,
+            scope_applies=not self._backend.supports_dense_search,
+        )
+        if len(scoped) != len(ranked):
+            logger.info(
+                MEMORY_TOPIC_SCOPE_APPLIED,
+                agent_id=agent_id,
+                candidates=len(ranked),
+                retained=len(scoped),
+            )
+        ranked = scoped
+        if not ranked:
+            logger.info(
+                MEMORY_RETRIEVAL_SKIPPED,
+                agent_id=agent_id,
+                reason="all out of topic scope",
+            )
+            return ()
+
         # Post-ranking: query-specific re-ranking (opt-in)
         if self._config.query_specific_rerank_enabled and self._reranker is not None:
             try:
-                ranked = await self._apply_reranking(
+                ranked = await apply_query_reranking(
                     reranker=self._reranker,
                     query_text=query_text,
                     agent_id=agent_id,
@@ -324,6 +364,7 @@ class ContextInjectionStrategy:
         agent_id: NotBlankStr,
         query_text: NotBlankStr,
         categories: frozenset[MemoryCategory] | None,
+        namespaces: frozenset[NotBlankStr] | None,
     ) -> tuple[ScoredMemory, ...]:
         """Delegate to hierarchical retriever and convert results.
 
@@ -333,6 +374,9 @@ class ContextInjectionStrategy:
             agent_id: Owning agent for the retrieval query.
             query_text: The query string.
             categories: Optional category filter.
+            namespaces: Optional namespace scope, threaded through so the
+                hierarchical workers apply the same project isolation as
+                the flat path rather than reading across projects.
 
         Returns:
             Tuple of ``ScoredMemory``.
@@ -341,6 +385,7 @@ class ContextInjectionStrategy:
             text=query_text,
             agent_id=agent_id,
             categories=categories,
+            namespaces=namespaces,
             max_results=self._config.max_memories,
         )
         result = await retriever.retrieve(query)
@@ -353,50 +398,6 @@ class ContextInjectionStrategy:
                 is_shared=c.is_shared,
             )
             for c in result.candidates
-        )
-
-    async def _apply_reranking(
-        self,
-        *,
-        reranker: QuerySpecificReranker,
-        query_text: NotBlankStr,
-        agent_id: NotBlankStr,
-        ranked: tuple[ScoredMemory, ...],
-    ) -> tuple[ScoredMemory, ...]:
-        """Apply query-specific re-ranking to scored memories.
-
-        Args:
-            reranker: The wired re-ranker, narrowed non-``None`` by the
-                caller's config + presence guard.
-            query_text: The query string.
-            agent_id: Owning agent for the retrieval query.
-            ranked: Pre-rerank scored memories.
-
-        Returns:
-            Tuple of ``ScoredMemory``.
-        """
-        query = RetrievalQuery(text=query_text, agent_id=agent_id)
-        candidates = tuple(
-            RetrievalCandidate(
-                entry=s.entry,
-                relevance_score=s.relevance_score,
-                recency_score=s.recency_score,
-                combined_score=s.combined_score,
-                source_worker="flat",
-                is_shared=s.is_shared,
-            )
-            for s in ranked
-        )
-        reranked = await reranker.rerank(query, candidates)
-        return tuple(
-            ScoredMemory(
-                entry=c.entry,
-                relevance_score=c.relevance_score,
-                recency_score=c.recency_score,
-                combined_score=c.combined_score,
-                is_shared=c.is_shared,
-            )
-            for c in reranked
         )
 
     def _compute_pool_limit(self) -> int:

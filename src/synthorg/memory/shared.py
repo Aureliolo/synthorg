@@ -69,6 +69,11 @@ class SharedKnowledgeStore(Protocol):
     ) -> bool:
         """Remove a memory from the shared knowledge store.
 
+        An implementation backed by an append-only log has nothing to
+        remove and raises ``FeatureNotImplementedError`` rather than
+        reporting a deletion that did not happen; on such a store a
+        belief is withdrawn by superseding it, not by erasing it.
+
         Args:
             agent_id: Retracting agent identifier.
             memory_id: Shared memory identifier.
@@ -78,5 +83,7 @@ class SharedKnowledgeStore(Protocol):
 
         Raises:
             MemoryStoreError: If the retraction operation fails.
+            FeatureNotImplementedError: If the backing store is
+                append-only and cannot retract.
         """
         ...

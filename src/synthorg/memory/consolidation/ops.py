@@ -101,6 +101,10 @@ class ConcatenationOp(_PlainPrepareMixin):
         store_request = MemoryStoreRequest(
             category=group.category,
             content=summary,
+            # The group is namespace-homogeneous (the selector keys on
+            # namespace), so the summary inherits it and stays inside the
+            # project whose memories it consolidates.
+            namespace=group.kept.namespace,
             metadata=MemoryMetadata(
                 source="consolidation",
                 tags=("consolidated",),
@@ -223,6 +227,7 @@ class DensityRoutingOp(_PlainPrepareMixin):
         store_request = MemoryStoreRequest(
             category=group.category,
             content=content,
+            namespace=group.kept.namespace,
             metadata=MemoryMetadata(
                 source="consolidation",
                 tags=("consolidated", f"mode:{group_mode.value}"),
@@ -330,6 +335,7 @@ class SingleModeOp(_PlainPrepareMixin):
         store_request = MemoryStoreRequest(
             category=group.category,
             content=content,
+            namespace=group.kept.namespace,
             metadata=MemoryMetadata(
                 source="consolidation",
                 tags=("consolidated", f"mode:{self._mode.value}"),

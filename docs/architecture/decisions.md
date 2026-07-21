@@ -8,19 +8,20 @@ All significant design and architecture decisions in force today, organised by d
 
 ## Memory Layer
 
-**Decision:** Mem0 as initial memory backend behind pluggable `MemoryBackend` protocol. Custom stack (Neo4j + Qdrant external) as planned future upgrade.
+**Decision:** Store agent memory in the operational database behind the pluggable `MemoryBackend` protocol: pgvector on Postgres, sqlite-vec on SQLite, with a shared inverted-index table for BM25.
 
-**Context:** 16+ agent memory solutions evaluated. After gate checks (local-first, license, Docker, Python 3.14+, per-agent isolation), three candidates passed: Mem0, Graphiti, and Custom Stack. <!-- lint-allow: doc-numeric-macros -- frozen historical evaluation count, not a build-time stat -->
+**Context:** Memory is the substrate the general loop compounds on, so it must be durable, retrievable by meaning, and operable without a second stateful service. Candidates were scored on licence cleanliness (no AGPL/GPL), whether they add a service to run, hybrid retrieval, whether they impose LLM calls on the write path, and Python 3.14 support.
 
-| Candidate | Score | Why chosen / rejected |
-|-----------|-------|----------------------|
-| **Mem0** (chosen) | 70/100 | Production-ready (v1.0+). In-process deployment (Qdrant embedded + SQLite). Python 3.14 compatible (`>=3.9,<4.0`). Async client available. Low adapter overhead (~500-1k lines). Known gap: flat fact model doesn't natively map to 5-type memory taxonomy (acceptable for initial backend) |
-| Custom Stack | 80/100 | Best architectural fit but ~6-8k lines of custom code before any memory works. Deferred to future phase; build after Mem0 proves the protocol shape |
-| Graphiti | 66/100 | Best temporal knowledge graph, but pre-1.0 stability (v0.28), extreme LLM ingestion costs (1000+ API calls per 10k chars), only covers 2-3 of 5 memory types |
+| Candidate | Why chosen / rejected |
+|-----------|----------------------|
+| **pgvector + sqlite-vec** (chosen) | The only option meeting every constraint. Licence-clean (PostgreSQL Licence, MIT). No new service: vectors live in the two databases already operated, backed up, and migrated. Tag filtering, expiry, and agent scoping are plain SQL rather than client-side workarounds. No LLM on the write path. Accepted limitation: sqlite-vec has no ANN index (brute-force KNN), so the SQLite path degrades past roughly 100k vectors while Postgres scales |
+| Mem0 + embedded Qdrant | Its value is the LLM extraction and consolidation pipeline, which paraphrases stored content and so cannot be used here: the same store holds brain entries with citations and knowledge chunks with provenance. Without that pipeline it is a thin client over an embedded Qdrant running in a mode its own maintainers document as development-only (~20k points), against one company-wide collection |
+| LanceDB | Strong embedded hybrid search and Apache 2.0, but introduces a third storage technology and file format outside the SQLite/Postgres model, requiring a carve-out from the persistence-boundary rule |
+| Graphiti / Zep | Best temporal-graph capability of any candidate, but no licence-clean self-hosted graph backend exists: Neo4j CE is GPLv3, FalkorDB is SSPL, Kuzu is deprecated, Neptune is cloud-only |
+| Chroma | Fails to install on Python 3.14 (open upstream issue) |
+| Letta | An agent framework rather than a memory library; adopting it would mean running a second orchestration system |
 
-**Eliminated:** Letta (Python `<3.14`), Cognee (Python `<3.14`), memU (AGPL-3.0), Supermemory (hosted API only), Graphlit (cloud-only). Both Letta and Cognee are on the watch list for when they add Python 3.14 support.
-
-**Architecture:** Mem0 runs in-process inside the synthorg-backend Docker container. Qdrant embedded for vectors, SQLite for history, both persisting to mounted volumes. Graph memory (Neo4j) is optional, enabled via config. All behind the `MemoryBackend` protocol; swap backends via config without code changes.
+**Architecture:** One `SqlVectorBackend` serves both engines, differing only in the injected repository, so the two cannot drift behaviourally. Retrieval fuses dense and BM25 arms by Reciprocal Rank Fusion. All raw SQL stays inside `persistence/`; ranking stays in `memory/`. Backends remain swappable via config without code changes.
 
 ## Security & Trust
 
@@ -93,13 +94,13 @@ All significant design and architecture decisions in force today, organised by d
 | MTEB | General passage retrieval | MTEB performance does not transfer to memory retrieval (Pearson: -0.115). Optimising for MTEB may actively harm memory retrieval quality |
 | Manual evaluation | Custom retrieval benchmarks | Too expensive to maintain. LMEB provides a standardised, reproducible alternative |
 
-**Model selection:** Three deployment tiers recommended based on LMEB scores. See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full analysis. Domain-specific fine-tuning (+10-27% improvement) configured via `EmbeddingFineTuneConfig`; when enabled, the Mem0 adapter uses the checkpoint path as the model identifier. The five-stage offline pipeline (synthetic data generation, hard-negative mining, contrastive training, evaluation, deploy) is functional via `synthorg.memory.embedding.fine_tune`; orchestration ships in `synthorg.memory.embedding.fine_tune_orchestrator` and the admin endpoint `POST /admin/memory/fine-tune` drives it from the dashboard.
+**Model selection:** Three deployment tiers recommended based on LMEB scores. See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full analysis. Domain-specific fine-tuning (+10-27% improvement) configured via `EmbeddingFineTuneConfig`; when enabled, the checkpoint path becomes the resolved model identifier. The five-stage offline pipeline (synthetic data generation, hard-negative mining, contrastive training, evaluation, deploy) is functional via `synthorg.memory.embedding.fine_tune`; orchestration ships in `synthorg.memory.embedding.fine_tune_orchestrator` and the admin endpoint `POST /admin/memory/fine-tune` drives it from the dashboard.
 
 ## Memory Architecture Evolution
 
 | ID | Decision | Rationale | Alternatives considered |
 |----|----------|-----------|------------------------|
-| D25 | Defer GraphRAG and Temporal KG; stay on Mem0 + Qdrant vector retrieval | GraphRAG adds entity extraction (LLM pass per document) + graph DB layer at 2-3x infrastructure cost and 200-400 ms vs 50-150 ms query latency. Current per-agent episodic/semantic memory use cases do not require multi-hop entity traversal. `MemoryBackend` protocol enables a drop-in `GraphRAGMemoryBackend` upgrade in Phase 2 without changing application code | Full GraphRAG migration (high cost, unclear benefit at current scale), Graphiti (pre-1.0 stability at evaluation time; see Memory Layer decision), Custom Stack (deferred, too early) |
+| D25 | Defer GraphRAG and Temporal KG; stay on hybrid vector + BM25 retrieval | GraphRAG adds entity extraction (LLM pass per document) + graph DB layer at 2-3x infrastructure cost and 200-400 ms vs 50-150 ms query latency. Current per-agent episodic/semantic memory use cases do not require multi-hop entity traversal. Independently blocking: no licence-clean self-hosted graph backend exists (Neo4j CE is GPLv3, FalkorDB is SSPL, Kuzu is deprecated), so adopting one would breach the Licence Compatibility rule. The `MemoryBackend` protocol keeps a `GraphRAGMemoryBackend` a drop-in change if that ever resolves | Full GraphRAG migration (high cost, unclear benefit at current scale, no licence-clean backend), Graphiti (pre-1.0 stability at evaluation time; see Memory Layer decision) |
 | D26 | Adopt append-only writes + MVCC-style snapshot reads for `SharedKnowledgeStore`; personal memories stay sequential | Append-only provides audit trail ("what was the state before date X?"), rollback, and safe concurrent writes. MVCC snapshot reads are consistent with no locking overhead. Personal memories have no cross-agent contention so sequential writes are sufficient. Protocol extension (future PR): add `get_operation_log(fact_id)` and `snapshot_at(timestamp)` to `SharedKnowledgeStore` | CRDT (conflict-free but ~20% space overhead and resurfaces deleted facts on node divergence), event sourcing (good audit properties but requires snapshot compaction strategy), pessimistic locking (high contention under load, tail latency spikes) |
 | D27 | RL consolidation not recommended for MVP; revisit at 10k+ agent deployments | Reward function is multi-objective (readability, retrieval accuracy, synthesis fidelity, token cost) and unsolved without ~1000 annotated sessions. Failure mode is data loss: RL model drift silently deletes memories; LLM degrades gracefully. At current scale (50-500 agents) training infra cost exceeds token savings by ~12 months. DPO fine-tuning on LLM preference data is the viable intermediate step if cost becomes a concern <!-- lint-allow: doc-numeric-macros -- illustrative deployment-scale thresholds (10k+, 50-500), not build-time stats --> | Pure RL policy training (reward design is open research problem), behavioural cloning only (low gain over current LLM approach), threshold-based consolidation triggers (no quality improvement, only cost saving) |
 

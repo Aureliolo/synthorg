@@ -123,6 +123,9 @@ from synthorg.persistence.sqlite.mcp_installation_repo import (
 from synthorg.persistence.sqlite.meeting_cooldown_repo import (
     SQLiteMeetingCooldownRepository,
 )
+from synthorg.persistence.sqlite.memory_vector_repo import (
+    SQLiteMemoryVectorRepository,
+)
 from synthorg.persistence.sqlite.message_repo import (
     SQLiteMessageRepository,
 )
@@ -325,6 +328,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._principle_overrides = None
         self._mcp_installations = None
         self._org_facts = None
+        self._memory_vectors = None
         self._ontology_entities = None
         self._ontology_drift = None
         self._lockouts = None
@@ -617,6 +621,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._org_facts = SQLiteOrgFactRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._memory_vectors = SQLiteMemoryVectorRepository(
             self._db,
             write_context=self.write_context,
         )

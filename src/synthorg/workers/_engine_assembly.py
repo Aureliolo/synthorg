@@ -28,6 +28,7 @@ from synthorg.engine.recovery_factory import build_recovery_strategy
 from synthorg.engine.routing_policy import build_stakes_router
 from synthorg.engine.stagnation import create_stagnation_detector
 from synthorg.engine.state import task_engine_of
+from synthorg.hr.state import agent_registry_of
 from synthorg.integrations.state import IntegrationsStateSlice, connection_catalog_of
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import (
@@ -36,7 +37,8 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_APP_STARTUP
-from synthorg.persistence.state import code_execution_records_of
+from synthorg.persistence.memory_protocol import OrgFactRepository
+from synthorg.persistence.state import PersistenceStateSlice, code_execution_records_of
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
@@ -63,6 +65,10 @@ from synthorg.workers._agent_middleware_assembly import (
 )
 from synthorg.workers._classification_assembly import build_classification
 from synthorg.workers._image_provider_wiring import build_image_provider_or_none
+from synthorg.workers._memory_assembly import (
+    build_memory_injection_strategy_or_none,
+    wiki_exporter_or_none,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -161,6 +167,12 @@ async def _build_tool_registry(
         code_execution_records=code_execution_records_of(app_state),
         image_provider=image_provider,
         web_search_provider=search_provider,
+        # Without these three the Knowledge-Architect tool set builds
+        # empty, which is how org memory stayed unreachable from an agent
+        # even though its backend was wired at boot.
+        org_memory_backend=app_state.slice(MemoryStateSlice).org_memory_backend,
+        org_fact_store=_org_fact_store_or_none(app_state),
+        wiki_exporter=wiki_exporter_or_none(app_state),
     )
     tools: list[BaseTool] = [*default_tools, *extra_tools]
     return ToolRegistry(tools), len(tools), sandbox_backends
@@ -402,6 +414,16 @@ def _build_evolution_service_or_none(
     return service
 
 
+def _org_fact_store_or_none(app_state: AppState) -> OrgFactRepository | None:
+    """Resolve the org-fact store, or ``None`` before persistence connects.
+
+    Returns:
+        The repository, or ``None``.
+    """
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    return None if persistence is None else persistence.org_facts
+
+
 def _build_compaction_callback(
     app_state: AppState,
     provider: CompletionProvider,
@@ -487,6 +509,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         provider_registry=registry,
         tool_registry=tool_registry,
         stakes_router=await _build_stakes_router_or_none(app_state),
+        agent_registry=agent_registry_of(app_state),
         cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
         task_engine=task_engine_of(app_state),
         approval_store=require_service(
@@ -512,6 +535,19 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         security_config_provider=lambda: app_state.security_runtime_config.current,
         audit_log=app_state.slice(SecurityStateSlice).audit_log,
         memory_backend=app_state.slice(MemoryStateSlice).backend,
+        memory_injection_strategy=build_memory_injection_strategy_or_none(
+            app_state,
+            provider=provider,
+            cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+        ),
+        # The write side: without these an agent recalls but never
+        # learns, so a second run of the same objective starts from
+        # nothing. The engine re-reads the capture switch per task, so
+        # this is the boot fallback rather than the live value.
+        procedural_memory_config=app_state.config.memory.procedural,
+        distillation_capture_enabled=await config_resolver_of(app_state).get_bool(
+            "memory", "distillation_capture_enabled"
+        ),
         config_resolver=config_resolver_of(app_state),
         event_stream_hub=app_state.slice(CommunicationStateSlice).event_stream_hub,
         interrupt_store=app_state.slice(CommunicationStateSlice).interrupt_store,

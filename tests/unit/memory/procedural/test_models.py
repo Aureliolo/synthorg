@@ -258,6 +258,39 @@ class TestProceduralMemoryConfig:
         with pytest.raises(ValidationError):
             ProceduralMemoryConfig(temperature=-0.1)
 
+    def test_mirrors_the_registered_procedural_settings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Procedural memory was configurable only through company YAML.
+
+        Without these mirrors the registered keys would be a settings page
+        that changes nothing.
+        """
+        monkeypatch.setenv("SYNTHORG_MEMORY_PROCEDURAL_ENABLED", "false")
+        monkeypatch.setenv("SYNTHORG_MEMORY_PROCEDURAL_MIN_CONFIDENCE", "0.8")
+        monkeypatch.setenv("SYNTHORG_MEMORY_PROCEDURAL_TEMPERATURE", "0.9")
+        monkeypatch.setenv("SYNTHORG_MEMORY_PROCEDURAL_MAX_TOKENS", "900")
+        monkeypatch.setenv("SYNTHORG_MEMORY_PROCEDURAL_SKILL_MD_DIRECTORY", "/data/skl")
+
+        config = ProceduralMemoryConfig()
+
+        assert config.enabled is False
+        assert config.min_confidence == pytest.approx(0.8)
+        assert config.temperature == pytest.approx(0.9)
+        assert config.max_tokens == 900
+        assert config.skill_md_directory == "/data/skl"
+
+    def test_explicit_values_beat_the_settings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_MEMORY_PROCEDURAL_MAX_TOKENS", "900")
+
+        assert ProceduralMemoryConfig(max_tokens=1200).max_tokens == 1200
+
+    def test_skill_md_directory_stays_unset_without_an_override(self) -> None:
+        """The ``None`` sentinel means "no SKILL.md materialisation"."""
+        assert ProceduralMemoryConfig().skill_md_directory is None
+
     def test_temperature_above_two_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ProceduralMemoryConfig(temperature=2.1)

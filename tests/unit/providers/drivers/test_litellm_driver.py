@@ -11,8 +11,9 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
-from synthorg.core.completion_enums import FinishReason
+from synthorg.core.completion_enums import FinishReason, ReasoningEffort
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
 from synthorg.providers.enums import (
@@ -66,6 +67,93 @@ def _user_message(
     content: str = "Hello",
 ) -> list[ChatMessage]:
     return [ChatMessage(role=MessageRole.USER, content=content)]
+
+
+def _reasoning_model(*, supports_reasoning: bool) -> ProviderModelConfig:
+    return ProviderModelConfig(
+        id="reasoner-001",
+        cost_per_1k_input=0.003,
+        cost_per_1k_output=0.015,
+        max_context=200_000,
+        metadata=ModelMetadata(supports_reasoning=supports_reasoning),
+    )
+
+
+def _caching_model(*, supports_prompt_caching: bool) -> ProviderModelConfig:
+    return ProviderModelConfig(
+        id="cacher-001",
+        cost_per_1k_input=0.003,
+        cost_per_1k_output=0.015,
+        max_context=200_000,
+        metadata=ModelMetadata(supports_prompt_caching=supports_prompt_caching),
+    )
+
+
+@pytest.mark.unit
+class TestReasoningEffortCapabilityGate:
+    """``reasoning_effort`` is emitted only for a reasoning-capable model."""
+
+    def test_kept_when_model_supports_reasoning(self) -> None:
+        model = _reasoning_model(supports_reasoning=True)
+        driver = _make_driver(config=make_provider_config(models=(model,)))
+        with patch(_PATCH_MODEL_INFO, return_value={}):
+            kwargs = driver._build_kwargs(
+                _user_message(),
+                model,
+                config=CompletionConfig(reasoning_effort=ReasoningEffort.HIGH),
+            )
+        assert kwargs["reasoning_effort"] == "high"
+
+    def test_dropped_when_model_lacks_reasoning(self) -> None:
+        model = _reasoning_model(supports_reasoning=False)
+        driver = _make_driver(config=make_provider_config(models=(model,)))
+        with patch(_PATCH_MODEL_INFO, return_value={}):
+            kwargs = driver._build_kwargs(
+                _user_message(),
+                model,
+                config=CompletionConfig(reasoning_effort=ReasoningEffort.HIGH),
+            )
+        assert "reasoning_effort" not in kwargs
+
+
+@pytest.mark.unit
+class TestPromptCachingCapabilityGate:
+    """cache_control is placed only for a caching-capable model."""
+
+    def test_applied_when_model_supports_caching(self) -> None:
+        model = _caching_model(supports_prompt_caching=True)
+        driver = _make_driver(config=make_provider_config(models=(model,)))
+        with patch(_PATCH_MODEL_INFO, return_value={}):
+            kwargs = driver._build_kwargs(
+                _user_message(),
+                model,
+                config=CompletionConfig(prompt_caching=True),
+            )
+        content = kwargs["messages"][-1]["content"]
+        assert isinstance(content, list)
+        assert content[-1]["cache_control"] == {"type": "ephemeral"}
+
+    def test_untouched_when_model_lacks_caching(self) -> None:
+        model = _caching_model(supports_prompt_caching=False)
+        driver = _make_driver(config=make_provider_config(models=(model,)))
+        with patch(_PATCH_MODEL_INFO, return_value={}):
+            kwargs = driver._build_kwargs(
+                _user_message(),
+                model,
+                config=CompletionConfig(prompt_caching=True),
+            )
+        assert kwargs["messages"][-1]["content"] == "Hello"
+
+    def test_untouched_when_caching_disabled(self) -> None:
+        model = _caching_model(supports_prompt_caching=True)
+        driver = _make_driver(config=make_provider_config(models=(model,)))
+        with patch(_PATCH_MODEL_INFO, return_value={}):
+            kwargs = driver._build_kwargs(
+                _user_message(),
+                model,
+                config=CompletionConfig(prompt_caching=False),
+            )
+        assert kwargs["messages"][-1]["content"] == "Hello"
 
 
 async def _collect_stream(
@@ -281,6 +369,9 @@ class TestDoStream:
         assert content_chunks[0].content == "Hello"
         assert content_chunks[1].content == " world"
         assert collected[-1].event_type == StreamEventType.DONE
+        # The terminal DONE chunk carries the faithful finish reason so a
+        # consumer reassembling the stream recovers it.
+        assert collected[-1].finish_reason is FinishReason.STOP
 
     async def test_streaming_with_tool_calls(self) -> None:
         driver = _make_driver()

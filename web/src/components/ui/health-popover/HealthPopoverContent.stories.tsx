@@ -8,6 +8,8 @@ const okStates: DerivedSubsystemStates = {
   wsState: 'ok',
   persistenceState: 'ok',
   busState: 'ok',
+  memoryState: 'ok',
+  memoryDetail: 'sqlvector',
   overallState: 'ok',
   wsDetail: undefined,
 }
@@ -17,6 +19,8 @@ const degradedStates: DerivedSubsystemStates = {
   wsState: 'degraded',
   persistenceState: 'ok',
   busState: 'down',
+  memoryState: 'degraded',
+  memoryDetail: 'Ephemeral keyword backend; recall is lost on restart.',
   overallState: 'down',
   wsDetail: 'auto-reconnecting',
 }
@@ -26,6 +30,8 @@ const loadingStates: DerivedSubsystemStates = {
   wsState: 'loading',
   persistenceState: 'loading',
   busState: 'loading',
+  memoryState: 'loading',
+  memoryDetail: undefined,
   overallState: 'loading',
   wsDetail: undefined,
 }
@@ -67,6 +73,7 @@ const OK_PAYLOAD = {
   message_bus: true,
   providers: true,
   telemetry: 'disabled' as const,
+  memory: { state: 'durable' as const, backend: 'sqlvector', detail: null },
   version: '0.6.4',
   uptime_seconds: 847_200,
 }

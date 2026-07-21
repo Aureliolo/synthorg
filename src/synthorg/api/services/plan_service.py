@@ -11,6 +11,13 @@ another.
 
 from pydantic import ValidationError as PydanticValidationError
 
+from synthorg.api.services._plan_revision import (
+    build_successor,
+    describe_validation_error,
+    extended_history,
+    require_replannable,
+    require_reworkable,
+)
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
@@ -20,13 +27,11 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
-from synthorg.core.plan import (
-    MAX_PLAN_VERSION_HISTORY,
-    Plan,
-    PlanItem,
-    PlanVersionSnapshot,
+from synthorg.core.plan import Plan, PlanItem
+from synthorg.core.plan_enums import (
+    PlanStatus,
 )
-from synthorg.core.plan_enums import REWORKABLE_STATUSES, PlanStatus
+from synthorg.core.plan_transitions import validate_transition
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -37,6 +42,7 @@ from synthorg.observability.events.api import (
     API_PLAN_LIST_FAILED,
     API_PLAN_LISTED,
     API_PLAN_STATUS_TRANSITIONED,
+    API_PLAN_SUCCESSOR_OPENED,
     API_PLAN_TRANSITION_REJECTED,
     API_PLAN_UPDATE_FAILED,
     API_PLAN_UPDATED,
@@ -44,21 +50,6 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.plan_protocol import PlanFilterSpec, PlanRepository
 
 logger = get_logger(__name__)
-
-
-def _snapshot(plan: Plan) -> PlanVersionSnapshot:
-    """Freeze a plan's current items as a diffable version snapshot.
-
-    Returns:
-        A :class:`PlanVersionSnapshot` capturing *plan*'s version, items, and
-        classified structure at its current ``updated_at``.
-    """
-    return PlanVersionSnapshot(
-        version=plan.version,
-        items=plan.items,
-        task_structure=plan.task_structure,
-        captured_at=plan.updated_at,
-    )
 
 
 class PlanService:
@@ -169,12 +160,10 @@ class PlanService:
             RecordNotFoundError: The plan disappeared between fetch and write.
             QueryError: Repository write failure (logged before propagating).
         """
-        self._require_reworkable(existing)
+        require_reworkable(existing)
         # Snapshot the pre-edit version so a reviewer can diff the rework against
         # what the panel saw, capped so the JSON column cannot grow unbounded.
-        history = (*existing.version_history, _snapshot(existing))[
-            -MAX_PLAN_VERSION_HISTORY:
-        ]
+        history = extended_history(existing)
         try:
             revised = Plan(
                 id=existing.id,
@@ -208,11 +197,7 @@ class PlanService:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            detail = "; ".join(
-                f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}"
-                for e in exc.errors()
-            )
-            msg = f"Revised plan is invalid: {detail}"
+            msg = f"Revised plan is invalid: {describe_validation_error(exc)}"
             raise ValidationError(msg) from exc
         await self._persist_update(
             revised,
@@ -249,7 +234,7 @@ class PlanService:
             RecordNotFoundError: The plan disappeared between fetch and write.
             QueryError: Repository write failure (logged before propagating).
         """
-        self._require_reworkable(existing)
+        require_reworkable(existing)
         drafted = existing.model_copy(
             update={
                 "status": PlanStatus.DRAFT,
@@ -293,10 +278,12 @@ class PlanService:
             The persisted, decided plan.
 
         Raises:
+            ConflictError: The transition is not legal for the plan lifecycle.
             VersionConflictError: A concurrent write bumped the version first.
             RecordNotFoundError: The plan disappeared between fetch and write.
             QueryError: Repository write failure (logged before propagating).
         """
+        self._require_legal_transition(existing, status)
         decided = existing.model_copy(
             update={
                 "status": status,
@@ -314,26 +301,108 @@ class PlanService:
         )
         return decided
 
-    def _require_reworkable(self, plan: Plan) -> None:
-        """Reject an operator rework of a terminal (already-decided) plan.
+    def _require_legal_transition(self, plan: Plan, target: PlanStatus) -> None:
+        """Reject a status write the plan lifecycle does not allow.
+
+        Every plan status write funnels through :meth:`sync_status`, so
+        validating here means an illegal hop (completing a plan that never
+        executed, reopening a terminal one) cannot be persisted from any
+        caller.
 
         Raises:
-            ConflictError: ``plan.status`` is terminal (APPROVED / REJECTED /
-                SUPERSEDED), so it can no longer be reworked.
+            ConflictError: The transition is not in the plan state machine.
         """
-        if plan.status in REWORKABLE_STATUSES:
+        if plan.status == target:
             return
-        logger.warning(
-            API_PLAN_TRANSITION_REJECTED,
-            plan_id=str(plan.id),
-            status=plan.status.value,
-            reason="terminal_plan_not_reworkable",
+        try:
+            validate_transition(plan.status, target)
+        except ValueError as exc:
+            logger.warning(
+                API_PLAN_TRANSITION_REJECTED,
+                plan_id=str(plan.id),
+                status=plan.status.value,
+                target=target.value,
+                reason="illegal_transition",
+            )
+            msg = (
+                f"Plan {plan.id} cannot move from {plan.status.value} to {target.value}"
+            )
+            raise ConflictError(msg) from exc
+
+    async def open_successor(
+        self,
+        existing: Plan,
+        *,
+        items: tuple[PlanItem, ...],
+        task_structure: TaskStructure | None = None,
+        coordination_topology: CoordinationTopology | None = None,
+    ) -> Plan:
+        """Create the revision that replaces a dispatched plan.
+
+        A dispatched plan cannot be edited in place: its items are already
+        building, so a revision is a new plan entity that supersedes it rather
+        than a version bump. The successor carries the retired plan's objective
+        and framing forward and re-enters review, because its items have not
+        been approved.
+
+        The caller retires *existing* and repoints the project; this method
+        only builds and persists the successor.
+
+        Args:
+            existing: The dispatched plan being replaced.
+            items: The revised domain items.
+            task_structure: Optional override of the classified structure.
+            coordination_topology: Optional override of the topology.
+
+        Returns:
+            The persisted successor, awaiting review.
+
+        Raises:
+            ConflictError: *existing* is not a dispatched plan, so it should be
+                edited in place rather than replanned.
+            ValidationError: The revised items violate a plan invariant.
+            QueryError: Repository write failure (logged before propagating).
+        """
+        require_replannable(existing)
+        try:
+            successor = build_successor(
+                existing,
+                items=items,
+                task_structure=task_structure,
+                coordination_topology=coordination_topology,
+                now=self._clock.now(),
+            )
+        except PydanticValidationError as exc:
+            logger.warning(
+                API_PLAN_UPDATE_FAILED,
+                plan_id=str(existing.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"Successor plan is invalid: {describe_validation_error(exc)}"
+            raise ValidationError(msg) from exc
+        try:
+            await self._repo.save(successor)
+        except Exception as exc:
+            reraise_critical(exc)
+            # The caller has already retired the current revision, so a lost
+            # successor leaves the initiative with no live plan. Log before
+            # propagating or that state is undiagnosable.
+            logger.warning(
+                API_PLAN_UPDATE_FAILED,
+                plan_id=str(successor.id),
+                supersedes=str(existing.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        logger.info(
+            API_PLAN_SUCCESSOR_OPENED,
+            plan_id=str(successor.id),
+            supersedes=str(existing.id),
+            item_count=len(successor.items),
         )
-        msg = (
-            f"Plan {plan.id} is {plan.status.value} and can no longer be "
-            "reworked (a decision has already been recorded)"
-        )
-        raise ConflictError(msg)
+        return successor
 
     def _log_transition(
         self,
