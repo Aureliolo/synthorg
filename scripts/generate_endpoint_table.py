@@ -87,6 +87,7 @@ TAG_TO_SECTION: Final[dict[str, str]] = {
     # Operations and platform
     "health": "Operations and platform",
     "providers": "Operations and platform",
+    "Gateway": "Operations and platform",
     "budget": "Operations and platform",
     "analytics": "Operations and platform",
     "metrics": "Operations and platform",
@@ -164,6 +165,7 @@ TAG_DISPLAY: Final[dict[str, str]] = {
     "setup": "Setup",
     "health": "Health",
     "providers": "Providers",
+    "Gateway": "Gateway",
     "budget": "Budget",
     "analytics": "Analytics",
     "metrics": "Metrics",
@@ -209,6 +211,7 @@ TAG_BASE_PATH_FALLBACK: Final[dict[str, str]] = {
     "health": "/healthz, /readyz",
     "coordination": "/coordination/metrics, /tasks/{task_id}/coordinate",
     "Integrations": "/integrations, /connections, /oauth, /webhooks",
+    "Gateway": "/gateway/v1/chat/completions, /mcp-gateway/mcp",
 }
 
 API_PREFIX: Final[str] = "/api/v1"
