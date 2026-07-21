@@ -1,5 +1,7 @@
 """Tests for EditFileTool."""
 
+import os
+import stat
 from typing import TYPE_CHECKING
 
 import pytest
@@ -502,6 +504,32 @@ class TestEditFileExecution:
         assert "VIOL_A" not in result.content
         # The file is left untouched because the edit was rejected.
         assert "VIOL_B" not in (workspace / "mixed.py").read_text(encoding="utf-8")
+
+    @pytest.mark.skipif(
+        os.name != "posix",
+        reason="POSIX permission bits; chmod does not carry exec bits on Windows.",
+    )
+    async def test_edit_preserves_file_permissions(
+        self, workspace: Path, edit_tool: EditFileTool
+    ) -> None:
+        """The atomic write keeps the target's mode, not the temp file's 0600.
+
+        ``mkstemp`` creates an owner-only temp file; without copying the
+        target's bits onto it, editing a 0o755 script would silently narrow it
+        to 0o600 and break execution.
+        """
+        target = workspace / "script.sh"
+        target.write_text("echo old\n", encoding="utf-8")
+        target.chmod(0o755)
+        result = await edit_tool.execute(
+            arguments={
+                "path": "script.sh",
+                "old_text": "echo old",
+                "new_text": "echo new",
+            }
+        )
+        assert not result.is_error
+        assert stat.S_IMODE(target.stat().st_mode) == 0o755
 
     async def test_edit_adding_duplicate_of_existing_violation_is_blocked(
         self,
