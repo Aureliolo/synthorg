@@ -129,6 +129,24 @@ class TestEditFileArgs:
         with pytest.raises(ValidationError):
             EditFileArgs(path="x.py")
 
+    def test_batch_with_stray_new_text_rejected(self) -> None:
+        """A stray new_text alongside edits is rejected, never silently dropped."""
+        with pytest.raises(ValidationError):
+            EditFileArgs(
+                path="x.py",
+                new_text="ignored",
+                edits=({"old_text": "a", "new_text": "b"},),  # type: ignore[arg-type]
+            )
+
+    def test_batch_with_stray_replace_all_rejected(self) -> None:
+        """A stray replace_all alongside edits is rejected, never silently dropped."""
+        with pytest.raises(ValidationError):
+            EditFileArgs(
+                path="x.py",
+                replace_all=True,
+                edits=({"old_text": "a", "new_text": "b"},),  # type: ignore[arg-type]
+            )
+
     def test_old_text_without_new_text_rejected(self) -> None:
         with pytest.raises(ValidationError):
             EditFileArgs(path="x.py", old_text="foo")

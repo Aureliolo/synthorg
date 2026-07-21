@@ -156,11 +156,14 @@ def registry_with_delegate_tool(  # noqa: PLR0913 -- run-scoped wiring inputs
         the runner, resolver, task id, and project scope are all present;
         otherwise the original registry unchanged.
     """
+    # Blank task / project ids are treated like a missing id: the tool binds
+    # them into a NotBlankStr-typed SubAgentDelegationSpec, so registering it
+    # with a whitespace-only scope would only fail later at execute time.
     if (
         runner is None
         or config_resolver is None
-        or task_id is None
-        or project_id is None
+        or not (task_id and task_id.strip())
+        or not (project_id and project_id.strip())
     ):
         return tool_registry
 

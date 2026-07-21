@@ -174,9 +174,11 @@ The framework uses **LiteLLM** as the provider abstraction layer:
 
 ### Completion controls (reasoning, caching, streaming)
 
-`CompletionConfig` carries three model-behaviour dials the driver maps onto the
-LiteLLM call, each gated on a capability so a model that does not support the
-feature is left untouched:
+Three model-behaviour controls tune the LiteLLM call, each gated on a capability
+so a model that does not support the feature is left untouched. Two are
+`CompletionConfig` fields the driver maps onto the call (`reasoning_effort` and
+the `prompt_caching` flag); streaming is a loop-level behaviour driven by a
+setting plus the model's streaming capability, not a `CompletionConfig` field:
 
 - **`reasoning_effort`** (`ReasoningEffort` enum: `minimal` / `low` / `medium` /
   `high`): mapped 1:1 to LiteLLM's `reasoning_effort` kwarg, emitted only when the

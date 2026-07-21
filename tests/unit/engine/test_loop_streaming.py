@@ -138,7 +138,7 @@ class TestStreamProviderReassembly:
     ) -> None:
         result = await _stream(
             sample_agent_context,
-            [_content("Hel"), _content("lo"), _usage_chunk(), _done(FinishReason.STOP)],
+            [_content("He"), _content("llo"), _usage_chunk(), _done(FinishReason.STOP)],
         )
         assert isinstance(result, CompletionResponse)
         assert result.content == "Hello"

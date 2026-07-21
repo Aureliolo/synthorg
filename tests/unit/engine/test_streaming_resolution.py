@@ -8,7 +8,6 @@ faults. These branches drive whether a run streams at all, so each is pinned.
 """
 
 from datetime import date
-from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock
 
@@ -74,30 +73,27 @@ def _provider(
     )
 
 
-def _fake_self(config_resolver: object | None) -> object:
-    # Only ``_config_resolver`` is read by the method under test; a namespace
-    # stand-in avoids constructing the full engine.
-    return SimpleNamespace(_config_resolver=config_resolver)
+class _StreamingEngine(AgentEngineRunMixin):
+    """Minimal mixin instance carrying only the resolver the method reads."""
+
+    def __init__(self, config_resolver: ConfigResolver | None) -> None:
+        self._config_resolver = config_resolver
 
 
-async def _resolve(fake_self: object, provider: CompletionProvider) -> bool:
-    # Called unbound via the class so the namespace stand-in acts as ``self``.
-    return await AgentEngineRunMixin._resolve_streaming_enabled(
-        cast(AgentEngineRunMixin, fake_self),
-        provider,
-        _identity(),
-        task_id="task-1",
+async def _resolve(engine: _StreamingEngine, provider: CompletionProvider) -> bool:
+    return await engine._resolve_streaming_enabled(
+        provider, _identity(), task_id="task-1"
     )
 
 
 class TestResolveStreamingEnabled:
     async def test_streams_when_resolver_absent_and_model_supports(self) -> None:
         provider = _provider(supports_streaming=True)
-        assert await _resolve(_fake_self(None), provider) is True
+        assert await _resolve(_StreamingEngine(None), provider) is True
 
     async def test_no_stream_when_model_lacks_support(self) -> None:
         provider = _provider(supports_streaming=False)
-        assert await _resolve(_fake_self(None), provider) is False
+        assert await _resolve(_StreamingEngine(None), provider) is False
 
     async def test_no_stream_when_setting_disabled(
         self, monkeypatch: pytest.MonkeyPatch
@@ -109,7 +105,7 @@ class TestResolveStreamingEnabled:
         provider = _provider(supports_streaming=True)
         resolver = cast(ConfigResolver, object())
 
-        assert await _resolve(_fake_self(resolver), provider) is False
+        assert await _resolve(_StreamingEngine(resolver), provider) is False
         # Short-circuits before the capability lookup when the setting is off.
         cast(AsyncMock, provider.get_model_capabilities).assert_not_awaited()
 
@@ -123,8 +119,8 @@ class TestResolveStreamingEnabled:
         provider = _provider(supports_streaming=True)
         resolver = cast(ConfigResolver, object())
 
-        assert await _resolve(_fake_self(resolver), provider) is True
+        assert await _resolve(_StreamingEngine(resolver), provider) is True
 
     async def test_fails_safe_when_capability_lookup_raises(self) -> None:
         provider = _provider(raises=ConnectionError("model info unreachable"))
-        assert await _resolve(_fake_self(None), provider) is False
+        assert await _resolve(_StreamingEngine(None), provider) is False

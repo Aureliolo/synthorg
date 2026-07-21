@@ -167,8 +167,9 @@ class EditFileArgs(BaseModel):
             The validated instance (Pydantic ``model_validator`` contract).
 
         Raises:
-            ValueError: If both modes are supplied, neither is supplied, or
-                single-edit mode omits ``new_text``.
+            ValueError: If both modes are supplied, neither is supplied,
+                single-edit mode omits ``new_text``, or batch mode carries a
+                stray single-edit field.
         """
         single = self.old_text is not None
         batch = bool(self.edits)
@@ -180,6 +181,12 @@ class EditFileArgs(BaseModel):
             raise ValueError(msg)
         if single and self.new_text is None:
             msg = "new_text is required when old_text is set"
+            raise ValueError(msg)
+        # Reject a stray single-edit field alongside ``edits`` so a caller
+        # never has ``new_text`` / ``replace_all`` silently dropped in batch
+        # mode (``old_text`` is already covered by the both-modes check above).
+        if batch and (self.new_text is not None or self.replace_all):
+            msg = "new_text/replace_all are single-edit fields; omit them with edits"
             raise ValueError(msg)
         return self
 

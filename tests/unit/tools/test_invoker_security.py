@@ -607,9 +607,6 @@ class TestSecurityContextConstruction:
         assert pre_ctx.task_id == scan_ctx.task_id
 
 
-# ── Non-recoverable errors from scan propagate ────────────
-
-
 @pytest.mark.unit
 class TestOutputScanNonRecoverableErrors:
     """MemoryError/RecursionError from scan_output propagate."""
@@ -641,9 +638,6 @@ class TestOutputScanNonRecoverableErrors:
             await invoker.invoke(tool_call)
 
 
-# ── Tool execution error skips output scan ────────────────
-
-
 @pytest.mark.unit
 class TestOutputScanSkippedOnToolError:
     """When tool.execute() raises, scan_output is not called."""
@@ -663,9 +657,6 @@ class TestOutputScanSkippedOnToolError:
 
         assert result.is_error is True
         interceptor.scan_output.assert_not_awaited()
-
-
-# ── scan_output receives tool result content ──────────────
 
 
 @pytest.mark.unit
@@ -690,9 +681,6 @@ class TestOutputScanContentPassing:
         # Second positional arg to scan_output is the output string.
         scan_call_args = interceptor.scan_output.call_args[0]
         assert scan_call_args[1] == "executed: ls"
-
-
-# ── invoke_all output scanning ────────────────────────────
 
 
 @pytest.mark.unit
@@ -748,9 +736,6 @@ class TestInvokeAllOutputScanning:
 
         assert all(r.content == "[REDACTED]" for r in results)
         assert all(r.is_error is False for r in results)
-
-
-# ── Soft error content is scanned ─────────────────────────
 
 
 @pytest.mark.unit

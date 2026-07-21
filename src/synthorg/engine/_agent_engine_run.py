@@ -94,6 +94,30 @@ class AgentEngineRunMixin:
         )
         return base.model_copy(update={"reasoning_effort": reasoning_effort})
 
+    async def _resolve_live_bool(
+        self, namespace: str, key: str, *, fallback: bool = True
+    ) -> bool:
+        """Resolve a boolean setting live, fail-safe to ``fallback`` unwired.
+
+        Shared by the per-run streaming / caching gates so both read the same
+        DB > env > default chain without duplicating the outage fallback.
+
+        Returns:
+            The resolved flag, or ``fallback`` when no resolver is wired.
+        """
+        if self._config_resolver is None:
+            return fallback
+        from synthorg.settings.kill_switch import (  # noqa: PLC0415
+            resolve_bool_with_fallback,
+        )
+
+        return await resolve_bool_with_fallback(
+            resolver=self._config_resolver,
+            namespace=namespace,
+            key=key,
+            fallback=fallback,
+        )
+
     async def _resolve_streaming_enabled(
         self,
         provider: CompletionProvider,
@@ -113,19 +137,10 @@ class AgentEngineRunMixin:
             ``True`` when the run should stream its per-turn calls.
         """
         from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
-        from synthorg.settings.kill_switch import (  # noqa: PLC0415
-            resolve_bool_with_fallback,
-        )
 
-        if self._config_resolver is None:
-            enabled = True
-        else:
-            enabled = await resolve_bool_with_fallback(
-                resolver=self._config_resolver,
-                namespace=SettingNamespace.ENGINE,
-                key="work_loop_streaming_enabled",
-                fallback=True,
-            )
+        enabled = await self._resolve_live_bool(
+            SettingNamespace.ENGINE, "work_loop_streaming_enabled"
+        )
         if not enabled:
             return False
         try:
@@ -165,19 +180,10 @@ class AgentEngineRunMixin:
             The completion config to run with, or ``None`` when unchanged.
         """
         from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
-        from synthorg.settings.kill_switch import (  # noqa: PLC0415
-            resolve_bool_with_fallback,
-        )
 
-        if self._config_resolver is None:
-            enabled = True
-        else:
-            enabled = await resolve_bool_with_fallback(
-                resolver=self._config_resolver,
-                namespace=SettingNamespace.PROVIDERS,
-                key="prompt_caching_enabled",
-                fallback=True,
-            )
+        enabled = await self._resolve_live_bool(
+            SettingNamespace.PROVIDERS, "prompt_caching_enabled"
+        )
         if not enabled:
             return completion_config
         base = completion_config or CompletionConfig(

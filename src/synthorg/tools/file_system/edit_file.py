@@ -189,9 +189,9 @@ class EditFileTool(BaseFileSystemTool):
     ) -> ToolExecutionResult | None:
         """Enforce the output-style policy on the post-edit file content.
 
-        Evaluates the complete candidate content (existing file with the first
-        ``old_text`` occurrence replaced), not just the replacement fragment, so
-        a violation formed at the boundary between the edit and its surroundings
+        Evaluates the complete candidate content (existing file after all
+        hunks of the edit are applied), not just the replacement fragment, so
+        a violation formed at the boundary between an edit and its surroundings
         is caught. Only a violation the edit *introduces* blocks: an edit
         elsewhere in a file that already violated stays editable. Code-channel
         (reject, never auto-rewrite), unless an operator-sanctioned PATH
@@ -334,15 +334,7 @@ class EditFileTool(BaseFileSystemTool):
             return self._reject_plan(user_path, plan, len(hunks))
 
         if plan.resulting == plan.original:
-            logger.debug(TOOL_FS_NOOP, path=user_path, reason="content_unchanged")
-            return ToolExecutionResult(
-                content=f"No change needed in {user_path}: content unchanged",
-                metadata={
-                    "path": user_path,
-                    "occurrences_found": plan.occurrences_found,
-                    "occurrences_replaced": 0,
-                },
-            )
+            return self._noop_result(user_path, plan)
 
         if guard_err := self._guard_output_policy(
             user_path, plan.original, plan.resulting
@@ -355,10 +347,36 @@ class EditFileTool(BaseFileSystemTool):
             logger.warning(TOOL_FS_ERROR, path=user_path, error=log_key)
             return ToolExecutionResult(content=msg, is_error=True)
 
+        return self._success_result(user_path, plan, len(hunks))
+
+    def _noop_result(self, user_path: str, plan: _EditPlan) -> ToolExecutionResult:
+        """Build the no-change result when the plan leaves content untouched.
+
+        Returns:
+            A non-error ``ToolExecutionResult`` reporting no change.
+        """
+        logger.debug(TOOL_FS_NOOP, path=user_path, reason="content_unchanged")
+        return ToolExecutionResult(
+            content=f"No change needed in {user_path}: content unchanged",
+            metadata={
+                "path": user_path,
+                "occurrences_found": plan.occurrences_found,
+                "occurrences_replaced": 0,
+            },
+        )
+
+    def _success_result(
+        self, user_path: str, plan: _EditPlan, hunk_count: int
+    ) -> ToolExecutionResult:
+        """Build the applied-edit result after a successful write.
+
+        Returns:
+            A non-error ``ToolExecutionResult`` summarising the applied edit.
+        """
         replaced = plan.occurrences_replaced
-        if len(hunks) > 1:
+        if hunk_count > 1:
             content = (
-                f"Applied {len(hunks)} edits ({replaced} "
+                f"Applied {hunk_count} edits ({replaced} "
                 f"{'occurrence' if replaced == 1 else 'occurrences'} replaced) "
                 f"in {user_path}"
             )
@@ -373,7 +391,7 @@ class EditFileTool(BaseFileSystemTool):
             path=user_path,
             occurrences_found=plan.occurrences_found,
             occurrences_replaced=replaced,
-            hunks=len(hunks),
+            hunks=hunk_count,
         )
         return ToolExecutionResult(
             content=content,
@@ -381,7 +399,7 @@ class EditFileTool(BaseFileSystemTool):
                 "path": user_path,
                 "occurrences_found": plan.occurrences_found,
                 "occurrences_replaced": replaced,
-                "edits_applied": len(hunks),
+                "edits_applied": hunk_count,
             },
         )
 

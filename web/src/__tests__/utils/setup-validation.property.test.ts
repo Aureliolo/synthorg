@@ -62,6 +62,7 @@ const makeProvider = (
       supports_reasoning: false,
       supports_embeddings: false,
       supports_image_generation: false,
+      supports_prompt_caching: false,
       max_output_tokens: null,
       parameter_count: null,
       cost_tier: null,

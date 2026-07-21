@@ -73,12 +73,13 @@ TEST_CAPABILITIES = ModelCapabilities(
 def _response_to_chunks(response: CompletionResponse) -> tuple[StreamChunk, ...]:
     """Synthesise stream chunks from a completed response.
 
-    Emits a content-delta (when non-empty), a tool-call-delta per tool call, a
-    usage chunk, and a terminal DONE carrying the response's finish reason, so
-    a scripted stream reassembles back to an equivalent response.
+    Emits a content-delta (whenever content is present, including an empty
+    string), a tool-call-delta per tool call, a usage chunk, and a terminal
+    DONE carrying the response's finish reason, so a scripted stream
+    reassembles back to an equivalent response.
     """
     chunks: list[StreamChunk] = []
-    if response.content:
+    if response.content is not None:
         chunks.append(
             StreamChunk(
                 event_type=StreamEventType.CONTENT_DELTA,
