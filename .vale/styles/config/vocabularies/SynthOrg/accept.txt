@@ -565,6 +565,7 @@ kwargs
 lazification
 lazify
 leaderboard
+learnings
 list_by_category
 liveness
 llm
