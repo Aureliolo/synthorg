@@ -1729,6 +1729,10 @@ class _FakeBackend:
         return None
 
     @property
+    def memory_vectors(self) -> object:
+        return None
+
+    @property
     def ontology_entities(self) -> object:
         return None
 

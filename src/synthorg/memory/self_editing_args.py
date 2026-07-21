@@ -122,6 +122,14 @@ class ArchivalMemoryWriteArgs(BaseModel):
     category: PersistentArchivalCategory = Field(
         description="Memory category (excludes WORKING)",
     )
+    supersedes: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Identifier of an existing memory this entry replaces, when "
+            "the new information contradicts it. Supersession is only "
+            "ever acted on when declared here; it is never inferred."
+        ),
+    )
 
 
 class RecallMemoryReadArgs(BaseModel):

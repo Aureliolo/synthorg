@@ -130,21 +130,35 @@ and instruction stability is preferred (performs consistently regardless of prom
 
 ### Embedder Configuration
 
-The `Mem0EmbedderConfig` already supports any Mem0-compatible provider and model. Example
-configuration for the recommended Tier 1 model (provider name is Mem0 SDK-specific):
+`EmbedderConfig` binds an explicit `(provider, model)` pair plus the model's output
+width. Boot resolves it through `resolve_embedder_config`, which reads the
+`memory.embedder_provider` / `embedder_model` / `embedder_dims` settings first and
+otherwise auto-selects an LMEB-ranked model from the providers actually available:
 
 ```yaml
-# Embedder config is passed programmatically via the factory:
-#   create_memory_backend(config, embedder=Mem0EmbedderConfig(
-#       provider="<mem0-provider-id>",
-#       model="<model-id>",
-#       dims=3584,  # bge-multilingual-gemma2 output dimensions
-#   ))
+memory:
+  embedder_provider: "example-provider"
+  embedder_model: "example-embedding-001"
+  embedder_dims: 3584          # must match the model's output dimensionality
 ```
 
-The `dims` field must match the model's output dimensionality. Changing the embedding model
-after initial deployment requires recreating the Qdrant collection (existing vectors become
-incompatible). Plan model selection before first production deployment.
+A `dims` value that disagrees with the model is a hard startup failure rather than a
+warning: vectors of the wrong width corrupt recall silently, which is far worse than
+not booting.
+
+Changing the embedding model after deployment invalidates every stored vector, because
+embeddings from different models are not comparable. The dense index is therefore keyed
+by width: a new width indexes into a fresh table (SQLite) or column (Postgres) rather
+than mixing incompatible vectors into the old one. That keeps recall correct, but it
+also means the previous vectors go unreachable, so startup scans for indexes left at
+other widths and logs `memory.dense_index.width_changed` at ERROR with the orphaned
+count. Without that signal an operator would read the resulting empty recall as a bug
+in memory rather than as the consequence of the model swap.
+
+Entries themselves survive a width change: rows, tags, and the lexical index are
+width-independent, so recall degrades to lexical-only for the older entries rather than
+losing them. Re-embedding restores semantic recall. Plan model selection before the
+first production deployment regardless.
 
 ---
 
@@ -206,19 +220,22 @@ graph LR
 **Stage 5: Deploy**
 
 - Save fine-tuned model checkpoint to configured path
-- Update `Mem0EmbedderConfig` to point to the fine-tuned model (via custom Mem0 provider or
-  local model path)
-- On next backend initialisation, the fine-tuned model can be used by pointing configuration to the checkpoint
+- Point `EmbedderConfig` at the fine-tuned model, via a provider that serves the
+  checkpoint or a local model path
+- The fine-tuned model takes effect on the next backend initialisation
 
 ### Integration Design
 
 Fine-tuning is an **offline pipeline**, not a runtime operation. The `EmbeddingFineTuneConfig`
 (see [Memory Design Spec](../design/memory.md#embedding-model-selection))
-stores the configuration. Initialisation behaviour in the Mem0 adapter:
+stores the configuration. Initialisation behaviour when the embedder is resolved:
 
-1. If `fine_tune.enabled` and `checkpoint_path` is set: the checkpoint path is used as the model
-   identifier passed to the Mem0 SDK (the embedding provider must serve the fine-tuned model)
+1. If `fine_tune.enabled` and `checkpoint_path` is set: the checkpoint path becomes the
+   model identifier (the embedding provider must serve the fine-tuned model)
 2. If `fine_tune.enabled` is `False` (default): the base model is used, no checkpoint check
+
+A fine-tuned model whose output width differs from the base model is a width change like
+any other, with the same consequence for previously stored vectors.
 
 The pipeline is triggered via `POST /admin/memory/fine-tune` (see `MemoryAdminController`).
 This follows the project's pattern of disabled-by-default optional features

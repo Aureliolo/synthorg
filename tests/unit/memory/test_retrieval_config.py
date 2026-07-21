@@ -20,7 +20,7 @@ class TestMemoryRetrievalConfigDefaults:
         assert c.recency_decay_rate == 0.01
         assert c.personal_boost == 0.1
         assert c.min_relevance == 0.3
-        assert c.max_memories == 20
+        assert c.max_memories == 5
         assert c.include_shared is True
         assert c.default_relevance == 0.5
         assert c.injection_point is InjectionPoint.SYSTEM
@@ -217,9 +217,11 @@ class TestMemoryRetrievalConfigFusion:
 
 @pytest.mark.unit
 class TestMemoryRetrievalConfigDiversity:
-    def test_default_diversity_disabled(self) -> None:
+    def test_default_diversity_enabled(self) -> None:
+        # On by default: with the tight shipped budget, spending slots on
+        # near-duplicate memories is exactly what MMR is here to prevent.
         c = MemoryRetrievalConfig()
-        assert c.diversity_penalty_enabled is False
+        assert c.diversity_penalty_enabled is True
 
     def test_default_diversity_lambda(self) -> None:
         c = MemoryRetrievalConfig()
@@ -251,7 +253,10 @@ class TestMemoryRetrievalConfigDiversity:
 
     def test_diversity_lambda_non_default_when_disabled_warns(self) -> None:
         with structlog.testing.capture_logs() as cap:
-            c = MemoryRetrievalConfig(diversity_lambda=0.5)
+            c = MemoryRetrievalConfig(
+                diversity_penalty_enabled=False,
+                diversity_lambda=0.5,
+            )
         assert c.diversity_lambda == 0.5
         events = [
             e
@@ -264,7 +269,7 @@ class TestMemoryRetrievalConfigDiversity:
 
     def test_diversity_lambda_default_when_disabled_no_warning(self) -> None:
         with structlog.testing.capture_logs() as cap:
-            MemoryRetrievalConfig()
+            MemoryRetrievalConfig(diversity_penalty_enabled=False)
         events = [
             e
             for e in cap

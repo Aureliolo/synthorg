@@ -21,6 +21,19 @@ MEMORY_BACKEND_UNKNOWN: Final[str] = "memory.backend.unknown"
 MEMORY_BACKEND_CONFIG_INVALID: Final[str] = "memory.backend.config_invalid"
 MEMORY_BACKEND_NOT_CONNECTED: Final[str] = "memory.backend.not_connected"
 MEMORY_BACKEND_AGENT_ID_REJECTED: Final[str] = "memory.backend.agent_id_rejected"
+MEMORY_BACKEND_WIRED: Final[str] = "memory.backend.wired"
+"""Emitted at INFO once the boot path publishes a usable backend."""
+
+MEMORY_BACKEND_WIRE_SKIPPED: Final[str] = "memory.backend.wire_skipped"
+"""Emitted at WARNING when boot deliberately wires no memory backend.
+
+Distinct from a construction failure: this is the expected shape when a
+prerequisite (persistence, an embedder) is absent, and it is the signal
+an operator alerts on to learn that agent memory is off.
+"""
+
+MEMORY_BACKEND_WIRE_FAILED: Final[str] = "memory.backend.wire_failed"
+"""Emitted at ERROR when the backend could not be built or connected."""
 MEMORY_BACKEND_SYSTEM_ERROR: Final[str] = "memory.backend.system_error"
 
 # ── Entry operations ──────────────────────────────────────────────
@@ -37,6 +50,88 @@ MEMORY_ENTRY_FETCHED: Final[str] = "memory.entry.fetched"
 MEMORY_ENTRY_FETCH_FAILED: Final[str] = "memory.entry.fetch_failed"
 MEMORY_ENTRY_COUNTED: Final[str] = "memory.entry.counted"
 MEMORY_ENTRY_COUNT_FAILED: Final[str] = "memory.entry.count_failed"
+
+MEMORY_EMBEDDING_FAILED: Final[str] = "memory.embedding.failed"
+"""Emitted at WARNING when an embedding call fails for a batch."""
+
+MEMORY_EMBEDDING_RETRIED: Final[str] = "memory.embedding.retried"
+"""Emitted when a transient embedding failure is retried with backoff."""
+
+MEMORY_EMBEDDING_COST_RECORD_FAILED: Final[str] = "memory.embedding.cost_record_failed"
+"""Emitted at WARNING when a batch's spend could not be attributed.
+
+The embedding itself succeeded; what is lost is the accounting, so the
+call continues and the gap is reported rather than costing recall.
+"""
+
+MEMORY_DENSE_INDEX_READY: Final[str] = "memory.dense_index.ready"
+"""Emitted at INFO once the dense vector index is loaded and usable."""
+
+MEMORY_DENSE_INDEX_UNAVAILABLE: Final[str] = "memory.dense_index.unavailable"
+"""Emitted at WARNING when the dense vector index cannot be prepared.
+
+Semantic recall is impossible in this state. The repository degrades
+rather than raising so persistence stays up for every non-memory
+feature sharing the connection; the memory backend is what turns this
+into a loud failure at its own boundary.
+"""
+MEMORY_DENSE_INDEX_PERMISSION_DENIED: Final[str] = (
+    "memory.dense_index.permission_denied"
+)
+"""Emitted at ERROR when the role may not install the vector extension.
+
+pgvector is not a trusted extension, so ``CREATE EXTENSION`` needs
+superuser. A deployment whose application role is correctly
+least-privileged therefore gets lexical-only recall while CI and the
+bundled image, which connect as superuser, get semantic recall: the
+divergence an operator is least likely to anticipate, so it is reported
+as its own condition rather than as a generic unavailable index.
+"""
+
+MEMORY_DENSE_INDEX_WIDTH_CHANGED: Final[str] = "memory.dense_index.width_changed"
+"""Emitted at ERROR when a dense index survives from a different width.
+
+Embeddings from different models are not comparable, so the index is
+keyed by width. Vectors written under a previous width therefore become
+unreachable the moment the embedding model changes: recall silently
+returns nothing rather than returning something wrong. Reported loudly
+because an operator who is not told will read empty recall as a bug in
+memory rather than as the model swap they just performed.
+"""
+
+MEMORY_DENSE_INDEX_SCAN_FAILED: Final[str] = "memory.dense_index.scan_failed"
+"""Emitted at WARNING when the orphaned-width scan cannot complete.
+
+The dense index is usable either way; what is lost is the ability to
+say whether vectors from a previous embedding width are stranded. Worth
+reporting rather than swallowing, because absence of a width-change
+error would otherwise read as proof that none occurred.
+"""
+
+MEMORY_WRITE_GATE_DECIDED: Final[str] = "memory.write_gate.decided"
+"""Emitted at INFO for every gated memory write.
+
+Carries the disposition plus the duplicate / superseded ids, so a write
+that was deliberately dropped is distinguishable from one that never
+happened.
+"""
+
+MEMORY_WRITE_GATE_DEGRADED: Final[str] = "memory.write_gate.degraded"
+"""Emitted at WARNING when the gate cannot read comparable entries.
+
+The write still proceeds: failing open risks storing a duplicate, while
+failing closed would discard a real memory, which is the worse loss. The
+event records that deduplication was skipped for this write.
+"""
+
+MEMORY_TOPIC_SCOPE_APPLIED: Final[str] = "memory.topic_scope.applied"
+"""Emitted at INFO when topic scoping drops off-topic procedural lessons.
+
+Carries the candidate and retained counts so an operator can see that
+abstention was deliberate. Without it, a lesson correctly withheld from
+an unrelated task is indistinguishable from memory failing to recall.
+"""
+
 MEMORY_RRF_PIPELINE_COMPLETED: Final[str] = "memory.rrf.pipeline_completed"
 """Emitted at DEBUG after the RRF hybrid pipeline fuses + filters results.
 
@@ -56,6 +151,15 @@ MEMORY_SHARED_RETRACT_FAILED: Final[str] = "memory.shared.retract_failed"
 # ── Validation ──────────────────────────────────────────────────
 
 MEMORY_MODEL_INVALID: Final[str] = "memory.model.invalid"
+
+MEMORY_CONTENT_REDACTED: Final[str] = "memory.content.redacted"
+"""Emitted at WARNING when candidate memory text carried a secret.
+
+Carries the finding names only, never the matched text. Worth WARNING
+rather than INFO: memory is re-injected into later prompts, so a
+credential reaching this point means one leaked into a tool result or an
+agent's own write and the source is worth chasing.
+"""
 
 # ── Retrieval pipeline ──────────────────────────────────────────
 
@@ -85,8 +189,19 @@ MEMORY_FILTER_STORE_MISSING_TAG: Final[str] = "memory.filter.store_missing_tag"
 
 # ── Embedding selection ──────────────────────────────────────────
 
+MEMORY_EMBEDDER_RESOLVED: Final[str] = "memory.embedder.resolved"
+"""Emitted at INFO with the provider, model and width boot settled on."""
+
+MEMORY_EMBEDDER_UNRESOLVED: Final[str] = "memory.embedder.unresolved"
+"""Emitted at ERROR when no embedding model could be resolved at boot.
+
+Semantic memory cannot start without one, so this is the root cause an
+operator needs when the dashboard reports memory off.
+"""
+
 MEMORY_EMBEDDER_AUTO_SELECTED: Final[str] = "memory.embedder.auto_selected"
 MEMORY_EMBEDDER_AUTO_SELECT_FAILED: Final[str] = "memory.embedder.auto_select_failed"
+MEMORY_EMBEDDER_PROVIDER_INFERRED: Final[str] = "memory.embedder.provider_inferred"
 MEMORY_EMBEDDER_CHECKPOINT_ACTIVE: Final[str] = "memory.embedder.checkpoint_active"
 MEMORY_EMBEDDER_CHECKPOINT_MISSING: Final[str] = "memory.embedder.checkpoint_missing"
 

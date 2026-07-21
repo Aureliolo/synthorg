@@ -10,29 +10,17 @@ _r.register(
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="backend",
-        type=SettingType.STRING,
-        default="mem0",
-        description="Memory backend implementation",
-        group="General",
-        restart_required=True,
-    )
-)
-
-_r.register(
-    # lint-allow: restart-required -- baked into the frozen CompanyMemoryConfig
-    # at startup; a change applies on the next process start.
-    SettingDefinition(
-        namespace=SettingNamespace.MEMORY,
-        key="default_level",
         type=SettingType.ENUM,
-        default="persistent",
+        default="sqlvector",
         description=(
-            "Default memory persistence level for agents. Baked into the"
-            " company memory config at startup, so a change applies on the"
-            " next restart."
+            "Memory backend implementation. 'sqlvector' is durable and"
+            " semantically searchable. 'inmemory' is DISCOURAGED: it ranks"
+            " by shared terms rather than by meaning, and loses every"
+            " memory on restart. 'composite' routes namespaces across"
+            " several wired backends, aggregating their capabilities."
         ),
         group="General",
-        enum_values=("none", "session", "project", "persistent"),
+        enum_values=("sqlvector", "composite", "inmemory"),
         restart_required=True,
     )
 )
@@ -58,41 +46,62 @@ _r.register(
 )
 
 # ── Embedding overrides (advanced) ───────────────────────────────
+#
+# All three are read once, by the boot-time backend wiring, to build the
+# embedder and size the dense index. Changing the model mid-process
+# would leave every stored vector at an incomparable width, so these are
+# deliberately restart-scoped rather than hot-reloadable.
 
 _r.register(
+    # lint-allow: restart-required -- read once when the boot path builds
+    # the embedder; a mid-process change would orphan every stored vector.
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="embedder_provider",
         type=SettingType.STRING,
         default=None,
-        description="Override embedding provider (advanced)",
+        description=(
+            "Override embedding provider (advanced). Applies on the next restart."
+        ),
         group="Embedding",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
     )
 )
 
 _r.register(
+    # lint-allow: restart-required -- read once when the boot path builds
+    # the embedder; a mid-process change would orphan every stored vector.
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="embedder_model",
         type=SettingType.STRING,
         default=None,
-        description="Override embedding model (advanced)",
+        description=(
+            "Override embedding model (advanced). Applies on the next restart."
+        ),
         group="Embedding",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
     )
 )
 
 _r.register(
+    # lint-allow: restart-required -- sizes the dense index at boot; the
+    # index is keyed by width, so a change re-indexes on the next start.
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="embedder_dims",
         type=SettingType.INTEGER,
         default=None,
-        description="Override embedding vector dimensions (advanced)",
+        description=(
+            "Override embedding vector dimensions (advanced). Applies on"
+            " the next restart."
+        ),
         group="Embedding",
         level=SettingLevel.ADVANCED,
         min_value=1,
+        restart_required=True,
     )
 )
 
@@ -115,7 +124,23 @@ _r.register(
     )
 )
 
-# ── Kill switches (CFG-1 audit) ──────────────────────────────────
+# ── Kill switches ──────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="distillation_capture_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Whether a finished task's trajectory is distilled into"
+            " durable memory. Off means agents keep recalling but stop"
+            " learning: a later run of the same objective starts from"
+            " nothing. Re-read per task, so a change applies immediately."
+        ),
+        group="Learning",
+    )
+)
 
 _r.register(
     SettingDefinition(

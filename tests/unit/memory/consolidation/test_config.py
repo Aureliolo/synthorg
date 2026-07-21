@@ -78,6 +78,27 @@ class TestConsolidationConfig:
         with pytest.raises(ValidationError):
             ConsolidationConfig(max_memories_per_agent=0)
 
+    def test_interval_mirrors_the_registered_setting(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``memory.consolidation_interval`` must reach the scheduler.
+
+        The setting was registered but mirrored nothing, so the settings
+        page offered a cadence control that changed no cadence.
+        """
+        monkeypatch.setenv("SYNTHORG_MEMORY_CONSOLIDATION_INTERVAL", "weekly")
+
+        assert ConsolidationConfig().interval == ConsolidationInterval.WEEKLY
+
+    def test_explicit_interval_beats_the_setting(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_MEMORY_CONSOLIDATION_INTERVAL", "weekly")
+
+        config = ConsolidationConfig(interval=ConsolidationInterval.HOURLY)
+
+        assert config.interval == ConsolidationInterval.HOURLY
+
 
 @pytest.mark.unit
 class TestRetentionConfigValidation:

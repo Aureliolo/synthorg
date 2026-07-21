@@ -22,6 +22,7 @@ import inspect
 import json
 import pkgutil
 import re
+from enum import StrEnum
 from typing import Final
 
 import pytest
@@ -284,6 +285,9 @@ def _choose_env_value(
         if definition.type == SettingType.ENUM:
             return _pick_distinct_enum(definition, registered_default_parsed)
         return "__mirror_regression__"
+    if isinstance(parser, type) and issubclass(parser, StrEnum):
+        # The enum class itself is the parser (``parse=SomeInterval``).
+        return _pick_distinct_enum(definition, registered_default_parsed)
     msg = (
         f"No env-value chooser for parser {parser_name!r};"
         " extend _choose_env_value in tests/unit/settings/test_mirror_coverage.py"

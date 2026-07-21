@@ -17,7 +17,7 @@ satisfies it automatically.
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr
+from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.providers.models import ChatMessage, ToolDefinition
 
 
@@ -82,9 +82,7 @@ class MemoryInjectionStrategy(Protocol):
 
     async def prepare_messages(
         self,
-        agent_id: NotBlankStr,
-        query_text: NotBlankStr,
-        token_budget: int,
+        request: MemoryRecallRequest,
     ) -> tuple[ChatMessage, ...]:
         """Return memory messages to inject into agent context.
 
@@ -93,9 +91,8 @@ class MemoryInjectionStrategy(Protocol):
         Self-editing returns the core memory block.
 
         Args:
-            agent_id: The agent requesting memories.
-            query_text: Text to use for semantic retrieval.
-            token_budget: Maximum tokens for memory content.
+            request: The recall context: who is asking, about what work,
+                within which budget.
 
         Returns:
             Tuple of ``ChatMessage`` instances (may be empty).

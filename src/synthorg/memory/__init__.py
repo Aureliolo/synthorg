@@ -3,7 +3,7 @@
 Re-exports protocols (``MemoryBackend``, ``MemoryCapabilities``,
 ``SharedKnowledgeStore``, ``MemoryInjectionStrategy``,
 ``OrgMemoryBackend``, ``ConsolidationStrategy``, ``ArchivalStore``),
-concrete backends (``Mem0MemoryBackend``), domain models, config
+concrete backends (``SqlVectorBackend``), domain models, config
 models, factory, retrieval pipeline, consolidation, org memory, and
 error hierarchy so consumers can import from ``synthorg.memory``
 directly.
@@ -18,10 +18,7 @@ Query reformulation: ``QueryReformulator``, ``SufficiencyChecker``,
 """
 
 from synthorg.core.text_estimation import DefaultTokenEstimator
-from synthorg.memory.backends.mem0 import (
-    Mem0EmbedderConfig,
-    Mem0MemoryBackend,
-)
+from synthorg.memory.backends.sqlvector import SqlVectorBackend
 from synthorg.memory.capabilities import MemoryCapabilities
 from synthorg.memory.config import (
     CompanyMemoryConfig,
@@ -122,8 +119,6 @@ __all__ = [
     # Query reformulation
     "LLMQueryReformulator",
     "LLMSufficiencyChecker",
-    "Mem0EmbedderConfig",
-    "Mem0MemoryBackend",
     "MemoryBackend",
     "MemoryCapabilities",
     "MemoryCapabilityError",
@@ -161,6 +156,7 @@ __all__ = [
     "SelfEditingMemoryStrategy",
     "SharedKnowledgeStore",
     "SparseVector",
+    "SqlVectorBackend",
     "SufficiencyChecker",
     "TokenEstimator",
     # Tool-based strategy

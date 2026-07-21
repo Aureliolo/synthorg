@@ -62,7 +62,7 @@ func TestConfigShowDisplaysFields(t *testing.T) {
 		JWTSecret:          "super-secret",
 		SettingsKey:        "super-settings-key",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 	}
 
 	data, err := json.MarshalIndent(state, "", "  ")
@@ -91,7 +91,7 @@ func TestConfigShowDisplaysFields(t *testing.T) {
 		"/var/run/docker.sock",
 		"****",
 		"sqlite",
-		"mem0",
+		"sqlvector",
 	} {
 		if !bytes.Contains([]byte(out), []byte(want)) {
 			t.Errorf("expected %q in output, got: %s", want, out)
@@ -463,7 +463,7 @@ func TestConfigGet(t *testing.T) {
 	state.BackendPort = 9000
 	state.WebPort = 4000
 	state.PersistenceBackend = "sqlite"
-	state.MemoryBackend = "mem0"
+	state.MemoryBackend = "sqlvector"
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
 	}
@@ -480,7 +480,7 @@ func TestConfigGet(t *testing.T) {
 		{"backend_port", "9000"},
 		{"web_port", "4000"},
 		{"persistence_backend", "sqlite"},
-		{"memory_backend", "mem0"},
+		{"memory_backend", "sqlvector"},
 	}
 
 	for _, tt := range tests {
@@ -556,7 +556,7 @@ func TestConfigGetDefaultChannel(t *testing.T) {
 		"web_port":            3000,
 		"log_level":           "info",
 		"persistence_backend": "sqlite",
-		"memory_backend":      "mem0",
+		"memory_backend":      "sqlvector",
 		// encrypt_secrets defaults to true (DefaultState), which now
 		// requires master_key. This test targets channel-default
 		// resolution, so opt out of the encrypt-secrets invariant.

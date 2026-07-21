@@ -25,7 +25,7 @@ func TestBuildState_Postgres(t *testing.T) {
 		dockerSock:         "",
 		logLevel:           "info",
 		persistenceBackend: "postgres",
-		memoryBackend:      "mem0",
+		memoryBackend:      "sqlvector",
 		busBackend:         "internal",
 		postgresPort:       0,
 	}
@@ -56,7 +56,7 @@ func TestBuildState_PostgresCustomPort(t *testing.T) {
 		dockerSock:         "",
 		logLevel:           "info",
 		persistenceBackend: "postgres",
-		memoryBackend:      "mem0",
+		memoryBackend:      "sqlvector",
 		busBackend:         "internal",
 		postgresPort:       5433,
 	}
@@ -80,7 +80,7 @@ func TestBuildState_Sqlite(t *testing.T) {
 		dockerSock:         "",
 		logLevel:           "info",
 		persistenceBackend: "sqlite",
-		memoryBackend:      "mem0",
+		memoryBackend:      "sqlvector",
 		busBackend:         "internal",
 	}
 
@@ -167,7 +167,7 @@ func TestInitValidatePostgresPort_ReinitPersistedBackend(t *testing.T) {
 		dockerSock:         "",
 		logLevel:           "info",
 		persistenceBackend: "postgres",
-		memoryBackend:      "mem0",
+		memoryBackend:      "sqlvector",
 		busBackend:         "internal",
 		postgresPort:       3002,
 	}
@@ -248,7 +248,7 @@ func TestPostgresLifecycle_InitGeneratesWritableState(t *testing.T) {
 		dockerSock:         "",
 		logLevel:           "info",
 		persistenceBackend: "postgres",
-		memoryBackend:      "mem0",
+		memoryBackend:      "sqlvector",
 		busBackend:         "internal",
 		postgresPort:       3002,
 	}
@@ -273,7 +273,7 @@ func TestPostgresLifecycle_InitGeneratesWritableState(t *testing.T) {
 	if !strings.Contains(composeYAML, "postgres:") {
 		t.Error("compose.yml should contain postgres service")
 	}
-	if !strings.Contains(composeYAML, "dhi.io/postgres:"+config.DefaultPostgresImageTag) {
+	if !strings.Contains(composeYAML, "dhi.io/pgvector:"+config.DefaultPostgresImageTag) {
 		t.Error("compose.yml should use DHI postgres image")
 	}
 	if !strings.Contains(composeYAML, "synthorg-pgdata") {
@@ -355,7 +355,7 @@ func TestPostgresLifecycle_ReinitPreservesCustomPostgresPort(t *testing.T) {
 		dockerSock:         "",
 		logLevel:           "info",
 		persistenceBackend: "postgres",
-		memoryBackend:      "mem0",
+		memoryBackend:      "sqlvector",
 		busBackend:         "internal",
 		postgresPort:       5433,
 	}

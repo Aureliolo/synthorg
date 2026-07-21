@@ -93,3 +93,46 @@ def reraise_critical(exc: BaseException) -> None:
     """
     if _contains_critical(exc):
         raise exc
+
+
+def _first_critical(exc: BaseException) -> BaseException | None:
+    """Return the first interpreter-critical leaf in ``exc``, if any.
+
+    Returns:
+        The critical exception, or ``None`` when none is nested.
+    """
+    if isinstance(exc, _CRITICAL_TYPES):
+        return exc
+    if isinstance(exc, BaseExceptionGroup):
+        for child in exc.exceptions:
+            found = _first_critical(child)
+            if found is not None:
+                return found
+    return None
+
+
+def reraise_critical_unwrapped(exc: BaseException) -> None:
+    """Re-raise the bare critical exception nested inside ``exc``.
+
+    The counterpart to :func:`reraise_critical` for handlers around an
+    ``asyncio.TaskGroup``. Callers guard fatal conditions with
+    ``except builtins.MemoryError, RecursionError:``, which an
+    ``ExceptionGroup`` never matches, so a group must be unwrapped to
+    its critical leaf before it is re-raised. ``except*`` cannot do this
+    itself: under PEP 654 an exception raised inside an ``except*`` body
+    is re-wrapped into a fresh group, so the unwrap has to happen in an
+    ordinary handler.
+
+    Returns silently when ``exc`` neither is nor nests a critical
+    exception, so the caller continues with its own recovery logic.
+
+    Args:
+        exc: The caught exception or exception group.
+
+    Raises:
+        BaseException: The bare ``MemoryError`` / ``RecursionError``
+            found inside ``exc``, chained from it.
+    """
+    critical = _first_critical(exc)
+    if critical is not None:
+        raise critical from exc

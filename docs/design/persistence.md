@@ -437,11 +437,19 @@ pattern:
    config works on vanilla Postgres and on self-hosted TimescaleDB
    without branching at deployment time.
 
-This pattern scales to other extensions (`pgvector`, `pg_trgm`,
-`pgcrypto`) if SynthOrg adopts them later. The rule is: if the
-extension adds objects that the drift gate cannot recognise, add a
-runtime setup hook; if the extension is purely about
-`CREATE EXTENSION` and then standard DDL, let the revisions own it.
+`pgvector` is the live instance of this pattern: durable agent memory
+(`persistence/postgres/memory_vector_repo.py`) adds a dimension-sized
+`vector` column and its HNSW index at runtime rather than in a revision,
+because the embedding width is operator-configurable and the extension
+is not declarable in the drift gate. `CREATE EXTENSION vector` needs
+superuser (pgvector is not a trusted extension), so a least-privilege
+role degrades to lexical-only recall and reports it through
+`supports_dense_search` rather than failing the migration. The bundled
+deployment runs the hardened `dhi.io/pgvector` image so the extension is
+present. The same pattern scales to other extensions (`pg_trgm`,
+`pgcrypto`): if the extension adds objects the drift gate cannot
+recognise, add a runtime setup hook; if it is purely
+`CREATE EXTENSION` then standard DDL, let the revisions own it.
 
 ## Migration workflow
 

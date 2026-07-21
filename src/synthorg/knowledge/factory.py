@@ -31,7 +31,7 @@ def build_knowledge_service(  # noqa: PLR0913 -- cohesive boot-time wiring
     """Assemble the knowledge service from its backend collaborators.
 
     Args:
-        memory_backend: The vector store (Mem0/InMemory) for chunk
+        memory_backend: The vector store (sqlvector/inmemory) for chunk
             embeddings under the KNOWLEDGE namespace.
         persistence: Provides the knowledge-source and provenance repos.
         config: Knowledge-substrate configuration.

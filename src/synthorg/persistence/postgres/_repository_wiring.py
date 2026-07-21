@@ -109,6 +109,9 @@ from synthorg.persistence.postgres.mcp_installation_repo import (
 from synthorg.persistence.postgres.meeting_cooldown_repo import (
     PostgresMeetingCooldownRepository,
 )
+from synthorg.persistence.postgres.memory_vector_repo import (
+    PostgresMemoryVectorRepository,
+)
 from synthorg.persistence.postgres.message_repo import (
     PostgresMessageRepository,
 )
@@ -292,6 +295,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._mcp_installations = None
         self._custom_rules = None
         self._org_facts = None
+        self._memory_vectors = None
         self._ontology_entities = None
         self._ontology_drift = None
         self._fine_tune_runs = None
@@ -414,6 +418,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._mcp_installations = PostgresMcpInstallationRepository(pool)
         self._custom_rules = PostgresCustomRuleRepository(pool)
         self._org_facts = PostgresOrgFactRepository(pool)
+        self._memory_vectors = PostgresMemoryVectorRepository(pool)
         self._ontology_entities = PostgresOntologyEntityRepository(pool)
         self._ontology_drift = PostgresOntologyDriftReportRepository(pool)
         self._fine_tune_runs = PostgresFineTuneRunRepository(pool)

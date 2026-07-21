@@ -1,0 +1,232 @@
+"""Tests for the deterministic memory write gate.
+
+The gate is what stands between an agent's judgement about what mattered
+and the store. Agents are unreliable precisely at contradiction (STALE:
+76% at spotting an outdated belief under direct questioning, 4% when a
+query presupposes it), so dedup and supersession are decided here rather
+than left to the writer or to the retriever to notice later.
+"""
+
+from datetime import UTC, datetime
+
+import pytest
+
+from synthorg.core.memory_enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.write_gate import (
+    SUPERSEDED_TAG,
+    WriteDecision,
+    WriteDisposition,
+    evaluate_write,
+)
+
+pytestmark = pytest.mark.unit
+
+
+class TestWriteDecisionInvariant:
+    """A disposition cannot be built without the field it depends on.
+
+    NOOP and SUPERSEDE are meaningless without the entry they point at, so
+    the constructor rejects the half-built decision rather than letting a
+    caller act on a dangling reference.
+    """
+
+    def test_noop_requires_duplicate_of(self) -> None:
+        with pytest.raises(ValueError, match="duplicate_of"):
+            WriteDecision(disposition=WriteDisposition.NOOP)
+
+    def test_supersede_requires_supersedes(self) -> None:
+        with pytest.raises(ValueError, match="supersedes"):
+            WriteDecision(disposition=WriteDisposition.SUPERSEDE)
+
+    def test_add_needs_no_companion_field(self) -> None:
+        assert WriteDecision(disposition=WriteDisposition.ADD).duplicate_of is None
+
+    def test_noop_with_its_companion_is_accepted(self) -> None:
+        decision = WriteDecision(
+            disposition=WriteDisposition.NOOP, duplicate_of="mem-1"
+        )
+        assert decision.duplicate_of == "mem-1"
+
+
+def _entry(
+    content: str,
+    *,
+    entry_id: str = "mem-1",
+    category: MemoryCategory = MemoryCategory.SEMANTIC,
+    tags: tuple[str, ...] = (),
+) -> MemoryEntry:
+    """Build a stored memory entry."""
+    return MemoryEntry(
+        id=NotBlankStr(entry_id),
+        agent_id=NotBlankStr("agent-1"),
+        category=category,
+        content=NotBlankStr(content),
+        metadata=MemoryMetadata(tags=tuple(NotBlankStr(t) for t in tags)),
+        created_at=datetime(2026, 7, 20, tzinfo=UTC),
+    )
+
+
+_LESSON = "Roll back the deploy before draining the connection pool."
+
+
+class TestDeduplication:
+    def test_identical_content_is_a_noop(self) -> None:
+        decision = evaluate_write(_LESSON, existing=(_entry(_LESSON),))
+
+        assert decision.disposition is WriteDisposition.NOOP
+        assert decision.duplicate_of == "mem-1"
+
+    def test_reworded_near_duplicate_is_a_noop(self) -> None:
+        """Same fact, different words, must not accumulate twice."""
+        stored = _entry("Roll back the deploy before draining connection pool.")
+
+        decision = evaluate_write(_LESSON, existing=(stored,))
+
+        assert decision.disposition is WriteDisposition.NOOP
+
+    def test_unrelated_content_is_added(self) -> None:
+        stored = _entry("Prefer the staging cluster for load tests.")
+
+        decision = evaluate_write(_LESSON, existing=(stored,))
+
+        assert decision.disposition is WriteDisposition.ADD
+        assert decision.duplicate_of is None
+
+    def test_empty_store_always_adds(self) -> None:
+        assert evaluate_write(_LESSON, existing=()).disposition is WriteDisposition.ADD
+
+    def test_dedup_reports_the_closest_match(self) -> None:
+        near = _entry(_LESSON, entry_id="near")
+        far = _entry("Something else entirely about billing.", entry_id="far")
+
+        decision = evaluate_write(_LESSON, existing=(far, near))
+
+        assert decision.duplicate_of == "near"
+
+    def test_threshold_is_tunable(self) -> None:
+        """The same partial overlap flips with the threshold."""
+        stored = _entry("Roll back the deploy.")
+
+        strict = evaluate_write(_LESSON, existing=(stored,))
+        lenient = evaluate_write(_LESSON, existing=(stored,), dedup_threshold=0.5)
+
+        assert strict.disposition is WriteDisposition.ADD
+        assert lenient.disposition is WriteDisposition.NOOP
+
+    def test_wording_only_differences_collapse(self) -> None:
+        """Stop words alone must not make the same fact look new."""
+        stored = _entry("Roll back the deploy before draining connection pool.")
+
+        decision = evaluate_write(_LESSON, existing=(stored,))
+
+        assert decision.disposition is WriteDisposition.NOOP
+
+
+class TestSupersession:
+    def test_declared_supersession_replaces_the_prior_entry(self) -> None:
+        """Supersession is declared by the writer, never inferred.
+
+        Inferring contradiction from text similarity is exactly what the
+        literature shows models fail at, so the gate acts only on an
+        explicit claim.
+        """
+        stored = _entry("Drain the pool before rolling back.", entry_id="old")
+
+        decision = evaluate_write(
+            _LESSON,
+            existing=(stored,),
+            supersedes=NotBlankStr("old"),
+            supersedes_exists=True,
+        )
+
+        assert decision.disposition is WriteDisposition.SUPERSEDE
+        assert decision.supersedes == "old"
+
+    def test_supersession_does_not_require_the_prior_entry_to_be_similar(
+        self,
+    ) -> None:
+        """A correction is usually worded unlike the belief it replaces.
+
+        Requiring the named entry to appear among the similarity
+        candidates would reject exactly the writes that matter most.
+        """
+        decision = evaluate_write(
+            _LESSON,
+            existing=(_entry("something else entirely", entry_id="other"),),
+            supersedes=NotBlankStr("old"),
+            supersedes_exists=True,
+        )
+
+        assert decision.disposition is WriteDisposition.SUPERSEDE
+
+    def test_a_retired_entry_is_not_treated_as_a_duplicate(self) -> None:
+        """Re-asserting a belief the writer already replaced must land.
+
+        Dropping it as a duplicate would point the writer at an entry
+        recall never surfaces.
+        """
+        retired = _entry(_LESSON, entry_id="old", tags=(SUPERSEDED_TAG,))
+
+        decision = evaluate_write(_LESSON, existing=(retired,))
+
+        assert decision.disposition is WriteDisposition.ADD
+
+    def test_supersession_wins_over_dedup(self) -> None:
+        """An explicit replacement must land even if it reads as a duplicate."""
+        stored = _entry(_LESSON, entry_id="old")
+
+        decision = evaluate_write(
+            _LESSON,
+            existing=(stored,),
+            supersedes=NotBlankStr("old"),
+            supersedes_exists=True,
+        )
+
+        assert decision.disposition is WriteDisposition.SUPERSEDE
+
+    def test_superseding_an_unknown_entry_is_rejected(self) -> None:
+        """A dangling supersession link would orphan the claim."""
+        decision = evaluate_write(
+            _LESSON,
+            existing=(_entry("unrelated", entry_id="other"),),
+            supersedes=NotBlankStr("missing"),
+            supersedes_exists=False,
+        )
+
+        assert decision.disposition is WriteDisposition.REJECT
+        assert decision.reason is not None
+
+
+class TestClosestMatchTieBreak:
+    def test_equal_similarity_breaks_on_id(self) -> None:
+        """Two equally-similar duplicates must resolve reproducibly.
+
+        Both score 1.0 against the candidate, so only the id tie-break
+        decides which is reported, and it must be stable across runs.
+        """
+        first = _entry(_LESSON, entry_id="aaa")
+        second = _entry(_LESSON, entry_id="bbb")
+
+        forward = evaluate_write(_LESSON, existing=(first, second))
+        reversed_order = evaluate_write(_LESSON, existing=(second, first))
+
+        assert forward.duplicate_of == "bbb"
+        assert reversed_order.duplicate_of == "bbb"
+
+
+class TestDeterminism:
+    def test_same_inputs_give_the_same_decision(self) -> None:
+        """No LLM, so the gate must be reproducible."""
+        existing = (_entry("Prefer the staging cluster."),)
+
+        first = evaluate_write(_LESSON, existing=existing)
+        second = evaluate_write(_LESSON, existing=existing)
+
+        assert first == second
+
+    def test_blank_candidate_is_rejected(self) -> None:
+        decision = evaluate_write("   ", existing=())
+
+        assert decision.disposition is WriteDisposition.REJECT

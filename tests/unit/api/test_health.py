@@ -8,21 +8,25 @@ topology. The per-component breakdown lives behind authentication on
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from synthorg.api.controllers._memory_health import MemoryHealth, MemoryState
 from synthorg.api.controllers.health import (
     TelemetryStatus,
+    _memory_readiness,
     _probe_persistence,
+    _resolve_memory_health,
     _resolve_telemetry_status,
 )
 from synthorg.api.state import AppState
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.health import (
     ProviderHealthRecord,
     ProviderHealthTracker,
 )
-from tests._shared import JsonDict, LoopAsyncClient
+from tests._shared import JsonDict, LoopAsyncClient, mock_of
 from tests._shared import build_test_app as create_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -248,6 +252,130 @@ class TestHealthDetail:
         body = response.json()["data"]
         assert body["status"] == "unavailable"
         assert body["message_bus"] is False
+
+
+@pytest.mark.unit
+class TestMemoryHealth:
+    """Memory that never wired must be visible, not silently absent.
+
+    An operator whose embedder failed to resolve previously saw a
+    healthy system that simply never remembered anything.
+    """
+
+    async def test_unwired_memory_reports_off_with_a_remedy(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        response = await async_test_client.get("/api/v1/health")
+
+        memory = response.json()["data"]["memory"]
+
+        assert memory["state"] == "off"
+        assert "embedder" in (memory["detail"] or "")
+
+    async def test_state_names_the_configured_backend(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        response = await async_test_client.get("/api/v1/health")
+
+        assert response.json()["data"]["memory"]["backend"] == "sqlvector"
+
+
+@pytest.mark.unit
+class TestResolveMemoryHealth:
+    """``_resolve_memory_health`` probes the live backend, not just wiring.
+
+    A wired backend can still have lost its store or its dense index
+    after boot; keyword-only recall answers every query, so it reads as
+    working memory unless the health surface probes for it.
+    """
+
+    def _app_state(
+        self,
+        *,
+        backend: object,
+        scheduler: object = object(),
+        configured: str = "sqlvector",
+    ) -> AppState:
+        app_state = MagicMock(spec=AppState)
+        app_state.config = SimpleNamespace(memory=SimpleNamespace(backend=configured))
+        app_state.slice.return_value = SimpleNamespace(
+            backend=backend, consolidation_scheduler=scheduler
+        )
+        return app_state
+
+    @staticmethod
+    def _backend(*, healthy: bool, dense: bool) -> object:
+        backend = mock_of[MemoryBackend](supports_dense_search=dense)
+        backend.health_check = AsyncMock(
+            spec=MemoryBackend.health_check, return_value=healthy
+        )
+        return backend
+
+    async def test_healthy_dense_backend_with_scheduler_is_durable(self) -> None:
+        app_state = self._app_state(backend=self._backend(healthy=True, dense=True))
+        result = await _resolve_memory_health(app_state)
+        assert result.state is MemoryState.DURABLE
+
+    async def test_failed_probe_is_degraded(self) -> None:
+        app_state = self._app_state(backend=self._backend(healthy=False, dense=True))
+        result = await _resolve_memory_health(app_state)
+        assert result.state is MemoryState.DEGRADED
+        assert result.detail is not None
+
+    async def test_lexical_only_backend_is_degraded(self) -> None:
+        # Recall answers every query on keyword matches, so a lost dense
+        # index must surface rather than read as healthy.
+        app_state = self._app_state(backend=self._backend(healthy=True, dense=False))
+        result = await _resolve_memory_health(app_state)
+        assert result.state is MemoryState.DEGRADED
+        assert "keyword-only" in (result.detail or "")
+
+    async def test_missing_scheduler_is_degraded(self) -> None:
+        app_state = self._app_state(
+            backend=self._backend(healthy=True, dense=True), scheduler=None
+        )
+        result = await _resolve_memory_health(app_state)
+        assert result.state is MemoryState.DEGRADED
+        assert "maintenance" in (result.detail or "")
+
+    async def test_unwired_backend_is_off(self) -> None:
+        result = await _resolve_memory_health(self._app_state(backend=None))
+        assert result.state is MemoryState.OFF
+
+
+@pytest.mark.unit
+class TestMemoryReadiness:
+    """Memory joins the readiness verdict only when a durable store was asked.
+
+    A wired durable backend (e.g. sqlvector) in DEGRADED state fails
+    ``/readyz`` (503). An unwired backend (OFF) does not block: the config
+    default is sqlvector, so a minimal or not-yet-configured deployment
+    reports OFF without durable memory ever wiring. The inmemory store is
+    degraded by design and likewise never blocks, so dev stacks stay ready.
+    """
+
+    @staticmethod
+    def _health(*, backend: str, state: MemoryState) -> MemoryHealth:
+        return MemoryHealth(state=state, backend=backend)
+
+    def test_inmemory_never_blocks(self) -> None:
+        health = self._health(backend="inmemory", state=MemoryState.DEGRADED)
+        assert _memory_readiness(health) is None
+
+    def test_durable_backend_when_durable_is_ready(self) -> None:
+        health = self._health(backend="sqlvector", state=MemoryState.DURABLE)
+        assert _memory_readiness(health) is True
+
+    def test_durable_backend_degraded_fails_readiness(self) -> None:
+        health = self._health(backend="sqlvector", state=MemoryState.DEGRADED)
+        assert _memory_readiness(health) is False
+
+    def test_unwired_backend_does_not_block(self) -> None:
+        # OFF is a minimal or not-yet-configured deployment (the config
+        # default is sqlvector), not a runtime failure, so it must not
+        # fail the readiness probe of every memory-less stack.
+        health = self._health(backend="sqlvector", state=MemoryState.OFF)
+        assert _memory_readiness(health) is None
 
 
 @pytest.mark.unit

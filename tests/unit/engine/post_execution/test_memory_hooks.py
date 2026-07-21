@@ -4,6 +4,7 @@ from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import structlog.testing
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import FinishReason
@@ -19,8 +20,12 @@ from synthorg.engine.post_execution.memory_hooks import (
     try_procedural_memory,
 )
 from synthorg.execution.turn import TurnRecord
+from synthorg.memory.procedural.models import ProceduralMemoryConfig
+from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
 from synthorg.memory.protocol import MemoryBackend
-from tests._shared import as_uuid
+from synthorg.observability.events.procedural_memory import PROCEDURAL_MEMORY_ERROR
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import as_uuid, mock_of
 
 _AGENT_UUID = as_uuid("memory-hooks-agent")
 
@@ -95,7 +100,13 @@ def _make_recovery_result() -> MagicMock:
 @pytest.mark.unit
 class TestTryCaptureDistillation:
     async def test_capture_called_when_enabled(self) -> None:
-        """Delegates to capture_distillation when flag and backend set."""
+        """Stores a distillation reflecting the completed run.
+
+        The error-path sibling asserts the stored content, so the happy
+        path holds to the same bar rather than only that store was
+        reached: a capture that persisted the wrong outcome would pass a
+        bare await-count check.
+        """
         backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="dist-1")
         result = _make_completed_result()
@@ -109,6 +120,8 @@ class TestTryCaptureDistillation:
         )
 
         backend.store.assert_awaited_once()
+        store_request = backend.store.call_args.args[1]
+        assert "Task completed successfully" in store_request.content
 
     async def test_skipped_when_disabled(self) -> None:
         """No-op when distillation capture is disabled."""
@@ -232,10 +245,13 @@ class TestTryProceduralMemory:
         proposer = AsyncMock()
         backend = AsyncMock(spec=MemoryBackend)
 
-        with patch(
-            "synthorg.memory.procedural.pipeline.propose_procedural_memory",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            patch(
+                "synthorg.memory.procedural.pipeline.propose_procedural_memory",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
+            structlog.testing.capture_logs() as cap,
         ):
             # Should not raise.
             await try_procedural_memory(
@@ -246,6 +262,10 @@ class TestTryProceduralMemory:
                 procedural_proposer=proposer,
                 memory_backend=backend,
             )
+
+        # Swallowed, but not silently: a best-effort hook that eats an
+        # error without a trace is how the original bug hid.
+        assert any(e.get("event") == PROCEDURAL_MEMORY_ERROR for e in cap)
 
     async def test_memory_error_propagates(self) -> None:
         """MemoryError is never swallowed."""
@@ -270,3 +290,104 @@ class TestTryProceduralMemory:
                 procedural_proposer=proposer,
                 memory_backend=backend,
             )
+
+
+# ── live settings gate ────────────────────────────────────────────
+
+
+def _resolver(*, enabled: bool, min_confidence: float) -> ConfigResolver:
+    resolver: ConfigResolver = mock_of[ConfigResolver](
+        get_bool=AsyncMock(return_value=enabled),
+        get_float=AsyncMock(return_value=min_confidence),
+    )
+    return resolver
+
+
+@pytest.mark.unit
+class TestProceduralLiveSettingsGate:
+    """``memory.procedural_enabled`` takes effect on the next capture."""
+
+    async def test_disabled_setting_short_circuits_the_pipeline(self) -> None:
+        """A capture makes no LLM call while the switch is off."""
+        with patch(
+            "synthorg.memory.procedural.pipeline.propose_procedural_memory",
+            new_callable=AsyncMock,
+        ) as mock_propose:
+            await try_procedural_memory(
+                _make_error_result(),
+                _make_recovery_result(),
+                str(_AGENT_UUID),
+                "task-hook-001",
+                procedural_proposer=AsyncMock(spec=ProceduralMemoryProposer),
+                memory_backend=AsyncMock(spec=MemoryBackend),
+                procedural_memory_config=ProceduralMemoryConfig(),
+                config_resolver=_resolver(enabled=False, min_confidence=0.5),
+            )
+
+        mock_propose.assert_not_awaited()
+
+    async def test_disabled_boot_config_short_circuits_without_a_resolver(
+        self,
+    ) -> None:
+        """With no settings wired, the boot config's own switch decides."""
+        with patch(
+            "synthorg.memory.procedural.pipeline.propose_procedural_memory",
+            new_callable=AsyncMock,
+        ) as mock_propose:
+            await try_procedural_memory(
+                _make_error_result(),
+                _make_recovery_result(),
+                str(_AGENT_UUID),
+                "task-hook-001",
+                procedural_proposer=AsyncMock(spec=ProceduralMemoryProposer),
+                memory_backend=AsyncMock(spec=MemoryBackend),
+                procedural_memory_config=ProceduralMemoryConfig(enabled=False),
+            )
+
+        mock_propose.assert_not_awaited()
+
+    async def test_live_min_confidence_overrides_the_boot_value(self) -> None:
+        """The quality floor is re-read per capture, not frozen at boot."""
+        with patch(
+            "synthorg.memory.procedural.pipeline.propose_procedural_memory",
+            new_callable=AsyncMock,
+        ) as mock_propose:
+            await try_procedural_memory(
+                _make_error_result(),
+                _make_recovery_result(),
+                str(_AGENT_UUID),
+                "task-hook-001",
+                procedural_proposer=AsyncMock(spec=ProceduralMemoryProposer),
+                memory_backend=AsyncMock(spec=MemoryBackend),
+                procedural_memory_config=ProceduralMemoryConfig(min_confidence=0.5),
+                config_resolver=_resolver(enabled=True, min_confidence=0.9),
+            )
+
+        config = mock_propose.call_args[1]["config"]
+        assert config is not None
+        assert config.min_confidence == pytest.approx(0.9)
+
+    async def test_resolver_failure_falls_back_to_the_boot_config(self) -> None:
+        """A settings read failure never silently flips the switch."""
+        resolver = mock_of[ConfigResolver](
+            get_bool=AsyncMock(side_effect=RuntimeError("settings down")),
+            get_float=AsyncMock(return_value=0.9),
+        )
+        boot_config = ProceduralMemoryConfig(min_confidence=0.4)
+
+        with patch(
+            "synthorg.memory.procedural.pipeline.propose_procedural_memory",
+            new_callable=AsyncMock,
+        ) as mock_propose:
+            await try_procedural_memory(
+                _make_error_result(),
+                _make_recovery_result(),
+                str(_AGENT_UUID),
+                "task-hook-001",
+                procedural_proposer=AsyncMock(spec=ProceduralMemoryProposer),
+                memory_backend=AsyncMock(spec=MemoryBackend),
+                procedural_memory_config=boot_config,
+                config_resolver=resolver,
+            )
+
+        assert mock_propose.call_args[1]["config"] is boot_config

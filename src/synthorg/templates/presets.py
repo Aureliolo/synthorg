@@ -235,7 +235,14 @@ def generate_auto_name(
             fake = Faker([chosen_locale])
             fake.seed_instance(seed)
         else:
-            fake = _get_faker(tuple(locale_list))
+            # Draw one locale rather than constructing a Faker over all of
+            # them: a multi-locale Faker eagerly loads every provider for
+            # every locale (seconds for the full Latin set) only to serve
+            # one name, and the per-locale instance is cached so the next
+            # call for the same locale is free. Diversity is preserved --
+            # the locale itself is sampled from the full set per call.
+            chosen_locale = random.choice(locale_list)  # noqa: S311
+            fake = _get_faker((chosen_locale,))
         return _two_part_name(fake.first_name, fake.last_name)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)

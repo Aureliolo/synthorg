@@ -86,6 +86,10 @@ class _RecordingBackend:
     def backend_name(self) -> NotBlankStr:
         return NotBlankStr("recording")
 
+    @property
+    def supports_dense_search(self) -> bool:
+        return False
+
     async def store(
         self, agent_id: NotBlankStr, request: MemoryStoreRequest
     ) -> NotBlankStr:

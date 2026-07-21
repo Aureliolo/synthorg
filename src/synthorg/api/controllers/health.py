@@ -19,6 +19,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg import __version__
 from synthorg._core.features import require_service
+from synthorg.api.controllers._memory_health import (
+    MemoryHealth,
+    MemoryState,
+    memory_wiring_health,
+    resolve_memory_health,
+)
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -137,6 +143,9 @@ class ReadinessStatus(BaseModel):
     telemetry: TelemetryStatus = Field(
         description="Project telemetry delivery state",
     )
+    memory: MemoryHealth = Field(
+        description="Agent-memory substrate state",
+    )
     version: str = Field(description="Application version")
     uptime_seconds: float = Field(ge=0.0, description="Seconds since startup")
 
@@ -218,6 +227,18 @@ def _resolve_telemetry_status(app_state: AppState) -> TelemetryStatus:
     )
 
 
+async def _resolve_memory_health(app_state: AppState) -> MemoryHealth:
+    """Report whether agent memory is actually running.
+
+    Thin wrapper binding the controller's probe helper to the shared
+    resolver in ``_memory_health``.
+
+    Returns:
+        ``MemoryHealth`` describing the substrate.
+    """
+    return await resolve_memory_health(app_state, probe=_probe_service)
+
+
 def _unavailable_status(app_state: AppState) -> ReadinessStatus:
     """Build a 503 ``unavailable`` readiness status.
 
@@ -229,12 +250,24 @@ def _unavailable_status(app_state: AppState) -> ReadinessStatus:
         ``ReadinessStatus`` instance with every component unknown.
     """
     uptime = round(app_state.clock.monotonic() - app_state.startup_time, 2)
+    # Wiring only: this path exists because the probe TaskGroup already
+    # failed, so probing the backend again would be reporting on the
+    # thing that just broke.
+    memory = memory_wiring_health(app_state) or MemoryHealth(
+        state=MemoryState.DEGRADED,
+        backend=app_state.config.memory.backend,
+        detail=(
+            "A memory backend is wired but the readiness probe did not "
+            "complete, so its live state is unknown."
+        ),
+    )
     return ReadinessStatus(
         status=ReadinessOutcome.UNAVAILABLE,
         persistence=None,
         message_bus=None,
         providers=None,
         telemetry=_resolve_telemetry_status(app_state),
+        memory=memory,
         version=__version__,
         uptime_seconds=uptime,
     )
@@ -285,6 +318,35 @@ async def _resolve_readiness_probe_timeout(app_state: AppState) -> float:
             fallback_seconds=boot_value,
         )
         return boot_value
+
+
+def _memory_readiness(memory_health: MemoryHealth) -> bool | None:
+    """Fold agent memory into the readiness verdict.
+
+    A durable backend that wired but came up DEGRADED (a failed probe, a
+    lost dense index, or maintenance off) is the silent-memory failure
+    this surface exists to catch: keyword-only recall answers every
+    query, so it reads as working memory while returning the wrong
+    things. That fails readiness.
+
+    An unwired backend (``OFF``) does not: the config default is
+    ``sqlvector``, so a minimal or not-yet-configured deployment reports
+    ``OFF`` without any durable memory ever having been wired, and
+    blocking on it would fail every such stack's readiness probe.
+    ``inmemory`` is degraded by design and likewise never blocks.
+
+    Returns:
+        ``False`` when a durable backend is wired but DEGRADED, ``True``
+        when it is DURABLE, or ``None`` (does not block) for an unwired
+        or inmemory store.
+    """
+    from synthorg.memory.factory import IN_MEMORY_BACKEND  # noqa: PLC0415
+
+    if memory_health.backend == IN_MEMORY_BACKEND:
+        return None
+    if memory_health.state is MemoryState.OFF:
+        return None
+    return memory_health.state is MemoryState.DURABLE
 
 
 async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
@@ -339,6 +401,9 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
                     component="providers",
                 ),
             )
+            # Inside the fan-out so a wedged memory store is bounded by
+            # the same probe budget as every other dependency.
+            memory_task = tg.create_task(_resolve_memory_health(app_state))
     except TimeoutError:
         # The probe fan-out exceeded the budget; ``asyncio.timeout``
         # cancelled the TaskGroup and surfaced a bare ``TimeoutError``.
@@ -370,12 +435,14 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
     bus_ok = bus_task.result()
     providers_ok = providers_task.result()
     telemetry_status = _resolve_telemetry_status(app_state)
+    memory_health = memory_task.result()
+    memory_ready = _memory_readiness(memory_health)
 
     # Readiness is a pass/fail: every *configured* dependency must
     # report healthy. Unconfigured (None) is treated as not blocking
     # -- dev stacks without a bus still report ready.
     configured_checks = [
-        v for v in (persistence_ok, bus_ok, providers_ok) if v is not None
+        v for v in (persistence_ok, bus_ok, providers_ok, memory_ready) if v is not None
     ]
     ready = bool(configured_checks) and all(configured_checks)
     outcome = (
@@ -391,6 +458,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         message_bus=bus_ok,
         providers=providers_ok,
         telemetry=telemetry_status.value,
+        memory=memory_health.state.value,
     )
     return ReadinessStatus(
         status=outcome,
@@ -398,6 +466,7 @@ async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:
         message_bus=bus_ok,
         providers=providers_ok,
         telemetry=telemetry_status,
+        memory=memory_health,
         version=__version__,
         uptime_seconds=uptime,
     )

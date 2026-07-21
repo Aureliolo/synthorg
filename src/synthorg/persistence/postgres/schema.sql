@@ -2505,3 +2505,34 @@ ON plan_item_comments (plan_id, item_id, created_at);
 CREATE INDEX idx_plan_item_comments_reply
 ON plan_item_comments (reply_to_id)
 WHERE reply_to_id IS NOT NULL;
+
+CREATE TABLE memory_entries (
+    memory_id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(memory_id)) > 0),
+    agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(agent_id)) > 0),
+    namespace TEXT NOT NULL DEFAULT 'default' CHECK (LENGTH(TRIM(namespace)) > 0),
+    category TEXT NOT NULL CHECK (LENGTH(TRIM(category)) > 0),
+    content TEXT NOT NULL CHECK (LENGTH(TRIM(content)) > 0),
+    source TEXT CHECK (source IS NULL OR LENGTH(TRIM(source)) > 0),
+    confidence DOUBLE PRECISION NOT NULL DEFAULT 1.0
+    CHECK (confidence >= 0.0 AND confidence <= 1.0),
+    tags JSONB NOT NULL DEFAULT '[]'::JSONB,
+    token_count INTEGER NOT NULL DEFAULT 0 CHECK (token_count >= 0),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ
+);
+CREATE INDEX idx_memory_entries_agent ON memory_entries (agent_id, created_at DESC);
+CREATE INDEX idx_memory_entries_agent_category ON memory_entries (agent_id, category);
+CREATE INDEX idx_memory_entries_namespace ON memory_entries (agent_id, namespace);
+CREATE INDEX idx_memory_entries_expires ON memory_entries (expires_at)
+WHERE expires_at IS NOT NULL;
+CREATE INDEX idx_memory_entries_tags ON memory_entries USING GIN (tags);
+
+CREATE TABLE memory_entry_terms (
+    memory_id TEXT NOT NULL
+    REFERENCES memory_entries (memory_id) ON DELETE CASCADE,
+    term TEXT NOT NULL CHECK (LENGTH(TRIM(term)) > 0),
+    term_frequency INTEGER NOT NULL CHECK (term_frequency > 0),
+    PRIMARY KEY (memory_id, term)
+);
+CREATE INDEX idx_memory_entry_terms_term ON memory_entry_terms (term);

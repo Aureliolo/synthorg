@@ -251,7 +251,7 @@ class AutonomousSkillEvolver:
                 SKILL_EVOLVER_PROPOSAL_EMITTED,
                 cycle_id=cycle_id,
                 approval_id=approval.id,
-                pattern_description=pattern.description,
+                description_length=len(pattern.description),
             )
 
         return proposals, conflicts, supersessions, skipped_low_confidence

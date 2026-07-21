@@ -162,6 +162,7 @@ class SemanticWorker:
             mem_query = MemoryQuery(
                 text=query.text,
                 categories=query.categories,
+                namespaces=query.namespaces,
                 limit=query.max_results,
             )
             personal = await _safe_retrieve(
@@ -361,6 +362,7 @@ class EpisodicWorker:
             mem_query = MemoryQuery(
                 text=query.text,
                 categories=frozenset({MemoryCategory.EPISODIC}),
+                namespaces=query.namespaces,
                 since=since,
                 limit=pool_limit,
             )
@@ -495,6 +497,7 @@ class ProceduralWorker:
             mem_query = MemoryQuery(
                 text=query.text,
                 categories=frozenset({MemoryCategory.PROCEDURAL}),
+                namespaces=query.namespaces,
                 limit=query.max_results,
             )
             entries = await _safe_retrieve(

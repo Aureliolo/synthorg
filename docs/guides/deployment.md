@@ -77,12 +77,11 @@ All environment variables are configured in `docker/.env` (copy from `docker/.en
 | `SYNTHORG_DB_PATH` | `/data/synthorg.db` | SQLite database path (inside container) |
 | `SYNTHORG_MEMORY_DIR` | `/data/memory` | Agent memory storage directory |
 | `SYNTHORG_PERSISTENCE_BACKEND` | `postgres` | Compose-template selector only; the Python process does not read it. The backend is chosen by `SYNTHORG_DATABASE_URL` (Postgres) vs `SYNTHORG_DB_PATH` (SQLite). The bundled `docker/compose.yml` ships Postgres. |
-| `SYNTHORG_MEMORY_BACKEND` | `mem0` | Compose-template selector only; the Python process does not read it. The memory backend is set in the company template under `memory.backend`. |
+| `SYNTHORG_MEMORY_BACKEND` | `sqlvector` | Registry override for the `memory.backend` setting (`sqlvector` / `composite` / `inmemory`). Restart-bound: the value is baked into the frozen memory config at startup. A database-stored setting wins over it. |
 | `SYNTHORG_LOG_DIR` | `/data/logs` | Log file directory |
 | `SYNTHORG_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warning`, `error`, `critical` |
 | `BACKEND_PORT` | `3001` | Host port for the backend API |
 | `WEB_PORT` | `3000` | Host port for the web dashboard |
-| `MEM0_TELEMETRY` | `false` | Mem0 telemetry (disable to reduce overhead) |
 | `DOCKER_HOST` | *(unset)* | Docker socket for agent code execution sandbox (optional) |
 | `SYNTHORG_TELEMETRY_ENABLED` | `false` | Enable opt-in anonymous product telemetry. Set to `true` / `1` / `yes` to enable; values like `false` / `0` / `no` keep it off. The Logfire project token is **embedded in the release wheel** at build time -- operators do not configure it. |
 | `SYNTHORG_TELEMETRY_ENV` | *(unset)* | Explicit deployment-environment tag (`dev` / `pre-release` / `prod` / `ci` / `staging-east` / ...). Always wins the resolution chain if set. |

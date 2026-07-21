@@ -17,7 +17,7 @@ func TestGenerateDefault(t *testing.T) {
 		WebPort:            3000,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
@@ -77,7 +77,7 @@ func TestGenerateCustomPorts(t *testing.T) {
 		SettingsKey:        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 		CursorSecret:       "test-cursor-secret-stable-value",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
@@ -111,7 +111,7 @@ func TestGenerateWithSandbox(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		DockerSockGID:      -1,
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
@@ -187,7 +187,7 @@ func TestGenerateWithFineTuning(t *testing.T) {
 				DockerSock:         "/var/run/docker.sock",
 				DockerSockGID:      -1,
 				PersistenceBackend: "sqlite",
-				MemoryBackend:      "mem0",
+				MemoryBackend:      "sqlvector",
 				BusBackend:         "internal",
 				FineTuning:         true,
 				FineTuningVariant:  tc.variant,
@@ -218,7 +218,7 @@ func TestGenerateWithoutFineTuningOmitsImageEnv(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		DockerSockGID:      -1,
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
@@ -242,7 +242,7 @@ func TestGenerateWithSandboxAndDockerSockGID(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		DockerSockGID:      999,
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
@@ -268,7 +268,7 @@ func TestGenerateWithSandboxAndDockerSockGIDZero(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		DockerSockGID:      0,
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
@@ -294,7 +294,7 @@ func TestGenerateWithSandboxAndDockerSockGIDNegative(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		DockerSockGID:      -1,
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
@@ -318,7 +318,7 @@ func TestGenerateWithDigestPins(t *testing.T) {
 		WebPort:            3000,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 		DigestPins: map[string]string{
 			"backend": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -358,7 +358,7 @@ func TestGenerateWithDigestPinsAndSandbox(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		DockerSockGID:      -1,
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 		DigestPins: map[string]string{
 			"backend": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -397,7 +397,7 @@ func TestGenerateWithSandboxAndPostgres(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		DockerSockGID:      -1,
 		PersistenceBackend: "postgres",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 		PostgresPort:       3002,
 		PostgresPassword:   "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -411,8 +411,11 @@ func TestGenerateWithSandboxAndPostgres(t *testing.T) {
 	// Backend keeps the sandbox wiring regardless of persistence backend.
 	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock")
 	assertContains(t, yaml, `SYNTHORG_SANDBOX_IMAGE: "ghcr.io/aureliolo/synthorg-sandbox:latest"`)
-	// Postgres service is still generated alongside the sandbox wiring.
-	assertContains(t, yaml, "dhi.io/postgres:"+config.DefaultPostgresImageTag)
+	// Postgres service is still generated alongside the sandbox wiring,
+	// digest-pinned: the pin is a defence-in-depth control independent of
+	// the pre-flight cosign pass, and a stale lookup key silently drops it
+	// while leaving the repo:tag reference looking correct.
+	assertContains(t, yaml, "dhi.io/pgvector:"+config.DefaultPostgresImageTag+"@"+config.DefaultPostgresImageDigest)
 	assertContains(t, yaml, "SYNTHORG_DATABASE_URL")
 	// SQLite path must not appear when postgres is active.
 	if strings.Contains(yaml, "SYNTHORG_DB_PATH") {
@@ -439,7 +442,7 @@ func TestGenerateWithSandboxAndSecrets(t *testing.T) {
 		SettingsKey:        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 		CursorSecret:       "test-cursor-secret-stable-value",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
@@ -475,7 +478,7 @@ func TestGenerateMasterKeyGatedByEncryptSecrets(t *testing.T) {
 		CursorSecret:       "test-cursor-secret-stable-value",
 		MasterKey:          "m",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 
@@ -527,7 +530,7 @@ func TestGenerateWithSandboxAndEmptyDigestPins(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		DockerSockGID:      -1,
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 		DigestPins:         map[string]string{},
 	}
@@ -552,7 +555,7 @@ func TestGenerateNilDigestPinsFallsBackToTag(t *testing.T) {
 		WebPort:            3000,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 		DigestPins:         nil,
 	}
@@ -575,7 +578,7 @@ func TestGenerateHardeningPresent(t *testing.T) {
 		WebPort:            3000,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	out, err := Generate(p)
@@ -612,7 +615,7 @@ func TestParamsFromState(t *testing.T) {
 		Sandbox:            true,
 		DockerSock:         "/var/run/docker.sock",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	p, err := ParamsFromState(s)
@@ -638,8 +641,8 @@ func TestParamsFromState(t *testing.T) {
 	if p.PersistenceBackend != "sqlite" {
 		t.Errorf("PersistenceBackend = %q, want sqlite", p.PersistenceBackend)
 	}
-	if p.MemoryBackend != "mem0" {
-		t.Errorf("MemoryBackend = %q, want mem0", p.MemoryBackend)
+	if p.MemoryBackend != "sqlvector" {
+		t.Errorf("MemoryBackend = %q, want sqlvector", p.MemoryBackend)
 	}
 	if p.JWTSecret != "secret" {
 		t.Errorf("JWTSecret = %q, want secret", p.JWTSecret)

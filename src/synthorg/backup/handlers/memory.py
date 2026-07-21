@@ -26,9 +26,12 @@ _MEMORY_SUBDIR = "memory"
 class MemoryComponentHandler:
     """Back up and restore the agent memory data directory.
 
-    Uses ``shutil.copytree`` with ``symlinks=True`` for
-    directory-level copies of the Mem0 data directory
-    (Qdrant + history DB).
+    The durable memory itself (vectors and the lexical index) lives in
+    the operational database and is covered by the persistence backup.
+    This handler copies the on-disk memory directory, which holds the
+    artefacts backends keep outside that database: materialised
+    ``SKILL.md`` files and embedding checkpoints. A ``shutil.copytree``
+    with ``symlinks=True`` preserves the directory shape.
 
     Args:
         data_dir: Path to the memory data directory.

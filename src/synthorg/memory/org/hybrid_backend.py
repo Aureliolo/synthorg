@@ -76,10 +76,10 @@ class HybridPromptRetrievalBackend:
     async def connect(self) -> None:
         """Mark the backend live; store lifecycle is owned by persistence.
 
-        After A4 the extended ``OrgFactRepository`` is a repository on the
-        shared :class:`PersistenceBackend`, whose connection is opened
-        earlier in the startup sequence.  Connecting/disconnecting the
-        store here would double-close it on shutdown.
+        The extended ``OrgFactRepository`` is a repository on the shared
+        :class:`PersistenceBackend`, whose connection is opened earlier in
+        the startup sequence.  Connecting/disconnecting the store here
+        would double-close it on shutdown.
         """
         self._connected = True
         logger.info(
@@ -224,7 +224,7 @@ class HybridPromptRetrievalBackend:
         self._require_connected()
         logger.debug(
             ORG_MEMORY_QUERY_START,
-            context=query.context,
+            context_length=len(query.context) if query.context else 0,
             categories=(
                 sorted(c.value for c in query.categories) if query.categories else None
             ),

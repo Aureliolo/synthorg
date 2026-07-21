@@ -1547,8 +1547,7 @@ File: `_audit/latest/findings/65-memory-boundary-leaks.md`
 All memory/recall operations must go through src/synthorg/memory/.
 
 Outside src/synthorg/memory/, find:
-- Direct mem0 SDK calls
-- qdrant_client imports or usage
+- pgvector / sqlite_vec usage outside src/synthorg/persistence/
 - Raw vector store client instantiation
 - Embedding API calls bypassing the memory abstraction
 
@@ -1614,8 +1613,8 @@ Backend choices must be driven by config factories, not hardcoded in business
 logic.
 
 Outside config/, settings/, and factory modules, grep for string literals used
-in branching logic: "sqlite", "postgres", "nats", "mem0", "qdrant",
-"in_memory", "in-process". Flag patterns like `if backend == "sqlite":` in
+in branching logic: "sqlite", "postgres", "nats", "sqlvector", "composite",
+"inmemory", "in-process". Flag patterns like `if backend == "sqlite":` in
 business code.
 
 Severity: medium.

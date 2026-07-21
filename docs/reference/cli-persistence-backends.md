@@ -30,7 +30,7 @@ Fresh Docker named volumes are owned by `root:root` at creation, and DHI images 
 
 When `--persistence-backend postgres` is selected, `synthorg init`:
 
-1. Adds a `dhi.io/postgres` DHI (Docker Hardened Image) service to the generated `compose.yml` (read-only rootfs, minimal capabilities via `cap_add`, `pg_isready` healthcheck, named volume `synthorg-pgdata`). The image tag is pinned via `DefaultPostgresImageTag` in `cli/internal/config/state.go` (kept current by Renovate).
+1. Adds a `dhi.io/pgvector` DHI (Docker Hardened Image) service to the generated `compose.yml` -- a hardened Postgres image that bundles the pgvector extension, so durable semantic memory has a dense index (read-only rootfs, minimal capabilities via `cap_add`, `pg_isready` healthcheck, named volume `synthorg-pgdata`). The image name, tag and digest are pinned via `DefaultPostgresImage{Name,Tag,Digest}` in `cli/internal/config/state.go` (kept current by Renovate).
 2. Extends the `data-init` helper to also chown `synthorg-pgdata` to `70:70` with mode `0700`.
 3. Generates a 32-byte URL-safe random password via `crypto/rand` and persists it to `config.json` (`postgres_password`). Re-init preserves the existing password to avoid breaking the running container.
 4. Wires `SYNTHORG_DATABASE_URL=postgresql://synthorg:<password>@postgres:5432/synthorg` into the backend container's environment. The SQLite-only `SYNTHORG_DB_PATH` variable is omitted.

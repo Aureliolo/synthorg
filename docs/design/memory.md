@@ -32,11 +32,81 @@ consolidation / retention pipeline.
 |---|---|---|---|
 | Current task context | Past events & decisions | Knowledge & facts learned | Skills & how-to |
 
-**Storage Backend:** Mem0 (durable, Qdrant+SQLite), InMemory (session-scoped),
-Composite (namespace-based routing adapter). See [Decision Log](../architecture/decisions.md).
+**Storage Backend:** `sqlvector` (durable; pgvector on Postgres, sqlite-vec on
+SQLite), `inmemory` (ephemeral, discouraged), `composite` (namespace routing).
+See [Decision Log](../architecture/decisions.md).
 
 Each agent maintains its own memory store. The storage backend is selected via configuration
 and all access flows through the [`MemoryBackend`](#memorybackend-protocol) protocol.
+
+### Why memory lives in the operational database
+
+Agent memory is stored in the same Postgres or SQLite database as everything
+else, rather than in a dedicated vector service. That keeps one thing to run,
+back up and migrate, and it lets tag filtering, expiry, and agent scoping be
+plain SQL rather than predicates re-implemented in application code because the
+store cannot express them.
+
+The lexical arm uses an ordinary inverted-index table (`memory_entry_terms`)
+scored by shared BM25 code, not FTS5 or `tsvector`. An ordinary table is
+portable, so the two backends are held to one behavioural contract by the
+conformance suite instead of being two implementations that merely resemble
+each other, and ranking stays beside the RRF and MMR code that already exists.
+
+!!! warning "pg_search is AGPL"
+    ParadeDB's `pg_search` is the usual answer for BM25 on Postgres and is
+    **AGPL-3.0**. The Licence Compatibility rule bars it. Use core
+    `tsvector`/`pg_trgm` or the inverted-index table.
+
+### Retrieval
+
+Retrieval is two-stage, which is the consistent finding across the IR
+literature:
+
+1. **Recall wide** from two orthogonal signals: dense vector similarity and
+   BM25 over the inverted index, fused by Reciprocal Rank Fusion
+   ([Cormack et al., SIGIR 2009](https://cormack.uwaterloo.ca/cormacksigir09-rrf.pdf)).
+   RRF operates on ranks, so it sidesteps the score-normalisation problem that
+   makes a weighted sum of cosine distance and BM25 unreliable. Each arm is
+   over-fetched before fusion so a document ranked mid-list by one signal can
+   still reach the fused top-k on the strength of the other.
+2. **Narrow** to a small injected set, because more retrieved context is not
+   better (see [Context budget](#context-budget)).
+
+!!! danger "Dense KNN always returns something"
+    A vector index returns its k nearest neighbours regardless of whether any
+    of them are relevant: a nonsense query against a store holding one memory
+    still returns that memory. Worse, RRF min-max normalises, so the top fused
+    hit scores exactly `1.0` however irrelevant it is, which makes any
+    threshold on the fused score meaningless.
+
+    Two guards sit in the backend: a query whose embedding carries no signal
+    skips the dense arm entirely, and dense hits no closer than orthogonal to
+    the query are dropped (with normalised embeddings, orthogonal sits at
+    `1/(1+sqrt(2)) ~= 0.414`, so the floor is a geometric statement rather
+    than a tuned number).
+
+    Neither is a calibrated relevance gate. Raw similarity is a poor binary
+    judge of whether a memory will actually help; an applied study measured its
+    ability to predict that at AUC 0.50, no better than chance. Abstention is a
+    first-class success case.
+
+### Context budget
+
+Injected memory competes with the prompt, and past a point it actively harms
+accuracy:
+
+- **Lost in the middle** ([Liu et al., TACL 2024](https://arxiv.org/abs/2307.03172)):
+  accuracy is U-shaped in the position of the relevant item, even in
+  long-context models.
+- **Context rot** ([Chroma, 2026](https://www.trychroma.com/research/context-rot)):
+  degradation is non-uniform and each added distractor compounds the loss. The
+  mechanism is architectural, so larger windows do not fix it.
+
+So injection is capped by `engine.memory_context_token_budget` (default 2000,
+read per task so an operator change applies without a restart), and injected
+entries are placed adjacent to the system prompt rather than buried
+mid-context.
 
 ---
 
@@ -56,22 +126,29 @@ and all access flows through the [`MemoryBackend`](#memorybackend-protocol) prot
 ## Memory Levels
 
 Memory persistence is configurable per agent, from no persistence to fully persistent storage.
+The persistence level lives on each agent's `MemoryConfig.type` (default `session`); it is not a
+company-wide memory setting.
 
 ???+ note "Memory Level Configuration"
 
+    Per agent, under the agent's identity card:
+
     ```yaml
     memory:
-      level: "persistent"            # none | session | project | persistent (default: session)
-      backend: "mem0"               # mem0 (default); also supports composite, inmemory
-      storage:
-        data_dir: "/data/memory"    # mounted Docker volume path
-        vector_store: "qdrant"      # hardcoded to embedded qdrant in Mem0 backend
-        history_store: "sqlite"     # hardcoded to sqlite in Mem0 backend
+      type: "persistent"            # none | session | project | persistent (default: session)
+    ```
+
+    Company-wide, under the memory namespace:
+
+    ```yaml
+    memory:
+      backend: "sqlvector"          # sqlvector (default); also composite, inmemory
       options:
         retention_days: null         # null = forever
         max_memories_per_agent: 10000
-        consolidation_interval: "daily"  # compress old memories
         shared_knowledge_base: true      # agents can access shared facts
+      consolidation:
+        interval: "daily"                # compress old memories
     ```
 
 ---
@@ -79,8 +156,9 @@ Memory persistence is configurable per agent, from no persistence to fully persi
 ## Memory Backend Protocol
 
 Agent memory is implemented behind a pluggable `MemoryBackend` protocol with three concrete
-implementations: Mem0 (durable, Qdrant+SQLite), InMemory (session-scoped), and Composite
-(namespace-based routing adapter); see [Decision Log](../architecture/decisions.md). Application
+implementations: `SqlVectorBackend` (durable; pgvector on Postgres, sqlite-vec on SQLite),
+InMemory (ephemeral, discouraged), and Composite (namespace-based routing adapter); see
+[Decision Log](../architecture/decisions.md). Application
 code depends only on the protocol; the storage engine is an implementation detail swappable via
 config.
 
@@ -196,31 +274,47 @@ single except clause.
 
 ```yaml
 memory:
-  backend: "mem0"
-  level: "persistent"              # none, session, project, persistent (default: session)
-  storage:
-    data_dir: "/data/memory"
-    vector_store: "qdrant"          # hardcoded to embedded qdrant in Mem0 backend
-    history_store: "sqlite"         # hardcoded to sqlite in Mem0 backend
+  backend: "sqlvector"             # sqlvector, composite, inmemory
   options:
     retention_days: null            # null = forever
     max_memories_per_agent: 10000
-    consolidation_interval: "daily"
     shared_knowledge_base: true
+  consolidation:
+    interval: "daily"               # drives the consolidation scheduler
 
-# Embedder config is passed programmatically via the factory:
-#   create_memory_backend(config, embedder=Mem0EmbedderConfig(
-#       provider="<embedding-provider>",
-#       model="<embedding-model-id>",
-#       dims=1536,
-#   ))
+# The embedder binding is resolved at boot from settings
+# (memory.embedder_provider / embedder_model / embedder_dims), the YAML
+# override, then LMEB auto-selection, in that order.
 ```
 
 Configuration is modelled by `CompanyMemoryConfig` (top-level), `MemoryStorageConfig`
 (storage paths/backends), and `MemoryOptionsConfig` (behaviour tuning). All are frozen
-Pydantic models. The `create_memory_backend(config, *, embedder=...)` factory returns an
-isolated `MemoryBackend` instance per company. The `embedder` kwarg is required for the
-Mem0 backend (must be a `Mem0EmbedderConfig`).
+Pydantic models. `create_memory_backend(config, *, deps=...)` returns an isolated
+`MemoryBackend` per company; `deps` carries the vector repository from the persistence
+layer and the embedder, neither of which the backend can invent for itself.
+
+### Boot wiring and the fail-loud rule
+
+`api/lifecycle_helpers/memory_backend_wiring.wire_memory_backend` builds the
+backend and publishes it on `MemoryStateSlice`. It runs **before**
+`_install_runtime_services`, because `_construct_agent_engine` reads the backend
+eagerly and a backend wired any later would never reach an agent.
+
+When no embedding model resolves, **no backend is wired** and the failure is
+logged at ERROR. There is no automatic fallback to keyword-only memory:
+
+!!! danger "Why there is no silent fallback"
+    Memory previously arrived as a side effect of the training-service
+    auto-wire, which published an ephemeral in-process store whose entire
+    matcher was a substring test. Every consumer (agent memory, the project
+    brain, the knowledge substrate, living docs) silently got keyword recall
+    over a dict that emptied on restart, while the settings page advertised a
+    durable backend. A store that looks like working memory but recalls the
+    wrong things is worse than one that is plainly off.
+
+The ephemeral backend remains reachable as an explicit operator choice
+(`memory.backend: inmemory`) and is marked discouraged in settings. It is never
+selected automatically.
 
 ### Embedding Model Selection
 
@@ -284,15 +378,22 @@ The pipeline requires no manual annotation and runs on a single GPU.
 5. **Deploy (gated)**: promote the checkpoint to the active embedder **only on a measured
    benchmark win** (the candidate must beat the base by a strictly positive margin on the
    retrieval benchmark); on a tie or loss the checkpoint is recorded inactive. On promotion,
-   update `Mem0EmbedderConfig` to point to the fine-tuned model. See
+   update the resolved `EmbedderConfig` to point to the fine-tuned model. See
    [Memory Learning &rarr; Checkpoint promotion gate](memory-learning.md#checkpoint-promotion-gate)
 
 **Integration design:** fine-tuning is an offline pipeline triggered via
-`POST /admin/memory/fine-tune` (see `MemoryAdminController`). The optional
+`POST /admin/memory/fine-tune` (served by the memory admin sub-controllers
+under `src/synthorg/api/controllers/memory/`). The optional
 `EmbeddingFineTuneConfig` (disabled by default) stores the checkpoint path. When
 `enabled=True` and `checkpoint_path` is set, backend initialisation uses the
-checkpoint path as the model identifier passed to the Mem0 SDK. The embedding
+checkpoint path as the model identifier the embedder dispatches on. The embedding
 provider must serve the fine-tuned model under this identifier.
+
+!!! warning "A dimension change is a re-index"
+    Vectors are only comparable to each other when they came from the same
+    model at the same width. Changing `embedder_dims` therefore invalidates
+    every stored vector: the store provisions a fresh dimension-suffixed index
+    rather than silently mixing incomparable vectors into the existing one.
 
 **Container execution:** when `FineTuneExecutionConfig.backend` is `"docker"`, each
 torch-bound pipeline stage (hard-negative mining, training, evaluation) runs inside an

@@ -4,8 +4,8 @@
 Scans a fixed set of public documentation files for digit literals
 adjacent to known stat nouns (``tests``, ``providers``, ``agents``,
 ``stars``, ``releases``, ``tools``, ``domains``, ``namespaces``) and stat
-keywords (``Mem0``, ``version``,
-``release(d|s)``, ``current``, ``latest``). Any such literal must be
+keywords (``version``, ``release(d|s)``, ``current``, ``latest``). Any
+such literal must be
 wrapped in ``<!--RS:NAME-->...<!--/RS-->`` markers driven by
 ``data/runtime_stats.yaml`` so the value can be regenerated at build
 time, or carry a per-line opt-out comment::
@@ -61,7 +61,7 @@ _NUMBER: Final[str] = (
 _STAT_NOUN: Final[str] = (
     r"(?:tests?|providers?|agents?|stars?|releases?|tools?|domains?|namespaces?)"
 )
-_KEYWORD: Final[str] = r"(?:Mem0|version|release[ds]?|current|latest)"
+_KEYWORD: Final[str] = r"(?:version|release[ds]?|current|latest)"
 
 _NEAR_NUMBER_RE: Final[re.Pattern[str]] = re.compile(
     rf"\b({_NUMBER})\s+(?:[A-Za-z-]+\s+){{0,4}}({_STAT_NOUN})\b",

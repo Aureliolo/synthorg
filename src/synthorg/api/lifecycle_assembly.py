@@ -172,6 +172,21 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
 
         await wire_evolution_outcomes(app_state)
 
+    async def _wire_memory_backend() -> None:
+        from synthorg.api.lifecycle_helpers.memory_backend_wiring import (  # noqa: PLC0415
+            wire_memory_backend,
+        )
+        from synthorg.api.lifecycle_helpers.org_memory_wiring import (  # noqa: PLC0415
+            wire_org_memory_backend,
+        )
+
+        await wire_memory_backend(app_state)
+        # The org layer wires here rather than with the other features
+        # because runtime services read it while assembling an agent's
+        # recall and its Knowledge-Architect tools. Wired after them it
+        # is still None at the only moment anything asks for it.
+        await wire_org_memory_backend(app_state)
+
     async def _compose_feature_slices() -> None:
         compose_feature_slices(app_state)
 
@@ -227,6 +242,10 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         # so the engine evolution loop reads it as its outcome sink, and
         # before signals wiring so the aggregator shares the same store.
         _wire_evolution_outcomes,
+        # Agent and org memory must exist BEFORE runtime services: the
+        # engine reads MemoryStateSlice eagerly at construction, so a
+        # backend wired any later never reaches an agent.
+        _wire_memory_backend,
         _install_runtime_services,
         _wire_features,
         _wire_brownfield_intake,

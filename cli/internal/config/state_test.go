@@ -31,8 +31,8 @@ func TestDefaultState(t *testing.T) {
 	if s.PersistenceBackend != "sqlite" {
 		t.Errorf("PersistenceBackend = %q, want sqlite", s.PersistenceBackend)
 	}
-	if s.MemoryBackend != "mem0" {
-		t.Errorf("MemoryBackend = %q, want mem0", s.MemoryBackend)
+	if s.MemoryBackend != "sqlvector" {
+		t.Errorf("MemoryBackend = %q, want sqlvector", s.MemoryBackend)
 	}
 	if s.SettingsKey != "" {
 		t.Errorf("SettingsKey should default to empty, got %q", s.SettingsKey)
@@ -63,7 +63,7 @@ func TestSaveAndLoad(t *testing.T) {
 		MasterKey:          validFernetKey,
 		EncryptSecrets:     true,
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 	}
 
 	if err := Save(s); err != nil {
@@ -147,7 +147,7 @@ func TestLoadForTeardown(t *testing.T) {
 			"encrypt_secrets":     true,
 			"backend_port":        999999,
 			"persistence_backend": "sqlite",
-			"memory_backend":      "mem0",
+			"memory_backend":      "sqlvector",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -176,7 +176,7 @@ func TestLoadForTeardown(t *testing.T) {
 		raw, err := json.Marshal(map[string]any{
 			"backend_port":        3001,
 			"persistence_backend": "sqlite",
-			"memory_backend":      "mem0",
+			"memory_backend":      "sqlvector",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -246,7 +246,7 @@ func TestLoadRejectsInvalidMasterKey(t *testing.T) {
 		WebPort:            3000,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		MasterKey:          "not-a-valid-fernet-key",
 		EncryptSecrets:     true,
 	}
@@ -345,9 +345,9 @@ func TestLoadRejectsInvalidBackends(t *testing.T) {
 		persist string
 		memory  string
 	}{
-		{"empty persistence", "", "mem0"},
+		{"empty persistence", "", "sqlvector"},
 		{"empty memory", "sqlite", ""},
-		{"unknown persistence", "mysql", "mem0"},
+		{"unknown persistence", "mysql", "sqlvector"},
 		{"unknown memory", "sqlite", "redis"},
 		{"both empty", "", ""},
 	}
@@ -461,7 +461,7 @@ func TestLoadRejectsInvalidChannelAndLogLevel(t *testing.T) {
 				"log_level":           tt.logLevel,
 				"channel":             tt.channel,
 				"persistence_backend": "sqlite",
-				"memory_backend":      "mem0",
+				"memory_backend":      "sqlvector",
 				// encrypt_secrets defaults to true (DefaultState), and
 				// the master-key invariant now rejects an empty key in
 				// that combination; opt this fixture out since it is
@@ -499,7 +499,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		JWTSecret:          "super-secret-key",
 		SettingsKey:        "super-settings-key",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		AutoCleanup:        true,
 	}
 
@@ -673,7 +673,7 @@ func TestSaveLoadRoundTripNewFields(t *testing.T) {
 		WebPort:            3030,
 		LogLevel:           "warn",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		Color:              "never",
 		Output:             "json",
 		Timestamps:         "iso8601",

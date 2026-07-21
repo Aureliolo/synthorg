@@ -20,8 +20,8 @@ import (
 //   - any `@sha256:<64-hex>` digest (DHI postgres, DHI nats,
 //     ghcr.io/aureliolo/* digest pins, busybox digest)
 //   - `busybox:<tag>-musl`
-//   - `postgres:<tag>-(alpine|debianN)` (no DHI prefix; the digest
-//     pattern already covers the postgres digest portion)
+//   - `pgvector:<pgvector-ver>-pg<pgN>-debianN` (the DHI postgres image
+//     ships pgvector; the digest pattern already covers its digest)
 //   - `nats:<tag>-(alpine|debianN)` (DefaultNATSImageTag uses the same
 //     version-suffix pattern as postgres; tunnel-mode goldens that
 //     render the NATS service would otherwise drift on Renovate's
@@ -29,7 +29,7 @@ import (
 var (
 	sha256DigestRE = regexp.MustCompile(`@sha256:[0-9a-f]{64}`)
 	busyboxTagRE   = regexp.MustCompile(`busybox:[0-9.]+-musl`)
-	postgresTagRE  = regexp.MustCompile(`postgres:[0-9.]+-(alpine|debian[0-9]+)`)
+	postgresTagRE  = regexp.MustCompile(`pgvector:[0-9.]+-pg[0-9]+-(debian[0-9]+)`)
 	natsTagRE      = regexp.MustCompile(`nats:[0-9.]+-(alpine|debian[0-9]+)`)
 )
 
@@ -41,7 +41,7 @@ var (
 func normalize(s string) string {
 	s = sha256DigestRE.ReplaceAllString(s, "@sha256:<DIGEST>")
 	s = busyboxTagRE.ReplaceAllString(s, "busybox:<TAG>-musl")
-	s = postgresTagRE.ReplaceAllString(s, "postgres:<TAG>-$1")
+	s = postgresTagRE.ReplaceAllString(s, "pgvector:<TAG>-$1")
 	s = natsTagRE.ReplaceAllString(s, "nats:<TAG>-$1")
 	return s
 }
@@ -105,14 +105,15 @@ func TestNormalizeMasksVolatileImageFields(t *testing.T) {
 			want:  "image: busybox:<TAG>-musl@sha256:<DIGEST>",
 		},
 		{
-			name:  "postgres_alpine_tag_masked",
-			input: "image: dhi.io/postgres:18.2-alpine",
-			want:  "image: dhi.io/postgres:<TAG>-alpine",
+			name:  "pgvector_debian_tag_masked",
+			input: "image: dhi.io/pgvector:0.8-pg18-debian13",
+			want:  "image: dhi.io/pgvector:<TAG>-debian13",
 		},
 		{
-			name:  "postgres_debian_tag_masked",
-			input: "image: dhi.io/postgres:18.2-debian12",
-			want:  "image: dhi.io/postgres:<TAG>-debian12",
+			name: "pgvector_tag_and_digest_both_masked",
+			input: "image: dhi.io/pgvector:0.8-pg18-debian13@sha256:" +
+				"374f7b2b39fd75d559013f44dd24781d187686c6ea708dc1c8f54c7fae05f958",
+			want: "image: dhi.io/pgvector:<TAG>-debian13@sha256:<DIGEST>",
 		},
 		{
 			name:  "nats_alpine_tag_masked",
@@ -174,7 +175,7 @@ func TestGoldensSurviveDigestRotation(t *testing.T) {
 		WebPort:            3000,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
-		MemoryBackend:      "mem0",
+		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
 	}
 	out, err := Generate(p)

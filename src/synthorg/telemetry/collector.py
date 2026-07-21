@@ -229,9 +229,9 @@ class _HeartbeatParams:
     department_count: int = 0
     team_count: int = 0
     template_name: str = ""
-    # Empty (not an assumed "sqlite"/"mem0") so an absent snapshot reads
-    # as visibly-unknown rather than silently mislabelling a Postgres /
-    # alternate-memory deployment as the default backends.
+    # Empty (not an assumed "sqlite"/"sqlvector") so an absent snapshot
+    # reads as visibly-unknown rather than silently mislabelling a
+    # Postgres / alternate-memory deployment as the default backends.
     persistence_backend: str = ""
     memory_backend: str = ""
     features_enabled: str = ""

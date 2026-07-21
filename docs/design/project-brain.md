@@ -44,7 +44,7 @@ simulation harness.
 
 | Store | What it holds | Why it cannot be the brain |
 |---|---|---|
-| Agent memory (Mem0) | What an agent remembers about a run | Lossy, per-agent, vector-recalled. No authoritative "current state of the project", no guaranteed retention of a specific decision's rationale. |
+| Agent memory | What an agent remembers about a run | Lossy, per-agent, vector-recalled. No authoritative "current state of the project", no guaranteed retention of a specific decision's rationale. |
 | Living documentation | Prose status reports and deliverables | Unstructured. You cannot query "all unresolved blockers" or "the current plan revision" without re-reading and re-parsing prose. |
 | Approval-gate `DecisionRecord` | Review-gate verdicts per task (executor, reviewer, criteria, outcome) | Narrow: it records whether work passed review, not project-level decisions, open questions, blockers, risks, or the evolving plan. The brain does not touch it. |
 

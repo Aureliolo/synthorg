@@ -5,8 +5,10 @@ description: PersistenceBackend protocol, per-entity repositories, SQLite + Post
 
 # Operational Data Persistence
 
-Agent memory is handled by the `MemoryBackend` protocol (Mem0 initial, custom stack future;
-see [Decision Log](../architecture/decisions.md)). **Operational data** (tasks, cost records,
+Agent memory is handled by the `MemoryBackend` protocol (see
+[Decision Log](../architecture/decisions.md)). Its vectors and lexical index live in the same
+database as operational data, but reach it through their own repository rather than sharing one.
+**Operational data** (tasks, cost records,
 messages, audit logs) is a separate concern managed by a pluggable `PersistenceBackend` protocol.
 Application code depends only on repository protocols; the storage engine is an implementation
 detail swappable via config.

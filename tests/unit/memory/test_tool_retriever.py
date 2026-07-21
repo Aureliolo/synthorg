@@ -14,7 +14,7 @@ from synthorg.memory.reformulation import QueryReformulator, SufficiencyChecker
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from synthorg.memory.tool_retriever_helpers import MemorySearchArgs, merge_results
-from tests._shared import JsonDict
+from tests._shared import JsonDict, recall_request
 
 
 def _make_entry(
@@ -82,9 +82,7 @@ class TestPrepareMessages:
             config=_tool_config(),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=1000,
+            recall_request(),
         )
         assert len(result) == 1
         assert result[0].content is not None
@@ -96,9 +94,7 @@ class TestPrepareMessages:
             config=_tool_config(),
         )
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="query",
-            token_budget=0,
+            recall_request(token_budget=0),
         )
         assert result == ()
 

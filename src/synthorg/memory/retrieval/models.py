@@ -18,6 +18,9 @@ class RetrievalQuery(BaseModel):
         text: Semantic search text.
         agent_id: Agent context for supervisor routing decisions.
         categories: Optional category filter (``None`` = all).
+        namespaces: Optional namespace scope (``None`` = the agent's
+            default union). Carries project isolation into the
+            hierarchical path exactly as the flat path does.
         max_results: Maximum candidates to return.
         token_budget: Optional token limit for result formatting.
     """
@@ -31,6 +34,10 @@ class RetrievalQuery(BaseModel):
     categories: frozenset[MemoryCategory] | None = Field(
         default=None,
         description="Optional category filter (None = all)",
+    )
+    namespaces: frozenset[NotBlankStr] | None = Field(
+        default=None,
+        description="Optional namespace scope (None = agent default union)",
     )
     max_results: int = Field(
         default=20,

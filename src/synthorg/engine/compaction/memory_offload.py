@@ -21,6 +21,7 @@ from synthorg.memory.models import (
     MemoryQuery,
     MemoryStoreRequest,
 )
+from synthorg.memory.namespace_scope import ambient_read_namespaces, write_namespace
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.context_budget import (
@@ -81,6 +82,11 @@ class MemoryOffloader:
         request = MemoryStoreRequest(
             category=MemoryCategory.PROCEDURAL,
             content=NotBlankStr(content),
+            # Scope the offloaded batch to the run's project so a resume
+            # inside another project never re-hydrates this one's detail.
+            namespace=write_namespace(
+                identity.project_id if identity is not None else None
+            ),
             metadata=MemoryMetadata(
                 source=_OFFLOAD_SOURCE,
                 tags=(OFFLOAD_TAG, NotBlankStr(f"execution:{execution_id}")),
@@ -124,6 +130,7 @@ class MemoryOffloader:
             MemoryQuery(
                 categories=frozenset({MemoryCategory.PROCEDURAL}),
                 tags=(OFFLOAD_TAG,),
+                namespaces=ambient_read_namespaces(),
                 limit=limit,
             ),
         )

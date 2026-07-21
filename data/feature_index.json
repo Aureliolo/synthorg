@@ -841,7 +841,12 @@
       "depends_on": [],
       "directory": "src/synthorg/memory",
       "ghost_wired_symbols": [
-        "FineTuneOrchestrator"
+        "FineTuneOrchestrator",
+        "MemoryConsolidationScheduler",
+        "ProviderTextEmbedder",
+        "build_memory_injection_strategy",
+        "create_memory_backend",
+        "resolve_embedder_config"
       ],
       "mcp_tool_names": [
         "synthorg_memory_start_fine_tune",
@@ -876,7 +881,8 @@
         "backend",
         "fine_tune_orchestrator",
         "service",
-        "org_memory_backend"
+        "org_memory_backend",
+        "consolidation_scheduler"
       ]
     },
     {
@@ -1432,6 +1438,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-20T04:34:34.544589Z",
+  "generated_at": "2026-07-20T21:03:53.841897Z",
   "schema_version": 1
 }

@@ -9,15 +9,14 @@ from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.memory_enums import MemoryLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.composite.config import (
     CompositeBackendConfig,
 )
 from synthorg.memory.consolidation.config import ConsolidationConfig
-from synthorg.memory.enums import ConsolidationInterval
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.self_editing_models import SelfEditingMemoryConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.settings.enums import SettingNamespace
@@ -29,20 +28,15 @@ logger = get_logger(__name__)
 class MemoryStorageConfig(BaseModel):
     """Storage-specific memory configuration.
 
+    Vectors and their lexical index live in the operational database, so
+    the only filesystem path memory still needs is the one backends use
+    for artefacts kept outside it.
+
     Attributes:
         data_dir: Directory path for memory data persistence.
-        vector_store: Vector store backend name.
-        history_store: History store backend name.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    _VALID_VECTOR_STORES: ClassVar[frozenset[str]] = frozenset(
-        {"qdrant", "qdrant-external"},
-    )
-    _VALID_HISTORY_STORES: ClassVar[frozenset[str]] = frozenset(
-        {"sqlite", "postgresql"},
-    )
 
     data_dir: NotBlankStr = Field(
         default="/data/memory",
@@ -52,50 +46,6 @@ class MemoryStorageConfig(BaseModel):
             "for local development."
         ),
     )
-    vector_store: NotBlankStr = Field(
-        default="qdrant",
-        description="Vector store backend name",
-    )
-    history_store: NotBlankStr = Field(
-        default="sqlite",
-        description="History store backend name",
-    )
-
-    @model_validator(mode="after")
-    def _validate_store_names(self) -> Self:
-        """Ensure vector_store and history_store are recognized values.
-
-        Returns:
-            Result of type ``Self``.
-
-        Raises:
-            ValueError: If an argument fails domain validation.
-        """
-        if self.vector_store not in self._VALID_VECTOR_STORES:
-            msg = (
-                f"Unknown vector_store {self.vector_store!r}. "
-                f"Valid stores: {sorted(self._VALID_VECTOR_STORES)}"
-            )
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                field="vector_store",
-                value=self.vector_store,
-                reason=msg,
-            )
-            raise ValueError(msg)
-        if self.history_store not in self._VALID_HISTORY_STORES:
-            msg = (
-                f"Unknown history_store {self.history_store!r}. "
-                f"Valid stores: {sorted(self._VALID_HISTORY_STORES)}"
-            )
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                field="history_store",
-                value=self.history_store,
-                reason=msg,
-            )
-            raise ValueError(msg)
-        return self
 
     @model_validator(mode="after")
     def _reject_traversal(self) -> Self:
@@ -125,10 +75,14 @@ class MemoryStorageConfig(BaseModel):
 class MemoryOptionsConfig(BaseModel):
     """Memory behaviour options.
 
+    The consolidation cadence lives on ``ConsolidationConfig.interval``,
+    which is the field the scheduler reads and the
+    ``memory.consolidation_interval`` setting mirrors. A second copy
+    here would be a knob an operator could turn with no effect.
+
     Attributes:
         retention_days: Days to retain memories (``None`` = forever).
         max_memories_per_agent: Maximum memories per agent.
-        consolidation_interval: How often to consolidate memories.
         shared_knowledge_base: Whether shared knowledge is enabled.
     """
 
@@ -143,10 +97,6 @@ class MemoryOptionsConfig(BaseModel):
         default=10_000,
         ge=1,
         description="Maximum memories per agent",
-    )
-    consolidation_interval: ConsolidationInterval = Field(
-        default=ConsolidationInterval.DAILY,
-        description="How often to consolidate memories",
     )
     shared_knowledge_base: bool = Field(
         default=True,
@@ -224,7 +174,6 @@ class CompanyMemoryConfig(BaseModel):
 
     Attributes:
         backend: Memory backend name (validated against ``_VALID_BACKENDS``).
-        level: Default memory persistence level.
         storage: Storage-specific settings.
         options: Memory behaviour options.
         retrieval: Memory retrieval pipeline settings.
@@ -238,7 +187,7 @@ class CompanyMemoryConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset(
-        {"mem0", "composite", "inmemory"},
+        {"sqlvector", "composite", "inmemory"},
     )
 
     _MIRROR_FIELDS: ClassVar[tuple[MirrorField, ...]] = (
@@ -248,21 +197,11 @@ class CompanyMemoryConfig(BaseModel):
             key="backend",
             only_if_env_set=True,
         ),
-        MirrorField(
-            field="level",
-            namespace=SettingNamespace.MEMORY,
-            key="default_level",
-            only_if_env_set=True,
-        ),
     )
 
     backend: NotBlankStr = Field(
-        default="mem0",
+        default="sqlvector",
         description="Memory backend name",
-    )
-    level: MemoryLevel = Field(
-        default=MemoryLevel.PERSISTENT,
-        description="Default memory persistence level",
     )
     storage: MemoryStorageConfig = Field(
         default_factory=MemoryStorageConfig,
@@ -300,6 +239,15 @@ class CompanyMemoryConfig(BaseModel):
         description=(
             "Composite backend routing configuration.  "
             "Required when backend is ``'composite'``."
+        ),
+    )
+    self_editing: SelfEditingMemoryConfig = Field(
+        default_factory=SelfEditingMemoryConfig,
+        description=(
+            "MemGPT-style self-editing memory settings, used when "
+            "``retrieval.strategy`` is ``self_editing``: which categories "
+            "the agent may write, whether core writes are allowed, and the "
+            "per-tier entry caps."
         ),
     )
 

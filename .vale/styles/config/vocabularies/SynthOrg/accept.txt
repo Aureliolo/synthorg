@@ -26,7 +26,6 @@ lychee
 madge
 markdownlint
 mcp
-mem0
 nats
 oauth
 onw
@@ -202,6 +201,8 @@ Params
 Perf
 Pinia
 Pipelined
+pgvector
+pg_search
 Plex
 Pluggable
 Prefill
@@ -209,6 +210,10 @@ Promtail
 Pylance
 Qdrant
 Qwen
+Kuzu
+distractor
+distractors
+Liu
 Recharts
 Rekor
 Replanning
@@ -268,6 +273,7 @@ Wordmark
 Worktree
 Worktrees
 Xvfb
+Zep
 Zhao
 abstractive
 acceptance_criteria

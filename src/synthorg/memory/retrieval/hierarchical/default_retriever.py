@@ -151,7 +151,10 @@ class DefaultHierarchicalRetriever:
                         MEMORY_HIERARCHICAL_RETRY,
                         action="skip",
                         retry_count=retries + 1,
-                        reason=correction.reason,
+                        # Length only: the reason is LLM-authored free
+                        # text derived from an attacker-influenceable
+                        # query, so it is never logged raw.
+                        reason_length=len(correction.reason),
                     )
                     break
                 proposed_query = (
@@ -185,7 +188,7 @@ class DefaultHierarchicalRetriever:
                     action="executing",
                     retry_count=retries,
                     workers=retry_workers,
-                    reason=correction.reason,
+                    reason_length=len(correction.reason),
                 )
                 retry_results = await self._execute_workers(
                     retry_workers,

@@ -21,6 +21,7 @@ from synthorg.memory.models import (
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.providers.enums import MessageRole
+from tests._shared import recall_request
 
 
 class InMemoryBackend:
@@ -46,6 +47,10 @@ class InMemoryBackend:
     @property
     def backend_name(self) -> str:
         return "in-memory-test"
+
+    @property
+    def supports_dense_search(self) -> bool:
+        return False
 
     async def store(
         self,
@@ -189,9 +194,7 @@ class TestRetrieverIntegrationEndToEnd:
         )
 
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="what should I know",
-            token_budget=2000,
+            recall_request(query="what should I know", token_budget=2000),
         )
 
         # Two messages: directive SYSTEM message + memory message.
@@ -247,9 +250,7 @@ class TestRetrieverIntegrationEndToEnd:
         )
 
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="team knowledge",
-            token_budget=2000,
+            recall_request(query="team knowledge", token_budget=2000),
         )
 
         assert len(result) == 2
@@ -268,9 +269,7 @@ class TestRetrieverIntegrationEndToEnd:
         )
 
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="anything",
-            token_budget=1000,
+            recall_request(query="anything"),
         )
 
         assert result == ()
@@ -304,9 +303,7 @@ class TestRetrieverIntegrationEndToEnd:
         )
 
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="knowledge",
-            token_budget=2000,
+            recall_request(query="knowledge", token_budget=2000),
         )
 
         assert len(result) == 2
@@ -337,9 +334,7 @@ class TestRetrieverIntegrationEndToEnd:
             token_estimator=DefaultTokenEstimator(),
         )
         large_result = await strategy_large.prepare_messages(
-            agent_id="agent-1",
-            query_text="all",
-            token_budget=10000,
+            recall_request(query="all", token_budget=10000),
         )
 
         # Small budget
@@ -349,9 +344,7 @@ class TestRetrieverIntegrationEndToEnd:
             token_estimator=DefaultTokenEstimator(),
         )
         small_result = await strategy_small.prepare_messages(
-            agent_id="agent-1",
-            query_text="all",
-            token_budget=200,
+            recall_request(query="all", token_budget=200),
         )
 
         assert len(large_result) == 2
@@ -388,10 +381,11 @@ class TestRetrieverIntegrationEndToEnd:
         )
 
         result = await strategy.prepare_messages(
-            agent_id="agent-1",
-            query_text="facts",
-            token_budget=2000,
-            categories=frozenset({MemoryCategory.SEMANTIC}),
+            recall_request(
+                query="facts",
+                token_budget=2000,
+                categories=frozenset({MemoryCategory.SEMANTIC}),
+            ),
         )
 
         assert len(result) == 2

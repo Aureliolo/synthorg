@@ -96,6 +96,11 @@ class OntologyAwareMemoryBackend:
         """Backend name prefixed with ``ontology:``."""
         return f"ontology:{self._inner.backend_name}"
 
+    @property
+    def supports_dense_search(self) -> bool:
+        """Whether the inner backend ranks by meaning."""
+        return self._inner.supports_dense_search
+
     # ── Enhanced operations ────────────────────────────────────────
 
     async def store(

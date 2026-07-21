@@ -520,13 +520,27 @@ async def _run_startup(  # noqa: PLR0913
         if has_active_provider(app_state):
             raise
 
+    # Wire durable agent memory before anything downstream reads it, and
+    # before the training-service fallback below: the durable backend is
+    # authoritative. If it wired first via a training-service-injected
+    # ephemeral store, ``wire_memory_backend``'s "already wired" guard
+    # would skip the durable substrate AND its consolidation scheduler,
+    # trading durable memory for an in-process store on every restart.
+    # Memory owns this hook rather than riding along with the
+    # training-service auto-wire below, so a substrate failure is
+    # reported as a memory failure instead of degrading recall silently.
+    from synthorg.api.lifecycle_helpers.memory_backend_wiring import (  # noqa: PLC0415
+        wire_memory_backend,
+    )
+
+    await wire_memory_backend(app_state)
+
     # When an external caller already supplied a ``TrainingService`` to
     # ``create_app()``, we skip the auto-wire below but the injected service
-    # still owns a live ``MemoryBackend``. Pull it out and publish it on
-    # ``app_state`` so the DELETE memory controller and MCP tool path see
-    # ``has_memory_backend == True`` -- otherwise an injected-service deployment
-    # would surface as 501 / unsupported even though a connected backend is
-    # right there.
+    # still owns a live ``MemoryBackend``. Publish it ONLY when durable
+    # wiring produced nothing, so the DELETE memory controller and MCP tool
+    # path see ``has_memory_backend == True`` on an injected-service
+    # deployment rather than surfacing 501 / unsupported.
     hr_slice = app_state.slice(HrStateSlice)
     if (
         hr_slice.training_service is not None
@@ -542,9 +556,8 @@ async def _run_startup(  # noqa: PLR0913
 
     # On-startup auto-wire: TrainingService.
     # Needs agent_registry, tool_invocation_tracker, and performance_tracker
-    # (all wired at construction time).  Uses InMemoryBackend for the memory
-    # layer; production callers inject a real Mem0 backend via the
-    # training_service param.
+    # (all wired at construction time). It shares the durable memory backend
+    # wired above rather than owning a private one.
     if (
         app_state.slice(HrStateSlice).training_service is None
         and effective_config is not None
@@ -556,44 +569,26 @@ async def _run_startup(  # noqa: PLR0913
             from synthorg.hr.training.factory import (  # noqa: PLC0415
                 build_training_service,
             )
-            from synthorg.memory.factory import (  # noqa: PLC0415
-                build_in_memory_backend,
-            )
 
             _perf = app_state.slice(HrStateSlice).performance_tracker
-            if _perf is not None:
-                _mem = build_in_memory_backend()
-                await _mem.connect()
+            _mem = app_state.slice(MemoryStateSlice).backend
+            if _perf is not None and _mem is not None:
                 from synthorg._core.features import (  # noqa: PLC0415
                     require_service,
                 )
 
-                try:
-                    _ts = build_training_service(
-                        config=effective_config.training,
-                        memory_backend=_mem,
-                        tracker=_perf,
-                        registry=agent_registry_of(app_state),
-                        approval_store=require_service(
-                            app_state.slice(ApprovalStateSlice).store,
-                            "Approval Store",
-                        ),
-                        tool_tracker=tool_invocation_tracker_of(app_state),
-                    )
-                    app_state.wire(HrStateSlice, training_service=_ts)
-                    # Expose the same backend to admin paths so
-                    # ``DELETE /agents/{id}/memories/{id}`` and the
-                    # ``delete_memory`` MCP tool can route through one connected
-                    # backend instance per process.
-                    if app_state.slice(MemoryStateSlice).backend is None:
-                        app_state.wire(MemoryStateSlice, backend=_mem)
-                except MemoryError, RecursionError:
-                    await _mem.disconnect()
-                    raise
-                except Exception:
-                    await _mem.disconnect()
-                    raise
-                tasks.training_memory_backend = _mem
+                _ts = build_training_service(
+                    config=effective_config.training,
+                    memory_backend=_mem,
+                    tracker=_perf,
+                    registry=agent_registry_of(app_state),
+                    approval_store=require_service(
+                        app_state.slice(ApprovalStateSlice).store,
+                        "Approval Store",
+                    ),
+                    tool_tracker=tool_invocation_tracker_of(app_state),
+                )
+                app_state.wire(HrStateSlice, training_service=_ts)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(

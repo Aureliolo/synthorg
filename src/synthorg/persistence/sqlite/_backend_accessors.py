@@ -99,6 +99,7 @@ from synthorg.persistence.meeting_cooldown_protocol import (
     MeetingCooldownRepository,
 )
 from synthorg.persistence.memory_protocol import OrgFactRepository
+from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
 from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.model_tool_call_signal_protocol import (
     ModelToolCallSignalRepository,
@@ -244,6 +245,7 @@ class _BackendRepositoryAccessors:
     _principle_overrides: PrincipleOverrideRepository | None
     _mcp_installations: McpInstallationRepository | None
     _org_facts: OrgFactRepository | None
+    _memory_vectors: MemoryVectorRepository | None
     _ontology_entities: OntologyEntityRepository | None
     _ontology_drift: OntologyDriftReportRepository | None
     _hiring_requests: HiringRequestRepository | None
@@ -758,6 +760,11 @@ class _BackendRepositoryAccessors:
     def org_facts(self) -> OrgFactRepository:
         """Repository for organizational fact persistence (MVCC)."""
         return self._require_connected(self._org_facts, "org_facts")
+
+    @property
+    def memory_vectors(self) -> MemoryVectorRepository:
+        """Repository for durable agent memory with hybrid retrieval."""
+        return self._require_connected(self._memory_vectors, "memory_vectors")
 
     @property
     def ontology_entities(self) -> OntologyEntityRepository:

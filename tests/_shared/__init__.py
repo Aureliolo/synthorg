@@ -23,6 +23,7 @@ from tests._shared.ids import as_pk, as_uuid, coerce_id, sid
 from tests._shared.json_types import AsgiDict, JsonDict
 from tests._shared.loop_async_client import LoopAsyncClient
 from tests._shared.mock_of import mock_of
+from tests._shared.recall import recall_request
 from tests._shared.settings_fake import FakeSettingsService
 from tests._shared.work_pipeline import (
     StubWorkPipeline,
@@ -49,6 +50,7 @@ __all__ = [
     "make_in_memory_catalog",
     "make_pipeline_result",
     "mock_of",
+    "recall_request",
     "sid",
     "task_from_work_item",
     "wire_decomposition_model",

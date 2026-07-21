@@ -37,7 +37,7 @@ jobs:
           # BlueOak-1.0.0: lru-cache, sax (Astro transitive deps, permissive)
           # LicenseRef-scancode-protobuf: protobuf 5.29.6 (BSD-3-Clause AND scancode-protobuf, permissive)
           # ZPL-2.1: pytz 2026.1 (MIT AND ZPL-2.1, Zope Public License -- permissive)
-          # Null: mem0ai, numpy, qdrant-client, posthog -- license metadata missing
+          # Null: numpy, posthog -- license metadata missing
           #   from lockfile but all are permissive (Apache-2.0 / BSD-3-Clause / MIT)
           # LicenseRef-scancode-google-patent-license-golang: golang.org/x/* packages
           #   (BSD-3-Clause AND google-patent-grant, standard Go stdlib-adjacent, permissive)
@@ -58,8 +58,8 @@ jobs:
             BlueOak-1.0.0,
             OFL-1.1
           # Packages with null/missing SPDX license metadata in lockfile.
-          # Verified manually: mem0ai (Apache-2.0), numpy (BSD-3-Clause),
-          # qdrant-client (Apache-2.0), posthog (MIT), aiohttp (Apache-2.0),
+          # Verified manually: numpy (BSD-3-Clause),
+          # posthog (MIT), aiohttp (Apache-2.0),
           # cyclonedx-python-lib (Apache-2.0), fsspec (BSD-3-Clause),
           # griffelib (ISC), grpcio (Apache-2.0).
           #
@@ -144,9 +144,7 @@ jobs:
           allow-dependencies-licenses: >-
             pkg:pypi/codespell,
             pkg:pypi/yamllint,
-            pkg:pypi/mem0ai,
             pkg:pypi/numpy,
-            pkg:pypi/qdrant-client,
             pkg:pypi/posthog,
             pkg:pypi/aiohttp,
             pkg:pypi/cyclonedx-python-lib,

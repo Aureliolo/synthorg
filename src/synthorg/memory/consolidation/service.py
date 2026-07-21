@@ -240,12 +240,6 @@ class MemoryConsolidationService:
             Exception: Raised when the relevant invariant fails.
         """
         try:
-            total = await self._backend.count(agent_id)
-            excess = total - self._config.max_memories_per_agent
-
-            if excess <= 0:
-                return 0
-
             # Re-read the enforce-batch size live per run so an operator edit to
             # ``memory.consolidation_enforce_batch_size`` applies without a
             # restart; the construction value is the fallback on resolver outage.
@@ -255,23 +249,40 @@ class MemoryConsolidationService:
                 key="consolidation_enforce_batch_size",
                 fallback=self._max_enforce_batch,
             )
+            total = await self._backend.count(agent_id)
+            excess = total - self._config.max_memories_per_agent
+            if excess <= 0:
+                return 0
             deleted = 0
+            # Track ids already handled so a concurrent store that shifts
+            # the default ordering cannot make a later batch re-surface an
+            # entry we already deleted. Without it the same row could be
+            # counted twice and the loop could over-delete against the
+            # live store path (which self-evicts on the same rows).
+            seen: set[str] = set()
             remaining = excess
             while remaining > 0:
-                batch_size = min(remaining, max_enforce_batch)
                 # Cap the per-fetch size to MemoryQuery's own upper
                 # bound; ``max_enforce_batch`` can exceed it (up to 10k)
                 # and the query would then fail validation before hitting
                 # the backend.
-                effective_limit = min(batch_size, _MEMORY_QUERY_MAX_LIMIT)
-                query = MemoryQuery(limit=effective_limit)
+                effective_limit = min(
+                    remaining, max_enforce_batch, _MEMORY_QUERY_MAX_LIMIT
+                )
+                # Oldest-first: cap enforcement keeps the agent's most
+                # recent learning and evicts the stale tail. A default
+                # (newest-first) listing would delete exactly what a
+                # second run needs.
+                query = MemoryQuery(limit=effective_limit, oldest_first=True)
                 entries = await self._backend.retrieve(agent_id, query)
-                if not entries:
+                fresh = [e for e in entries if str(e.id) not in seen]
+                if not fresh:
                     break
-                for entry in entries:
+                for entry in fresh:
+                    seen.add(str(entry.id))
                     if await self._backend.delete(agent_id, entry.id):
                         deleted += 1
-                remaining -= len(entries)
+                remaining -= len(fresh)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(

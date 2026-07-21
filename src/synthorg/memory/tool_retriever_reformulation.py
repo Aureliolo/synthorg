@@ -14,6 +14,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryEntry, MemoryQuery
+from synthorg.memory.namespace_scope import ambient_read_namespaces
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.reformulation import (
     QueryReformulator,
@@ -79,6 +80,7 @@ class ToolBasedReformulationMixin:
                 text=query_text,
                 limit=limit,
                 categories=categories,
+                namespaces=ambient_read_namespaces(),
             )
             return await self._backend.retrieve(NotBlankStr(agent_id), query)
 
@@ -136,7 +138,12 @@ class ToolBasedReformulationMixin:
         try:
             entries = await self._backend.retrieve(
                 NotBlankStr(agent_id),
-                MemoryQuery(text=current_query, limit=limit, categories=categories),
+                MemoryQuery(
+                    text=current_query,
+                    limit=limit,
+                    categories=categories,
+                    namespaces=ambient_read_namespaces(),
+                ),
             )
         except builtins.MemoryError, RecursionError:
             logger.error(
@@ -383,7 +390,12 @@ class ToolBasedReformulationMixin:
         try:
             return await self._backend.retrieve(
                 NotBlankStr(agent_id),
-                MemoryQuery(text=query, limit=limit, categories=categories),
+                MemoryQuery(
+                    text=query,
+                    limit=limit,
+                    categories=categories,
+                    namespaces=ambient_read_namespaces(),
+                ),
             )
         except builtins.MemoryError, RecursionError:
             logger.error(

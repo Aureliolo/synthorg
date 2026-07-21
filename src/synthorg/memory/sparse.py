@@ -1,9 +1,9 @@
 """BM25 sparse encoder for hybrid search.
 
 Provides a hash-based BM25 tokenizer that converts text into sparse
-vectors suitable for Qdrant's sparse vector fields.  Uses murmurhash3
-for vocabulary-free token-to-index mapping; Qdrant's ``Modifier.IDF``
-handles IDF scoring server-side, so only term frequencies are stored.
+term-frequency vectors. Uses murmurhash3 for vocabulary-free
+token-to-index mapping; IDF scoring is applied at query time by the
+shared BM25 ranking code, so only term frequencies are stored.
 """
 
 import re
