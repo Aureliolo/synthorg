@@ -7,6 +7,7 @@ from synthorg.core.clock import Clock
 from synthorg.core.task import Task
 from synthorg.engine._agent_tool_registry import (
     registry_with_chat_tools,
+    registry_with_delegate_tool,
     registry_with_forge_tools,
 )
 from synthorg.engine._security_factory import (
@@ -49,6 +50,7 @@ if TYPE_CHECKING:
         StructureMapToolFactoryProvider,
     )
     from synthorg.engine.compaction.protocol import CompactionCallback
+    from synthorg.engine.delegation.protocol import SubAgentRunner
     from synthorg.engine.hybrid_models import HybridLoopConfig
     from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.loop_selector import AutoLoopConfig
@@ -66,6 +68,7 @@ if TYPE_CHECKING:
     from synthorg.security.audit import AuditLog
     from synthorg.security.config import SecurityConfig
     from synthorg.security.policy_engine.protocol import PolicyEngine
+    from synthorg.settings.resolver import ConfigResolver
     from synthorg.tools.chat._runtime import ChatToolsRuntime
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
     from synthorg.tools.forge._runtime import ForgeToolsRuntime
@@ -119,6 +122,8 @@ class AgentEngineFactoriesMixin:
     _budget_enforcer: BudgetEnforcer | None
     _audit_log: AuditLog
     _cost_tracker: CostTrackerProtocol | None
+    _config_resolver: ConfigResolver | None
+    _sub_agent_runner: SubAgentRunner | None
 
     def _live_security_config(self) -> SecurityConfig | None:
         """Return the live security config (provider when wired, else static).
@@ -359,6 +364,14 @@ class AgentEngineFactoriesMixin:
             identity,
             task_id=task_id,
             effective_autonomy=effective_autonomy,
+        )
+        registry = registry_with_delegate_tool(
+            registry,
+            self._sub_agent_runner,
+            self._config_resolver,
+            identity,
+            task_id=task_id,
+            project_id=project_id,
         )
         # The brain tool factory is wired late (memory-gated
         # ``_wire_project_brain`` runs after the boot engine is built), so it

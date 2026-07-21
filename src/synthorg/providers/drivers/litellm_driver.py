@@ -60,7 +60,6 @@ from synthorg.observability.events.provider import (
     PROVIDER_CONNECTION_ERROR,
     PROVIDER_QUOTA_EXCEEDED,
     PROVIDER_RATE_LIMITED,
-    PROVIDER_REASONING_EFFORT_DROPPED,
     PROVIDER_STREAM_CHUNK_NO_DELTA,
     PROVIDER_STREAM_DONE,
 )
@@ -69,8 +68,11 @@ from synthorg.providers._cost import token_usage_from_response_usage
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
-from synthorg.providers.drivers.litellm_cache import apply_cache_control
 from synthorg.providers.drivers.litellm_capabilities import build_capabilities
+from synthorg.providers.drivers.litellm_features import (
+    apply_capability_gated_features,
+    extract_raw_finish_reason,
+)
 from synthorg.providers.drivers.litellm_image import generate_image_via_litellm
 from synthorg.providers.drivers.litellm_kwargs import (
     _AcompletionKwargs,
@@ -82,6 +84,7 @@ from synthorg.providers.drivers.litellm_model_catalog import (
     resolve_model,
 )
 from synthorg.providers.drivers.litellm_quota import is_quota_exhaustion
+from synthorg.providers.drivers.litellm_response import map_response
 from synthorg.providers.drivers.litellm_tool_accumulator import (
     _ToolCallAccumulator,
     accumulate_tool_call_deltas,
@@ -106,10 +109,8 @@ from synthorg.providers.resilience.retry import RetryHandler
 
 from .mappers import (
     extract_retry_after,
-    extract_tool_calls,
     map_finish_reason,
     messages_to_dicts,
-    normalize_empty_finish,
     tools_to_dicts,
 )
 
@@ -329,7 +330,7 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
         except Exception as exc:
             reraise_critical(exc)
             raise self._map_exception(exc, model) from exc
-        return self._map_response(response, model_config)
+        return map_response(response, model_config, provider_name=self._provider_name)
 
     @override
     async def _do_stream(
@@ -580,110 +581,12 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
                 else _OLLAMA_DEFAULT_KEEP_ALIVE
             )
         merged = _apply_completion_config(kwargs, config)
-        return self._apply_capability_gated_features(merged, model_config, config)
-
-    def _apply_capability_gated_features(
-        self,
-        kwargs: _AcompletionKwargs,
-        model_config: ProviderModelConfig,
-        config: CompletionConfig | None,
-    ) -> _AcompletionKwargs:
-        """Drop or apply request features per the target model's capabilities.
-
-        ``reasoning_effort`` is dropped for a model without reasoning support,
-        and ``cache_control`` breakpoints are placed only for a caching-capable
-        model. Capabilities are resolved once, and only when a gated feature is
-        actually requested, so the common path stays free of the model-info
-        lookup.
-
-        Returns:
-            The kwargs mapping with unsupported features removed and supported
-            ones applied.
-        """
-        if config is None:
-            return kwargs
-        wants_reasoning = config.reasoning_effort is not None
-        wants_caching = config.prompt_caching
-        if not wants_reasoning and not wants_caching:
-            return kwargs
-
-        capabilities = self._build_capabilities(model_config)
-
-        if wants_reasoning and not capabilities.supports_reasoning:
-            kwargs.pop("reasoning_effort", None)
-            logger.debug(
-                PROVIDER_REASONING_EFFORT_DROPPED,
-                provider=self._provider_name,
-                model=model_config.id,
-                reason="model_lacks_reasoning_support",
-            )
-
-        if wants_caching:
-            apply_cache_control(
-                kwargs,
-                capabilities=capabilities,
-                provider_name=self._provider_name,
-                model_id=model_config.id,
-            )
-        return kwargs
-
-    # ── Response mapping ─────────────────────────────────────────
-
-    def _map_response(
-        self,
-        response: object,
-        model_config: ProviderModelConfig,
-    ) -> CompletionResponse:
-        """Map a LiteLLM ``ModelResponse`` to ``CompletionResponse``.
-
-        Returns:
-            A ``CompletionResponse`` populated from the first choice's
-            content, tool calls, finish reason, token usage, and cost.
-
-        Raises:
-            ProviderInternalError: If the LiteLLM response has no choices.
-        """
-        choices = getattr(response, "choices", [])
-        if not choices:
-            logger.error(
-                PROVIDER_CALL_ERROR,
-                provider=self._provider_name,
-                model=model_config.id,
-                error="empty_choices_in_response",
-            )
-            msg = f"Provider returned empty choices for model {model_config.id!r}"
-            raise errors.ProviderInternalError(
-                msg, context={"provider": self._provider_name, "model": model_config.id}
-            )
-
-        choice = choices[0]
-        message = choice.message
-
-        content: str | None = getattr(message, "content", None)
-        raw_tc = getattr(message, "tool_calls", None)
-        tool_calls = extract_tool_calls(raw_tc)
-        finish = normalize_empty_finish(
-            content=content,
-            tool_calls=tool_calls,
-            finish=map_finish_reason(getattr(choice, "finish_reason", None)),
-            provider=self._provider_name,
-            model=model_config.id,
-            had_raw_tool_calls=bool(raw_tc),
-        )
-
-        usage = token_usage_from_response_usage(
-            getattr(response, "usage", None),
-            cost_per_1k_input=model_config.cost_per_1k_input,
-            cost_per_1k_output=model_config.cost_per_1k_output,
-        )
-
-        return CompletionResponse(
-            content=content,
-            tool_calls=tool_calls,
-            finish_reason=finish,
-            usage=usage,
-            model=model_config.id,
-            provider_request_id=getattr(response, "id", None) or None,
+        return apply_capability_gated_features(
+            merged,
+            model_config,
+            config,
+            capabilities_provider=self._build_capabilities,
+            provider_name=self._provider_name,
         )
 
     # ── Streaming ────────────────────────────────────────────────
@@ -716,7 +619,7 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
                         model_config,
                     ):
                         yield sc
-                    chunk_finish = _extract_raw_finish_reason(chunk)
+                    chunk_finish = extract_raw_finish_reason(chunk)
                     if chunk_finish is not None:
                         raw_finish = chunk_finish
             except Exception as exc:
@@ -882,17 +785,3 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
 
 
 # ── Module-level helpers ─────────────────────────────────────────
-
-
-def _extract_raw_finish_reason(chunk: object) -> str | None:
-    """Read the raw finish-reason string from a LiteLLM stream chunk.
-
-    Returns:
-        The first choice's ``finish_reason`` string when present, else
-        ``None`` (intermediate chunks carry none).
-    """
-    choices = getattr(chunk, "choices", None)
-    if not choices:
-        return None
-    reason = getattr(choices[0], "finish_reason", None)
-    return reason if isinstance(reason, str) else None

@@ -28,6 +28,7 @@ from synthorg.engine.recovery_factory import build_recovery_strategy
 from synthorg.engine.routing_policy import build_stakes_router
 from synthorg.engine.stagnation import create_stagnation_detector
 from synthorg.engine.state import task_engine_of
+from synthorg.hr.state import agent_registry_of
 from synthorg.integrations.state import IntegrationsStateSlice, connection_catalog_of
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import (
@@ -508,6 +509,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         provider_registry=registry,
         tool_registry=tool_registry,
         stakes_router=await _build_stakes_router_or_none(app_state),
+        agent_registry=agent_registry_of(app_state),
         cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
         task_engine=task_engine_of(app_state),
         approval_store=require_service(

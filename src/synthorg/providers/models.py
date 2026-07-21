@@ -19,6 +19,7 @@ from synthorg.core.tool_disclosure import (
     ToolL3Resource,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.providers._stream_chunk_validation import validate_stream_chunk_fields
 
 from .enums import (
     ImageDetail,
@@ -545,9 +546,6 @@ class StreamChunk(BaseModel):
     def _validate_event_fields(self) -> Self:
         """Ensure only the relevant fields are populated for each event_type.
 
-        Each event type requires specific fields and rejects extraneous
-        payload fields to maintain strict discriminated-union semantics.
-
         Returns:
             The validated instance (Pydantic ``model_validator`` contract).
 
@@ -555,49 +553,12 @@ class StreamChunk(BaseModel):
             ValueError: If required fields are missing or extraneous
                 fields are set.
         """
-        payload: dict[str, object] = {
-            "content": self.content,
-            "tool_call_delta": self.tool_call_delta,
-            "usage": self.usage,
-            "error_message": self.error_message,
-        }
-        required: set[str] = set()
-        match self.event_type:
-            case StreamEventType.CONTENT_DELTA:
-                required = {"content"}
-            case StreamEventType.TOOL_CALL_DELTA:
-                required = {"tool_call_delta"}
-            case StreamEventType.USAGE:
-                required = {"usage"}
-            case StreamEventType.ERROR:
-                required = {"error_message"}
-            case StreamEventType.DONE:
-                pass  # Terminal event, no required payload fields.
-            case _:
-                msg = f"Unhandled stream event type: {self.event_type}"  # type: ignore[unreachable]
-                raise ValueError(msg)
-
-        for name in required:
-            if payload[name] is None:
-                msg = f"{self.event_type.value} event must include {name}"
-                raise ValueError(msg)
-
-        # ``finish_reason`` is an optional field carried only on the terminal
-        # DONE event; reject it on any other event type.
-        if (
-            self.finish_reason is not None
-            and self.event_type is not StreamEventType.DONE
-        ):
-            msg = f"{self.event_type.value} event must not include finish_reason"
-            raise ValueError(msg)
-
-        extraneous = sorted(
-            name
-            for name, value in payload.items()
-            if name not in required and value is not None
+        validate_stream_chunk_fields(
+            event_type=self.event_type,
+            content=self.content,
+            tool_call_delta=self.tool_call_delta,
+            usage=self.usage,
+            error_message=self.error_message,
+            finish_reason=self.finish_reason,
         )
-        if extraneous:
-            fields = ", ".join(extraneous)
-            msg = f"{self.event_type.value} event must not include {fields}"
-            raise ValueError(msg)
         return self

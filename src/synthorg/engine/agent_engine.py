@@ -102,6 +102,7 @@ if TYPE_CHECKING:
     )
     from synthorg.engine.coordination.models import CoordinationContext
     from synthorg.engine.coordination.service import MultiAgentCoordinator
+    from synthorg.engine.delegation.protocol import SubAgentRunner
     from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.hybrid_models import HybridLoopConfig
@@ -123,6 +124,7 @@ if TYPE_CHECKING:
     from synthorg.engine.session import EventReader
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
+    from synthorg.hr.registry_protocol import AgentRegistryProtocol
     from synthorg.memory.injection import MemoryInjectionStrategy
     from synthorg.memory.procedural.capture.protocol import CaptureStrategy
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
@@ -258,6 +260,7 @@ class AgentEngine(
             StructureMapToolFactoryProvider | None
         ) = None,
         stakes_router: StakesRouter | None = None,
+        agent_registry: AgentRegistryProtocol | None = None,
         flight_recorder_sink: FlightRecorderSink | None = None,
         clock: Clock | None = None,
     ) -> None:
@@ -399,6 +402,22 @@ class AgentEngine(
             )
         self._audit_log = audit_log if audit_log is not None else AuditLog()
         self._project_repo = project_repo
+        self._agent_registry = agent_registry
+        # Blocking-delegation runner dispatches child runs back through this
+        # same engine (``AgentEngine.run`` holds no per-run instance state, so
+        # the nested call is re-entrant). Wired only when both the task engine
+        # and the agent registry are present; ``None`` disables delegation.
+        self._sub_agent_runner: SubAgentRunner | None = None
+        if task_engine is not None and agent_registry is not None:
+            from synthorg.engine.delegation.runner import (  # noqa: PLC0415
+                InProcessSubAgentRunner,
+            )
+
+            self._sub_agent_runner = InProcessSubAgentRunner(
+                engine=self,
+                task_engine=task_engine,
+                agent_registry=agent_registry,
+            )
         logger.debug(
             EXECUTION_ENGINE_CREATED,
             loop_type=(

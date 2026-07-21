@@ -71,6 +71,44 @@ _r.register(
     )
 )
 
+# ── Blocking delegation ──────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="delegation_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Expose the blocking delegate_and_await tool so an agent can"
+            " offload a focused sub-task to another agent, run it to"
+            " completion inline, and consume its transcript in the same"
+            " turn. Resolved live per delegation call, so a change applies"
+            " without a restart."
+        ),
+        group="Delegation",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="delegation_max_turns",
+        type=SettingType.INTEGER,
+        default="10",
+        description=(
+            "Hard cap on the number of LLM turns a delegated child agent"
+            " may take. Bounds the cost and latency of a single"
+            " delegate_and_await call; read live per delegation."
+        ),
+        group="Delegation",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=200,
+    )
+)
+
 # ── Approval gate ────────────────────────────────────────────────
 
 _r.register(

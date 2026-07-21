@@ -79,6 +79,13 @@ EXECUTION_LOOP_TURN_CANCELLED_MIDFLIGHT: Final[str] = (
 )
 EXECUTION_LOOP_TURN_INTERRUPTED: Final[str] = "execution.loop.turn_interrupted"
 
+EXECUTION_DELEGATION_STARTED: Final[str] = "execution.delegation.started"
+EXECUTION_DELEGATION_CHILD_COMPLETED: Final[str] = (
+    "execution.delegation.child_completed"
+)
+EXECUTION_DELEGATION_DISABLED: Final[str] = "execution.delegation.disabled"
+EXECUTION_DELEGATION_FAILED: Final[str] = "execution.delegation.failed"
+
 EXECUTION_PLAN_CREATED: Final[str] = "execution.plan.created"
 EXECUTION_PLAN_STEP_START: Final[str] = "execution.plan.step_start"
 EXECUTION_PLAN_STEP_COMPLETE: Final[str] = "execution.plan.step_complete"

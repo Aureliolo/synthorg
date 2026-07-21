@@ -114,7 +114,7 @@ class TestEditFileArgs:
             path="x.py",
             edits=(
                 {"old_text": "a", "new_text": "b"},  # type: ignore[arg-type]
-                {"old_text": "c", "new_text": "d", "replace_all": True},  # type: ignore[arg-type]
+                {"old_text": "c", "new_text": "d", "replace_all": True},
             ),
         )
         hunks = args.normalized_hunks()
