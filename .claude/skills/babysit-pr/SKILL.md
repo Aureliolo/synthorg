@@ -334,7 +334,7 @@ After this phase, security alerts are either queued for Phase 8 fixes or already
 Build a triage table inline (in the chat output, not a file). Columns: `Source | Severity | File:Line | Issue | Valid?`.
 
 For each item:
-1. **Source** = author + comment type (e.g. `coderabbitai/inline`, `copilot/review`, `human:OctoCat/issue`, `CI:test-go-1.26`).
+1. **Source** = author + comment type (e.g. `coderabbitai/inline`, `coderabbitai/review`, `human:OctoCat/issue`, `CI:test-go-1.26`).
 2. **Severity** = mapped from reviewer labels (CodeRabbit uses `Issue` / `Suggestion` / `Refactor` / `Security`; map `Issue` to MAJOR, `Security` to CRITICAL, others to MEDIUM by default; CI failures = CRITICAL).
 3. **Valid?** = your assessment against the current code state. Read the cited file:line BEFORE classifying. An invalid finding requires a one-line reason recorded in the round-history entry.
 
@@ -403,7 +403,7 @@ The sweep is read-only -- no API mutations, no commits, no pushes -- so it only 
 ## Phase 10: commit + push
 
 1. `git add -A`
-2. Commit with message `fix: babysit round R, M findings (X coderabbit, Y copilot, Z ci)` plus a body listing the fixed items.
+2. Commit with message `fix: babysit round R, M findings (X coderabbit, Y ci)` plus a body listing the fixed items.
 3. `git push` (no `-u`; branch already tracks).
 4. Hook failures: fix the actual issue, never `--no-verify`, never `--amend`. Create a NEW commit if needed.
 5. **Flaky / intermittent pre-push failures are NOT a retry signal -- they are a root-cause signal.** If a pre-push hook (especially `pytest-unit`) fails with an intermittent / load-dependent crash (Windows xdist "Fatal Python error: Aborted", `[gwN] node down`, a test that hangs under the parallel affected-suite run but passes in isolation, a SIGPIPE / broken-pipe), you MUST diagnose and fix the root cause -- you may NOT simply re-run `git push` on the hope it passes the second time. "It passed on retry" is a workaround that ships a known-flaky suite forward; it is exactly the `feedback_root_cause_only_no_workarounds` violation. Read the full hook log first (`feedback_read_hook_log_before_any_retry`), identify the actual cause (race, resource leak, event-loop starvation, FileLock contention, a kwarg that broke a hand-written mock), and fix THAT. If the root cause is a genuinely hard, pre-existing infra problem you cannot pin from the available evidence, do NOT silently retry-past it: surface the limit to the user via `AskUserQuestion` (dedicated infra investigation vs. proceed) and let them decide. The only thing you may never do is retry the push as if the failure did not happen.
@@ -492,7 +492,8 @@ Render the full triage table only when there's something to fix.
 
 ### External reviewer hygiene
 
-- **Fetch ALL reviewers unfiltered.** Don't `select(.user.login == "coderabbitai[bot]")` in the initial fetch. Bots vary per repo (CodeRabbit, Gemini, Copilot, Greptile, Socket Security, ...) and human reviewers can show up at any time. Categorize by author from the response, never by an allowlist baked into this skill.
+- **CodeRabbit is the only bot reviewer.** We run CodeRabbit (`coderabbitai[bot]`) and nothing else. Still fetch reviews unfiltered and categorize by author from the response: human reviewers can show up at any time and must be handled per the table below.
+- **Every push round must include a CodeRabbit review.** Never treat a round as complete, and never move toward merge, on a push CodeRabbit has not reviewed. CR re-reviews automatically on each new head; if it stays silent, re-trigger with `@coderabbitai review` and wait for the review before closing the round.
 - **Stale duplicate comments are artifacts.** When CodeRabbit re-posts a finding on already-fixed code (because its index was stale at review time), verify the fix exists in the current code, post `@coderabbitai resolve` on the thread, and move on. Don't re-implement. Log as `{action: "stale_duplicate_resolved", thread_id, evidence}` in history.
 - **Self-pings:** when scanning issue comments, exclude any with body exactly `@coderabbitai review` so the skill doesn't mistake its own pings for new feedback.
 - **Self-comments:** when scanning reviews and inline comments, exclude `synthorg-repo-bot[bot]` and your own GitHub username (resolve via `gh api user --jq .login` once and cache in `state.self_login`).
@@ -500,22 +501,20 @@ Render the full triage table only when there's something to fix.
 
 #### Per-reviewer auto-clear behaviour (which reviews to dismiss, which to leave alone)
 
-GitHub keeps every prior `CHANGES_REQUESTED` review attached to a PR until either (a) the reviewer submits a new review with `APPROVED` / `COMMENTED`, or (b) someone calls the dismissal API. Which path to take depends on whether the bot re-reviews on each push:
+GitHub keeps every prior `CHANGES_REQUESTED` review attached to a PR until either (a) the reviewer submits a new review with `APPROVED` / `COMMENTED`, or (b) someone calls the dismissal API.
 
 | Reviewer | Re-reviews on each commit? | Auto-clears its own stale `CHANGES_REQUESTED`? | Action when previous review is now stale |
 |---|---|---|---|
 | **CodeRabbit** (`coderabbitai[bot]`) | Yes | Yes, by submitting a new review with no actionable items on the new head | **Never call the dismissal API.** Post replies to its inline comments (or `@coderabbitai resolve` on the thread) and let the next CR review auto-clear the prior `CHANGES_REQUESTED`. Manual dismissal is wasted work AND erases reviewer context that humans use to trace the conversation. |
-| **Gemini** (`gemini-code-assist[bot]`) | **No.** Only reviews on PR open; subsequent reviews require an explicit `/gemini review` command on the PR | No (without a re-review, its state is frozen on the head it first saw) | If Gemini left `CHANGES_REQUESTED` (rare; Gemini typically uses `COMMENTED` which doesn't block `reviewDecision`), and every cited finding has been addressed in subsequent commits, **dismissal is the right answer**. Gemini will not update on its own. Verify each finding is actually fixed against current code before dismissing. |
-| **Other bots** (Copilot, Greptile, Socket Security, ...) | Varies; check the bot's docs or empirical behaviour on the current PR | Varies | Default to "reply, don't dismiss" unless the bot's documented behaviour confirms no auto-update. Err on the side of leaving the review attached so the audit trail is intact. |
 | **Human reviewers** | n/a | Never auto-clears | Don't dismiss without explicit operator consent. The right path is to address the feedback in a new commit and request a re-review. |
 
-**Default rule:** if you don't know whether the reviewer auto-clears, **reply, don't dismiss**. The cost of an extra `CHANGES_REQUESTED` sitting in `reviewDecision` for a tick or two is low; the cost of dismissing a still-valid finding (or erasing a reviewer thread the next operator was about to read) is high.
+**Default rule:** reply, don't dismiss. CodeRabbit's stale `CHANGES_REQUESTED` clears itself on its next review; a human review is dismissed only with explicit operator consent. The cost of an extra `CHANGES_REQUESTED` sitting in `reviewDecision` for a tick or two is low; the cost of dismissing a still-valid finding (or erasing a reviewer thread the next operator was about to read) is high.
 
-**When you do dismiss** (Gemini-style frozen `CHANGES_REQUESTED`), call the API per-review with a `message` body that names (a) the commit SHA the review was attached to, (b) the inline findings it raised, (c) the commit(s) that resolved each one:
+**When you do dismiss** (only a human review with explicit operator consent, or a genuinely frozen stale review), call the API per-review with a `message` body that names (a) the commit SHA the review was attached to, (b) the inline findings it raised, (c) the commit(s) that resolved each one:
 
 ```bash
 gh api -X PUT "repos/$OWNER_REPO/pulls/$PR/reviews/$REVIEW_ID/dismissals" \
-  -f message="Stale: review on commit <SHA>; finding(s) <summary> addressed in commit(s) <SHA list>. Dismissing because <bot> does not auto-re-review."
+  -f message="Stale: review on commit <SHA>; finding(s) <summary> addressed in commit(s) <SHA list>. Dismissing because the review is frozen on a superseded head."
 ```
 
 Log every dismissal in the round-history entry: `{round, action: "stale_review_dismissed", reviewer, review_id, original_head_sha, addressed_in_sha}`. Dismissals are auditable; never call the API without the entry.
