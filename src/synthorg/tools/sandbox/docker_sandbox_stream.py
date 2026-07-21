@@ -117,6 +117,10 @@ class DockerSandboxStreamMixin:
             """Track a container for orphan reconciliation."""
             ...
 
+        async def _untrack_container(self, container_id: str) -> None:
+            """Drop a tracked container / sidecar-alias entry."""
+            ...
+
         async def _destroy_handle(self, handle: ContainerHandle) -> None:
             """Stop + remove a container and its sidecar; untrack both."""
             ...
@@ -183,10 +187,16 @@ class DockerSandboxStreamMixin:
             # diagnosability (the host maps a missing ``finished`` to ERROR).
             await self._log_exit_status(docker, handle.container_id)
         finally:
-            if stream is not None:
-                await self._close_stream(stream)
-            if handle is not None:
-                await self._destroy_handle(handle)
+            # Nest so destroying the container/sidecar runs even if a second
+            # cancellation lands while the stream close is awaiting: a bare
+            # sequence of awaits here would let that cancellation skip the
+            # handle teardown and leak the container.
+            try:
+                if stream is not None:
+                    await self._close_stream(stream)
+            finally:
+                if handle is not None:
+                    await self._destroy_handle(handle)
 
     async def _spawn_stream_container(
         self,
@@ -227,25 +237,35 @@ class DockerSandboxStreamMixin:
         config["Tty"] = False
         try:
             container = await docker.containers.create(cast("JSONObject", config))  # pyright: ignore[reportAttributeAccessIssue]
-        except Exception as exc:
+        except BaseException as exc:
+            # BaseException (not just Exception): a cancellation while the
+            # create is in flight must still tear down the already-running
+            # sidecar, or it is orphaned untracked until shutdown cleanup.
             reraise_critical(exc)
             if sidecar_id is not None:
                 await self._destroy_handle(
                     ContainerHandle(container_id=sidecar_id, sidecar_id=None)
                 )
-            error_desc = safe_error_description(exc)
-            logger.warning(
-                DOCKER_EXECUTE_FAILED,
-                error_type=type(exc).__name__,
-                error=error_desc,
-            )
-            msg = f"Failed to create streaming container: {error_desc}"
-            raise SandboxStartError(msg) from exc
+            if isinstance(exc, Exception):
+                error_desc = safe_error_description(exc)
+                logger.warning(
+                    DOCKER_EXECUTE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=error_desc,
+                )
+                msg = f"Failed to create streaming container: {error_desc}"
+                raise SandboxStartError(msg) from exc
+            raise
         handle = ContainerHandle(
             container_id=container.id,
             sidecar_id=sidecar_id,
             network_mode=network_mode or self._config.network,
         )
+        # The sidecar is now folded into the container handle; drop its
+        # standalone tracking alias so the tracked-container map does not retain
+        # a dead ``_sidecar:*`` entry per streaming run (mirrors the exec path).
+        if sidecar_id is not None:
+            await self._untrack_container(f"_sidecar:{sidecar_id}")
         # Tracking is best-effort persistence, but a cancellation while it
         # awaits would strand the just-created container before the caller
         # can see the handle; destroy it on any failure (incl. cancellation).
@@ -393,7 +413,10 @@ class DockerSandboxStreamMixin:
             info = await docker.containers.container(container_id).show()  # pyright: ignore[reportAttributeAccessIssue]
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            logger.debug(
+            # WARNING, not DEBUG: this method's whole purpose is surfacing why a
+            # container died, so a failed inspect (the one case that leaves the
+            # exit invisible) must itself be visible at the default log level.
+            logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 surface="openhands-exit-status",
                 container_id=container_id[:12],

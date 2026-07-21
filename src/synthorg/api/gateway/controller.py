@@ -9,6 +9,7 @@ OpenAI-shaped success and error bodies. Streaming requests return a
 ``text/event-stream`` of pre-framed SSE ``data:`` lines.
 """
 
+import contextlib
 import json
 from collections.abc import AsyncIterator
 from typing import Final
@@ -154,13 +155,18 @@ async def _stream_response(  # noqa: PLR0913 -- forwards the pipeline call surfa
         cost_tracker=cost_tracker,
         enabled=enabled,
     )
-    agen = frames.__aiter__()
-    first = await agen.__anext__()
+    # Peek the first frame so an early error (auth / binding / budget) raises
+    # here and maps to a proper status, before the 200 Stream is returned.
+    first = await frames.__anext__()
 
     async def _bytes() -> AsyncIterator[bytes]:
-        yield first.encode("utf-8")
-        async for frame in agen:
-            yield frame.encode("utf-8")
+        # aclosing drives the service generator's teardown (cost-scope exit +
+        # provider stream close) promptly when the ASGI layer closes this body
+        # on a client disconnect, instead of deferring it to generator GC.
+        async with contextlib.aclosing(frames):
+            yield first.encode("utf-8")
+            async for frame in frames:
+                yield frame.encode("utf-8")
 
     return Stream(_bytes(), media_type="text/event-stream")
 

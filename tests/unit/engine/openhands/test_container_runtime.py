@@ -15,7 +15,11 @@ from synthorg.engine.openhands.container_runtime import (
     _spec_line,
     build_container_conversation,
 )
-from synthorg.engine.openhands.conversation import OpenHandsRunSpec
+from synthorg.engine.openhands.conversation import (
+    EventSink,
+    OpenHandsOutcome,
+    OpenHandsRunSpec,
+)
 from synthorg.engine.openhands.errors import OpenHandsRuntimeError
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
 from synthorg.tools.sandbox.errors import SandboxError
@@ -164,12 +168,12 @@ class _ScriptedSandbox:
             self.closed = True
 
 
-async def _drive(sandbox: _ScriptedSandbox, sink: object) -> object:
+async def _drive(sandbox: _ScriptedSandbox, sink: EventSink) -> OpenHandsOutcome:
     conversation = await build_container_conversation(
         sandbox,  # structural SandboxStreamer
         600.0,
         _spec(),
-        sink,  # type: ignore[arg-type]  # structural EventSink
+        sink,
     )
     return await conversation.run()
 
@@ -189,7 +193,7 @@ async def test_run_forwards_events_and_finishes() -> None:
         ]
     )
     outcome = await _drive(sandbox, _sink)
-    assert outcome.finished is True  # type: ignore[attr-defined]
+    assert outcome.finished is True
     assert received == [
         OpenHandsEventKind.ACTION,
         OpenHandsEventKind.MESSAGE,
@@ -212,7 +216,7 @@ async def test_run_stops_and_tears_down_when_sink_returns_false() -> None:
         ]
     )
     outcome = await _drive(sandbox, _sink)
-    assert outcome.finished is False  # type: ignore[attr-defined]
+    assert outcome.finished is False
     assert received == [OpenHandsEventKind.ACTION]  # stopped before the second
     assert sandbox.closed is True
 

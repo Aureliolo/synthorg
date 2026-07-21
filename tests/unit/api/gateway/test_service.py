@@ -286,6 +286,38 @@ async def test_ledger_accumulates_and_next_call_is_killed() -> None:
         )
 
 
+async def test_budget_kill_latches_so_token_reuse_stays_rejected() -> None:
+    # A killed run's ledger is latched, never zeroed, so replaying the same
+    # still-valid bearer cannot respend the ceiling round after round.
+    service, signer, ledger = _service()
+    provider = _ScriptedProvider(response=_response(cost=1.0))
+    resolver: ProviderResolver = _FakeResolver({_PROVIDER: provider})
+    token = _token(signer, cost_ceiling=0.5)
+
+    # First call spends past the ceiling (pre-flight ledger empty).
+    await service.complete(
+        token=token,
+        raw_request=_request(),
+        registry=resolver,
+        cost_tracker=None,
+        enabled=True,
+    )
+
+    # Every subsequent call on the same token is rejected, and the ledger is
+    # never reset back to zero (which would re-admit the next call).
+    for _ in range(3):
+        with pytest.raises(GatewayBudgetExhaustedError):
+            await service.complete(
+                token=token,
+                raw_request=_request(),
+                registry=resolver,
+                cost_tracker=None,
+                enabled=True,
+            )
+    assert await ledger.total("exec-1") == pytest.approx(1.0)
+    assert await ledger.is_killed("exec-1") is True
+
+
 async def test_injection_content_does_not_block_the_request() -> None:
     service, signer, _ = _service()
     provider = _ScriptedProvider(response=_response())
@@ -378,8 +410,14 @@ async def test_stream_killed_when_running_total_crosses_ceiling_mid_stream() -> 
     assert any('"content":"before"' in f for f in frames)
     assert not any("afterkill" in f for f in frames)  # cut at the ceiling
     assert frames[-1] == "data: [DONE]\n\n"
-    # The kill resets the run ledger so a stale over-budget total is not left.
-    assert await ledger.total("exec-1") == pytest.approx(0.0)
+    # The consumer gets an unambiguous terminal signal (not a silent truncation)
+    # so the harness cannot mistake a budget cut for a normal stop.
+    assert any("gateway_budget_exhausted" in f for f in frames)
+    assert any('"finish_reason":"length"' in f for f in frames)
+    # The kill latches (does not zero) the ledger so the same still-valid bearer
+    # cannot respend the ceiling on a subsequent call.
+    assert await ledger.total("exec-1") == pytest.approx(0.06)
+    assert await ledger.is_killed("exec-1") is True
 
 
 async def test_stream_disabled_gateway_raises() -> None:

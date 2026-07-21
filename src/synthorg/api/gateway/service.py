@@ -15,9 +15,10 @@ ceiling, then dispatch under a cost-recording scope so cost and prompt
 attribution flow through the single provider chokepoint.
 """
 
+import contextlib
 import json
 import secrets
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Final, Protocol, runtime_checkable
 
 from synthorg.api.gateway.ledger import RunCostLedger
@@ -145,7 +146,7 @@ class GatewayService:
         registry: ProviderResolver,
         cost_tracker: CostTrackerProtocol | None,
         enabled: bool,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncGenerator[str]:
         """Run one streaming completion, yielding OpenAI SSE frames.
 
         Args:
@@ -171,10 +172,17 @@ class GatewayService:
         await self._enforce_budget(claims)
         response_id = self._new_id()
         created = self._now_epoch()
-        async for frame in self._drive_stream(
-            provider, parsed, claims, cost_tracker, response_id, created
-        ):
-            yield frame
+        # aclosing drives ``_drive_stream``'s finally (cost-scope exit + provider
+        # stream close) promptly on an early consumer stop (client disconnect),
+        # rather than deferring it to async-generator GC and leaking the open
+        # provider connection / skewing cost attribution.
+        async with contextlib.aclosing(
+            self._drive_stream(
+                provider, parsed, claims, cost_tracker, response_id, created
+            )
+        ) as frames:
+            async for frame in frames:
+                yield frame
         yield _SSE_DONE
 
     async def _drive_stream(  # noqa: PLR0913 -- streaming needs the full request context
@@ -185,7 +193,7 @@ class GatewayService:
         cost_tracker: CostTrackerProtocol | None,
         response_id: str,
         created: int,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncGenerator[str]:
         """Open the provider stream and yield OpenAI SSE frames."""
         async with cost_recording_scope(
             cost_tracker=cost_tracker,
@@ -222,7 +230,18 @@ class GatewayService:
                                 ceiling=claims.cost_ceiling,
                                 surface="gateway-stream",
                             )
-                            await self._ledger.reset(claims.execution_id)
+                            # Latch (do not reset): a reset would zero the ledger
+                            # and let the same bearer respend the ceiling on its
+                            # next call; the latch keeps the run rejected.
+                            await self._ledger.kill(claims.execution_id, total)
+                            # Signal the kill to the consumer: without a terminal
+                            # error frame the stream would look like a normal stop
+                            # and the harness would treat a budget cut as success.
+                            yield _sse(
+                                _budget_kill_chunk(
+                                    response_id, created, claims.model_id
+                                )
+                            )
                             break
                     frame = self._stream_frame(chunk, response_id, created, claims)
                     if frame is not None:
@@ -320,6 +339,21 @@ class GatewayService:
         """
         if claims.cost_ceiling is None:
             return
+        msg = (
+            f"run {claims.execution_id} exhausted its "
+            f"{claims.cost_ceiling} cost ceiling"
+        )
+        # A latched-killed run stays rejected for the bearer's lifetime: the
+        # ledger is never zeroed on a kill, so reusing the still-valid token
+        # cannot respend the ceiling.
+        if await self._ledger.is_killed(claims.execution_id):
+            logger.warning(
+                GATEWAY_BUDGET_KILL,
+                execution_id=claims.execution_id,
+                ceiling=claims.cost_ceiling,
+                note="rejected reuse of a budget-killed run token",
+            )
+            raise GatewayBudgetExhaustedError(msg)
         spent = await self._ledger.total(claims.execution_id)
         if spent >= claims.cost_ceiling:
             logger.warning(
@@ -328,14 +362,9 @@ class GatewayService:
                 spent=spent,
                 ceiling=claims.cost_ceiling,
             )
-            # The budget kill is terminal for this run: forget its ledger
-            # entry so the map does not retain completed runs for the
-            # process's lifetime.
-            await self._ledger.reset(claims.execution_id)
-            msg = (
-                f"run {claims.execution_id} exhausted its "
-                f"{claims.cost_ceiling} cost ceiling"
-            )
+            # Latch (do not reset): the kill must survive so the next call on
+            # the same still-valid bearer is rejected rather than re-admitted.
+            await self._ledger.kill(claims.execution_id, spent)
             raise GatewayBudgetExhaustedError(msg)
 
     async def _dispatch(
@@ -453,5 +482,29 @@ def _error_chunk(
         "error": {
             "message": chunk.error_message or "stream error",
             "type": "gateway_stream_error",
+        },
+    }
+
+
+def _budget_kill_chunk(response_id: str, created: int, model: str) -> dict[str, object]:
+    """Build the terminal chunk emitted when a run's cost ceiling is hit.
+
+    The buffered path surfaces budget exhaustion as a hard ``402`` error; the
+    streaming path must give the consuming harness an equally unambiguous
+    signal rather than a truncated-but-otherwise-normal stream, so it carries
+    both a ``finish_reason="length"`` and an explicit ``error`` object.
+
+    Returns:
+        An OpenAI ``chat.completion.chunk`` marking a budget-exhaustion kill.
+    """
+    return {
+        "id": response_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "length"}],
+        "error": {
+            "message": "run cost ceiling exceeded; stream terminated",
+            "type": "gateway_budget_exhausted",
         },
     }

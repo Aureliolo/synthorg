@@ -111,9 +111,10 @@ async def test_iter_lines_times_out_on_idle_stream() -> None:
 
 
 async def test_iter_lines_stderr_does_not_extend_deadline() -> None:
-    # Two stderr frames spaced past the idle window: because stderr never
-    # resets the deadline, the stream trips the timeout rather than being
-    # kept alive by the stderr chatter (and no stdout line is ever yielded).
+    # stderr frames spaced past the idle window: the first lands inside the
+    # deadline (without resetting it, by design), so the second read_out has
+    # less than one full window left and times the stream out. The stderr
+    # chatter cannot keep the stream alive, and no stdout line is ever yielded.
     idle = 0.2
     delay = 0.14
     stream = _FrameStream(
@@ -139,6 +140,7 @@ class _SpawnHarness(DockerSandboxStreamMixin):
         self._needs = needs_sidecar
         self._track_raises = track_raises
         self.destroyed: list[ContainerHandle] = []
+        self.untracked: list[str] = []
 
     @override
     def _needs_sidecar(self) -> bool:
@@ -159,6 +161,10 @@ class _SpawnHarness(DockerSandboxStreamMixin):
         if self._track_raises:
             msg = "tracking backend down"
             raise RuntimeError(msg)
+
+    @override
+    async def _untrack_container(self, container_id: str) -> None:
+        self.untracked.append(container_id)
 
     @override
     async def _destroy_handle(self, handle: ContainerHandle) -> None:
@@ -215,3 +221,19 @@ async def test_spawn_destroys_sidecar_when_create_fails() -> None:
     # A sidecar brought up before the failed create must be torn down.
     assert len(harness.destroyed) == 1
     assert harness.destroyed[0].container_id == "sidecar-1"
+
+
+async def test_spawn_untracks_sidecar_alias_on_success() -> None:
+    harness = _SpawnHarness(needs_sidecar=True)
+    handle = await harness._spawn_stream_container(
+        _FakeDocker(container_id="c-777"),
+        command="python",
+        args=(),
+        effective_root=Path("/workspace"),
+        category="",
+    )
+    # The sidecar is folded into the container handle; its standalone tracking
+    # alias is dropped so the tracked map does not retain a dead entry per run.
+    assert handle.container_id == "c-777"
+    assert harness.untracked == ["_sidecar:sidecar-1"]
+    assert harness.destroyed == []

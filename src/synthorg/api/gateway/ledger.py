@@ -8,10 +8,13 @@ pre-flight per call (an in-flight call is allowed to finish), so total
 spend is bounded by ``ceiling`` plus at most one final call. The ledger
 is per-process; a run that outlives a restart re-mints and starts fresh.
 
-Entries are bounded two ways so the map cannot grow unboundedly over a
-long-lived process: the gateway resets a run on its terminal budget kill,
-and any entry idle past ``entry_ttl_seconds`` (a run makes no call for
-longer than its bearer could live) is evicted lazily on the next ``add``.
+A run that crosses its ceiling is *latched* killed, not forgotten: its
+total stays pinned so reusing the still-valid bearer cannot respend the
+ceiling (a reset would zero the total and re-admit the next call). The map
+is bounded by lazy idle eviction: any entry (killed or live) idle past
+``entry_ttl_seconds`` (a run makes no call for longer than its bearer could
+live) is dropped on the next ``add``, so killed runs are reclaimed once
+their bearer can no longer be used, not before.
 """
 
 import asyncio
@@ -36,6 +39,7 @@ class RunCostLedger:
     ) -> None:
         self._totals: dict[str, float] = {}
         self._touched: dict[str, float] = {}
+        self._killed: set[str] = set()
         self._lock = asyncio.Lock()
         self._clock = clock if clock is not None else SystemClock()
         self._entry_ttl_seconds = entry_ttl_seconds
@@ -74,10 +78,49 @@ class RunCostLedger:
         async with self._lock:
             return self._totals.get(execution_id, 0.0)
 
-    async def reset(self, execution_id: str) -> None:
-        """Forget the run's accumulated total.
+    async def kill(self, execution_id: str, spent: float) -> None:
+        """Latch a run as budget-exhausted so every later call stays rejected.
 
-        Called on a run's terminal budget kill; also reachable for teardown.
+        Unlike :meth:`reset`, the run is not forgotten: its total is pinned at
+        (at least) *spent* and the run is marked killed, so reusing the
+        still-valid bearer cannot zero the ledger and respend the ceiling. The
+        entry is released only by idle eviction (past a bearer's lifetime) or a
+        process restart.
+
+        Args:
+            execution_id: The run that crossed its ceiling.
+            spent: The accumulated cost at the crossing (pinned as the floor).
+        """
+        async with self._lock:
+            now = self._clock.monotonic()
+            self._evict_idle(now)
+            self._killed.add(execution_id)
+            self._totals[execution_id] = max(
+                self._totals.get(execution_id, 0.0), 0.0, spent
+            )
+            self._touched[execution_id] = now
+
+    async def is_killed(self, execution_id: str) -> bool:
+        """Return whether a run has been budget-killed, refreshing its liveness.
+
+        Touches the entry when killed so an actively-retrying run keeps its
+        latch: idle eviction then only reclaims a killed run that has genuinely
+        gone quiet past a bearer's lifetime, never one still trying to spend.
+
+        Returns:
+            ``True`` when the run is latched killed.
+        """
+        async with self._lock:
+            if execution_id in self._killed:
+                self._touched[execution_id] = self._clock.monotonic()
+                return True
+            return False
+
+    async def reset(self, execution_id: str) -> None:
+        """Forget the run's accumulated total (teardown only, never a kill).
+
+        A budget kill must latch via :meth:`kill`, not reset, or the next call
+        on the same bearer would start from zero and respend the ceiling.
 
         Args:
             execution_id: The run to clear.
@@ -85,6 +128,7 @@ class RunCostLedger:
         async with self._lock:
             self._totals.pop(execution_id, None)
             self._touched.pop(execution_id, None)
+            self._killed.discard(execution_id)
 
     def _evict_idle(self, now: float) -> None:
         """Drop entries not touched within ``entry_ttl_seconds`` (lock held)."""
@@ -96,3 +140,4 @@ class RunCostLedger:
         for execution_id in stale:
             self._totals.pop(execution_id, None)
             self._touched.pop(execution_id, None)
+            self._killed.discard(execution_id)

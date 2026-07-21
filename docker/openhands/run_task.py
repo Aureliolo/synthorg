@@ -45,6 +45,23 @@ def _emit(payload: dict[str, object]) -> None:
     sys.stdout.flush()
 
 
+def _safe_error_text(exc: Exception, *, secret: str) -> str:
+    """Render an exception for emission with the run bearer scrubbed out.
+
+    The container holds the per-run gateway token (used as the LLM api key and
+    as the MCP ``Authorization`` header), and an HTTP/SDK failure can echo a
+    request URL or header into its message. That text is written to stdout,
+    which the host parses, logs, and can surface in turn content, so the token
+    is redacted at this boundary (mirroring the app's SEC-1 log-redaction
+    rule, which this image-only module cannot import).
+
+    Returns:
+        ``"<ErrorType>: <message>"`` with any occurrence of *secret* masked.
+    """
+    text = f"{type(exc).__name__}: {exc}"
+    return text.replace(secret, "***") if secret else text
+
+
 def _text_of(event: object) -> str:
     """Best-effort human-readable text for an event.
 
@@ -170,14 +187,19 @@ def main() -> int:
     Returns:
         ``0`` on success, ``1`` on any failure (reported as an error line).
     """
+    # Capture the bearer up front (default empty) so the error path can scrub
+    # it even when a failure happens before / during spec parsing.
+    secret = ""
     try:
         line = sys.stdin.readline()
         if not line.strip():
             _emit({"kind": "error", "text": "empty run spec on stdin"})
             return 1
-        _run(json.loads(line))
+        spec = json.loads(line)
+        secret = str(spec.get("gateway_token", "")) if isinstance(spec, dict) else ""
+        _run(spec)
     except Exception as exc:  # noqa: BLE001 -- container boundary: report, don't crash silently
-        _emit({"kind": "error", "text": f"{type(exc).__name__}: {exc}"})
+        _emit({"kind": "error", "text": _safe_error_text(exc, secret=secret)})
         return 1
     return 0
 
