@@ -23,9 +23,9 @@ and no licence change (the whole field is MIT/Apache).
   cancellation checkers; MCP tools are first-class (FastMCP) so it
   consumes our credentialed-MCP endpoint natively; `SecurityAnalyzer` +
   `ConfirmationPolicy` give per-action defence-in-depth; a
-  workspace runs bash/edit/test natively inside our container;
-  `ConversationState` + `EventLog` give task-level resume; a
-  `RemoteConversation` drives an in-container `agent_server` over REST/WS.
+  `LocalWorkspace` runs bash/edit/test natively inside our container;
+  `ConversationState` + `EventLog` (keyed by a stable conversation id under
+  a persistence dir) give task-level resume.
 - **Rejected:** Goose (now Apache-2.0, but Rust, a foreign-runtime embed
   with no Python SDK); OpenCode (MIT, but a CLI/TUI with weaker
   per-action governance and non-LiteLLM routing); mini-swe-agent (great
@@ -37,78 +37,120 @@ and no licence change (the whole field is MIT/Apache).
 ## Adapter shape
 
 The adapter is a thin, testable client (`engine/openhands/`,
-`# module-kind: adapter`). The SDK boundary is inverted behind an
+`# module-kind: adapter`). The runtime boundary is inverted behind an
 `OpenHandsConversation` protocol (`conversation.py`) so the loop logic is
-unit-tested against a deterministic fake that emits scripted events, and
-the real SDK glue (`sdk_runtime.py`) is exercised only by the live smoke.
+unit-tested against a deterministic fake that emits scripted events; the
+real runtime (`container_runtime.py`) drives a sandbox container and is
+exercised end-to-end by the live smoke. The SDK never enters the main
+venv: it runs only inside the container.
 
 - `loop.py`: `OpenHandsLoop` satisfies the structural `ExecutionLoop`
   protocol; `get_loop_type()` returns `"openhands"`. `tool_invoker`,
-  `provider` and `completion_config` are unused by design (OpenHands runs
-  its own tools and reaches models only through the gateway).
+  `provider`, `completion_config` and `streaming_enabled` are unused by
+  design (OpenHands runs its own tools, and reaches models and its own
+  streaming only through the gateway).
 - `events.py`: the transport-neutral `OpenHandsEvent` (message / action /
-  observation / finished / error, with token and cost fields).
+  observation / finished / error). A model validator enforces that
+  `tool_name` is set only on an action and token/cost figures only on a
+  turn (message / action); `finish_reason` is a computed field.
 - `conversation.py`: the `OpenHandsConversation` protocol, its
   `OpenHandsRunSpec` (task prompt, model, gateway + MCP base URLs, gateway
-  token, workspace path, max turns), an `EventSink` (returns `False` to
-  request an early stop) and the `ConversationFactory`.
-- `config.py`: frozen `OpenHandsLoopConfig` (max turns, token TTL) and
-  `OpenHandsLoopDeps` (conversation factory, the **shared** gateway
-  signer, gateway + MCP base URLs, clock).
-- `sdk_runtime.py`: the real `openhands-sdk` conversation factory,
-  image-only and import-guarded.
+  token, workspace path, conversation id, max turns, project id), an
+  `EventSink` (returns `False` to request an early stop) and the
+  `ConversationFactory`. `OpenHandsOutcome` makes a natural finish and an
+  error message mutually exclusive.
+- `config.py`: frozen `OpenHandsLoopConfig` (max turns, token TTL, idle
+  timeout) and `OpenHandsLoopDeps` (conversation factory, the **shared**
+  gateway signer, gateway + MCP base URLs, clock; blank URLs are rejected
+  at construction).
+- `container_runtime.py`: the real runtime. It drives the injected
+  `SandboxStreamer` (structurally the egress-pinned `DockerSandbox`),
+  serialises the run spec to one JSON line on the container's `stdin`, and
+  parses the structured JSON event stream from its `stdout`. Depends on a
+  narrow protocol, not the concrete backend, so the engine stays off the
+  sandbox internals.
 - `errors.py`: `OpenHandsLoopError` / `OpenHandsRuntimeError` /
   `OpenHandsUnavailableError`.
+
+## In-sandbox execution model
+
+The agent runs to completion **inside** the `docker/openhands` container,
+never in the API process: the SDK and its native `terminal` / `file_editor`
+tools live only in the image. The host drives one run over the container's
+standard streams (no in-container HTTP server):
+
+- The container entrypoint (`docker/openhands/run_task.py`) reads one JSON
+  run-spec line from `stdin`, builds the SDK `LLM` (pointed at the gateway
+  bearer + base URL), `Agent` (native tools + the credentialed-MCP server
+  over streamable-http) and a `LocalConversation` (persisting state under
+  the workspace, keyed by the conversation id), and streams each agent
+  event as one structured JSON line on `stdout`.
+- The host-side `DockerSandbox.stream_container_task` spawns the container
+  with `stdin`/`stdout` attached, writes the spec, and yields each `stdout`
+  line. Egress is pinned by the network sidecar to exactly the gateway +
+  credentialed-MCP hosts (the backend's `allowed_hosts`); the workspace is
+  mounted read-write. The container and sidecar are torn down on every
+  exit path (natural end, early stop, error, or cancellation of the
+  awaiting coroutine).
 
 ## execute() flow
 
 1. **Mint the per-run bearer** from the shared gateway signer, binding
    `(execution_id, agent_id, task_id, project_id, provider, model_id,
-   cost_ceiling)`; Explicit Provider Binding is enforced at mint. Unset
-   gateway/MCP URLs fail loud (`OpenHandsUnavailableError`).
-2. **Build the run spec** with the gateway/MCP endpoints and the workspace
-   mounted at the in-container path.
-3. **Build the conversation** via the factory: in the live path a
-   `RemoteConversation` against the in-sandbox `agent_server`, configured
-   with `LLM(api_key=<bearer>, base_url=<gateway>)` and the MCP tools from
-   our credentialed endpoint; egress is locked to exactly the gateway +
-   MCP hosts, everything else stays `network:"none"`.
-4. **Run**, consuming the event stream. At every event boundary the sink
-   consults `budget_checker` / `shutdown_checker` /
+   cost_ceiling)`; Explicit Provider Binding is enforced at mint (an
+   unbound model fails loud, never auto-picks).
+2. **Build the run spec** with the gateway/MCP endpoints, the workspace
+   mount path, and the stable per-task conversation id for resume.
+3. **Build the conversation** via the factory: `container_runtime` bound to
+   the egress-pinned sandbox. The container's `LLM(api_key=<bearer>,
+   base_url=<gateway>)` reaches models only through the gateway and its
+   credentialed tools only through the MCP endpoint.
+4. **Stream**, consuming the container's `stdout` events. At every event
+   boundary the sink consults `budget_checker` / `shutdown_checker` /
    `task_cancellation_checker` and returns `False` to stop, yielding the
    matching `TerminationReason` (`BUDGET_EXHAUSTED` / `SHUTDOWN` /
-   `CANCELLED`). Budget is enforced at the boundary, matching the native
-   `run_hard_ceiling` semantics.
-5. **Map events to turns**: an action plus its observation becomes one
-   `TurnRecord` (tokens and cost from the gateway `usage` echo, not the
-   event); a message advances conversation state.
+   `CANCELLED`) and tearing the container down. The gateway additionally
+   enforces the authoritative hard token kill server-side.
+5. **Map events to turns**: an action becomes one `TurnRecord`; a message
+   advances conversation state. The container reports a running accumulated
+   cost per event, so the host attributes the per-turn cost delta (the
+   deltas sum to the run total; the gateway is the authoritative cost sink).
 6. **Completion**: build `ExecutionResult(COMPLETED)`, then apply the
    **exact native NO_OP predicate**: a task with `artifacts_expected` that
    produced no tool calls and is not a resumed run terminates `NO_OP`
-   (routed to `FAILED` downstream), never a silent success.
+   (routed to `FAILED` downstream), never a silent success. Every terminal
+   transition logs `EXECUTION_LOOP_TERMINATED`.
 
 ## Resume
 
-Task-level. OpenHands persists `ConversationState` + `EventLog` to the
-workspace volume; on resume the adapter re-attaches to the persisted
-conversation. No per-tool-exec SynthOrg checkpoint callback is wired
-(that is native-loop-specific), so `make_loop_with_callback` returns the
+Task-level. The container persists `ConversationState` + `EventLog` under
+the (read-write) workspace, keyed by the stable per-task conversation id;
+on a resumed run the same id re-attaches to the persisted conversation. No
+per-tool-exec SynthOrg checkpoint callback is wired (that is
+native-loop-specific), so `make_loop_with_callback` returns the
 `OpenHandsLoop` unchanged rather than warning it is unsupported.
 
 ## Dependency isolation
 
-`openhands-sdk` + `agent_server` are bundled **only in the container
-image** (`docker/openhands/`), never in the main package venv. The main
-package needs only an HTTP/WS client to drive the `RemoteConversation`.
-This sidesteps the litellm / pyo3-3.14 pin holds entirely and keeps
-`check_license_compat.py` green (image-only MIT/Apache). `sdk_runtime.py`
-guards its `openhands` import and raises `OpenHandsUnavailableError` when
-the SDK is absent, so the main venv never imports it.
+`openhands-sdk` + `openhands-tools` are bundled **only in the container
+image** (`docker/openhands/`, a hash-pinned lockfile), never in the main
+package venv. The host needs no SDK client at all: it drives the container
+over `stdin`/`stdout`, so the SDK's litellm 1.93 closure never touches the
+app's pinned dependency set. (`openhands-agent-server` is deliberately
+excluded: the stream model does not use it.) This keeps
+`check_license_compat.py` green (image-only MIT/Apache). The runtime lives
+behind the `SandboxStreamer` protocol, so the main venv never imports the
+SDK.
 
 ## Selection
 
-The loop is chosen per agent-role / task-complexity through the existing
-loop-selection path, with `"openhands"` registered in the loop registry
-and both known/buildable frozensets. The registry factory requires
+The loop is chosen per task-complexity through the existing loop-selection
+path, with `"openhands"` registered in the loop registry and both
+known/buildable frozensets. Selection is off by default: the boot wiring
+builds an `AutoLoopConfig` only when `engine.loop_auto_select_enabled` is
+set, from the default complexity rules merged with
+`engine.loop_complexity_overrides` and the `engine.default_loop_type`
+fallback, so an operator can route any complexity (or every unmatched
+task) to OpenHands for an A/B. The registry factory requires
 `OpenHandsLoopDeps`; without them it fails loud, so an unwired deployment
 can never silently fall back to a different loop.

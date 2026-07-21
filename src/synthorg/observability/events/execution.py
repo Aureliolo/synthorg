@@ -21,6 +21,7 @@ EXECUTION_LOOP_TOOL_CALLS: Final[str] = "execution.loop.tool_calls"
 EXECUTION_LOOP_TERMINATED: Final[str] = "execution.loop.terminated"
 EXECUTION_LOOP_BUDGET_EXHAUSTED: Final[str] = "execution.loop.budget_exhausted"
 EXECUTION_LOOP_ERROR: Final[str] = "execution.loop.error"
+EXECUTION_LOOP_UNAVAILABLE: Final[str] = "execution.loop.unavailable"
 
 EXECUTION_ENGINE_CREATED: Final[str] = "execution.engine.created"
 EXECUTION_ENGINE_START: Final[str] = "execution.engine.start"

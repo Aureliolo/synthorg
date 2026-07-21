@@ -12,7 +12,11 @@ from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.core.types import NotBlankStr
 from synthorg.llm.gateway_errors import GatewayModelUnboundError
 from synthorg.llm.gateway_token import GatewaySigner, GatewayTokenClaims
+from synthorg.observability import get_logger
+from synthorg.observability.events.gateway import GATEWAY_MODEL_UNBOUND
 from synthorg.settings.model_ref import ModelRef
+
+logger = get_logger(__name__)
 
 
 def mint_run_token(  # noqa: PLR0913 -- token binding carries the full run context
@@ -47,6 +51,14 @@ def mint_run_token(  # noqa: PLR0913 -- token binding carries the full run conte
         GatewayModelUnboundError: If ``ref`` names no provider or no model.
     """
     if not ref.is_bound:
+        # Security-relevant: an unbound model reaching the mint boundary is a
+        # binding-contract breach; log before failing loud (never auto-pick).
+        logger.warning(
+            GATEWAY_MODEL_UNBOUND,
+            execution_id=execution_id,
+            agent_id=agent_id,
+            model_id=ref.model_id,
+        )
         raise GatewayModelUnboundError
     claims = GatewayTokenClaims(
         execution_id=execution_id,

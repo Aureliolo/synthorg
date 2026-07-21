@@ -14,10 +14,12 @@ harness property.
 There is no network-facing gateway in the base system: `LiteLLMDriver`
 calls `litellm.acompletion` in-process. The gateway mounts a controller
 (`api/gateway/controller.py`) on the existing Litestar app at
-`POST /gateway/v1/chat/completions`. It is reachable **only** from the
-agent sandbox over the sidecar egress allowlist, and is excluded from the
-session/bearer auth middleware because it authenticates with its own
-per-run signed bearer.
+`POST /gateway/v1/chat/completions`, so the full mounted route (under the
+app's `/api/v1` prefix) is `/api/v1/gateway/v1/chat/completions`; the
+harness's OpenAI `base_url` is the app address plus `/api/v1/gateway/v1`.
+It is reachable **only** from the agent sandbox over the sidecar egress
+allowlist, and is excluded from the session/bearer auth middleware
+because it authenticates with its own per-run signed bearer.
 
 ## Per-run signed bearer
 
@@ -26,9 +28,11 @@ The gateway mints one short-lived HMAC-SHA256 token per agent run
 `api_key`. The token binds `(execution_id, agent_id, task_id, project_id,
 provider, model_id, cost_ceiling, currency)` and an expiry, so the gateway
 can enforce Explicit Provider Binding and the budget from the request
-alone, with **no server-side session table**. The signer is shared: the
-gateway verifies with the same instance the [OpenHands loop](openhands-loop.md)
-mints with (a same-secret peer across processes).
+alone, with **no server-side session table**. The signer is shared
+in-process: the boot wiring hands the [OpenHands loop](openhands-loop.md)
+the *same* `GatewaySigner` instance the gateway verifies with (pulled from
+the gateway feature slice), so a token minted by the loop is accepted by
+the gateway without a second secret to keep in sync.
 
 Minting is the single enforcement point for Explicit Provider Binding
 (`llm/gateway_binding.py`): a `ModelRef` with no bound provider raises

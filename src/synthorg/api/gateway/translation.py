@@ -17,6 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.domain_errors import ValidationError
+from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.gateway import GATEWAY_DISPATCH_FAILED
 from synthorg.providers.enums import ImageDetail, ImageMediaType, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
@@ -28,6 +31,8 @@ from synthorg.providers.models import (
     ToolDefinition,
     ToolResult,
 )
+
+logger = get_logger(__name__)
 
 _DATA_URI_PREFIX: Final[str] = "data:"
 _OBJECT_COMPLETION: Final[str] = "chat.completion"
@@ -102,7 +107,7 @@ class GatewayChatRequest(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    model: str
+    model: NotBlankStr
     messages: list[_OAIMessage] = Field(default_factory=list)
     tools: list[_OAITool] | None = None
     temperature: float | None = None
@@ -118,7 +123,7 @@ class ParsedChatRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    model: str
+    model: NotBlankStr
     messages: tuple[ChatMessage, ...]
     tools: tuple[ToolDefinition, ...] = ()
     config: CompletionConfig | None = None
@@ -332,8 +337,20 @@ def _decode_arguments(arguments: str) -> dict[str, JsonValue]:
     try:
         decoded = json.loads(arguments)
     except ValueError, TypeError:
+        logger.warning(
+            GATEWAY_DISPATCH_FAILED,
+            surface="gateway",
+            reason="unparseable_tool_call_arguments",
+        )
         return {}
-    return decoded if isinstance(decoded, dict) else {}
+    if not isinstance(decoded, dict):
+        logger.warning(
+            GATEWAY_DISPATCH_FAILED,
+            surface="gateway",
+            reason="non_object_tool_call_arguments",
+        )
+        return {}
+    return decoded
 
 
 def _tool_from_oai(tool: _OAITool) -> ToolDefinition:
@@ -442,7 +459,7 @@ def stream_chunk_to_openai(
     Returns:
         An OpenAI ``chat.completion.chunk`` object, or ``None`` for chunks
         that carry no client-visible delta (usage/done are handled by the
-        controller's terminal framing).
+        gateway service's terminal SSE framing).
     """
     delta = _delta_for_chunk(chunk)
     if delta is None:

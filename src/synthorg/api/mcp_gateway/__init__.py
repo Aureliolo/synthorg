@@ -7,5 +7,6 @@ endpoint. Tool execution, credential brokering, the connection approval
 gate, action-signature binding and egress pinning all run host-side, so
 credentials never enter the agent sandbox; the harness only ever sees a
 tool result (or an approval-parking notice). Visibility is actor-scoped
-via the shared ``MCPToolScoper``.
+by this module's own ``visible_tool_names`` (mirroring the ``MCPToolScoper``
+capability form: ``domain:action`` with ``*`` wildcards).
 """

@@ -168,11 +168,12 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     as the inner loop, so it can be A/B'd end to end against the native
     loops and the winner promoted. It satisfies the same `ExecutionLoop`
     protocol (`get_loop_type() -> "openhands"`) and honours the same
-    budget / shutdown / cancellation checkers and the NO_OP rule at event
+    budget / shutdown / cancellation checkers and the NO_OP rule at turn
     boundaries. It reaches models only through the [LLM gateway](llm-gateway.md)
     and credentialed tools only through the [credentialed-MCP](credentialed-mcp.md)
-    boundary; the harness runs in-sandbox via its `agent_server`, and
-    `openhands-sdk` is bundled only in the sandbox image. See the
+    boundary; the harness runs to completion in-sandbox, driven over the
+    container's stdin/stdout (no in-container server), with `openhands-sdk`
+    bundled only in the sandbox image. See the
     [OpenHands loop](openhands-loop.md) page.
 
     ```yaml

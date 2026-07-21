@@ -103,12 +103,14 @@ _MCP_SANDBOX_ENABLED_KEY: Final[str] = "mcp_sandbox_enabled"
 _MCP_SANDBOX_NETWORK_KEY: Final[str] = "mcp_sandbox_network"
 _MCP_SANDBOX_CPUS_KEY: Final[str] = "mcp_sandbox_cpus"
 _CREDENTIALED_MCP_ENABLED_KEY: Final[str] = "credentialed_mcp_enabled"
+_CREDENTIALED_MCP_CAPABILITIES_KEY: Final[str] = "credentialed_mcp_capabilities"
 _MCP_SANDBOX_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
     {
         _MCP_SANDBOX_ENABLED_KEY,
         _MCP_SANDBOX_NETWORK_KEY,
         _MCP_SANDBOX_CPUS_KEY,
         _CREDENTIALED_MCP_ENABLED_KEY,
+        _CREDENTIALED_MCP_CAPABILITIES_KEY,
     }
 )
 _MCP_SANDBOX_ENABLED_DEFAULT: Final[str] = "true"
@@ -139,12 +141,41 @@ def _is_unlimited_cpus(value: str) -> bool:
         return False
 
 
+def _capability_patterns(raw: str | None) -> frozenset[str]:
+    """Parse a comma-separated capability grant into its pattern set.
+
+    Returns:
+        The set of non-blank capability patterns.
+    """
+    if not raw:
+        return frozenset()
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
+def _is_capability_widening(current: str | None, new: str) -> bool:
+    """Return whether *new* grants a capability pattern *current* did not.
+
+    Widening (guarded) is any pattern in *new* not already present in
+    *current*: an empty-to-anything grant, ``"" -> "*"``, or adding a
+    ``:write``. Narrowing (dropping patterns) is unguarded. A narrowing that
+    happens to spell a more specific pattern than an existing wildcard is
+    conservatively treated as widening: over-guarding never weakens the
+    posture.
+
+    Returns:
+        ``True`` when the new grant introduces a pattern the current lacks.
+    """
+    return bool(_capability_patterns(new) - _capability_patterns(current))
+
+
 def _is_mcp_sandbox_weakening(key: str, *, current: str | None, new: str) -> bool:
     """Return whether a ``tools.*`` MCP sandbox change relaxes isolation."""
     if key == _CREDENTIALED_MCP_ENABLED_KEY:
         # Default is "false" (off); enabling exposes credentialed actions.
         currently_off = current is None or not compare_ci(current, "true")
         return currently_off and compare_ci(new, "true")
+    if key == _CREDENTIALED_MCP_CAPABILITIES_KEY:
+        return _is_capability_widening(current, new)
     if key == _MCP_SANDBOX_ENABLED_KEY:
         currently_on = current is None or compare_ci(
             current, _MCP_SANDBOX_ENABLED_DEFAULT

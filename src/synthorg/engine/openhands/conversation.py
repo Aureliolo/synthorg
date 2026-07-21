@@ -10,9 +10,9 @@ the conversation honours by ceasing to emit further events.
 """
 
 from collections.abc import Awaitable, Callable
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.openhands.events import OpenHandsEvent
@@ -31,7 +31,10 @@ class OpenHandsRunSpec(BaseModel):
     The LLM is pointed at ``gateway_base_url`` with ``gateway_token`` as its
     api-key, and its credentialed tools at ``mcp_base_url``; both are the only
     egress the sandbox is allowed. ``workspace_path`` is the project workspace
-    mounted into the container.
+    mounted into the container. ``conversation_id`` is the stable per-task key
+    the runtime persists conversation state under (so a resumed run
+    re-attaches to the prior conversation); ``project_id`` selects the mounted
+    workspace subtree host-side (never sent into the container).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -42,7 +45,13 @@ class OpenHandsRunSpec(BaseModel):
     gateway_token: NotBlankStr = Field(description="Per-run gateway bearer")
     mcp_base_url: NotBlankStr = Field(description="Credentialed-MCP endpoint URL")
     workspace_path: NotBlankStr = Field(description="Mounted project workspace path")
+    conversation_id: NotBlankStr = Field(
+        description="Stable per-task conversation key for resume"
+    )
     max_turns: int = Field(gt=0, description="Turn ceiling for the run")
+    project_id: NotBlankStr | None = Field(
+        default=None, description="Owning project for the workspace mount subtree"
+    )
 
 
 class OpenHandsOutcome(BaseModel):
@@ -54,6 +63,25 @@ class OpenHandsOutcome(BaseModel):
     error_message: str | None = Field(
         default=None, description="Runtime error message, if the run failed"
     )
+
+    @model_validator(mode="after")
+    def _finish_and_error_exclusive(self) -> Self:
+        """Reject an outcome that is both finished and carries an error.
+
+        A natural finish and a runtime error are mutually exclusive; a run
+        that neither finished nor errored (stopped early at a boundary) is
+        valid with both a ``False`` ``finished`` and a ``None`` message.
+
+        Returns:
+            The validated outcome.
+
+        Raises:
+            ValueError: If ``finished`` is set alongside an ``error_message``.
+        """
+        if self.finished and self.error_message is not None:
+            msg = "a finished outcome cannot also carry an error_message"
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable

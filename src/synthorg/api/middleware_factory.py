@@ -261,12 +261,15 @@ def _build_auth_exclude_paths(
     # sandbox sidecar egress. Exclude it from session/bearer auth so the request
     # reaches the handler's token check; the handler 503s when the gateway is
     # disabled. Fail-safe (mandatory) so a custom exclude list cannot re-gate it.
-    gateway_path = f"^{prefix}/gateway"
+    # Anchored with ``(/|$)`` so it matches only the gateway route and its
+    # sub-paths, never a sibling like ``/gateway-admin`` (fail-open prefix).
+    gateway_path = f"^{prefix}/gateway(/|$)"
     # The credentialed-tool MCP server authenticates with the same per-run
     # bearer (verified inside the handler) and is reachable only over the
     # sandbox sidecar egress; exclude it from session/bearer auth so the
     # request reaches the handler's token check. Fail-safe (mandatory).
-    mcp_gateway_path = f"^{prefix}/mcp-gateway"
+    # Anchored (``(/|$)``) like the gateway path so no sibling route matches.
+    mcp_gateway_path = f"^{prefix}/mcp-gateway(/|$)"
     exclude_paths = (
         auth.exclude_paths
         if auth.exclude_paths is not None

@@ -2,21 +2,36 @@
 
 import pytest
 
+from synthorg.api.mcp_gateway import tools as tools_module
 from synthorg.api.mcp_gateway.tools import (
     CREDENTIALED_TOOLS,
     CredentialedToolContext,
+    _CredentialedTool,
     _render,
     invoke_credentialed_tool,
     tool_schemas,
     visible_tool_names,
 )
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.core.domain_errors import ForbiddenError, ResourceNotFoundError
+from synthorg.core.domain_errors import (
+    ForbiddenError,
+    ResourceNotFoundError,
+    ValidationError,
+)
+from synthorg.engine.prompt_safety import TAG_TOOL_RESULT
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.forge._args import ForgeRepoArgs
 from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.unit
+
+_VALID_FORGE_ARGS: dict[str, object] = {
+    "owner": "o",
+    "repo": "r",
+    "action": "get_repo",
+}
 
 
 class _SecurityDeniedError(Exception):
@@ -119,9 +134,56 @@ async def test_scoped_in_call_reaches_security_pre_check() -> None:
         )
 
 
+async def test_malformed_arguments_raise_domain_validation_error() -> None:
+    # A malformed argument must surface as a domain ValidationError (kept
+    # inside the JSON-RPC envelope), never a raw pydantic ValidationError.
+    with pytest.raises(ValidationError):
+        await invoke_credentialed_tool(
+            "forge_repo",
+            {"owner": "o"},  # missing required repo/action
+            ctx=_ctx(),
+            agent_id="agent-1",
+            capabilities=("forge:read",),
+        )
+
+
+async def test_result_is_wrap_untrusted_fenced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeTool:
+        async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
+            del arguments
+            return ToolExecutionResult(content="RESULT-BODY")
+
+    fake = _CredentialedTool(
+        name="forge_repo",
+        description="fake",
+        capability="forge:read",
+        category=ToolCategory.VERSION_CONTROL,
+        args_model=ForgeRepoArgs,
+        build=lambda _ctx, _aid: _FakeTool(),  # type: ignore[arg-type,return-value]
+    )
+    monkeypatch.setattr(tools_module, "CREDENTIALED_TOOLS", (fake,))
+    monkeypatch.setattr(tools_module, "_TOOLS_BY_NAME", {"forge_repo": fake})
+
+    out = await invoke_credentialed_tool(
+        "forge_repo",
+        _VALID_FORGE_ARGS,
+        ctx=_ctx(),
+        agent_id="agent-1",
+        capabilities=("forge:read",),
+    )
+    # The untrusted tool body is wrap_untrusted-fenced, not returned raw.
+    assert "RESULT-BODY" in out
+    assert out != "RESULT-BODY"
+    assert TAG_TOOL_RESULT in out
+
+
 def test_render_flags_error_results() -> None:
     ok = ToolExecutionResult(content="done")
     err = ToolExecutionResult(content="boom", is_error=True)
 
-    assert _render(ok) == "done"
-    assert _render(err).startswith("tool error: ")
+    assert _render(ok, tool="forge_repo", agent_id="agent-1") == "done"
+    assert _render(err, tool="forge_repo", agent_id="agent-1").startswith(
+        "tool error: "
+    )

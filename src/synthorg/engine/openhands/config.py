@@ -19,6 +19,7 @@ from synthorg.llm.gateway_token import GatewaySigner
 
 _DEFAULT_MAX_TURNS: Final[int] = 50
 _DEFAULT_TOKEN_TTL_SECONDS: Final[int] = 3600
+_DEFAULT_IDLE_TIMEOUT_SECONDS: Final[float] = 600.0
 
 
 class OpenHandsLoopConfig(BaseModel):
@@ -34,15 +35,25 @@ class OpenHandsLoopConfig(BaseModel):
         gt=0,
         description="Lifetime of a minted per-run gateway bearer",
     )
+    idle_timeout_seconds: float = Field(
+        default=_DEFAULT_IDLE_TIMEOUT_SECONDS,
+        gt=0,
+        description="Max seconds to wait for the next container event before "
+        "treating the run as hung",
+    )
 
 
 @dataclass(frozen=True)
 class OpenHandsLoopDeps:
     """Injected collaborators for the OpenHands loop.
 
-    ``signer`` must be the same instance (or a same-secret peer) the gateway
-    verifies with, so a token minted here is accepted at the gateway. ``None``
-    dependencies leave the loop unavailable (it fails loud on execute).
+    ``build_conversation`` is the conversation factory: in production the
+    container runtime bound to the egress-pinned sandbox, in tests a scripted
+    fake. ``signer`` must be the same instance the gateway verifies with, so a
+    token minted here is accepted at the gateway. The URLs must be non-blank
+    (validated here at construction); the wiring returns ``None`` deps rather
+    than constructing with blank URLs, so an unwired boundary leaves the loop
+    unavailable rather than failing at execute.
     """
 
     build_conversation: ConversationFactory
@@ -50,3 +61,17 @@ class OpenHandsLoopDeps:
     gateway_base_url: str
     mcp_base_url: str
     clock: Clock
+
+    def __post_init__(self) -> None:
+        """Reject blank gateway / MCP URLs at construction.
+
+        Raises:
+            ValueError: When either boundary URL is blank; the fail point is
+                construction, not a later ``execute`` call.
+        """
+        if not self.gateway_base_url or not self.gateway_base_url.strip():
+            msg = "OpenHandsLoopDeps.gateway_base_url must be non-blank"
+            raise ValueError(msg)
+        if not self.mcp_base_url or not self.mcp_base_url.strip():
+            msg = "OpenHandsLoopDeps.mcp_base_url must be non-blank"
+            raise ValueError(msg)

@@ -27,6 +27,6 @@ logger = get_logger(__name__)
 def wire_construction(app_state: AppState, _deps: ConstructionDeps) -> None:
     """Build + commit the gateway signer, ledger and pipeline."""
     signer = GatewaySigner.with_random_key()
-    service = GatewayService(signer=signer, ledger=RunCostLedger())
+    service = GatewayService(signer=signer, ledger=RunCostLedger(clock=app_state.clock))
     app_state.swap_slice(GatewayStateSlice(service=service, signer=signer))
     logger.info(API_SERVICE_AUTO_WIRED, service="llm_gateway")

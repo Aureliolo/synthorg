@@ -372,11 +372,13 @@ _r.register(
         type=SettingType.STRING,
         default="",
         description=(
-            "Base URL the in-sandbox harness uses to reach the LLM gateway"
-            " (the app address reachable through the sandbox sidecar egress"
-            " allowlist, e.g. http://host.docker.internal:8000). Empty by"
-            " default, which leaves the OpenHands execution loop unavailable"
-            " until an operator sets a reachable address. Re-read live."
+            "OpenAI-compatible base URL the in-sandbox harness uses to reach"
+            " the LLM gateway (the app address reachable through the sandbox"
+            " sidecar egress allowlist, including the mounted gateway route,"
+            " e.g. http://host.docker.internal:8000/api/v1/gateway/v1 so the"
+            " client resolves .../v1/chat/completions). Empty by default,"
+            " which leaves the OpenHands execution loop unavailable until an"
+            " operator sets a reachable address. Re-read live."
         ),
         group="Gateway",
         level=SettingLevel.ADVANCED,

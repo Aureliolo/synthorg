@@ -12,21 +12,31 @@ controller drives it.
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Final
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock
-from synthorg.core.domain_errors import ForbiddenError, ResourceNotFoundError
+from synthorg.core.domain_errors import (
+    ForbiddenError,
+    ResourceNotFoundError,
+    ValidationError,
+)
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TOOL_RESULT, wrap_untrusted
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger
 from synthorg.observability.events.gateway import (
     GATEWAY_DISPATCH_FAILED,
-    GATEWAY_REQUEST_RECEIVED,
+    GATEWAY_TOOL_INVOKED,
 )
+from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.security.models import SecurityContext, SecurityVerdictType
+from synthorg.security.protocol import SecurityInterceptionStrategy
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.chat._args import ChatDirectoryArgs, ChatMessagesArgs
 from synthorg.tools.chat._runtime import ChatToolDeps, ChatToolsRuntime
@@ -53,24 +63,31 @@ _ERROR_PREFIX: Final[str] = "tool error: "
 type SecurityPreCheck = Callable[[str, dict[str, object]], Awaitable[None]]
 
 
-@dataclass(frozen=True)
-class CredentialedToolContext:
+class CredentialedToolContext(BaseModel):
     """Host-side collaborators the credentialed tools need per call.
 
     Credentials are brokered from ``connection_catalog`` inside the governed
     tool and never leave the process. The connection names bind which forge /
     chat connection every call targets; egress is pinned to that connection's
-    host by construction.
+    host by construction. Frozen with validated fields so a blank connection
+    or non-positive timeout / read cap fails at this governance boundary.
     """
+
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        allow_inf_nan=False,
+        arbitrary_types_allowed=True,
+    )
 
     connection_catalog: ConnectionCatalog
     approval_store: ApprovalStoreProtocol
     clock: Clock
-    forge_connection: str
-    chat_connection: str
-    forge_timeout_seconds: float
-    chat_timeout_seconds: float
-    forge_max_read_chars: int
+    forge_connection: NotBlankStr
+    chat_connection: NotBlankStr
+    forge_timeout_seconds: float = Field(gt=0)
+    chat_timeout_seconds: float = Field(gt=0)
+    forge_max_read_chars: int = Field(gt=0)
     security_pre_check: SecurityPreCheck | None = None
 
 
@@ -81,6 +98,7 @@ class _CredentialedTool:
     name: str
     description: str
     capability: str
+    category: ToolCategory
     args_model: type[BaseModel]
     build: Callable[[CredentialedToolContext, str], BaseTool]
 
@@ -127,6 +145,7 @@ CREDENTIALED_TOOLS: Final[tuple[_CredentialedTool, ...]] = (
         name="forge_repo",
         description="Read forge repo metadata, a file, or a directory listing.",
         capability="forge:read",
+        category=ToolCategory.VERSION_CONTROL,
         args_model=ForgeRepoArgs,
         build=lambda ctx, aid: ForgeRepoTool(deps=_forge_deps(ctx, aid)),
     ),
@@ -134,6 +153,7 @@ CREDENTIALED_TOOLS: Final[tuple[_CredentialedTool, ...]] = (
         name="forge_issue",
         description="Read, open, or comment on forge issues (writes need approval).",
         capability="forge:write",
+        category=ToolCategory.VERSION_CONTROL,
         args_model=ForgeIssueArgs,
         build=lambda ctx, aid: ForgeIssueTool(deps=_forge_deps(ctx, aid)),
     ),
@@ -144,6 +164,7 @@ CREDENTIALED_TOOLS: Final[tuple[_CredentialedTool, ...]] = (
             "(writes need approval)."
         ),
         capability="forge:write",
+        category=ToolCategory.VERSION_CONTROL,
         args_model=ForgePullRequestArgs,
         build=lambda ctx, aid: ForgePullRequestTool(deps=_forge_deps(ctx, aid)),
     ),
@@ -151,6 +172,7 @@ CREDENTIALED_TOOLS: Final[tuple[_CredentialedTool, ...]] = (
         name="forge_ci",
         description="Read continuous-integration runs for the bound forge repo.",
         capability="forge:read",
+        category=ToolCategory.VERSION_CONTROL,
         args_model=ForgeCiArgs,
         build=lambda ctx, aid: ForgeCiTool(deps=_forge_deps(ctx, aid)),
     ),
@@ -158,6 +180,7 @@ CREDENTIALED_TOOLS: Final[tuple[_CredentialedTool, ...]] = (
         name="chat_messages",
         description="Send or read messages on the bound chat connection.",
         capability="chat:write",
+        category=ToolCategory.COMMUNICATION,
         args_model=ChatMessagesArgs,
         build=lambda ctx, aid: ChatMessagesTool(deps=_chat_deps(ctx, aid)),
     ),
@@ -165,14 +188,15 @@ CREDENTIALED_TOOLS: Final[tuple[_CredentialedTool, ...]] = (
         name="chat_directory",
         description="List channels or look up a user on the bound chat connection.",
         capability="chat:read",
+        category=ToolCategory.COMMUNICATION,
         args_model=ChatDirectoryArgs,
         build=lambda ctx, aid: ChatDirectoryTool(deps=_chat_deps(ctx, aid)),
     ),
 )
 
-_TOOLS_BY_NAME: Final[dict[str, _CredentialedTool]] = {
-    tool.name: tool for tool in CREDENTIALED_TOOLS
-}
+_TOOLS_BY_NAME: Final[MappingProxyType[str, _CredentialedTool]] = MappingProxyType(
+    {tool.name: tool for tool in CREDENTIALED_TOOLS}
+)
 
 
 def _capability_matches(capability: str, patterns: tuple[str, ...]) -> bool:
@@ -274,6 +298,7 @@ async def invoke_credentialed_tool(  # noqa: PLR0913 -- scope + validate + dispa
     Raises:
         ResourceNotFoundError: If *name* is not a credentialed tool.
         ForbiddenError: If the tool is not visible to the actor.
+        ValidationError: If the arguments fail the typed-boundary parse.
     """
     spec = _TOOLS_BY_NAME.get(name)
     if spec is None:
@@ -287,20 +312,87 @@ async def invoke_credentialed_tool(  # noqa: PLR0913 -- scope + validate + dispa
         raise ForbiddenError(msg)
     if ctx.security_pre_check is not None:
         await ctx.security_pre_check(name, arguments)
-    logger.info(GATEWAY_REQUEST_RECEIVED, tool=name, agent_id=agent_id, surface="mcp")
-    parse_typed("mcp_gateway.tool", arguments, spec.args_model)
+    logger.info(GATEWAY_TOOL_INVOKED, tool=name, agent_id=agent_id, surface="mcp")
+    # ``parse_typed`` re-raises pydantic's ``ValidationError``; convert it to a
+    # domain ``ValidationError`` so ``protocol._tools_call``'s ``except
+    # DomainError`` keeps a malformed argument inside the JSON-RPC envelope
+    # (and never 500s or aborts a batch).
+    try:
+        parse_typed("mcp_gateway.tool", arguments, spec.args_model)
+    except PydanticValidationError as exc:
+        msg = f"invalid arguments for credentialed tool {name!r}"
+        raise ValidationError(msg) from exc
     tool = spec.build(ctx, agent_id)
     result = await tool.execute(arguments=arguments)
-    return wrap_untrusted(TAG_TOOL_RESULT, _render(result))
+    rendered = _render(result, tool=name, agent_id=agent_id)
+    return wrap_untrusted(TAG_TOOL_RESULT, rendered)
 
 
-def _render(result: ToolExecutionResult) -> str:
+def build_security_pre_check(
+    interceptor: SecurityInterceptionStrategy | None,
+    *,
+    agent_id: str,
+    task_id: str | None = None,
+) -> SecurityPreCheck:
+    """Build the fail-closed SecOps pre-tool screen for the credentialed path.
+
+    The returned check runs the rule-engine screening the credentialed-MCP
+    design lists as governance step 2. It is fail-closed: with no active
+    security governance (``interceptor`` is ``None``) every credentialed call
+    is denied, so the credentialed tools are unreachable until an operator
+    enables security. A non-``ALLOW`` verdict (deny / escalate) denies the
+    call.
+
+    Args:
+        interceptor: The security interception strategy, or ``None`` when
+            security governance is not configured.
+        agent_id: The calling actor id, bound into each security context.
+        task_id: Optional task attribution for the security context.
+
+    Returns:
+        A :data:`SecurityPreCheck` that raises to deny a call.
+    """
+
+    async def _pre_check(name: str, arguments: dict[str, object]) -> None:
+        spec = _TOOLS_BY_NAME.get(name)
+        if interceptor is None or spec is None:
+            msg = "credentialed MCP requires active security governance"
+            raise ForbiddenError(msg)
+        verdict = await interceptor.evaluate_pre_tool(
+            SecurityContext(
+                tool_name=name,
+                tool_category=spec.category,
+                action_type=spec.capability,
+                arguments=arguments,
+                agent_id=agent_id or None,
+                task_id=task_id,
+            )
+        )
+        if verdict.verdict is not SecurityVerdictType.ALLOW:
+            msg = f"security governance denied credentialed tool {name!r}"
+            raise ForbiddenError(msg)
+
+    return _pre_check
+
+
+def _render(result: ToolExecutionResult, *, tool: str, agent_id: str) -> str:
     """Render a tool result to text for the harness.
+
+    Args:
+        result: The governed tool's execution result.
+        tool: The tool name, threaded through for error-log correlation.
+        agent_id: The calling actor id, threaded through for correlation.
 
     Returns:
         The result content, prefixed to flag an error result.
     """
     if result.is_error:
-        logger.warning(GATEWAY_DISPATCH_FAILED, surface="mcp", is_error=True)
+        logger.warning(
+            GATEWAY_DISPATCH_FAILED,
+            surface="mcp",
+            is_error=True,
+            tool=tool,
+            agent_id=agent_id,
+        )
         return f"{_ERROR_PREFIX}{result.content}"
     return result.content

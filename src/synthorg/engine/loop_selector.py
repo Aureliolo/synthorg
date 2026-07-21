@@ -293,9 +293,9 @@ def select_loop_type(  # noqa: PLR0913
         default_loop_type: Fallback loop type when no rule matches.
 
     Returns:
-        One of ``"react"``, ``"plan_execute"``, or ``"hybrid"``,
-        depending on the matched rule and active fallback/downgrade
-        settings.
+        One of ``"react"``, ``"plan_execute"``, ``"hybrid"``, or
+        ``"openhands"``, depending on the matched rule and active
+        fallback/downgrade settings.
     """
     loop_type = _match_loop_type(rules, complexity, default_loop_type)
     loop_type = _downgrade_for_budget(
@@ -439,8 +439,8 @@ def build_execution_loop(  # noqa: PLR0913
     """Build an ``ExecutionLoop`` instance from a loop type string.
 
     Args:
-        loop_type: One of ``"react"``, ``"plan_execute"``, or
-            ``"hybrid"``.
+        loop_type: One of ``"react"``, ``"plan_execute"``, ``"hybrid"``,
+            or ``"openhands"``.
         checkpoint_callback: Optional per-turn checkpoint callback.
         approval_gate: Optional approval gate to wire into the loop.
         stagnation_detector: Optional stagnation detector.

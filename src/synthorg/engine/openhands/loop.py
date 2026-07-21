@@ -3,10 +3,11 @@
 
 Drives an OpenHands conversation through the injected factory, maps its
 event stream to ``TurnRecord``s, and consults the budget / shutdown /
-cancellation checkers at each event boundary, stopping the run (via the
-sink's ``False`` return) when any trips. Completion honours the same
-``NO_OP`` / ``artifacts_expected`` rule as the native loops. All logic is
-independent of the SDK, which lives behind the conversation factory.
+cancellation checkers at each turn boundary (after recording a turn event),
+stopping the run (via the sink's ``False`` return) when any trips.
+Completion honours the same ``NO_OP`` / ``artifacts_expected`` rule as the
+native loops. All logic is independent of the SDK, which lives behind the
+conversation factory.
 """
 
 from dataclasses import dataclass, field
@@ -28,16 +29,16 @@ from synthorg.engine.openhands.conversation import (
     OpenHandsOutcome,
     OpenHandsRunSpec,
 )
-from synthorg.engine.openhands.errors import (
-    OpenHandsLoopError,
-    OpenHandsUnavailableError,
-)
+from synthorg.engine.openhands.errors import OpenHandsLoopError
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
 from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.execution.turn import TurnRecord
 from synthorg.llm.gateway_binding import mint_run_token
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.execution import EXECUTION_LOOP_ERROR
+from synthorg.observability.events.execution import (
+    EXECUTION_LOOP_ERROR,
+    EXECUTION_LOOP_TERMINATED,
+)
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
@@ -95,18 +96,20 @@ class OpenHandsLoop:
         completion_config: CompletionConfig | None = None,
         task_cancellation_checker: TaskCancellationChecker | None = None,
         turn_observer: TurnObserver | None = None,
+        streaming_enabled: bool = False,
     ) -> ExecutionResult:
         """Run the task through OpenHands and return an ExecutionResult.
 
-        ``provider`` / ``tool_invoker`` / ``completion_config`` are unused:
-        OpenHands runs its own LLM (through the gateway) and its own tools
+        ``provider`` / ``tool_invoker`` / ``completion_config`` /
+        ``streaming_enabled`` are unused: OpenHands runs its own LLM (through
+        the gateway, which owns its own streaming + cost) and its own tools
         (native + credentialed-MCP).
 
         Returns:
             The terminal :class:`ExecutionResult` with mapped ``TurnRecord``s.
         """
         # OpenHands runs its own LLM (via the gateway) and tools (native + MCP).
-        del provider, tool_invoker, completion_config
+        del provider, tool_invoker, completion_config, streaming_enabled
         state = _RunState(ctx=context)
         spec = self._build_spec(context)
 
@@ -141,24 +144,29 @@ class OpenHandsLoop:
     def _build_spec(self, context: AgentContext) -> OpenHandsRunSpec:
         """Mint a run token and assemble the run spec.
 
+        The gateway / MCP URLs are guaranteed non-blank by
+        :class:`OpenHandsLoopDeps` construction (the wiring returns ``None``
+        deps rather than constructing with blank URLs, and a ``None`` deps
+        fails loud at loop build). ``conversation_id`` is the task id so a
+        resumed run re-attaches to the persisted conversation.
+
         Returns:
             The :class:`OpenHandsRunSpec` for this run.
 
         Raises:
-            OpenHandsUnavailableError: If the gateway / MCP endpoints are
-                unconfigured (the loop cannot reach its governance boundaries).
+            GatewayModelUnboundError: If the agent's model is unbound (a
+                systemic misconfiguration surfaced fail-loud, not a per-run
+                error).
         """
-        if not self._deps.gateway_base_url or not self._deps.mcp_base_url:
-            msg = "OpenHands loop needs the gateway and credentialed-MCP URLs set"
-            raise OpenHandsUnavailableError(msg)
         model = context.identity.model
         task = context.task_execution.task if context.task_execution else None
         project_id = str(task.project) if task is not None and task.project else None
+        task_id = str(task.id) if task is not None else context.execution_id
         token = mint_run_token(
             self._deps.signer,
             execution_id=context.execution_id,
             agent_id=str(context.identity.id),
-            task_id=str(task.id) if task is not None else context.execution_id,
+            task_id=task_id,
             ref=ModelRef(provider=model.provider, model_id=model.model_id),
             project_id=project_id,
             cost_ceiling=context.cost_ceiling,
@@ -171,7 +179,9 @@ class OpenHandsLoop:
             gateway_token=token,
             mcp_base_url=self._deps.mcp_base_url,
             workspace_path=_CONTAINER_WORKSPACE,
+            conversation_id=task_id,
             max_turns=min(context.max_turns, self._config.max_turns),
+            project_id=project_id,
         )
 
     async def _handle_event(  # noqa: PLR0913 -- boundary-check surface
@@ -192,6 +202,11 @@ class OpenHandsLoop:
         if event.kind is OpenHandsEventKind.ERROR:
             state.termination = TerminationReason.ERROR
             state.error_message = event.text or "OpenHands run failed"
+            logger.warning(
+                EXECUTION_LOOP_ERROR,
+                loop_type=_LOOP_TYPE,
+                note="OpenHands emitted an error event",
+            )
             return False
         if event.kind is OpenHandsEventKind.FINISHED:
             if state.termination is None:
@@ -291,17 +306,30 @@ class OpenHandsLoop:
             )
         if reason is TerminationReason.ERROR:
             message = state.error_message or outcome.error_message or "OpenHands failed"
+            self._log_terminated(state, TerminationReason.ERROR)
             return build_result(
                 state.ctx, TerminationReason.ERROR, state.turns, error_message=message
             )
         if reason is TerminationReason.COMPLETED and self._is_no_op(state):
+            self._log_terminated(state, TerminationReason.NO_OP)
             return build_result(
                 state.ctx,
                 TerminationReason.NO_OP,
                 state.turns,
                 error_message=_NO_OP_MESSAGE,
             )
+        self._log_terminated(state, reason)
         return build_result(state.ctx, reason, state.turns)
+
+    @staticmethod
+    def _log_terminated(state: _RunState, reason: TerminationReason) -> None:
+        """Log the loop's terminal transition, mirroring the sibling loops."""
+        logger.info(
+            EXECUTION_LOOP_TERMINATED,
+            loop_type=_LOOP_TYPE,
+            reason=reason.value,
+            turns=len(state.turns),
+        )
 
     @staticmethod
     def _is_no_op(state: _RunState) -> bool:

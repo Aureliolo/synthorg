@@ -2,11 +2,13 @@
 """Typed errors for the OpenAI-compatible LLM gateway.
 
 Each maps to a distinct :class:`ErrorCode` so the gateway controller can
-render the right OpenAI-shaped error body and HTTP status, and so the
-worker-side adapter can map a terminal budget response onto
-``TerminationReason.BUDGET_EXHAUSTED`` without string matching.
+render the right OpenAI-shaped error body and HTTP status.
 ``GatewayBudgetExhaustedError`` subclasses the budget layer's
-``BudgetExhaustedError`` so existing engine catch handlers cover it.
+``BudgetExhaustedError`` so existing engine catch handlers cover it. The
+gateway's terminal 402 is the authoritative server-side hard kill; the
+OpenHands loop terminates ``BUDGET_EXHAUSTED`` separately, off its own
+per-turn budget checker (the 402 itself surfaces to the harness as a
+failed LLM call, not a mapped termination reason).
 """
 
 from typing import ClassVar
@@ -48,9 +50,9 @@ class GatewayBudgetExhaustedError(BudgetExhaustedError):
 
     Inherits :class:`BudgetExhaustedError` (an inheritance alias for the
     error-code-uniqueness gate) so the engine's existing budget-exhaustion
-    handling applies unchanged; the distinct ``error_code`` lets the
-    adapter map the gateway's terminal 402 onto
-    ``TerminationReason.BUDGET_EXHAUSTED``.
+    handling applies unchanged. The distinct ``error_code`` renders the
+    terminal 402 to the harness; this hard kill is authoritative and runs
+    independently of the loop's own boundary budget checker.
     """
 
     error_code: ClassVar[ErrorCode] = ErrorCode.GATEWAY_BUDGET_EXHAUSTED

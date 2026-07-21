@@ -173,6 +173,7 @@ async def test_zero_tool_work_run_is_no_op(
 
     assert result.termination_reason is TerminationReason.NO_OP
     assert result.error_message is not None
+    assert "no artifacts" in result.error_message
 
 
 async def test_error_event_terminates_error(
@@ -186,6 +187,7 @@ async def test_error_event_terminates_error(
 
     assert result.termination_reason is TerminationReason.ERROR
     assert result.error_message is not None
+    assert "boom" in result.error_message
 
 
 async def test_budget_exhaustion_stops_at_event_boundary(
@@ -244,16 +246,13 @@ async def test_cancellation_stops_at_event_boundary(
     assert result.termination_reason is TerminationReason.CANCELLED
 
 
-async def test_unconfigured_endpoints_fail_loud(
-    sample_agent_with_personality: AgentIdentity,
-    sample_task_with_criteria: Task,
-) -> None:
-    with pytest.raises(OpenHandsUnavailableError):
-        await _run(
-            sample_agent_with_personality,
-            sample_task_with_criteria,
-            _deps((), {}, gateway_url=""),
-        )
+def test_unconfigured_endpoints_fail_loud() -> None:
+    # Unwired boundaries fail loud at deps construction (the wiring returns
+    # None rather than constructing with blank URLs), not at execute time.
+    with pytest.raises(ValueError, match="gateway_base_url must be non-blank"):
+        _deps((), {}, gateway_url="")
+    with pytest.raises(ValueError, match="mcp_base_url must be non-blank"):
+        _deps((), {}, mcp_url="")
 
 
 async def test_spec_binds_gateway_token_and_urls(
@@ -261,15 +260,26 @@ async def test_spec_binds_gateway_token_and_urls(
     sample_task_with_criteria: Task,
 ) -> None:
     captured: dict[str, object] = {}
-    await _run(
-        sample_agent_with_personality,
-        sample_task_with_criteria,
-        _deps((_FINISHED,), captured),
+    signer = GatewaySigner(secret=_SECRET, clock=FakeClock())
+    deps = OpenHandsLoopDeps(
+        build_conversation=_factory((_FINISHED,), captured),
+        signer=signer,
+        gateway_base_url="http://gateway",
+        mcp_base_url="http://mcp",
+        clock=FakeClock(),
     )
+    task = sample_task_with_criteria
+    ctx = AgentContext.from_identity(_bound(sample_agent_with_personality), task=task)
+    await _loop(deps).execute(context=ctx, provider=mock_of[CompletionProvider]())
 
     spec = captured["spec"]
     assert isinstance(spec, OpenHandsRunSpec)
     assert spec.gateway_base_url == "http://gateway"
     assert spec.mcp_base_url == "http://mcp"
     assert spec.model == "example-large-001"
-    assert spec.gateway_token  # a token was minted
+    assert spec.conversation_id == str(task.id)
+    # The minted bearer verifies under the same signer and carries the
+    # explicitly-bound (provider, model) pair.
+    claims = signer.verify(spec.gateway_token)
+    assert claims.provider == "example-provider"
+    assert claims.model_id == "example-large-001"

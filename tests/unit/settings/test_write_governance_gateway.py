@@ -71,3 +71,38 @@ async def test_disabling_credentialed_mcp_is_unguarded() -> None:
     await enforce_security_write_governance(
         [_MCP_DISABLE], governance=None, get_current=_current("true")
     )
+
+
+_CAPS = "tools", "credentialed_mcp_capabilities"
+
+
+async def test_widening_capabilities_empty_to_star_is_rejected() -> None:
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await enforce_security_write_governance(
+            [(*_CAPS, "*")], governance=None, get_current=_current("")
+        )
+
+
+async def test_widening_capabilities_adds_write_is_rejected() -> None:
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await enforce_security_write_governance(
+            [(*_CAPS, "forge:read,forge:write")],
+            governance=None,
+            get_current=_current("forge:read"),
+        )
+
+
+async def test_widening_capabilities_with_governance_is_allowed() -> None:
+    await enforce_security_write_governance(
+        [(*_CAPS, "*")], governance=_SATISFIED, get_current=_current("")
+    )
+
+
+async def test_narrowing_capabilities_is_unguarded() -> None:
+    # Dropping a pattern (forge:read,forge:write -> forge:read) is a
+    # narrowing and needs no confirm+reason+actor.
+    await enforce_security_write_governance(
+        [(*_CAPS, "forge:read")],
+        governance=None,
+        get_current=_current("forge:read,forge:write"),
+    )

@@ -1,0 +1,11 @@
+# OpenHands sandbox image dependency closure (image-only; never the app venv).
+# Compiled to requirements.lock with hashes via:
+#   uv pip compile --generate-hashes --universal --python-version 3.14 \
+#     docker/openhands/requirements.in -o docker/openhands/requirements.lock
+#
+# The loop drives the container's stdin/stdout entrypoint (run_task.py), not
+# the SDK agent-server, so openhands-agent-server is deliberately excluded.
+# openhands-tools brings the full native-tool closure (terminal + file_editor
+# plus the rest); it is bundled whole by design.
+openhands-sdk==1.36.1
+openhands-tools==1.36.1

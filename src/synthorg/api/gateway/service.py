@@ -32,7 +32,10 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.prompt_safety import scan_injection_heuristics
-from synthorg.llm.gateway_errors import GatewayBudgetExhaustedError
+from synthorg.llm.gateway_errors import (
+    GatewayBudgetExhaustedError,
+    GatewayTokenInvalidError,
+)
 from synthorg.llm.gateway_token import GatewaySigner, GatewayTokenClaims
 from synthorg.observability import get_logger, scrub_secret_tokens
 from synthorg.observability.events.gateway import (
@@ -40,6 +43,7 @@ from synthorg.observability.events.gateway import (
     GATEWAY_INJECTION_SUSPECTED,
     GATEWAY_PROVIDER_UNAVAILABLE,
     GATEWAY_REQUEST_RECEIVED,
+    GATEWAY_TOKEN_REJECTED,
 )
 from synthorg.providers._resilience import aclose_quietly
 from synthorg.providers.cost_recording import cost_recording_scope
@@ -226,7 +230,11 @@ class GatewayService:
         if not enabled:
             msg = "LLM gateway is disabled"
             raise ServiceUnavailableError(msg)
-        claims = self._signer.verify(token)
+        try:
+            claims = self._signer.verify(token)
+        except GatewayTokenInvalidError:
+            logger.warning(GATEWAY_TOKEN_REJECTED, surface="gateway")
+            raise
         parsed = parse_chat_request(raw_request)
         provider = self._resolve_provider(registry, claims.provider)
         self._scan_inbound(parsed, claims)
@@ -277,6 +285,10 @@ class GatewayService:
                 spent=spent,
                 ceiling=claims.cost_ceiling,
             )
+            # The budget kill is terminal for this run: forget its ledger
+            # entry so the map does not retain completed runs for the
+            # process's lifetime.
+            await self._ledger.reset(claims.execution_id)
             msg = (
                 f"run {claims.execution_id} exhausted its "
                 f"{claims.cost_ceiling} cost ceiling"

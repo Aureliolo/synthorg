@@ -55,6 +55,7 @@ from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
     DockerSandboxLifecycleMixin,
 )
 from synthorg.tools.sandbox.docker_sandbox_sidecar import DockerSandboxSidecarMixin
+from synthorg.tools.sandbox.docker_sandbox_stream import DockerSandboxStreamMixin
 from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
 from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
 from synthorg.tools.sandbox.lifecycle.protocol import (
@@ -113,6 +114,7 @@ def _to_posix_bind_path(path: Path) -> str:
 
 class DockerSandbox(
     DockerSandboxExecMixin,
+    DockerSandboxStreamMixin,
     DockerSandboxSidecarMixin,
     DockerSandboxLifecycleMixin,
 ):
@@ -308,6 +310,7 @@ class DockerSandbox(
             self._docker = client
             return client
 
+    @override
     async def _project_root(self, project_id: str | None) -> Path:
         """Resolve the per-execution mount root for *project_id*.
 

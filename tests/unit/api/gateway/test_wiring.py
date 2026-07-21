@@ -47,7 +47,9 @@ def test_predicate_false_until_wired_then_true() -> None:
 def test_auth_exclude_paths_include_the_gateway() -> None:
     paths = _build_auth_exclude_paths(AuthConfig(), "/api", "^/ws$")
 
-    assert "^/api/gateway" in paths
+    # Anchored with ``(/|$)`` so only the gateway route + sub-paths match,
+    # never a fail-open sibling like ``/api/gateway-admin``.
+    assert "^/api/gateway(/|$)" in paths
 
 
 def test_mint_run_token_binds_explicit_provider_and_model() -> None:

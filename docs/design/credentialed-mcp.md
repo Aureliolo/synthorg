@@ -17,7 +17,10 @@ ever sees tool *schemas* and already-fenced tool *results*.
 Base forge/chat tools are agent-engine `BaseTool`s over
 `GovernedConnectionTool`, not MCP handlers, and the in-process `meta/mcp`
 machinery has no live network transport. This boundary adds one
-(`api/mcp_gateway/controller.py`) at `POST /mcp-gateway/mcp`, reachable
+(`api/mcp_gateway/controller.py`) at `POST /mcp-gateway/mcp`, so the full
+mounted route (under the app's `/api/v1` prefix) is
+`/api/v1/mcp-gateway/mcp`; the harness's MCP `base_url` is the app address
+plus `/api/v1/mcp-gateway` (the runtime appends `/mcp`). It is reachable
 only from the sandbox over the sidecar egress allowlist and authenticated
 with the same per-run signed bearer as the gateway. It is excluded from
 the session/bearer auth middleware for that reason.
@@ -48,8 +51,12 @@ or `ForbiddenError` (visible but not permitted), never a silent success.
 `invoke_credentialed_tool` runs, in order:
 
 1. **Scope check** against the actor's capabilities (above).
-2. **Security pre-check**: the injected `security_pre_check` runs the
-   SecOps pre-tool evaluation (rule engine + audit + escalation).
+2. **Security pre-check**: the controller wires a **fail-closed**
+   `security_pre_check` that runs the SecOps pre-tool evaluation (rule
+   engine + audit + escalation) via `SecOpsService.evaluate_pre_tool`; a
+   non-`ALLOW` verdict denies the call, and with no active security
+   governance every credentialed call is denied (the credentialed tools
+   are unreachable until security is enabled).
 3. **Typed boundary**: `parse_typed` over the raw MCP `arguments` into the
    tool's args model; a bad shape is a typed `ValidationError`, never a
    crash.
@@ -86,11 +93,14 @@ params are `-32602`. Batch requests are supported.
 
 Under the `tools` namespace, off by default, hot-reloadable:
 `credentialed_mcp_enabled`, `credentialed_mcp_capabilities` (the
-comma-separated default capability grant). It reuses the existing
-forge/chat connection, timeout and read-limit settings. Enabling the
-endpoint opens a credentialed egress path, so
-`tools.credentialed_mcp_enabled` `false -> true` routes through the
-confirm+reason+actor guardrail in `settings/write_governance.py`.
+comma-separated default capability grant), and `credentialed_mcp_base_url`
+(the sandbox-reachable base URL the harness connects to, e.g.
+`http://host.internal:8000/api/v1/mcp-gateway`; the runtime appends
+`/mcp`). It reuses the existing forge/chat connection, timeout, and
+read-limit settings. Both the enable toggle and any *widening* of
+`credentialed_mcp_capabilities` (a broader grant, e.g. `"" -> "*"` or
+adding a `:write`) open a credentialed egress path, so they route through
+the confirm+reason+actor guardrail in `settings/write_governance.py`.
 
 ## Wiring
 

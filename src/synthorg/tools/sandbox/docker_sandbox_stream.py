@@ -1,0 +1,343 @@
+# module-kind: adapter
+"""Streaming one-shot container mixin for ``DockerSandbox``.
+
+The exec model (:class:`DockerSandboxExecMixin`) runs a command in a
+keep-alive container and returns its buffered output. The OpenHands loop
+needs the opposite shape: a single long-lived process whose stdout is an
+event stream the host consumes line-by-line so it can tear the run down
+the instant a budget / shutdown / cancellation boundary trips.
+
+This mixin adds that one interaction: create a dedicated container from
+the configured image, attach to its stdin/stdout before start, write one
+newline-terminated spec line to stdin, and yield each stdout line as it
+arrives. Egress is pinned by the network sidecar whenever the backend's
+``allowed_hosts`` is set, so the streamed process reaches only the
+allowlisted hosts. The container and its sidecar are always torn down
+when the iterator is exhausted, the consumer stops early, or an error
+propagates.
+"""
+
+import asyncio
+import contextlib
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping
+from pathlib import Path
+from typing import TYPE_CHECKING, Final, cast
+
+import aiodocker
+from aiodocker.stream import Stream
+from aiodocker.types import JSONObject
+
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.docker import (
+    DOCKER_EXECUTE_FAILED,
+    DOCKER_EXECUTE_TIMEOUT,
+)
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.errors import SandboxStartError
+from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+
+logger = get_logger(__name__)
+
+# aiodocker attach stream frame identifier for stderr (non-TTY multiplexed
+# stream); every other frame id is treated as stdout.
+_STREAM_STDERR: Final[int] = 2
+# Cap a single streamed stdout line so a runaway process inside the
+# container cannot exhaust host memory in the line buffer.
+_MAX_LINE_CHARS: Final[int] = 1_000_000
+# Cap buffered stderr in the structured log so binary container output
+# cannot blow up the logging pipeline.
+_MAX_STDERR_LOG_CHARS: Final[int] = 400
+
+
+class DockerSandboxStreamMixin:
+    """One-shot container spawn with a line-oriented stdout stream."""
+
+    # Attributes + collaborator methods supplied by the concrete
+    # DockerSandbox and its sibling mixins. Declared TYPE_CHECKING-only
+    # so they never shadow the real runtime implementations in the MRO.
+    if TYPE_CHECKING:
+        _config: DockerSandboxConfig
+
+        async def _ensure_docker(self) -> aiodocker.Docker:
+            """Connect to the Docker daemon.
+
+            Returns:
+                An ``aiodocker.Docker`` client.
+            """
+            ...
+
+        def _needs_sidecar(self) -> bool:
+            """Whether network enforcement needs a sidecar.
+
+            Returns:
+                ``True`` when a sidecar must be brought up.
+            """
+            ...
+
+        async def _bring_up_sidecar(self, docker: aiodocker.Docker) -> str:
+            """Create, start, and health-check the network sidecar.
+
+            Returns:
+                The healthy sidecar container id.
+            """
+            ...
+
+        async def _project_root(self, project_id: str | None) -> Path:
+            """Resolve the per-execution mount root.
+
+            Returns:
+                The host path bound at ``/workspace``.
+            """
+            ...
+
+        def _build_container_config(  # noqa: PLR0913
+            self,
+            *,
+            command: str,
+            args: tuple[str, ...],
+            container_cwd: str,
+            env_overrides: Mapping[str, str] | None,
+            effective_root: Path | None = None,
+            category: str = "",
+            network_mode: str | None = None,
+            owner_id: str | None = None,
+            image_override: NotBlankStr | None = None,
+        ) -> dict[str, object]:
+            """Build the Docker container creation config.
+
+            Returns:
+                A config dict for ``aiodocker`` container creation.
+            """
+            ...
+
+        async def _track_container(
+            self, container_id: str, sidecar_id: str | None
+        ) -> None:
+            """Track a container for orphan reconciliation."""
+            ...
+
+        async def _destroy_handle(self, handle: ContainerHandle) -> None:
+            """Stop + remove a container and its sidecar; untrack both."""
+            ...
+
+    async def stream_container_task(  # noqa: PLR0913 -- streaming spawn surface
+        self,
+        *,
+        command: NotBlankStr,
+        args: tuple[str, ...],
+        stdin_line: str,
+        idle_timeout_seconds: float,
+        category: str = "",
+        project_id: NotBlankStr | None = None,
+    ) -> AsyncGenerator[str]:
+        """Run ``command`` as a one-shot container, yielding its stdout lines.
+
+        Creates a dedicated container, attaches to stdin/stdout, writes
+        ``stdin_line`` (one newline-terminated spec), and yields each
+        decoded stdout line. Sidecar egress enforcement is applied when
+        the backend's ``allowed_hosts`` is set. The container and sidecar
+        are always destroyed when iteration ends for any reason.
+
+        Args:
+            command: Executable to run (image entrypoint).
+            args: Arguments to ``command``.
+            stdin_line: One newline-terminated JSON spec fed to stdin.
+            idle_timeout_seconds: Max seconds to wait for the next stdout
+                frame before treating the run as hung.
+            category: Tool category for runtime resolution.
+            project_id: Owning project; selects the mounted workspace
+                subtree. ``None`` mounts the whole workspace root.
+
+        Yields:
+            Each stdout line the container emits, newline stripped.
+
+        Raises:
+            SandboxStartError: If the container or sidecar cannot start.
+            SandboxError: If ``project_id`` escapes the workspace root.
+        """
+        docker = await self._ensure_docker()
+        effective_root = await self._project_root(
+            str(project_id) if project_id is not None else None
+        )
+        handle = await self._spawn_stream_container(
+            docker,
+            command=command,
+            args=args,
+            effective_root=effective_root,
+            category=category,
+        )
+        stream = handle_stream = None
+        try:
+            stream = self._attach_stream(docker, handle.container_id)
+            handle_stream = stream
+            await self._start_container(docker, handle.container_id)
+            await stream.write_in(stdin_line.encode("utf-8"))
+            async for line in self._iter_lines(stream, idle_timeout_seconds):
+                yield line
+        finally:
+            if handle_stream is not None:
+                with contextlib.suppress(Exception):
+                    await handle_stream.close()
+            await self._destroy_handle(handle)
+
+    async def _spawn_stream_container(
+        self,
+        docker: aiodocker.Docker,
+        *,
+        command: str,
+        args: tuple[str, ...],
+        effective_root: Path,
+        category: str,
+    ) -> ContainerHandle:
+        """Create (but not start) the streaming container + its sidecar.
+
+        Returns:
+            A :class:`ContainerHandle` for the created container.
+
+        Raises:
+            SandboxStartError: If sidecar or container creation fails.
+        """
+        sidecar_id: str | None = None
+        network_mode: str | None = None
+        if self._needs_sidecar():
+            sidecar_id = await self._bring_up_sidecar(docker)
+            network_mode = f"container:{sidecar_id}"
+        config = self._build_container_config(
+            command=command,
+            args=args,
+            container_cwd="/workspace",
+            env_overrides=None,
+            effective_root=effective_root,
+            category=category,
+            network_mode=network_mode,
+        )
+        # Model X: attach to stdin/stdout before start so no output frame is
+        # missed and the spec can be written to the process's stdin.
+        config["OpenStdin"] = True
+        config["AttachStdin"] = True
+        config["StdinOnce"] = False
+        config["Tty"] = False
+        try:
+            container = await docker.containers.create(cast("JSONObject", config))  # pyright: ignore[reportAttributeAccessIssue]
+        except Exception as exc:
+            reraise_critical(exc)
+            if sidecar_id is not None:
+                await self._destroy_handle(
+                    ContainerHandle(container_id=sidecar_id, sidecar_id=None)
+                )
+            error_desc = safe_error_description(exc)
+            logger.warning(
+                DOCKER_EXECUTE_FAILED,
+                error_type=type(exc).__name__,
+                error=error_desc,
+            )
+            msg = f"Failed to create streaming container: {error_desc}"
+            raise SandboxStartError(msg) from exc
+        await self._track_container(container.id, sidecar_id)
+        return ContainerHandle(
+            container_id=container.id,
+            sidecar_id=sidecar_id,
+            network_mode=network_mode or self._config.network,
+        )
+
+    @staticmethod
+    def _attach_stream(docker: aiodocker.Docker, container_id: str) -> Stream:
+        """Attach to a container's multiplexed stdin/stdout/stderr stream.
+
+        Returns:
+            The attached ``aiodocker`` :class:`Stream`.
+        """
+        container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
+        return container_obj.attach(stdin=True, stdout=True, stderr=True, logs=True)
+
+    @staticmethod
+    async def _start_container(docker: aiodocker.Docker, container_id: str) -> None:
+        """Start the attached container.
+
+        Raises:
+            SandboxStartError: If the container fails to start.
+        """
+        container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
+        try:
+            await container_obj.start()
+        except Exception as exc:
+            reraise_critical(exc)
+            error_desc = safe_error_description(exc)
+            logger.warning(
+                DOCKER_EXECUTE_FAILED,
+                container_id=container_id[:12],
+                error_type=type(exc).__name__,
+                error=error_desc,
+            )
+            msg = f"Failed to start streaming container {container_id[:12]}"
+            raise SandboxStartError(msg) from exc
+
+    async def _iter_lines(
+        self,
+        stream: Stream,
+        idle_timeout_seconds: float,
+    ) -> AsyncIterator[str]:
+        """Yield complete stdout lines from a multiplexed attach stream.
+
+        stderr frames are logged (container diagnostics) but never yielded.
+        A read that exceeds ``idle_timeout_seconds`` is treated as a hung
+        run and terminates the stream.
+
+        Yields:
+            Each newline-delimited stdout line, newline stripped.
+
+        Raises:
+            SandboxStartError: If the stream idles past the timeout.
+        """
+        buffer = ""
+        # lint-allow: long-running-loop-kill-switch -- EOF (read_out None) +
+        # per-read idle timeout + consumer break all terminate the stream.
+        while True:
+            try:
+                message = await asyncio.wait_for(
+                    stream.read_out(), timeout=idle_timeout_seconds
+                )
+            except TimeoutError as exc:
+                logger.warning(DOCKER_EXECUTE_TIMEOUT, timeout=idle_timeout_seconds)
+                msg = f"Streaming container idle past {idle_timeout_seconds}s"
+                raise SandboxStartError(msg) from exc
+            if message is None:
+                break
+            text = self._decode_frame(message.data)
+            if message.stream == _STREAM_STDERR:
+                self._log_stderr(text)
+                continue
+            buffer += text
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n", 1)
+                if len(line) > _MAX_LINE_CHARS:
+                    line = line[:_MAX_LINE_CHARS]
+                if line:
+                    yield line
+        tail = buffer.strip()
+        if tail:
+            yield tail
+
+    @staticmethod
+    def _decode_frame(raw: bytes | bytearray | str) -> str:
+        """Decode a stream frame to text, tolerating binary output.
+
+        Returns:
+            The decoded frame text.
+        """
+        if isinstance(raw, bytes | bytearray):
+            return raw.decode("utf-8", "replace")
+        return str(raw)
+
+    @staticmethod
+    def _log_stderr(text: str) -> None:
+        """Log container stderr (diagnostics), bounded in size."""
+        trimmed = text.strip()
+        if trimmed:
+            logger.debug(
+                DOCKER_EXECUTE_FAILED,
+                surface="openhands-container-stderr",
+                stderr=trimmed[:_MAX_STDERR_LOG_CHARS],
+            )

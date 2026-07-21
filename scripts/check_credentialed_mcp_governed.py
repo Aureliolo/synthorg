@@ -7,9 +7,10 @@ so this gate AST-scans ``src/synthorg/api/mcp_gateway/tools.py`` and fails
 unless the invoke function:
 
 1. scopes visibility per actor (``visible_tool_names``),
-2. validates arguments at the typed boundary (``parse_typed``),
-3. dispatches through the governed tool (``.execute``), and
-4. fences the returned result with ``wrap_untrusted`` (SEC-1 at source).
+2. consults the SecOps pre-tool screen (``security_pre_check``),
+3. validates arguments at the typed boundary (``parse_typed``),
+4. dispatches through the governed tool (``.execute``), and
+5. fences the returned result with ``wrap_untrusted`` (SEC-1 at source).
 
 The module must also reference ``TAG_TOOL_RESULT`` so the fence tag cannot
 drift to an unfenced return. Any missing step means credentials or untrusted
@@ -52,6 +53,7 @@ _ALLOW_RE: Final[re.Pattern[str]] = re.compile(
 )
 _REQUIRED_CALLS: Final[tuple[str, ...]] = (
     "visible_tool_names",
+    "security_pre_check",
     "parse_typed",
     "execute",
     "wrap_untrusted",

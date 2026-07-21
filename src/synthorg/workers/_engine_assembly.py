@@ -70,6 +70,7 @@ from synthorg.workers._memory_assembly import (
     wiki_exporter_or_none,
 )
 from synthorg.workers._openhands_wiring import (
+    build_auto_loop_config_or_none,
     build_openhands_loop_config,
     build_openhands_loop_deps_or_none,
 )
@@ -573,6 +574,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         recovery_strategy=_build_recovery_strategy(app_state),
         openhands_loop_config=await build_openhands_loop_config(app_state),
         openhands_loop_deps=await build_openhands_loop_deps_or_none(app_state),
+        auto_loop_config=await build_auto_loop_config_or_none(app_state),
         clock=app_state.clock,
     )
 

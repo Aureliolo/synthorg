@@ -74,15 +74,20 @@ async def _get_str(_namespace: str, key: str) -> str:
     """Key-aware ``config_resolver.get_str`` stub.
 
     ``routing_policy`` selects the work pipeline policy and
-    ``decomposition_strategy`` selects the decomposer; ``decomposition_model``
-    yields a bound ``{provider, model_id}`` reference (a bare id would be
-    rejected as unbound and leave the coordinator unable to resolve a
-    provider).
+    ``decomposition_strategy`` selects the decomposer; the execution-loop
+    auto-selection keys yield their real defaults (an empty override string
+    and the react fallback); ``decomposition_model`` yields a bound
+    ``{provider, model_id}`` reference (a bare id would be rejected as unbound
+    and leave the coordinator unable to resolve a provider).
     """
     if key == "routing_policy":
         return "leaf-threshold"
     if key == "decomposition_strategy":
         return "agent-session"
+    if key == "default_loop_type":
+        return "react"
+    if key == "loop_complexity_overrides":
+        return ""
     return serialize_model_ref(
         ModelRef(provider=_DEFAULT_PROVIDER, model_id="example-medium-001")
     )

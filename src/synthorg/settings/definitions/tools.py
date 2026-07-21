@@ -831,12 +831,65 @@ _r.register(
         default="",
         description=(
             "Sandbox-reachable base URL of the credentialed-tool MCP server the"
-            " embedded harness connects to (e.g. 'http://host.internal:8000/"
-            "mcp-gateway'). Empty leaves the OpenHands loop unavailable: it"
+            " embedded harness connects to. Point it at the mounted"
+            " mcp-gateway route, e.g."
+            " 'http://host.internal:8000/api/v1/mcp-gateway' (the runtime"
+            " appends '/mcp'). Empty leaves the OpenHands loop unavailable: it"
             " fails loud when selected rather than reaching an unset endpoint."
             " Set together with providers.gateway_base_url."
         ),
         group="Credentialed MCP",
         level=SettingLevel.ADVANCED,
+    )
+)
+
+# ── OpenHands sandbox image + run behaviour ──────────────────────
+# The image bundles openhands-sdk + openhands-tools (never the main
+# venv). Egress from the container is pinned by the sandbox sidecar to
+# exactly the gateway + credentialed-MCP hosts.
+
+_r.register(
+    # lint-allow: restart-required -- the OpenHands image ref is resolved once
+    # at boot (DB > env > default) into the sandbox image-resolution cache and
+    # read_only_post_init; a dedicated DockerSandbox is built from it at wiring
+    # time, so a mid-run DB write would silently drift from the image in use.
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="openhands_image",
+        type=SettingType.STRING,
+        default=f"ghcr.io/aureliolo/synthorg-openhands:v{__version__}",
+        description=(
+            "Docker image used for OpenHands loop containers (bundles"
+            " openhands-sdk + openhands-tools). Resolution precedence at"
+            " backend startup: DB override > ``SYNTHORG_OPENHANDS_IMAGE`` env"
+            " var > registered code default. The CLI injects a digest-pinned"
+            " reference via the env var. Read once at startup;"
+            " ``read_only_post_init`` keeps later DB writes from drifting from"
+            " the resolved value used at boot."
+        ),
+        group="OpenHands",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_OPENHANDS_IMAGE",
+        validator_pattern=r"^[a-zA-Z0-9][\w.\-/:@]*$",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="openhands_idle_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="600.0",
+        description=(
+            "Maximum wall-clock time the host waits for the next event from an"
+            " OpenHands run container before treating the run as hung and"
+            " tearing it down. Read at loop-config build time."
+        ),
+        group="OpenHands",
+        level=SettingLevel.ADVANCED,
+        min_value=30.0,
+        max_value=3600.0,
     )
 )
