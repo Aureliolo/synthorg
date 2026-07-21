@@ -34,6 +34,9 @@ from synthorg.engine.workspace.state import (
     agent_workspace_root_of,
 )
 from synthorg.hr.state import HrStateSlice, agent_registry_of
+from synthorg.memory.injection import MemoryInjectionStrategy
+from synthorg.memory.org.protocol import OrgMemoryBackend
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -311,6 +314,56 @@ def _build_coordination_chain(
     )
 
 
+async def _build_planning_memory(
+    app_state: AppState,
+) -> tuple[
+    MemoryInjectionStrategy | None,
+    int,
+    MemoryBackend | None,
+    OrgMemoryBackend | None,
+]:
+    """Resolve the planning session's memory grant and digest.
+
+    Gated by ``memory.planning_memory_recall_enabled`` and the presence of an
+    agent-memory backend. When on, it returns the backends for the recall tool
+    grant plus a context-injection strategy pre-seeding the org/retro digest
+    (when the digest budget is positive), so a plan builds on prior learnings.
+
+    Returns:
+        A ``(planning_memory, digest_budget, memory_backend, org_backend)``
+        tuple; all-off / all-``None`` when recall is disabled or unwired.
+    """
+    from synthorg.memory.retrieval_config import (  # noqa: PLC0415
+        MemoryRetrievalConfig,
+    )
+    from synthorg.memory.retriever import ContextInjectionStrategy  # noqa: PLC0415
+    from synthorg.memory.shared_store import OrgSharedKnowledgeStore  # noqa: PLC0415
+    from synthorg.memory.state import (  # noqa: PLC0415
+        memory_backend_or_none,
+        org_memory_backend_of,
+    )
+
+    resolver = config_resolver_of(app_state)
+    enabled = await resolver.get_bool("memory", "planning_memory_recall_enabled")
+    memory_backend: MemoryBackend | None = memory_backend_or_none(app_state)
+    if not enabled or memory_backend is None:
+        return None, 0, None, None
+    org_backend: OrgMemoryBackend | None = org_memory_backend_of(app_state)
+    digest_budget = await resolver.get_int("memory", "planning_memory_digest_budget")
+    planning_memory: MemoryInjectionStrategy | None = None
+    if digest_budget > 0:
+        planning_memory = ContextInjectionStrategy(
+            backend=memory_backend,
+            config=MemoryRetrievalConfig(include_shared=org_backend is not None),
+            shared_store=(
+                OrgSharedKnowledgeStore(org_backend)
+                if org_backend is not None
+                else None
+            ),
+        )
+    return planning_memory, digest_budget, memory_backend, org_backend
+
+
 async def _build_runtime_coordinator(
     app_state: AppState,
     engine: AgentEngine,
@@ -413,12 +466,29 @@ async def _build_runtime_coordinator(
         # runtime's per-call resolve).
         return provider_registry_of(app_state).get(identity.model.provider)
 
+    # Grant the planning session memory: past retros, org playbooks, and the
+    # owner's prior-initiative memory, so a plan builds on what the organisation
+    # already learned. Both a read-only recall tool (the owner recalls actively)
+    # and a pre-seeded digest (recall reaches the brief even if the owner never
+    # calls the tool) are wired, gated by memory.planning_memory_recall_enabled.
+    (
+        planning_memory,
+        digest_budget,
+        planning_mem_backend,
+        planning_org_backend,
+    ) = await _build_planning_memory(app_state)
     # Grant the planning session live web research when a web-search provider is
     # configured, so the owner researches with real data before drafting a plan
-    # (the same fail-open pattern the research subsystem's web source uses).
+    # (the same fail-open pattern the research subsystem's web source uses). The
+    # provider is also present whenever memory recall is wired, so the tool grant
+    # covers web_search and/or search_memory.
     planning_tool_provider = (
-        PlanningToolProvider(search_provider=search_provider)
-        if search_provider is not None
+        PlanningToolProvider(
+            search_provider=search_provider,
+            memory_backend=planning_mem_backend,
+            org_backend=planning_org_backend,
+        )
+        if search_provider is not None or planning_mem_backend is not None
         else None
     )
 
@@ -434,6 +504,8 @@ async def _build_runtime_coordinator(
         decomposition_cost_tracker=cost_tracker,
         agent_session_max_turns=agent_session_max_turns,
         agent_session_cost_ceiling=agent_session_cost_ceiling,
+        planning_memory=planning_memory,
+        agent_session_memory_digest_budget=digest_budget,
         task_engine=task_engine_of(app_state),
         workspace_strategy=workspace_strategy,
         workspace_config=workspace_config,

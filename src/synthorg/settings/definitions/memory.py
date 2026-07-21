@@ -214,6 +214,41 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
+        key="planning_memory_recall_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Whether the owner-run planning session recalls org playbooks, past"
+            " retros, and prior-initiative memory when decomposing an objective."
+            " On means plans build on what the organisation already learned; off"
+            " plans from priors only. Applied when the coordinator is (re)built."
+        ),
+        group="Learning",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="planning_memory_digest_budget",
+        type=SettingType.INTEGER,
+        default="1000",
+        description=(
+            "Token cap for the org/retro memory digest pre-seeded into the"
+            " planning brief. 0 injects no digest (the owner can still recall"
+            " with the search_memory tool). Applied when the coordinator is"
+            " (re)built."
+        ),
+        group="Learning",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=8000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
         key="consolidation_enabled",
         type=SettingType.BOOLEAN,
         default="true",
