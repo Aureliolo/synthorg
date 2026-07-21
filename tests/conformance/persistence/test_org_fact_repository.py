@@ -87,6 +87,53 @@ class TestOrgFactRepository:
         assert as_uuid("hit1") in ids
         assert as_uuid("miss1") not in ids
 
+    async def test_query_matches_a_shared_term_in_a_composed_query(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A sentence-shaped query matches a fact sharing one of its terms.
+
+        This is the org-recall path a working agent drives: the query is
+        composed from the whole work context, so a fact that shares a single
+        salient term must surface even though the fact contains nothing near
+        the whole sentence as a substring.
+        """
+        await backend.org_facts.save(
+            _fact("hit", "Checkout code changes require two approvals."),
+        )
+        await backend.org_facts.save(
+            _fact("miss", "Deployments run nightly from the release branch."),
+        )
+        rows = await backend.org_facts.query(
+            text="checkout resilience. Harden the checkout flow.",
+        )
+        ids = {f.id for f in rows}
+        assert as_uuid("hit") in ids
+        assert as_uuid("miss") not in ids
+
+    async def test_query_ranks_by_term_match_count(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A fact matching more query terms ranks ahead of one matching fewer."""
+        await backend.org_facts.save(
+            _fact("both", "checkout resilience is our standard."),
+        )
+        await backend.org_facts.save(
+            _fact("one", "checkout uses the shared cart service."),
+        )
+        rows = await backend.org_facts.query(text="checkout resilience playbook")
+        ids = [f.id for f in rows]
+        assert ids.index(as_uuid("both")) < ids.index(as_uuid("one"))
+
+    async def test_query_with_only_stopwords_falls_back_to_substring(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A query carrying no salient term still matches as a literal phrase."""
+        await backend.org_facts.save(
+            _fact("phrase", "the and for"),
+        )
+        rows = await backend.org_facts.query(text="the and for")
+        assert as_uuid("phrase") in {f.id for f in rows}
+
     async def test_list_by_category(self, backend: PersistenceBackend) -> None:
         await backend.org_facts.save(
             _fact("lp1", category=OrgFactCategory.CORE_POLICY),

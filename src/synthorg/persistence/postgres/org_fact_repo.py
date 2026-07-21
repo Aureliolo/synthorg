@@ -39,6 +39,11 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_WRITE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._org_fact_query import (
+    build_term_match_sql,
+    like_contains_pattern,
+    org_query_terms,
+)
 from synthorg.persistence._shared import normalize_utc, validate_pagination_args
 from synthorg.persistence._shared.org_fact_marshalling import (
     row_to_operation_log_entry,
@@ -323,20 +328,31 @@ class PostgresOrgFactRepository:
             clauses.append(f"category IN ({placeholders})")
             params.extend(c.value for c in categories)
 
-        if text is not None:
-            escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        terms = org_query_terms(text) if text is not None else ()
+        order_params: list[object] = []
+        if terms:
+            where_frag, order_frag, patterns = build_term_match_sql(
+                terms, placeholder="%s", int_cast="::int"
+            )
+            clauses.append(where_frag)
+            params.extend(patterns)
+            order = f"ORDER BY {order_frag}"
+            order_params.extend(patterns)
+        elif text is not None:
+            # No salient term (a literal phrase of stopwords/short tokens):
+            # preserve the substring match so a literal search still works.
             clauses.append("content LIKE %s ESCAPE '\\'")
-            params.append(f"%{escaped}%")
-
-        where = f" WHERE {' AND '.join(clauses)}"
-        if text is not None:
+            params.append(like_contains_pattern(text))
             order = (
                 "ORDER BY POSITION(LOWER(%s) IN LOWER(content)) ASC, "
                 "LENGTH(content) ASC, created_at DESC, fact_id ASC"
             )
-            params.append(text)
+            order_params.append(text)
         else:
             order = "ORDER BY created_at DESC, fact_id ASC"
+
+        where = f" WHERE {' AND '.join(clauses)}"
+        params.extend(order_params)
         sql = (
             f"SELECT * FROM org_facts_snapshot{where} {order} "  # noqa: S608
             "LIMIT %s OFFSET %s"
