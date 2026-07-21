@@ -209,7 +209,7 @@ async def test_run_enforces_wall_clock_cap() -> None:
 
     sandbox = _HangingSandbox()
     conversation = await build_container_conversation(
-        sandbox,  # type: ignore[arg-type]  # structural SandboxStreamer
+        sandbox,  # structural SandboxStreamer
         600.0,
         0.05,
         _spec(),
