@@ -301,7 +301,10 @@ class EditFileTool(BaseFileSystemTool):
             is_error=True,
             metadata={
                 "path": user_path,
-                "occurrences_found": 0,
+                # ``error_count`` is the match count for the non-unique branch
+                # (the reason for rejection) and 0 for not-found, so it is the
+                # honest "how many were found" figure either way.
+                "occurrences_found": plan.error_count,
                 "occurrences_replaced": 0,
             },
         )

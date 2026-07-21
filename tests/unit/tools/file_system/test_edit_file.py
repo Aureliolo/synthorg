@@ -337,6 +337,9 @@ class TestEditFileExecution:
         )
         assert result.is_error
         assert "3 matches" in result.content
+        # The rejection metadata reports the true match count, not 0.
+        assert result.metadata["occurrences_found"] == 3
+        assert result.metadata["occurrences_replaced"] == 0
 
     async def test_length_changing_hunk_does_not_disturb_later_hunk(
         self, workspace: Path, edit_tool: EditFileTool

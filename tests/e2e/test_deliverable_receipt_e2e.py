@@ -80,6 +80,7 @@ from synthorg.persistence.flight_recorder_protocol import (
 )
 from synthorg.persistence.knowledge_protocol import KnowledgeSourceRepository
 from synthorg.persistence.knowledge_usage_protocol import KnowledgeUsageFilterSpec
+from synthorg.providers.cassette.keying import CassetteMethod
 from synthorg.providers.cassette.mode import CassetteConfig, CassetteMode
 from synthorg.providers.cassette.provider import CassetteCompletionProvider
 from synthorg.providers.cassette.redaction import PatternRedactor
@@ -427,15 +428,29 @@ class TestDeliverableReceiptAcceptance:
         recorded = CassetteDocument.model_validate_json(
             cassette_path.read_text(encoding="utf-8")
         )
-        assert len(recorded.interactions) == 2
+        # The run also records one capabilities lookup (the per-run
+        # streaming-enablement check); the two LLM turns are the completion
+        # interactions, which are what this assertion is about.
+        turns = [
+            interaction
+            for interaction in recorded.interactions
+            if interaction.method is not CassetteMethod.CAPABILITIES
+        ]
+        assert len(turns) == 2
         replay_session = CassetteSession(
             mode=CassetteMode.REPLAY,
             path=cassette_path,
             redactor=PatternRedactor(),
         )
-        for interaction in recorded.interactions:
+        for interaction in turns:
             replayed = replay_session.take(request_hash=interaction.request_hash)
-            assert replayed.kind is CassetteOutcomeKind.RESPONSE
+            # A turn replays as RESPONSE (buffered) or STREAM (the streaming
+            # work loop, on by default when the model supports it), never as an
+            # error or capabilities outcome.
+            assert replayed.kind in (
+                CassetteOutcomeKind.RESPONSE,
+                CassetteOutcomeKind.STREAM,
+            )
             assert replayed == interaction.outcome
 
         await persistence.disconnect()
