@@ -518,7 +518,7 @@ repos:
 
       - id: golangci-lint
         name: golangci-lint (CLI)
-        entry: bash -c "cd cli && golangci-lint run"
+        entry: bash scripts/golangci_cli.sh
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false
