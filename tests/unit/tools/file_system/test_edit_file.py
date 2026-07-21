@@ -398,47 +398,68 @@ class TestEditFileExecution:
         content = (workspace / "del.txt").read_text(encoding="utf-8")
         assert content == "kept"
 
-    async def test_edit_of_already_violating_file_is_not_blocked(
-        self,
-        workspace: Path,
-        edit_tool: EditFileTool,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """The guard blocks only a violation the edit introduces.
+    @staticmethod
+    def _patch_marker_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+        """Stub the output policy so each marker occurrence is a hard finding.
 
-        With the output policy stubbed so a marker string counts as a hard
-        violation, introducing it into a clean file is blocked, while editing
-        elsewhere in a file that already carries it is allowed: the
-        ``before.blocked`` short-circuit stops an already-imperfect file from
-        being frozen against every further edit.
+        Every occurrence of a known marker becomes a blocking finding keyed by
+        that marker (so ``rule_id`` and ``match_text`` distinguish distinct
+        violations), letting the guard's before/after multiset delta be
+        exercised without a live policy pack.
         """
         from types import SimpleNamespace
 
         from synthorg.engine import output_style
 
-        def fake_evaluate(text: str, ctx: object) -> object | None:
+        markers = ("VIOL_A", "VIOL_B")
+
+        def fake_evaluate(text: str, ctx: object) -> object:
             del ctx
-            if "VIOLATION" in text:
-                return SimpleNamespace(blocked=True, summary="hard-rule violation")
-            return None
+            findings = [
+                SimpleNamespace(
+                    blocks=True,
+                    rule_id=marker,
+                    match_text=marker,
+                    message=f"{marker} is banned",
+                )
+                for marker in markers
+                for _ in range(text.count(marker))
+            ]
+            return SimpleNamespace(blocked=bool(findings), findings=tuple(findings))
 
         monkeypatch.setattr(output_style, "evaluate_output_policy", fake_evaluate)
 
+    async def test_edit_introducing_violation_into_clean_file_is_blocked(
+        self,
+        workspace: Path,
+        edit_tool: EditFileTool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An edit that adds a hard-rule violation to a clean file is rejected."""
+        self._patch_marker_policy(monkeypatch)
         (workspace / "clean.py").write_text("a = 1\nold = 2\n", encoding="utf-8")
-        introduced = await edit_tool.execute(
+        result = await edit_tool.execute(
             arguments={
                 "path": "clean.py",
                 "old_text": "a = 1",
-                "new_text": "a = 1  # VIOLATION",
+                "new_text": "a = 1  # VIOL_A",
             }
         )
-        assert introduced.is_error
+        assert result.is_error
         assert (workspace / "clean.py").read_text(
             encoding="utf-8"
         ) == "a = 1\nold = 2\n"
 
+    async def test_edit_elsewhere_in_violating_file_is_not_blocked(
+        self,
+        workspace: Path,
+        edit_tool: EditFileTool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An edit that leaves the existing violation untouched stays editable."""
+        self._patch_marker_policy(monkeypatch)
         (workspace / "viol.py").write_text(
-            "a = 1  # VIOLATION\nold = 2\n", encoding="utf-8"
+            "a = 1  # VIOL_A\nold = 2\n", encoding="utf-8"
         )
         result = await edit_tool.execute(
             arguments={
@@ -450,4 +471,55 @@ class TestEditFileExecution:
         assert not result.is_error
         content = (workspace / "viol.py").read_text(encoding="utf-8")
         assert "renamed = 2" in content
-        assert "VIOLATION" in content
+        assert "VIOL_A" in content
+
+    async def test_edit_introducing_distinct_violation_is_blocked(
+        self,
+        workspace: Path,
+        edit_tool: EditFileTool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A new, distinct violation is blocked even when one already exists.
+
+        A pre-existing violation of one rule must not license introducing a
+        different rule's violation: the guard subtracts only the baseline
+        blocking findings, so the distinct new one still rejects, and the
+        message names the introduced violation, not the pre-existing one.
+        """
+        self._patch_marker_policy(monkeypatch)
+        (workspace / "mixed.py").write_text(
+            "a = 1  # VIOL_A\nold = 2\n", encoding="utf-8"
+        )
+        result = await edit_tool.execute(
+            arguments={
+                "path": "mixed.py",
+                "old_text": "old = 2",
+                "new_text": "old = 2  # VIOL_B",
+            }
+        )
+        assert result.is_error
+        assert "VIOL_B" in result.content
+        assert "VIOL_A" not in result.content
+        # The file is left untouched because the edit was rejected.
+        assert "VIOL_B" not in (workspace / "mixed.py").read_text(encoding="utf-8")
+
+    async def test_edit_adding_duplicate_of_existing_violation_is_blocked(
+        self,
+        workspace: Path,
+        edit_tool: EditFileTool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Adding a second copy of an existing violation is a new violation."""
+        self._patch_marker_policy(monkeypatch)
+        (workspace / "dup.py").write_text(
+            "a = 1  # VIOL_A\nold = 2\n", encoding="utf-8"
+        )
+        result = await edit_tool.execute(
+            arguments={
+                "path": "dup.py",
+                "old_text": "old = 2",
+                "new_text": "old = 2  # VIOL_A",
+            }
+        )
+        assert result.is_error
+        assert "VIOL_A" in result.content
