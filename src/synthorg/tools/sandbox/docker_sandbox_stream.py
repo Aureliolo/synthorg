@@ -30,6 +30,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
+    DOCKER_EXEC_STREAM_TRUNCATED,
     DOCKER_EXECUTE_FAILED,
     DOCKER_EXECUTE_TIMEOUT,
 )
@@ -353,6 +354,13 @@ class DockerSandboxStreamMixin:
             # Real stdout progress: extend the idle deadline.
             deadline = now() + idle_timeout_seconds
             buffer += text
+            # Cap the buffer even without a newline: a runaway process emitting
+            # a large newline-free stream would otherwise grow it without bound
+            # (the idle deadline keeps resetting on each frame), defeating the
+            # per-line memory cap that only fires once a newline is found.
+            if len(buffer) > _MAX_LINE_CHARS:
+                logger.warning(DOCKER_EXEC_STREAM_TRUNCATED, limit=_MAX_LINE_CHARS)
+                buffer = buffer[:_MAX_LINE_CHARS]
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
                 if len(line) > _MAX_LINE_CHARS:

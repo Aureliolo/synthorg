@@ -54,8 +54,11 @@ Minting is the single enforcement point for Explicit Provider Binding
    master toggle short-circuits to 503.
 4. **Dispatch under cost scope**: `provider.complete` / `provider.stream`
    run inside `cost_recording_scope(purpose=None,
-   call_category=PRODUCTIVE, ...)`, so cost and attribution flow through
-   the single provider chokepoint. The response is translated back to the
+   call_category=PRODUCTIVE, ...)`. The gateway carries no single registered
+   prompt purpose (the embedded harness issues arbitrary prompts), so
+   `purpose` is `None`: cost is attributed by run and call-category through
+   the single provider chokepoint, not by prompt purpose. The response is
+   translated back to the
    OpenAI shape with `usage` echoed for the adapter's `TurnRecord`s.
 5. **SEC-1 posture**: fencing of untrusted upstream content is enforced at
    the source (the [credentialed-MCP](credentialed-mcp.md) boundary wraps

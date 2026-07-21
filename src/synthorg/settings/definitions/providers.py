@@ -351,17 +351,20 @@ _r.register(
         namespace=SettingNamespace.PROVIDERS,
         key="gateway_token_ttl_seconds",
         type=SettingType.INTEGER,
-        default="3600",
+        default="172800",
         description=(
-            "Lifetime in seconds of a per-run gateway bearer token. A run that"
-            " outlives its token re-mints on resume, so this bounds how long a"
-            " leaked token stays usable. Re-read live when a run token is"
+            "Lifetime in seconds of a per-run gateway bearer token (default 2"
+            " days). Must exceed tools.openhands_max_runtime_seconds so a long"
+            " OpenHands run is force-ended by the wall-clock cap before its"
+            " bearer expires, never left to fail auth mid-run. A run that"
+            " outlives its token re-mints on resume, so this also bounds how"
+            " long a leaked token stays usable. Re-read live when a run token is"
             " minted."
         ),
         group="Gateway",
         level=SettingLevel.ADVANCED,
         min_value=60,
-        max_value=86400,
+        max_value=604800,
     )
 )
 

@@ -488,8 +488,9 @@ call the in-process `ProviderRegistry` directly, so the [LLM gateway](llm-gatewa
 exposes an OpenAI-compatible HTTP surface that fronts the registry. Every
 gateway call inherits the provider-layer governance described above: Explicit
 Provider Binding (resolved from a per-run signed token, never the request's
-`model`), cost + prompt-purpose attribution through `cost_recording_scope`,
-and SEC-1 log redaction, plus a hard per-run token-budget kill. Provider
+`model`), cost and run attribution through `cost_recording_scope` (no single
+prompt purpose applies to the harness's arbitrary prompts, so `purpose` is
+`None`), and SEC-1 log redaction, plus a hard per-run token-budget kill. Provider
 agnosticism thus becomes a property of the gateway, not the harness.
 
 ---

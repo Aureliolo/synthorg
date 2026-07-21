@@ -265,8 +265,10 @@ The [credentialed-tool MCP boundary](credentialed-mcp.md) extends this same
 invariant to an embedded coding harness: the harness receives only tool
 schemas and already-fenced results, while credential brokering, the approval
 gate, the action signature and the egress pin all run host-side in the API
-process. A credential never crosses into the sandbox, and every write parks
-a `ConnectionApprovalGate` approval bound to the calling actor.
+process. A credential never crosses into the sandbox, and every write
+requires an approval bound to the calling actor: an unapproved write parks a
+`PENDING` `ConnectionApprovalGate` approval, while an already-approved
+signature proceeds.
 
 ## Approval Timeout Policy
 

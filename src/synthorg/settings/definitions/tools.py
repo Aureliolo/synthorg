@@ -893,3 +893,24 @@ _r.register(
         max_value=3600.0,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="openhands_max_runtime_seconds",
+        type=SettingType.FLOAT,
+        default="86400.0",
+        description=(
+            "Total wall-clock ceiling for a single OpenHands run (default 24"
+            " hours). Unlike the idle timeout (which resets on every event),"
+            " this bounds the whole run so it is force-ended before the per-run"
+            " gateway bearer can expire. Keep it below"
+            " providers.gateway_token_ttl_seconds so the bearer never expires"
+            " mid-run. Read at loop-wiring time."
+        ),
+        group="OpenHands",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=604800.0,
+    )
+)

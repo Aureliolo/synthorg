@@ -90,7 +90,9 @@ class CredentialedMcpController(Controller):
         try:
             claims = signer.verify(token)
             messages, is_batch = await _read_messages(request)
-            ctx = await _build_context(app_state, agent_id=claims.agent_id)
+            ctx = await _build_context(
+                app_state, agent_id=claims.agent_id, task_id=claims.task_id
+            )
             capabilities = _parse_capabilities(
                 await resolver.get_str(_TOOLS_NS, "credentialed_mcp_capabilities")
             )
@@ -176,7 +178,7 @@ async def _read_messages(
 
 
 async def _build_context(
-    app_state: AppState, *, agent_id: str
+    app_state: AppState, *, agent_id: str, task_id: str | None
 ) -> CredentialedToolContext:
     """Assemble the host-side credentialed-tool context from app state.
 
@@ -188,6 +190,8 @@ async def _build_context(
         app_state: The live application state.
         agent_id: The caller id (from the verified bearer), bound into the
             security context.
+        task_id: The run's task id (from the verified bearer), bound into the
+            security context so SecOps screening stays per-run.
 
     Returns:
         The :class:`CredentialedToolContext` for this request.
@@ -234,7 +238,9 @@ async def _build_context(
         forge_timeout_seconds=forge_timeout.result(),
         chat_timeout_seconds=chat_timeout.result(),
         forge_max_read_chars=forge_read.result(),
-        security_pre_check=build_security_pre_check(interceptor, agent_id=agent_id),
+        security_pre_check=build_security_pre_check(
+            interceptor, agent_id=agent_id, task_id=task_id
+        ),
     )
 
 

@@ -67,8 +67,9 @@ async def build_openhands_loop_deps_or_none(
     slice rather than built anew. The conversation factory is the container
     runtime bound to a dedicated sandbox whose egress is pinned to exactly
     the gateway + credentialed-MCP hosts. Returns ``None`` (logging the
-    missing piece) when the signer or the sandbox-reachable endpoints are
-    unset, leaving the loop unavailable (it fails loud only if selected).
+    missing piece) when the signer is unset or either endpoint does not
+    resolve to a host, leaving the loop unavailable (it fails loud only if
+    selected) so sandbox egress is never created without a host allowlist.
 
     Returns:
         The wired dependencies, or ``None`` when the boundary is unwired.
@@ -82,18 +83,40 @@ async def build_openhands_loop_deps_or_none(
     resolver = config_resolver_of(app_state)
     gateway_base_url = await resolver.get_str("providers", "gateway_base_url")
     mcp_base_url = await resolver.get_str("tools", "credentialed_mcp_base_url")
-    if signer is None or not gateway_base_url or not mcp_base_url:
+    # Require each endpoint to resolve to a host, not merely be non-empty: a
+    # malformed URL (e.g. a missing scheme) parses to an empty host, which
+    # would collapse the egress allowlist and leave DockerSandbox._needs_sidecar
+    # unable to enable enforcement. Fail closed so sandbox egress is never
+    # created without a host allowlist.
+    gateway_host = _host_port(gateway_base_url)
+    mcp_host = _host_port(mcp_base_url)
+    if signer is None or not gateway_host or not mcp_host:
         logger.warning(
             EXECUTION_LOOP_UNAVAILABLE,
             loop_type="openhands",
-            missing=_missing_pieces(signer, gateway_base_url, mcp_base_url),
-            note="OpenHands loop stays unavailable until every piece is wired",
+            missing=_missing_pieces(signer, gateway_host, mcp_host),
+            note="OpenHands loop stays unavailable until every piece is wired to "
+            "a resolvable host (egress cannot be pinned without a host:port)",
         )
         return None
 
     idle = await resolver.get_float("tools", "openhands_idle_timeout_seconds")
+    max_runtime = await resolver.get_float("tools", "openhands_max_runtime_seconds")
+    ttl = await resolver.get_int("providers", "gateway_token_ttl_seconds")
+    if max_runtime >= ttl:
+        logger.warning(
+            EXECUTION_LOOP_UNAVAILABLE,
+            loop_type="openhands",
+            note="openhands_max_runtime_seconds is not below the gateway bearer "
+            "TTL; a long run could outlive its token before the wall-clock cap "
+            "ends it. Lower the cap or raise providers.gateway_token_ttl_seconds",
+            max_runtime_seconds=max_runtime,
+            token_ttl_seconds=ttl,
+        )
     sandbox = await _build_openhands_sandbox(app_state, gateway_base_url, mcp_base_url)
-    factory = functools.partial(build_container_conversation, sandbox, idle)
+    factory = functools.partial(
+        build_container_conversation, sandbox, idle, max_runtime
+    )
     return OpenHandsLoopDeps(
         build_conversation=factory,
         signer=signer,
@@ -105,10 +128,14 @@ async def build_openhands_loop_deps_or_none(
 
 def _missing_pieces(
     signer: object | None,
-    gateway_base_url: str,
-    mcp_base_url: str,
+    gateway_host: str,
+    mcp_host: str,
 ) -> tuple[str, ...]:
     """Name the unwired pieces that keep the loop unavailable.
+
+    A blank host covers both an unset URL and a set-but-unparseable one (no
+    scheme / no host), so the reported setting name points the operator at the
+    value to fix in either case.
 
     Returns:
         The names of the missing pieces (empty when all are wired).
@@ -116,9 +143,9 @@ def _missing_pieces(
     missing: list[str] = []
     if signer is None:
         missing.append("gateway_signer")
-    if not gateway_base_url:
+    if not gateway_host:
         missing.append("providers.gateway_base_url")
-    if not mcp_base_url:
+    if not mcp_host:
         missing.append("tools.credentialed_mcp_base_url")
     return tuple(missing)
 

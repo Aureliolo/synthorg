@@ -131,7 +131,7 @@ def _container_factory() -> ConversationFactory:
         workspace=Path(os.environ[_WORKSPACE_VAR]).resolve(),
         clock=SystemClock(),
     )
-    return functools.partial(build_container_conversation, sandbox, 600.0)
+    return functools.partial(build_container_conversation, sandbox, 600.0, 3600.0)
 
 
 def _bound_agent() -> AgentIdentity:

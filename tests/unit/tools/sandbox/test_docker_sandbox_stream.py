@@ -115,8 +115,8 @@ async def test_iter_lines_stderr_does_not_extend_deadline() -> None:
     # deadline (without resetting it, by design), so the second read_out has
     # less than one full window left and times the stream out. The stderr
     # chatter cannot keep the stream alive, and no stdout line is ever yielded.
-    idle = 0.2
-    delay = 0.14
+    idle = 1.0
+    delay = 0.6
     stream = _FrameStream(
         [
             ("slow", _STDERR, b"chatter-1\n", delay),

@@ -1551,7 +1551,7 @@
   },
   "description": "Architecture-metrics baseline for the drift gate (scripts/check_architecture_drift.py). fan_in: direct-importer counts for hub modules (>= 20). budget_pressure: source files within 20% of their module-size tier cap. lcom: LCOM4 for service-tier classes >= 400 LOC (1 = cohesive). Regenerate with: uv run python scripts/architecture_report.py",
   "fan_in": {
-    "synthorg._core.features": 152,
+    "synthorg._core.features": 153,
     "synthorg.api.api_core_state": 39,
     "synthorg.api.channels": 23,
     "synthorg.api.construction_wiring": 22,
@@ -1592,7 +1592,7 @@
     "synthorg.core.boundary": 69,
     "synthorg.core.clock": 248,
     "synthorg.core.completion_enums": 23,
-    "synthorg.core.critical_errors": 692,
+    "synthorg.core.critical_errors": 694,
     "synthorg.core.domain_errors": 265,
     "synthorg.core.effective_autonomy": 30,
     "synthorg.core.error_taxonomy": 70,

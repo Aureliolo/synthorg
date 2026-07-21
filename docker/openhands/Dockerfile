@@ -34,9 +34,9 @@ LABEL org.opencontainers.image.title="synthorg-openhands" \
       org.opencontainers.image.licenses="BUSL-1.1" \
       org.opencontainers.image.vendor="Aureliolo"
 
-# Pin the SDK; bump deliberately and re-run the live smoke on every change.
-ARG OPENHANDS_SDK_VERSION=1.36.1
-
+# The SDK version is pinned solely by requirements.in / requirements.lock (the
+# hash-pinned closure installed below); bump it there and re-run the live smoke
+# on every change.
 ENV OPENHANDS_VENV=/opt/openhands/venv
 
 USER 0

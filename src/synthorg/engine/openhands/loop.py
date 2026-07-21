@@ -12,6 +12,7 @@ conversation factory.
 
 from dataclasses import dataclass, field
 from typing import Final
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
@@ -49,9 +50,30 @@ logger = get_logger(__name__)
 
 _LOOP_TYPE: Final[str] = "openhands"
 _CONTAINER_WORKSPACE: Final[str] = "/workspace"
+# Namespace for deriving a stable conversation UUID from a non-UUID id.
+_CONVERSATION_ID_NAMESPACE: Final[UUID] = uuid5(
+    NAMESPACE_URL, "https://synthorg.io/openhands/conversation"
+)
 _NO_OP_MESSAGE: Final[str] = (
     "OpenHands run produced no artifacts for an artifact-expecting task"
 )
+
+
+def _stable_conversation_id(raw: str) -> str:
+    """Return a stable UUID string for a task / execution id.
+
+    ``task.id`` is already a UUID, but the ``execution_id`` fallback is only a
+    ``NotBlankStr``. Deriving a deterministic ``uuid5`` for a non-UUID id keeps
+    the conversation-reattach key stable across resumes while guaranteeing the
+    container's ``UUID(...)`` parse of the run spec cannot raise.
+
+    Returns:
+        The canonical UUID string used as the run's conversation id.
+    """
+    try:
+        return str(UUID(raw))
+    except ValueError:
+        return str(uuid5(_CONVERSATION_ID_NAMESPACE, raw))
 
 
 @dataclass
@@ -147,8 +169,9 @@ class OpenHandsLoop:
         The gateway / MCP URLs are guaranteed non-blank by
         :class:`OpenHandsLoopDeps` construction (the wiring returns ``None``
         deps rather than constructing with blank URLs, and a ``None`` deps
-        fails loud at loop build). ``conversation_id`` is the task id so a
-        resumed run re-attaches to the persisted conversation.
+        fails loud at loop build). ``conversation_id`` is a stable UUID derived
+        from the task id so a resumed run re-attaches to the persisted
+        conversation and the container's ``UUID(...)`` parse cannot raise.
 
         Returns:
             The :class:`OpenHandsRunSpec` for this run.
@@ -179,7 +202,7 @@ class OpenHandsLoop:
             gateway_token=token,
             mcp_base_url=self._deps.mcp_base_url,
             workspace_path=_CONTAINER_WORKSPACE,
-            conversation_id=task_id,
+            conversation_id=_stable_conversation_id(task_id),
             max_turns=min(context.max_turns, self._config.max_turns),
             project_id=project_id,
         )

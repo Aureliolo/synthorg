@@ -4,6 +4,7 @@ The container spawn itself is docker-gated (live smoke); these cover the
 event-normalization + spec-serialisation logic with no SDK or Docker.
 """
 
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 
@@ -49,7 +50,9 @@ def test_spec_line_excludes_host_only_fields() -> None:
     assert "project_id" not in payload
     assert payload["conversation_id"] == "c-1"
     assert payload["max_turns"] == 7
+    assert payload["gateway_base_url"] == "http://gateway/v1"
     assert payload["gateway_token"] == "tok"
+    assert payload["mcp_base_url"] == "http://mcp"
 
 
 def test_parse_event_action_carries_tool_and_cost_delta() -> None:
@@ -133,6 +136,7 @@ async def test_build_container_conversation_is_lazy() -> None:
     conversation = await build_container_conversation(
         _FakeSandbox(),  # type: ignore[arg-type]  # structural SandboxStreamer
         600.0,
+        3600.0,
         _spec(),
         _sink,
     )
@@ -172,10 +176,48 @@ async def _drive(sandbox: _ScriptedSandbox, sink: EventSink) -> OpenHandsOutcome
     conversation = await build_container_conversation(
         sandbox,  # structural SandboxStreamer
         600.0,
+        3600.0,
         _spec(),
         sink,
     )
     return await conversation.run()
+
+
+async def test_run_enforces_wall_clock_cap() -> None:
+    # A run that never yields a terminal event is force-ended by the total
+    # wall-clock cap (configured below the bearer TTL), surfacing as a runtime
+    # error and tearing the stream down, rather than hanging until the token
+    # expires.
+    hang = asyncio.Event()
+
+    class _HangingSandbox:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def stream_container_task(self, **_kwargs: object) -> AsyncGenerator[str]:
+            return self._gen()
+
+        async def _gen(self) -> AsyncGenerator[str]:
+            try:
+                await hang.wait()
+                yield ""  # unreachable: the cap trips while awaiting the event
+            finally:
+                self.closed = True
+
+    async def _sink(_event: object) -> bool:
+        return True
+
+    sandbox = _HangingSandbox()
+    conversation = await build_container_conversation(
+        sandbox,  # type: ignore[arg-type]  # structural SandboxStreamer
+        600.0,
+        0.05,
+        _spec(),
+        _sink,
+    )
+    with pytest.raises(OpenHandsRuntimeError):
+        await conversation.run()
+    assert sandbox.closed is True
 
 
 async def test_run_forwards_events_and_finishes() -> None:

@@ -52,6 +52,10 @@ class GatewayController(Controller):
             "hard token budget. Authenticated by a per-run signed bearer."
         ),
         status_code=200,
+        # Reject oversized payloads at the Litestar layer so a body past the
+        # gateway ceiling is refused before it is fully buffered, rather than
+        # relying on the post-read `_read_json_body` check alone.
+        request_max_body_size=_MAX_BODY_BYTES,
     )
     async def chat_completions(
         self,

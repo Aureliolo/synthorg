@@ -92,6 +92,23 @@ def _second_positional(call: ast.Call) -> ast.expr | None:
     return None
 
 
+def _model_keyword(call: ast.Call) -> ast.expr | None:
+    """Return the ``model=`` keyword argument value of *call*, if any.
+
+    A dispatch / lookup that binds the model by keyword (``.get(model=...)``,
+    ``.complete(..., model=...)``) must be screened by the same rule as the
+    positional form, or the explicit-binding contract is bypassed by call
+    style.
+
+    Returns:
+        The ``model=`` keyword value, or ``None``.
+    """
+    for keyword in call.keywords:
+        if keyword.arg == _REQUEST_MODEL_ATTR:
+            return keyword.value
+    return None
+
+
 def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
     """Return every request-model-binding / auto-pick finding in one module."""
     findings: list[str] = []
@@ -110,9 +127,15 @@ def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
             continue
         attr = node.func.attr
-        if attr in _RESOLVE_CALLS and node.args and _is_request_model(node.args[0]):
+        if attr in _RESOLVE_CALLS and (
+            (node.args and _is_request_model(node.args[0]))
+            or _is_request_model(_model_keyword(node))
+        ):
             _record(node.lineno, "provider-from-request-model")
-        elif attr in _DISPATCH_CALLS and _is_request_model(_second_positional(node)):
+        elif attr in _DISPATCH_CALLS and (
+            _is_request_model(_second_positional(node))
+            or _is_request_model(_model_keyword(node))
+        ):
             _record(node.lineno, "dispatch-request-model")
     return findings
 

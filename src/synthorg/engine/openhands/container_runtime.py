@@ -20,6 +20,7 @@ SDK never enters the main venv, so the litellm / dependency pin holds stay
 out of the application environment entirely.
 """
 
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from typing import Final, Protocol, runtime_checkable
@@ -197,11 +198,13 @@ class _ContainerConversation:
         spec: OpenHandsRunSpec,
         sink: EventSink,
         idle_timeout_seconds: float,
+        max_runtime_seconds: float,
     ) -> None:
         self._sandbox = sandbox
         self._spec = spec
         self._sink = sink
         self._idle_timeout_seconds = idle_timeout_seconds
+        self._max_runtime_seconds = max_runtime_seconds
 
     async def run(self) -> OpenHandsOutcome:
         """Stream the container run, forwarding events until stop or finish.
@@ -223,16 +226,22 @@ class _ContainerConversation:
         finished = False
         prev_cost = 0.0
         try:
-            async for line in stream:
-                event, prev_cost = _parse_event(line, prev_cost)
-                if event is None:
-                    continue
-                if event.kind is OpenHandsEventKind.FINISHED:
-                    finished = True
-                # Attribute a sink-side failure (a bug in a boundary checker /
-                # turn observer) to event handling, not the container transport.
-                if not await self._handle_event(event):
-                    break
+            # Bound the whole run by wall-clock (not just per-event idle): the
+            # idle deadline resets on every event, so a steadily-active run
+            # could otherwise outlive the per-run gateway bearer. The cap is
+            # configured below the bearer TTL, so the run is force-ended before
+            # the token can expire mid-task.
+            async with asyncio.timeout(self._max_runtime_seconds):
+                async for line in stream:
+                    event, prev_cost = _parse_event(line, prev_cost)
+                    if event is None:
+                        continue
+                    if event.kind is OpenHandsEventKind.FINISHED:
+                        finished = True
+                    # Attribute a sink-side failure (a bug in a boundary checker
+                    # / turn observer) to event handling, not the transport.
+                    if not await self._handle_event(event):
+                        break
         except OpenHandsRuntimeError:
             # Already attributed (sink-side failure); do not re-wrap as transport.
             raise
@@ -244,6 +253,15 @@ class _ContainerConversation:
                 error=safe_error_description(exc),
             )
             msg = "OpenHands container run failed"
+            raise OpenHandsRuntimeError(msg) from exc
+        except TimeoutError as exc:
+            logger.warning(
+                EXECUTION_LOOP_ERROR,
+                loop_type="openhands",
+                note="run exceeded the max wall-clock runtime cap",
+                max_runtime_seconds=self._max_runtime_seconds,
+            )
+            msg = "OpenHands run exceeded its wall-clock runtime cap"
             raise OpenHandsRuntimeError(msg) from exc
         except Exception as exc:
             reraise_critical(exc)
@@ -290,18 +308,21 @@ class _ContainerConversation:
 async def build_container_conversation(
     sandbox: SandboxStreamer,
     idle_timeout_seconds: float,
+    max_runtime_seconds: float,
     spec: OpenHandsRunSpec,
     sink: EventSink,
 ) -> OpenHandsConversation:
     """Build a container-backed conversation for a run spec.
 
     Bound to the egress-pinned :class:`DockerSandbox` at wiring time (the
-    first two arguments are fixed via ``functools.partial``), leaving the
+    first three arguments are fixed via ``functools.partial``), leaving the
     ``(spec, sink)`` signature the loop's conversation factory expects.
 
     Args:
         sandbox: The egress-pinned sandbox backend that spawns the run.
         idle_timeout_seconds: Max seconds to wait for the next event.
+        max_runtime_seconds: Total wall-clock ceiling for the run, force-ending
+            it before the per-run gateway bearer can expire.
         spec: The run parameters (task, model, endpoints, token, resume id).
         sink: The async event sink the conversation forwards events to.
 
@@ -313,4 +334,5 @@ async def build_container_conversation(
         spec=spec,
         sink=sink,
         idle_timeout_seconds=idle_timeout_seconds,
+        max_runtime_seconds=max_runtime_seconds,
     )
