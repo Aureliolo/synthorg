@@ -53,17 +53,15 @@ class DeployReleaseTool(_BaseDeployTool):
         self._actor = actor
 
     @override
-    async def _dispatch(
-        self, client: DeployApiClient, args: BaseModel
-    ) -> ToolExecutionResult:
-        """Trigger the release.
+    def _check_preconditions(self, args: BaseModel) -> None:
+        """Enforce the confirm + reason + actor triple before the gate.
+
+        Runs ahead of approval parking so an unconfirmed or unattributable
+        release is refused outright, and the stated intent is recorded
+        alongside the request the human will be asked to adjudicate.
 
         Args:
-            client: The platform client, pinned to the target.
             args: The parsed release arguments.
-
-        Returns:
-            The created deployment record.
 
         Raises:
             GuardrailViolationError: Confirm, reason, or actor missing.
@@ -81,6 +79,26 @@ class DeployReleaseTool(_BaseDeployTool):
             actor_id=str(actor.id),
             reason=reason,
         )
+
+    @override
+    async def _dispatch(
+        self, client: DeployApiClient, args: BaseModel
+    ) -> ToolExecutionResult:
+        """Trigger the release.
+
+        Args:
+            client: The platform client, pinned to the target.
+            args: The parsed release arguments.
+
+        Returns:
+            The created deployment record.
+
+        Raises:
+            DeployToolArgumentError: Arguments were not the release shape.
+        """
+        if not isinstance(args, DeployReleaseArgs):
+            msg = "deploy_release received unexpected arguments"
+            raise DeployToolArgumentError(msg)
         deployment = await client.trigger_deployment(git_ref=args.git_ref)
         return json_result(deployment.model_dump(mode="json"))
 

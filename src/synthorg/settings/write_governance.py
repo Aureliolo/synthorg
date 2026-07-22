@@ -104,6 +104,10 @@ _MCP_SANDBOX_NETWORK_KEY: Final[str] = "mcp_sandbox_network"
 _MCP_SANDBOX_CPUS_KEY: Final[str] = "mcp_sandbox_cpus"
 _CREDENTIALED_MCP_ENABLED_KEY: Final[str] = "credentialed_mcp_enabled"
 _CREDENTIALED_MCP_CAPABILITIES_KEY: Final[str] = "credentialed_mcp_capabilities"
+# Deploy reaches an external system that runs a live product, so enabling the
+# capability or adding a target widens real blast radius, not just permission.
+_DEPLOY_TOOLS_ENABLED_KEY: Final[str] = "deploy_tools_enabled"
+_DEPLOY_TOOLS_TARGETS_KEY: Final[str] = "deploy_tools_targets"
 _MCP_SANDBOX_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
     {
         _MCP_SANDBOX_ENABLED_KEY,
@@ -111,6 +115,8 @@ _MCP_SANDBOX_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
         _MCP_SANDBOX_CPUS_KEY,
         _CREDENTIALED_MCP_ENABLED_KEY,
         _CREDENTIALED_MCP_CAPABILITIES_KEY,
+        _DEPLOY_TOOLS_ENABLED_KEY,
+        _DEPLOY_TOOLS_TARGETS_KEY,
     }
 )
 _MCP_SANDBOX_ENABLED_DEFAULT: Final[str] = "true"
@@ -175,6 +181,16 @@ def _is_mcp_sandbox_weakening(key: str, *, current: str | None, new: str) -> boo
         currently_off = current is None or not compare_ci(current, "true")
         return currently_off and compare_ci(new, "true")
     if key == _CREDENTIALED_MCP_CAPABILITIES_KEY:
+        return _is_capability_widening(current, new)
+    if key == _DEPLOY_TOOLS_ENABLED_KEY:
+        # Default is "false" (off); enabling exposes a destructive,
+        # externally-reaching capability.
+        currently_off = current is None or not compare_ci(current, "true")
+        return currently_off and compare_ci(new, "true")
+    if key == _DEPLOY_TOOLS_TARGETS_KEY:
+        # Adding a target makes a real deploy destination reachable. Reuses
+        # the capability-widening set difference: the shape (comma-separated
+        # grant list, additions guarded, removals free) is identical.
         return _is_capability_widening(current, new)
     if key == _MCP_SANDBOX_ENABLED_KEY:
         currently_on = current is None or compare_ci(

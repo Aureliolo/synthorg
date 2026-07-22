@@ -64,6 +64,8 @@ def test_all_credentialed_tools_present() -> None:
         "forge_ci",
         "chat_messages",
         "chat_directory",
+        "deploy_run",
+        "deploy_release",
     }
 
 
@@ -77,7 +79,20 @@ def test_visible_tools_scopes_by_capability() -> None:
     assert visible_tool_names(capabilities=()) == frozenset()
     assert "chat_messages" in visible_tool_names(capabilities=("*",))
     assert visible_tool_names(capabilities=("*:read",)) == frozenset(
-        {"forge_repo", "forge_ci", "chat_directory"}
+        {"forge_repo", "forge_ci", "chat_directory", "deploy_run"}
+    )
+
+
+def test_deploy_read_grant_does_not_expose_the_release_tool() -> None:
+    """Observing deployments must never imply the ability to cause one."""
+    scoped = visible_tool_names(capabilities=("deploy:read",))
+    assert scoped == frozenset({"deploy_run"})
+    assert "deploy_release" not in scoped
+
+
+def test_deploy_write_grant_exposes_the_release_tool() -> None:
+    assert visible_tool_names(capabilities=("deploy:write",)) == frozenset(
+        {"deploy_release"}
     )
 
 

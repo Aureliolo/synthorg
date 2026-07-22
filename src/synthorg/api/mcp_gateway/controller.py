@@ -25,6 +25,7 @@ from synthorg.api.mcp_gateway.tools import (
 )
 from synthorg.api.state import AppState
 from synthorg.approval.state import approval_store_of
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     DomainError,
@@ -32,7 +33,9 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.normalization import extract_bearer_token
+from synthorg.core.types import NotBlankStr
 from synthorg.engine._security_factory import make_security_interceptor
+from synthorg.hr.state import HrStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.gateway import GATEWAY_DISPATCH_FAILED
@@ -218,6 +221,15 @@ async def _build_context(
             forge_read = tg.create_task(
                 resolver.get_int(_TOOLS_NS, "forge_tools_max_read_chars")
             )
+            deploy_targets = tg.create_task(
+                resolver.get_str(_TOOLS_NS, "deploy_tools_targets")
+            )
+            deploy_timeout = tg.create_task(
+                resolver.get_float(_TOOLS_NS, "deploy_tools_timeout_seconds")
+            )
+            deploy_logs = tg.create_task(
+                resolver.get_int(_TOOLS_NS, "deploy_tools_max_log_chars")
+            )
     except ExceptionGroup as eg:
         # Surface the first underlying error (e.g. a DomainError from a
         # settings read) so the caller's ``except DomainError`` mapping runs
@@ -238,10 +250,47 @@ async def _build_context(
         forge_timeout_seconds=forge_timeout.result(),
         chat_timeout_seconds=chat_timeout.result(),
         forge_max_read_chars=forge_read.result(),
+        deploy_targets=_parse_targets(deploy_targets.result()),
+        deploy_timeout_seconds=deploy_timeout.result(),
+        deploy_max_log_chars=deploy_logs.result(),
+        actor=await _resolve_actor(app_state, agent_id=agent_id),
         security_pre_check=build_security_pre_check(
             interceptor, agent_id=agent_id, task_id=task_id
         ),
     )
+
+
+def _parse_targets(raw: str) -> frozenset[str]:
+    """Parse the comma-separated deploy-target allowlist.
+
+    Args:
+        raw: The configured allowlist string.
+
+    Returns:
+        The set of non-blank target names. Empty allows nothing.
+    """
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
+async def _resolve_actor(app_state: AppState, *, agent_id: str) -> AgentIdentity | None:
+    """Resolve the calling agent's identity for the destructive-op audit.
+
+    Looked up from the registry rather than synthesised from the verified
+    claim, so a token outliving its agent record cannot deploy: the
+    destructive path's guardrail refuses a call it cannot attribute.
+
+    Args:
+        app_state: The live application state.
+        agent_id: The caller id from the verified bearer.
+
+    Returns:
+        The resolved identity, or ``None`` when no registry is wired or
+        the agent is unknown.
+    """
+    registry = app_state.slice(HrStateSlice).agent_registry
+    if registry is None:
+        return None
+    return await registry.get(NotBlankStr(agent_id))
 
 
 def _parse_capabilities(raw: str) -> tuple[str, ...]:

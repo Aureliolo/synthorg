@@ -29,6 +29,7 @@ from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import Connection, ConnectionType
 from synthorg.integrations.errors import SecretRetrievalError
+from synthorg.meta.mcp.errors import GuardrailViolationError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.security.timeout.protocol import RiskTierClassifier
@@ -196,6 +197,10 @@ class GovernedConnectionTool[
             ToolError: A connection / credential / argument / upstream
                 failure, as the family's typed leaf.
         """
+        # Preconditions run before the gate so a call that was never
+        # admissible (unconfirmed, unattributable) is refused outright
+        # rather than parking an approval for a human to adjudicate.
+        self._check_preconditions(args)
         conn = await self._resolve_connection(args)
         governed = require_governed_args(args)
         # A connection the operator marked sensitive gates every call (read
@@ -230,6 +235,20 @@ class GovernedConnectionTool[
             return await self._dispatch_guarded(client, args)
         finally:
             await self._safe_aclose(client)
+
+    def _check_preconditions(
+        self,
+        args: BaseModel,
+    ) -> None:
+        """Reject a call that is inadmissible regardless of approval.
+
+        Runs before the approval gate. Destructive families override this
+        to enforce the confirm + reason + actor triple, so a call nobody
+        could authorise never reaches a human as a parked approval.
+
+        Args:
+            args: The parsed arguments.
+        """
 
     def _action_type_for(
         self,
@@ -386,7 +405,14 @@ class GovernedConnectionTool[
             return ToolExecutionResult(
                 content=str(exc), is_error=True, metadata=metadata
             )
-        except (ToolError, GovernedApprovalMismatchError) as exc:
+        except (
+            ToolError,
+            GovernedApprovalMismatchError,
+            GuardrailViolationError,
+        ) as exc:
+            # A guardrail violation is a correctable caller error (no
+            # confirm, blank reason): surface it as a result the agent can
+            # act on rather than an exception that aborts the invoker.
             return ToolExecutionResult(content=str(exc), is_error=True)
 
 
