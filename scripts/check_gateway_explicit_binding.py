@@ -46,10 +46,15 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _gate_source import (  # type: ignore[import-not-found]
         GateSourceError,
+        direct_body_nodes,
         read_and_parse,
     )
 else:
-    from scripts._gate_source import GateSourceError, read_and_parse
+    from scripts._gate_source import (
+        GateSourceError,
+        direct_body_nodes,
+        read_and_parse,
+    )
 
 _PKG_REL: Final[str] = "src/synthorg/api/gateway"
 _SERVICE_REL: Final[str] = "service.py"
@@ -115,32 +120,6 @@ def _model_keyword(call: ast.Call) -> ast.expr | None:
     return None
 
 
-def _direct_body_nodes(
-    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef,
-) -> Iterator[ast.AST]:
-    """Yield descendants of *scope*'s executable body only.
-
-    Traverses the statements in ``scope.body`` (so a function's own decorators,
-    parameter defaults, and annotations are excluded) and stops at nested
-    ``FunctionDef`` / ``AsyncFunctionDef`` / ``Lambda`` / ``ClassDef`` so a
-    request-model alias or dispatch in one handler is never attributed to
-    another.
-
-    Yields:
-        Each descendant node belonging to *scope*'s own executable body.
-    """
-    stack: list[ast.AST] = []
-    stack.extend(scope.body)
-    while stack:
-        node = stack.pop()
-        yield node
-        if isinstance(
-            node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.ClassDef
-        ):
-            continue
-        stack.extend(ast.iter_child_nodes(node))
-
-
 def _iter_scopes(
     tree: ast.Module,
 ) -> Iterator[ast.Module | ast.FunctionDef | ast.AsyncFunctionDef]:
@@ -181,7 +160,7 @@ def _aliased_names(
         The alias identifiers bound in *scope*'s own body.
     """
     names: set[str] = set()
-    for node in _direct_body_nodes(scope):
+    for node in direct_body_nodes(scope):
         if isinstance(node, ast.Assign) and predicate(node.value):
             names.update(t.id for t in node.targets if isinstance(t, ast.Name))
         elif (
@@ -237,7 +216,7 @@ def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
     # request-model alias bound in one handler cannot satisfy a call in another.
     for scope in _iter_scopes(tree):
         aliases = _aliased_names(scope, _is_request_model)
-        for node in _direct_body_nodes(scope):
+        for node in direct_body_nodes(scope):
             if not isinstance(node, ast.Call) or not isinstance(
                 node.func, ast.Attribute
             ):
@@ -353,7 +332,7 @@ def _dispatch_binds_bound_model(tree: ast.Module) -> bool:
     """
     for scope in _iter_scopes(tree):
         bound = _aliased_names(scope, _is_bound_model_attr)
-        for node in _direct_body_nodes(scope):
+        for node in direct_body_nodes(scope):
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)

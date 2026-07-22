@@ -34,7 +34,6 @@ import argparse
 import ast
 import re
 import sys
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Final
 
@@ -42,10 +41,15 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _gate_source import (  # type: ignore[import-not-found]
         GateSourceError,
+        direct_body_nodes,
         read_and_parse,
     )
 else:
-    from scripts._gate_source import GateSourceError, read_and_parse
+    from scripts._gate_source import (
+        GateSourceError,
+        direct_body_nodes,
+        read_and_parse,
+    )
 
 _TOOLS_REL: Final[str] = "src/synthorg/api/mcp_gateway/tools.py"
 _INVOKE_FN: Final[str] = "invoke_credentialed_tool"
@@ -63,32 +67,6 @@ _FENCE_CALL: Final[str] = "wrap_untrusted"
 _RESULT_TAG: Final[str] = "TAG_TOOL_RESULT"
 
 
-def _direct_body_nodes(
-    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef,
-) -> Iterator[ast.AST]:
-    """Yield descendants of *scope*'s executable body only.
-
-    Traverses the statements in ``scope.body`` (so the function's own
-    decorators, parameter defaults, and annotations are excluded) and stops at
-    nested ``FunctionDef`` / ``AsyncFunctionDef`` / ``Lambda`` / ``ClassDef`` --
-    a governed call or fence buried in a signature expression or an inner helper
-    must not be credited to the outer function the gate is inspecting.
-
-    Yields:
-        Each descendant node belonging to *scope*'s own executable body.
-    """
-    stack: list[ast.AST] = []
-    stack.extend(scope.body)
-    while stack:
-        node = stack.pop()
-        yield node
-        if isinstance(
-            node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.ClassDef
-        ):
-            continue
-        stack.extend(ast.iter_child_nodes(node))
-
-
 def _called_names(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
     """Return the set of function/method names called directly within *fn*.
 
@@ -97,7 +75,7 @@ def _called_names(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
         body, excluding calls inside nested definition scopes.
     """
     names: set[str] = set()
-    for node in _direct_body_nodes(fn):
+    for node in direct_body_nodes(fn):
         if not isinstance(node, ast.Call):
             continue
         if isinstance(node.func, ast.Name):
@@ -159,7 +137,7 @@ def _fences_with_result_tag(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     Returns:
         ``True`` when a correctly-tagged fence call is present.
     """
-    for node in _direct_body_nodes(fn):
+    for node in direct_body_nodes(fn):
         if not isinstance(node, ast.Call):
             continue
         func = node.func

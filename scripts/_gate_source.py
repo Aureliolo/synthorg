@@ -22,6 +22,7 @@ Usage in a gate::
 """
 
 import ast
+from collections.abc import Iterator
 from pathlib import Path
 
 
@@ -88,3 +89,33 @@ def parse_source(path: Path) -> ast.Module:
     """
     _, tree = read_and_parse(path)
     return tree
+
+
+def direct_body_nodes(
+    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef,
+) -> Iterator[ast.AST]:
+    """Yield descendants of *scope*'s executable body only.
+
+    Traverses the statements in ``scope.body`` (so a function's own decorators,
+    parameter defaults, and annotations are excluded) and stops at nested
+    ``FunctionDef`` / ``AsyncFunctionDef`` / ``Lambda`` / ``ClassDef`` -- a node
+    buried in a signature expression or an inner helper must not be attributed
+    to the outer scope a gate is inspecting. Shared by the AST gates so their
+    scope-boundary behaviour cannot drift apart.
+
+    Args:
+        scope: The module or function whose own body should be walked.
+
+    Yields:
+        Each descendant node belonging to *scope*'s own executable body.
+    """
+    stack: list[ast.AST] = []
+    stack.extend(scope.body)
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(
+            node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.ClassDef
+        ):
+            continue
+        stack.extend(ast.iter_child_nodes(node))
