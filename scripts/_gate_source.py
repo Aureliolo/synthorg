@@ -22,7 +22,7 @@ Usage in a gate::
 """
 
 import ast
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 
@@ -119,3 +119,42 @@ def direct_body_nodes(
         ):
             continue
         stack.extend(ast.iter_child_nodes(node))
+
+
+def reaching_alias_names(
+    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef,
+    predicate: Callable[[ast.expr | None], bool],
+) -> frozenset[str]:
+    """Return names singly and unconditionally bound to a matching value.
+
+    A conservative reaching-definition approximation for the AST gates: a name
+    is trusted only when it is assigned exactly once in the scope (counting every
+    store -- reassignments, loop / with / walrus targets included) AND that one
+    assignment is a top-level statement of the scope body whose value satisfies
+    *predicate*. A reassigned or conditionally-assigned name is rejected, so an
+    alias is never trusted on a control-flow path where it may no longer hold the
+    matching value (e.g. ``x = fence; x = raw; return x``).
+
+    Args:
+        scope: The module or function whose own body binds the aliases.
+        predicate: Matches the value expression a trusted alias must be bound to.
+
+    Returns:
+        The trusted alias identifiers.
+    """
+    store_counts: dict[str, int] = {}
+    for node in direct_body_nodes(scope):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            store_counts[node.id] = store_counts.get(node.id, 0) + 1
+    trusted: set[str] = set()
+    for stmt in scope.body:
+        if isinstance(stmt, ast.Assign) and predicate(stmt.value):
+            trusted.update(t.id for t in stmt.targets if isinstance(t, ast.Name))
+        elif (
+            isinstance(stmt, ast.AnnAssign)
+            and isinstance(stmt.target, ast.Name)
+            and stmt.value is not None
+            and predicate(stmt.value)
+        ):
+            trusted.add(stmt.target.id)
+    return frozenset(name for name in trusted if store_counts.get(name, 0) == 1)

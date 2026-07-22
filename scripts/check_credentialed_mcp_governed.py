@@ -43,12 +43,14 @@ if __package__ in {None, ""}:
     from _gate_source import (  # type: ignore[import-not-found]
         GateSourceError,
         direct_body_nodes,
+        reaching_alias_names,
         read_and_parse,
     )
 else:
     from scripts._gate_source import (
         GateSourceError,
         direct_body_nodes,
+        reaching_alias_names,
         read_and_parse,
     )
 
@@ -160,41 +162,20 @@ def _is_alias(node: ast.expr | None, aliases: frozenset[str]) -> bool:
     return isinstance(node, ast.Name) and node.id in aliases
 
 
-def _fence_alias_names(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
-    """Return names in *fn* bound to a result-tag fence call.
-
-    Tracks ``x = wrap_untrusted(TAG_TOOL_RESULT, ...)`` so a ``return x`` still
-    counts as returning the fenced result.
-
-    Returns:
-        The fence-carrying identifiers local to *fn*'s body.
-    """
-    names: set[str] = set()
-    for node in direct_body_nodes(fn):
-        if isinstance(node, ast.Assign) and _is_result_fence_call(node.value):
-            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
-        elif (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and _is_result_fence_call(node.value)
-        ):
-            names.add(node.target.id)
-    return frozenset(names)
-
-
 def _returns_fenced_result(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """Whether every ``return`` in *fn* yields a ``TAG_TOOL_RESULT`` fence.
 
     Ties the SEC-1 boundary to the value the invoke path actually returns: each
     return must be a ``wrap_untrusted(TAG_TOOL_RESULT, ...)`` call (directly or
-    via a scope-local alias), so a stray fence call elsewhere cannot satisfy the
-    gate while an unfenced value is returned. A body with no return statement
-    (nothing fenced) fails.
+    via a singly-unconditionally-assigned alias), so neither a stray fence call
+    elsewhere nor a fence alias that was later reassigned to a raw value can
+    satisfy the gate while an unfenced value is returned. A body with no return
+    statement (nothing fenced) fails.
 
     Returns:
         ``True`` when the returned result is fenced on every return path.
     """
-    aliases = _fence_alias_names(fn)
+    aliases = reaching_alias_names(fn, _is_result_fence_call)
     returns = [n for n in direct_body_nodes(fn) if isinstance(n, ast.Return)]
     if not returns:
         return False

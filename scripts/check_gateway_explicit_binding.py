@@ -39,7 +39,7 @@ import argparse
 import ast
 import re
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Final
 
@@ -48,12 +48,14 @@ if __package__ in {None, ""}:
     from _gate_source import (  # type: ignore[import-not-found]
         GateSourceError,
         direct_body_nodes,
+        reaching_alias_names,
         read_and_parse,
     )
 else:
     from scripts._gate_source import (
         GateSourceError,
         direct_body_nodes,
+        reaching_alias_names,
         read_and_parse,
     )
 
@@ -147,32 +149,6 @@ def _is_alias(node: ast.expr | None, aliases: frozenset[str]) -> bool:
     return isinstance(node, ast.Name) and node.id in aliases
 
 
-def _aliased_names(
-    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef,
-    predicate: Callable[[ast.expr | None], bool],
-) -> frozenset[str]:
-    """Return names in *scope* assigned from a value matching *predicate*.
-
-    Tracks ``x = <expr>`` and ``x: T = <expr>`` so a later use of ``x`` is
-    screened like a direct read of ``<expr>``. Scope-local only; nested
-    definitions are separate scopes.
-
-    Returns:
-        The alias identifiers bound in *scope*'s own body.
-    """
-    names: set[str] = set()
-    for node in direct_body_nodes(scope):
-        if isinstance(node, ast.Assign) and predicate(node.value):
-            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
-        elif (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and predicate(node.value)
-        ):
-            names.add(node.target.id)
-    return frozenset(names)
-
-
 def _binds_request_model(
     arg: ast.expr | None, kw: ast.expr | None, aliases: frozenset[str]
 ) -> bool:
@@ -216,7 +192,7 @@ def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
     # Provider lookups and dispatches are screened per lexical scope so a
     # request-model alias bound in one handler cannot satisfy a call in another.
     for scope in _iter_scopes(tree):
-        aliases = _aliased_names(scope, _is_request_model)
+        aliases = reaching_alias_names(scope, _is_request_model)
         for node in direct_body_nodes(scope):
             if not isinstance(node, ast.Call) or not isinstance(
                 node.func, ast.Attribute
@@ -331,7 +307,7 @@ def _dispatch_calls(tree: ast.Module) -> list[tuple[ast.Call, frozenset[str]]]:
     """
     calls: list[tuple[ast.Call, frozenset[str]]] = []
     for scope in _iter_scopes(tree):
-        bound = _aliased_names(scope, _is_bound_model_attr)
+        bound = reaching_alias_names(scope, _is_bound_model_attr)
         calls.extend(
             (node, bound)
             for node in direct_body_nodes(scope)
@@ -424,18 +400,13 @@ def _provider_carrier_names(
     Returns:
         The identifiers bound to the claims provider across the module.
     """
+
+    def _reads_claims_provider(value: ast.expr | None) -> bool:
+        return _is_claims_provider(value, claims_names)
+
     carriers: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and _is_claims_provider(
-            node.value, claims_names
-        ):
-            carriers.update(t.id for t in node.targets if isinstance(t, ast.Name))
-        elif (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and _is_claims_provider(node.value, claims_names)
-        ):
-            carriers.add(node.target.id)
+    for scope in _iter_scopes(tree):
+        carriers.update(reaching_alias_names(scope, _reads_claims_provider))
     funcs = {
         f.name: f
         for f in ast.walk(tree)
