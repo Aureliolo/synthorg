@@ -33,6 +33,7 @@ class RunMetrics(BaseModel):
     output_tokens: int = Field(ge=0)
     total_tool_calls: int = Field(ge=0)
     tool_call_names: tuple[str, ...] = Field(default=())
+    repeated_tool_calls: int = Field(ge=0)
     provider_retries: int = Field(ge=0)
     cache_hits: int = Field(ge=0)
     replans_used: int = Field(ge=0)
@@ -90,6 +91,10 @@ def run_metrics(result: ExecutionResult, *, duration_seconds: float) -> RunMetri
     tool_call_names: tuple[str, ...] = tuple(
         name for turn in turns for name in turn.tool_calls_made
     )
+    # Excess duplicates only: a fingerprint seen three times contributes two.
+    # Same measure the stagnation detector applies, so "thrash" means the same
+    # thing here as it does inside the loops.
+    fingerprints = [fp for turn in turns for fp in turn.tool_call_fingerprints]
     return RunMetrics(
         total_turns=len(turns),
         duration_seconds=duration_seconds,
@@ -97,6 +102,7 @@ def run_metrics(result: ExecutionResult, *, duration_seconds: float) -> RunMetri
         output_tokens=sum(turn.output_tokens for turn in turns),
         total_tool_calls=len(tool_call_names),
         tool_call_names=tool_call_names,
+        repeated_tool_calls=len(fingerprints) - len(set(fingerprints)),
         # ``retry_count`` / ``cache_hit`` are ``None`` when the provider did not
         # measure them, which counts the same as "did not happen" for the rubric.
         provider_retries=sum(turn.retry_count or 0 for turn in turns),

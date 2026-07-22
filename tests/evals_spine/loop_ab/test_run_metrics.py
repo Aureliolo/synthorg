@@ -43,6 +43,7 @@ def _turn(  # noqa: PLR0913 -- orthogonal per-turn knobs the rubric reads
     input_tokens: int = 10,
     output_tokens: int = 5,
     tools: tuple[str, ...] = (),
+    fingerprints: tuple[str, ...] = (),
     retry_count: int = 0,
     cache_hit: bool = False,
 ) -> TurnRecord:
@@ -53,6 +54,7 @@ def _turn(  # noqa: PLR0913 -- orthogonal per-turn knobs the rubric reads
         output_tokens=output_tokens,
         cost=0.01,
         tool_calls_made=tools,
+        tool_call_fingerprints=fingerprints,
         finish_reason=FinishReason.STOP,
         retry_count=retry_count,
         cache_hit=cache_hit,
@@ -128,6 +130,32 @@ def test_provider_retries_and_cache_hits_are_counted() -> None:
     assert metrics.cache_hits == 2
 
 
+def test_repeated_tool_calls_count_only_the_excess() -> None:
+    """Thrash is re-issuing the *same* call, so only duplicates beyond the first count.
+
+    Same measure the stagnation detector uses: a fingerprint seen three times
+    contributes two, and a run of all-distinct calls contributes nothing.
+    """
+    result = _result(
+        turns=(
+            _turn(1, fingerprints=("read:aaa", "edit:bbb")),
+            _turn(2, fingerprints=("read:aaa",)),
+            _turn(3, fingerprints=("read:aaa", "shell:ccc")),
+        )
+    )
+
+    assert run_metrics(result, duration_seconds=1.0).repeated_tool_calls == 2
+
+
+def test_distinct_tool_calls_are_not_counted_as_thrash() -> None:
+    """A loop making many different calls is working, not thrashing."""
+    result = _result(
+        turns=(_turn(1, fingerprints=("read:aaa", "edit:bbb", "shell:ccc")),)
+    )
+
+    assert run_metrics(result, duration_seconds=1.0).repeated_tool_calls == 0
+
+
 def test_replans_are_read_from_loop_metadata() -> None:
     """plan_execute and hybrid stash their replan count in result metadata."""
     result = _result(turns=(_turn(1),), metadata={"replans_used": 2})
@@ -166,6 +194,7 @@ def test_a_run_with_no_turns_projects_to_zeroes() -> None:
         output_tokens=0,
         total_tool_calls=0,
         tool_call_names=(),
+        repeated_tool_calls=0,
         provider_retries=0,
         cache_hits=0,
         replans_used=0,
