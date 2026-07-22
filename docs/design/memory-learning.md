@@ -217,7 +217,8 @@ keyed on the project id, and a restart mid-capture is caught, best-effort, by an
 org-memory backstop that skips a project already carrying its `objective:` tag.
 That backstop only sees retros that wrote an org learning: a retrospective with
 only per-agent learnings writes no org fact, so a restart in the narrow window
-before its writes land could re-run it (the org write gate still dedups, and a
+before its writes land could re-run it (the org write gate still de-duplicates,
+and a
 repeat per-agent `EPISODIC` entry is low-harm). A durable per-objective capture
 record for a strict exactly-once guarantee is a tracked follow-up. Because the
 rollup is a best-effort, bounded-queue observer, capture runs **detached** on a
