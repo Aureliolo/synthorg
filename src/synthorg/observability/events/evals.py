@@ -19,3 +19,4 @@ EVALS_PURPOSE_INVOKED_FIELD_MISSING: Final[str] = (
 EVALS_SUITE_RUN_START: Final[str] = "evals.suite.run_start"
 EVALS_SUITE_RUN_COMPLETE: Final[str] = "evals.suite.run_complete"
 EVALS_BENCHMARK_SCORE_RECORDED: Final[str] = "evals.benchmark.score_recorded"
+EVALS_WORKSPACE_SEEDED: Final[str] = "evals.workspace.seeded"

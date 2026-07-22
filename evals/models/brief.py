@@ -14,6 +14,7 @@ Two kinds:
 """
 
 from enum import StrEnum
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -56,6 +57,10 @@ RUBRIC_WEIGHT_TARGET: Final[float] = 1.0
 # place to tune the suite-wide default.
 DEFAULT_HIDDEN_CHECK_TIMEOUT_SECONDS: Final[int] = 30
 
+# Path segment denoting a parent directory. Refused inside an authored
+# workspace seed path so a brief cannot reach outside its own suite.
+_PARENT_SEGMENT: Final[str] = ".."
+
 
 class BriefKind(StrEnum):
     """Discriminator between executable, judged, and research briefs."""
@@ -80,6 +85,43 @@ class ArtifactSpec(BaseModel):
 
     kind: Literal["file", "dir", "report", "diff"]
     path: NotBlankStr
+
+
+class WorkspaceSpec(BaseModel):
+    """Seed fixture for a workspace-graded executable brief.
+
+    An ordinary executable brief grades a text deliverable materialised into
+    files by the runner. A workspace-graded brief instead hands the execution
+    loop a real writable directory copied from ``seed_dir`` and lets the loop
+    write the files itself; the brief's checks then run against whatever the
+    loop actually produced. That is what makes one loop's work distinguishable
+    from another's.
+
+    ``seed_dir`` is authored in YAML and joined onto the suite root, so it is
+    constrained here to a relative path with no parent-directory segment.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    seed_dir: NotBlankStr
+
+    @model_validator(mode="after")
+    def _seed_dir_stays_inside_the_suite(self) -> Self:
+        """Refuse an absolute seed path or one carrying a ``..`` segment."""
+        raw = self.seed_dir
+        if raw.startswith(("/", "\\")) or PureWindowsPath(raw).drive:
+            msg = (
+                f"WorkspaceSpec.seed_dir={raw!r} must be a relative path "
+                "inside the brief suite"
+            )
+            raise ValueError(msg)
+        if _PARENT_SEGMENT in PurePosixPath(raw.replace("\\", "/")).parts:
+            msg = (
+                f"WorkspaceSpec.seed_dir={raw!r} contains a parent-directory "
+                "segment; the seed fixture must live inside the brief suite"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class LimitsSpec(BaseModel):
@@ -234,6 +276,7 @@ class Brief(BaseModel):
     checks: ExecutableChecks | None = None
     rubric: JudgedRubric | None = None
     research_spec: ResearchBriefSpec | None = None
+    workspace: WorkspaceSpec | None = None
 
     def _require(self, *, present: object, name: str) -> None:
         """Raise when a required per-kind payload block is missing."""
@@ -264,10 +307,12 @@ class Brief(BaseModel):
             self._require(present=self.rubric, name="rubric")
             self._forbid(present=self.checks, name="checks")
             self._forbid(present=self.research_spec, name="research_spec")
+            self._forbid(present=self.workspace, name="workspace")
         else:
             self._require(present=self.research_spec, name="research_spec")
             self._forbid(present=self.checks, name="checks")
             self._forbid(present=self.rubric, name="rubric")
+            self._forbid(present=self.workspace, name="workspace")
         return self
 
 
@@ -289,4 +334,5 @@ __all__ = [
     "ResearchBriefSpec",
     "RubricDimension",
     "RubricGradeType",
+    "WorkspaceSpec",
 ]

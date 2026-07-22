@@ -113,6 +113,33 @@ class BriefExecutionError(EvalError):
     default_message: ClassVar[str] = "Brief execution failed to produce a result"
 
 
+class WorkspaceSpecMissingError(EvalError):
+    """Raised when a workspace operation is asked for a brief with no workspace."""
+
+    default_message: ClassVar[str] = "Brief does not declare a workspace block"
+
+
+class WorkspaceSeedNotFoundError(EvalError):
+    """Raised when a brief's seed fixture directory does not exist.
+
+    Seeding an empty workspace would silently hand every loop a blank slate
+    and grade them all at zero, which reads as a measured result rather than
+    a broken harness. Fail closed instead.
+    """
+
+    default_message: ClassVar[str] = "Brief workspace seed fixture not found"
+
+
+class WorkspacePathEscapeError(EvalError):
+    """Raised when a resolved workspace path escapes its containing root.
+
+    ``brief_id`` and ``seed_dir`` both arrive from authored YAML, so every
+    path built from them is re-checked after resolution rather than trusted.
+    """
+
+    default_message: ClassVar[str] = "Workspace path escapes its root directory"
+
+
 class ResearchBriefUnsupportedError(EvalError):
     """Raised when a research brief is run without a research-mode integration.
 
@@ -141,4 +168,7 @@ __all__ = [
     "JudgeAnchorSetTooSmallError",
     "JudgeCalibrationFailedError",
     "ResearchBriefUnsupportedError",
+    "WorkspacePathEscapeError",
+    "WorkspaceSeedNotFoundError",
+    "WorkspaceSpecMissingError",
 ]
