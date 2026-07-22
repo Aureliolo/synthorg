@@ -30,7 +30,8 @@ the work itself, and the brief's `checks` grade whatever it actually left on
 disk via the existing `evals.scoring.executable.grade_executable`.
 
 Recreating rather than reusing the workspace is the fair-comparison invariant
-the whole scoreboard rests on: were a loop able to inherit another's artifacts,
+the whole scoreboard rests on: were a loop able to inherit artifacts left by an
+earlier run,
 the acceptance grade would measure run order rather than the loop.
 
 Acceptance is inline. Every hidden check asserts against the produced code
@@ -77,7 +78,7 @@ appears, broken down per `(provider, model)` from the gateway's cost ledger,
 because that is the authoritative figure and an organisation running several
 providers needs to see which one the spend came from.
 
-Cost, latency and turns are unbounded and lower-is-better, so each is scored
+Cost, latency, and turns are unbounded and lower-is-better, so each is scored
 relative to the best performer in the same `(brief, tier)` cell. That keeps the
 composite comparable across briefs of very different sizes.
 
