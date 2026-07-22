@@ -778,3 +778,139 @@ _r.register(
         max_value=300.0,
     )
 )
+
+# ── Credentialed-tool MCP server (harness boundary) ──────────────
+# Exposes the governed forge / chat tools as an MCP server an embedded
+# coding harness (OpenHands) consumes. Tool execution + credential
+# brokering + the connection approval gate all run host-side, so
+# credentials never enter the sandbox. Reuses the forge_tools_* /
+# chat_tools_* connection + timeout settings above.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="credentialed_mcp_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Enable the credentialed-tool MCP server so an embedded harness can"
+            " call the governed forge / chat tools over MCP. Off by default."
+            " Enabling exposes credentialed actions to the harness, so the"
+            " deliberate confirm+reason+actor guardrail applies to the enable"
+            " transition. Re-read live per request; the connection approval"
+            " gate still parks every write."
+        ),
+        group="Credentialed MCP",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="credentialed_mcp_capabilities",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Comma-separated capability patterns the harness is granted on the"
+            " credentialed-tool MCP server (e.g. 'forge:read,chat:read'; '*' for"
+            " everything). Empty grants nothing (secure default): the harness"
+            " sees no credentialed tools until an operator opts in. Patterns"
+            " follow the MCP scoper form domain:action with '*' wildcards."
+        ),
+        group="Credentialed MCP",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="credentialed_mcp_base_url",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Sandbox-reachable base URL of the credentialed-tool MCP server the"
+            " embedded harness connects to. Point it at the mounted"
+            " mcp-gateway route, e.g."
+            " 'http://host.internal:8000/api/v1/mcp-gateway' (the runtime"
+            " appends '/mcp'). Empty leaves the OpenHands loop unavailable: it"
+            " fails loud when selected rather than reaching an unset endpoint."
+            " Set together with providers.gateway_base_url."
+        ),
+        group="Credentialed MCP",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+# ── OpenHands sandbox image + run behaviour ──────────────────────
+# The image bundles openhands-sdk + openhands-tools (never the main
+# venv). Egress from the container is pinned by the sandbox sidecar to
+# exactly the gateway + credentialed-MCP hosts.
+
+_r.register(
+    # lint-allow: restart-required -- the OpenHands image ref is resolved once
+    # at boot (DB > env > default) into the sandbox image-resolution cache and
+    # read_only_post_init; a dedicated DockerSandbox is built from it at wiring
+    # time, so a mid-run DB write would silently drift from the image in use.
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="openhands_image",
+        type=SettingType.STRING,
+        default=f"ghcr.io/aureliolo/synthorg-openhands:v{__version__}",
+        description=(
+            "Docker image used for OpenHands loop containers (bundles"
+            " openhands-sdk + openhands-tools). Resolution precedence at"
+            " backend startup: DB override > ``SYNTHORG_OPENHANDS_IMAGE`` env"
+            " var > registered code default. The CLI injects a digest-pinned"
+            " reference via the env var. Read once at startup;"
+            " ``read_only_post_init`` keeps later DB writes from drifting from"
+            " the resolved value used at boot."
+        ),
+        group="OpenHands",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_OPENHANDS_IMAGE",
+        validator_pattern=r"^[a-zA-Z0-9][\w.\-/:@]*$",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="openhands_idle_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="600.0",
+        description=(
+            "Maximum wall-clock time the host waits for the next event from an"
+            " OpenHands run container before treating the run as hung and"
+            " tearing it down. Read at loop-config build time."
+        ),
+        group="OpenHands",
+        level=SettingLevel.ADVANCED,
+        min_value=30.0,
+        max_value=3600.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="openhands_max_runtime_seconds",
+        type=SettingType.FLOAT,
+        default="86400.0",
+        description=(
+            "Total wall-clock ceiling for a single OpenHands run (default 24"
+            " hours). Unlike the idle timeout (which resets on every event),"
+            " this bounds the whole run so it is force-ended before the per-run"
+            " gateway bearer can expire. Keep it below"
+            " providers.gateway_token_ttl_seconds so the bearer never expires"
+            " mid-run. Read at loop-wiring time."
+        ),
+        group="OpenHands",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=604800.0,
+    )
+)

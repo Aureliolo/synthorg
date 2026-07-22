@@ -19,6 +19,7 @@ would always see the not-yet-wired state.
 """
 
 from synthorg.a2a.state import A2aStateSlice
+from synthorg.api.gateway.state import GatewayStateSlice
 from synthorg.api.state import AppState
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
@@ -32,6 +33,37 @@ def _integrations_enabled(app_state: AppState) -> bool:
         ``True`` when ``integrations.enabled`` is set in the resolved config.
     """
     return app_state.config.integrations.enabled
+
+
+def gateway_controller_ready(app_state: AppState) -> bool:
+    """Mount the LLM gateway controller when its pipeline is wired.
+
+    The gateway is built unconditionally at construction (before route
+    assembly), so the predicate observes the wired service. The
+    ``providers.gateway_enabled`` setting gates behaviour per request, so the
+    route stays mounted and returns 503 while disabled rather than 404.
+
+    Returns:
+        ``True`` when the gateway service is wired.
+    """
+    return app_state.slice(GatewayStateSlice).service is not None
+
+
+def credentialed_mcp_controller_ready(app_state: AppState) -> bool:
+    """Mount the credentialed-tool MCP controller when its deps are wired.
+
+    Needs the gateway signer (for bearer verification) and the connection
+    catalog (for credential brokering). The ``tools.credentialed_mcp_enabled``
+    setting gates behaviour per request, so the route stays mounted and 503s
+    while disabled rather than 404.
+
+    Returns:
+        ``True`` when the gateway signer and connection catalog are wired.
+    """
+    return (
+        app_state.slice(GatewayStateSlice).signer is not None
+        and app_state.slice(IntegrationsStateSlice).connection_catalog is not None
+    )
 
 
 def connections_controller_ready(app_state: AppState) -> bool:

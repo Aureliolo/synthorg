@@ -17,6 +17,7 @@ from synthorg.engine.loop_protocol import (
 )
 from synthorg.engine.prompt_safety import (
     ALL_FENCE_TAGS,
+    INJECTION_HEURISTICS,
     TAG_BRAIN_STATE,
     TAG_CODE_DIFF,
     TAG_CONFIG_VALUE,
@@ -105,10 +106,10 @@ if _MISSING_FENCE_TAGS:
     raise ValueError(_msg)
 
 _INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
-    re.compile(r"ignore\s+(all|previous|prior)\s+instructions?", re.IGNORECASE),
-    re.compile(r"disregard\s+(all|previous|prior)", re.IGNORECASE),
-    re.compile(r"you\s+are\s+now", re.IGNORECASE),
-    re.compile(r"system\s*:\s*you", re.IGNORECASE),
+    # Shared "override the system prompt" heuristics (single source in
+    # prompt_safety) plus per-tag closing-fence breakout patterns local to
+    # tool-result wrapping.
+    *INJECTION_HEURISTICS,
     *tuple(
         re.compile(rf"</{re.escape(tag)}\s*>", re.IGNORECASE) for tag in _FENCE_TAGS
     ),

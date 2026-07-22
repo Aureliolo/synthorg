@@ -55,6 +55,10 @@ if TYPE_CHECKING:
     from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.loop_selector import AutoLoopConfig
     from synthorg.engine.mcp_self_consumer import MCPSelfConsumerProvider
+    from synthorg.engine.openhands.config import (
+        OpenHandsLoopConfig,
+        OpenHandsLoopDeps,
+    )
     from synthorg.engine.plan_models import PlanExecuteConfig
     from synthorg.engine.quality.classifier import StepQualityClassifier
     from synthorg.engine.stagnation.protocol import StagnationDetector
@@ -109,6 +113,8 @@ class AgentEngineFactoriesMixin:
     _auto_loop_config: AutoLoopConfig | None
     _loop: ExecutionLoop
     _hybrid_loop_config: HybridLoopConfig | None
+    _openhands_loop_config: OpenHandsLoopConfig | None
+    _openhands_loop_deps: OpenHandsLoopDeps | None
     _plan_execute_config: PlanExecuteConfig | None
     _memory_injection_strategy: MemoryInjectionStrategy | None
     _ontology_injection_strategy: OntologyInjectionStrategy | None
@@ -283,6 +289,8 @@ class AgentEngineFactoriesMixin:
             compaction_callback=self._compaction_callback,
             plan_execute_config=self._plan_execute_config,
             hybrid_loop_config=self._hybrid_loop_config,
+            openhands_loop_config=self._openhands_loop_config,
+            openhands_loop_deps=self._openhands_loop_deps,
             steering_inbox=self._steering_inbox,
             step_classifier=self._step_classifier,
         )

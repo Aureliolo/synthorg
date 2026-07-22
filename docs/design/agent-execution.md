@@ -162,6 +162,30 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     | **Weaknesses** | Most complex to implement. Plan granularity needs tuning per task type. |
     | **Best for** | Complex tasks, multi-file refactoring, tasks requiring both planning and adaptivity. |
 
+=== "Loop 4: OpenHands (embedded harness)"
+
+    A selectable fourth loop that runs the best-in-class open OpenHands coder
+    as the inner loop, so it can be A/B'd end to end against the native
+    loops and the winner promoted. It satisfies the same `ExecutionLoop`
+    protocol (`get_loop_type() -> "openhands"`) and honours the same
+    budget / shutdown / cancellation checkers and the NO_OP rule at turn
+    boundaries. It reaches models only through the [LLM gateway](llm-gateway.md)
+    and credentialed tools only through the [credentialed-MCP](credentialed-mcp.md)
+    boundary; the harness runs to completion in-sandbox, driven over the
+    container's stdin/stdout (no in-container server), with `openhands-sdk`
+    bundled only in the sandbox image. See the
+    [OpenHands loop](openhands-loop.md) page.
+
+    ```yaml
+    execution_loop: "openhands"
+    ```
+
+    | | |
+    |---|---|
+    | **Strengths** | Best-in-class open coder; provider-agnostic and governed at the gateway + credentialed-MCP boundaries; task-level resume via its own event log. |
+    | **Weaknesses** | Needs the sandbox image + the two boundaries provisioned; unavailable (fails loud) otherwise. |
+    | **Best for** | End-to-end A/B against the native loops; heavy autonomous coding once promoted. |
+
 !!! tip "Auto-selection"
     When `execution_loop: "auto"`, the framework selects the loop via three
     layers:

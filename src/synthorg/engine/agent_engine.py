@@ -114,6 +114,10 @@ if TYPE_CHECKING:
     )
     from synthorg.engine.mcp_self_consumer import MCPSelfConsumerProvider
     from synthorg.engine.middleware.protocol import AgentMiddlewareChain
+    from synthorg.engine.openhands.config import (
+        OpenHandsLoopConfig,
+        OpenHandsLoopDeps,
+    )
     from synthorg.engine.plan_models import PlanExecuteConfig
     from synthorg.engine.prompt import SystemPrompt
     from synthorg.engine.quality.classifier import StepQualityClassifier
@@ -227,6 +231,8 @@ class AgentEngine(
         steering_inbox: SteeringInbox | None = None,
         auto_loop_config: AutoLoopConfig | None = None,
         hybrid_loop_config: HybridLoopConfig | None = None,
+        openhands_loop_config: OpenHandsLoopConfig | None = None,
+        openhands_loop_deps: OpenHandsLoopDeps | None = None,
         compaction_callback: CompactionCallback | None = None,
         plan_execute_config: PlanExecuteConfig | None = None,
         provider_registry: ProviderRegistry | None = None,
@@ -313,6 +319,8 @@ class AgentEngine(
         self._steering_inbox = steering_inbox
         self._auto_loop_config = auto_loop_config
         self._hybrid_loop_config = hybrid_loop_config
+        self._openhands_loop_config = openhands_loop_config
+        self._openhands_loop_deps = openhands_loop_deps
         self._compaction_callback = compaction_callback
         self._plan_execute_config = plan_execute_config
         self._approval_gate = self._make_approval_gate()
@@ -432,6 +440,7 @@ class AgentEngine(
             has_compaction_callback=self._compaction_callback is not None,
             has_plan_execute_config=self._plan_execute_config is not None,
             has_hybrid_loop_config=self._hybrid_loop_config is not None,
+            has_openhands_loop_deps=self._openhands_loop_deps is not None,
             has_personality_trim_notifier=self._personality_trim_notifier is not None,
             has_sub_agent_runner=self._sub_agent_runner is not None,
         )

@@ -38,6 +38,13 @@ _SECURITY_NS: Final[str] = SettingNamespace.SECURITY.value
 _ENGINE_NS: Final[str] = SettingNamespace.ENGINE.value
 _TOOLS_NS: Final[str] = SettingNamespace.TOOLS.value
 _OUTPUT_STYLE_NS: Final[str] = SettingNamespace.OUTPUT_STYLE.value
+_PROVIDERS_NS: Final[str] = SettingNamespace.PROVIDERS.value
+
+# Enabling the LLM gateway opens an OpenAI-compatible egress path that lets an
+# embedded harness make provider calls, so the ``false -> true`` transition is
+# the weakening direction and routes through the deliberate guardrail; disabling
+# it (closing the egress) tightens and is unguarded.
+_GATEWAY_ENABLED_KEY: Final[str] = "gateway_enabled"
 
 # Output-style keys whose change relaxes the running guardrail: disabling the
 # whole policy, switching every rule to shadow (surface but never block), adding
@@ -95,11 +102,15 @@ _ENGINE_ORACLE_ENABLED_DEFAULT: Final[str] = "true"
 _MCP_SANDBOX_ENABLED_KEY: Final[str] = "mcp_sandbox_enabled"
 _MCP_SANDBOX_NETWORK_KEY: Final[str] = "mcp_sandbox_network"
 _MCP_SANDBOX_CPUS_KEY: Final[str] = "mcp_sandbox_cpus"
+_CREDENTIALED_MCP_ENABLED_KEY: Final[str] = "credentialed_mcp_enabled"
+_CREDENTIALED_MCP_CAPABILITIES_KEY: Final[str] = "credentialed_mcp_capabilities"
 _MCP_SANDBOX_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
     {
         _MCP_SANDBOX_ENABLED_KEY,
         _MCP_SANDBOX_NETWORK_KEY,
         _MCP_SANDBOX_CPUS_KEY,
+        _CREDENTIALED_MCP_ENABLED_KEY,
+        _CREDENTIALED_MCP_CAPABILITIES_KEY,
     }
 )
 _MCP_SANDBOX_ENABLED_DEFAULT: Final[str] = "true"
@@ -130,8 +141,41 @@ def _is_unlimited_cpus(value: str) -> bool:
         return False
 
 
+def _capability_patterns(raw: str | None) -> frozenset[str]:
+    """Parse a comma-separated capability grant into its pattern set.
+
+    Returns:
+        The set of non-blank capability patterns.
+    """
+    if not raw:
+        return frozenset()
+    return frozenset(part.strip() for part in raw.split(",") if part.strip())
+
+
+def _is_capability_widening(current: str | None, new: str) -> bool:
+    """Return whether *new* grants a capability pattern *current* did not.
+
+    Widening (guarded) is any pattern in *new* not already present in
+    *current*: an empty-to-anything grant, ``"" -> "*"``, or adding a
+    ``:write``. Narrowing (dropping patterns) is unguarded. A narrowing that
+    happens to spell a more specific pattern than an existing wildcard is
+    conservatively treated as widening: over-guarding never weakens the
+    posture.
+
+    Returns:
+        ``True`` when the new grant introduces a pattern the current lacks.
+    """
+    return bool(_capability_patterns(new) - _capability_patterns(current))
+
+
 def _is_mcp_sandbox_weakening(key: str, *, current: str | None, new: str) -> bool:
     """Return whether a ``tools.*`` MCP sandbox change relaxes isolation."""
+    if key == _CREDENTIALED_MCP_ENABLED_KEY:
+        # Default is "false" (off); enabling exposes credentialed actions.
+        currently_off = current is None or not compare_ci(current, "true")
+        return currently_off and compare_ci(new, "true")
+    if key == _CREDENTIALED_MCP_CAPABILITIES_KEY:
+        return _is_capability_widening(current, new)
     if key == _MCP_SANDBOX_ENABLED_KEY:
         currently_on = current is None or compare_ci(
             current, _MCP_SANDBOX_ENABLED_DEFAULT
@@ -234,6 +278,15 @@ def _is_engine_weakening(key: str, *, current: str | None, new: str) -> bool:
     return False
 
 
+def _is_providers_weakening(key: str, *, current: str | None, new: str) -> bool:
+    """Return whether a ``providers.*`` change relaxes posture."""
+    if key == _GATEWAY_ENABLED_KEY:
+        # Default is "false" (off); enabling opens the egress path.
+        currently_off = current is None or not compare_ci(current, "true")
+        return currently_off and compare_ci(new, "true")
+    return False
+
+
 class SettingsWriteGovernance(BaseModel):
     """Operator deliberate-action context for a guarded settings write.
 
@@ -264,11 +317,15 @@ def _is_guarded(namespace: str, key: str) -> bool:
         return key in _MCP_SANDBOX_GUARDED_KEYS
     if namespace == _OUTPUT_STYLE_NS:
         return key in _OUTPUT_STYLE_GUARDED_KEYS
+    if namespace == _PROVIDERS_NS:
+        return key == _GATEWAY_ENABLED_KEY
     return False
 
 
 def _is_weakening(namespace: str, key: str, *, current: str | None, new: str) -> bool:
     """Return whether ``current -> new`` weakens the posture for *namespace.key*."""
+    if namespace == _PROVIDERS_NS:
+        return _is_providers_weakening(key, current=current, new=new)
     if namespace == _ENGINE_NS:
         return _is_engine_weakening(key, current=current, new=new)
     if namespace == _TOOLS_NS:
@@ -373,17 +430,20 @@ async def guard_security_delete(
     resolve_fallback: Callable[[SettingDefinition], Awaitable[SettingValue]],
     get_entry: Callable[[str, str], Awaitable[SettingValue]],
 ) -> None:
-    """Hard-block a delete that would weaken a security setting.
+    """Hard-block a delete that would weaken a governed setting.
 
-    Deleting a security override reverts the key to its env > default fallback,
-    so a delete that would drop a currently-secure toggle to a weaker effective
+    Deleting an override reverts the key to its env > default fallback, so a
+    delete that would drop a currently-secure toggle to a weaker effective
     value must go through the explicit confirm+reason set path, never a silent
-    delete. The guarded value is the real env>default fallback (resolved via
-    *resolve_fallback*), not the bare code default, so a weakening env override
-    is not missed. A no-op for any non-security namespace.
+    delete. This holds across every governed namespace (``security``,
+    ``engine``, ``tools``, ``output_style``, ``providers``): deleting, say, the
+    ``tools.credentialed_mcp_enabled`` or ``providers.gateway_enabled``
+    override would otherwise revert to a broader env/default value, bypassing
+    the set-path guardrail. The guarded value is the real env>default fallback
+    (resolved via *resolve_fallback*), not the bare code default, so a
+    weakening env override is not missed. ``governance=None`` is passed so a
+    weakening delete is hard-blocked rather than confirmable inline.
     """
-    if namespace != _SECURITY_NS:
-        return
     items = [
         (namespace, definition.key, (await resolve_fallback(definition)).value)
         for definition in definitions

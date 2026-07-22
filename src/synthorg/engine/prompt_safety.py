@@ -257,6 +257,39 @@ def wrap_untrusted(tag: str, content: str) -> str:
     return f"<{tag}>\n{escaped}\n</{tag}>"
 
 
+INJECTION_HEURISTICS: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(r"ignore\s+(all|previous|prior)\s+instructions?", re.IGNORECASE),
+    re.compile(r"disregard\s+(all|previous|prior)", re.IGNORECASE),
+    re.compile(r"you\s+are\s+now", re.IGNORECASE),
+    re.compile(r"system\s*:\s*you", re.IGNORECASE),
+)
+"""Semantic prompt-injection heuristics shared across untrusted-input boundaries.
+
+The single source for the "override the system prompt" heuristics. The
+tool-result fence (``loop_tool_execution``) extends these with per-tag
+closing-fence breakout patterns; the LLM gateway scans inbound harness
+prompts with them as an advisory defence-in-depth signal. Detection is
+advisory only: the load-bearing protection is the ``wrap_untrusted``
+fence applied at the source of every untrusted string.
+"""
+
+
+def scan_injection_heuristics(text: str) -> str | None:
+    """Return the first matching injection heuristic's pattern, or ``None``.
+
+    Args:
+        text: Arbitrary (possibly attacker-controlled) text to scan.
+
+    Returns:
+        The ``re.Pattern.pattern`` string of the first match, or ``None``
+        when no heuristic matches.
+    """
+    for pattern in INJECTION_HEURISTICS:
+        if pattern.search(text) is not None:
+            return pattern.pattern
+    return None
+
+
 def untrusted_content_directive(tags: tuple[str, ...]) -> str:
     """Return a system-prompt directive warning the model about *tags*.
 

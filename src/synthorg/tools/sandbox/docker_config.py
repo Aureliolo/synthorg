@@ -22,6 +22,12 @@ from synthorg.tools.sandbox.policy import SandboxPolicy
 
 logger = get_logger(__name__)
 
+# The in-container mount point for the project workspace; the host project
+# root is bind-mounted here and every container runs with it as its cwd.
+# Shared across the sandbox backend and its streaming mixin so the mount path
+# has a single source of truth.
+CONTAINER_WORKSPACE: Final[str] = "/workspace"
+
 _VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
 _MIN_PORT = 1
 _MAX_PORT: Final[int] = 65535

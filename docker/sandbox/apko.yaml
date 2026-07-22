@@ -3,6 +3,10 @@
 # Consumed by: docker/sandbox/Dockerfile (thin FROM wrapper).
 #
 # Non-distroless on purpose: keeps busybox + git for agent code execution.
+# bash + tmux back a real interactive terminal: the OpenHands inner-loop
+# terminal tool (docker/openhands) drives a persistent tmux-managed bash
+# session and hard-fails without bash on PATH, and a real bash is a strict
+# upgrade over busybox sh for the native loops too.
 # Network enforcement is handled by the sidecar proxy (docker/sidecar/),
 # not by the sandbox container.
 #
@@ -18,6 +22,8 @@ contents:
     - ca-certificates-bundle
     - tzdata
     - busybox
+    - bash
+    - tmux
     - git
     - nodejs-25
     - npm

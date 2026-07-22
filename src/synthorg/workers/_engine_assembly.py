@@ -69,6 +69,11 @@ from synthorg.workers._memory_assembly import (
     build_memory_injection_strategy_or_none,
     wiki_exporter_or_none,
 )
+from synthorg.workers._openhands_wiring import (
+    build_auto_loop_config_or_none,
+    build_openhands_loop_config,
+    build_openhands_loop_deps_or_none,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -567,6 +572,9 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         step_classifier=step_classifier,
         compaction_callback=_build_compaction_callback(app_state, provider),
         recovery_strategy=_build_recovery_strategy(app_state),
+        openhands_loop_config=await build_openhands_loop_config(app_state),
+        openhands_loop_deps=await build_openhands_loop_deps_or_none(app_state),
+        auto_loop_config=await build_auto_loop_config_or_none(app_state),
         clock=app_state.clock,
     )
 

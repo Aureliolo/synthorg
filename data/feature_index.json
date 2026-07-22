@@ -383,6 +383,21 @@
     },
     {
       "controllers": [
+        "CredentialedMcpController"
+      ],
+      "depends_on": [
+        "llm_gateway"
+      ],
+      "directory": "src/synthorg/api/mcp_gateway",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "credentialed_mcp",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": []
+    },
+    {
+      "controllers": [
         "DeliverableReceiptController"
       ],
       "depends_on": [],
@@ -829,6 +844,22 @@
       "state_slice_fields": [
         "service",
         "tool_factory"
+      ]
+    },
+    {
+      "controllers": [
+        "GatewayController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/api/gateway",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "llm_gateway",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "service",
+        "signer"
       ]
     },
     {
@@ -1438,6 +1469,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-20T21:03:53.841897Z",
+  "generated_at": "2026-07-21T21:26:47.437236Z",
   "schema_version": 1
 }

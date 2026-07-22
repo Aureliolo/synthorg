@@ -9,12 +9,13 @@ from collections.abc import Awaitable, Callable
 
 import pytest
 
-from synthorg.settings.enums import SettingNamespace, SettingSource
+from synthorg.settings.enums import SettingNamespace, SettingSource, SettingType
 from synthorg.settings.errors import SecurityToggleConfirmationRequiredError
-from synthorg.settings.models import SettingValue
+from synthorg.settings.models import SettingDefinition, SettingValue
 from synthorg.settings.write_governance import (
     SettingsWriteGovernance,
     enforce_security_write_governance,
+    guard_security_delete,
     guard_security_writes,
 )
 
@@ -317,3 +318,106 @@ async def test_guard_entry_failure_treated_as_unset_first_write() -> None:
             governance=None,
             get_entry=_raising,
         )
+
+
+def _definition(
+    namespace: str, key: str, setting_type: SettingType
+) -> SettingDefinition:
+    """Build a minimal registry definition for the delete-guard tests."""
+    return SettingDefinition(
+        namespace=SettingNamespace(namespace),
+        key=key,
+        type=setting_type,
+        description="test setting",
+        group="Test",
+    )
+
+
+def _fallback_factory(
+    values: dict[tuple[str, str], str],
+) -> Callable[[SettingDefinition], Awaitable[SettingValue]]:
+    """Build a ``resolve_fallback`` returning the post-delete env>default value."""
+
+    async def _resolve(definition: SettingDefinition) -> SettingValue:
+        return SettingValue(
+            namespace=definition.namespace,
+            key=definition.key,
+            value=values[definition.namespace.value, definition.key],
+            source=SettingSource.ENVIRONMENT,
+        )
+
+    return _resolve
+
+
+async def test_delete_widening_credentialed_mcp_capabilities_is_hard_blocked() -> None:
+    """Deleting a narrow capabilities override that reverts to a broad env>default
+    grant is a widening the silent delete path must hard-block."""
+    definition = _definition(
+        "tools", "credentialed_mcp_capabilities", SettingType.STRING
+    )
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await guard_security_delete(
+            "tools",
+            [definition],
+            resolve_fallback=_fallback_factory(
+                {("tools", "credentialed_mcp_capabilities"): "*"}
+            ),
+            get_entry=_entry_factory(
+                {("tools", "credentialed_mcp_capabilities"): "forge:read"}
+            ),
+        )
+
+
+async def test_delete_gateway_override_reverting_to_enabled_is_blocked() -> None:
+    """Deleting a ``gateway_enabled=false`` override whose env>default fallback is
+    ``true`` re-opens the egress path, so the silent delete is hard-blocked."""
+    definition = _definition("providers", "gateway_enabled", SettingType.BOOLEAN)
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await guard_security_delete(
+            "providers",
+            [definition],
+            resolve_fallback=_fallback_factory(
+                {("providers", "gateway_enabled"): "true"}
+            ),
+            get_entry=_entry_factory({("providers", "gateway_enabled"): "false"}),
+        )
+
+
+async def test_delete_security_toggle_weakening_is_blocked() -> None:
+    """The original security-namespace delete guard is preserved: deleting an
+    ``enabled=true`` override whose fallback is ``false`` is hard-blocked."""
+    definition = _definition("security", "enabled", SettingType.BOOLEAN)
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await guard_security_delete(
+            "security",
+            [definition],
+            resolve_fallback=_fallback_factory({("security", "enabled"): "false"}),
+            get_entry=_entry_factory({("security", "enabled"): "true"}),
+        )
+
+
+async def test_delete_non_weakening_transition_is_allowed() -> None:
+    """A delete whose fallback equals the current value (no posture change) needs
+    no governance and is permitted."""
+    definition = _definition("tools", "credentialed_mcp_enabled", SettingType.BOOLEAN)
+    await guard_security_delete(
+        "tools",
+        [definition],
+        resolve_fallback=_fallback_factory(
+            {("tools", "credentialed_mcp_enabled"): "false"}
+        ),
+        get_entry=_entry_factory({("tools", "credentialed_mcp_enabled"): "false"}),
+    )
+
+
+async def test_delete_unguarded_key_is_allowed() -> None:
+    """An unguarded key is never delete-blocked, even when the fallback differs."""
+    definition = _definition("tools", "forge_tools_timeout_seconds", SettingType.FLOAT)
+    await guard_security_delete(
+        "tools",
+        [definition],
+        resolve_fallback=_fallback_factory(
+            {("tools", "forge_tools_timeout_seconds"): "30"}
+        ),
+        get_entry=_entry_factory({("tools", "forge_tools_timeout_seconds"): "5"}),
+    )

@@ -27,6 +27,9 @@ from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.loop_protocol import ExecutionLoop
+from synthorg.engine.openhands.config import OpenHandsLoopConfig, OpenHandsLoopDeps
+from synthorg.engine.openhands.errors import OpenHandsUnavailableError
+from synthorg.engine.openhands.loop import OpenHandsLoop
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.plan_models import PlanExecuteConfig
 from synthorg.engine.quality.classifier import StepQualityClassifier
@@ -41,11 +44,13 @@ from synthorg.observability.events.execution import (
 
 logger = get_logger(__name__)
 
-_KNOWN_LOOP_TYPES: frozenset[str] = frozenset({"react", "plan_execute", "hybrid"})
+_KNOWN_LOOP_TYPES: frozenset[str] = frozenset(
+    {"react", "plan_execute", "hybrid", "openhands"}
+)
 """Loop type identifiers recognized by the auto-selection system."""
 
 _BUILDABLE_LOOP_TYPES: frozenset[str] = frozenset(
-    {"react", "plan_execute", "hybrid"},
+    {"react", "plan_execute", "hybrid", "openhands"},
 )
 """Loop types that ``build_execution_loop`` can instantiate."""
 
@@ -288,9 +293,9 @@ def select_loop_type(  # noqa: PLR0913
         default_loop_type: Fallback loop type when no rule matches.
 
     Returns:
-        One of ``"react"``, ``"plan_execute"``, or ``"hybrid"``,
-        depending on the matched rule and active fallback/downgrade
-        settings.
+        One of ``"react"``, ``"plan_execute"``, ``"hybrid"``, or
+        ``"openhands"``, depending on the matched rule and active
+        fallback/downgrade settings.
     """
     loop_type = _match_loop_type(rules, complexity, default_loop_type)
     loop_type = _downgrade_for_budget(
@@ -381,11 +386,37 @@ def _build_hybrid_loop(  # noqa: PLR0913
     )
 
 
+def _build_openhands_loop(
+    *,
+    openhands_loop_config: OpenHandsLoopConfig | None = None,
+    openhands_loop_deps: OpenHandsLoopDeps | None = None,
+    **_unused: object,
+) -> ExecutionLoop:
+    """Build an :class:`OpenHandsLoop` for the ``openhands`` strategy.
+
+    Returns:
+        A configured :class:`OpenHandsLoop`. Unrecognised keyword arguments
+        are ignored so all builders share one call signature.
+
+    Raises:
+        OpenHandsUnavailableError: If the runtime deps are not wired (the
+            loop cannot reach its gateway / MCP boundaries).
+    """
+    if openhands_loop_deps is None:
+        msg = "OpenHands loop selected but its runtime deps are not wired"
+        raise OpenHandsUnavailableError(msg)
+    return OpenHandsLoop(
+        config=openhands_loop_config or OpenHandsLoopConfig(),
+        deps=openhands_loop_deps,
+    )
+
+
 _LOOP_REGISTRY: StrategyRegistry[ExecutionLoop] = StrategyRegistry(
     {
         "react": _build_react_loop,
         "plan_execute": _build_plan_execute_loop,
         "hybrid": _build_hybrid_loop,
+        "openhands": _build_openhands_loop,
     },
     kind="execution_loop",
 )
@@ -400,14 +431,16 @@ def build_execution_loop(  # noqa: PLR0913
     compaction_callback: CompactionCallback | None = None,
     plan_execute_config: PlanExecuteConfig | None = None,
     hybrid_loop_config: HybridLoopConfig | None = None,
+    openhands_loop_config: OpenHandsLoopConfig | None = None,
+    openhands_loop_deps: OpenHandsLoopDeps | None = None,
     steering_inbox: SteeringInbox | None = None,
     step_classifier: StepQualityClassifier | None = None,
 ) -> ExecutionLoop:
     """Build an ``ExecutionLoop`` instance from a loop type string.
 
     Args:
-        loop_type: One of ``"react"``, ``"plan_execute"``, or
-            ``"hybrid"``.
+        loop_type: One of ``"react"``, ``"plan_execute"``, ``"hybrid"``,
+            or ``"openhands"``.
         checkpoint_callback: Optional per-turn checkpoint callback.
         approval_gate: Optional approval gate to wire into the loop.
         stagnation_detector: Optional stagnation detector.
@@ -416,6 +449,11 @@ def build_execution_loop(  # noqa: PLR0913
             (ignored when ``loop_type`` is not ``"plan_execute"``).
         hybrid_loop_config: Configuration for the hybrid loop
             (ignored when ``loop_type`` is not ``"hybrid"``).
+        openhands_loop_config: Configuration for the OpenHands loop
+            (ignored when ``loop_type`` is not ``"openhands"``).
+        openhands_loop_deps: Runtime deps for the OpenHands loop (the
+            conversation factory, gateway signer, endpoint URLs, clock);
+            required when ``loop_type`` is ``"openhands"``.
         steering_inbox: Optional steering inbox wired into the loop so it
             adopts mid-flight directives at safe boundaries.
         step_classifier: Optional step-quality classifier wired into the
@@ -435,6 +473,8 @@ def build_execution_loop(  # noqa: PLR0913
         compaction_callback=compaction_callback,
         plan_execute_config=plan_execute_config,
         hybrid_loop_config=hybrid_loop_config,
+        openhands_loop_config=openhands_loop_config,
+        openhands_loop_deps=openhands_loop_deps,
         steering_inbox=steering_inbox,
         step_classifier=step_classifier,
     )

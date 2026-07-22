@@ -12,6 +12,7 @@ from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.loop_protocol import ExecutionLoop
+from synthorg.engine.openhands.loop import OpenHandsLoop
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.recovery import FailureCategory
@@ -181,6 +182,11 @@ def make_loop_with_callback(  # noqa: PLR0913
             compaction_callback=loop.compaction_callback,
             steering_inbox=loop.steering_inbox,
         )
+    if isinstance(loop, OpenHandsLoop):
+        # OpenHands owns task-level resume via its own persisted EventLog, so
+        # the per-tool-exec SynthOrg checkpoint callback does not apply; return
+        # it unchanged rather than warning it is unsupported.
+        return loop
     logger.warning(
         CHECKPOINT_UNSUPPORTED_LOOP,
         loop_type=type(loop).__name__,

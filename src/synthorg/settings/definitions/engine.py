@@ -1065,3 +1065,75 @@ _r.register(
         level=SettingLevel.ADVANCED,
     )
 )
+
+# ── Execution-loop auto-selection ────────────────────────────────
+# Gate + rules that pick a per-task inner loop (react / plan_execute /
+# hybrid / openhands) from task complexity. Off by default: the engine
+# uses its single static react loop until an operator opts in. This is
+# the knob that makes the OpenHands loop selectable for an A/B.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="loop_auto_select_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Select the inner execution loop per task from its complexity,"
+            " instead of always using the static react loop. Off by default."
+            " When on, the complexity rules (defaults plus"
+            " loop_complexity_overrides) and default_loop_type decide which of"
+            " react / plan_execute / hybrid / openhands runs each task. Read"
+            " per task at loop-resolution time, so a change applies to the next"
+            " task with no restart. The openhands loop additionally needs its"
+            " gateway + credentialed-MCP boundaries wired."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="default_loop_type",
+        type=SettingType.STRING,
+        default="react",
+        description=(
+            "Fallback inner loop when no complexity rule matches a task (only"
+            " consulted when loop_auto_select_enabled is on). Set to 'openhands'"
+            " to route every unmatched task through the OpenHands coding harness."
+            " One of: react, plan_execute, hybrid, openhands."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+        validator_pattern=r"^(react|plan_execute|hybrid|openhands)$",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="loop_complexity_overrides",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Per-complexity inner-loop overrides merged over the default"
+            " complexity rules (only consulted when loop_auto_select_enabled is"
+            " on). Comma-separated 'complexity:loop' pairs, e.g."
+            " 'complex:openhands,epic:openhands' to route the heaviest tasks"
+            " through OpenHands while lighter tasks keep the native loops."
+            " Complexity is one of simple/medium/complex/epic; loop is one of"
+            " react/plan_execute/hybrid/openhands. Empty keeps the defaults"
+            " (simple=react, medium=plan_execute, complex/epic=hybrid)."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+        validator_pattern=(
+            r"^$|^(simple|medium|complex|epic):"
+            r"(react|plan_execute|hybrid|openhands)"
+            r"(,(simple|medium|complex|epic):"
+            r"(react|plan_execute|hybrid|openhands))*$"
+        ),
+    )
+)

@@ -42,6 +42,22 @@ _MIN_MODULE_DEPTH = 3
 # Test subdirectories that mypy should cover.
 _TEST_KINDS = ("unit", "integration")
 
+_MYPY_WORKERS: Final[list[str]] = ["--num-workers=4"]
+
+# mypy's parallel build spawns ``mypy.build_worker`` subprocesses that connect
+# back over a named pipe. The worker's server and the parent's status poll each
+# wait only ``WORKER_CONNECTION_TIMEOUT`` / ``WORKER_START_TIMEOUT`` (10s on
+# Windows, mypy/defaults.py); several fresh interpreters importing the compiled
+# mypy package don't reliably win that window under the pre-push's process
+# contention, so the pipe closes and the parent's source-broadcast write aborts
+# mypy with an INTERNAL ERROR. Those timeouts are hardcoded with no env or flag
+# override, so ``scripts/_mypy_worker_timeout/sitecustomize.py`` widens them at
+# interpreter startup; this directory goes on the mypy subprocess ``PYTHONPATH``
+# (workers inherit it) via ``_mypy_env``.
+_MYPY_TIMEOUT_SITECUSTOMIZE_DIR: Final[Path] = (
+    _REPO_ROOT / "scripts" / "_mypy_worker_timeout"
+)
+
 # Valid Python package directory names (prevents path traversal).
 _SAFE_MODULE_NAME = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
@@ -171,11 +187,26 @@ def _affected_mypy_paths(changed: list[str]) -> tuple[list[str], bool]:
     return paths, False
 
 
+def _mypy_env(base: dict[str, str] | None = None) -> dict[str, str]:
+    """Return an env for a mypy run with the worker-timeout sitecustomize wired.
+
+    Prepends ``_MYPY_TIMEOUT_SITECUSTOMIZE_DIR`` to ``PYTHONPATH`` so the parent
+    mypy interpreter (and every ``mypy.build_worker`` it spawns, which inherit
+    ``os.environ``) widens the named-pipe worker timeouts at startup.
+    """
+    env = dict(os.environ if base is None else base)
+    sitecustomize_dir = str(_MYPY_TIMEOUT_SITECUSTOMIZE_DIR)
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        sitecustomize_dir + os.pathsep + existing if existing else sitecustomize_dir
+    )
+    return env
+
+
 def _run_mypy(paths: list[str]) -> int:
     """Run mypy with the given paths."""
-    cmd = [sys.executable, "-m", "mypy", "--num-workers=4", *paths]
-    result = subprocess.run(cmd, cwd=_REPO_ROOT, check=False)
-    return result.returncode
+    cmd = [sys.executable, "-m", "mypy", *_MYPY_WORKERS, *paths]
+    return subprocess.run(cmd, cwd=_REPO_ROOT, check=False, env=_mypy_env()).returncode
 
 
 def _run_scripts_mypy() -> int:
@@ -190,13 +221,12 @@ def _run_scripts_mypy() -> int:
         sys.executable,
         "-m",
         "mypy",
-        "--num-workers=4",
+        *_MYPY_WORKERS,
         "--explicit-package-bases",
         "scripts/",
     ]
-    env = {**os.environ, "MYPYPATH": str(_REPO_ROOT)}
-    result = subprocess.run(cmd, cwd=_REPO_ROOT, check=False, env=env)
-    return result.returncode
+    env = _mypy_env({**os.environ, "MYPYPATH": str(_REPO_ROOT)})
+    return subprocess.run(cmd, cwd=_REPO_ROOT, check=False, env=env).returncode
 
 
 def _run_full() -> int:
