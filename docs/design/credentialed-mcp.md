@@ -130,10 +130,11 @@ or `ForbiddenError` (visible but not permitted), never a silent success.
    `PENDING` approval when unapproved, brokers the credential via the
    `ConnectionCatalog` host-side, builds a per-call client pinned to the
    connection `base_url` (a structural egress pin), and dispatches.
-   Destructive tools invoke `require_admin_guardrails` (confirm + reason
-   + actor) as the first statement of `_check_preconditions`, which runs
-   **before** the gate: a call nobody could have authorised is refused
-   outright rather than parked as an approval for a human to adjudicate.
+   Destructive tools invoke `require_admin_guardrails` (the confirm,
+   reason and actor triple) as the first statement of
+   `_check_preconditions`, which runs **before** the gate: a call nobody
+   could have authorised is refused outright rather than parked as an
+   approval for a human to adjudicate.
 5. **SEC-1 at source**: the tool output is wrapped with
    `wrap_untrusted(TAG_TOOL_RESULT, ...)` before it returns to the
    harness, so untrusted upstream content is fenced where it originates.
