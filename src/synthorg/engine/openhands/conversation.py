@@ -11,6 +11,7 @@ the conversation honours by ceasing to emit further events.
 
 from collections.abc import Awaitable, Callable
 from typing import Protocol, Self, runtime_checkable
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -45,7 +46,7 @@ class OpenHandsRunSpec(BaseModel):
     gateway_token: NotBlankStr = Field(description="Per-run gateway bearer")
     mcp_base_url: NotBlankStr = Field(description="Credentialed-MCP endpoint URL")
     workspace_path: NotBlankStr = Field(description="Mounted project workspace path")
-    conversation_id: NotBlankStr = Field(
+    conversation_id: UUID = Field(
         description="Stable per-task conversation key for resume"
     )
     max_turns: int = Field(gt=0, description="Turn ceiling for the run")

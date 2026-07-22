@@ -440,6 +440,7 @@ class AgentEngine(
             has_compaction_callback=self._compaction_callback is not None,
             has_plan_execute_config=self._plan_execute_config is not None,
             has_hybrid_loop_config=self._hybrid_loop_config is not None,
+            has_openhands_loop_deps=self._openhands_loop_deps is not None,
             has_personality_trim_notifier=self._personality_trim_notifier is not None,
             has_sub_agent_runner=self._sub_agent_runner is not None,
         )

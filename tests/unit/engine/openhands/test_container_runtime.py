@@ -24,8 +24,11 @@ from synthorg.engine.openhands.conversation import (
 from synthorg.engine.openhands.errors import OpenHandsRuntimeError
 from synthorg.engine.openhands.events import OpenHandsEvent, OpenHandsEventKind
 from synthorg.tools.sandbox.errors import SandboxError
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
+
+_CONVERSATION_ID = as_uuid("c-1")
 
 
 def _spec() -> OpenHandsRunSpec:
@@ -36,7 +39,7 @@ def _spec() -> OpenHandsRunSpec:
         gateway_token="tok",
         mcp_base_url="http://mcp",
         workspace_path="/workspace",
-        conversation_id="c-1",
+        conversation_id=_CONVERSATION_ID,
         max_turns=7,
         project_id="proj-1",
     )
@@ -48,7 +51,7 @@ def test_spec_line_excludes_host_only_fields() -> None:
     payload = json.loads(line)
     # project_id stays host-side (mount selection), never sent to the container.
     assert "project_id" not in payload
-    assert payload["conversation_id"] == "c-1"
+    assert payload["conversation_id"] == str(_CONVERSATION_ID)
     assert payload["max_turns"] == 7
     assert payload["gateway_base_url"] == "http://gateway/v1"
     assert payload["gateway_token"] == "tok"

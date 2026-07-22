@@ -12,9 +12,10 @@ unless the invoke function:
 4. dispatches through the governed tool (``.execute``), and
 5. fences the returned result with ``wrap_untrusted`` (SEC-1 at source).
 
-The module must also reference ``TAG_TOOL_RESULT`` so the fence tag cannot
-drift to an unfenced return. Any missing step means credentials or untrusted
-tool output could reach the harness ungoverned.
+The ``wrap_untrusted`` fence in the invoke body must pass ``TAG_TOOL_RESULT``
+as its tag argument, so the fence cannot drift to a different tag while a stray
+``TAG_TOOL_RESULT`` reference elsewhere masks the regression. Any missing step
+means credentials or untrusted tool output could reach the harness ungoverned.
 
 Opt a genuine exception out with a trailing
 ``# lint-allow: credentialed-mcp-governed -- <reason>`` comment on the
@@ -56,9 +57,9 @@ _REQUIRED_CALLS: Final[tuple[str, ...]] = (
     "security_pre_check",
     "parse_typed",
     "execute",
-    "wrap_untrusted",
 )
-_REQUIRED_NAMES: Final[tuple[str, ...]] = ("TAG_TOOL_RESULT",)
+_FENCE_CALL: Final[str] = "wrap_untrusted"
+_RESULT_TAG: Final[str] = "TAG_TOOL_RESULT"
 
 
 def _called_names(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
@@ -95,6 +96,58 @@ def _find_invoke(
     return None
 
 
+def _keyword_value(call: ast.Call, name: str) -> ast.expr | None:
+    """Return the value of keyword *name* on *call*, if present.
+
+    Returns:
+        The keyword argument value, or ``None``.
+    """
+    for keyword in call.keywords:
+        if keyword.arg == name:
+            return keyword.value
+    return None
+
+
+def _is_result_tag(node: ast.expr | None) -> bool:
+    """Whether *node* names the SEC-1 result tag ``TAG_TOOL_RESULT``.
+
+    Returns:
+        ``True`` for a bare ``TAG_TOOL_RESULT`` name or a ``*.TAG_TOOL_RESULT``
+        attribute access.
+    """
+    if isinstance(node, ast.Name):
+        return node.id == _RESULT_TAG
+    return isinstance(node, ast.Attribute) and node.attr == _RESULT_TAG
+
+
+def _fences_with_result_tag(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Whether *fn* fences a result with ``wrap_untrusted(TAG_TOOL_RESULT, ...)``.
+
+    The tag must be the first positional argument (or ``tag=`` keyword) of a
+    ``wrap_untrusted`` call in the body; a call under any other tag fails the
+    SEC-1 boundary even if ``TAG_TOOL_RESULT`` is referenced elsewhere.
+
+    Returns:
+        ``True`` when a correctly-tagged fence call is present.
+    """
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name):
+            callee = func.id
+        elif isinstance(func, ast.Attribute):
+            callee = func.attr
+        else:
+            continue
+        if callee != _FENCE_CALL:
+            continue
+        tag = node.args[0] if node.args else _keyword_value(node, "tag")
+        if _is_result_tag(tag):
+            return True
+    return False
+
+
 def _check(root: Path) -> list[str]:
     """Return every missing-governance finding for the invoke path.
 
@@ -108,30 +161,25 @@ def _check(root: Path) -> list[str]:
     text, tree = read_and_parse(path)
     lines = text.splitlines()
 
-    module_names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)} | {
-        n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)
-    }
-    findings = [
-        f"{_TOOLS_REL}: module never references {name} (SEC-1 fence tag)"
-        for name in _REQUIRED_NAMES
-        if name not in module_names
-    ]
-
     invoke = _find_invoke(tree)
     if invoke is None:
-        findings.append(f"{_TOOLS_REL}: {_INVOKE_FN} not found")
-        return findings
+        return [f"{_TOOLS_REL}: {_INVOKE_FN} not found"]
 
     line = invoke.lineno
     if 1 <= line <= len(lines) and _ALLOW_RE.search(lines[line - 1]):
-        return findings
+        return []
 
     called = _called_names(invoke)
-    findings.extend(
+    findings = [
         f"{_TOOLS_REL}:{line}: {_INVOKE_FN} omits governed step {call!r}"
         for call in _REQUIRED_CALLS
         if call not in called
-    )
+    ]
+    if not _fences_with_result_tag(invoke):
+        findings.append(
+            f"{_TOOLS_REL}:{line}: {_INVOKE_FN} must fence its result with "
+            f"{_FENCE_CALL}({_RESULT_TAG}, ...)"
+        )
     return findings
 
 

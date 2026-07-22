@@ -49,7 +49,10 @@ from synthorg.persistence.tracked_container_protocol import (
 from synthorg.tools.sandbox._memory_limit import parse_memory_limit
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
-from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_config import (
+    CONTAINER_WORKSPACE,
+    DockerSandboxConfig,
+)
 from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
 from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
     DockerSandboxLifecycleMixin,
@@ -82,7 +85,6 @@ logger = get_logger(__name__)
 
 _DEFAULT_CONFIG = DockerSandboxConfig()
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
-_CONTAINER_WORKSPACE: Final[str] = "/workspace"
 _PROJECTS_SUBDIR: Final[str] = "projects"
 _DRIVE_SEPARATOR_PARTS: Final[int] = 2
 # Cap structured-log stderr captures so a stream of binary output from
@@ -414,12 +416,12 @@ class DockerSandbox(
             POSIX path inside the container.
         """
         if cwd is None:
-            return _CONTAINER_WORKSPACE
+            return CONTAINER_WORKSPACE
         effective_root = (
             effective_root if effective_root is not None else self._workspace
         )
         rel = cwd.resolve().relative_to(effective_root)
-        return str(PurePosixPath(_CONTAINER_WORKSPACE) / rel)
+        return str(PurePosixPath(CONTAINER_WORKSPACE) / rel)
 
     def _matches_denylist(self, name: str) -> bool:
         """Check if an env var name matches any denylist pattern.
@@ -601,7 +603,7 @@ class DockerSandbox(
         root = effective_root if effective_root is not None else self._workspace
         bind_path = _to_posix_bind_path(root)
         mount_mode = self._config.mount_mode
-        bind_str = f"{bind_path}:{_CONTAINER_WORKSPACE}:{mount_mode}"
+        bind_str = f"{bind_path}:{CONTAINER_WORKSPACE}:{mount_mode}"
         memory_bytes = self._parse_memory_limit(
             self._config.memory_limit,
         )

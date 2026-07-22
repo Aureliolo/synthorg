@@ -221,6 +221,8 @@ async def test_spawn_destroys_sidecar_when_create_fails() -> None:
     # A sidecar brought up before the failed create must be torn down.
     assert len(harness.destroyed) == 1
     assert harness.destroyed[0].container_id == "sidecar-1"
+    # Its tracking alias must also be dropped, or it lingers stale in the map.
+    assert harness.untracked == ["_sidecar:sidecar-1"]
 
 
 async def test_spawn_untracks_sidecar_alias_on_success() -> None:

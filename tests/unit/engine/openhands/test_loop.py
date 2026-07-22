@@ -277,7 +277,7 @@ async def test_spec_binds_gateway_token_and_urls(
     assert spec.gateway_base_url == "http://gateway"
     assert spec.mcp_base_url == "http://mcp"
     assert spec.model == "example-large-001"
-    assert spec.conversation_id == str(task.id)
+    assert spec.conversation_id == task.id
     # The minted bearer verifies under the same signer and carries the
     # explicitly-bound (provider, model) pair.
     claims = signer.verify(spec.gateway_token)

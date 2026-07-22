@@ -7,8 +7,8 @@ verified token claims, never the OpenAI request's ``model`` field, and a
 provider is never auto-picked. This gate AST-scans
 ``src/synthorg/api/gateway/`` and fails on any of:
 
-1. ``<registry>.list_providers()[0]`` / a ``resolve_for_model`` reference
-   -- the removed provider auto-pick idioms (mirrors
+1. ``<registry>.list_providers()[0]`` / any ``resolve_for_model`` reference,
+   direct or aliased import -- the removed provider auto-pick idioms (mirrors
    ``check_no_provider_auto_pick.py`` for the gateway module).
 2. A provider lookup ``<registry>.get(<x>.model)`` or ``.get(<x>["model"])``
    -- resolving the provider from the request's ``model`` field.
@@ -17,8 +17,9 @@ provider is never auto-picked. This gate AST-scans
    token-bound ``.model_id``.
 
 It also enforces the positive contract: ``service.py`` must read both
-``.provider`` and ``.model_id`` from the token claims, so a refactor that
-drops token binding entirely cannot pass silently.
+``.provider`` and ``.model_id`` from the same claims-derived object (the
+``<signer>.verify(...)`` result or a ``GatewayTokenClaims`` parameter), so a
+refactor that drops token binding cannot pass on unrelated attribute accesses.
 
 Opt a genuine exception out with a trailing
 ``# lint-allow: gateway-binding -- <reason>`` comment on the offending line.
@@ -56,6 +57,9 @@ _ALLOW_RE: Final[re.Pattern[str]] = re.compile(
 )
 _REQUEST_MODEL_ATTR: Final[str] = "model"
 _BOUND_MODEL_ATTR: Final[str] = "model_id"
+_PROVIDER_ATTR: Final[str] = "provider"
+_CLAIMS_TYPE: Final[str] = "GatewayTokenClaims"
+_VERIFY_METHOD: Final[str] = "verify"
 _RESOLVE_CALLS: Final[frozenset[str]] = frozenset({"get"})
 _DISPATCH_CALLS: Final[frozenset[str]] = frozenset({"complete", "stream"})
 _REMOVED_RESOLVER: Final[str] = "resolve_for_model"
@@ -121,6 +125,14 @@ def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
             findings.append(f"{relpath}:{lineno}:{code}")
 
     for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name == _REMOVED_RESOLVER:
+                    _record(node.lineno, f"import of {_REMOVED_RESOLVER}")
+            continue
+        if isinstance(node, ast.Name) and node.id == _REMOVED_RESOLVER:
+            _record(node.lineno, _REMOVED_RESOLVER)
+            continue
         if isinstance(node, ast.Attribute) and node.attr == _REMOVED_RESOLVER:
             _record(node.lineno, _REMOVED_RESOLVER)
             continue
@@ -158,25 +170,92 @@ def _scan_subscripts(tree: ast.Module, lines: list[str], relpath: str) -> list[s
     return findings
 
 
+def _is_verify_call(node: ast.expr | None) -> bool:
+    """Whether *node* is a ``<signer>.verify(...)`` call yielding token claims.
+
+    Returns:
+        ``True`` for a call whose callee attribute is ``verify``.
+    """
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == _VERIFY_METHOD
+    )
+
+
+def _claims_params(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    """Return *fn* parameter names annotated as ``GatewayTokenClaims``.
+
+    Returns:
+        The claims-typed parameter identifiers (any annotation mentioning the
+        claims type, so ``GatewayTokenClaims`` and ``GatewayTokenClaims | None``
+        both qualify).
+    """
+    args = fn.args
+    params = [*args.posonlyargs, *args.args, *args.kwonlyargs]
+    return {
+        arg.arg
+        for arg in params
+        if arg.annotation is not None
+        and any(
+            isinstance(n, ast.Name) and n.id == _CLAIMS_TYPE
+            for n in ast.walk(arg.annotation)
+        )
+    }
+
+
+def _claims_base_names(tree: ast.Module) -> set[str]:
+    """Return local names bound to the verified gateway token claims.
+
+    A name qualifies when it is assigned from a ``<signer>.verify(...)`` call or
+    is a function parameter annotated ``GatewayTokenClaims`` -- the two ways the
+    service obtains the token-claims object it must bind from.
+
+    Returns:
+        The set of claims-carrying local identifiers.
+    """
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and _is_verify_call(node.value):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and _is_verify_call(node.value)
+        ):
+            names.add(node.target.id)
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            names.update(_claims_params(node))
+    return names
+
+
 def _service_binds_token(root: Path) -> str | None:
     """Return an error string when ``service.py`` drops token binding.
 
+    Requires both ``.provider`` and ``.model_id`` to be read from a single
+    claims-derived base, so unrelated ``.provider`` / ``.model_id`` accesses
+    elsewhere in the module cannot masquerade as the binding.
+
     Returns:
-        ``None`` when both ``.provider`` and ``.model_id`` are read from the
-        claims; otherwise a description of the missing binding.
+        ``None`` when a claims object binds both attributes; otherwise a
+        description of the missing binding.
     """
     service = root / _PKG_REL / _SERVICE_REL
     if not service.is_file():
         return f"gateway service module missing: {service}"
     _, tree = read_and_parse(service)
-    attrs = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
-    missing = {"provider", _BOUND_MODEL_ATTR} - attrs
-    if missing:
-        return (
-            f"{_PKG_REL}/{_SERVICE_REL} does not bind {sorted(missing)} from the "
-            "token claims (Explicit Provider Binding regressed)"
-        )
-    return None
+    claims_names = _claims_base_names(tree)
+    base_attrs: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            base_attrs.setdefault(node.value.id, set()).add(node.attr)
+    required = {_PROVIDER_ATTR, _BOUND_MODEL_ATTR}
+    if any(required <= base_attrs.get(name, set()) for name in claims_names):
+        return None
+    return (
+        f"{_PKG_REL}/{_SERVICE_REL} does not read {sorted(required)} from the "
+        "verified token-claims object (Explicit Provider Binding regressed)"
+    )
 
 
 def _scan(root: Path) -> list[str]:

@@ -59,21 +59,21 @@ _NO_OP_MESSAGE: Final[str] = (
 )
 
 
-def _stable_conversation_id(raw: str) -> str:
-    """Return a stable UUID string for a task / execution id.
+def _stable_conversation_id(raw: str) -> UUID:
+    """Return a stable UUID for a task / execution id.
 
     ``task.id`` is already a UUID, but the ``execution_id`` fallback is only a
     ``NotBlankStr``. Deriving a deterministic ``uuid5`` for a non-UUID id keeps
     the conversation-reattach key stable across resumes while guaranteeing the
-    container's ``UUID(...)`` parse of the run spec cannot raise.
+    run spec's ``UUID`` conversation id is always well-formed.
 
     Returns:
-        The canonical UUID string used as the run's conversation id.
+        The canonical UUID used as the run's conversation id.
     """
     try:
-        return str(UUID(raw))
+        return UUID(raw)
     except ValueError:
-        return str(uuid5(_CONVERSATION_ID_NAMESPACE, raw))
+        return uuid5(_CONVERSATION_ID_NAMESPACE, raw)
 
 
 @dataclass

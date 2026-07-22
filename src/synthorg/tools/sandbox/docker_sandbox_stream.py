@@ -34,7 +34,10 @@ from synthorg.observability.events.docker import (
     DOCKER_EXECUTE_FAILED,
     DOCKER_EXECUTE_TIMEOUT,
 )
-from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_config import (
+    CONTAINER_WORKSPACE,
+    DockerSandboxConfig,
+)
 from synthorg.tools.sandbox.errors import SandboxStartError
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 
@@ -224,7 +227,7 @@ class DockerSandboxStreamMixin:
         config = self._build_container_config(
             command=command,
             args=args,
-            container_cwd="/workspace",
+            container_cwd=CONTAINER_WORKSPACE,
             env_overrides=None,
             effective_root=effective_root,
             category=category,
@@ -247,6 +250,11 @@ class DockerSandboxStreamMixin:
                 await self._destroy_handle(
                     ContainerHandle(container_id=sidecar_id, sidecar_id=None)
                 )
+                # ``_bring_up_sidecar`` tracked the sidecar under its
+                # ``_sidecar:*`` alias, but ``_destroy_handle`` only untracks the
+                # raw container id; drop the alias too or it lingers in the
+                # in-memory map (mirrors the success path below).
+                await self._untrack_container(f"_sidecar:{sidecar_id}")
             if isinstance(exc, Exception):
                 error_desc = safe_error_description(exc)
                 logger.warning(

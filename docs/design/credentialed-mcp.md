@@ -66,7 +66,7 @@ or `ForbiddenError` (visible but not permitted), never a silent success.
    `PENDING` approval when unapproved, brokers the credential via the
    `ConnectionCatalog` host-side, builds a per-call client pinned to the
    connection `base_url` (a structural egress pin), and dispatches.
-   Destructive tools additionally clear `require_admin_guardrails`
+   Destructive tools additionally invoke `require_admin_guardrails`
    (confirm + reason + actor) as their first statement.
 5. **SEC-1 at source**: the tool output is wrapped with
    `wrap_untrusted(TAG_TOOL_RESULT, ...)` before it returns to the
