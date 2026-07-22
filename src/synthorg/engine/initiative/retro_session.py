@@ -280,8 +280,9 @@ def build_retro_brief(*, material: str) -> str:
 
     The material is assembled from operator/charter input and finished work,
     including the objective title (which denormalises an attacker-controllable
-    task title), so the whole of it is fenced via ``wrap_untrusted`` (SEC-1);
-    only the static instructions sit outside the fence.
+    task title), so the whole of it is fenced via ``wrap_untrusted`` to keep an
+    injected instruction in the title out of the lead's own turn; only the
+    static instructions sit outside the fence.
 
     Returns:
         The user-message brief driving the distillation session.
