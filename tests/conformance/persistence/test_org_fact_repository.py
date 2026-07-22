@@ -209,14 +209,17 @@ class TestOrgFactRepository:
     async def test_term_match_folds_unicode_case(
         self, backend: PersistenceBackend
     ) -> None:
-        """A salient accented term matches regardless of case, on both backends.
+        """A salient term matches across case AND Unicode composition, both backends.
 
-        SQLite's built-in ``LOWER`` is ASCII-only, so matching in SQL would fold
-        ``ÉCOLE`` on Postgres but not SQLite. Both backends store and query the
-        shared ``content_normalized`` form, so accented case folds identically.
+        Both backends persist and query the shared NFC-normalised, case-folded
+        ``content_normalized`` form, never SQL ``LOWER`` (SQLite's is ASCII-only).
+        The query is decomposed (NFD) uppercase, so a match proves NFC composition
+        as well as case folding: a regression dropping the NFC step would leave the
+        decomposed query unable to match the composed stored content.
         """
         await backend.org_facts.save(_fact("accented", "École de commerce durable"))
-        rows = await backend.org_facts.query(text="ÉCOLE")
+        # NFD "E<combining acute>COLE" normalises (NFC + casefold) to "école".
+        rows = await backend.org_facts.query(text="ÉCOLE")
         assert as_uuid("accented") in {f.id for f in rows}
 
     async def test_literal_fallback_folds_unicode_case(

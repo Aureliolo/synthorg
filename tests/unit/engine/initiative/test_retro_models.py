@@ -76,6 +76,12 @@ class TestArgsToRetrospective:
                 {"summary": "ok", "org_learnings": [{"content": "x"}]}
             )
 
+    def test_agent_learning_missing_content_raises(self) -> None:
+        with pytest.raises(RetrospectiveParseError):
+            args_to_retrospective(
+                {"summary": "ok", "agent_learnings": [{"agent_id": "agent-1"}]}
+            )
+
     def test_too_many_org_learnings_is_a_retryable_parse_error(self) -> None:
         """The per-collection cap surfaces as a retryable parse error, not a crash."""
         with pytest.raises(RetrospectiveParseError):

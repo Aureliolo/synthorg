@@ -13,6 +13,8 @@ is not registered twice.
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.initiative.ports import RetroCapturePort
+from synthorg.memory.org.protocol import OrgMemoryBackend
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 
@@ -92,19 +94,10 @@ def _build_ship_retro_capture(app_state: AppState) -> RetroCapturePort | None:
         A :class:`ShipRetroCaptureService`, or ``None`` when its dependencies
         are not all present.
     """
-    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
-    from synthorg.core.agent import AgentIdentity  # noqa: PLC0415
-    from synthorg.engine.initiative.retro_capture import (  # noqa: PLC0415
-        ShipRetroCaptureService,
-    )
-    from synthorg.hr.state import agent_registry_of  # noqa: PLC0415
     from synthorg.memory.state import (  # noqa: PLC0415
         memory_backend_or_none,
         org_memory_backend_of,
     )
-    from synthorg.providers.protocol import CompletionProvider  # noqa: PLC0415
-    from synthorg.providers.state import provider_registry_of  # noqa: PLC0415
-    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
     memory_backend = memory_backend_or_none(app_state)
     org_backend = org_memory_backend_of(app_state)
@@ -115,18 +108,41 @@ def _build_ship_retro_capture(app_state: AppState) -> RetroCapturePort | None:
             note="retro tail not wired; memory or org backend absent",
         )
         return None
+    return _construct_ship_retro_capture(app_state, memory_backend, org_backend)
 
-    # The optional retro tail must never fail the rollup wiring proper: its own
-    # dependency accessors (provider/agent registry, cost tracker, resolver)
-    # raise if a slice is not yet wired, so a fault here degrades to an unwired
-    # tail rather than propagating into the caller's rollup-wiring try/except.
+
+def _construct_ship_retro_capture(
+    app_state: AppState,
+    memory_backend: MemoryBackend,
+    org_backend: OrgMemoryBackend,
+) -> RetroCapturePort | None:
+    """Construct the capture service, degrading to ``None`` on any fault.
+
+    Kept off :func:`_build_ship_retro_capture` so the optional retro tail never
+    fails the rollup wiring proper: the dependency accessors (provider / agent
+    registry, cost tracker, resolver) raise if a slice is not yet wired, so a
+    fault here degrades to an unwired tail rather than propagating into the
+    caller's rollup-wiring try/except.
+
+    Returns:
+        A :class:`ShipRetroCaptureService`, or ``None`` when construction faults.
+    """
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.core.agent import AgentIdentity  # noqa: PLC0415
+    from synthorg.engine.initiative.retro_capture import (  # noqa: PLC0415
+        ShipRetroCaptureService,
+    )
+    from synthorg.hr.state import agent_registry_of  # noqa: PLC0415
+    from synthorg.providers.protocol import CompletionProvider  # noqa: PLC0415
+    from synthorg.providers.state import provider_registry_of  # noqa: PLC0415
+    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
+
     try:
         registry = provider_registry_of(app_state)
 
         def _select_provider(identity: AgentIdentity) -> CompletionProvider:
             # The lead's own bound provider, re-resolved live so a provider
-            # hot-swap is reflected without rebuilding the service (mirrors the
-            # decomposition owner-provider selector).
+            # hot-swap is reflected without rebuilding the service.
             return registry.get(identity.model.provider)
 
         return ShipRetroCaptureService(

@@ -414,18 +414,13 @@ async def _build_runtime_coordinator(
         # runtime's per-call resolve).
         return provider_registry_of(app_state).get(identity.model.provider)
 
-    # Grant the planning session memory: past retros, org playbooks, and the
-    # owner's prior-initiative memory, so a plan builds on what the organisation
-    # already learned. Both a read-only recall tool (the owner recalls actively)
-    # and a pre-seeded digest (recall reaches the brief even if the owner never
-    # calls the tool) are wired, gated by memory.planning_memory_recall_enabled.
+    # A plan should build on what the organisation already learned, so the
+    # planning session recalls past retros, org playbooks, and the owner's
+    # prior-initiative memory.
     planning = await build_planning_memory(app_state)
-    # Grant the planning session live web research when a web-search provider is
-    # configured, so the owner researches with real data before drafting a plan
-    # (the same fail-open pattern the research subsystem's web source uses). The
-    # PlanningToolProvider is constructed whenever either grant applies (a web
-    # provider or a memory backend), so its tools cover web_search and/or
-    # search_memory.
+    # Real research data beats guessing, so grant live web search when a
+    # provider is configured; fail open (no provider -> no tool), matching the
+    # research subsystem's web source.
     planning_tool_provider = (
         PlanningToolProvider(
             search_provider=search_provider,
