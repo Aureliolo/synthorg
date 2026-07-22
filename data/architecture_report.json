@@ -1118,8 +1118,8 @@
     },
     "src/synthorg/persistence/postgres/org_fact_repo.py": {
       "cap": 500,
-      "loc": 501,
-      "ratio": 1.002,
+      "loc": 471,
+      "ratio": 0.942,
       "tier": "repository"
     },
     "src/synthorg/persistence/postgres/plan_repo.py": {
@@ -1226,8 +1226,8 @@
     },
     "src/synthorg/persistence/sqlite/org_fact_repo.py": {
       "cap": 500,
-      "loc": 490,
-      "ratio": 0.98,
+      "loc": 475,
+      "ratio": 0.95,
       "tier": "repository"
     },
     "src/synthorg/persistence/sqlite/plan_repo.py": {

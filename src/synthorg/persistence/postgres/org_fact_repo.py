@@ -40,10 +40,8 @@ from synthorg.observability.events.org_memory import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._org_fact_query import (
-    build_term_match_sql,
-    like_contains_pattern,
+    build_text_query,
     normalize_for_search,
-    org_query_terms,
 )
 from synthorg.persistence._shared import normalize_utc, validate_pagination_args
 from synthorg.persistence._shared.org_fact_marshalling import (
@@ -316,39 +314,19 @@ class PostgresOrgFactRepository:
             clauses.append(f"category IN ({placeholders})")
             params.extend(c.value for c in categories)
 
-        terms = org_query_terms(text) if text is not None else ()
-        order_params: list[object] = []
-        if terms:
-            where_frag, order_frag, patterns = build_term_match_sql(
-                terms, placeholder="%s", int_cast="::int"
-            )
-            clauses.append(where_frag)
-            params.extend(patterns)
-            order = f"ORDER BY {order_frag}"
-            order_params.extend(patterns)
-        elif text:
-            # Non-empty text with no salient term (a literal phrase of
-            # stopwords/short tokens): preserve the substring match against the
-            # pre-normalised column so a literal search still works and matches
-            # identically on both backends (never SQL LOWER).
-            normalized = normalize_for_search(text)
-            clauses.append("content_normalized LIKE %s ESCAPE '\\'")
-            params.append(like_contains_pattern(normalized))
-            order = (
-                "ORDER BY POSITION(%s IN content_normalized) ASC, "
-                "LENGTH(content) ASC, created_at DESC, fact_id ASC"
-            )
-            order_params.append(normalized)
-        else:
-            # No text, or an empty string (the protocol's match-all): order by
-            # recency then fact id, never the literal-fallback content-length
-            # ranking.
-            order = "ORDER BY created_at DESC, fact_id ASC"
+        text_query = build_text_query(
+            text,
+            placeholder="%s",
+            int_cast="::int",
+            position_expr="POSITION(%s IN content_normalized)",
+        )
+        clauses.extend(text_query.where)
+        params.extend(text_query.where_params)
 
         where = f" WHERE {' AND '.join(clauses)}"
-        params.extend(order_params)
+        params.extend(text_query.order_params)
         sql = (
-            f"SELECT * FROM org_facts_snapshot{where} {order} "  # noqa: S608
+            f"SELECT * FROM org_facts_snapshot{where} {text_query.order_by} "  # noqa: S608
             "LIMIT %s OFFSET %s"
         )
         params.extend([limit, offset])

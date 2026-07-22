@@ -749,7 +749,8 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/test_cold_import.py",
     "unit/scripts/test_check_completion_config_temperature.py",
     "unit/scripts/test_check_error_code_uniqueness.py::test_real_tree_passes",
-    "unit/scripts/test_check_dependency_inversion.py::TestLiveCodebase::test_real_codebase_is_clean",
+    "unit/scripts/test_check_dependency_inversion.py"
+    "::TestLiveCodebase::test_real_codebase_is_clean",
     "unit/scripts/test_gate_live_tree_clean.py",
     "unit/scripts/test_pretooluse_bash_gates.py",
     "unit/api/test_construction_wiring.py",

@@ -18,7 +18,7 @@ of the content and compare pre-normalised strings, never SQL ``LOWER``.
 """
 
 import unicodedata
-from typing import Final
+from typing import Final, NamedTuple
 
 #: Terms shorter than this carry no retrieval signal (``a``, ``to``) and,
 #: matched as substrings, would pull in almost every fact.
@@ -184,3 +184,84 @@ def build_term_match_sql(
     )
     patterns = [like_contains_pattern(term) for term in terms]
     return where_fragment, order_fragment, patterns
+
+
+class TextQueryClause(NamedTuple):
+    """The WHERE and ORDER-BY fragments for one org-fact text query.
+
+    Attributes:
+        where: Clauses to AND into the query's WHERE (empty for match-all).
+        order_by: The full ``ORDER BY`` clause.
+        where_params: Positional params bound for the WHERE clauses.
+        order_params: Positional params bound for the ORDER BY clause, bound
+            after the WHERE params and before ``LIMIT``/``OFFSET``.
+    """
+
+    where: list[str]
+    order_by: str
+    where_params: list[str]
+    order_params: list[str]
+
+
+def build_text_query(
+    text: str | None,
+    *,
+    placeholder: str,
+    int_cast: str,
+    position_expr: str,
+) -> TextQueryClause:
+    """Build the shared text-search WHERE + ORDER for an org-fact query.
+
+    Both backends call this so a fact ranks identically on SQLite and Postgres;
+    only the placeholder token, the boolean-to-integer cast, and the
+    substring-position expression differ. Three branches:
+
+    - salient terms present: a term-match WHERE plus match-count ranking;
+    - a non-empty query of only stopwords/short tokens: a literal
+      ``content_normalized`` substring match ordered by earliest match;
+    - no text (or an empty string): match-all ordered by recency.
+
+    Matching is always against the pre-normalised ``content_normalized`` column,
+    never SQL ``LOWER``, so the two backends fold case identically.
+
+    Args:
+        text: The raw query text, or ``None`` / ``""`` for match-all.
+        placeholder: The backend's positional placeholder (``?`` or ``%s``).
+        int_cast: Boolean-to-integer cast suffix (``""`` or ``"::int"``).
+        position_expr: The backend's substring-position expression over
+            ``content_normalized`` carrying its own placeholder (``INSTR(...)``
+            on SQLite, ``POSITION(... IN ...)`` on Postgres), used to order the
+            literal-fallback branch by earliest match.
+
+    Returns:
+        A :class:`TextQueryClause` the caller splices into its query, binding
+        ``where_params`` (after any category params) then ``order_params``.
+    """
+    terms = org_query_terms(text) if text is not None else ()
+    if terms:
+        where_frag, order_frag, patterns = build_term_match_sql(
+            terms, placeholder=placeholder, int_cast=int_cast
+        )
+        return TextQueryClause(
+            where=[where_frag],
+            order_by=f"ORDER BY {order_frag}",
+            where_params=list(patterns),
+            order_params=list(patterns),
+        )
+    if text:
+        normalized = normalize_for_search(text)
+        return TextQueryClause(
+            where=[f"content_normalized LIKE {placeholder} ESCAPE '\\'"],
+            order_by=(
+                f"ORDER BY {position_expr} ASC, "
+                "LENGTH(content) ASC, created_at DESC, fact_id ASC"
+            ),
+            where_params=[like_contains_pattern(normalized)],
+            order_params=[normalized],
+        )
+    return TextQueryClause(
+        where=[],
+        order_by="ORDER BY created_at DESC, fact_id ASC",
+        where_params=[],
+        order_params=[],
+    )

@@ -224,8 +224,10 @@ class TestOrgFactRepository:
     ) -> None:
         """The no-salient-term fallback also folds accented case on both backends."""
         # "Ça" is a 2-char token -> no salient term -> literal fallback branch.
+        # Query a differently-cased form ("ça" vs stored "Ça") so a match proves
+        # case folding, not a same-case substring hit.
         await backend.org_facts.save(_fact("fallback", "Number Ça counts"))
-        rows = await backend.org_facts.query(text="Ça")
+        rows = await backend.org_facts.query(text="ça")
         assert as_uuid("fallback") in {f.id for f in rows}
 
     async def test_empty_text_is_match_all_ordered_by_recency(
