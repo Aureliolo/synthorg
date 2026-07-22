@@ -188,12 +188,18 @@ an owned initiative always has an accountable author.
 `submit_retrospective` yields a `RetrospectiveDraft` of `{summary, org_learnings,
 agent_learnings}`, written by `engine/initiative/retro_writes.py`:
 
-- **Org learnings** are reusable, company-wide lessons, written as agent-authored
+- **Org learnings** are reusable, company-wide lessons, written as
   `PROCEDURE` / `CONVENTION` org facts (the taxonomy as designed, never
-  `CORE_POLICY`, which stays human-only). The lead is the author, so a lead whose
-  role does not hold the `memory.write` capability is refused at the org access
-  gate: the capability gate is the hard control, direct writes are the default,
-  and there is no proposal queue in the path (the loop closes without a human).
+  `CORE_POLICY`, which stays human-only). The retrospective is a
+  system-initiated write authored in the lead's name for provenance (like the
+  ontology-sync write path), so its governance is the org-memory **category
+  gate**, not the per-agent `memory.write` tool permission that gates an agent
+  calling the write tool directly: a retrospective may only write the
+  agent-writable `PROCEDURE` / `CONVENTION` categories, never core policy. The
+  bound is the category restriction plus redaction, write-gate dedup,
+  append-only audit, and the `retro_capture_enabled` kill switch. Direct writes
+  are the default and there is no proposal queue in the path (the loop closes
+  without a human).
 - **Agent learnings** are per-contributor lessons, written as `EPISODIC` entries
   into each member's own memory, and only for agents actually on the initiative
   (a hallucinated agent id lands nowhere).
@@ -251,7 +257,7 @@ the agent during execution.
     When `fusion_strategy: rrf` is configured, the pipeline runs both dense and BM25 sparse
     search in parallel and fuses results:
 
-    1. Dense search: `MemoryBackend.retrieve()` for personal, `SharedKnowledgeStore.search_shared()` for shared (in parallel)
+    1. Personal dense search `MemoryBackend.retrieve()` and shared org search `SharedKnowledgeStore.search_shared()` run in parallel. Personal search is dense vector; the org store's `query()` is a lexical term-match (tokenised OR-of-`LIKE`, ranked by distinct-term match count), not a dense/embedding search.
     2. Sparse BM25 search: `MemoryBackend.retrieve_sparse()` for personal (shared sparse disabled until `SharedKnowledgeStore` adds the method)
     3. Fuse via `fuse_ranked_lists()` with configurable `rrf_k` smoothing constant
     4. Post-RRF `min_relevance` filter on `combined_score`

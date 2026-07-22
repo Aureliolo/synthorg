@@ -2,9 +2,17 @@
 """Retrospective material assembly, idempotency check, and memory writes.
 
 Standalone helpers for the SHIP-time retrospective, kept out of the service so
-the orchestration stays small. The write side is deliberately per-item
-best-effort: one learning that a capability gate rejects (an org write by a
-non-capable lead) or that the backend refuses must not lose the rest.
+the orchestration stays small.
+
+The retrospective is a system-initiated write authored in the lead's name for
+provenance (like the ontology-sync write path), so its governance is the org
+memory category gate, not the per-agent ``memory.write`` tool permission that
+gates an agent calling the write tool directly: a retrospective may only write
+the agent-writable ``PROCEDURE`` / ``CONVENTION`` categories, never core policy
+(human-only). Writes are additionally redacted, write-gate deduped, and
+append-only audited at the store boundary, and the whole tail is kill-switched.
+The write side is per-item best-effort: one learning the store refuses (a
+category the author may not write, a dedup rejection) must not lose the rest.
 """
 
 from typing import Final
@@ -12,7 +20,6 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.plan import Plan
@@ -20,6 +27,7 @@ from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.retro_models import (
     RetrospectiveDraft,
+    initiative_contributor_ids,
     org_category_for,
     retro_object_tag,
 )
@@ -119,26 +127,24 @@ async def already_captured(
     return any(tag in fact.tags for fact in facts)
 
 
-async def write_learnings(  # noqa: PLR0913 -- explicit-deps write helper
+async def write_learnings(
     draft: RetrospectiveDraft,
     *,
     lead: AgentIdentity,
     project: Project,
     memory_backend: MemoryBackend,
     org_backend: OrgMemoryBackend,
-    clock: Clock,
 ) -> WriteResult:
     """Persist the draft's learnings to org and agent memory.
 
-    Org learnings are authored by the lead, so a non-capable lead's writes are
-    refused at the org access gate (by design); each refusal is logged and the
-    rest continue. Per-agent learnings are only written for agents actually on
-    the initiative, so a hallucinated agent id lands nowhere.
+    Org learnings are authored in the lead's name and governed by the org
+    category gate (never core policy); a learning the store refuses is logged
+    and the rest continue. Per-agent learnings are only written for agents
+    actually on the initiative, so a hallucinated agent id lands nowhere.
 
     Returns:
         The counts that actually persisted.
     """
-    del clock  # backends stamp their own timestamps
     tags = (retro_object_tag(str(project.id)), _RETRO_TAG)
     org_written = await _write_org_learnings(draft, lead, tags, org_backend)
     agent_written = await _write_agent_learnings(
@@ -202,7 +208,7 @@ async def _write_agent_learnings(
     Returns:
         The number of per-agent learnings persisted.
     """
-    members = set(project.team) | {NotBlankStr(str(lead.id))}
+    members = initiative_contributor_ids(project.team, NotBlankStr(str(lead.id)))
     written = 0
     for learning in draft.agent_learnings:
         if learning.agent_id not in members:

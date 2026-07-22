@@ -120,10 +120,14 @@ class _RecordingRetroCapture:
 
     def __init__(self) -> None:
         self.fired: list[str] = []
+        self.drained: list[float] = []
 
     def schedule(self, *, plan: Plan, project: Project) -> None:
         del plan
         self.fired.append(str(project.id))
+
+    async def drain(self, *, timeout_sec: float) -> None:
+        self.drained.append(timeout_sec)
 
 
 async def _statuses(
@@ -553,6 +557,41 @@ class TestRetroTrigger:
         await service.recompute(as_uuid(_PLAN_ID))
 
         assert retro.fired == []
+
+    async def test_does_not_fire_when_the_project_write_was_refused(self) -> None:
+        """A refused project write (project is None) must not trigger a retro."""
+        retro = _RecordingRetroCapture()
+        service, _ = await _seed(
+            _plan(_item(_ITEM_A)),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+            ship_retro_capture=retro,
+        )
+
+        service._maybe_capture_retro(
+            _plan(_item(_ITEM_A)), None, before=ProjectStatus.ACTIVE
+        )
+
+        assert retro.fired == []
+
+    async def test_drain_delegates_to_the_capture_tail(self) -> None:
+        retro = _RecordingRetroCapture()
+        service, _ = await _seed(
+            _plan(_item(_ITEM_A)),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+            ship_retro_capture=retro,
+        )
+
+        await service.drain_retro_capture(timeout_sec=5.0)
+
+        assert retro.drained == [5.0]
+
+    async def test_drain_is_a_noop_without_a_wired_tail(self) -> None:
+        service, _ = await _seed(
+            _plan(_item(_ITEM_A)),
+            _task(_ITEM_A, TaskStatus.COMPLETED),
+        )
+
+        await service.drain_retro_capture(timeout_sec=5.0)
 
 
 def _event(task: Task) -> TaskStateChanged:

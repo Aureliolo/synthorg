@@ -189,6 +189,13 @@ Writes are version-guarded (`expected_version`) with a bounded retry, and a
 per-plan in-process lock serialises same-process recomputes. A losing write
 re-reads and recomputes rather than clobbering the winner.
 
+On the edge a project first reaches `COMPLETED` (and only that transition, never
+a recompute over an already-terminal project), the rollup fires the SHIP-time
+retrospective capture, so finished work feeds a retrospective back into org and
+agent memory. That tail is detached, bounded, and best-effort: it never blocks
+or fails the rollup. See the "Retrospective Capture on SHIP" section of
+[memory-learning.md](memory-learning.md) for the capture pipeline.
+
 ## Where linkage is written
 
 At dispatch, in `_dispatch_approved_plan`

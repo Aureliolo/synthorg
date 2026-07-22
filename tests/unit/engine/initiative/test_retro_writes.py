@@ -27,7 +27,7 @@ from synthorg.memory.org.errors import OrgMemoryAccessDeniedError
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
 from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.memory.protocol import MemoryBackend
-from tests._shared import FakeClock, as_uuid, mock_of, sid
+from tests._shared import as_uuid, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -133,7 +133,6 @@ class TestWriteLearnings:
             project=project,
             memory_backend=mem,
             org_backend=org,
-            clock=FakeClock(),
         )
 
         assert result.org_written == 1
@@ -168,7 +167,6 @@ class TestWriteLearnings:
             project=_project(),
             memory_backend=mem,
             org_backend=org,
-            clock=FakeClock(),
         )
 
         assert result.org_written == 1
@@ -191,7 +189,6 @@ class TestWriteLearnings:
             project=_project(),
             memory_backend=mem,
             org_backend=org,
-            clock=FakeClock(),
         )
 
         assert result.agent_written == 0

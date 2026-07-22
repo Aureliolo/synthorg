@@ -48,8 +48,10 @@ from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.retrospective import (
     RETRO_CAPTURE_COMPLETED,
     RETRO_CAPTURE_FAILED,
+    RETRO_CAPTURE_SETTINGS_DEGRADED,
     RETRO_CAPTURE_SKIPPED,
     RETRO_CAPTURE_STARTED,
+    RETRO_CAPTURE_WRITE_INCOMPLETE,
 )
 from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.protocol import CompletionProvider, ProviderSelector
@@ -81,7 +83,7 @@ class ShipRetroCaptureService:
         shutdown_checker: Optional graceful-shutdown signal for the session.
         config_resolver: Live settings source, re-read per capture so an
             operator can toggle capture or tune the session without a restart.
-        clock: Clock seam for write timestamps.
+        clock: Clock seam seeding the background-task drain deadline.
     """
 
     __slots__ = (
@@ -89,6 +91,7 @@ class ShipRetroCaptureService:
         "_config_resolver",
         "_cost_tracker",
         "_default_provider",
+        "_inflight",
         "_memory_backend",
         "_org_backend",
         "_provider_selector",
@@ -120,18 +123,32 @@ class ShipRetroCaptureService:
         self._config_resolver = config_resolver
         self._clock = clock
         self._tasks = BackgroundTaskRegistry(owner="retrospective.capture", clock=clock)
+        # Project ids with a capture in flight this process. The recompute lock
+        # is keyed per-plan, but the retro edge fires on the shared project, so
+        # two plans of one project could each schedule a capture; this guard
+        # collapses them synchronously (checked-and-set before spawn, no await)
+        # while the org-fact idempotency scan covers only the restart case.
+        self._inflight: set[str] = set()
 
     def schedule(self, *, plan: Plan, project: Project) -> None:
         """Schedule retrospective capture for a just-completed objective.
 
         Returns immediately; the work runs detached on a tracked task so the
         rollup observer is never blocked. Safe to call from a best-effort
-        observer: it never raises.
+        observer: it never raises. A capture already in flight for the same
+        project is a no-op, so a second plan-scoped edge cannot double-run it.
         """
+        project_id = str(project.id)
+        if project_id in self._inflight:
+            logger.debug(
+                RETRO_CAPTURE_SKIPPED, project=project_id, reason="already_inflight"
+            )
+            return
+        self._inflight.add(project_id)
         _ = self._tasks.spawn(
             self._capture(plan, project),
             event=RETRO_CAPTURE_FAILED,
-            project=str(project.id),
+            project=project_id,
         )
 
     async def drain(self, *, timeout_sec: float) -> None:
@@ -169,6 +186,8 @@ class ShipRetroCaptureService:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+        finally:
+            self._inflight.discard(str(project.id))
 
     async def _run(self, plan: Plan, project: Project) -> None:
         """Capture the retrospective for *project*, honouring live settings."""
@@ -186,26 +205,30 @@ class ShipRetroCaptureService:
             return
         lead = await self._resolve_lead(project)
         if lead is None:
-            logger.info(
+            # A completed objective with no resolvable author never gets a
+            # retrospective; that is a gap in the loop's tail, not a routine
+            # skip, so it surfaces at WARNING.
+            logger.warning(
                 RETRO_CAPTURE_SKIPPED, project=str(project.id), reason="no_lead"
             )
             return
         provider = self._resolve_provider(lead)
         if provider is None:
-            logger.info(
-                RETRO_CAPTURE_SKIPPED, project=str(project.id), reason="no_provider"
+            logger.warning(
+                RETRO_CAPTURE_SKIPPED,
+                project=str(project.id),
+                lead_id=str(lead.id),
+                reason="no_provider",
             )
             return
         logger.info(
             RETRO_CAPTURE_STARTED, project=str(project.id), lead_id=str(lead.id)
         )
-        draft = await self._distiller().distil(
+        distiller = await self._distiller()
+        draft = await distiller.distil(
             lead=lead,
             provider=provider,
-            brief=build_retro_brief(
-                objective=plan.objective_title,
-                material=build_retro_material(plan, project),
-            ),
+            brief=build_retro_brief(material=build_retro_material(plan, project)),
             recall_tool=build_memory_recall_tool(
                 backend=self._memory_backend,
                 agent_id=NotBlankStr(str(lead.id)),
@@ -223,7 +246,6 @@ class ShipRetroCaptureService:
             project=project,
             memory_backend=self._memory_backend,
             org_backend=self._org_backend,
-            clock=self._clock,
         )
         logger.info(
             RETRO_CAPTURE_COMPLETED,
@@ -232,6 +254,17 @@ class ShipRetroCaptureService:
             org_written=written.org_written,
             agent_written=written.agent_written,
         )
+        # A draft that carried learnings but persisted none is a total write-side
+        # outage, not a genuinely empty retrospective; surface it so it is not
+        # read as a clean success on the capture lifecycle.
+        expected = len(draft.org_learnings) + len(draft.agent_learnings)
+        if expected and (written.org_written + written.agent_written) == 0:
+            logger.warning(
+                RETRO_CAPTURE_WRITE_INCOMPLETE,
+                project=str(project.id),
+                lead_id=str(lead.id),
+                expected=expected,
+            )
 
     async def _enabled(self) -> bool:
         """Return whether retrospective capture is switched on right now.
@@ -250,6 +283,7 @@ class ShipRetroCaptureService:
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- best-effort settings read
             reraise_critical(exc)
+            self._log_settings_degraded("retro_capture_enabled", exc)
             return True
 
     async def _timeout_seconds(self) -> float:
@@ -268,23 +302,72 @@ class ShipRetroCaptureService:
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- best-effort settings read
             reraise_critical(exc)
+            self._log_settings_degraded("retro_session_timeout_seconds", exc)
             return _DEFAULT_TIMEOUT_SECONDS
         return resolved if resolved > 0 else _DEFAULT_TIMEOUT_SECONDS
 
-    def _distiller(self) -> RetroDistiller:
+    async def _distiller(self) -> RetroDistiller:
         """Build a distiller with the live session configuration.
 
         Returns:
             A :class:`RetroDistiller` carrying the current turn cap and cost
-            ceiling so an operator's change applies to the next capture.
+            ceiling, read live so an operator's change applies to the next
+            capture (the defaults stand in when no resolver is wired or a read
+            fails).
         """
+        max_turns = await self._resolve_int(
+            "retro_session_max_turns", _DEFAULT_MAX_TURNS
+        )
+        cost_ceiling = await self._resolve_float(
+            "retro_session_cost_ceiling", _DEFAULT_COST_CEILING
+        )
         return RetroDistiller(
-            config=RetroSessionConfig(
-                max_turns=_DEFAULT_MAX_TURNS,
-                cost_ceiling=_DEFAULT_COST_CEILING,
-            ),
+            config=RetroSessionConfig(max_turns=max_turns, cost_ceiling=cost_ceiling),
             cost_tracker=self._cost_tracker,
             shutdown_checker=self._shutdown_checker,
+        )
+
+    async def _resolve_int(self, key: str, default: int) -> int:
+        """Resolve a live ``memory.<key>`` int, falling back to *default*.
+
+        Returns:
+            The configured value, or *default* when no resolver is wired or the
+            read fails.
+        """
+        if self._config_resolver is None:
+            return default
+        try:
+            return await self._config_resolver.get_int("memory", key)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort settings read
+            reraise_critical(exc)
+            self._log_settings_degraded(key, exc)
+            return default
+
+    async def _resolve_float(self, key: str, default: float) -> float:
+        """Resolve a live ``memory.<key>`` float, falling back to *default*.
+
+        Returns:
+            The configured value, or *default* when no resolver is wired or the
+            read fails.
+        """
+        if self._config_resolver is None:
+            return default
+        try:
+            return await self._config_resolver.get_float("memory", key)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- best-effort settings read
+            reraise_critical(exc)
+            self._log_settings_degraded(key, exc)
+            return default
+
+    def _log_settings_degraded(self, key: str, exc: Exception) -> None:
+        """Warn that a best-effort ``memory.<key>`` read fell back to a default."""
+        logger.warning(
+            RETRO_CAPTURE_SETTINGS_DEGRADED,
+            key=key,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
     async def _resolve_lead(self, project: Project) -> AgentIdentity | None:
@@ -323,4 +406,9 @@ class ShipRetroCaptureService:
         try:
             return self._provider_selector(lead)
         except DriverNotRegisteredError:
+            logger.debug(
+                RETRO_CAPTURE_SKIPPED,
+                lead_id=str(lead.id),
+                reason="lead_provider_unregistered_using_default",
+            )
             return self._default_provider

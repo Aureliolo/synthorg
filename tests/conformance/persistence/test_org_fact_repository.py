@@ -186,14 +186,49 @@ class TestOrgFactRepository:
                 _fact(f"qoff_{i}", "Common ship statement."),
             )
 
-        page = await backend.org_facts.query(
-            text="ship",
-            limit=10,
-            offset=1,
-        )
+        # Anchor against the actual ordering rather than only the count, so a
+        # wrong-direction or off-by-one offset would be caught.
+        full_ids = [f.id for f in await backend.org_facts.query(text="ship", limit=10)]
+        page = await backend.org_facts.query(text="ship", limit=10, offset=1)
 
-        # All three match; offset=1 drops the first result.
-        assert len(page) == 2
+        assert [f.id for f in page] == full_ids[1:]
+
+    async def test_query_stopword_fallback_is_case_insensitive(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The no-salient-term literal fallback matches case-insensitively.
+
+        Pinned across both backends: SQLite ``LIKE`` is case-insensitive by
+        default but Postgres is not, so the fallback must ``LOWER`` both sides
+        or a mixed-case literal search would diverge by backend.
+        """
+        await backend.org_facts.save(_fact("cased", "AB CD"))
+        rows = await backend.org_facts.query(text="ab cd")
+        assert as_uuid("cased") in {f.id for f in rows}
+
+    async def test_query_by_category_and_text_combined(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Category and text filters compose (AND), pinning placeholder order."""
+        await backend.org_facts.save(
+            _fact(
+                "conv",
+                "checkout hardening convention",
+                category=OrgFactCategory.CONVENTION,
+            ),
+        )
+        await backend.org_facts.save(
+            _fact(
+                "pol", "checkout hardening policy", category=OrgFactCategory.CORE_POLICY
+            ),
+        )
+        rows = await backend.org_facts.query(
+            categories=frozenset({OrgFactCategory.CONVENTION}),
+            text="checkout hardening",
+        )
+        ids = {f.id for f in rows}
+        assert as_uuid("conv") in ids
+        assert as_uuid("pol") not in ids
 
     async def test_delete_retracts_fact(self, backend: PersistenceBackend) -> None:
         await backend.org_facts.save(_fact("doomed"))

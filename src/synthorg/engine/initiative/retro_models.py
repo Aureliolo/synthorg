@@ -9,7 +9,7 @@ member should remember next time). These frozen models carry the distilled
 result from the terminal ``submit_retrospective`` tool to the write side.
 """
 
-from typing import Literal, cast
+from typing import Final, Literal, cast
 from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
@@ -22,6 +22,11 @@ from synthorg.providers.models import ToolDefinition
 #: Namespace for deriving the deterministic id a retrospective is tagged with,
 #: so a duplicate capture of the same objective is recognised and skipped.
 _RETRO_NAMESPACE = NAMESPACE_URL
+
+#: Upper bound on each learning collection in one retrospective. Generous for a
+#: genuine objective; a defence-in-depth cap so a runaway or adversarial tool
+#: call cannot hand back an unbounded batch for the write loop to persist.
+_MAX_LEARNINGS: Final[int] = 50
 
 #: The kinds of org learning a retrospective may publish. Both are
 #: agent-writable org-fact categories; core policy stays human-only, so a
@@ -41,6 +46,23 @@ def org_category_for(kind: OrgLearningKind) -> OrgFactCategory:
         The :class:`OrgFactCategory` the learning is written under.
     """
     return _KIND_TO_CATEGORY[kind]
+
+
+def initiative_contributor_ids(
+    team: tuple[NotBlankStr, ...],
+    lead_id: NotBlankStr,
+) -> set[NotBlankStr]:
+    """Return the agent ids a retrospective may write a personal learning for.
+
+    A per-agent learning is only durable for someone who actually worked the
+    objective (a team member or the lead), so a hallucinated or stale id in a
+    submitted draft lands nowhere. Colocated with the models it constrains
+    even though the write side is where it is enforced.
+
+    Returns:
+        The set of contributor ids: the team plus the lead.
+    """
+    return set(team) | {lead_id}
 
 
 def retro_object_tag(project_id: str) -> NotBlankStr:
@@ -98,10 +120,12 @@ class RetrospectiveDraft(BaseModel):
     summary: NotBlankStr = Field(description="Short retrospective narrative")
     org_learnings: tuple[OrgLearning, ...] = Field(
         default=(),
+        max_length=_MAX_LEARNINGS,
         description="Reusable learnings for org memory",
     )
     agent_learnings: tuple[AgentLearning, ...] = Field(
         default=(),
+        max_length=_MAX_LEARNINGS,
         description="Per-agent learnings for agent memory",
     )
 
@@ -194,14 +218,17 @@ def args_to_retrospective(args: dict[str, JsonValue]) -> RetrospectiveDraft:
             )
             for item in _as_items(args.get("agent_learnings"))
         )
+        # Construct inside the try so the draft's own validation (the
+        # per-collection max_length cap) surfaces as a retryable parse error the
+        # lead can correct, not an uncaught ValidationError out of the session.
+        return RetrospectiveDraft(
+            summary=NotBlankStr(summary),
+            org_learnings=org,
+            agent_learnings=agents,
+        )
     except (ValueError, TypeError, KeyError) as exc:
         msg = f"Invalid retrospective submission: {exc}"
         raise RetrospectiveParseError(msg) from exc
-    return RetrospectiveDraft(
-        summary=NotBlankStr(summary),
-        org_learnings=org,
-        agent_learnings=agents,
-    )
 
 
 def _as_items(value: JsonValue | None) -> tuple[dict[str, JsonValue], ...]:

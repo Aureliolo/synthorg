@@ -419,24 +419,20 @@ async def _build_runtime_coordinator(
     # already learned. Both a read-only recall tool (the owner recalls actively)
     # and a pre-seeded digest (recall reaches the brief even if the owner never
     # calls the tool) are wired, gated by memory.planning_memory_recall_enabled.
-    (
-        planning_memory,
-        digest_budget,
-        planning_mem_backend,
-        planning_org_backend,
-    ) = await build_planning_memory(app_state)
+    planning = await build_planning_memory(app_state)
     # Grant the planning session live web research when a web-search provider is
     # configured, so the owner researches with real data before drafting a plan
     # (the same fail-open pattern the research subsystem's web source uses). The
-    # provider is also present whenever memory recall is wired, so the tool grant
-    # covers web_search and/or search_memory.
+    # PlanningToolProvider is constructed whenever either grant applies (a web
+    # provider or a memory backend), so its tools cover web_search and/or
+    # search_memory.
     planning_tool_provider = (
         PlanningToolProvider(
             search_provider=search_provider,
-            memory_backend=planning_mem_backend,
-            org_backend=planning_org_backend,
+            memory_backend=planning.memory_backend,
+            org_backend=planning.org_backend,
         )
-        if search_provider is not None or planning_mem_backend is not None
+        if search_provider is not None or planning.memory_backend is not None
         else None
     )
 
@@ -452,8 +448,8 @@ async def _build_runtime_coordinator(
         decomposition_cost_tracker=cost_tracker,
         agent_session_max_turns=agent_session_max_turns,
         agent_session_cost_ceiling=agent_session_cost_ceiling,
-        planning_memory=planning_memory,
-        agent_session_memory_digest_budget=digest_budget,
+        planning_memory=planning.planning_memory,
+        agent_session_memory_digest_budget=planning.digest_budget,
         task_engine=task_engine_of(app_state),
         workspace_strategy=workspace_strategy,
         workspace_config=workspace_config,

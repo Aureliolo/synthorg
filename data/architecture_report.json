@@ -236,8 +236,8 @@
     },
     "src/synthorg/api/lifecycle_runner_shutdown.py": {
       "cap": 500,
-      "loc": 482,
-      "ratio": 0.964,
+      "loc": 494,
+      "ratio": 0.988,
       "tier": "code"
     },
     "src/synthorg/api/lifecycle_runner_startup.py": {
@@ -1502,8 +1502,8 @@
     },
     "src/synthorg/workers/_coordinator_assembly.py": {
       "cap": 500,
-      "loc": 512,
-      "ratio": 1.024,
+      "loc": 460,
+      "ratio": 0.92,
       "tier": "code"
     },
     "src/synthorg/workers/_engine_assembly.py": {
@@ -1555,7 +1555,7 @@
     "synthorg.api.pagination": 63,
     "synthorg.api.path_params": 85,
     "synthorg.api.rate_limits": 96,
-    "synthorg.api.state": 328,
+    "synthorg.api.state": 329,
     "synthorg.api.state_slices": 34,
     "synthorg.api.ws_models": 23,
     "synthorg.approval.enums": 81,
@@ -1584,7 +1584,7 @@
     "synthorg.core.auth.roles": 32,
     "synthorg.core.autonomy_enums": 44,
     "synthorg.core.boundary": 68,
-    "synthorg.core.clock": 245,
+    "synthorg.core.clock": 244,
     "synthorg.core.completion_enums": 21,
     "synthorg.core.critical_errors": 690,
     "synthorg.core.domain_errors": 257,
@@ -1610,7 +1610,7 @@
     "synthorg.engine.loop_protocol": 57,
     "synthorg.engine.pipeline.models": 26,
     "synthorg.engine.prompt_safety": 85,
-    "synthorg.engine.state": 55,
+    "synthorg.engine.state": 56,
     "synthorg.engine.strategy.models": 21,
     "synthorg.engine.task_engine": 43,
     "synthorg.engine.task_engine_models": 24,
@@ -1659,9 +1659,9 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 23,
     "synthorg.notifications.models": 24,
-    "synthorg.observability": 1886,
+    "synthorg.observability": 1887,
     "synthorg.observability.background_tasks": 29,
-    "synthorg.observability.events.api": 229,
+    "synthorg.observability.events.api": 230,
     "synthorg.observability.events.approval_gate": 26,
     "synthorg.observability.events.chief_of_staff": 42,
     "synthorg.observability.events.client": 24,
@@ -1717,7 +1717,7 @@
     "synthorg.settings.resolver": 65,
     "synthorg.settings.resolver_protocol": 20,
     "synthorg.settings.service": 47,
-    "synthorg.settings.state": 129,
+    "synthorg.settings.state": 130,
     "synthorg.tools.base": 95,
     "synthorg.tools.network_validator": 32
   },

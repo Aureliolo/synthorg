@@ -139,6 +139,14 @@ def build_term_match_sql(
         A ``(where_fragment, order_fragment, patterns)`` triple. Each term's
         LIKE pattern appears once in *patterns*; the caller binds it for the
         WHERE clause and again, in the same order, for the ORDER expression.
+
+    Note:
+        Each term's leading-wildcard ``LIKE`` is evaluated twice per row (once
+        in the WHERE, once in the ORDER match-count) and cannot use an index,
+        so a query costs up to ``2 * len(terms)`` scans per row, bounded by
+        :data:`_MAX_TERMS`. That is acceptable for the curated, low-cardinality
+        org-fact store this backs; if ``org_facts_snapshot`` ever grew large a
+        trigram / FTS index (kept in dual-backend parity) would be warranted.
     """
     like = f"LOWER(content) LIKE {placeholder} ESCAPE '\\'"
     where_fragment = "(" + " OR ".join(like for _ in terms) + ")"

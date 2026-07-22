@@ -361,7 +361,11 @@ class SQLiteOrgFactRepository:
         elif text is not None:
             # No salient term (a literal phrase of stopwords/short tokens):
             # preserve the substring match so a literal search still works.
-            clauses.append("content LIKE ? ESCAPE '\\'")
+            # LOWER() both sides so the fallback is case-insensitive on both
+            # backends, matching the term-match branch above (SQLite LIKE is
+            # case-insensitive by default, Postgres is not; without this the
+            # fallback would diverge across backends).
+            clauses.append("LOWER(content) LIKE LOWER(?) ESCAPE '\\'")
             params.append(like_contains_pattern(text))
             order = (
                 "ORDER BY INSTR(LOWER(content), LOWER(?)) ASC, "

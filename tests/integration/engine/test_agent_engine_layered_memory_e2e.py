@@ -250,6 +250,9 @@ async def test_project_memory_is_scoped_to_its_own_initiative() -> None:
 
     strategy = ContextInjectionStrategy(
         backend=agent_backend,
+        # Diversity re-ranking disabled for the same reason as the first test:
+        # it is orthogonal to the scoping property under test here (that a
+        # sibling initiative's memory never leaks into this run's prompt).
         config=MemoryRetrievalConfig(
             min_relevance=0.0, diversity_penalty_enabled=False
         ),
@@ -265,3 +268,42 @@ async def test_project_memory_is_scoped_to_its_own_initiative() -> None:
 
     assert _PROJECT_MARKER in recorder.seen_prompt
     assert other_marker not in recorder.seen_prompt
+
+
+async def test_all_three_layers_survive_default_diversity_reranking(
+    org_backend: HybridPromptRetrievalBackend,
+) -> None:
+    """With MMR (the default) on, the three distinct layers still all arrive.
+
+    The other tests disable diversity re-ranking to isolate the plumbing; this
+    one runs the default configuration to prove MMR does not drop a legitimate
+    layer when the three carry distinct vocabulary (the real-config guard).
+    """
+    agent_backend = InMemoryBackend()
+    await agent_backend.connect()
+    await _seed_agent_layer(agent_backend)
+    await _seed_project_layer(agent_backend)
+    await _seed_org_layer(org_backend)
+
+    strategy = ContextInjectionStrategy(
+        backend=agent_backend,
+        config=MemoryRetrievalConfig(
+            include_shared=True,
+            min_relevance=0.0,
+            diversity_penalty_enabled=True,
+        ),
+        shared_store=OrgSharedKnowledgeStore(org_backend),
+    )
+    recorder = _RecordingStrategy()
+    engine = AgentEngine(
+        provider=ScriptedDriver("test-provider", strategy=recorder),
+        memory_injection_strategy=strategy,
+        memory_backend=agent_backend,
+    )
+
+    result = await engine.run(identity=_identity(), task=_task())
+
+    assert result.is_success
+    assert _AGENT_MARKER in recorder.seen_prompt
+    assert _PROJECT_MARKER in recorder.seen_prompt
+    assert _ORG_MARKER in recorder.seen_prompt

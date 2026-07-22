@@ -54,3 +54,11 @@ class RetroCapturePort(Protocol):
     def schedule(self, *, plan: Plan, project: Project) -> None:
         """Schedule retrospective capture for a just-completed objective."""
         ...
+
+    async def drain(self, *, timeout_sec: float) -> None:
+        """Await outstanding capture tasks at shutdown, bounded by *timeout_sec*.
+
+        Called before the memory backends the captures write to are
+        disconnected, so an in-flight retrospective is not stranded mid-write.
+        """
+        ...

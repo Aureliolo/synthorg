@@ -39,6 +39,7 @@ from synthorg.observability.events.retrospective import (
     RETRO_SESSION_DUPLICATE_SUBMIT,
     RETRO_SESSION_NO_DRAFT,
     RETRO_SESSION_STARTED,
+    RETRO_SESSION_SUBMIT_REJECTED,
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
@@ -119,6 +120,11 @@ class SubmitRetrospectiveTool(BaseTool):
         try:
             draft = args_to_retrospective(cast("dict[str, JsonValue]", arguments))
         except RetrospectiveError as exc:
+            logger.debug(
+                RETRO_SESSION_SUBMIT_REJECTED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ToolExecutionResult(
                 content=(
                     f"Retrospective rejected: {safe_error_description(exc)}. "
@@ -269,11 +275,13 @@ class RetroDistiller:
         return lambda ctx: ctx.accumulated_cost.cost >= ceiling
 
 
-def build_retro_brief(*, objective: str, material: str) -> str:
+def build_retro_brief(*, material: str) -> str:
     """Compose the distillation instruction with the fenced objective material.
 
-    The material is assembled from operator/charter input and finished work, so
-    it is fenced via ``wrap_untrusted``; the instructions sit outside the fence.
+    The material is assembled from operator/charter input and finished work,
+    including the objective title (which denormalises an attacker-controllable
+    task title), so the whole of it is fenced via ``wrap_untrusted`` (SEC-1);
+    only the static instructions sit outside the fence.
 
     Returns:
         The user-message brief driving the distillation session.
@@ -293,8 +301,6 @@ def build_retro_brief(*, objective: str, material: str) -> str:
             "  remember next time, keyed by their agent id.",
             "Keep it honest and specific; an empty list is better than filler.",
             "Finally, call submit_retrospective exactly once.",
-            "",
-            f"Objective: {objective}",
             "",
             wrap_untrusted(TAG_TASK_DATA, material),
         ]

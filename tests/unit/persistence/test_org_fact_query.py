@@ -33,6 +33,7 @@ class TestOrgQueryTerms:
 
     def test_empty_text_yields_no_terms(self) -> None:
         assert org_query_terms("   ...  ") == ()
+        assert org_query_terms("") == ()
 
 
 class TestLikeContainsPattern:

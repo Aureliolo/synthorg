@@ -76,6 +76,19 @@ class TestArgsToRetrospective:
                 {"summary": "ok", "org_learnings": [{"content": "x"}]}
             )
 
+    def test_too_many_org_learnings_is_a_retryable_parse_error(self) -> None:
+        """The per-collection cap surfaces as a retryable parse error, not a crash."""
+        with pytest.raises(RetrospectiveParseError):
+            args_to_retrospective(
+                {
+                    "summary": "ok",
+                    "org_learnings": [
+                        {"content": f"lesson {i}", "kind": "procedure"}
+                        for i in range(51)
+                    ],
+                }
+            )
+
 
 class TestBuildRetrospectiveTool:
     def test_names_the_terminal_tool(self) -> None:

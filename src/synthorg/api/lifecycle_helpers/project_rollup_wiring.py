@@ -116,21 +116,36 @@ def _build_ship_retro_capture(app_state: AppState) -> RetroCapturePort | None:
         )
         return None
 
-    registry = provider_registry_of(app_state)
+    # The optional retro tail must never fail the rollup wiring proper: its own
+    # dependency accessors (provider/agent registry, cost tracker, resolver)
+    # raise if a slice is not yet wired, so a fault here degrades to an unwired
+    # tail rather than propagating into the caller's rollup-wiring try/except.
+    try:
+        registry = provider_registry_of(app_state)
 
-    def _select_provider(identity: AgentIdentity) -> CompletionProvider:
-        # The lead's own bound provider, re-resolved live so a provider
-        # hot-swap is reflected without rebuilding the service (mirrors the
-        # decomposition owner-provider selector).
-        return registry.get(identity.model.provider)
+        def _select_provider(identity: AgentIdentity) -> CompletionProvider:
+            # The lead's own bound provider, re-resolved live so a provider
+            # hot-swap is reflected without rebuilding the service (mirrors the
+            # decomposition owner-provider selector).
+            return registry.get(identity.model.provider)
 
-    return ShipRetroCaptureService(
-        agent_registry=agent_registry_of(app_state),
-        memory_backend=memory_backend,
-        org_backend=org_backend,
-        provider_selector=_select_provider,
-        default_provider=registry.default_provider(),
-        cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
-        config_resolver=config_resolver_of(app_state),
-        clock=app_state.clock,
-    )
+        return ShipRetroCaptureService(
+            agent_registry=agent_registry_of(app_state),
+            memory_backend=memory_backend,
+            org_backend=org_backend,
+            provider_selector=_select_provider,
+            default_provider=registry.default_provider(),
+            cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+            config_resolver=config_resolver_of(app_state),
+            clock=app_state.clock,
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="ship_retro_capture",
+            note="retro tail not wired; construction failed, rollup still advances",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None

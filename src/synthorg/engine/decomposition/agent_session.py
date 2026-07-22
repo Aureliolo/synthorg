@@ -491,7 +491,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             objective=task.description,
             role=owner.role,
             department=owner.department,
-            project_id=task.project or None,
+            project_id=task.project,
             token_budget=self._config.memory_digest_budget,
         )
         return await self._planning_memory.prepare_messages(request)

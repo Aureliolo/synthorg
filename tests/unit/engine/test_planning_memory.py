@@ -1,10 +1,14 @@
 # module-kind: tests
 """Tests for memory-aware planning: the recall tool grant and the brief digest."""
 
-from typing import override
+from typing import TYPE_CHECKING, cast, override
+from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import JsonValue
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
 
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
@@ -18,12 +22,18 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.decomposition.planning_tool_provider import PlanningToolProvider
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
+from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, ToolDefinition
 from synthorg.security.autonomy.enums import ActionType
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.web.web_search import WebSearchProvider
+from synthorg.workers._planning_memory import (
+    PlanningMemoryGrant,
+    build_planning_memory,
+)
 from tests._shared import as_uuid, mock_of
 from tests._shared.scripted_provider import (
     ScriptedProvider,
@@ -183,3 +193,114 @@ class TestPlanningDigestInjection:
         await strategy.decompose(_task(), context)
 
         assert memory.seen is None
+
+
+class TestBuildPlanningMemory:
+    """The settings-driven factory that gates the whole planning-memory grant."""
+
+    @staticmethod
+    def _patch(
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        enabled: bool,
+        digest_budget: int,
+        memory_backend: MemoryBackend | None,
+        org_backend: object | None,
+    ) -> None:
+        import synthorg.memory.state as memory_state
+        import synthorg.workers._planning_memory as planning_mod
+
+        resolver = mock_of[ConfigResolver](
+            get_bool=AsyncMock(return_value=enabled),
+            get_int=AsyncMock(return_value=digest_budget),
+        )
+        monkeypatch.setattr(planning_mod, "config_resolver_of", lambda _state: resolver)
+        monkeypatch.setattr(
+            memory_state, "memory_backend_or_none", lambda _state: memory_backend
+        )
+        monkeypatch.setattr(
+            memory_state, "org_memory_backend_of", lambda _state: org_backend
+        )
+
+    async def test_disabled_returns_a_fully_off_grant(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._patch(
+            monkeypatch,
+            enabled=False,
+            digest_budget=1000,
+            memory_backend=mock_of[MemoryBackend](),
+            org_backend=mock_of[OrgMemoryBackend](),
+        )
+        grant = await build_planning_memory(cast("AppState", object()))
+
+        assert grant == PlanningMemoryGrant(None, 0, None, None)
+
+    async def test_no_memory_backend_returns_off_even_when_enabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._patch(
+            monkeypatch,
+            enabled=True,
+            digest_budget=1000,
+            memory_backend=None,
+            org_backend=mock_of[OrgMemoryBackend](),
+        )
+        grant = await build_planning_memory(cast("AppState", object()))
+
+        assert grant == PlanningMemoryGrant(None, 0, None, None)
+
+    async def test_zero_budget_grants_the_tool_but_no_digest(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = mock_of[MemoryBackend]()
+        org = mock_of[OrgMemoryBackend]()
+        self._patch(
+            monkeypatch,
+            enabled=True,
+            digest_budget=0,
+            memory_backend=backend,
+            org_backend=org,
+        )
+        grant = await build_planning_memory(cast("AppState", object()))
+
+        # The recall tool still gets its backends, but no digest is pre-seeded.
+        assert grant.planning_memory is None
+        assert grant.digest_budget == 0
+        assert grant.memory_backend is backend
+        assert grant.org_backend is org
+
+    async def test_positive_budget_seeds_a_digest_strategy(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = mock_of[MemoryBackend]()
+        org = mock_of[OrgMemoryBackend]()
+        self._patch(
+            monkeypatch,
+            enabled=True,
+            digest_budget=1500,
+            memory_backend=backend,
+            org_backend=org,
+        )
+        grant = await build_planning_memory(cast("AppState", object()))
+
+        assert grant.planning_memory is not None
+        assert grant.digest_budget == 1500
+        assert grant.memory_backend is backend
+        assert grant.org_backend is org
+
+    async def test_positive_budget_without_org_still_seeds_a_digest(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = mock_of[MemoryBackend]()
+        self._patch(
+            monkeypatch,
+            enabled=True,
+            digest_budget=1500,
+            memory_backend=backend,
+            org_backend=None,
+        )
+        grant = await build_planning_memory(cast("AppState", object()))
+
+        assert grant.planning_memory is not None
+        assert grant.org_backend is None

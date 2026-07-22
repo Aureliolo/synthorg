@@ -119,6 +119,17 @@ class ProjectRollupService:
         # safety comes from the version-guarded writes, not this lock.
         self._locks: RefcountedLockMap[str] = RefcountedLockMap()
 
+    async def drain_retro_capture(self, *, timeout_sec: float) -> None:
+        """Drain the SHIP-retro capture tail at shutdown, if one is wired.
+
+        Delegated to the capture collaborator so an in-flight retrospective
+        finishes (bounded by *timeout_sec*) before the memory backends it
+        writes to are disconnected. A no-op when the tail is unwired.
+        """
+        if self._ship_retro_capture is None:
+            return
+        await self._ship_retro_capture.drain(timeout_sec=timeout_sec)
+
     async def on_task_state_changed(self, event: TaskStateChanged) -> None:
         """Recompute the initiative behind a task whose status changed.
 
@@ -294,17 +305,11 @@ class ProjectRollupService:
         for attempt in range(1, MAX_WRITE_ATTEMPTS + 1):
             try:
                 return await self._walk_plan_to(current, target)
-            except ConflictError as exc:
-                logger.error(
-                    PROJECT_ROLLUP_SKIPPED,
-                    plan_id=str(current.id),
-                    current_state=current.status.value,
-                    target_state=target.value,
-                    reason="illegal_transition",
-                    error_type=type(exc).__name__,
-                )
-                return None
             except VersionConflictError:
+                # Must precede the ConflictError handler: VersionConflictError
+                # subclasses it, so catching the base first would strand every
+                # version conflict in the illegal-transition branch and the
+                # CAS retry below would never run.
                 logger.info(
                     PROJECT_ROLLUP_CONFLICT_RETRY,
                     plan_id=str(current.id),
@@ -325,6 +330,16 @@ class ProjectRollupService:
                 if target is refreshed.status:
                     return refreshed
                 current = refreshed
+            except ConflictError as exc:
+                logger.error(
+                    PROJECT_ROLLUP_SKIPPED,
+                    plan_id=str(current.id),
+                    current_state=current.status.value,
+                    target_state=target.value,
+                    reason="illegal_transition",
+                    error_type=type(exc).__name__,
+                )
+                return None
         logger.warning(
             PROJECT_ROLLUP_CONFLICT_EXHAUSTED,
             plan_id=str(plan.id),
