@@ -706,17 +706,6 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    past the budget under ``--dist=loadfile`` contention. Only this one
 #    test is exempt; the file's other cases scan synthetic ``tmp_path``
 #    trees and stay fast.
-#  - ``test_check_dependency_inversion.py::test_real_codebase_is_clean``:
-#    AST-parses the entire committed ``src/synthorg`` tree for
-#    dependency-inversion violations, the same whole-tree-scan class as the
-#    error-code test above and near the budget even single-process (the scan
-#    grows with the tree). Only this one test is exempt; the file's other
-#    cases scan synthetic ``tmp_path`` trees and stay fast.
-#  - ``test_check_frozen_model_extra_forbid.py::test_real_codebase_is_compliant``:
-#    AST-parses the entire committed ``src/synthorg`` tree for frozen-model
-#    ``extra="forbid"`` compliance, the same whole-tree-scan class as the two
-#    above and likewise growing with the tree. Only this one test is exempt;
-#    the file's other cases scan synthetic ``tmp_path`` trees and stay fast.
 #  - ``test_pretooluse_bash_gates.py``: every case spawns a real ``bash``
 #    subprocess to run the PreToolUse gate script under test. Windows
 #    process spawn contends with the xdist workers that are themselves
@@ -737,8 +726,7 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    served from a ``RootConfig`` whose agents / providers / departments /
 #    DB-override differ from the shared app (``test_agents``, ``test_analytics``,
 #    ``test_departments``, ``test_departments_health``, ``test_provider_health``,
-#    ``test_meetings`` auto-wire, ``test_learning`` scorecard-history-dir,
-#    ``test_tier_assignments`` single-provider ``RootConfig`` baked at build). The
+#    ``test_meetings`` auto-wire, ``test_learning`` scorecard-history-dir). The
 #    config or service absence is baked at construction and cannot be expressed
 #    via ``app_state.wire(...)`` on the session-shared app, so the full build is
 #    the test's whole point, not a fixture leak. A test that only needs a custom
@@ -754,10 +742,6 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/test_cold_import.py",
     "unit/scripts/test_check_completion_config_temperature.py",
     "unit/scripts/test_check_error_code_uniqueness.py::test_real_tree_passes",
-    "unit/scripts/test_check_dependency_inversion.py"
-    "::TestLiveCodebase::test_real_codebase_is_clean",
-    "unit/scripts/test_check_frozen_model_extra_forbid.py"
-    "::test_real_codebase_is_compliant",
     "unit/scripts/test_gate_live_tree_clean.py",
     "unit/scripts/test_pretooluse_bash_gates.py",
     "unit/api/test_construction_wiring.py",
@@ -771,7 +755,6 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/api/controllers/test_provider_health.py",
     "unit/api/controllers/test_meetings.py::test_auto_wired_meetings_returns_200",
     "unit/api/controllers/test_learning.py",
-    "unit/api/controllers/test_tier_assignments.py",
 )
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 # pytest-repeat's ``--count`` flag is no longer produced by any automated
