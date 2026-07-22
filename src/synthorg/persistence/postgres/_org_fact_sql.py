@@ -10,6 +10,25 @@ psycopg named parameters (``%(ts)s`` / ``%(limit)s`` / ``%(offset)s``).
 
 from typing import LiteralString
 
+SAVE_SNAPSHOT_UPSERT_SQL: LiteralString = """\
+INSERT INTO org_facts_snapshot
+    (fact_id, content, content_normalized, category, tags,
+     author_agent_id, author_role, author_is_human,
+     author_autonomy_level, created_at, retracted_at, version)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s)
+ON CONFLICT (fact_id) DO UPDATE SET
+    content=EXCLUDED.content,
+    content_normalized=EXCLUDED.content_normalized,
+    category=EXCLUDED.category,
+    tags=EXCLUDED.tags,
+    author_agent_id=EXCLUDED.author_agent_id,
+    author_role=EXCLUDED.author_role,
+    author_is_human=EXCLUDED.author_is_human,
+    author_autonomy_level=EXCLUDED.author_autonomy_level,
+    retracted_at=NULL,
+    version=EXCLUDED.version
+"""
+
 SNAPSHOT_AT_SQL: LiteralString = """\
 WITH latest_ops AS (
     SELECT fact_id, operation_type, content, tags, category,
@@ -52,4 +71,4 @@ ORDER BY lo.fact_id
 LIMIT %(limit)s OFFSET %(offset)s
 """
 
-__all__ = ["SNAPSHOT_AT_SQL"]
+__all__ = ["SAVE_SNAPSHOT_UPSERT_SQL", "SNAPSHOT_AT_SQL"]

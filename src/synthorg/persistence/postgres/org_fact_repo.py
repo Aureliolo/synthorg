@@ -54,7 +54,10 @@ from synthorg.persistence._shared.org_fact_marshalling import (
     tags_to_json,
 )
 from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_FACTS
-from synthorg.persistence.postgres._org_fact_sql import SNAPSHOT_AT_SQL
+from synthorg.persistence.postgres._org_fact_sql import (
+    SAVE_SNAPSHOT_UPSERT_SQL,
+    SNAPSHOT_AT_SQL,
+)
 
 logger = get_logger(__name__)
 
@@ -151,25 +154,7 @@ class PostgresOrgFactRepository:
                 )
                 async with conn.cursor() as cur:
                     await cur.execute(
-                        "INSERT INTO org_facts_snapshot "
-                        "(fact_id, content, content_normalized, category, tags, "
-                        "author_agent_id, author_role, "
-                        "author_is_human, "
-                        "author_autonomy_level, created_at, "
-                        "retracted_at, version) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s) "
-                        "ON CONFLICT (fact_id) DO UPDATE SET "
-                        "content=EXCLUDED.content, "
-                        "content_normalized=EXCLUDED.content_normalized, "
-                        "category=EXCLUDED.category, "
-                        "tags=EXCLUDED.tags, "
-                        "author_agent_id=EXCLUDED.author_agent_id, "
-                        "author_role=EXCLUDED.author_role, "
-                        "author_is_human=EXCLUDED.author_is_human, "
-                        "author_autonomy_level="
-                        "EXCLUDED.author_autonomy_level, "
-                        "retracted_at=NULL, "
-                        "version=EXCLUDED.version",
+                        SAVE_SNAPSHOT_UPSERT_SQL,
                         (
                             str(fact.id),
                             fact.content,
