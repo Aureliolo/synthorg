@@ -742,6 +742,7 @@ memory offload, and semantic token-cost weighting) is tracked on the
 
 ## See Also
 
+- [Inner-loop A/B harness](loop-ab-harness.md): how the four loops are measured against each other and the winner promoted
 - [Task & Workflow Engine](engine.md): task dispatch, routing, state coordination
 - [Coordination](coordination.md): multi-agent topology, decomposition, workspace isolation
 - [Verification & Quality](verification-quality.md): verification stage, review pipeline, harness middleware

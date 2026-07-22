@@ -216,9 +216,8 @@ def _graded(brief: Brief, tmp_path: Path, files: dict[str, str]) -> int:
         target = work_dir / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(body.lstrip("\n"), encoding="utf-8")
-    resolved = brief.model_copy(
-        update={"checks": resolve_checks(brief.checks)}  # type: ignore[union-attr]
-    )
+    assert brief.checks is not None, f"{brief.brief_id} declares no checks"
+    resolved = brief.model_copy(update={"checks": resolve_checks(brief.checks)})
     return grade_executable(resolved, work_dir).score
 
 

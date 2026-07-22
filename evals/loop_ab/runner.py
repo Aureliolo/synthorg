@@ -20,6 +20,7 @@ from datetime import date
 from pathlib import Path
 from uuid import UUID
 
+from evals.errors import BriefExecutionError
 from evals.loop_ab.aggregate import (
     LoopRepetitionSummary,
     RepetitionOutcome,
@@ -143,6 +144,27 @@ def _spend_from_records(records: tuple[CostRecord, ...]) -> tuple[ProviderSpend,
     )
 
 
+def _resolved(brief: Brief) -> Brief:
+    """Return *brief* with its check commands' interpreter token resolved.
+
+    Returns:
+        The brief ready for :func:`grade_executable`.
+
+    Raises:
+        BriefExecutionError: The brief declares no checks. The A/B grades a
+            workspace by running commands against it, so a brief without them
+            cannot be scored; failing here beats grading every loop at zero and
+            publishing that as a measurement.
+    """
+    if brief.checks is None:
+        msg = (
+            f"brief {brief.brief_id!r} declares no checks block; the loop A/B "
+            "grades workspaces by running an executable brief's checks"
+        )
+        raise BriefExecutionError(msg)
+    return brief.model_copy(update={"checks": resolve_checks(brief.checks)})
+
+
 def _build_engine(
     *,
     loop_type: str,
@@ -200,8 +222,7 @@ async def _run_repetition(  # noqa: PLR0913 -- orthogonal per-cell coordinates
     )
 
     outcome = await run_brief(engine, brief, identity=_identity(tier))
-    graded = brief.model_copy(update={"checks": resolve_checks(brief.checks)})
-    grade = grade_executable(graded, work_dir)
+    grade = grade_executable(_resolved(brief), work_dir)
     metrics = outcome.metrics
     spend = _spend_from_records(await collect_all_records(cost_tracker))
 

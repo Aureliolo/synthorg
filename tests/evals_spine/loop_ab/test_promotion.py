@@ -158,6 +158,7 @@ def test_the_recommendation_matches_the_settings_validator_patterns() -> None:
         }
     )
 
+    assert recommendation.default_loop_type is not None
     assert re.match(
         _setting_pattern("default_loop_type"), recommendation.default_loop_type
     )

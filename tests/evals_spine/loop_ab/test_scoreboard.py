@@ -263,7 +263,8 @@ def test_both_artifacts_are_written(tmp_path: Path) -> None:
 
     assert json_path.name == SCOREBOARD_JSON_FILENAME
     assert md_path.name == SCOREBOARD_MD_FILENAME
-    assert Scoreboard.model_validate_json(json_path.read_text(encoding="utf-8"))
+    reparsed = Scoreboard.model_validate_json(json_path.read_text(encoding="utf-8"))
+    assert reparsed.provenance.git_commit == "a" * 40
     assert md_path.read_text(encoding="utf-8").startswith("# Inner execution-loop")
 
 
