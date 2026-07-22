@@ -712,6 +712,11 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    error-code test above and near the budget even single-process (the scan
 #    grows with the tree). Only this one test is exempt; the file's other
 #    cases scan synthetic ``tmp_path`` trees and stay fast.
+#  - ``test_check_frozen_model_extra_forbid.py::test_real_codebase_is_compliant``:
+#    AST-parses the entire committed ``src/synthorg`` tree for frozen-model
+#    ``extra="forbid"`` compliance, the same whole-tree-scan class as the two
+#    above and likewise growing with the tree. Only this one test is exempt;
+#    the file's other cases scan synthetic ``tmp_path`` trees and stay fast.
 #  - ``test_pretooluse_bash_gates.py``: every case spawns a real ``bash``
 #    subprocess to run the PreToolUse gate script under test. Windows
 #    process spawn contends with the xdist workers that are themselves
@@ -751,6 +756,8 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/scripts/test_check_error_code_uniqueness.py::test_real_tree_passes",
     "unit/scripts/test_check_dependency_inversion.py"
     "::TestLiveCodebase::test_real_codebase_is_clean",
+    "unit/scripts/test_check_frozen_model_extra_forbid.py"
+    "::test_real_codebase_is_compliant",
     "unit/scripts/test_gate_live_tree_clean.py",
     "unit/scripts/test_pretooluse_bash_gates.py",
     "unit/api/test_construction_wiring.py",
