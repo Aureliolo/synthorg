@@ -207,7 +207,9 @@ def _recommendation_section(scoreboard: Scoreboard) -> list[str]:
         [
             "Apply to the existing settings (no new selection machinery):",
             "",
-            "```",
+            # Fenced with a language so the emitted scoreboard passes the same
+            # markdown lint the hand-written design pages do.
+            "```ini",
             f"engine.default_loop_type = {recommendation.default_loop_type}",
             "engine.loop_complexity_overrides = "
             f"{recommendation.loop_complexity_overrides}",

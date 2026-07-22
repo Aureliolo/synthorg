@@ -157,7 +157,7 @@ looking authoritative. A full refresh is one command.
 
 The scoreboard ends in the values to apply:
 
-```
+```ini
 engine.default_loop_type = react
 engine.loop_complexity_overrides = complex:openhands
 ```
