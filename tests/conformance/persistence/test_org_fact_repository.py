@@ -206,6 +206,42 @@ class TestOrgFactRepository:
         rows = await backend.org_facts.query(text="ab cd")
         assert as_uuid("cased") in {f.id for f in rows}
 
+    async def test_term_match_folds_unicode_case(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A salient accented term matches regardless of case, on both backends.
+
+        SQLite's built-in ``LOWER`` is ASCII-only, so matching in SQL would fold
+        ``ÉCOLE`` on Postgres but not SQLite. Both backends store and query the
+        shared ``content_normalized`` form, so accented case folds identically.
+        """
+        await backend.org_facts.save(_fact("accented", "École de commerce durable"))
+        rows = await backend.org_facts.query(text="ÉCOLE")
+        assert as_uuid("accented") in {f.id for f in rows}
+
+    async def test_literal_fallback_folds_unicode_case(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The no-salient-term fallback also folds accented case on both backends."""
+        # "Ça" is a 2-char token -> no salient term -> literal fallback branch.
+        await backend.org_facts.save(_fact("fallback", "Number Ça counts"))
+        rows = await backend.org_facts.query(text="Ça")
+        assert as_uuid("fallback") in {f.id for f in rows}
+
+    async def test_empty_text_is_match_all_ordered_by_recency(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """``text=""`` matches all facts, ordered by recency then fact id."""
+        older = datetime(2026, 7, 19, tzinfo=UTC)
+        newer = datetime(2026, 7, 20, tzinfo=UTC)
+        await backend.org_facts.save(_fact("older", "first fact", at=older))
+        await backend.org_facts.save(_fact("newer", "second fact", at=newer))
+        rows = await backend.org_facts.query(text="")
+        ids = [f.id for f in rows]
+        assert {as_uuid("older"), as_uuid("newer")} <= set(ids)
+        # Newest first (recency ordering), not the literal-fallback ranking.
+        assert ids.index(as_uuid("newer")) < ids.index(as_uuid("older"))
+
     async def test_query_by_category_and_text_combined(
         self, backend: PersistenceBackend
     ) -> None:

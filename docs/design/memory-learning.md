@@ -210,13 +210,19 @@ best-effort: one refused or failed learning never loses the rest.
 
 ### Idempotency and isolation from the loop
 
-Capture fires **exactly once**, on the edge a project first reaches `COMPLETED`
+Capture fires on the edge a project first reaches `COMPLETED`
 (`ProjectRollupService._maybe_capture_retro`); a terminal project never
-re-triggers it. A restart mid-capture is caught by an org-memory backstop that
-skips a project already carrying its `objective:` tag. Because the rollup is a
-best-effort, bounded-queue observer, capture runs **detached** on a tracked
-background task with the wall-clock ceiling, so it never blocks or fails task
-processing.
+re-triggers it. Same-process duplicates are collapsed by an in-flight guard
+keyed on the project id, and a restart mid-capture is caught, best-effort, by an
+org-memory backstop that skips a project already carrying its `objective:` tag.
+That backstop only sees retros that wrote an org learning: a retrospective with
+only per-agent learnings writes no org fact, so a restart in the narrow window
+before its writes land could re-run it (the org write gate still dedups, and a
+repeat per-agent `EPISODIC` entry is low-harm). A durable per-objective capture
+record for a strict exactly-once guarantee is a tracked follow-up. Because the
+rollup is a best-effort, bounded-queue observer, capture runs **detached** on a
+tracked background task with the wall-clock ceiling, so it never blocks or fails
+task processing.
 
 Wired at boot by `api/lifecycle_helpers/project_rollup_wiring.py` (only when both
 the agent-memory and org-memory backends are present) and gated by

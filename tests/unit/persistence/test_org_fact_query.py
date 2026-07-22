@@ -54,11 +54,12 @@ class TestBuildTermMatchSql:
             ("checkout", "resilience"), placeholder="?", int_cast=""
         )
         assert where == (
-            "(LOWER(content) LIKE ? ESCAPE '\\' OR LOWER(content) LIKE ? ESCAPE '\\')"
+            "(content_normalized LIKE ? ESCAPE '\\' "
+            "OR content_normalized LIKE ? ESCAPE '\\')"
         )
         assert order.startswith(
-            "((LOWER(content) LIKE ? ESCAPE '\\') "
-            "+ (LOWER(content) LIKE ? ESCAPE '\\')) DESC"
+            "((content_normalized LIKE ? ESCAPE '\\') "
+            "+ (content_normalized LIKE ? ESCAPE '\\')) DESC"
         )
         assert patterns == ["%checkout%", "%resilience%"]
 
@@ -66,4 +67,4 @@ class TestBuildTermMatchSql:
         _where, order, _patterns = build_term_match_sql(
             ("checkout",), placeholder="%s", int_cast="::int"
         )
-        assert "(LOWER(content) LIKE %s ESCAPE '\\')::int" in order
+        assert "(content_normalized LIKE %s ESCAPE '\\')::int" in order

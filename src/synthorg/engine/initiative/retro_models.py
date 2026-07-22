@@ -9,6 +9,7 @@ member should remember next time). These frozen models carry the distilled
 result from the terminal ``submit_retrospective`` tool to the write side.
 """
 
+import copy
 from typing import Final, Literal, cast
 from uuid import NAMESPACE_URL, uuid5
 
@@ -130,6 +131,54 @@ class RetrospectiveDraft(BaseModel):
     )
 
 
+#: JSON schema for the ``submit_retrospective`` terminal tool. A module
+#: constant (deep-copied per build) so the schema literal does not push
+#: ``build_retrospective_tool`` past the function-length guideline.
+_SUBMIT_RETRO_SCHEMA: Final[dict[str, JsonValue]] = {
+    "type": "object",
+    "properties": {
+        "summary": {
+            "type": "string",
+            "description": "A short, honest narrative of how the objective went.",
+        },
+        "org_learnings": {
+            "type": "array",
+            "description": (
+                "Reusable lessons the whole organisation should carry "
+                "forward. Phrase each as standing guidance, not a recount "
+                "of this run. Omit anything an agent could rediscover by "
+                "reading the codebase."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string"},
+                    "kind": {"type": "string", "enum": ["procedure", "convention"]},
+                },
+                "required": ["content", "kind"],
+            },
+        },
+        "agent_learnings": {
+            "type": "array",
+            "description": (
+                "What each contributor should personally remember next "
+                "time. Key by the agent's id; skip agents with nothing "
+                "specific to learn."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "agent_id": {"type": "string"},
+                    "content": {"type": "string"},
+                },
+                "required": ["agent_id", "content"],
+            },
+        },
+    },
+    "required": ["summary"],
+}
+
+
 def build_retrospective_tool() -> ToolDefinition:
     """Build the terminal ``submit_retrospective`` tool definition.
 
@@ -137,59 +186,13 @@ def build_retrospective_tool() -> ToolDefinition:
         A ``ToolDefinition`` whose schema captures the summary plus the org
         and per-agent learnings.
     """
-    schema: dict[str, JsonValue] = {
-        "type": "object",
-        "properties": {
-            "summary": {
-                "type": "string",
-                "description": "A short, honest narrative of how the objective went.",
-            },
-            "org_learnings": {
-                "type": "array",
-                "description": (
-                    "Reusable lessons the whole organisation should carry "
-                    "forward. Phrase each as standing guidance, not a recount "
-                    "of this run. Omit anything an agent could rediscover by "
-                    "reading the codebase."
-                ),
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "content": {"type": "string"},
-                        "kind": {
-                            "type": "string",
-                            "enum": ["procedure", "convention"],
-                        },
-                    },
-                    "required": ["content", "kind"],
-                },
-            },
-            "agent_learnings": {
-                "type": "array",
-                "description": (
-                    "What each contributor should personally remember next "
-                    "time. Key by the agent's id; skip agents with nothing "
-                    "specific to learn."
-                ),
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "agent_id": {"type": "string"},
-                        "content": {"type": "string"},
-                    },
-                    "required": ["agent_id", "content"],
-                },
-            },
-        },
-        "required": ["summary"],
-    }
     return ToolDefinition(
         name="submit_retrospective",
         description=(
             "Submit the objective retrospective exactly once, last, after you "
             "have reviewed the finished work and recalled prior retros."
         ),
-        parameters_schema=schema,
+        parameters_schema=copy.deepcopy(_SUBMIT_RETRO_SCHEMA),
     )
 
 

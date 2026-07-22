@@ -41,6 +41,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._org_fact_query import (
     build_term_match_sql,
     like_contains_pattern,
+    normalize_for_search,
     org_query_terms,
 )
 from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
@@ -153,6 +154,7 @@ class SQLiteOrgFactRepository:
         # transaction holding the write lock.
         created_at_iso = format_iso_utc(fact.created_at)
         tags_json = tags_to_json(fact.tags)
+        content_normalized = normalize_for_search(fact.content)
         async with self._write_context():
             try:
                 await db.execute("BEGIN IMMEDIATE")
@@ -170,14 +172,15 @@ class SQLiteOrgFactRepository:
                 )
                 await db.execute(
                     "INSERT INTO org_facts_snapshot "
-                    "(fact_id, content, category, tags, "
+                    "(fact_id, content, content_normalized, category, tags, "
                     "author_agent_id, author_role, "
                     "author_is_human, "
                     "author_autonomy_level, created_at, "
                     "retracted_at, version) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?) "
                     "ON CONFLICT(fact_id) DO UPDATE SET "
                     "content=excluded.content, "
+                    "content_normalized=excluded.content_normalized, "
                     "category=excluded.category, "
                     "tags=excluded.tags, "
                     "author_agent_id=excluded.author_agent_id, "
@@ -190,6 +193,7 @@ class SQLiteOrgFactRepository:
                     (
                         str(fact.id),
                         fact.content,
+                        content_normalized,
                         fact.category.value,
                         tags_json,
                         fact.author.agent_id,
@@ -358,21 +362,23 @@ class SQLiteOrgFactRepository:
             params.extend(patterns)
             order = f"ORDER BY {order_frag}"
             order_params.extend(patterns)
-        elif text is not None:
-            # No salient term (a literal phrase of stopwords/short tokens):
-            # preserve the substring match so a literal search still works.
-            # LOWER() both sides so the fallback is case-insensitive on both
-            # backends, matching the term-match branch above (SQLite LIKE is
-            # case-insensitive by default, Postgres is not; without this the
-            # fallback would diverge across backends).
-            clauses.append("LOWER(content) LIKE LOWER(?) ESCAPE '\\'")
-            params.append(like_contains_pattern(text))
+        elif text:
+            # Non-empty text with no salient term (a literal phrase of
+            # stopwords/short tokens): preserve the substring match against the
+            # pre-normalised column so a literal search still works and matches
+            # identically on both backends (never SQL LOWER).
+            normalized = normalize_for_search(text)
+            clauses.append("content_normalized LIKE ? ESCAPE '\\'")
+            params.append(like_contains_pattern(normalized))
             order = (
-                "ORDER BY INSTR(LOWER(content), LOWER(?)) ASC, "
+                "ORDER BY INSTR(content_normalized, ?) ASC, "
                 "LENGTH(content) ASC, created_at DESC, fact_id ASC"
             )
-            order_params.append(text)
+            order_params.append(normalized)
         else:
+            # No text, or an empty string (the protocol's match-all): order by
+            # recency then fact id, never the literal-fallback content-length
+            # ranking.
             order = "ORDER BY created_at DESC, fact_id ASC"
 
         where = f" WHERE {' AND '.join(clauses)}"

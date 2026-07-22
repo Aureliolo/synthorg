@@ -190,19 +190,41 @@ class ShipRetroCaptureService:
             self._inflight.discard(str(project.id))
 
     async def _run(self, plan: Plan, project: Project) -> None:
-        """Capture the retrospective for *project*, honouring live settings."""
+        """Capture the retrospective for *project*, honouring live settings.
+
+        Coordinates the two halves: resolve the session (kill switch,
+        idempotency, lead, provider) then distil and persist. A gate that fails
+        in the first half logs its own skip and yields ``None`` here.
+        """
+        resolved = await self._resolve_session(project)
+        if resolved is None:
+            return
+        lead, provider = resolved
+        await self._distil_and_persist(plan, project, lead, provider)
+
+    async def _resolve_session(
+        self, project: Project
+    ) -> tuple[AgentIdentity, CompletionProvider] | None:
+        """Resolve the lead + provider for a capture, or ``None`` to skip.
+
+        Runs the kill switch, the idempotency backstop, and lead/provider
+        resolution, logging the specific skip reason for each gate.
+
+        Returns:
+            The ``(lead, provider)`` pair, or ``None`` when any gate skips.
+        """
         if not await self._enabled():
             logger.debug(
                 RETRO_CAPTURE_SKIPPED, project=str(project.id), reason="disabled"
             )
-            return
+            return None
         if await already_captured(self._org_backend, project_id=str(project.id)):
             logger.debug(
                 RETRO_CAPTURE_SKIPPED,
                 project=str(project.id),
                 reason="already_captured",
             )
-            return
+            return None
         lead = await self._resolve_lead(project)
         if lead is None:
             # A completed objective with no resolvable author never gets a
@@ -211,7 +233,7 @@ class ShipRetroCaptureService:
             logger.warning(
                 RETRO_CAPTURE_SKIPPED, project=str(project.id), reason="no_lead"
             )
-            return
+            return None
         provider = self._resolve_provider(lead)
         if provider is None:
             logger.warning(
@@ -220,7 +242,17 @@ class ShipRetroCaptureService:
                 lead_id=str(lead.id),
                 reason="no_provider",
             )
-            return
+            return None
+        return lead, provider
+
+    async def _distil_and_persist(
+        self,
+        plan: Plan,
+        project: Project,
+        lead: AgentIdentity,
+        provider: CompletionProvider,
+    ) -> None:
+        """Distil the retrospective and persist its learnings to memory."""
         logger.info(
             RETRO_CAPTURE_STARTED, project=str(project.id), lead_id=str(lead.id)
         )

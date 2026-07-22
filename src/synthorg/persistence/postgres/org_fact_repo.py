@@ -42,6 +42,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._org_fact_query import (
     build_term_match_sql,
     like_contains_pattern,
+    normalize_for_search,
     org_query_terms,
 )
 from synthorg.persistence._shared import normalize_utc, validate_pagination_args
@@ -151,14 +152,15 @@ class PostgresOrgFactRepository:
                 async with conn.cursor() as cur:
                     await cur.execute(
                         "INSERT INTO org_facts_snapshot "
-                        "(fact_id, content, category, tags, "
+                        "(fact_id, content, content_normalized, category, tags, "
                         "author_agent_id, author_role, "
                         "author_is_human, "
                         "author_autonomy_level, created_at, "
                         "retracted_at, version) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s) "
                         "ON CONFLICT (fact_id) DO UPDATE SET "
                         "content=EXCLUDED.content, "
+                        "content_normalized=EXCLUDED.content_normalized, "
                         "category=EXCLUDED.category, "
                         "tags=EXCLUDED.tags, "
                         "author_agent_id=EXCLUDED.author_agent_id, "
@@ -171,6 +173,7 @@ class PostgresOrgFactRepository:
                         (
                             str(fact.id),
                             fact.content,
+                            normalize_for_search(fact.content),
                             fact.category.value,
                             tags_to_json(fact.tags),
                             fact.author.agent_id,
@@ -338,20 +341,23 @@ class PostgresOrgFactRepository:
             params.extend(patterns)
             order = f"ORDER BY {order_frag}"
             order_params.extend(patterns)
-        elif text is not None:
-            # No salient term (a literal phrase of stopwords/short tokens):
-            # preserve the substring match so a literal search still works.
-            # LOWER() both sides so the fallback is case-insensitive and matches
-            # the SQLite backend (whose LIKE is case-insensitive by default);
-            # without this a mixed-case literal search would diverge by backend.
-            clauses.append("LOWER(content) LIKE LOWER(%s) ESCAPE '\\'")
-            params.append(like_contains_pattern(text))
+        elif text:
+            # Non-empty text with no salient term (a literal phrase of
+            # stopwords/short tokens): preserve the substring match against the
+            # pre-normalised column so a literal search still works and matches
+            # identically on both backends (never SQL LOWER).
+            normalized = normalize_for_search(text)
+            clauses.append("content_normalized LIKE %s ESCAPE '\\'")
+            params.append(like_contains_pattern(normalized))
             order = (
-                "ORDER BY POSITION(LOWER(%s) IN LOWER(content)) ASC, "
+                "ORDER BY POSITION(%s IN content_normalized) ASC, "
                 "LENGTH(content) ASC, created_at DESC, fact_id ASC"
             )
-            order_params.append(text)
+            order_params.append(normalized)
         else:
+            # No text, or an empty string (the protocol's match-all): order by
+            # recency then fact id, never the literal-fallback content-length
+            # ranking.
             order = "ORDER BY created_at DESC, fact_id ASC"
 
         where = f" WHERE {' AND '.join(clauses)}"
