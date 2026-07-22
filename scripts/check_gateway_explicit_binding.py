@@ -37,6 +37,7 @@ import argparse
 import ast
 import re
 import sys
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Final
 
@@ -113,6 +114,93 @@ def _model_keyword(call: ast.Call) -> ast.expr | None:
     return None
 
 
+def _direct_body_nodes(scope: ast.AST) -> Iterator[ast.AST]:
+    """Yield descendants of *scope* without entering nested definition scopes.
+
+    Stops at nested ``FunctionDef`` / ``AsyncFunctionDef`` / ``Lambda`` /
+    ``ClassDef`` so a request-model alias or dispatch in one handler is never
+    attributed to another.
+
+    Yields:
+        Each descendant node belonging to *scope*'s own lexical body.
+    """
+    stack = list(ast.iter_child_nodes(scope))
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(
+            node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.ClassDef
+        ):
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+
+
+def _iter_scopes(tree: ast.Module) -> Iterator[ast.AST]:
+    """Yield the module scope followed by every function scope in *tree*.
+
+    Each scope is analysed against only its own local aliases, so a name bound
+    in one handler cannot satisfy a dispatch in another.
+
+    Yields:
+        The module node, then each (possibly nested) function definition node.
+    """
+    yield tree
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            yield node
+
+
+def _is_alias(node: ast.expr | None, aliases: frozenset[str]) -> bool:
+    """Whether *node* is a bare name bound to a tracked alias.
+
+    Returns:
+        ``True`` when *node* is an ``ast.Name`` whose id is in *aliases*.
+    """
+    return isinstance(node, ast.Name) and node.id in aliases
+
+
+def _aliased_names(
+    scope: ast.AST, predicate: Callable[[ast.expr | None], bool]
+) -> frozenset[str]:
+    """Return names in *scope* assigned from a value matching *predicate*.
+
+    Tracks ``x = <expr>`` and ``x: T = <expr>`` so a later use of ``x`` is
+    screened like a direct read of ``<expr>``. Scope-local only; nested
+    definitions are separate scopes.
+
+    Returns:
+        The alias identifiers bound in *scope*'s own body.
+    """
+    names: set[str] = set()
+    for node in _direct_body_nodes(scope):
+        if isinstance(node, ast.Assign) and predicate(node.value):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and predicate(node.value)
+        ):
+            names.add(node.target.id)
+    return frozenset(names)
+
+
+def _binds_request_model(
+    arg: ast.expr | None, kw: ast.expr | None, aliases: frozenset[str]
+) -> bool:
+    """Whether a call's model argument reads (or aliases) the request model.
+
+    Returns:
+        ``True`` for a direct ``.model`` / ``["model"]`` read or a bare name
+        bound to one in the enclosing scope.
+    """
+    return (
+        _is_request_model(arg)
+        or _is_request_model(kw)
+        or _is_alias(arg, aliases)
+        or _is_alias(kw, aliases)
+    )
+
+
 def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
     """Return every request-model-binding / auto-pick finding in one module."""
     findings: list[str] = []
@@ -124,31 +212,36 @@ def _scan_module(tree: ast.Module, lines: list[str], relpath: str) -> list[str]:
         if not _allowed(lineno):
             findings.append(f"{relpath}:{lineno}:{code}")
 
+    # Module-wide auto-pick idioms: any removed-resolver import / name /
+    # attribute reference is a violation regardless of scope.
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             for alias in node.names:
                 if alias.name == _REMOVED_RESOLVER:
                     _record(node.lineno, f"import of {_REMOVED_RESOLVER}")
-            continue
-        if isinstance(node, ast.Name) and node.id == _REMOVED_RESOLVER:
-            _record(node.lineno, _REMOVED_RESOLVER)
-            continue
-        if isinstance(node, ast.Attribute) and node.attr == _REMOVED_RESOLVER:
-            _record(node.lineno, _REMOVED_RESOLVER)
-            continue
-        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
-            continue
-        attr = node.func.attr
-        if attr in _RESOLVE_CALLS and (
-            (node.args and _is_request_model(node.args[0]))
-            or _is_request_model(_model_keyword(node))
+        elif (isinstance(node, ast.Name) and node.id == _REMOVED_RESOLVER) or (
+            isinstance(node, ast.Attribute) and node.attr == _REMOVED_RESOLVER
         ):
-            _record(node.lineno, "provider-from-request-model")
-        elif attr in _DISPATCH_CALLS and (
-            _is_request_model(_second_positional(node))
-            or _is_request_model(_model_keyword(node))
-        ):
-            _record(node.lineno, "dispatch-request-model")
+            _record(node.lineno, _REMOVED_RESOLVER)
+
+    # Provider lookups and dispatches are screened per lexical scope so a
+    # request-model alias bound in one handler cannot satisfy a call in another.
+    for scope in _iter_scopes(tree):
+        aliases = _aliased_names(scope, _is_request_model)
+        for node in _direct_body_nodes(scope):
+            if not isinstance(node, ast.Call) or not isinstance(
+                node.func, ast.Attribute
+            ):
+                continue
+            attr = node.func.attr
+            if attr in _RESOLVE_CALLS and _binds_request_model(
+                node.args[0] if node.args else None, _model_keyword(node), aliases
+            ):
+                _record(node.lineno, "provider-from-request-model")
+            elif attr in _DISPATCH_CALLS and _binds_request_model(
+                _second_positional(node), _model_keyword(node), aliases
+            ):
+                _record(node.lineno, "dispatch-request-model")
     return findings
 
 
@@ -229,15 +322,50 @@ def _claims_base_names(tree: ast.Module) -> set[str]:
     return names
 
 
+def _is_bound_model_attr(node: ast.expr | None) -> bool:
+    """Whether *node* reads the token-bound ``.model_id`` attribute.
+
+    Returns:
+        ``True`` for a ``<x>.model_id`` attribute access.
+    """
+    return isinstance(node, ast.Attribute) and node.attr == _BOUND_MODEL_ATTR
+
+
+def _dispatch_binds_bound_model(tree: ast.Module) -> bool:
+    """Whether some dispatch binds its model argument from ``.model_id``.
+
+    Ties the positive contract to an actual ``complete`` / ``stream`` call whose
+    model argument reads the token-bound ``.model_id`` (directly or via a
+    scope-local alias), so ``.model_id`` merely being read somewhere unrelated
+    does not satisfy the binding.
+
+    Returns:
+        ``True`` when a claims-bound dispatch is present.
+    """
+    for scope in _iter_scopes(tree):
+        bound = _aliased_names(scope, _is_bound_model_attr)
+        for node in _direct_body_nodes(scope):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in _DISPATCH_CALLS
+            ):
+                model_arg = _second_positional(node) or _model_keyword(node)
+                if _is_bound_model_attr(model_arg) or _is_alias(model_arg, bound):
+                    return True
+    return False
+
+
 def _service_binds_token(root: Path) -> str | None:
     """Return an error string when ``service.py`` drops token binding.
 
-    Requires both ``.provider`` and ``.model_id`` to be read from a single
-    claims-derived base, so unrelated ``.provider`` / ``.model_id`` accesses
-    elsewhere in the module cannot masquerade as the binding.
+    Requires ``.provider`` to be read from a claims-derived base AND some
+    dispatch to bind its model from ``.model_id``, so neither an unrelated
+    ``.provider`` / ``.model_id`` read nor a dispatch on a request-derived model
+    can masquerade as the binding.
 
     Returns:
-        ``None`` when a claims object binds both attributes; otherwise a
+        ``None`` when the provider and model bindings both hold; otherwise a
         description of the missing binding.
     """
     service = root / _PKG_REL / _SERVICE_REL
@@ -249,13 +377,17 @@ def _service_binds_token(root: Path) -> str | None:
     for node in ast.walk(tree):
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
             base_attrs.setdefault(node.value.id, set()).add(node.attr)
-    required = {_PROVIDER_ATTR, _BOUND_MODEL_ATTR}
-    if any(required <= base_attrs.get(name, set()) for name in claims_names):
-        return None
-    return (
-        f"{_PKG_REL}/{_SERVICE_REL} does not read {sorted(required)} from the "
-        "verified token-claims object (Explicit Provider Binding regressed)"
-    )
+    if not any(_PROVIDER_ATTR in base_attrs.get(name, set()) for name in claims_names):
+        return (
+            f"{_PKG_REL}/{_SERVICE_REL} does not read .{_PROVIDER_ATTR} from the "
+            "verified token-claims object (Explicit Provider Binding regressed)"
+        )
+    if not _dispatch_binds_bound_model(tree):
+        return (
+            f"{_PKG_REL}/{_SERVICE_REL} has no dispatch binding its model from "
+            f".{_BOUND_MODEL_ATTR} (Explicit Provider Binding regressed)"
+        )
+    return None
 
 
 def _scan(root: Path) -> list[str]:

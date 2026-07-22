@@ -34,6 +34,7 @@ import argparse
 import ast
 import re
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Final
 
@@ -62,14 +63,37 @@ _FENCE_CALL: Final[str] = "wrap_untrusted"
 _RESULT_TAG: Final[str] = "TAG_TOOL_RESULT"
 
 
+def _direct_body_nodes(scope: ast.AST) -> Iterator[ast.AST]:
+    """Yield descendants of *scope* without entering nested definition scopes.
+
+    Descends through the statements and expressions of the scope's own body but
+    stops at nested ``FunctionDef`` / ``AsyncFunctionDef`` / ``Lambda`` /
+    ``ClassDef`` -- a governed call or fence buried in an inner helper must not
+    be credited to the outer function whose body the gate is inspecting.
+
+    Yields:
+        Each descendant node belonging to *scope*'s own lexical body.
+    """
+    stack = list(ast.iter_child_nodes(scope))
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(
+            node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.ClassDef
+        ):
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+
+
 def _called_names(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Return the set of function/method names called within *fn*.
+    """Return the set of function/method names called directly within *fn*.
 
     Returns:
-        Every ``name(...)`` and ``<x>.name(...)`` callee name in the body.
+        Every ``name(...)`` and ``<x>.name(...)`` callee name in *fn*'s own
+        body, excluding calls inside nested definition scopes.
     """
     names: set[str] = set()
-    for node in ast.walk(fn):
+    for node in _direct_body_nodes(fn):
         if not isinstance(node, ast.Call):
             continue
         if isinstance(node.func, ast.Name):
@@ -124,13 +148,14 @@ def _fences_with_result_tag(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """Whether *fn* fences a result with ``wrap_untrusted(TAG_TOOL_RESULT, ...)``.
 
     The tag must be the first positional argument (or ``tag=`` keyword) of a
-    ``wrap_untrusted`` call in the body; a call under any other tag fails the
-    SEC-1 boundary even if ``TAG_TOOL_RESULT`` is referenced elsewhere.
+    ``wrap_untrusted`` call in *fn*'s own body; a call under any other tag, or
+    one buried in a nested helper scope, fails the SEC-1 boundary even if
+    ``TAG_TOOL_RESULT`` is referenced elsewhere.
 
     Returns:
         ``True`` when a correctly-tagged fence call is present.
     """
-    for node in ast.walk(fn):
+    for node in _direct_body_nodes(fn):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
