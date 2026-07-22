@@ -422,6 +422,19 @@ _LOOP_REGISTRY: StrategyRegistry[ExecutionLoop] = StrategyRegistry(
 )
 
 
+def registered_loop_types() -> tuple[str, ...]:
+    """Return every loop type ``build_execution_loop`` can instantiate.
+
+    Exposed so a caller can enumerate the loops rather than hardcode them: the
+    A/B harness compares whatever is registered, so adding a fifth loop brings
+    it into the comparison without touching the harness.
+
+    Returns:
+        The registered loop-type identifiers, sorted.
+    """
+    return _LOOP_REGISTRY.names()
+
+
 def build_execution_loop(  # noqa: PLR0913
     loop_type: str,
     *,

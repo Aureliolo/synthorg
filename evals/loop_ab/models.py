@@ -120,9 +120,15 @@ class Provenance(BaseModel):
 class LoopBriefRow(BaseModel):
     """One ``(loop, brief, tier)`` result.
 
-    Invariant: a row is either measured (carrying a score and its measurements)
-    or unavailable (carrying a reason), never both and never neither. That is
-    what stops an unwired loop from being quietly dropped from the comparison.
+    Invariant: a row is either measured (carrying a measurement) or unavailable
+    (carrying a reason), never both and never neither. That is what stops an
+    unwired loop from being quietly dropped from the comparison.
+
+    ``score`` is attached in a second pass rather than at construction, because
+    the efficiency dimensions are scored relative to the other loops in the same
+    cell and so cannot be known until every loop in that cell has run. An
+    unavailable row never carries one; a measured row inside an assembled
+    :class:`Scoreboard` always does, which the scoreboard itself enforces.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -138,16 +144,21 @@ class LoopBriefRow(BaseModel):
 
     @model_validator(mode="after")
     def _measured_xor_unavailable(self) -> Self:
-        """Enforce that a row is either fully measured or explicitly unavailable."""
-        measured = self.score is not None and self.measurement is not None
+        """Enforce that a row is either measured or explicitly unavailable."""
+        measured = self.measurement is not None
         unavailable = self.unavailable_reason is not None
         if measured == unavailable:
             msg = (
                 f"LoopBriefRow {self.loop_type!r}/{self.brief_id!r}: a row must be "
-                "either measured (score + measurement) or unavailable (reason), "
-                f"got score={self.score is not None}, "
-                f"measurement={self.measurement is not None}, "
+                "either measured (measurement) or unavailable (reason), got "
+                f"measurement={measured}, "
                 f"unavailable_reason={self.unavailable_reason!r}"
+            )
+            raise ValueError(msg)
+        if unavailable and self.score is not None:
+            msg = (
+                f"LoopBriefRow {self.loop_type!r}/{self.brief_id!r}: an "
+                "unavailable row must not carry a score"
             )
             raise ValueError(msg)
         return self
@@ -176,10 +187,28 @@ class Scoreboard(BaseModel):
             raise ValueError(msg)
         return value
 
+    @model_validator(mode="after")
+    def _measured_rows_are_scored(self) -> Self:
+        """Reject an artifact whose measured rows were never scored.
+
+        Scoring happens after every loop in a cell has run, so a measured row
+        without a score means the assembly pass was skipped and the scoreboard
+        would silently under-report the comparison.
+        """
+        unscored = [
+            f"{row.loop_type}/{row.brief_id}/{row.tier}"
+            for row in self.rows
+            if row.measurement is not None and row.score is None
+        ]
+        if unscored:
+            msg = f"scoreboard carries unscored measured rows: {sorted(unscored)}"
+            raise ValueError(msg)
+        return self
+
     @property
     def measured_rows(self) -> tuple[LoopBriefRow, ...]:
         """Rows that carry a real measurement."""
-        return tuple(row for row in self.rows if row.score is not None)
+        return tuple(row for row in self.rows if row.measurement is not None)
 
     @property
     def unavailable_rows(self) -> tuple[LoopBriefRow, ...]:
