@@ -58,6 +58,11 @@ _CHECK_REGISTRY: Final[MappingProxyType[ConnectionType, ConnectionHealthCheck]] 
                 ConnectionType.GENERIC_HTTP: GenericHttpHealthCheck(),
                 ConnectionType.LLM_PROVIDER: LlmProviderHealthCheck(),
                 ConnectionType.TUNNEL: TunnelHealthCheck(),
+                # A deploy target is a bearer-token HTTP API behind a
+                # base_url, which is exactly what the generic probe
+                # validates: SSRF pre-flight, authenticated request, and
+                # UNHEALTHY (not false-green) on a revoked credential.
+                ConnectionType.DEPLOY: GenericHttpHealthCheck(),
             }
         )
     )

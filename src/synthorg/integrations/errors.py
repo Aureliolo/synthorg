@@ -385,6 +385,58 @@ class ChatApiRateLimitError(ChatApiError):
         self.retry_after_seconds = retry_after_seconds
 
 
+# -- Deploy API errors ---------------------------------------------------
+
+
+class DeployApiError(IntegrationError):
+    """Base for deploy-platform API client failures.
+
+    Transient by default (an upstream 5xx / network failure is safe to
+    retry). The auth and rate-limit leaves below narrow the HTTP status
+    while keeping the family ``INTEGRATION_ERROR`` code so callers branch
+    on the class, not a dedicated code.
+    """
+
+    is_retryable = True
+    retryable: ClassVar[bool] = True
+    default_message: ClassVar[str] = "Deploy API request failed"
+
+
+class DeployApiAuthError(DeployApiError):
+    """The deploy platform rejected the API token (auth / scope failure).
+
+    Non-retryable: a fresh or better-scoped credential is required, not a
+    backoff.
+    """
+
+    is_retryable = False
+    retryable: ClassVar[bool] = False
+    status_code: ClassVar[int] = 401
+    default_message: ClassVar[str] = "Deploy API authentication failed"
+
+
+class DeployApiRateLimitError(DeployApiError):
+    """The deploy platform rate-limited the request (HTTP 429).
+
+    Carries the advertised ``Retry-After`` cool-off (seconds) when the
+    response supplied a parseable one.
+    """
+
+    is_retryable = True
+    retryable: ClassVar[bool] = True
+    status_code: ClassVar[int] = 429
+    retry_after_seconds: float | None
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        retry_after_seconds: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
 # -- Tunnel errors -------------------------------------------------------
 
 

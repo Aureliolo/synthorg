@@ -21,7 +21,7 @@ from synthorg.integrations.chat_api import (
     build_chat_api_client,
     chat_api_supported,
 )
-from synthorg.integrations.connections.models import ConnectionType
+from synthorg.integrations.connections.models import Connection, ConnectionType
 from synthorg.integrations.errors import (
     ChatApiAuthError,
     ChatApiError,
@@ -91,15 +91,14 @@ class _BaseChatTool(GovernedConnectionTool[ChatApiClient, ChatToolsRuntime], ABC
     def _build_client(
         self,
         *,
-        connection_type: ConnectionType,
-        base_url: str,
+        conn: Connection,
         token: str,
         timeout: float,
     ) -> ChatApiClient:
         try:
             return build_chat_api_client(
-                connection_type=connection_type,
-                base_url=base_url,
+                connection_type=conn.connection_type,
+                base_url=str(conn.base_url or ""),
                 token=token,
                 timeout=timeout,
             )

@@ -222,8 +222,7 @@ class GovernedConnectionTool[
                 return parked
         token = await self._resolve_token(conn)
         client = self._build_client(
-            connection_type=conn.connection_type,
-            base_url=str(conn.base_url or ""),
+            conn=conn,
             token=token,
             timeout=self._runtime.timeout_seconds,
         )
@@ -338,12 +337,16 @@ class GovernedConnectionTool[
     def _build_client(
         self,
         *,
-        connection_type: ConnectionType,
-        base_url: str,
+        conn: Connection,
         token: str,
         timeout: float,
     ) -> ClientT:
-        """Build the per-call client, mapping a config error to the leaf."""
+        """Build the per-call client, mapping a config error to the leaf.
+
+        Receives the whole connection, not just its type and base URL, so
+        a family whose client selection depends on operator-set record
+        metadata can read it without smuggling state across the call.
+        """
 
     @abstractmethod
     async def _dispatch_guarded(

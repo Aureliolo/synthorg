@@ -25,7 +25,7 @@ from synthorg.engine.workspace.git_backend.forge_api import (
     build_forge_agent_api_client,
     forge_agent_api_supported,
 )
-from synthorg.integrations.connections.models import ConnectionType
+from synthorg.integrations.connections.models import Connection, ConnectionType
 from synthorg.observability import safe_error_description
 from synthorg.observability.events.tool import (
     FORGE_TOOL_CONNECTION_FAILED,
@@ -91,15 +91,14 @@ class _BaseForgeTool(
     def _build_client(
         self,
         *,
-        connection_type: ConnectionType,
-        base_url: str,
+        conn: Connection,
         token: str,
         timeout: float,
     ) -> ForgeAgentApiClient:
         try:
             return build_forge_agent_api_client(
-                connection_type=connection_type,
-                base_url=base_url,
+                connection_type=conn.connection_type,
+                base_url=str(conn.base_url or ""),
                 token=token,
                 timeout=timeout,
             )

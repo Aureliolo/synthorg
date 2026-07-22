@@ -1250,7 +1250,7 @@ CREATE TABLE connections (
         connection_type IN (
             'github', 'gitlab', 'gitea', 'forgejo', 'slack', 'smtp',
             'database', 'generic_http', 'oauth_app', 'a2a_peer', 'llm_provider',
-            'tunnel'
+            'tunnel', 'deploy'
         )
     ),
     auth_method TEXT NOT NULL CHECK (
