@@ -712,6 +712,13 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    spawning subprocesses, so the heaviest case can tip past the 6s
 #    budget on a loaded runner -- the real subprocess is the test's whole
 #    point, not a fixture leak (same class as ``test_cold_import.py``).
+#  - ``unit/knowledge/test_chunking.py``: the first code-chunking case pays
+#    the one-time ``tree_sitter_language_pack`` grammar-pack import, a large
+#    native load that the tests exist to exercise for real rather than fake.
+#    The cost lands on whichever case runs first (~4s solo, past the budget
+#    under ``--dist=loadfile`` contention), so passing in isolation is not
+#    evidence the guard will hold -- same class as the whole-tree scanners
+#    above, not a fixture leak.
 #  - ``test_construction_wiring.py``: builds the whole app via
 #    ``create_app`` to assert construction-phase slice wiring. The build is
 #    class-scoped (one build shared across the class), so the one-time cost
@@ -743,6 +750,7 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/scripts/test_check_completion_config_temperature.py",
     "unit/scripts/test_check_error_code_uniqueness.py::test_real_tree_passes",
     "unit/scripts/test_pretooluse_bash_gates.py",
+    "unit/knowledge/test_chunking.py",
     "unit/api/test_construction_wiring.py",
     "unit/api/test_app.py",
     "unit/api/test_health.py",

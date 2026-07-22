@@ -42,7 +42,18 @@ _MIN_MODULE_DEPTH = 3
 # Test subdirectories that mypy should cover.
 _TEST_KINDS = ("unit", "integration")
 
-_MYPY_WORKERS: Final[list[str]] = ["--num-workers=4"]
+# Each worker is a fresh interpreter importing the compiled (mypyc) mypy
+# package and racing to connect back to the parent over a named pipe. On
+# Windows that pipe handshake is the fragile part: at four workers they
+# reliably lose the race on the full ~6.5k-file tree and mypy aborts with an
+# INTERNAL ERROR (WinError 233) instead of returning a type result. Measured
+# on the full tree here: four fails every run, two passes, single-process
+# passes. The sitecustomize below widens the timeouts but does not rescue
+# four, so the concurrency itself is the lever. POSIX runners (including CI)
+# use a socket rather than a named pipe and do not hit this, so they keep the
+# faster four.
+_MYPY_WORKER_COUNT: Final[int] = 2 if sys.platform == "win32" else 4
+_MYPY_WORKERS: Final[list[str]] = [f"--num-workers={_MYPY_WORKER_COUNT}"]
 
 # mypy's parallel build spawns ``mypy.build_worker`` subprocesses that connect
 # back over a named pipe. The worker's server and the parent's status poll each
