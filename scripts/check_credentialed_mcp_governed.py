@@ -12,10 +12,11 @@ unless the invoke function:
 4. dispatches through the governed tool (``.execute``), and
 5. fences the returned result with ``wrap_untrusted`` (SEC-1 at source).
 
-The ``wrap_untrusted`` fence in the invoke body must pass ``TAG_TOOL_RESULT``
-as its tag argument, so the fence cannot drift to a different tag while a stray
-``TAG_TOOL_RESULT`` reference elsewhere masks the regression. Any missing step
-means credentials or untrusted tool output could reach the harness ungoverned.
+Every ``return`` in the invoke body must yield a ``wrap_untrusted(TAG_TOOL_RESULT,
+...)`` value (directly or via a scope-local alias), so the fence is tied to the
+value actually returned: a stray fence call elsewhere cannot mask a return that
+hands back an unfenced result, and the tag cannot drift. Any missing step means
+credentials or untrusted tool output could reach the harness ungoverned.
 
 Opt a genuine exception out with a trailing
 ``# lint-allow: credentialed-mcp-governed -- <reason>`` comment on the
@@ -126,33 +127,81 @@ def _is_result_tag(node: ast.expr | None) -> bool:
     return isinstance(node, ast.Attribute) and node.attr == _RESULT_TAG
 
 
-def _fences_with_result_tag(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Whether *fn* fences a result with ``wrap_untrusted(TAG_TOOL_RESULT, ...)``.
+def _is_result_fence_call(node: ast.expr | None) -> bool:
+    """Whether *node* is a ``wrap_untrusted(TAG_TOOL_RESULT, ...)`` call.
 
     The tag must be the first positional argument (or ``tag=`` keyword) of a
-    ``wrap_untrusted`` call in *fn*'s own body; a call under any other tag, or
-    one buried in a nested helper scope, fails the SEC-1 boundary even if
-    ``TAG_TOOL_RESULT`` is referenced elsewhere.
+    ``wrap_untrusted`` call; any other tag fails the SEC-1 boundary.
 
     Returns:
-        ``True`` when a correctly-tagged fence call is present.
+        ``True`` for a correctly-tagged fence call.
     """
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Name):
+        callee = func.id
+    elif isinstance(func, ast.Attribute):
+        callee = func.attr
+    else:
+        return False
+    if callee != _FENCE_CALL:
+        return False
+    tag = node.args[0] if node.args else _keyword_value(node, "tag")
+    return _is_result_tag(tag)
+
+
+def _is_alias(node: ast.expr | None, aliases: frozenset[str]) -> bool:
+    """Whether *node* is a bare name bound to a tracked alias.
+
+    Returns:
+        ``True`` when *node* is an ``ast.Name`` whose id is in *aliases*.
+    """
+    return isinstance(node, ast.Name) and node.id in aliases
+
+
+def _fence_alias_names(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    """Return names in *fn* bound to a result-tag fence call.
+
+    Tracks ``x = wrap_untrusted(TAG_TOOL_RESULT, ...)`` so a ``return x`` still
+    counts as returning the fenced result.
+
+    Returns:
+        The fence-carrying identifiers local to *fn*'s body.
+    """
+    names: set[str] = set()
     for node in direct_body_nodes(fn):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if isinstance(func, ast.Name):
-            callee = func.id
-        elif isinstance(func, ast.Attribute):
-            callee = func.attr
-        else:
-            continue
-        if callee != _FENCE_CALL:
-            continue
-        tag = node.args[0] if node.args else _keyword_value(node, "tag")
-        if _is_result_tag(tag):
-            return True
-    return False
+        if isinstance(node, ast.Assign) and _is_result_fence_call(node.value):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and _is_result_fence_call(node.value)
+        ):
+            names.add(node.target.id)
+    return frozenset(names)
+
+
+def _returns_fenced_result(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Whether every ``return`` in *fn* yields a ``TAG_TOOL_RESULT`` fence.
+
+    Ties the SEC-1 boundary to the value the invoke path actually returns: each
+    return must be a ``wrap_untrusted(TAG_TOOL_RESULT, ...)`` call (directly or
+    via a scope-local alias), so a stray fence call elsewhere cannot satisfy the
+    gate while an unfenced value is returned. A body with no return statement
+    (nothing fenced) fails.
+
+    Returns:
+        ``True`` when the returned result is fenced on every return path.
+    """
+    aliases = _fence_alias_names(fn)
+    returns = [n for n in direct_body_nodes(fn) if isinstance(n, ast.Return)]
+    if not returns:
+        return False
+    return all(
+        _is_result_fence_call(ret.value) or _is_alias(ret.value, aliases)
+        for ret in returns
+    )
 
 
 def _check(root: Path) -> list[str]:
@@ -182,10 +231,10 @@ def _check(root: Path) -> list[str]:
         for call in _REQUIRED_CALLS
         if call not in called
     ]
-    if not _fences_with_result_tag(invoke):
+    if not _returns_fenced_result(invoke):
         findings.append(
-            f"{_TOOLS_REL}:{line}: {_INVOKE_FN} must fence its result with "
-            f"{_FENCE_CALL}({_RESULT_TAG}, ...)"
+            f"{_TOOLS_REL}:{line}: {_INVOKE_FN} must return its result fenced with "
+            f"{_FENCE_CALL}({_RESULT_TAG}, ...) on every return path"
         )
     return findings
 

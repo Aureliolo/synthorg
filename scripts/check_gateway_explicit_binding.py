@@ -19,8 +19,9 @@ provider is never auto-picked. This gate AST-scans
 It also enforces the positive contract: ``service.py`` must resolve its
 provider from ``claims.provider`` at the actual ``get(...)`` lookup (tracking
 the value through a helper parameter) AND bind its model from ``.model_id`` at
-an actual ``complete`` / ``stream`` dispatch, so an unrelated (e.g. logging)
-``.provider`` / ``.model_id`` read cannot masquerade as the binding.
+EVERY ``complete`` / ``stream`` dispatch, so neither an unrelated (e.g. logging)
+``.provider`` read nor a second dispatch on a hard-coded model can masquerade as
+the binding.
 
 Opt a genuine exception out with a trailing
 ``# lint-allow: gateway-binding -- <reason>`` comment on the offending line.
@@ -319,29 +320,48 @@ def _is_bound_model_attr(node: ast.expr | None) -> bool:
     return isinstance(node, ast.Attribute) and node.attr == _BOUND_MODEL_ATTR
 
 
-def _dispatch_binds_bound_model(tree: ast.Module) -> bool:
-    """Whether some dispatch binds its model argument from ``.model_id``.
+def _dispatch_calls(tree: ast.Module) -> list[tuple[ast.Call, frozenset[str]]]:
+    """Return every ``complete`` / ``stream`` dispatch call in *tree*.
 
-    Ties the positive contract to an actual ``complete`` / ``stream`` call whose
-    model argument reads the token-bound ``.model_id`` (directly or via a
-    scope-local alias), so ``.model_id`` merely being read somewhere unrelated
-    does not satisfy the binding.
+    Each call is paired with the ``.model_id`` aliases of its enclosing lexical
+    scope, so a per-call bound-model check can honour a scope-local alias.
 
     Returns:
-        ``True`` when a claims-bound dispatch is present.
+        ``(call, bound_model_aliases)`` pairs for each dispatch found.
     """
+    calls: list[tuple[ast.Call, frozenset[str]]] = []
     for scope in _iter_scopes(tree):
         bound = _aliased_names(scope, _is_bound_model_attr)
-        for node in direct_body_nodes(scope):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr in _DISPATCH_CALLS
-            ):
-                model_arg = _second_positional(node) or _model_keyword(node)
-                if _is_bound_model_attr(model_arg) or _is_alias(model_arg, bound):
-                    return True
-    return False
+        calls.extend(
+            (node, bound)
+            for node in direct_body_nodes(scope)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in _DISPATCH_CALLS
+        )
+    return calls
+
+
+def _unbound_dispatch_lines(tree: ast.Module) -> list[int]:
+    """Return the line of each dispatch whose model is not claims-bound.
+
+    Every gateway dispatch must pass ``.model_id`` (or a scope-local alias of it)
+    as its model argument; a hard-coded or otherwise token-unbound model is a
+    violation even though it is not the request's ``model`` field, so checking
+    only one compliant dispatch would let a second, unbound one slip through.
+
+    Returns:
+        The (sorted) line numbers of dispatches that bind an unbound model.
+    """
+    lines = [
+        node.lineno
+        for node, bound in _dispatch_calls(tree)
+        if not (
+            _is_bound_model_attr(_second_positional(node) or _model_keyword(node))
+            or _is_alias(_second_positional(node) or _model_keyword(node), bound)
+        )
+    ]
+    return sorted(lines)
 
 
 def _is_claims_provider(node: ast.expr | None, claims_names: frozenset[str]) -> bool:
@@ -462,9 +482,9 @@ def _resolve_binds_provider(tree: ast.Module, claims_names: frozenset[str]) -> b
 def _service_binds_token(root: Path) -> str | None:
     """Return an error string when ``service.py`` drops token binding.
 
-    Requires a provider lookup to bind ``claims.provider`` AND a dispatch to
+    Requires a provider lookup to bind ``claims.provider`` AND EVERY dispatch to
     bind its model from ``.model_id``, so neither an unrelated (e.g. logging)
-    ``.provider`` / ``.model_id`` read nor a dispatch on a request-derived model
+    ``.provider`` read, nor a dispatch on a request-derived or hard-coded model,
     can masquerade as the binding.
 
     Returns:
@@ -482,10 +502,18 @@ def _service_binds_token(root: Path) -> str | None:
             f".{_PROVIDER_ATTR} of the verified token claims "
             "(Explicit Provider Binding regressed)"
         )
-    if not _dispatch_binds_bound_model(tree):
+    if not _dispatch_calls(tree):
         return (
             f"{_PKG_REL}/{_SERVICE_REL} has no dispatch binding its model from "
             f".{_BOUND_MODEL_ATTR} (Explicit Provider Binding regressed)"
+        )
+    unbound = _unbound_dispatch_lines(tree)
+    if unbound:
+        joined = ", ".join(str(line) for line in unbound)
+        return (
+            f"{_PKG_REL}/{_SERVICE_REL} dispatch(es) at line(s) {joined} do not "
+            f"bind their model from .{_BOUND_MODEL_ATTR} of the token claims "
+            "(Explicit Provider Binding regressed)"
         )
     return None
 
