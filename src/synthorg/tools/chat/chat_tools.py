@@ -32,10 +32,7 @@ from synthorg.observability.events.tool import (
     CHAT_TOOL_CONNECTION_FAILED,
     CHAT_TOOL_CREDENTIAL_FAILED,
 )
-from synthorg.tools._governed_connection_tool import (
-    GovernedConnectionTool,
-    build_connection_gate,
-)
+from synthorg.tools._governed_connection_tool import GovernedConnectionTool
 from synthorg.tools._governed_connection_tool import json_result as _json_result
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.chat._args import ChatDirectoryArgs, ChatMessagesArgs
@@ -83,7 +80,7 @@ class _BaseChatTool(GovernedConnectionTool[ChatApiClient, ChatToolsRuntime], ABC
             description=description,
             args_model=args_model,
             runtime=deps.runtime,
-            gate=build_connection_gate(deps),
+            gate_deps=deps,
         )
 
     @override

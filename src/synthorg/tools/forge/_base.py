@@ -31,10 +31,7 @@ from synthorg.observability.events.tool import (
     FORGE_TOOL_CONNECTION_FAILED,
     FORGE_TOOL_CREDENTIAL_FAILED,
 )
-from synthorg.tools._governed_connection_tool import (
-    GovernedConnectionTool,
-    build_connection_gate,
-)
+from synthorg.tools._governed_connection_tool import GovernedConnectionTool
 from synthorg.tools._governed_connection_tool import json_result as _json_result
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.errors import ToolError
@@ -83,7 +80,7 @@ class _BaseForgeTool(
             description=description,
             args_model=args_model,
             runtime=deps.runtime,
-            gate=build_connection_gate(deps),
+            gate_deps=deps,
         )
 
     @override

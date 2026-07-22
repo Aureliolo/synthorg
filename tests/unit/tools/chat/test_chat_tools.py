@@ -36,7 +36,10 @@ from synthorg.integrations.errors import (
     ChatApiRateLimitError,
     SecretRetrievalError,
 )
-from synthorg.tools._governed_action import GovernedApprovalMismatchError
+from synthorg.tools._governed_action import (
+    ConnectionApprovalGate,
+    GovernedApprovalMismatchError,
+)
 from synthorg.tools.chat._runtime import ChatToolDeps, ChatToolsRuntime
 from synthorg.tools.chat.chat_tools import ChatDirectoryTool, ChatMessagesTool
 from tests._shared.mock_of import mock_of
@@ -45,6 +48,7 @@ pytestmark = pytest.mark.unit
 
 _COMMS_EXTERNAL = "comms:external"
 _PATCH_TARGET = "synthorg.tools.chat.chat_tools.build_chat_api_client"
+_GATE_BUILDER_TARGET = "synthorg.tools._governed_connection_tool.build_connection_gate"
 
 
 class _FakeChatClient:
@@ -316,10 +320,16 @@ class TestChatToolErrorMapping:
         tool = ChatMessagesTool(deps=_deps(conn=_connection()))
         # A mismatched / consumed grant raises through the gate; execute()
         # must surface it as a structured error, not a generic invoker crash.
-        tool._gate.gate = AsyncMock(  # type: ignore[method-assign]
-            side_effect=GovernedApprovalMismatchError("already consumed")
+        gate = mock_of[ConnectionApprovalGate](
+            gate=AsyncMock(
+                spec=ConnectionApprovalGate.gate,
+                side_effect=GovernedApprovalMismatchError("already consumed"),
+            )
         )
-        with patch(_PATCH_TARGET, return_value=fake):
+        with (
+            patch(_GATE_BUILDER_TARGET, return_value=gate),
+            patch(_PATCH_TARGET, return_value=fake),
+        ):
             result = await tool.execute(
                 arguments={"action": "send", "channel": "C1", "text": "hi"}
             )
