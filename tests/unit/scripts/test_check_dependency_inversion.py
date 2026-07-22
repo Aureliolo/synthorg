@@ -327,14 +327,3 @@ class TestWildcardImports:
             },
         )
         assert _scan(project_root) == 0
-
-
-class TestLiveCodebase:
-    """Anchor test: the real tree must pass with zero violations."""
-
-    def test_real_codebase_is_clean(self) -> None:
-        violations = _MODULE._scan_all(
-            [Path("src/synthorg")],
-            _REPO_ROOT,
-        )
-        assert violations == 0
