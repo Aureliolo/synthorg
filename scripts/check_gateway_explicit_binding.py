@@ -16,10 +16,11 @@ provider is never auto-picked. This gate AST-scans
    plain ``.model`` attribute (the request field) rather than the
    token-bound ``.model_id``.
 
-It also enforces the positive contract: ``service.py`` must read both
-``.provider`` and ``.model_id`` from the same claims-derived object (the
-``<signer>.verify(...)`` result or a ``GatewayTokenClaims`` parameter), so a
-refactor that drops token binding cannot pass on unrelated attribute accesses.
+It also enforces the positive contract: ``service.py`` must resolve its
+provider from ``claims.provider`` at the actual ``get(...)`` lookup (tracking
+the value through a helper parameter) AND bind its model from ``.model_id`` at
+an actual ``complete`` / ``stream`` dispatch, so an unrelated (e.g. logging)
+``.provider`` / ``.model_id`` read cannot masquerade as the binding.
 
 Opt a genuine exception out with a trailing
 ``# lint-allow: gateway-binding -- <reason>`` comment on the offending line.
@@ -114,17 +115,22 @@ def _model_keyword(call: ast.Call) -> ast.expr | None:
     return None
 
 
-def _direct_body_nodes(scope: ast.AST) -> Iterator[ast.AST]:
-    """Yield descendants of *scope* without entering nested definition scopes.
+def _direct_body_nodes(
+    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef,
+) -> Iterator[ast.AST]:
+    """Yield descendants of *scope*'s executable body only.
 
-    Stops at nested ``FunctionDef`` / ``AsyncFunctionDef`` / ``Lambda`` /
-    ``ClassDef`` so a request-model alias or dispatch in one handler is never
-    attributed to another.
+    Traverses the statements in ``scope.body`` (so a function's own decorators,
+    parameter defaults, and annotations are excluded) and stops at nested
+    ``FunctionDef`` / ``AsyncFunctionDef`` / ``Lambda`` / ``ClassDef`` so a
+    request-model alias or dispatch in one handler is never attributed to
+    another.
 
     Yields:
-        Each descendant node belonging to *scope*'s own lexical body.
+        Each descendant node belonging to *scope*'s own executable body.
     """
-    stack = list(ast.iter_child_nodes(scope))
+    stack: list[ast.AST] = []
+    stack.extend(scope.body)
     while stack:
         node = stack.pop()
         yield node
@@ -135,7 +141,9 @@ def _direct_body_nodes(scope: ast.AST) -> Iterator[ast.AST]:
         stack.extend(ast.iter_child_nodes(node))
 
 
-def _iter_scopes(tree: ast.Module) -> Iterator[ast.AST]:
+def _iter_scopes(
+    tree: ast.Module,
+) -> Iterator[ast.Module | ast.FunctionDef | ast.AsyncFunctionDef]:
     """Yield the module scope followed by every function scope in *tree*.
 
     Each scope is analysed against only its own local aliases, so a name bound
@@ -160,7 +168,8 @@ def _is_alias(node: ast.expr | None, aliases: frozenset[str]) -> bool:
 
 
 def _aliased_names(
-    scope: ast.AST, predicate: Callable[[ast.expr | None], bool]
+    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef,
+    predicate: Callable[[ast.expr | None], bool],
 ) -> frozenset[str]:
     """Return names in *scope* assigned from a value matching *predicate*.
 
@@ -356,11 +365,126 @@ def _dispatch_binds_bound_model(tree: ast.Module) -> bool:
     return False
 
 
+def _is_claims_provider(node: ast.expr | None, claims_names: frozenset[str]) -> bool:
+    """Whether *node* reads ``.provider`` off a verified-claims base.
+
+    Returns:
+        ``True`` for a ``<claims>.provider`` attribute access whose base is a
+        known claims identifier.
+    """
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == _PROVIDER_ATTR
+        and isinstance(node.value, ast.Name)
+        and node.value.id in claims_names
+    )
+
+
+def _callee_name(func: ast.expr) -> str | None:
+    """Return the called name of *func* (``name`` or ``<x>.name``), if any.
+
+    Returns:
+        The callee identifier, or ``None`` for a non-name callable.
+    """
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def _positional_param_names(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
+    """Return *fn*'s positional parameter names, dropping an implicit receiver.
+
+    A ``@staticmethod`` keeps every parameter; otherwise a leading ``self`` /
+    ``cls`` is dropped so call arguments line up with parameters by position
+    regardless of method vs. plain-function call style.
+
+    Returns:
+        The positional parameter names in declaration order.
+    """
+    names = [a.arg for a in (*fn.args.posonlyargs, *fn.args.args)]
+    is_static = any(
+        isinstance(d, ast.Name) and d.id == "staticmethod" for d in fn.decorator_list
+    )
+    if not is_static and names and names[0] in {"self", "cls"}:
+        return names[1:]
+    return names
+
+
+def _provider_carrier_names(
+    tree: ast.Module, claims_names: frozenset[str]
+) -> frozenset[str]:
+    """Return names that carry ``claims.provider`` into a provider lookup.
+
+    Tracks two flows: a scope-local alias (``name = claims.provider``) and a
+    parameter that receives ``claims.provider`` at a call site (so a helper like
+    ``_resolve_provider(registry, claims.provider)`` that then calls
+    ``registry.get(provider_name)`` still ties the lookup to the token claims).
+
+    Returns:
+        The identifiers bound to the claims provider across the module.
+    """
+    carriers: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and _is_claims_provider(
+            node.value, claims_names
+        ):
+            carriers.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and _is_claims_provider(node.value, claims_names)
+        ):
+            carriers.add(node.target.id)
+    funcs = {
+        f.name: f
+        for f in ast.walk(tree)
+        if isinstance(f, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _callee_name(node.func)
+        fn = funcs.get(name) if name is not None else None
+        if fn is None:
+            continue
+        params = _positional_param_names(fn)
+        pos_args = [a for a in node.args if not isinstance(a, ast.Starred)]
+        for arg, param in zip(pos_args, params, strict=False):
+            if _is_claims_provider(arg, claims_names):
+                carriers.add(param)
+    return frozenset(carriers)
+
+
+def _resolve_binds_provider(tree: ast.Module, claims_names: frozenset[str]) -> bool:
+    """Whether a provider lookup binds its argument from ``claims.provider``.
+
+    Ties the positive contract to an actual ``get(...)`` call whose provider
+    argument reads ``claims.provider`` directly or via a carrier name, so a
+    logging-only ``claims.provider`` read cannot satisfy the binding.
+
+    Returns:
+        ``True`` when a claims-bound provider lookup is present.
+    """
+    carriers = _provider_carrier_names(tree, claims_names)
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in _RESOLVE_CALLS
+        ):
+            arg = node.args[0] if node.args else None
+            if _is_claims_provider(arg, claims_names) or _is_alias(arg, carriers):
+                return True
+    return False
+
+
 def _service_binds_token(root: Path) -> str | None:
     """Return an error string when ``service.py`` drops token binding.
 
-    Requires ``.provider`` to be read from a claims-derived base AND some
-    dispatch to bind its model from ``.model_id``, so neither an unrelated
+    Requires a provider lookup to bind ``claims.provider`` AND a dispatch to
+    bind its model from ``.model_id``, so neither an unrelated (e.g. logging)
     ``.provider`` / ``.model_id`` read nor a dispatch on a request-derived model
     can masquerade as the binding.
 
@@ -372,15 +496,12 @@ def _service_binds_token(root: Path) -> str | None:
     if not service.is_file():
         return f"gateway service module missing: {service}"
     _, tree = read_and_parse(service)
-    claims_names = _claims_base_names(tree)
-    base_attrs: dict[str, set[str]] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            base_attrs.setdefault(node.value.id, set()).add(node.attr)
-    if not any(_PROVIDER_ATTR in base_attrs.get(name, set()) for name in claims_names):
+    claims_names = frozenset(_claims_base_names(tree))
+    if not _resolve_binds_provider(tree, claims_names):
         return (
-            f"{_PKG_REL}/{_SERVICE_REL} does not read .{_PROVIDER_ATTR} from the "
-            "verified token-claims object (Explicit Provider Binding regressed)"
+            f"{_PKG_REL}/{_SERVICE_REL} does not resolve its provider from "
+            f".{_PROVIDER_ATTR} of the verified token claims "
+            "(Explicit Provider Binding regressed)"
         )
     if not _dispatch_binds_bound_model(tree):
         return (

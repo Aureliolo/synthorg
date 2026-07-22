@@ -63,18 +63,22 @@ _FENCE_CALL: Final[str] = "wrap_untrusted"
 _RESULT_TAG: Final[str] = "TAG_TOOL_RESULT"
 
 
-def _direct_body_nodes(scope: ast.AST) -> Iterator[ast.AST]:
-    """Yield descendants of *scope* without entering nested definition scopes.
+def _direct_body_nodes(
+    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef,
+) -> Iterator[ast.AST]:
+    """Yield descendants of *scope*'s executable body only.
 
-    Descends through the statements and expressions of the scope's own body but
-    stops at nested ``FunctionDef`` / ``AsyncFunctionDef`` / ``Lambda`` /
-    ``ClassDef`` -- a governed call or fence buried in an inner helper must not
-    be credited to the outer function whose body the gate is inspecting.
+    Traverses the statements in ``scope.body`` (so the function's own
+    decorators, parameter defaults, and annotations are excluded) and stops at
+    nested ``FunctionDef`` / ``AsyncFunctionDef`` / ``Lambda`` / ``ClassDef`` --
+    a governed call or fence buried in a signature expression or an inner helper
+    must not be credited to the outer function the gate is inspecting.
 
     Yields:
-        Each descendant node belonging to *scope*'s own lexical body.
+        Each descendant node belonging to *scope*'s own executable body.
     """
-    stack = list(ast.iter_child_nodes(scope))
+    stack: list[ast.AST] = []
+    stack.extend(scope.body)
     while stack:
         node = stack.pop()
         yield node
