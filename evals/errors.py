@@ -140,6 +140,17 @@ class WorkspacePathEscapeError(EvalError):
     default_message: ClassVar[str] = "Workspace path escapes its root directory"
 
 
+class ProvenanceUnavailableError(EvalError):
+    """Raised when a scoreboard's commit provenance cannot be read.
+
+    A scoreboard that cannot name the commit it measured is not reproducible,
+    and reproducibility is an acceptance criterion for the A/B rather than a
+    nicety, so this fails closed instead of stamping an unknown placeholder.
+    """
+
+    default_message: ClassVar[str] = "Scoreboard git provenance is unavailable"
+
+
 class ResearchBriefUnsupportedError(EvalError):
     """Raised when a research brief is run without a research-mode integration.
 
@@ -167,6 +178,7 @@ __all__ = [
     "EvalToolMissingError",
     "JudgeAnchorSetTooSmallError",
     "JudgeCalibrationFailedError",
+    "ProvenanceUnavailableError",
     "ResearchBriefUnsupportedError",
     "WorkspacePathEscapeError",
     "WorkspaceSeedNotFoundError",
