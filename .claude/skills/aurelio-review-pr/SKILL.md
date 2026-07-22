@@ -554,7 +554,7 @@ Collect all findings with their severity/confidence scores.
 
 ## Phase 4: Fetch external reviewer feedback
 
-**CRITICAL: Fetch ALL reviewers; do NOT filter by known bot names.** The set of external reviewers varies per repo and can include any combination of bots (CodeRabbit, Gemini, Copilot, Greptile, etc.) and human reviewers. Always fetch unfiltered results and categorize by author from the response.
+**CRITICAL: Fetch ALL reviewers; do NOT filter by known bot names.** CodeRabbit is our only bot reviewer, but always fetch unfiltered and categorize by author from the response: human reviewers can show up at any time. Never bake a login allowlist into the fetch.
 
 **CRITICAL: Wait for all bots to finish processing.** Before triaging, check if any bot reviewer is still processing:
 1. First check the ISSUE comments (not PR reviews) for bot status - CodeRabbit posts "Currently processing" placeholder there
@@ -563,7 +563,7 @@ Collect all findings with their severity/confidence scores.
 4. If still not ready after 3 minutes, proceed and mark its coverage as "pending" in the triage table
 5. After implementing fixes and pushing, re-check for the bot's feedback in Phase 9
 
-**ALWAYS check both issue comments AND review submissions for bots**: some bots (CodeRabbit) use issue comments to signal processing status, while others (Gemini, Copilot) use PR review submissions.
+**ALWAYS check both issue comments AND review submissions**: CodeRabbit uses issue comments to signal processing status ("Currently processing") and PR review submissions for its actual findings, so both surfaces matter.
 
 Fetch from three GitHub API sources **in parallel** using `gh api`, **always unfiltered** (no `select(.user.login == ...)` filtering):
 
@@ -653,7 +653,7 @@ After all fixes:
 After all fixes pass linting and tests (or if no linting/tests exist yet):
 
 1. Stage all modified files (specific files, not `git add .`)
-2. Commit with a descriptive message summarizing what was fixed (e.g. "fix: address 28 PR review items from local agents, CodeRabbit, and Copilot")
+2. Commit with a descriptive message summarizing what was fixed (e.g. "fix: address 28 PR review items from local agents and CodeRabbit")
 3. Push to the current branch
 4. If commit or push fails due to hooks, fix the actual issue and create a NEW commit; NEVER use `--no-verify` or `--amend`
 

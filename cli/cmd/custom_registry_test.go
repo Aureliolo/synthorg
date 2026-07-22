@@ -129,8 +129,7 @@ func TestApplyTunables_CustomRegistryWarningIgnoresJSON(t *testing.T) {
 // TestApplyTunables_CorruptConfigFailsFast guards the contract that a
 // malformed config.json on disk is a hard error from applyTunables --
 // not a silent fallback to zero-value state. Silent fallback would drop
-// persisted overrides and CustomRegistry detection, which is the exact
-// class of bug Copilot + Gemini flagged on this PR.
+// persisted overrides and CustomRegistry detection.
 func TestApplyTunables_CorruptConfigFailsFast(t *testing.T) {
 	withDefaultTunables(t)
 	dir := t.TempDir()
