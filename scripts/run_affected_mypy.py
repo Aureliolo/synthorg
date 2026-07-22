@@ -42,6 +42,13 @@ _MIN_MODULE_DEPTH = 3
 # Test subdirectories that mypy should cover.
 _TEST_KINDS = ("unit", "integration")
 
+# mypy's parallel-worker IPC uses Windows named pipes that disconnect under
+# load on Python 3.14 (`WinError 233`), aborting the run with an INTERNAL
+# ERROR (exit 2) rather than a type result. Single-process mypy is stable
+# there; keep the workers on POSIX (CI), where the IPC is reliable and the
+# speed-up matters.
+_MYPY_WORKERS: Final[list[str]] = [] if sys.platform == "win32" else ["--num-workers=4"]
+
 # Valid Python package directory names (prevents path traversal).
 _SAFE_MODULE_NAME = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
@@ -173,7 +180,7 @@ def _affected_mypy_paths(changed: list[str]) -> tuple[list[str], bool]:
 
 def _run_mypy(paths: list[str]) -> int:
     """Run mypy with the given paths."""
-    cmd = [sys.executable, "-m", "mypy", "--num-workers=4", *paths]
+    cmd = [sys.executable, "-m", "mypy", *_MYPY_WORKERS, *paths]
     result = subprocess.run(cmd, cwd=_REPO_ROOT, check=False)
     return result.returncode
 
@@ -190,7 +197,7 @@ def _run_scripts_mypy() -> int:
         sys.executable,
         "-m",
         "mypy",
-        "--num-workers=4",
+        *_MYPY_WORKERS,
         "--explicit-package-bases",
         "scripts/",
     ]
