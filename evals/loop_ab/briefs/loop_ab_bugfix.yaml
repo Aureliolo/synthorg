@@ -1,0 +1,53 @@
+# Workspace-graded A/B brief: MEDIUM tier (repair a seeded package).
+#
+# The workspace ships a ledger package with real defects and a visible pytest
+# suite that fails against it. The loop must read the failures, locate the
+# causes and fix the source.
+#
+# Every hidden check asserts against the ledger package directly rather than by
+# running the shipped tests, so the acceptance cannot be satisfied by weakening
+# or deleting tests/test_accounts.py. That file exists to guide the loop, not to
+# grade it. This is the brief where read/edit/re-run iteration actually shows,
+# which is the behaviour the loops most differ on.
+brief_id: loop-ab-bugfix
+schema_version: 1
+kind: executable
+title: "repair the ledger package"
+description: >-
+  The ledger package in this workspace is broken and its test suite fails. Run
+  the tests, diagnose each failure, and fix ledger/accounts.py so every test
+  passes. Do not weaken or delete the tests.
+priority: high
+estimated_complexity: 2
+workspace:
+  seed_dir: seeds/loop-ab-bugfix
+expected_artifacts:
+  - kind: file
+    path: ledger/accounts.py
+acceptance_criteria:
+  - "A withdrawal reduces the balance rather than increasing it."
+  - "The balance is rounded to whole cents."
+  - "A negative deposit or withdrawal is rejected with ValueError."
+  - "Withdrawing more than the balance is rejected with ValueError."
+limits:
+  max_total_cost_usd: 4.0
+  max_wall_clock_seconds: 600
+  max_turns: 20
+checks:
+  build:
+    - cmd: ["{python}", "-c", "import ledger; assert hasattr(ledger.Account, 'balance')"]
+      timeout_seconds: 30
+  hidden_tests:
+    - cmd: ["{python}", "-c", "from ledger import Account\na = Account(name='c')\na.deposit(100.0)\na.withdraw(30.0)\nassert a.balance == 70.0, a.balance"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "from ledger import Account\na = Account(name='c')\na.deposit(0.1)\na.deposit(0.2)\nassert a.balance == 0.30, a.balance"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "from ledger import Account\na = Account(name='c')\ntry:\n    a.deposit(-5.0)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError('negative deposit must raise')"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "from ledger import Account\na = Account(name='c')\ntry:\n    a.withdraw(-5.0)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError('negative withdrawal must raise')"]
+      timeout_seconds: 30
+    - cmd: ["{python}", "-c", "from ledger import Account\na = Account(name='c')\na.deposit(10.0)\ntry:\n    a.withdraw(25.0)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError('overdraft must raise')"]
+      timeout_seconds: 30
+  lint:
+    - cmd: ["{python}", "-c", "import pathlib; body = pathlib.Path('tests/test_accounts.py').read_text(encoding='utf-8'); assert 'def test_overdrawing_is_rejected' in body, 'the shipped tests must not be removed'"]
+      timeout_seconds: 30

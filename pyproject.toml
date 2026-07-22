@@ -240,7 +240,14 @@ src = ["src", "tests", "evals"]
 # Synthetic boundary-gate fixtures are written + deleted per test by
 # tests/unit/scripts/test_check_boundary_typed.py; exclude the directory so
 # a crash-orphaned file can never be linted as real source.
-extend-exclude = ["src/synthorg/_lint_boundary_fixtures"]
+#
+# Loop A/B seed fixtures are the benchmark's inputs, not project source: they
+# deliberately ship defective code for a loop to repair, and reformatting or
+# "fixing" them would silently change what the benchmark measures.
+extend-exclude = [
+    "src/synthorg/_lint_boundary_fixtures",
+    "evals/loop_ab/briefs/seeds",
+]
 
 [tool.ruff.lint]
 # preview + explicit-preview-rules: required to activate TID255 (added via
@@ -505,6 +512,11 @@ warn_return_any = true
 warn_unused_configs = true
 warn_unreachable = true
 show_error_codes = true
+# Loop A/B seed fixtures are benchmark inputs, not project source. They are only
+# importable once copied into a seeded workspace, and one of them ships
+# deliberately defective code for a loop to repair, so type-checking them would
+# report on the benchmark's subject matter rather than on the codebase.
+exclude = ["^evals/loop_ab/briefs/seeds/"]
 # Strict++ knobs. ``disallow_any_explicit`` now holds globally across both
 # ``src/`` and ``tests/``. The [[tool.mypy.overrides]] blocks below are
 # third-party ``ignore_missing_imports`` shims (no package relaxes a strict++
