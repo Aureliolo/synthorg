@@ -387,57 +387,152 @@ def _positional_param_names(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[
     return names
 
 
-def _provider_carrier_names(
-    tree: ast.Module, claims_names: frozenset[str]
-) -> frozenset[str]:
-    """Return names that carry ``claims.provider`` into a provider lookup.
+# A call mapped to the function whose own body contains it (``None`` = module).
+_EnclosingMap = dict[ast.Call, "ast.FunctionDef | ast.AsyncFunctionDef | None"]
+# Per-scope claims-provider alias sets, keyed by scope node (``None`` = module).
+_AliasCache = dict["ast.AST | None", frozenset[str]]
+# Per-function parameter names proven to carry the claims provider.
+_ProvenParams = dict["ast.FunctionDef | ast.AsyncFunctionDef", set[str]]
 
-    Tracks two flows: a scope-local alias (``name = claims.provider``) and a
-    parameter that receives ``claims.provider`` at a call site (so a helper like
-    ``_resolve_provider(registry, claims.provider)`` that then calls
-    ``registry.get(provider_name)`` still ties the lookup to the token claims).
+
+def _enclosing_functions(tree: ast.Module) -> _EnclosingMap:
+    """Map each call in *tree* to its nearest enclosing function.
 
     Returns:
-        The identifiers bound to the claims provider across the module.
+        A mapping from each ``ast.Call`` to the function whose own body contains
+        it, or ``None`` for a module-level call.
+    """
+    enclosing: _EnclosingMap = {}
+    for fn in ast.walk(tree):
+        if isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
+            for node in direct_body_nodes(fn):
+                if isinstance(node, ast.Call):
+                    enclosing[node] = fn
+    for node in direct_body_nodes(tree):
+        if isinstance(node, ast.Call) and node not in enclosing:
+            enclosing[node] = None
+    return enclosing
+
+
+def _is_claims_provider_value(
+    expr: ast.expr | None,
+    scope: ast.FunctionDef | ast.AsyncFunctionDef | None,
+    claims_names: frozenset[str],
+    alias_cache: _AliasCache,
+    proven: _ProvenParams,
+) -> bool:
+    """Whether *expr* provably carries ``claims.provider`` on *scope*'s path.
+
+    True for a direct ``claims.provider`` read, a scope-local alias singly and
+    unconditionally bound to it, or a parameter of *scope* proven to receive the
+    claims provider at every call site.
+
+    Returns:
+        ``True`` when *expr* provably carries the claims provider in *scope*.
+    """
+    if _is_claims_provider(expr, claims_names):
+        return True
+    if not isinstance(expr, ast.Name):
+        return False
+    if expr.id in alias_cache.get(scope, frozenset()):
+        return True
+    return scope is not None and expr.id in proven.get(scope, set())
+
+
+def _call_arg_carries_provider(  # noqa: PLR0913 -- threads the shared analysis state
+    call: ast.Call,
+    index: int,
+    enclosing: _EnclosingMap,
+    claims_names: frozenset[str],
+    alias_cache: _AliasCache,
+    proven: _ProvenParams,
+) -> bool:
+    """Whether *call*'s positional argument at *index* carries claims.provider.
+
+    Evaluated in the caller's own scope, so a caller alias or a caller parameter
+    already proven to carry the claims provider counts.
+
+    Returns:
+        ``True`` when the positional argument provably carries the claims provider.
+    """
+    pos_args = [a for a in call.args if not isinstance(a, ast.Starred)]
+    if index >= len(pos_args):
+        return False
+    return _is_claims_provider_value(
+        pos_args[index], enclosing.get(call), claims_names, alias_cache, proven
+    )
+
+
+def _prove_provider_flow(
+    tree: ast.Module, claims_names: frozenset[str]
+) -> tuple[_ProvenParams, _AliasCache, _EnclosingMap]:
+    """Prove, per function, which parameters always carry ``claims.provider``.
+
+    A parameter is proven only when EVERY call to its function passes a
+    claims-provider value in that position (directly, via a caller alias, or via
+    a caller's own proven parameter), computed to a fixpoint so the flow chains
+    across helpers. A single call passing unrelated input disqualifies it, so a
+    parameter cannot borrow trust from an unrelated scope or a call carrying
+    request-controlled input.
+
+    Returns:
+        The per-function proven-parameter sets, the per-scope alias cache, and
+        the call-to-enclosing-function map (all reused by the caller).
     """
 
-    def _reads_claims_provider(value: ast.expr | None) -> bool:
+    def _reads(value: ast.expr | None) -> bool:
         return _is_claims_provider(value, claims_names)
 
-    carriers: set[str] = set()
-    for scope in _iter_scopes(tree):
-        carriers.update(reaching_alias_names(scope, _reads_claims_provider))
-    funcs = {
-        f.name: f
+    functions = [
+        f
         for f in ast.walk(tree)
         if isinstance(f, ast.FunctionDef | ast.AsyncFunctionDef)
-    }
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        name = _callee_name(node.func)
-        fn = funcs.get(name) if name is not None else None
-        if fn is None:
-            continue
-        params = _positional_param_names(fn)
-        pos_args = [a for a in node.args if not isinstance(a, ast.Starred)]
-        for arg, param in zip(pos_args, params, strict=False):
-            if _is_claims_provider(arg, claims_names):
-                carriers.add(param)
-    return frozenset(carriers)
+    ]
+    alias_cache: _AliasCache = {None: reaching_alias_names(tree, _reads)}
+    for fn in functions:
+        alias_cache[fn] = reaching_alias_names(fn, _reads)
+
+    by_name = {fn.name: fn for fn in functions}
+    enclosing = _enclosing_functions(tree)
+    calls_by_fn: dict[ast.FunctionDef | ast.AsyncFunctionDef, list[ast.Call]] = {}
+    for call in enclosing:
+        name = _callee_name(call.func)
+        target = by_name.get(name) if name is not None else None
+        if target is not None:
+            calls_by_fn.setdefault(target, []).append(call)
+
+    proven: _ProvenParams = {fn: set() for fn in functions}
+    changed = True
+    while changed:
+        changed = False
+        for fn, calls in calls_by_fn.items():
+            for index, pname in enumerate(_positional_param_names(fn)):
+                if pname in proven[fn]:
+                    continue
+                if all(
+                    _call_arg_carries_provider(
+                        call, index, enclosing, claims_names, alias_cache, proven
+                    )
+                    for call in calls
+                ):
+                    proven[fn].add(pname)
+                    changed = True
+    return proven, alias_cache, enclosing
 
 
 def _resolve_binds_provider(tree: ast.Module, claims_names: frozenset[str]) -> bool:
     """Whether a provider lookup binds its argument from ``claims.provider``.
 
     Ties the positive contract to an actual ``get(...)`` call whose provider
-    argument reads ``claims.provider`` directly or via a carrier name, so a
-    logging-only ``claims.provider`` read cannot satisfy the binding.
+    argument provably carries ``claims.provider`` in the lookup's own scope --
+    directly, via a scope-local alias, or via a parameter proven to receive the
+    claims provider at every call site -- so neither a logging-only read nor a
+    cross-scope name collision can satisfy the binding.
 
     Returns:
         ``True`` when a claims-bound provider lookup is present.
     """
-    carriers = _provider_carrier_names(tree, claims_names)
+    proven, alias_cache, enclosing = _prove_provider_flow(tree, claims_names)
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.Call)
@@ -445,7 +540,9 @@ def _resolve_binds_provider(tree: ast.Module, claims_names: frozenset[str]) -> b
             and node.func.attr in _RESOLVE_CALLS
         ):
             arg = node.args[0] if node.args else None
-            if _is_claims_provider(arg, claims_names) or _is_alias(arg, carriers):
+            if _is_claims_provider_value(
+                arg, enclosing.get(node), claims_names, alias_cache, proven
+            ):
                 return True
     return False
 
