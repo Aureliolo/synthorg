@@ -120,8 +120,7 @@ class _ProbeTool(GovernedConnectionTool[_ProbeClient, _ProbeRuntime]):
     def _build_client(
         self,
         *,
-        connection_type: ConnectionType,
-        base_url: str,
+        conn: Connection,
         token: str,
         timeout: float,
     ) -> _ProbeClient:
