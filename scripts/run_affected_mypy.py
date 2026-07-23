@@ -42,18 +42,25 @@ _MIN_MODULE_DEPTH = 3
 # Test subdirectories that mypy should cover.
 _TEST_KINDS = ("unit", "integration")
 
-# Each worker is a fresh interpreter importing the compiled (mypyc) mypy
-# package and racing to connect back to the parent over a named pipe. On
-# Windows that pipe handshake is the fragile part: at four workers they
-# reliably lose the race on the full ~6.5k-file tree and mypy aborts with an
-# INTERNAL ERROR (WinError 233) instead of returning a type result. Measured
-# on the full tree here: four fails every run, two passes, single-process
-# passes. The sitecustomize below widens the timeouts but does not rescue
-# four, so the concurrency itself is the lever. POSIX runners (including CI)
-# use a socket rather than a named pipe and do not hit this, so they keep the
-# faster four.
-_MYPY_WORKER_COUNT: Final[int] = 2 if sys.platform == "win32" else 4
-_MYPY_WORKERS: Final[list[str]] = [f"--num-workers={_MYPY_WORKER_COUNT}"]
+# mypy's ``--num-workers`` parallel build spawns worker subprocesses that talk
+# to the parent over an IPC channel: a Windows named pipe, a POSIX socketpair.
+# The Windows named-pipe path is defective: a worker's pipe end is gone when the
+# parent writes the source set to it, so the parent's WriteFile aborts with
+# WinError 233 (ERROR_PIPE_NOT_CONNECTED) and mypy dies with an INTERNAL ERROR
+# on type-clean code. The worker count is the lever, not machine load: this
+# repo's own measurements were "four workers fail reliably, two mostly pass,
+# single-process always passes", which is the signature of a concurrency bug in
+# mypy's Windows multi-worker IPC, not a starved CPU. (Why the worker process
+# itself dies before the write is not isolated here -- it is a separate process
+# whose failure mypy swallows -- but that does not matter once there is no
+# worker.) So Windows runs single-process: zero workers, no pipe, WinError 233
+# structurally impossible, and the full ~6.5k-file tree type-checks clean this
+# way. POSIX uses a socketpair, does not hit the named-pipe defect, and keeps
+# the faster workers.
+_MYPY_WORKER_COUNT: Final[int] = 4
+_MYPY_WORKERS: Final[list[str]] = (
+    [] if sys.platform == "win32" else [f"--num-workers={_MYPY_WORKER_COUNT}"]
+)
 
 # mypy's parallel build spawns ``mypy.build_worker`` subprocesses that connect
 # back over a named pipe. The worker's server and the parent's status poll each
@@ -214,51 +221,27 @@ def _mypy_env(base: dict[str, str] | None = None) -> dict[str, str]:
     return env
 
 
-# mypy exit code for an internal error / crash (distinct from 1, real type
-# errors). A ``--num-workers`` run can crash with this on Windows when a
-# worker's IPC pipe breaks (``WinError 233``) even on type-clean code -- a mypy
-# multiprocessing defect, not a type error -- so we retry such a crash
-# single-process, whose result is authoritative.
-_MYPY_INTERNAL_ERROR: Final[int] = 2
-
-
 def _invoke_mypy(
     paths: list[str],
     *,
     env: dict[str, str] | None = None,
     extra: list[str] | None = None,
 ) -> int:
-    """Run mypy over *paths*, retrying single-process on an internal-error crash.
+    """Run mypy over *paths* and return its exit code.
 
-    The first pass uses ``--num-workers`` (matching CI) with the worker-timeout
-    sitecustomize wired via :func:`_mypy_env`, so a slow worker widens its IPC
-    timeout rather than crashing. If it still exits with the internal-error code
-    (a crash, never a type-error result), it is retried without ``--num-workers``
-    so a Windows worker-IPC crash cannot block a type-clean push; a real type
-    error (exit 1) is returned as-is, never masked.
+    Uses ``--num-workers`` on POSIX (matching CI, socketpair IPC); Windows runs
+    single-process, since the named-pipe worker IPC is defective there (see
+    ``_MYPY_WORKERS``). No crash-retry: 0 (clean) and 1 (real type errors) are
+    the only expected codes, and any other exit is a mypy INTERNAL ERROR that
+    must surface and be fixed, not be papered over by blindly re-running.
     """
     extra = extra or []
-    run_env = _mypy_env(env)
-    base = [sys.executable, "-m", "mypy"]
-    first = subprocess.run(
-        [*base, *_MYPY_WORKERS, *extra, *paths],
+    return subprocess.run(
+        [sys.executable, "-m", "mypy", *_MYPY_WORKERS, *extra, *paths],
         cwd=_REPO_ROOT,
         check=False,
-        env=run_env,
-    )
-    if first.returncode != _MYPY_INTERNAL_ERROR:
-        return first.returncode
-    print(
-        "mypy crashed under --num-workers (exit 2); retrying single-process",
-        file=sys.stderr,
-    )
-    retry = subprocess.run(
-        [*base, *extra, *paths],
-        cwd=_REPO_ROOT,
-        check=False,
-        env=run_env,
-    )
-    return retry.returncode
+        env=_mypy_env(env),
+    ).returncode
 
 
 def _run_mypy(paths: list[str]) -> int:
