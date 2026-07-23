@@ -417,6 +417,23 @@ class DeployApiClientError(DeployApiError):
     default_message: ClassVar[str] = "Deploy API client error"
 
 
+class DeployApiOutOfScopeError(DeployApiError):
+    """The platform returned a deployment outside the client's binding.
+
+    A client is bound to one project and one environment at construction,
+    from the operator's connection record. A deployment identifier, by
+    contrast, is quotable from an earlier call or simply remembered, so a
+    by-id read is the one path that can reach across that binding. Kept
+    non-retryable: the binding is fixed, so the same call resolves to the
+    same refusal.
+    """
+
+    is_retryable = False
+    retryable: ClassVar[bool] = False
+    status_code: ClassVar[int] = 403
+    default_message: ClassVar[str] = "Deployment is outside the bound scope"
+
+
 class DeployApiAuthError(DeployApiError):
     """The deploy platform rejected the API token (auth / scope failure).
 

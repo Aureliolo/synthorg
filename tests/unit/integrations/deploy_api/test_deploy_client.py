@@ -1,7 +1,8 @@
 """Unit tests for the deploy-platform API client layer.
 
 Covers the structural egress pin (every path resolves relative to the
-configured base URL, and a leading slash cannot escape it), platform
+configured base URL, and a leading slash cannot escape it), the
+project + environment binding a client cannot read outside of, platform
 state normalisation, status-to-typed-error mapping, and the factory's
 HTTPS requirement.
 """
@@ -25,12 +26,14 @@ from synthorg.integrations.errors import (
     DeployApiAuthError,
     DeployApiClientError,
     DeployApiError,
+    DeployApiOutOfScopeError,
     DeployApiRateLimitError,
 )
 
 pytestmark = pytest.mark.unit
 
 _HOST = "https://api.example-deploy.com"
+_PROJECT = "acme-web"
 
 
 def _client(
@@ -42,8 +45,27 @@ def _client(
         api_base_url=base_url,
         token="t0ken",
         timeout=5.0,
-        project=NotBlankStr("acme-web"),
+        project=NotBlankStr(_PROJECT),
         environment=environment,
+    )
+
+
+def _payload(**overrides: object) -> dict[str, object]:
+    """A deployment payload owned by the bound project and environment."""
+    payload: dict[str, object] = {
+        "id": "dpl_1",
+        "readyState": "READY",
+        "name": _PROJECT,
+        "target": "production",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _mock_owner_lookup(**overrides: object) -> respx.Route:
+    """Mock the ownership read a log fetch performs before the events call."""
+    return respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+        return_value=httpx.Response(200, json=_payload(**overrides))
     )
 
 
@@ -52,9 +74,7 @@ class TestEgressPin:
     async def test_every_call_stays_on_the_configured_host(self) -> None:
         """respx only mocks this host, so any other origin fails to match."""
         route = respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
-            return_value=httpx.Response(
-                200, json={"id": "dpl_1", "readyState": "READY"}
-            )
+            return_value=httpx.Response(200, json=_payload())
         )
         async with _client() as client:
             await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
@@ -65,11 +85,7 @@ class TestEgressPin:
         """A self-hosted control plane under a path prefix stays under it."""
         route = respx.get(
             "https://selfhosted.example.com/deploy/v13/deployments/dpl_1"
-        ).mock(
-            return_value=httpx.Response(
-                200, json={"id": "dpl_1", "readyState": "READY"}
-            )
-        )
+        ).mock(return_value=httpx.Response(200, json=_payload()))
         async with _client(base_url="https://selfhosted.example.com/deploy") as client:
             await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
         assert route.call_count == 1
@@ -132,6 +148,98 @@ class TestTargetBinding:
         assert route.calls.last.request.url.params["target"] == expected_target
 
 
+class TestOwnershipBinding:
+    """A client bound to one project + environment cannot read outside it.
+
+    ``list`` is filtered server-side, but a deployment id is quotable from
+    an earlier call or simply remembered, so a by-id read is the one path
+    that could otherwise cross the boundary the connection record draws.
+    """
+
+    @respx.mock
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"target": "staging"},
+            {"name": "other-project"},
+            {"target": None},
+            {"name": None},
+        ],
+        ids=["other-target", "other-project", "no-target", "no-project"],
+    )
+    async def test_by_id_read_outside_the_binding_is_refused(
+        self, overrides: dict[str, object]
+    ) -> None:
+        """Absence is refused too: nothing confirms the payload is ours."""
+        payload = {k: v for k, v in _payload(**overrides).items() if v is not None}
+        respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+            return_value=httpx.Response(200, json=payload)
+        )
+        async with _client() as client:
+            with pytest.raises(DeployApiOutOfScopeError):
+                await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
+
+    @respx.mock
+    async def test_a_nested_project_object_also_confirms_ownership(self) -> None:
+        """The by-id shape nests the project rather than naming it flat."""
+        payload = {
+            "id": "dpl_1",
+            "readyState": "READY",
+            "target": "production",
+            "project": {"id": "prj_1", "name": _PROJECT},
+        }
+        respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+            return_value=httpx.Response(200, json=payload)
+        )
+        async with _client() as client:
+            deployment = await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
+        assert deployment.id == "dpl_1"
+
+    @respx.mock
+    async def test_logs_establish_ownership_before_reading_events(self) -> None:
+        """Build logs echo environment detail, so they gate on the record."""
+        owner = respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+            return_value=httpx.Response(200, json=_payload(target="staging"))
+        )
+        events = respx.get(f"{_HOST}/v3/deployments/dpl_1/events").mock(
+            return_value=httpx.Response(200, json=[{"created": 1, "text": "secret"}])
+        )
+        async with _client() as client:
+            with pytest.raises(DeployApiOutOfScopeError):
+                await client.get_deployment_logs(
+                    deployment_id=NotBlankStr("dpl_1"), limit=10
+                )
+        assert owner.call_count == 1
+        assert events.call_count == 0
+
+    @respx.mock
+    async def test_a_listing_contradicting_the_query_filter_is_refused(self) -> None:
+        """A platform that ignored the filter must fail loudly, not leak."""
+        respx.get(f"{_HOST}/v6/deployments").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "deployments": [
+                        {"uid": "dpl_1", "readyState": "READY", "target": "staging"}
+                    ]
+                },
+            )
+        )
+        async with _client() as client:
+            with pytest.raises(DeployApiOutOfScopeError):
+                await client.list_deployments(limit=5)
+
+    @respx.mock
+    async def test_a_trigger_landing_on_another_target_is_refused(self) -> None:
+        """A release reported against the wrong environment is not a success."""
+        respx.post(f"{_HOST}/v13/deployments").mock(
+            return_value=httpx.Response(200, json=_payload(target="staging"))
+        )
+        async with _client() as client:
+            with pytest.raises(DeployApiOutOfScopeError):
+                await client.trigger_deployment(git_ref="main")
+
+
 class TestStateNormalisation:
     @respx.mock
     @pytest.mark.parametrize(
@@ -149,7 +257,7 @@ class TestStateNormalisation:
         self, raw: str, expected: DeployState
     ) -> None:
         respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
-            return_value=httpx.Response(200, json={"id": "dpl_1", "readyState": raw})
+            return_value=httpx.Response(200, json=_payload(readyState=raw))
         )
         async with _client() as client:
             deployment = await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
@@ -159,9 +267,7 @@ class TestStateNormalisation:
     async def test_unknown_state_is_treated_as_in_flight(self) -> None:
         """An unrecognised state must never read as a finished success."""
         respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
-            return_value=httpx.Response(
-                200, json={"id": "dpl_1", "readyState": "WARP_DRIVE"}
-            )
+            return_value=httpx.Response(200, json=_payload(readyState="WARP_DRIVE"))
         )
         async with _client() as client:
             deployment = await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
@@ -211,6 +317,7 @@ class TestStatusMapping:
     @respx.mock
     async def test_non_list_log_body_maps_to_deploy_error(self) -> None:
         """A debugging read must not report 'no logs' when the fetch failed."""
+        _mock_owner_lookup()
         respx.get(f"{_HOST}/v3/deployments/dpl_1/events").mock(
             return_value=httpx.Response(200, json={"unexpected": "shape"})
         )
@@ -290,6 +397,7 @@ class TestStatusMapping:
     @respx.mock
     async def test_blank_log_lines_are_dropped(self) -> None:
         """An empty event carries no content, so it is not emitted."""
+        _mock_owner_lookup()
         respx.get(f"{_HOST}/v3/deployments/dpl_1/events").mock(
             return_value=httpx.Response(
                 200,
@@ -309,6 +417,7 @@ class TestStatusMapping:
     @respx.mock
     async def test_nested_payload_events_are_read_and_non_objects_skipped(self) -> None:
         """The platform nests log text under ``payload`` on some event kinds."""
+        _mock_owner_lookup()
         respx.get(f"{_HOST}/v3/deployments/dpl_1/events").mock(
             return_value=httpx.Response(
                 200,

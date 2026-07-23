@@ -86,6 +86,18 @@ target to use; the record decides how dangerous that target is. An absent
 or unrecognised environment resolves to `production`, so a mislabelled
 target is over-gated rather than treated as throwaway.
 
+The client built for a target is bound to that project **and** that
+environment, and the binding is enforced on what comes back, not only on
+what goes out. A list read is filtered server-side by both, and a reply
+that contradicts the filter is refused rather than returned. A by-id read
+has no server-side filter to lean on and an identifier is quotable from an
+earlier call, so `deploy_run`'s `get` verifies the returned record names
+the bound project and target before surfacing it, and refuses when the
+payload confirms neither. Build logs are the sharpest case: the platform's
+events endpoint carries no ownership of its own, so a log read resolves the
+deployment record first and only then fetches events. Without that a
+staging-bound target could pull a production build log by id alone.
+
 ### Setup a human must finish
 
 A deploy target needs out-of-band setup (an account, an API token, a

@@ -149,6 +149,18 @@ def _client() -> DeployApiClient:
     return cast("DeployApiClient", mock_of[DeployApiClient]())
 
 
+def _platform_deployment(**overrides: object) -> dict[str, object]:
+    """A platform payload owned by the fixture connection's project + env."""
+    payload: dict[str, object] = {
+        "id": "dpl_1",
+        "readyState": "READY",
+        "name": "acme-web",
+        "target": "production",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def _release_args(**overrides: object) -> dict[str, object]:
     args: dict[str, object] = {
         "action": "trigger",
@@ -419,7 +431,7 @@ class TestReadSurface:
     async def test_get_deployment_never_parks(self) -> None:
         respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
             return_value=httpx.Response(
-                200, json={"id": "dpl_1", "readyState": "READY", "url": "x.example.com"}
+                200, json=_platform_deployment(url="x.example.com")
             )
         )
         result = await DeployRunTool(deps=_deps(conn=_connection())).execute(
@@ -450,6 +462,9 @@ class TestReadSurface:
 
     @respx.mock
     async def test_logs_are_truncated_to_the_operator_budget(self) -> None:
+        respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+            return_value=httpx.Response(200, json=_platform_deployment())
+        )
         respx.get(f"{_HOST}/v3/deployments/dpl_1/events").mock(
             return_value=httpx.Response(
                 200,
@@ -467,6 +482,37 @@ class TestReadSurface:
         payload = json.loads(result.content)
         assert len(payload["lines"]) == 1
         assert payload["truncated"] is True
+
+    @respx.mock
+    async def test_a_staging_target_cannot_read_a_production_deployment(self) -> None:
+        """A remembered production id must not cross the target binding."""
+        respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+            return_value=httpx.Response(200, json=_platform_deployment())
+        )
+        result = await DeployRunTool(
+            deps=_deps(conn=_connection(environment="staging"))
+        ).execute(
+            arguments={"action": "get", "target": _TARGET, "deployment_id": "dpl_1"}
+        )
+        assert result.is_error is True
+
+    @respx.mock
+    async def test_a_staging_target_cannot_read_a_production_build_log(self) -> None:
+        """Build logs echo environment detail, so they gate on the record."""
+        respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+            return_value=httpx.Response(200, json=_platform_deployment())
+        )
+        events = respx.get(f"{_HOST}/v3/deployments/dpl_1/events").mock(
+            return_value=httpx.Response(200, json=[{"created": 1, "text": "secret"}])
+        )
+        result = await DeployRunTool(
+            deps=_deps(conn=_connection(environment="staging"))
+        ).execute(
+            arguments={"action": "logs", "target": _TARGET, "deployment_id": "dpl_1"}
+        )
+        assert result.is_error is True
+        assert events.call_count == 0
+        assert "secret" not in result.content
 
     async def test_get_without_deployment_id_is_rejected(self) -> None:
         result = await DeployRunTool(deps=_deps(conn=_connection())).execute(
