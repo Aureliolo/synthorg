@@ -860,6 +860,106 @@ _r.register(
     )
 )
 
+# ── Publish tools ────────────────────────────────────────────────
+# The governed publish tools push, and inspect, container images on an
+# external registry. Like deploy there is no single bound connection: an
+# organisation publishes to several registries, so a call names one and the
+# host checks it against the allowlist below before brokering any credential.
+# Pushing an image always parks a human approval.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="publish_tools_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether agents may publish and inspect container images through"
+            " the publish_push and publish_inspect tools. Off by default: a"
+            " registry target must be created and allowlisted first. Enabling"
+            " exposes a destructive, externally-reaching capability, so the"
+            " enable transition takes the deliberate confirm+reason+actor"
+            " guardrail."
+        ),
+        group="Publish Tools",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="publish_tools_targets",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Comma-separated names of registry connections agents may target"
+            " (e.g. 'staging-images,production-images'). Empty allows nothing"
+            " (secure default). A call naming a target outside this list is"
+            " refused before any credential is read. Each target's release"
+            " channel is set on the connection, not by the agent, so adding a"
+            " production target here widens real blast radius: widening takes"
+            " the confirm+reason+actor guardrail."
+        ),
+        group="Publish Tools",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="publish_tools_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="60.0",
+        description=(
+            "Maximum wall-clock time a single registry API request may run"
+            " before it is cancelled. Higher than the deploy default because"
+            " a blob upload moves more than a status read."
+        ),
+        group="Publish Tools",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=600.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="publish_tools_max_manifest_bytes",
+        type=SettingType.INTEGER,
+        default="4000000",
+        description=(
+            "Maximum size of a single image manifest the tools read or"
+            " publish in one call. Bounds a promote and each manifest a"
+            " workspace push uploads."
+        ),
+        group="Publish Tools",
+        level=SettingLevel.ADVANCED,
+        min_value=1000,
+        max_value=16000000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="publish_tools_max_image_bytes",
+        type=SettingType.INTEGER,
+        default="2000000000",
+        description=(
+            "Maximum total bytes a single workspace push may upload (config +"
+            " layers + manifests). Bounds how large an image an agent can push"
+            " host-side in one call."
+        ),
+        group="Publish Tools",
+        level=SettingLevel.ADVANCED,
+        min_value=1000000,
+        max_value=10000000000,
+    )
+)
+
 # ── Credentialed-tool MCP server (harness boundary) ──────────────
 # Exposes the governed forge / chat tools as an MCP server an embedded
 # coding harness (OpenHands) consumes. Tool execution + credential

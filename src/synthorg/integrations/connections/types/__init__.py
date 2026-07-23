@@ -34,6 +34,9 @@ from synthorg.integrations.connections.types.llm_provider import (
 from synthorg.integrations.connections.types.oauth_app import (
     OAuthAppAuthenticator,
 )
+from synthorg.integrations.connections.types.registry import (
+    RegistryAuthenticator,
+)
 from synthorg.integrations.connections.types.slack import SlackAuthenticator
 from synthorg.integrations.connections.types.smtp import SmtpAuthenticator
 from synthorg.integrations.connections.types.tunnel import TunnelAuthenticator
@@ -60,6 +63,7 @@ CONNECTION_TYPE_REGISTRY: MappingProxyType[ConnectionType, ConnectionAuthenticat
             ConnectionType.LLM_PROVIDER: LLMProviderAuthenticator(),
             ConnectionType.TUNNEL: TunnelAuthenticator(),
             ConnectionType.DEPLOY: DeployAuthenticator(),
+            ConnectionType.REGISTRY: RegistryAuthenticator(),
         },
     )
 )

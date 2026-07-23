@@ -11,7 +11,7 @@ from synthorg.security.autonomy.enums import ActionType
 @pytest.mark.unit
 class TestActionTypeCategory:
     def test_has_expected_member_count(self) -> None:
-        assert len(ActionTypeCategory) == 17
+        assert len(ActionTypeCategory) == 18
 
     @pytest.mark.parametrize(
         ("member", "value"),
@@ -21,6 +21,7 @@ class TestActionTypeCategory:
             (ActionTypeCategory.DOCS, "docs"),
             (ActionTypeCategory.VCS, "vcs"),
             (ActionTypeCategory.DEPLOY, "deploy"),
+            (ActionTypeCategory.PUBLISH, "publish"),
             (ActionTypeCategory.COMMS, "comms"),
             (ActionTypeCategory.BUDGET, "budget"),
             (ActionTypeCategory.ORG, "org"),

@@ -20,7 +20,7 @@ from litestar.response import Response
 from synthorg._core.features import require_service
 from synthorg.api.gateway.state import GatewayStateSlice
 from synthorg.api.mcp_gateway.protocol import dispatch_mcp
-from synthorg.api.mcp_gateway.scoping import deploy_denials
+from synthorg.api.mcp_gateway.scoping import deploy_denials, publish_denials
 from synthorg.api.mcp_gateway.tools import (
     CredentialedToolContext,
     build_security_pre_check,
@@ -37,6 +37,7 @@ from synthorg.core.domain_errors import (
 from synthorg.core.normalization import extract_bearer_token
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._security_factory import make_security_interceptor
+from synthorg.engine.workspace.state import agent_workspace_root_of
 from synthorg.hr.state import HrStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
@@ -96,13 +97,15 @@ class CredentialedMcpController(Controller):
         try:
             claims = signer.verify(token)
             messages, is_batch = await _read_messages(request)
-            ctx, deploy_enabled = await _build_context(
+            ctx, kill_switches = await _build_context(
                 app_state, agent_id=claims.agent_id, task_id=claims.task_id
             )
             capabilities = _parse_capabilities(
                 await resolver.get_str(_TOOLS_NS, "credentialed_mcp_capabilities")
             )
-            denied = deploy_denials(deploy_enabled=deploy_enabled)
+            denied = deploy_denials(
+                deploy_enabled=kill_switches.deploy_enabled
+            ) + publish_denials(publish_enabled=kill_switches.publish_enabled)
             responses = [
                 response
                 for message in messages
@@ -199,6 +202,29 @@ class _DeploySettings:
     max_log_chars: int
 
 
+@dataclass(frozen=True)
+class _PublishSettings:
+    """The per-request publish-tool settings resolved as one unit.
+
+    ``enabled`` is the defence-in-depth kill switch: when off, the caller
+    denies every publish tool this request regardless of the capability grant.
+    """
+
+    enabled: bool
+    targets: frozenset[str]
+    timeout_seconds: float
+    max_manifest_bytes: int
+    max_image_bytes: int
+
+
+@dataclass(frozen=True)
+class _FamilyKillSwitches:
+    """The per-family enable flags the caller threads into the dispatch denials."""
+
+    deploy_enabled: bool
+    publish_enabled: bool
+
+
 async def _resolve_deploy_settings(resolver: ConfigResolver) -> _DeploySettings:
     """Read the deploy-tool settings for this request.
 
@@ -224,15 +250,41 @@ async def _resolve_deploy_settings(resolver: ConfigResolver) -> _DeploySettings:
     )
 
 
+async def _resolve_publish_settings(resolver: ConfigResolver) -> _PublishSettings:
+    """Read the publish-tool settings for this request.
+
+    Scheduled as one task in the caller's ``TaskGroup`` alongside the other
+    per-request reads.
+
+    Args:
+        resolver: The per-request configuration resolver.
+
+    Returns:
+        The resolved :class:`_PublishSettings`.
+    """
+    enabled = await resolver.get_bool(_TOOLS_NS, "publish_tools_enabled")
+    targets = await resolver.get_str(_TOOLS_NS, "publish_tools_targets")
+    timeout = await resolver.get_float(_TOOLS_NS, "publish_tools_timeout_seconds")
+    max_manifest = await resolver.get_int(_TOOLS_NS, "publish_tools_max_manifest_bytes")
+    max_image = await resolver.get_int(_TOOLS_NS, "publish_tools_max_image_bytes")
+    return _PublishSettings(
+        enabled=enabled,
+        targets=_parse_targets(targets),
+        timeout_seconds=timeout,
+        max_manifest_bytes=max_manifest,
+        max_image_bytes=max_image,
+    )
+
+
 async def _build_context(
     app_state: AppState, *, agent_id: str, task_id: str | None
-) -> tuple[CredentialedToolContext, bool]:
+) -> tuple[CredentialedToolContext, _FamilyKillSwitches]:
     """Assemble the host-side credentialed-tool context from app state.
 
-    The independent per-request reads (forge / chat settings, the deploy
-    settings bundle, and the actor lookup) fan out under one ``TaskGroup``,
-    and the SecOps pre-tool screen is wired fail-closed so the rule-engine
-    screening runs before every credentialed dispatch.
+    The independent per-request reads (forge / chat settings, the deploy and
+    publish settings bundles, and the actor lookup) fan out under one
+    ``TaskGroup``, and the SecOps pre-tool screen is wired fail-closed so the
+    rule-engine screening runs before every credentialed dispatch.
 
     Args:
         app_state: The live application state.
@@ -242,9 +294,8 @@ async def _build_context(
             security context so SecOps screening stays per-run.
 
     Returns:
-        The :class:`CredentialedToolContext` for this request, paired with
-        whether the deploy tool family is enabled (the kill switch the caller
-        threads into the dispatch denials).
+        The :class:`CredentialedToolContext` for this request, paired with the
+        per-family kill switches the caller threads into the dispatch denials.
     """
     resolver = config_resolver_of(app_state)
     catalog = require_service(
@@ -269,6 +320,7 @@ async def _build_context(
                 resolver.get_int(_TOOLS_NS, "forge_tools_max_read_chars")
             )
             deploy = tg.create_task(_resolve_deploy_settings(resolver))
+            publish = tg.create_task(_resolve_publish_settings(resolver))
             actor = tg.create_task(_resolve_actor(app_state, agent_id=agent_id))
     except ExceptionGroup as eg:
         # Surface the first underlying error (e.g. a DomainError from a
@@ -282,6 +334,7 @@ async def _build_context(
         approval_store=approval_store_of(app_state),
     )
     deploy_settings = deploy.result()
+    publish_settings = publish.result()
     ctx = CredentialedToolContext(
         connection_catalog=catalog,
         approval_store=approval_store_of(app_state),
@@ -294,12 +347,20 @@ async def _build_context(
         deploy_targets=deploy_settings.targets,
         deploy_timeout_seconds=deploy_settings.timeout_seconds,
         deploy_max_log_chars=deploy_settings.max_log_chars,
+        publish_targets=publish_settings.targets,
+        publish_timeout_seconds=publish_settings.timeout_seconds,
+        publish_max_manifest_bytes=publish_settings.max_manifest_bytes,
+        publish_max_image_bytes=publish_settings.max_image_bytes,
+        workspace_root=agent_workspace_root_of(app_state),
         actor=actor.result(),
         security_pre_check=build_security_pre_check(
             interceptor, agent_id=agent_id, task_id=task_id
         ),
     )
-    return ctx, deploy_settings.enabled
+    return ctx, _FamilyKillSwitches(
+        deploy_enabled=deploy_settings.enabled,
+        publish_enabled=publish_settings.enabled,
+    )
 
 
 def _parse_targets(raw: str) -> frozenset[str]:

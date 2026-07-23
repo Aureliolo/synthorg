@@ -575,7 +575,7 @@ Action types classify agent actions for use by autonomy presets (see [Security &
 SecOps validation, and tiered timeout policies
 ([Decision Log](../architecture/decisions.md) D1).
 
-**Registry:** `StrEnum` for 43 built-in action types (type safety, autocomplete, typos caught
+**Registry:** `StrEnum` for 45 built-in action types (type safety, autocomplete, typos caught
 by static type checking and config-load-time validation) + `ActionTypeRegistry` for custom
 types via explicit registration. Unknown strings are rejected at config load time; a typo
 in `human_approval` list silently meaning "skip approval" is a critical safety concern.
@@ -584,7 +584,7 @@ in `human_approval` list silently meaning "skip approval" is a critical safety c
 actions in that category (e.g., `auto_approve: ["code"]` expands to all `code:*` actions).
 Fine-grained overrides are supported (e.g., `human_approval: ["code:create"]`).
 
-**Taxonomy (43 leaf types):**
+**Taxonomy (45 leaf types):**
 
 ```text
 code:read, code:write, code:create, code:delete, code:refactor
@@ -592,6 +592,7 @@ test:write, test:run
 docs:write
 vcs:read, vcs:commit, vcs:push, vcs:branch
 deploy:staging, deploy:production
+publish:staging, publish:production
 comms:internal, comms:external
 budget:spend, budget:exceed
 org:hire, org:fire, org:promote, org:delegate
@@ -664,16 +665,17 @@ backend integration is on the roadmap.
 
 The in-process MCP machinery above is not network-facing. To let an embedded
 coding harness (the [OpenHands loop](openhands-loop.md)) call the
-credential-holding forge / chat / deploy tools without ever seeing a credential,
-the [credentialed-tool MCP server](credentialed-mcp.md) exposes a scoped subset
-over a streamable-HTTP MCP endpoint on the API app. Tool execution, credential
-brokering, the `ConnectionApprovalGate`, the `ActionSignature` binding and the
-egress pin all run host-side; every output is fenced with
-`wrap_untrusted(TAG_TOOL_RESULT, ...)` at source. Visibility is actor-scoped
-by the per-run token's capabilities. The `deploy_*` family additionally binds a
-per-environment action type (`deploy:staging` / `deploy:production`) so an
-autonomy grant for a tamer family never auto-approves a production release, and
-its destructive release tool carries the confirm + reason + actor guardrail.
+credential-holding forge / chat / deploy / publish tools without ever seeing a
+credential, the [credentialed-tool MCP server](credentialed-mcp.md) exposes a
+scoped subset over a streamable-HTTP MCP endpoint on the API app. Tool
+execution, credential brokering, the `ConnectionApprovalGate`, the
+`ActionSignature` binding and the egress pin all run host-side; every output is
+fenced with `wrap_untrusted(TAG_TOOL_RESULT, ...)` at source. Visibility is
+actor-scoped by the per-run token's capabilities. The `deploy_*` and `publish_*`
+families additionally bind a per-target action type (`deploy:staging` /
+`deploy:production`, `publish:staging` / `publish:production`) so an autonomy
+grant for a tamer family never auto-approves a production release or image push,
+and their destructive tools carry the confirm + reason + actor guardrail.
 
 ## See Also
 

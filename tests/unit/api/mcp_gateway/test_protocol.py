@@ -1,5 +1,7 @@
 """Unit tests for the credentialed-MCP JSON-RPC dispatch."""
 
+from pathlib import Path
+
 import pytest
 
 from synthorg.api.mcp_gateway.protocol import dispatch_mcp
@@ -24,6 +26,11 @@ def _ctx() -> CredentialedToolContext:
         deploy_targets=frozenset({"prod"}),
         deploy_timeout_seconds=30.0,
         deploy_max_log_chars=20000,
+        publish_targets=frozenset({"prod-images"}),
+        publish_timeout_seconds=60.0,
+        publish_max_manifest_bytes=4_000_000,
+        publish_max_image_bytes=2_000_000_000,
+        workspace_root=Path.cwd(),
     )
 
 

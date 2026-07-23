@@ -45,10 +45,14 @@ DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProxy
     {
         # CRITICAL
         ActionType.DEPLOY_PRODUCTION: ApprovalRiskLevel.CRITICAL,
+        # Overwriting a production image tag replaces what is running just as a
+        # production release does, so it carries the same ceiling.
+        ActionType.PUBLISH_PRODUCTION: ApprovalRiskLevel.CRITICAL,
         ActionType.DB_ADMIN: ApprovalRiskLevel.CRITICAL,
         ActionType.ORG_FIRE: ApprovalRiskLevel.CRITICAL,
         # HIGH
         ActionType.DEPLOY_STAGING: ApprovalRiskLevel.HIGH,
+        ActionType.PUBLISH_STAGING: ApprovalRiskLevel.HIGH,
         ActionType.DB_MUTATE: ApprovalRiskLevel.HIGH,
         ActionType.CODE_DELETE: ApprovalRiskLevel.HIGH,
         ActionType.VCS_PUSH: ApprovalRiskLevel.HIGH,

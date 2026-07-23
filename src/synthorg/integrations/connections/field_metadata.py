@@ -31,6 +31,17 @@ from synthorg.integrations.connections.deploy_target import (
     DeployPlatform,
 )
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
+from synthorg.integrations.connections.registry_target import (
+    METADATA_KEY_AUTH_HOST,
+    METADATA_KEY_CHANNEL,
+    METADATA_KEY_DEFAULT_METHOD,
+    METADATA_KEY_PROVIDER,
+    METADATA_KEY_REPOSITORY,
+    METADATA_KEY_USERNAME,
+    PublishMethod,
+    RegistryChannel,
+    RegistryProvider,
+)
 
 
 class FieldInputType(StrEnum):
@@ -643,6 +654,100 @@ _DEPLOY = ConnectionTypeMetadata(
 )
 
 
+_REGISTRY = ConnectionTypeMetadata(
+    connection_type=ConnectionType.REGISTRY,
+    label=NotBlankStr("Container Registry"),
+    description=(
+        "A container image registry the organisation publishes images to. Each "
+        "target covers one repository and one release channel: create separate "
+        "targets for staging and production so each is approved and audited on "
+        "its own."
+    ),
+    default_auth_method=AuthMethod.BEARER_TOKEN,
+    fields=(
+        _token(
+            label="Registry Token",
+            help_text=(
+                "Registry credential (personal access token, robot password). "
+                "Scope it to the target repository only."
+            ),
+        ),
+        _api_url(
+            required=True,
+            help_text="The registry's API base URL. All calls stay on this host.",
+            placeholder="https://ghcr.io",
+        ),
+        ConnectionFieldMetadata(
+            name=NotBlankStr(METADATA_KEY_PROVIDER),
+            label=NotBlankStr("Provider"),
+            input_type=FieldInputType.SELECT,
+            placement=FieldPlacement.METADATA,
+            required=True,
+            options=tuple(NotBlankStr(p.value) for p in RegistryProvider),
+            help_text="Selects the registry API this target speaks.",
+        ),
+        ConnectionFieldMetadata(
+            name=NotBlankStr(METADATA_KEY_REPOSITORY),
+            label=NotBlankStr("Repository"),
+            input_type=FieldInputType.TEXT,
+            placement=FieldPlacement.METADATA,
+            required=True,
+            help_text="The image repository this target publishes (e.g. org/app).",
+            placeholder="library/nginx",
+        ),
+        ConnectionFieldMetadata(
+            name=NotBlankStr(METADATA_KEY_USERNAME),
+            label=NotBlankStr("Username"),
+            input_type=FieldInputType.TEXT,
+            placement=FieldPlacement.METADATA,
+            required=False,
+            help_text=(
+                "Username for the registry credential. Leave blank if the "
+                "registry accepts the token alone."
+            ),
+        ),
+        ConnectionFieldMetadata(
+            name=NotBlankStr(METADATA_KEY_AUTH_HOST),
+            label=NotBlankStr("Auth host"),
+            input_type=FieldInputType.TEXT,
+            placement=FieldPlacement.METADATA,
+            required=False,
+            help_text=(
+                "Only set if the registry authenticates on a different host "
+                "(e.g. auth.docker.io for Docker Hub). The credential is sent "
+                "only to the registry host or this one."
+            ),
+            placeholder="auth.docker.io",
+        ),
+        ConnectionFieldMetadata(
+            name=NotBlankStr(METADATA_KEY_CHANNEL),
+            label=NotBlankStr("Channel"),
+            input_type=FieldInputType.SELECT,
+            placement=FieldPlacement.METADATA,
+            required=True,
+            options=tuple(NotBlankStr(c.value) for c in RegistryChannel),
+            help_text=(
+                "Decides how hard a push to this target is gated. Anything "
+                "unset or unrecognised is treated as production."
+            ),
+        ),
+        ConnectionFieldMetadata(
+            name=NotBlankStr(METADATA_KEY_DEFAULT_METHOD),
+            label=NotBlankStr("Default publish method"),
+            input_type=FieldInputType.SELECT,
+            placement=FieldPlacement.METADATA,
+            required=False,
+            options=tuple(NotBlankStr(m.value) for m in PublishMethod),
+            help_text=(
+                "How images reach this registry by default. 'auto' picks from "
+                "the call's inputs; a workspace image path uploads, a source "
+                "digest promotes a tag."
+            ),
+        ),
+    ),
+)
+
+
 CONNECTION_FIELD_METADATA: MappingProxyType[ConnectionType, ConnectionTypeMetadata] = (
     MappingProxyType(
         {
@@ -659,6 +764,7 @@ CONNECTION_FIELD_METADATA: MappingProxyType[ConnectionType, ConnectionTypeMetada
             ConnectionType.LLM_PROVIDER: _LLM_PROVIDER,
             ConnectionType.TUNNEL: _TUNNEL,
             ConnectionType.DEPLOY: _DEPLOY,
+            ConnectionType.REGISTRY: _REGISTRY,
         }
     )
 )

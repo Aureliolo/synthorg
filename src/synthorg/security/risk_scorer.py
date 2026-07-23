@@ -198,10 +198,12 @@ _DEFAULT_SCORE_MAP: Final[MappingProxyType[str, RiskScore]] = MappingProxyType(
     {
         # CRITICAL
         ActionType.DEPLOY_PRODUCTION: _CRITICAL_SCORE,
+        ActionType.PUBLISH_PRODUCTION: _CRITICAL_SCORE,
         ActionType.DB_ADMIN: _CRITICAL_SCORE,
         ActionType.ORG_FIRE: _CRITICAL_SCORE,
         # HIGH
         ActionType.DEPLOY_STAGING: _HIGH_SCORE,
+        ActionType.PUBLISH_STAGING: _HIGH_SCORE,
         ActionType.DB_MUTATE: _HIGH_SCORE,
         ActionType.CODE_DELETE: _HIGH_SCORE,
         ActionType.VCS_PUSH: _HIGH_SCORE,

@@ -12,6 +12,7 @@ controller drives it.
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import Final
 
@@ -58,6 +59,9 @@ from synthorg.tools.forge.forge_tools import (
     ForgePullRequestTool,
     ForgeRepoTool,
 )
+from synthorg.tools.publish._args import PublishInspectArgs, PublishPushArgs
+from synthorg.tools.publish._runtime import PublishToolDeps, PublishToolsRuntime
+from synthorg.tools.publish.publish_tools import PublishInspectTool, PublishPushTool
 
 logger = get_logger(__name__)
 
@@ -99,6 +103,15 @@ class CredentialedToolContext(BaseModel):
     deploy_targets: frozenset[str] = frozenset()
     deploy_timeout_seconds: float = Field(gt=0)
     deploy_max_log_chars: int = Field(gt=0)
+    # Publish targets, like deploy targets, are chosen per call from this
+    # operator-set allowlist rather than bound to one connection. The
+    # workspace root is the host-side directory the coding harness builds
+    # into; a workspace push reads the built image from under it.
+    publish_targets: frozenset[str] = frozenset()
+    publish_timeout_seconds: float = Field(gt=0)
+    publish_max_manifest_bytes: int = Field(gt=0)
+    publish_max_image_bytes: int = Field(gt=0)
+    workspace_root: Path
     # Resolved host-side from the verified token claims, never synthesised
     # from the claim string. ``None`` leaves the destructive path unable to
     # attribute the action, so its guardrail refuses the call.
@@ -171,6 +184,31 @@ def _deploy_deps(ctx: CredentialedToolContext, agent_id: str) -> DeployToolDeps:
             allowed_targets=ctx.deploy_targets,
             timeout_seconds=ctx.deploy_timeout_seconds,
             max_log_chars=ctx.deploy_max_log_chars,
+        ),
+        approval_store=ctx.approval_store,
+        agent_id=agent_id,
+        clock=ctx.clock,
+    )
+
+
+def _publish_deps(ctx: CredentialedToolContext, agent_id: str) -> PublishToolDeps:
+    """Build per-call publish deps bound to *agent_id* and the target allowlist.
+
+    Args:
+        ctx: The per-request host-side collaborators.
+        agent_id: The verified calling agent.
+
+    Returns:
+        The per-call :class:`PublishToolDeps`.
+    """
+    return PublishToolDeps(
+        runtime=PublishToolsRuntime(
+            connection_catalog=ctx.connection_catalog,
+            allowed_targets=ctx.publish_targets,
+            timeout_seconds=ctx.publish_timeout_seconds,
+            max_manifest_bytes=ctx.publish_max_manifest_bytes,
+            max_image_bytes=ctx.publish_max_image_bytes,
+            workspace_root=ctx.workspace_root,
         ),
         approval_store=ctx.approval_store,
         agent_id=agent_id,
@@ -252,6 +290,30 @@ CREDENTIALED_TOOLS: Final[tuple[_CredentialedTool, ...]] = (
         args_model=DeployReleaseArgs,
         build=lambda ctx, aid: DeployReleaseTool(
             deps=_deploy_deps(ctx, aid), actor=ctx.actor
+        ),
+    ),
+    _CredentialedTool(
+        name="publish_inspect",
+        description=(
+            "List the tags on an allowlisted registry target, or read a "
+            "manifest's digest, media type and size by tag or digest."
+        ),
+        capability="publish:read",
+        category=ToolCategory.DEPLOYMENT,
+        args_model=PublishInspectArgs,
+        build=lambda ctx, aid: PublishInspectTool(deps=_publish_deps(ctx, aid)),
+    ),
+    _CredentialedTool(
+        name="publish_push",
+        description=(
+            "Publish an image to a tag on an allowlisted registry target. "
+            "Overwrites the tag; requires confirm, a reason, and human approval."
+        ),
+        capability="publish:write",
+        category=ToolCategory.DEPLOYMENT,
+        args_model=PublishPushArgs,
+        build=lambda ctx, aid: PublishPushTool(
+            deps=_publish_deps(ctx, aid), actor=ctx.actor
         ),
     ),
 )

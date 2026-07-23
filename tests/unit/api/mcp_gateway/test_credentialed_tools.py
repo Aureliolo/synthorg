@@ -1,9 +1,15 @@
 """Unit tests for the credentialed-tool governance path."""
 
+from pathlib import Path
+
 import pytest
 
 from synthorg.api.mcp_gateway import tools as tools_module
-from synthorg.api.mcp_gateway.scoping import deploy_denials, tool_schemas
+from synthorg.api.mcp_gateway.scoping import (
+    deploy_denials,
+    publish_denials,
+    tool_schemas,
+)
 from synthorg.api.mcp_gateway.tools import (
     CREDENTIALED_TOOLS,
     CredentialedToolContext,
@@ -59,6 +65,11 @@ def _ctx(
         deploy_targets=deploy_targets,
         deploy_timeout_seconds=30.0,
         deploy_max_log_chars=20000,
+        publish_targets=deploy_targets,
+        publish_timeout_seconds=60.0,
+        publish_max_manifest_bytes=4_000_000,
+        publish_max_image_bytes=2_000_000_000,
+        workspace_root=Path.cwd(),
         security_pre_check=_pre_check if deny else None,
     )
 
@@ -74,6 +85,8 @@ def test_all_credentialed_tools_present() -> None:
         "chat_directory",
         "deploy_run",
         "deploy_release",
+        "publish_inspect",
+        "publish_push",
     }
 
 
@@ -88,7 +101,15 @@ def test_all_credentialed_tools_present() -> None:
         ((), frozenset()),
         (
             ("*:read",),
-            frozenset({"forge_repo", "forge_ci", "chat_directory", "deploy_run"}),
+            frozenset(
+                {
+                    "forge_repo",
+                    "forge_ci",
+                    "chat_directory",
+                    "deploy_run",
+                    "publish_inspect",
+                }
+            ),
         ),
     ],
 )
@@ -140,6 +161,27 @@ def test_tool_schemas_expose_input_schema_for_visible_tools() -> None:
 def test_deploy_denials_reflects_the_kill_switch() -> None:
     assert deploy_denials(deploy_enabled=True) == ()
     assert set(deploy_denials(deploy_enabled=False)) == {"deploy_run", "deploy_release"}
+
+
+def test_publish_read_grant_does_not_expose_the_push_tool() -> None:
+    """Inspecting a registry must never imply the ability to publish to it."""
+    scoped = visible_tool_names(capabilities=("publish:read",))
+    assert scoped == frozenset({"publish_inspect"})
+    assert "publish_push" not in scoped
+
+
+def test_publish_write_grant_exposes_the_push_tool() -> None:
+    assert visible_tool_names(capabilities=("publish:write",)) == frozenset(
+        {"publish_push"}
+    )
+
+
+def test_publish_denials_reflects_the_kill_switch() -> None:
+    assert publish_denials(publish_enabled=True) == ()
+    assert set(publish_denials(publish_enabled=False)) == {
+        "publish_inspect",
+        "publish_push",
+    }
 
 
 def test_tool_schemas_omit_denied_tools() -> None:

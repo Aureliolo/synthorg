@@ -238,3 +238,20 @@ DEPLOY_API_OUT_OF_SCOPE: Final[str] = "integrations.deploy_api.out_of_scope"
 DEPLOY_TARGET_METADATA_UNRECOGNISED: Final[str] = (
     "integrations.deploy_target.metadata_unrecognised"
 )
+
+# -- Container-registry API client events --------------------------------
+REGISTRY_API_REQUEST_FAILED: Final[str] = "integrations.registry_api.request_failed"
+REGISTRY_API_RATE_LIMITED: Final[str] = "integrations.registry_api.rate_limited"
+REGISTRY_API_CONFIG_INVALID: Final[str] = "integrations.registry_api.config_invalid"
+REGISTRY_API_AUTH_CHALLENGE_FAILED: Final[str] = (
+    "integrations.registry_api.auth_challenge_failed"
+)
+REGISTRY_API_MANIFEST_PUBLISHED: Final[str] = (
+    "integrations.registry_api.manifest_published"
+)
+REGISTRY_API_BLOB_UPLOADED: Final[str] = "integrations.registry_api.blob_uploaded"
+
+# -- Registry-target metadata resolution events --------------------------
+REGISTRY_TARGET_METADATA_UNRECOGNISED: Final[str] = (
+    "integrations.registry_target.metadata_unrecognised"
+)
