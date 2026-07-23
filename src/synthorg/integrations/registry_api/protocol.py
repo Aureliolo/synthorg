@@ -7,7 +7,7 @@ construction, from the resolved connection record, so an agent cannot name a
 repository the operator did not configure.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
@@ -16,13 +16,15 @@ from synthorg.core.types import NotBlankStr
 # The manifest media types the client negotiates: OCI image manifest + index
 # and their Docker v2 equivalents. Code-defined so a registry cannot steer the
 # client onto an unexpected content type.
-OCI_MANIFEST_MEDIA_TYPE: str = "application/vnd.oci.image.manifest.v1+json"
-OCI_INDEX_MEDIA_TYPE: str = "application/vnd.oci.image.index.v1+json"
-DOCKER_MANIFEST_MEDIA_TYPE: str = "application/vnd.docker.distribution.manifest.v2+json"
-DOCKER_MANIFEST_LIST_MEDIA_TYPE: str = (
+OCI_MANIFEST_MEDIA_TYPE: Final[str] = "application/vnd.oci.image.manifest.v1+json"
+OCI_INDEX_MEDIA_TYPE: Final[str] = "application/vnd.oci.image.index.v1+json"
+DOCKER_MANIFEST_MEDIA_TYPE: Final[str] = (
+    "application/vnd.docker.distribution.manifest.v2+json"
+)
+DOCKER_MANIFEST_LIST_MEDIA_TYPE: Final[str] = (
     "application/vnd.docker.distribution.manifest.list.v2+json"
 )
-MANIFEST_MEDIA_TYPES: tuple[str, ...] = (
+MANIFEST_MEDIA_TYPES: Final[tuple[str, ...]] = (
     OCI_MANIFEST_MEDIA_TYPE,
     OCI_INDEX_MEDIA_TYPE,
     DOCKER_MANIFEST_MEDIA_TYPE,
@@ -34,8 +36,10 @@ class ManifestRef(BaseModel):
     """One manifest, addressed by its content digest.
 
     ``raw`` carries the exact manifest bytes so a promote can re-PUT them
-    byte-for-byte under a new tag; the digest is computed over those bytes,
-    so any re-encoding would break it.
+    byte-for-byte under a new tag. When the manifest was fetched by digest,
+    the client verifies the bytes hash to that digest before constructing
+    this record; a tag fetch carries the registry-reported (or locally
+    computed) digest, which no client-side check can independently confirm.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")

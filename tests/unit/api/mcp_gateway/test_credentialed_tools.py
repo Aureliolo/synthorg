@@ -48,6 +48,7 @@ def _ctx(
     *,
     deny: bool = False,
     deploy_targets: frozenset[str] = frozenset(),
+    publish_targets: frozenset[str] | None = None,
     catalog: ConnectionCatalog | None = None,
 ) -> CredentialedToolContext:
     async def _pre_check(_name: str, _arguments: dict[str, object]) -> None:
@@ -65,7 +66,7 @@ def _ctx(
         deploy_targets=deploy_targets,
         deploy_timeout_seconds=30.0,
         deploy_max_log_chars=20000,
-        publish_targets=deploy_targets,
+        publish_targets=deploy_targets if publish_targets is None else publish_targets,
         publish_timeout_seconds=60.0,
         publish_max_manifest_bytes=4_000_000,
         publish_max_image_bytes=2_000_000_000,
@@ -216,6 +217,35 @@ async def test_deploy_target_traversal_is_rejected() -> None:
             ctx=_ctx(deploy_targets=frozenset({"../secrets"})),
             agent_id="agent-1",
             capabilities=("deploy:read",),
+        )
+
+
+async def test_publish_inspect_rejects_unlisted_target_before_brokering() -> None:
+    # The full gateway path (scope -> parse -> _publish_deps -> governed tool):
+    # an unlisted publish target is refused before any credential is brokered.
+    catalog = mock_of[ConnectionCatalog]()
+    out = await invoke_credentialed_tool(
+        "publish_inspect",
+        {"action": "list_tags", "target": "prod-images"},
+        ctx=_ctx(publish_targets=frozenset(), catalog=catalog),
+        agent_id="agent-1",
+        capabilities=("publish:read",),
+    )
+    assert "allowlist" in out.lower()
+    catalog.get.assert_not_called()
+    catalog.get_credentials.assert_not_called()
+
+
+async def test_publish_target_traversal_is_rejected() -> None:
+    # A traversal target is rejected at the typed boundary, before the
+    # allowlist check, even when it is (absurdly) allowlisted.
+    with pytest.raises(ValidationError):
+        await invoke_credentialed_tool(
+            "publish_inspect",
+            {"action": "list_tags", "target": "../secrets"},
+            ctx=_ctx(publish_targets=frozenset({"../secrets"})),
+            agent_id="agent-1",
+            capabilities=("publish:read",),
         )
 
 

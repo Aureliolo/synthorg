@@ -8,6 +8,7 @@ status-to-typed-error mapping, and the factory's HTTPS requirement.
 """
 
 import base64
+import hashlib
 
 import httpx
 import pytest
@@ -30,6 +31,8 @@ _HOST = "https://registry.example.com"
 _REPO = "org/app"
 _MANIFEST = b'{"schemaVersion":2,"config":{},"layers":[]}'
 _DIGEST = "sha256:" + "a" * 64
+# The genuine content digest of _MANIFEST, for the fetch-by-digest path.
+_REAL_DIGEST = "sha256:" + hashlib.sha256(_MANIFEST).hexdigest()
 
 
 def _client(
@@ -67,6 +70,37 @@ class TestReads:
         async with _client() as client:
             result = await client.list_tags(limit=10)
         assert result.tags == ()
+
+    @pytest.mark.parametrize("bad", ["v1", 123, {"a": 1}], ids=["string", "int", "obj"])
+    @respx.mock
+    async def test_non_list_tags_is_malformed(self, bad: object) -> None:
+        # A bare string would otherwise iterate into single-character tags.
+        respx.get(f"{_HOST}/v2/{_REPO}/tags/list").mock(
+            return_value=httpx.Response(200, json={"name": _REPO, "tags": bad})
+        )
+        async with _client() as client:
+            with pytest.raises(RegistryApiError):
+                await client.list_tags(limit=10)
+
+    @respx.mock
+    async def test_get_manifest_by_digest_verifies_content(self) -> None:
+        respx.get(f"{_HOST}/v2/{_REPO}/manifests/{_REAL_DIGEST}").mock(
+            return_value=httpx.Response(200, content=_MANIFEST)
+        )
+        async with _client() as client:
+            ref = await client.get_manifest(reference=NotBlankStr(_REAL_DIGEST))
+        assert str(ref.digest) == _REAL_DIGEST
+
+    @respx.mock
+    async def test_get_manifest_by_digest_mismatch_is_refused(self) -> None:
+        # The content does not hash to the requested digest: refuse it rather
+        # than let a promote republish content that is not what was addressed.
+        respx.get(f"{_HOST}/v2/{_REPO}/manifests/{_DIGEST}").mock(
+            return_value=httpx.Response(200, content=_MANIFEST)
+        )
+        async with _client() as client:
+            with pytest.raises(RegistryApiError):
+                await client.get_manifest(reference=NotBlankStr(_DIGEST))
 
     @respx.mock
     async def test_get_manifest_uses_digest_header(self) -> None:
@@ -145,6 +179,19 @@ class TestWrites:
             with pytest.raises(RegistryApiError):
                 await client.upload_blob(digest=NotBlankStr(_DIGEST), data=b"x")
 
+    @respx.mock
+    async def test_upload_location_different_port_is_refused(self) -> None:
+        # Same host, different port: still off the pinned origin.
+        respx.post(f"{_HOST}/v2/{_REPO}/blobs/uploads/").mock(
+            return_value=httpx.Response(
+                202,
+                headers={"Location": "https://registry.example.com:8443/up"},
+            )
+        )
+        async with _client() as client:
+            with pytest.raises(RegistryApiError):
+                await client.upload_blob(digest=NotBlankStr(_DIGEST), data=b"x")
+
 
 class TestAuthFlow:
     @respx.mock
@@ -180,6 +227,34 @@ class TestAuthFlow:
         async with _client() as client:
             with pytest.raises(RegistryApiAuthError):
                 await client.list_tags(limit=10)
+
+    @respx.mock
+    async def test_realm_on_same_host_different_port_refuses(self) -> None:
+        # The pinned origin is port 443; a realm on another port is off-origin.
+        challenge = 'Bearer realm="https://registry.example.com:8443/token",service="x"'
+        respx.get(f"{_HOST}/v2/{_REPO}/tags/list").mock(
+            return_value=httpx.Response(401, headers={"WWW-Authenticate": challenge})
+        )
+        async with _client() as client:
+            with pytest.raises(RegistryApiAuthError):
+                await client.list_tags(limit=10)
+
+    @respx.mock
+    async def test_repeated_401_re_auths_once_without_looping(self) -> None:
+        # A bearer exchange followed by a still-401 retry must surface an auth
+        # error after exactly two requests, never loop re-exchanging the token.
+        challenge = 'Bearer realm="https://registry.example.com/token",service="x"'
+        route = respx.get(f"{_HOST}/v2/{_REPO}/tags/list").mock(
+            return_value=httpx.Response(401, headers={"WWW-Authenticate": challenge})
+        )
+        token_route = respx.get("https://registry.example.com/token").mock(
+            return_value=httpx.Response(200, json={"token": "B"})
+        )
+        async with _client() as client:
+            with pytest.raises(RegistryApiAuthError):
+                await client.list_tags(limit=10)
+        assert route.call_count == 2
+        assert token_route.call_count == 1
 
     @respx.mock
     async def test_realm_on_declared_auth_host_is_allowed(self) -> None:

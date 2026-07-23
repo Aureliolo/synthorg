@@ -12,24 +12,34 @@ digest before it is uploaded.
 """
 
 import asyncio
-import hashlib
 import json
 from pathlib import Path
 from typing import Final
 
 from synthorg.core.types import NotBlankStr
-from synthorg.integrations.registry_api import RegistryApiClient, valid_digest
+from synthorg.integrations.registry_api import (
+    RegistryApiClient,
+    digest_matches,
+    valid_digest,
+)
 from synthorg.integrations.registry_api.protocol import (
     DOCKER_MANIFEST_LIST_MEDIA_TYPE,
     DOCKER_MANIFEST_MEDIA_TYPE,
     OCI_INDEX_MEDIA_TYPE,
     OCI_MANIFEST_MEDIA_TYPE,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.tool import (
+    PUBLISH_TOOL_PUBLISHED,
+    PUBLISH_TOOL_SOURCE_INVALID,
+)
 from synthorg.tools.file_system._path_validator import PathValidator
 from synthorg.tools.publish.errors import PublishSourceError
 from synthorg.tools.publish.strategies.protocol import PublishOutcome, PublishRequest
 
-_METHOD: str = "workspace_push"
+logger = get_logger(__name__)
+
+_METHOD: Final[str] = "workspace_push"
 _INDEX_FILE: Final[str] = "index.json"
 _BLOBS_DIR: Final[str] = "blobs"
 _IMAGE_MANIFEST_TYPES: Final[frozenset[str]] = frozenset(
@@ -55,6 +65,12 @@ class _Budget:
         """
         self._used += size
         if self._used > self._limit:
+            logger.warning(
+                PUBLISH_TOOL_SOURCE_INVALID,
+                method=_METHOD,
+                detail="image layout exceeds the image size cap",
+                limit=self._limit,
+            )
             msg = (
                 "image layout exceeds the configured image size cap "
                 f"({self._limit} bytes)"
@@ -88,13 +104,26 @@ def _descriptor(raw: object) -> tuple[NotBlankStr, str, int]:
     return NotBlankStr(digest), media_type, int(size) if isinstance(size, int) else 0
 
 
-def _stat_size(path: Path) -> int:
-    """Return the file size, or -1 when *path* is not a regular file.
+def _contained_regular_file_size(path: Path, root: Path) -> int:
+    """Size of *path* when it is a regular file safely inside *root*, else -1.
+
+    Symlinks are resolved and containment under *root* is confirmed, so a
+    symlinked layout entry cannot read a file outside the workspace layout
+    host-side. Returns ``-1`` for a missing, non-regular, escaping, or
+    unreadable path.
 
     Returns:
-        The size in bytes, or ``-1`` when the path is absent / not a file.
+        The size in bytes, or ``-1`` when the path is not a safely-contained
+        regular file.
     """
-    return path.stat().st_size if path.is_file() else -1
+    try:
+        resolved = path.resolve()
+        root_resolved = root.resolve()
+    except OSError:
+        return -1
+    if resolved != root_resolved and root_resolved not in resolved.parents:
+        return -1
+    return resolved.stat().st_size if resolved.is_file() else -1
 
 
 async def _read_blob(layout_dir: Path, digest: NotBlankStr, budget: _Budget) -> bytes:
@@ -104,18 +133,23 @@ async def _read_blob(layout_dir: Path, digest: NotBlankStr, budget: _Budget) -> 
         The blob bytes.
 
     Raises:
-        PublishSourceError: The blob is missing, oversized, or its content
-            does not match the declared digest.
+        PublishSourceError: The blob is missing, escapes the layout, is
+            oversized, or its content does not match the declared digest.
     """
     algo, _, hex_digest = str(digest).partition(":")
     blob_path = layout_dir / _BLOBS_DIR / algo / hex_digest
-    size = await asyncio.to_thread(_stat_size, blob_path)
+    size = await asyncio.to_thread(_contained_regular_file_size, blob_path, layout_dir)
     if size < 0:
         msg = f"image layout is missing blob {digest}"
         raise PublishSourceError(msg)
     budget.consume(size)
     data: bytes = await asyncio.to_thread(blob_path.read_bytes)
-    if hashlib.sha256(data).hexdigest() != hex_digest:
+    if not digest_matches(str(digest), data):
+        logger.warning(
+            PUBLISH_TOOL_SOURCE_INVALID,
+            method=_METHOD,
+            detail="blob content did not match its declared digest",
+        )
         msg = f"image layout blob {digest} does not match its content"
         raise PublishSourceError(msg)
     return data
@@ -187,10 +221,10 @@ class WorkspacePushStrategy:
             PublishSourceError: The workspace path escapes the workspace, is
                 not an OCI layout, is oversized, or is malformed.
         """
-        layout_dir = self._resolve_layout(request)
+        layout_dir = await asyncio.to_thread(self._resolve_layout, request)
         budget = _Budget(request.max_image_bytes)
         index_bytes = await _read_document(
-            layout_dir / _INDEX_FILE, request.max_manifest_bytes
+            layout_dir / _INDEX_FILE, layout_dir, request.max_manifest_bytes
         )
         index = _parse_json(index_bytes)
         manifests = index.get("manifests")
@@ -202,6 +236,13 @@ class WorkspacePushStrategy:
         )
         stored = await client.put_manifest(
             tag=request.dest_tag, raw=root_bytes, media_type=root_media
+        )
+        logger.info(
+            PUBLISH_TOOL_PUBLISHED,
+            method=_METHOD,
+            tag=str(request.dest_tag),
+            digest=str(stored.digest),
+            blobs_uploaded=uploaded,
         )
         return PublishOutcome(
             published_tag=request.dest_tag,
@@ -268,6 +309,11 @@ class WorkspacePushStrategy:
                 layout_dir, digest, budget, manifest_cap
             )
             if media in _INDEX_TYPES:
+                logger.warning(
+                    PUBLISH_TOOL_SOURCE_INVALID,
+                    method=_METHOD,
+                    detail="layout referenced a nested image index",
+                )
                 msg = "nested image indexes are not supported"
                 raise PublishSourceError(msg)
             uploaded += await _upload_image_blobs(
@@ -305,20 +351,27 @@ async def _read_manifest_blob(
     return data
 
 
-async def _read_document(path: Path, cap: int) -> bytes:
+async def _read_document(path: Path, root: Path, cap: int) -> bytes:
     """Read a top-level layout document (index.json), capped by the manifest cap.
 
     Returns:
         The document bytes.
 
     Raises:
-        PublishSourceError: The document is missing or exceeds the cap.
+        PublishSourceError: The document is missing, escapes the layout, or
+            exceeds the cap.
     """
-    size = await asyncio.to_thread(_stat_size, path)
+    size = await asyncio.to_thread(_contained_regular_file_size, path, root)
     if size < 0:
         msg = f"image layout is missing {path.name}"
         raise PublishSourceError(msg)
     if size > cap:
+        logger.warning(
+            PUBLISH_TOOL_SOURCE_INVALID,
+            method=_METHOD,
+            detail="layout document exceeds the manifest size cap",
+            limit=cap,
+        )
         msg = f"image layout {path.name} exceeds the manifest size cap ({cap} bytes)"
         raise PublishSourceError(msg)
     return await asyncio.to_thread(path.read_bytes)

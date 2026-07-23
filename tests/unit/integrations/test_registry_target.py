@@ -13,10 +13,12 @@ from synthorg.integrations.connections.registry_target import (
     PublishMethod,
     RegistryChannel,
     RegistryProvider,
+    resolve_auth_host,
     resolve_channel,
     resolve_default_method,
     resolve_provider,
     resolve_repository,
+    resolve_username,
 )
 
 pytestmark = pytest.mark.unit
@@ -61,9 +63,39 @@ class TestResolveRepository:
     def test_declared_repository_is_stripped(self) -> None:
         assert resolve_repository({"repository": "  org/app  "}) == "org/app"
 
-    @pytest.mark.parametrize("metadata", [{}, {"repository": ""}, {"repository": " "}])
+    @pytest.mark.parametrize(
+        "metadata",
+        [{}, {"repository": ""}, {"repository": " "}],
+        ids=["absent", "blank", "whitespace"],
+    )
     def test_absent_repository_is_empty(self, metadata: dict[str, str]) -> None:
         assert resolve_repository(metadata) == ""
+
+
+class TestResolveUsername:
+    def test_declared_username_is_stripped(self) -> None:
+        assert resolve_username({"username": "  robot  "}) == "robot"
+
+    @pytest.mark.parametrize(
+        "metadata",
+        [{}, {"username": ""}, {"username": "  "}],
+        ids=["absent", "blank", "whitespace"],
+    )
+    def test_absent_username_is_empty(self, metadata: dict[str, str]) -> None:
+        assert resolve_username(metadata) == ""
+
+
+class TestResolveAuthHost:
+    def test_declared_auth_host_is_case_folded(self) -> None:
+        assert resolve_auth_host({"auth_host": " Auth.Docker.IO "}) == "auth.docker.io"
+
+    @pytest.mark.parametrize(
+        "metadata",
+        [{}, {"auth_host": ""}, {"auth_host": "  "}],
+        ids=["absent", "blank", "whitespace"],
+    )
+    def test_absent_auth_host_is_empty(self, metadata: dict[str, str]) -> None:
+        assert resolve_auth_host(metadata) == ""
 
 
 class TestResolveDefaultMethod:

@@ -123,6 +123,7 @@ class TestRegistryExpandCategory:
             ("docs", 1),
             ("vcs", 4),
             ("deploy", 2),
+            ("publish", 2),
             ("comms", 2),
             ("budget", 2),
             ("org", 4),

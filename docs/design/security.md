@@ -41,7 +41,7 @@ autonomy:
     semi:
       description: "Most work is autonomous. Major decisions need approval."
       auto_approve: ["code", "test", "docs", "vcs", "comms:internal", "db:query"]
-      human_approval: ["deploy", "org", "budget", "comms:external", "tool"]
+      human_approval: ["deploy", "publish", "org", "budget", "comms:external", "tool"]
       security_agent: true
 
     supervised:
@@ -50,7 +50,7 @@ autonomy:
       human_approval:
         ["code:write", "code:create", "code:delete", "code:refactor",
          "test:write", "docs:write", "vcs:commit", "vcs:push", "vcs:branch",
-         "deploy", "comms", "budget", "org", "db:mutate", "db:admin",
+         "deploy", "publish", "comms", "budget", "org", "db:mutate", "db:admin",
          "arch:decide", "tool"]
       security_agent: true
 
@@ -339,7 +339,7 @@ shutdown-time mechanism.
         high_risk:
           timeout_minutes: null          # wait forever
           on_timeout: "wait"
-          actions: ["deploy", "db:admin", "comms:external", "org:hire"]
+          actions: ["deploy", "publish", "db:admin", "comms:external", "org:hire"]
     ```
 
     Pragmatic: low-risk tasks do not stall, critical actions stay safe. Auto-approve on

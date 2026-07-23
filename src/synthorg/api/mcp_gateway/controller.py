@@ -327,6 +327,16 @@ async def _build_context(
         # settings read) so the caller's ``except DomainError`` mapping runs
         # rather than a raw ExceptionGroup escaping to the generic handler.
         reraise_critical(eg)
+        if len(eg.exceptions) > 1:
+            # Only the re-raised exception is otherwise logged, so a request
+            # that failed for several independent reasons at once would hide
+            # every cause but one.
+            logger.warning(
+                GATEWAY_DISPATCH_FAILED,
+                surface="mcp-gateway",
+                reason="concurrent_context_build_failures",
+                error_types=[type(exc).__name__ for exc in eg.exceptions],
+            )
         raise eg.exceptions[0] from eg
     interceptor = make_security_interceptor(
         app_state.security_runtime_config.current,

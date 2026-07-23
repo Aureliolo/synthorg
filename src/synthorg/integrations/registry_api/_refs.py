@@ -8,6 +8,7 @@ the OCI tag grammar, and a repository is a slash-joined chain of OCI path
 components.
 """
 
+import hashlib
 import re
 from typing import Final
 
@@ -17,6 +18,10 @@ from typing import Final
 _DIGEST_RE: Final[re.Pattern[str]] = re.compile(
     r"^sha(?:256:[a-f0-9]{64}|512:[a-f0-9]{128})$"
 )
+# The digest algorithms this build can actually verify content against. A
+# digest naming anything else is treated as unverifiable (untrusted), never
+# silently accepted.
+_VERIFIABLE_DIGEST_ALGOS: Final[frozenset[str]] = frozenset({"sha256", "sha512"})
 # One OCI tag: a leading word char then up to 127 of word / period / dash.
 _TAG_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$")
 # One repository path component (lowercase, OCI ``pathcomponent`` grammar).
@@ -29,6 +34,27 @@ _MAX_REPOSITORY_LEN: Final[int] = 255
 def valid_digest(value: str) -> bool:
     """Return whether *value* is a well-formed content-addressable digest."""
     return bool(_DIGEST_RE.match(value))
+
+
+def digest_matches(digest: str, content: bytes) -> bool:
+    """Return whether *content* hashes to *digest* under its declared algorithm.
+
+    The algorithm is taken from the digest itself, not assumed, so a
+    sha512-addressed blob is verified with sha512 and a sha256 one with
+    sha256. A digest naming an algorithm this build cannot compute (or a
+    malformed digest) returns ``False`` rather than passing unverified.
+
+    Args:
+        digest: The declared ``algorithm:hex`` content digest.
+        content: The bytes to verify against it.
+
+    Returns:
+        ``True`` only when the content genuinely hashes to the digest.
+    """
+    algo, _, hex_digest = digest.partition(":")
+    if algo not in _VERIFIABLE_DIGEST_ALGOS or not hex_digest:
+        return False
+    return hashlib.new(algo, content).hexdigest() == hex_digest
 
 
 def valid_tag(value: str) -> bool:
@@ -54,6 +80,7 @@ def valid_repository(value: str) -> bool:
 
 
 __all__ = [
+    "digest_matches",
     "valid_digest",
     "valid_reference",
     "valid_repository",

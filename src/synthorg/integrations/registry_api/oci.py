@@ -16,6 +16,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.integrations.errors import RegistryApiError
 from synthorg.integrations.registry_api._base import BaseRegistryClient
 from synthorg.integrations.registry_api._http import raise_for_registry_status
+from synthorg.integrations.registry_api._refs import digest_matches, valid_digest
 from synthorg.integrations.registry_api.protocol import (
     MANIFEST_MEDIA_TYPES,
     ManifestRef,
@@ -61,10 +62,14 @@ class OciRegistryClient(BaseRegistryClient):
             limit: Maximum number of tags to request.
 
         Returns:
-            The tags, newest-first as the registry orders them.
+            The tags, in the order the registry returned them (the OCI
+            Distribution Spec mandates no ordering).
 
         Raises:
             RegistryApiError: When the registry returns a malformed payload.
+            RegistryApiAuthError: On an authentication failure.
+            RegistryApiRateLimitError: When the registry rate-limits the call.
+            RegistryApiClientError: On any other deterministic 4xx.
         """
         path = _TAGS_PATH.format(repo=self._repository)
         resp = await self._request("GET", path, action="list tags", params={"n": limit})
@@ -83,6 +88,17 @@ class OciRegistryClient(BaseRegistryClient):
             )
             msg = "registry returned no tag list"
             raise RegistryApiError(msg)
+        if not isinstance(tags, list):
+            # A non-null, non-list ``tags`` (a bare string, an object) is a
+            # malformed payload: iterating it would silently produce garbage
+            # (a string yields its characters), so refuse it outright.
+            logger.warning(
+                REGISTRY_API_REQUEST_FAILED,
+                action="list tags",
+                detail="tag list was not an array",
+            )
+            msg = "registry returned a malformed tag list"
+            raise RegistryApiError(msg)
         kept = tuple(str(tag) for tag in tags if isinstance(tag, str))
         return TagList(repository=self._repository, tags=kept)
 
@@ -94,7 +110,16 @@ class OciRegistryClient(BaseRegistryClient):
 
         Returns:
             The manifest record, carrying the exact bytes so a promote can
-            re-publish them unchanged.
+            re-publish them unchanged. When the reference is a digest, the
+            returned digest is the reference, verified against the bytes.
+
+        Raises:
+            RegistryApiError: On a malformed response, or when a digest
+                reference returns bytes that do not hash to it.
+            RegistryApiAuthError: On an authentication failure.
+            RegistryApiRateLimitError: When the registry rate-limits the call.
+            RegistryApiClientError: On any other deterministic 4xx (e.g. the
+                reference is absent).
         """
         segment = self._safe_segment(str(reference), field="reference")
         path = _MANIFEST_PATH.format(repo=self._repository, reference=segment)
@@ -106,12 +131,48 @@ class OciRegistryClient(BaseRegistryClient):
         )
         raise_for_registry_status(resp, action="read a manifest")
         content = resp.content
+        digest = self._manifest_digest(
+            reference, content, resp.headers.get(_DIGEST_HEADER)
+        )
         return ManifestRef(
-            digest=NotBlankStr(resp.headers.get(_DIGEST_HEADER) or _digest_of(content)),
+            digest=NotBlankStr(digest),
             media_type=resp.headers.get("content-type", ""),
             size=len(content),
             raw=content,
         )
+
+    def _manifest_digest(
+        self, reference: NotBlankStr, content: bytes, header_digest: str | None
+    ) -> str:
+        """Resolve the content digest of a fetched manifest.
+
+        A manifest fetched *by digest* must hash to that digest, or the
+        registry served content that does not match what was asked for; that
+        is a content-integrity failure a promote must not propagate, so it is
+        refused. A tag fetch has no client-known digest to check against, so
+        the registry-reported (or locally computed sha256) digest is trusted.
+
+        Returns:
+            The verified digest for a digest reference, otherwise the
+            registry-reported or locally computed digest.
+
+        Raises:
+            RegistryApiError: The bytes fetched by digest do not match it.
+        """
+        ref = str(reference)
+        if valid_digest(ref):
+            if not digest_matches(ref, content):
+                logger.warning(
+                    REGISTRY_API_REQUEST_FAILED,
+                    action="read a manifest",
+                    detail="content did not match the requested digest",
+                )
+                msg = (
+                    "registry returned content that does not match the requested digest"
+                )
+                raise RegistryApiError(msg)
+            return ref
+        return header_digest or _digest_of(content)
 
     async def put_manifest(
         self, *, tag: NotBlankStr, raw: bytes, media_type: str
@@ -125,6 +186,12 @@ class OciRegistryClient(BaseRegistryClient):
 
         Returns:
             The stored manifest record.
+
+        Raises:
+            RegistryApiAuthError: On an authentication failure.
+            RegistryApiRateLimitError: When the registry rate-limits the call.
+            RegistryApiClientError: On any other deterministic 4xx.
+            RegistryApiError: On a 5xx / transport failure.
         """
         segment = self._safe_segment(str(tag), field="tag")
         path = _MANIFEST_PATH.format(repo=self._repository, reference=segment)
@@ -159,6 +226,12 @@ class OciRegistryClient(BaseRegistryClient):
         Returns:
             ``True`` when the registry reports the blob present, ``False``
             when it reports it absent.
+
+        Raises:
+            RegistryApiAuthError: On an authentication failure.
+            RegistryApiRateLimitError: When the registry rate-limits the call.
+            RegistryApiClientError: On any other deterministic 4xx.
+            RegistryApiError: On a 5xx / transport failure.
         """
         segment = self._safe_segment(str(digest), field="digest")
         path = _BLOB_PATH.format(repo=self._repository, digest=segment)

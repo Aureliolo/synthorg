@@ -8,6 +8,7 @@ fail-closed, and egress binding (respx only mocks the target's host, so a call
 to another host would fail to match).
 """
 
+import hashlib
 import json
 from datetime import date
 from pathlib import Path
@@ -29,6 +30,7 @@ from synthorg.integrations.connections.models import (
     Connection,
     ConnectionType,
 )
+from synthorg.integrations.errors import SecretRetrievalError
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.publish._runtime import PublishToolDeps, PublishToolsRuntime
 from synthorg.tools.publish.publish_tools import PublishInspectTool, PublishPushTool
@@ -40,8 +42,10 @@ pytestmark = pytest.mark.unit
 _HOST = "https://registry.example.com"
 _TARGET = "prod-images"
 _REPO = "acme/app"
-_DIGEST = "sha256:" + "a" * 64
 _MANIFEST = b'{"schemaVersion":2,"config":{},"layers":[]}'
+# The reference must genuinely hash to the returned bytes: the client verifies
+# a manifest fetched by digest against its content.
+_DIGEST = "sha256:" + hashlib.sha256(_MANIFEST).hexdigest()
 _PUBLISH_PRODUCTION = ActionType.PUBLISH_PRODUCTION.value
 _PUBLISH_STAGING = ActionType.PUBLISH_STAGING.value
 _COMMS_EXTERNAL = ActionType.COMMS_EXTERNAL.value
@@ -96,26 +100,33 @@ def _auto_approve(action: str) -> EffectiveAutonomy:
     )
 
 
-def _deps(
+def _deps(  # noqa: PLR0913 -- test helper threads the deps bundle
     *,
     conn: Connection | None,
     store: ApprovalStore | None = None,
     autonomy: EffectiveAutonomy | None = None,
     targets: frozenset[str] = frozenset({_TARGET}),
     workspace_root: Path | None = None,
+    max_manifest_bytes: int = 1_000_000,
+    credentials_error: Exception | None = None,
 ) -> PublishToolDeps:
+    get_credentials = (
+        AsyncMock(spec=ConnectionCatalog.get_credentials, side_effect=credentials_error)
+        if credentials_error is not None
+        else AsyncMock(
+            spec=ConnectionCatalog.get_credentials, return_value={"token": "t0ken"}
+        )
+    )
     catalog = mock_of[ConnectionCatalog](
         get=AsyncMock(spec=ConnectionCatalog.get, return_value=conn),
-        get_credentials=AsyncMock(
-            spec=ConnectionCatalog.get_credentials, return_value={"token": "t0ken"}
-        ),
+        get_credentials=get_credentials,
     )
     return PublishToolDeps(
         runtime=PublishToolsRuntime(
             connection_catalog=catalog,
             allowed_targets=targets,
             timeout_seconds=5.0,
-            max_manifest_bytes=1_000_000,
+            max_manifest_bytes=max_manifest_bytes,
             max_image_bytes=1_000_000_000,
             workspace_root=workspace_root or Path.cwd(),
         ),
@@ -274,12 +285,14 @@ class TestGuardrails:
             deps=_deps(conn=_connection()), actor=_actor()
         ).execute(arguments=_push_args(confirm=False))
         assert result.is_error is True
+        assert "confirm" in result.content
 
     async def test_blank_reason_is_refused(self) -> None:
         result = await PublishPushTool(
             deps=_deps(conn=_connection()), actor=_actor()
         ).execute(arguments=_push_args(reason="   "))
         assert result.is_error is True
+        assert "reason" in result.content
 
     async def test_missing_actor_is_refused(self) -> None:
         """Actor fail-closed: an unattributable push never reaches the gate."""
@@ -287,6 +300,7 @@ class TestGuardrails:
             deps=_deps(conn=_connection()), actor=None
         ).execute(arguments=_push_args())
         assert result.is_error is True
+        assert "actor" in result.content
 
 
 class TestAllowlistAndSetup:
@@ -312,6 +326,7 @@ class TestAllowlistAndSetup:
             deps=_deps(conn=_connection(ctype=ConnectionType.GITHUB))
         ).execute(arguments={"action": "list_tags", "target": _TARGET})
         assert result.is_error is True
+        assert "not a registry target" in result.content
 
 
 class TestReads:
@@ -351,3 +366,67 @@ class TestReads:
             deps=_deps(conn=_connection(sensitive=True))
         ).execute(arguments={"action": "list_tags", "target": _TARGET})
         assert result.metadata["requires_parking"] is True
+
+    @respx.mock
+    async def test_get_manifest_over_cap_is_refused(self) -> None:
+        respx.get(f"{_HOST}/v2/{_REPO}/manifests/v1").mock(
+            return_value=httpx.Response(
+                200,
+                content=_MANIFEST,
+                headers={"Docker-Content-Digest": _DIGEST},
+            )
+        )
+        result = await PublishInspectTool(
+            deps=_deps(conn=_connection(), max_manifest_bytes=1)
+        ).execute(
+            arguments={"action": "get_manifest", "target": _TARGET, "reference": "v1"}
+        )
+        assert result.is_error is True
+        assert "manifest size cap" in result.content
+
+
+class TestAutoMethod:
+    @respx.mock
+    async def test_auto_with_digest_dispatches_promote(self) -> None:
+        """method='auto' with a source digest resolves to a promote e2e."""
+        _mock_promote_staging()
+        result = await PublishPushTool(
+            deps=_deps(
+                conn=_connection(channel="staging"),
+                autonomy=_auto_approve(_PUBLISH_STAGING),
+            ),
+            actor=_actor(),
+        ).execute(arguments=_push_args(method="auto"))
+        assert result.is_error is False
+        assert json.loads(result.content)["method"] == "digest_promote"
+
+
+class TestUpstreamErrors:
+    @respx.mock
+    async def test_rate_limit_surfaces_retry_after(self) -> None:
+        """A 429 surfaces retry_after_seconds in the result metadata."""
+        respx.get(f"{_HOST}/v2/{_REPO}/manifests/{_DIGEST}").mock(
+            return_value=httpx.Response(429, headers={"Retry-After": "12"})
+        )
+        result = await PublishPushTool(
+            deps=_deps(
+                conn=_connection(channel="production"),
+                autonomy=_auto_approve(_PUBLISH_PRODUCTION),
+            ),
+            actor=_actor(),
+        ).execute(arguments=_push_args())
+        assert result.is_error is True
+        assert result.metadata["retry_after_seconds"] == 12.0
+
+    async def test_credential_broker_failure_is_surfaced(self) -> None:
+        """A secret-retrieval failure maps to a credential error, not a crash."""
+        deps = _deps(
+            conn=_connection(),
+            autonomy=_auto_approve(_PUBLISH_PRODUCTION),
+            credentials_error=SecretRetrievalError("vault unreachable"),
+        )
+        result = await PublishPushTool(deps=deps, actor=_actor()).execute(
+            arguments=_push_args()
+        )
+        assert result.is_error is True
+        assert "broker credentials" in result.content

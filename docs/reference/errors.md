@@ -164,6 +164,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4035 | `PROJECT_REPOSITORY_NOT_CONFIGURED` | Project has no repository configured for the operation |
 | 4036 | `SUB_AGENT_DELEGATION_DEPTH_EXCEEDED` | Blocking delegation refused: chain at its depth limit or would form a cycle |
 | 4037 | `DEPLOY_TARGET_NOT_CONFIGURED` | Deploy target is unlisted, absent, or not finished being set up |
+| 4038 | `PUBLISH_TARGET_NOT_CONFIGURED` | Publish target is unlisted, absent, or not finished being set up |
 
 ## Rate Limit (5xxx)
 

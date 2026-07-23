@@ -1,6 +1,7 @@
 """Container-registry API clients behind one vendor-neutral protocol."""
 
 from synthorg.integrations.registry_api._refs import (
+    digest_matches,
     valid_digest,
     valid_reference,
     valid_repository,
@@ -23,6 +24,7 @@ __all__ = [
     "RegistryApiClient",
     "TagList",
     "build_registry_api_client",
+    "digest_matches",
     "registry_api_supported",
     "valid_digest",
     "valid_reference",

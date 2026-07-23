@@ -27,7 +27,10 @@ from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.publish._args import PublishInspectArgs, PublishPushArgs
 from synthorg.tools.publish._base import _BasePublishTool
 from synthorg.tools.publish._runtime import PublishToolDeps
-from synthorg.tools.publish.errors import PublishToolArgumentError
+from synthorg.tools.publish.errors import (
+    PublishSourceError,
+    PublishToolArgumentError,
+)
 from synthorg.tools.publish.strategies import (
     PublishRequest,
     build_publish_strategy,
@@ -168,6 +171,7 @@ class PublishInspectTool(_BasePublishTool):
 
         Raises:
             PublishToolArgumentError: Arguments were not the read shape.
+            PublishSourceError: The manifest exceeds the manifest size cap.
         """
         if not isinstance(args, PublishInspectArgs):
             msg = "publish_inspect received unexpected arguments"
@@ -175,6 +179,12 @@ class PublishInspectTool(_BasePublishTool):
         if args.action == "get_manifest":
             reference = self._reference(args)
             manifest = await client.get_manifest(reference=reference)
+            cap = self._runtime.max_manifest_bytes
+            if manifest.size > cap:
+                # The setting bounds what these tools read as well as publish,
+                # so an oversized manifest is refused on the read path too.
+                msg = f"manifest exceeds the configured manifest size cap ({cap} bytes)"
+                raise PublishSourceError(msg)
             return json_result(
                 {
                     "digest": str(manifest.digest),

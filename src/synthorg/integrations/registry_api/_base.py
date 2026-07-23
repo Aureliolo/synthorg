@@ -15,7 +15,7 @@ credential leaves the process.
 
 import base64
 from collections.abc import Mapping
-from typing import Self
+from typing import Final, Self
 from urllib.parse import urlsplit
 
 import httpx
@@ -45,6 +45,7 @@ logger = get_logger(__name__)
 
 _UNAUTHORIZED: int = 401
 _HTTPS_SCHEME: str = "https"
+_HTTPS_PORT: Final[int] = 443
 
 
 class BaseRegistryClient:
@@ -70,9 +71,12 @@ class BaseRegistryClient:
         self._username = username
         self._token = token
         self._timeout = timeout
-        self._base_host = normalize_identifier(
-            urlsplit(self._api_base_url).hostname or ""
-        )
+        base_parts = urlsplit(self._api_base_url)
+        self._base_host = normalize_identifier(base_parts.hostname or "")
+        # Pin the port too, not just the host: a compromised registry could
+        # otherwise redirect a credential or a blob to another service on the
+        # same host by naming a different port.
+        self._base_port = base_parts.port or _HTTPS_PORT
         self._auth_host = normalize_identifier(auth_host)
         self._bearer: str | None = None
         self.__client: httpx.AsyncClient | None = None
@@ -266,16 +270,22 @@ class BaseRegistryClient:
 
         Raises:
             RegistryApiAuthError: The realm is blank, not HTTPS, or on a host
-                that is neither the registry host nor the operator-declared
-                ``auth_host``. The credential never leaves the process for an
-                unapproved host.
+                or port that is neither the registry origin nor the
+                operator-declared ``auth_host`` (on the default HTTPS port).
+                The credential never leaves the process for an unapproved
+                origin.
         """
         parsed = urlsplit(realm)
         host = normalize_identifier(parsed.hostname or "")
-        allowed = {self._base_host}
-        if self._auth_host:
-            allowed.add(self._auth_host)
-        if parsed.scheme != _HTTPS_SCHEME or not host or host not in allowed:
+        port = parsed.port or _HTTPS_PORT
+        on_registry_origin = host == self._base_host and port == self._base_port
+        # An operator-declared auth_host is portless, so it is only approved on
+        # the default HTTPS port.
+        on_auth_host = (
+            bool(self._auth_host) and host == self._auth_host and (port == _HTTPS_PORT)
+        )
+        approved = host and (on_registry_origin or on_auth_host)
+        if parsed.scheme != _HTTPS_SCHEME or not approved:
             logger.warning(
                 REGISTRY_API_AUTH_CHALLENGE_FAILED,
                 action="exchange a registry token",
@@ -324,23 +334,26 @@ class BaseRegistryClient:
             The upload URL to use (relative locations are returned as-is).
 
         Raises:
-            RegistryApiError: The location is blank or on a different host.
+            RegistryApiError: The location is blank, or absolute and not on the
+                pinned HTTPS origin (a different host, port, or scheme).
         """
         if not location:
             msg = "registry did not return a blob upload location"
             raise RegistryApiError(msg)
         parsed = urlsplit(location)
         is_absolute = bool(parsed.scheme or parsed.netloc)
-        off_host = parsed.scheme != _HTTPS_SCHEME or (
-            normalize_identifier(parsed.hostname or "") != self._base_host
+        off_origin = (
+            parsed.scheme != _HTTPS_SCHEME
+            or normalize_identifier(parsed.hostname or "") != self._base_host
+            or (parsed.port or _HTTPS_PORT) != self._base_port
         )
-        if is_absolute and off_host:
+        if is_absolute and off_origin:
             logger.warning(
                 REGISTRY_API_REQUEST_FAILED,
                 action="upload a blob",
-                detail="upload location left the pinned host",
+                detail="upload location left the pinned origin",
             )
-            msg = "registry blob upload location is off the pinned host"
+            msg = "registry blob upload location is off the pinned https origin"
             raise RegistryApiError(msg)
         return location
 
