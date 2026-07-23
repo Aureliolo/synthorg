@@ -3,8 +3,8 @@
 The agent-facing chat tools (`chat_messages` / `chat_directory`) are
 send/read only, so a human reply on the chat platform never re-enters the
 task that asked for it. Chat inbound closes that loop: a long-running Slack
-Socket-Mode connection consumes mentions, DMs, thread replies, and
-reactions, and routes each one back to the parked approval it answers, so a
+Socket-Mode connection consumes mentions, direct messages, thread replies,
+and reactions, and routes each one back to the parked approval it answers, so a
 conversation completes without the human ever touching the dashboard.
 
 The feature is **off by default** (`tools.chat_inbound_enabled = false`) and
@@ -44,10 +44,10 @@ free of any engine/approval import.
    short-lived `wss://` gateway URL, and streams frames. Every envelope is
    acknowledged before its event is dispatched so a slow handler cannot
    trigger re-delivery.
-3. **Decode.** `decode_frame` maps `app_mention` / `message` (incl. DMs) /
-   `reaction_added` onto `InboundChatEvent`, dropping bot echoes and
-   message subtypes (edits/joins). A top-level message roots its own thread
-   for correlation.
+3. **Decode.** `decode_frame` maps `app_mention` / `message` (including
+   direct messages) / `reaction_added` onto `InboundChatEvent`, dropping bot
+   echoes and message subtypes (edits/joins). A top-level message roots its
+   own thread for correlation.
 4. **Route + resume.** The router resolves the event's thread to an
    approval. A reaction (`white_check_mark` / `x` ...) is an explicit
    approve/reject; a text reply is an approving reply whose body becomes

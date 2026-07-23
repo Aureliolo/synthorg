@@ -8,7 +8,10 @@ import pytest
 import respx
 
 from synthorg.integrations.chat_api.inbound.models import InboundChatEvent
-from synthorg.integrations.chat_api.inbound.socket_mode import SlackSocketModeClient
+from synthorg.integrations.chat_api.inbound.socket_mode import (
+    SlackSocketModeClient,
+    WsConnector,
+)
 from synthorg.integrations.errors import ChatApiAuthError, ChatApiError
 
 pytestmark = pytest.mark.unit
@@ -34,7 +37,7 @@ class _FakeWsSession:
         self.acked.append(envelope_id)
 
 
-def _connector(session: _FakeWsSession):
+def _connector(session: _FakeWsSession) -> WsConnector:
     @asynccontextmanager
     async def _connect(url: str) -> AsyncIterator[_FakeWsSession]:
         assert url.startswith("wss://")

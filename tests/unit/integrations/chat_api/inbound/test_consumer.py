@@ -12,6 +12,7 @@ import respx
 from synthorg.integrations.chat_api.inbound.consumer import ChatInboundConsumer
 from synthorg.integrations.chat_api.inbound.registry import InboundThreadRegistry
 from synthorg.integrations.chat_api.inbound.router import InboundResumeRouter
+from synthorg.integrations.chat_api.inbound.socket_mode import WsConnector
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared.fake_clock import FakeClock
@@ -30,18 +31,20 @@ def _resolver(
         get_bool.side_effect = RuntimeError("settings down")
     else:
         get_bool.return_value = enabled
-    return mock_of[ConfigResolver](
+    resolver: ConfigResolver = mock_of[ConfigResolver](
         get_bool=get_bool,
         get_str=AsyncMock(spec=ConfigResolver.get_str, return_value=connection),
     )
+    return resolver
 
 
 def _catalog(credentials: dict[str, str]) -> ConnectionCatalog:
-    return mock_of[ConnectionCatalog](
+    catalog: ConnectionCatalog = mock_of[ConnectionCatalog](
         get_credentials=AsyncMock(
             spec=ConnectionCatalog.get_credentials, return_value=credentials
         ),
     )
+    return catalog
 
 
 class _FakeWsSession:
@@ -59,7 +62,7 @@ class _FakeWsSession:
         return None
 
 
-def _connector(session: _FakeWsSession):
+def _connector(session: _FakeWsSession) -> WsConnector:
     @asynccontextmanager
     async def _connect(_url: str) -> AsyncIterator[_FakeWsSession]:
         yield session

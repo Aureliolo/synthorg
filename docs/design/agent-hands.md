@@ -61,7 +61,7 @@ forge_api/`) is keyed by `ConnectionType`:
   GitLab transport: its v4 API addresses repositories as a URL-encoded
   `namespace/project` path, keys issues and merge requests by a per-project
   `iid`, models a review as an approval plus diff-anchored discussions, and
-  runs CI as pipelines. Its files API returns no commit sha, so the client
+  runs CI as pipelines. Its files API returns no commit `sha`, so the client
   resolves the branch head after a write.
 
 A forge without a wired agent client surfaces a typed

@@ -5,4 +5,4 @@
 -- connection, not any repo the connection's token can reach.
 
 ALTER TABLE connections
-    ADD COLUMN allowed_repos_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+ADD COLUMN allowed_repos_json JSONB NOT NULL DEFAULT '[]'::JSONB;

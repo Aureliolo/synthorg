@@ -32,7 +32,7 @@ its tier:
 `engine/mcp_self_consumer.py::_provide` computes an ELEVATED agent's
 visible tools as:
 
-```
+```text
 ambient(all non-admin tools)  UNION  granted(agent's own mcp_capabilities)  UNION  operator_broadening(elevated_capabilities)
 ```
 
@@ -106,7 +106,7 @@ interceptor that never actually parked the call), yet still returned an
 "approval required" result, so the destructive call was blocked but the
 escalation was silently dropped instead of reaching a human. The invoker
 now **fails closed** on that combination (a loud error log plus a blocked
-result), so an unattributable escalation can never slip through unreviewed.
+result), so an unattributable escalation can never slip through without review.
 
 ## Residual scope (tracked)
 

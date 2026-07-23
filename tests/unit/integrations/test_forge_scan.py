@@ -27,12 +27,13 @@ def _catalog(
     *,
     token: str = "t0ken",  # noqa: S107 -- test fixture token
 ) -> ConnectionCatalog:
-    return mock_of[ConnectionCatalog](
+    catalog: ConnectionCatalog = mock_of[ConnectionCatalog](
         get=AsyncMock(spec=ConnectionCatalog.get, return_value=conn),
         get_credentials=AsyncMock(
             spec=ConnectionCatalog.get_credentials, return_value={"token": token}
         ),
     )
+    return catalog
 
 
 def _forge_conn() -> Connection:

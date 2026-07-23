@@ -5,4 +5,4 @@
 -- connection, not any repo the connection's token can reach.
 
 ALTER TABLE connections
-    ADD COLUMN allowed_repos_json TEXT NOT NULL DEFAULT '[]';
+ADD COLUMN allowed_repos_json TEXT NOT NULL DEFAULT '[]';
