@@ -33,6 +33,7 @@ from synthorg.tools._governed_connection_tool import (
 )
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.errors import ToolError
+from tests._shared import FakeClock
 from tests._shared.mock_of import mock_of
 
 pytestmark = pytest.mark.unit
@@ -185,6 +186,7 @@ def _deps(
         agent_id="agent-1",
         task_id="task-1",
         effective_autonomy=autonomy,
+        clock=FakeClock(),
     )
 
 

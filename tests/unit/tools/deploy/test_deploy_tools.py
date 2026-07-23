@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 import respx
+from pydantic import BaseModel, ConfigDict
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.approval.enums import ApprovalStatus
@@ -28,10 +29,16 @@ from synthorg.integrations.connections.models import (
     Connection,
     ConnectionType,
 )
+from synthorg.integrations.deploy_api import DeployApiClient
 from synthorg.integrations.errors import SecretRetrievalError
 from synthorg.security.autonomy.enums import ActionType
+from synthorg.tools.deploy._args import DeployRunArgs
 from synthorg.tools.deploy._runtime import DeployToolDeps, DeployToolsRuntime
 from synthorg.tools.deploy.deploy_tools import DeployReleaseTool, DeployRunTool
+from synthorg.tools.deploy.errors import (
+    DeployToolArgumentError,
+    DeployUnsupportedError,
+)
 from tests._shared.ids import as_uuid
 from tests._shared.mock_of import mock_of
 
@@ -123,6 +130,23 @@ def _deps(  # noqa: PLR0913 -- test helper mirrors the tool's collaborators
         task_id="task-1",
         effective_autonomy=autonomy,
     )
+
+
+class _NotDeployArgs(BaseModel):
+    """An args model with no ``target``, standing in for a future rename."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    action: str = "list"
+    # Satisfies the admin guardrail so a precondition test reaches the
+    # shape check rather than stopping at the confirm/reason triple.
+    confirm: bool = True
+    reason: str = "ship the release"
+
+
+def _client() -> DeployApiClient:
+    """A stand-in client for the guards that reject before any call."""
+    return cast("DeployApiClient", mock_of[DeployApiClient]())
 
 
 def _release_args(**overrides: object) -> dict[str, object]:
@@ -282,6 +306,72 @@ class TestTargetAllowlist:
         ).execute(arguments={"action": "list", "target": _TARGET})
         assert result.is_error is True
 
+    async def test_non_deploy_args_fail_loudly_not_as_a_denial(self) -> None:
+        """A wrong args shape is a defect, not a governance refusal.
+
+        Reading ``target`` off a bare model would degrade a renamed or
+        removed field into "not allowlisted", disguising a programming
+        error as a legitimate policy denial.
+        """
+        tool = DeployRunTool(deps=_deps(conn=_connection()))
+        with pytest.raises(DeployToolArgumentError):
+            await tool._resolve_connection(_NotDeployArgs())
+
+
+class TestArgumentShapeInvariants:
+    """The defensive narrowing guards must fail loudly, never degrade.
+
+    Every one of these is unreachable through ``execute`` because the args
+    model enforces the shape first. They exist so a future rename surfaces
+    as a typed argument error instead of a silent wrong-field read, and
+    they are exercised directly for exactly that reason.
+    """
+
+    def test_release_preconditions_reject_a_non_release_shape(self) -> None:
+        tool = DeployReleaseTool(deps=_deps(conn=_connection()), actor=_actor())
+        with pytest.raises(DeployToolArgumentError):
+            tool._check_preconditions(_NotDeployArgs())
+
+    async def test_release_dispatch_rejects_a_non_release_shape(self) -> None:
+        tool = DeployReleaseTool(deps=_deps(conn=_connection()), actor=_actor())
+        with pytest.raises(DeployToolArgumentError):
+            await tool._dispatch(_client(), _NotDeployArgs())
+
+    async def test_read_dispatch_rejects_a_non_read_shape(self) -> None:
+        tool = DeployRunTool(deps=_deps(conn=_connection()))
+        with pytest.raises(DeployToolArgumentError):
+            await tool._dispatch(_client(), _NotDeployArgs())
+
+    def test_missing_deployment_id_fails_loudly(self) -> None:
+        """The args validator enforces this; the boundary must not assume it."""
+        with pytest.raises(DeployToolArgumentError):
+            DeployRunTool._deployment_id(DeployRunArgs(action="list", target=_TARGET))
+
+
+class TestRuntimeBinding:
+    def test_no_single_bound_connection(self) -> None:
+        """The allowlist is this family's bound surface, not one connection."""
+        runtime = _deps(conn=_connection()).runtime
+        assert runtime.connection_name == ""
+        assert runtime.allowed_targets == frozenset({_TARGET})
+
+
+class TestPlatformBinding:
+    async def test_plain_http_target_is_rejected(self) -> None:
+        """Plain HTTP would put the brokered platform token on the wire."""
+        result = await DeployRunTool(
+            deps=_deps(conn=_connection(base_url="http://deploy.example.com"))
+        ).execute(arguments={"action": "list", "target": _TARGET})
+        assert result.is_error is True
+
+    def test_platform_without_a_wired_client_is_refused(self) -> None:
+        """A preset added ahead of its client must refuse, never guess."""
+        tool = DeployRunTool(deps=_deps(conn=_connection()))
+        with pytest.raises(DeployUnsupportedError):
+            tool._build_client(
+                conn=_connection(platform=""), token="t0ken", timeout=5.0
+            )
+
 
 class TestSetupRequired:
     async def test_missing_connection_reports_not_found(self) -> None:
@@ -405,8 +495,39 @@ class TestResilience:
         assert result.is_error is True
         assert result.metadata["retry_after_seconds"] == 12.0
 
+    @respx.mock
+    @pytest.mark.parametrize("status", [401, 500])
+    async def test_platform_failures_surface_as_a_tool_error(self, status: int) -> None:
+        """A revoked token and a platform outage both stay inside the family."""
+        respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+            return_value=httpx.Response(status)
+        )
+        result = await DeployRunTool(deps=_deps(conn=_connection())).execute(
+            arguments={"action": "get", "target": _TARGET, "deployment_id": "dpl_1"}
+        )
+        assert result.is_error is True
+        assert "t0ken" not in result.content
+
 
 class TestArgumentSafety:
+    @pytest.mark.parametrize(
+        "deployment_id",
+        ["/absolute", "dpl?admin=1", "dpl#frag", "user@host", "dpl%2e%2e", "dpl\x00id"],
+        ids=["leading-slash", "query", "fragment", "userinfo", "encoded", "control"],
+    )
+    async def test_url_structure_characters_are_rejected(
+        self, deployment_id: str
+    ) -> None:
+        """A segment reaching a REST path must not smuggle URL structure."""
+        result = await DeployRunTool(deps=_deps(conn=_connection())).execute(
+            arguments={
+                "action": "get",
+                "target": _TARGET,
+                "deployment_id": deployment_id,
+            }
+        )
+        assert result.is_error is True
+
     async def test_traversal_in_deployment_id_is_rejected(self) -> None:
         result = await DeployRunTool(deps=_deps(conn=_connection())).execute(
             arguments={

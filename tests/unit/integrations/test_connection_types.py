@@ -89,6 +89,43 @@ class TestLLMProviderAuthenticator:
 
 
 @pytest.mark.unit
+class TestDeployAuthenticator:
+    """Tests for deploy-target credential validation."""
+
+    def test_valid_credentials_accepted(self) -> None:
+        auth = get_authenticator(ConnectionType.DEPLOY)
+        auth.validate_credentials({"token": "platform-token"})
+
+    def test_missing_token_rejected(self) -> None:
+        auth = get_authenticator(ConnectionType.DEPLOY)
+        with pytest.raises(InvalidConnectionAuthError, match="token"):
+            auth.validate_credentials({})
+
+    def test_blank_token_rejected(self) -> None:
+        auth = get_authenticator(ConnectionType.DEPLOY)
+        with pytest.raises(InvalidConnectionAuthError, match="token"):
+            auth.validate_credentials({"token": "   "})
+
+    def test_non_string_token_rejected(self) -> None:
+        auth = get_authenticator(ConnectionType.DEPLOY)
+        with (
+            pytest.raises(InvalidConnectionAuthError, match="token"),
+            suppress_type_checks(),
+        ):
+            auth.validate_credentials({"token": 123})  # type: ignore[dict-item]
+
+    def test_only_the_token_is_required(self) -> None:
+        # Platform / environment / project ride in connection metadata, not
+        # credentials, so the token is the sole required credential field.
+        auth = get_authenticator(ConnectionType.DEPLOY)
+        assert auth.required_fields() == ("token",)
+
+    def test_connection_type_identity(self) -> None:
+        auth = get_authenticator(ConnectionType.DEPLOY)
+        assert auth.connection_type is ConnectionType.DEPLOY
+
+
+@pytest.mark.unit
 class TestGitLabAuthenticator:
     """Tests for GitLab connection validation."""
 

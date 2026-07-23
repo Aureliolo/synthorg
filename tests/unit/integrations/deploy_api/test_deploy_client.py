@@ -23,6 +23,7 @@ from synthorg.integrations.deploy_api import (
 from synthorg.integrations.deploy_api.vercel import VercelDeployClient
 from synthorg.integrations.errors import (
     DeployApiAuthError,
+    DeployApiClientError,
     DeployApiError,
     DeployApiRateLimitError,
 )
@@ -110,6 +111,25 @@ class TestTargetBinding:
             await client.trigger_deployment(git_ref="main")
         body = route.calls.last.request.content
         assert f'"target":"{expected_target}"' in body.decode()
+
+    @respx.mock
+    @pytest.mark.parametrize(
+        ("environment", "expected_target"),
+        [
+            (DeployEnvironment.PRODUCTION, "production"),
+            (DeployEnvironment.STAGING, "staging"),
+        ],
+    )
+    async def test_list_is_scoped_to_the_bound_environment(
+        self, environment: DeployEnvironment, expected_target: str
+    ) -> None:
+        """A staging client must not be able to enumerate production."""
+        route = respx.get(f"{_HOST}/v6/deployments").mock(
+            return_value=httpx.Response(200, json={"deployments": []})
+        )
+        async with _client(environment=environment) as client:
+            await client.list_deployments(limit=5)
+        assert route.calls.last.request.url.params["target"] == expected_target
 
 
 class TestStateNormalisation:
@@ -201,6 +221,73 @@ class TestStatusMapping:
                 )
 
     @respx.mock
+    async def test_deterministic_4xx_is_classified_non_retryable(self) -> None:
+        """A 404 will not succeed on a bare retry, so it is not transient."""
+        respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+            return_value=httpx.Response(404, json={"error": {"message": "gone"}})
+        )
+        async with _client() as client:
+            with pytest.raises(DeployApiClientError):
+                await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
+
+    @respx.mock
+    async def test_server_error_stays_retryable(self) -> None:
+        respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+            return_value=httpx.Response(503)
+        )
+        async with _client() as client:
+            with pytest.raises(DeployApiError) as caught:
+                await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
+        assert not isinstance(caught.value, DeployApiClientError)
+
+    @respx.mock
+    @pytest.mark.parametrize(
+        "response",
+        [
+            httpx.Response(500, text="<html>gateway</html>"),
+            httpx.Response(500, json={"unexpected": "shape"}),
+        ],
+        ids=["non-json-body", "no-error-field"],
+    )
+    async def test_error_body_without_a_usable_detail_still_raises(
+        self, response: httpx.Response
+    ) -> None:
+        """The detail extraction must never mask the failure itself."""
+        respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(return_value=response)
+        async with _client() as client:
+            with pytest.raises(DeployApiError):
+                await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
+
+    @respx.mock
+    async def test_transport_failure_maps_to_deploy_error(self) -> None:
+        """A connection failure must not escape as a raw httpx error."""
+        respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+            side_effect=httpx.ConnectError("no route")
+        )
+        async with _client() as client:
+            with pytest.raises(DeployApiError):
+                await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
+
+    @respx.mock
+    async def test_list_without_a_deployment_array_maps_to_deploy_error(self) -> None:
+        """An unparseable list must not read as 'no deployments'."""
+        respx.get(f"{_HOST}/v6/deployments").mock(
+            return_value=httpx.Response(200, json={"unexpected": "shape"})
+        )
+        async with _client() as client:
+            with pytest.raises(DeployApiError):
+                await client.list_deployments(limit=5)
+
+    @respx.mock
+    async def test_non_object_deployment_entry_is_rejected(self) -> None:
+        respx.get(f"{_HOST}/v6/deployments").mock(
+            return_value=httpx.Response(200, json={"deployments": ["dpl_1"]})
+        )
+        async with _client() as client:
+            with pytest.raises(DeployApiError):
+                await client.list_deployments(limit=5)
+
+    @respx.mock
     async def test_blank_log_lines_are_dropped(self) -> None:
         """An empty event carries no content, so it is not emitted."""
         respx.get(f"{_HOST}/v3/deployments/dpl_1/events").mock(
@@ -218,6 +305,25 @@ class TestStatusMapping:
                 deployment_id=NotBlankStr("dpl_1"), limit=10
             )
         assert [line.text for line in lines] == ["building"]
+
+    @respx.mock
+    async def test_nested_payload_events_are_read_and_non_objects_skipped(self) -> None:
+        """The platform nests log text under ``payload`` on some event kinds."""
+        respx.get(f"{_HOST}/v3/deployments/dpl_1/events").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    "not-an-event",
+                    {"date": 1, "payload": {"text": "compiling"}},
+                    {"date": 2, "payload": {"no_text": True}},
+                ],
+            )
+        )
+        async with _client() as client:
+            lines = await client.get_deployment_logs(
+                deployment_id=NotBlankStr("dpl_1"), limit=10
+            )
+        assert [line.text for line in lines] == ["compiling"]
 
 
 class TestFactory:

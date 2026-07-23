@@ -44,6 +44,7 @@ from synthorg.observability.events.tool import (
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools._governed_connection_tool import GovernedConnectionTool
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.deploy._args import DeployReleaseArgs, DeployRunArgs
 from synthorg.tools.deploy._runtime import DeployToolDeps, DeployToolsRuntime
 from synthorg.tools.deploy.errors import (
     DeployConnectionNotFoundError,
@@ -133,12 +134,20 @@ class _BaseDeployTool(GovernedConnectionTool[DeployApiClient, DeployToolsRuntime
             The resolved deploy connection.
 
         Raises:
+            DeployToolArgumentError: The arguments are not a deploy shape.
             DeployTargetNotAllowedError: The target is not allowlisted.
             DeployConnectionNotFoundError: No such connection.
             DeploySetupRequiredError: The connection exists but is not a
                 usable deploy target yet.
         """
-        target = str(getattr(args, "target", ""))
+        # Narrowed rather than read via ``getattr(..., "")``: every deploy
+        # args model declares a required ``target``, so a renamed or removed
+        # field is a programming defect and must fail loudly here instead of
+        # degrading into a governance denial that looks like a real refusal.
+        if not isinstance(args, DeployReleaseArgs | DeployRunArgs):
+            msg = "deploy tool received unexpected arguments"
+            raise DeployToolArgumentError(msg)
+        target = str(args.target)
         # Checked first, and before any credential is read: an agent
         # naming a target nobody approved must not cause a secret to be
         # brokered, let alone a request to be made.

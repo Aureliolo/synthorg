@@ -196,7 +196,7 @@ class VercelDeployClient(BaseDeployClient):
             limit: Maximum number of deployments to return.
 
         Returns:
-            The deployment records.
+            The deployment records, scoped to the bound environment.
 
         Raises:
             DeployApiError: When the platform returns a non-list payload.
@@ -205,7 +205,15 @@ class VercelDeployClient(BaseDeployClient):
             "GET",
             _LIST_PATH,
             action="list deployments",
-            params={"app": str(self._project), "limit": limit},
+            # Filtered by target, not just project: without it a
+            # staging-bound client could enumerate production deployments
+            # (ids, states, URLs), which would leak across the very
+            # environment boundary the connection binding exists to hold.
+            params={
+                "app": str(self._project),
+                "target": self._target,
+                "limit": limit,
+            },
         )
         raise_for_deploy_status(resp, action="list deployments")
         payload = self._json_or_raise(resp, action="list deployments")
