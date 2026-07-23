@@ -40,6 +40,12 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         # capability toggle already tried (and failed) to build the
         # coordinator, leaving it broken until a manual restart.
         ("coordination", "decomposition_model"),
+        # The planning session's memory grant + digest are resolved by
+        # ``build_planning_memory`` when ``build_runtime_services`` (re)builds
+        # the coordinator; watch them so a toggle / budget change goes live on
+        # the next rebuild rather than waiting for an unrelated one or a restart.
+        ("memory", "planning_memory_recall_enabled"),
+        ("memory", "planning_memory_digest_budget"),
         ("design", "image_generation_enabled"),
         ("design", "image_model"),
         # The tool registry and the planning-agent grant bake in the native

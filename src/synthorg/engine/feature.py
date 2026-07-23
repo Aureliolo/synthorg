@@ -103,6 +103,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_stakes_router",
         "build_work_pipeline",
         "ForecastGate",
+        "ShipRetroCaptureService",
     ),
     depends_on=(),
 )

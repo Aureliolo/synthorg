@@ -41,6 +41,8 @@ from synthorg.engine.loop_protocol import (
 )
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.react_loop import ReactLoop
+from synthorg.memory.injection import MemoryInjectionStrategy
+from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_SESSION_COMPLETED,
@@ -105,6 +107,12 @@ class AgentSessionDecompositionConfig(BaseModel):
         default=2.0,
         gt=0.0,
         description="Per-session spend ceiling in the base currency",
+    )
+    memory_digest_budget: int = Field(
+        default=1000,
+        ge=0,
+        description="Token cap for the org/retro memory digest injected into "
+        "the planning brief; 0 injects nothing (the tool grant still applies)",
     )
 
 
@@ -196,6 +204,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         "_config",
         "_cost_tracker",
         "_fallback",
+        "_planning_memory",
         "_provider_selector",
         "_shutdown_checker",
         "_tool_provider",
@@ -210,6 +219,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         config: AgentSessionDecompositionConfig | None = None,
         cost_tracker: CostTrackerProtocol | None = None,
         shutdown_checker: ShutdownChecker | None = None,
+        planning_memory: MemoryInjectionStrategy | None = None,
     ) -> None:
         """Initialise the agent-session decomposition strategy.
 
@@ -231,6 +241,10 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             shutdown_checker: Optional callback returning ``True`` when a
                 graceful shutdown is in progress; the planning loop halts at
                 the next turn boundary when it fires.
+            planning_memory: Optional injection strategy that pre-seeds a
+                compact org-playbook / past-retro digest into the planning
+                brief, so the plan carries prior learnings even if the owner
+                never calls the recall tool. ``None`` skips the digest.
         """
         self._provider_selector = provider_selector
         self._fallback = fallback
@@ -238,6 +252,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         self._config = config or AgentSessionDecompositionConfig()
         self._cost_tracker = cost_tracker
         self._shutdown_checker = shutdown_checker
+        self._planning_memory = planning_memory
 
     @override
     def get_strategy_name(self) -> str:
@@ -332,7 +347,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             for observability).
         """
         invoker, granted_tools = self._build_invoker(task, owner, capture)
-        ctx = self._build_context(task, context, owner)
+        ctx = await self._build_context(task, context, owner)
         logger.info(
             DECOMPOSITION_SESSION_STARTED,
             task_id=str(task.id),
@@ -422,7 +437,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             )
         return tuple(kept)
 
-    def _build_context(
+    async def _build_context(
         self,
         task: Task,
         context: DecompositionContext,
@@ -430,9 +445,14 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
     ) -> AgentContext:
         """Build the owner-persona planning context for the session.
 
+        Between the persona system prompt and the planning brief, a compact
+        org-playbook / past-retro digest is spliced in when a planning-memory
+        strategy is wired, so the plan carries prior learnings even if the
+        owner never calls the recall tool.
+
         Returns:
-            An :class:`AgentContext` carrying the owner persona and the
-            fenced planning brief.
+            An :class:`AgentContext` carrying the owner persona, an optional
+            memory digest, and the fenced planning brief.
         """
         ctx = AgentContext.from_identity(owner, max_turns=self._config.max_turns)
         ctx = ctx.with_message(
@@ -441,12 +461,40 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 content=render_agent_system_prompt(owner),
             ),
         )
+        for message in await self._recall_digest(task, owner):
+            ctx = ctx.with_message(message)
         return ctx.with_message(
             ChatMessage(
                 role=MessageRole.USER,
                 content=self._planning_brief(task, context),
             ),
         )
+
+    async def _recall_digest(
+        self,
+        task: Task,
+        owner: AgentIdentity,
+    ) -> tuple[ChatMessage, ...]:
+        """Pre-retrieve the org/retro memory digest for the planning brief.
+
+        Best-effort: the injection strategy degrades gracefully on retrieval
+        failure, and a zero budget or an unwired strategy yields no messages.
+
+        Returns:
+            The digest messages to splice in, possibly empty.
+        """
+        if self._planning_memory is None or self._config.memory_digest_budget <= 0:
+            return ()
+        request = MemoryRecallRequest(
+            agent_id=NotBlankStr(str(owner.id)),
+            task_title=NotBlankStr(task.title),
+            objective=task.description,
+            role=owner.role,
+            department=owner.department,
+            project_id=task.project,
+            token_budget=self._config.memory_digest_budget,
+        )
+        return await self._planning_memory.prepare_messages(request)
 
     def _planning_brief(self, task: Task, context: DecompositionContext) -> str:
         """Compose the planning instruction with the fenced objective.

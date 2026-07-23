@@ -87,6 +87,53 @@ class TestOrgFactRepository:
         assert as_uuid("hit1") in ids
         assert as_uuid("miss1") not in ids
 
+    async def test_query_matches_a_shared_term_in_a_composed_query(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A sentence-shaped query matches a fact sharing one of its terms.
+
+        This is the org-recall path a working agent drives: the query is
+        composed from the whole work context, so a fact that shares a single
+        salient term must surface even though the fact contains nothing near
+        the whole sentence as a substring.
+        """
+        await backend.org_facts.save(
+            _fact("hit", "Checkout code changes require two approvals."),
+        )
+        await backend.org_facts.save(
+            _fact("miss", "Deployments run nightly from the release branch."),
+        )
+        rows = await backend.org_facts.query(
+            text="checkout resilience. Harden the checkout flow.",
+        )
+        ids = {f.id for f in rows}
+        assert as_uuid("hit") in ids
+        assert as_uuid("miss") not in ids
+
+    async def test_query_ranks_by_term_match_count(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A fact matching more query terms ranks ahead of one matching fewer."""
+        await backend.org_facts.save(
+            _fact("both", "checkout resilience is our standard."),
+        )
+        await backend.org_facts.save(
+            _fact("one", "checkout uses the shared cart service."),
+        )
+        rows = await backend.org_facts.query(text="checkout resilience playbook")
+        ids = [f.id for f in rows]
+        assert ids.index(as_uuid("both")) < ids.index(as_uuid("one"))
+
+    async def test_query_with_only_stopwords_falls_back_to_substring(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A query carrying no salient term still matches as a literal phrase."""
+        await backend.org_facts.save(
+            _fact("phrase", "the and for"),
+        )
+        rows = await backend.org_facts.query(text="the and for")
+        assert as_uuid("phrase") in {f.id for f in rows}
+
     async def test_list_by_category(self, backend: PersistenceBackend) -> None:
         await backend.org_facts.save(
             _fact("lp1", category=OrgFactCategory.CORE_POLICY),
@@ -139,14 +186,90 @@ class TestOrgFactRepository:
                 _fact(f"qoff_{i}", "Common ship statement."),
             )
 
-        page = await backend.org_facts.query(
-            text="ship",
-            limit=10,
-            offset=1,
-        )
+        # Anchor against the actual ordering rather than only the count, so a
+        # wrong-direction or off-by-one offset would be caught.
+        full_ids = [f.id for f in await backend.org_facts.query(text="ship", limit=10)]
+        page = await backend.org_facts.query(text="ship", limit=10, offset=1)
 
-        # All three match; offset=1 drops the first result.
-        assert len(page) == 2
+        assert [f.id for f in page] == full_ids[1:]
+
+    async def test_query_stopword_fallback_is_case_insensitive(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The no-salient-term literal fallback matches case-insensitively.
+
+        Pinned across both backends: SQLite ``LIKE`` is case-insensitive by
+        default but Postgres is not, so the fallback must ``LOWER`` both sides
+        or a mixed-case literal search would diverge by backend.
+        """
+        await backend.org_facts.save(_fact("cased", "AB CD"))
+        rows = await backend.org_facts.query(text="ab cd")
+        assert as_uuid("cased") in {f.id for f in rows}
+
+    async def test_term_match_folds_unicode_case(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A salient term matches across case AND Unicode composition, both backends.
+
+        Both backends persist and query the shared NFC-normalised, case-folded
+        ``content_normalized`` form, never SQL ``LOWER`` (SQLite's is ASCII-only).
+        The query is decomposed (NFD) uppercase, so a match proves NFC composition
+        as well as case folding: a regression dropping the NFC step would leave the
+        decomposed query unable to match the composed stored content.
+        """
+        await backend.org_facts.save(_fact("accented", "École de commerce durable"))
+        # NFD "E<combining acute>COLE" normalises (NFC + casefold) to "école".
+        rows = await backend.org_facts.query(text="ÉCOLE")
+        assert as_uuid("accented") in {f.id for f in rows}
+
+    async def test_literal_fallback_folds_unicode_case(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The no-salient-term fallback also folds accented case on both backends."""
+        # "Ça" is a 2-char token -> no salient term -> literal fallback branch.
+        # Query a differently-cased form ("ça" vs stored "Ça") so a match proves
+        # case folding, not a same-case substring hit.
+        await backend.org_facts.save(_fact("fallback", "Number Ça counts"))
+        rows = await backend.org_facts.query(text="ça")
+        assert as_uuid("fallback") in {f.id for f in rows}
+
+    async def test_empty_text_is_match_all_ordered_by_recency(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """``text=""`` matches all facts, ordered by recency then fact id."""
+        older = datetime(2026, 7, 19, tzinfo=UTC)
+        newer = datetime(2026, 7, 20, tzinfo=UTC)
+        await backend.org_facts.save(_fact("older", "first fact", at=older))
+        await backend.org_facts.save(_fact("newer", "second fact", at=newer))
+        rows = await backend.org_facts.query(text="")
+        ids = [f.id for f in rows]
+        assert {as_uuid("older"), as_uuid("newer")} <= set(ids)
+        # Newest first (recency ordering), not the literal-fallback ranking.
+        assert ids.index(as_uuid("newer")) < ids.index(as_uuid("older"))
+
+    async def test_query_by_category_and_text_combined(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """Category and text filters compose (AND), pinning placeholder order."""
+        await backend.org_facts.save(
+            _fact(
+                "conv",
+                "checkout hardening convention",
+                category=OrgFactCategory.CONVENTION,
+            ),
+        )
+        await backend.org_facts.save(
+            _fact(
+                "pol", "checkout hardening policy", category=OrgFactCategory.CORE_POLICY
+            ),
+        )
+        rows = await backend.org_facts.query(
+            categories=frozenset({OrgFactCategory.CONVENTION}),
+            text="checkout hardening",
+        )
+        ids = {f.id for f in rows}
+        assert as_uuid("conv") in ids
+        assert as_uuid("pol") not in ids
 
     async def test_delete_retracts_fact(self, backend: PersistenceBackend) -> None:
         await backend.org_facts.save(_fact("doomed"))

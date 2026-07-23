@@ -26,6 +26,7 @@ from synthorg.engine.routing.topology_selector import TopologySelector
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
 from synthorg.engine.workspace.git_backend import GitBackend
 from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
+from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import (
     COORDINATION_FACTORY_BUILT,
@@ -141,6 +142,8 @@ def build_coordinator(  # noqa: PLR0913
     decomposition_cost_tracker: CostTrackerProtocol | None = None,
     agent_session_max_turns: int | None = None,
     agent_session_cost_ceiling: float | None = None,
+    planning_memory: MemoryInjectionStrategy | None = None,
+    agent_session_memory_digest_budget: int | None = None,
     task_engine: TaskEngine | None = None,
     workspace_strategy: WorkspaceIsolationStrategy | None = None,
     workspace_config: WorkspaceIsolationConfig | None = None,
@@ -202,6 +205,12 @@ def build_coordinator(  # noqa: PLR0913
             ceiling for the agent-session planning loop (``coordination
             .decomposition_agent_cost_ceiling``); ``None`` uses the strategy
             default.
+        planning_memory: Optional injection strategy that pre-seeds the
+            org/retro memory digest into the owner-run planning brief; ``None``
+            plans without a digest.
+        agent_session_memory_digest_budget: Optional token cap for that digest
+            (``memory.planning_memory_digest_budget``); ``None`` uses the
+            strategy default, ``0`` injects nothing.
         task_engine: Optional task engine for parent status updates.
         workspace_strategy: Optional workspace isolation strategy.
         workspace_config: Optional workspace isolation config.
@@ -256,6 +265,8 @@ def build_coordinator(  # noqa: PLR0913
         shutdown_checker=session_shutdown_checker,
         agent_session_max_turns=agent_session_max_turns,
         agent_session_cost_ceiling=agent_session_cost_ceiling,
+        planning_memory=planning_memory,
+        agent_session_memory_digest_budget=agent_session_memory_digest_budget,
     )
     decomposition_service = DecompositionService(strategy, classifier)
 

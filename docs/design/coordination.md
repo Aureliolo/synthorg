@@ -680,14 +680,30 @@ The services import `AppState` for re-use of the existing 3-level resolution (`s
 The owner-run decomposition session (`AgentSessionDecompositionStrategy`) can be
 granted live tools through a `DecompositionToolProvider`. The concrete
 `PlanningToolProvider` (`src/synthorg/engine/decomposition/planning_tool_provider.py`)
-grants the read-only `web_search` tool whenever a web-search provider is
-configured, so the owner researches with real search results before drafting a
-plan instead of reasoning purely from priors. It is constructed in
-`_build_runtime_coordinator` from the single boot-resolved web-search provider
-and threaded into `build_coordinator` as `decomposition_tool_provider`; when no
-provider is configured the grant is simply absent (the strategy falls back to
-its prior-only planning). Only read-only action types survive the planning
-session's tool filter, so the grant cannot introduce a write capability.
+grants:
+
+- the read-only `web_search` tool whenever a web-search provider is configured,
+  so the owner researches with real search results before drafting a plan; and
+- a read-only `search_memory` tool whenever an agent-memory backend is wired and
+  `memory.planning_memory_recall_enabled` is on, fusing the owner's own memory
+  with company-wide org knowledge so a plan builds on past retros and org
+  playbooks rather than reasoning purely from priors.
+
+It is constructed in `_build_runtime_coordinator` and threaded into
+`build_coordinator` as `decomposition_tool_provider`; when neither a web-search
+provider nor a memory backend is present the grant is simply absent (the
+strategy falls back to its prior-only planning). Only read-only action types
+(`EXTERNAL_DATA_REQUEST` / `memory:read`) survive the planning session's tool
+filter, so the grant cannot introduce a write capability.
+
+**Memory digest.** Because a tool grant only helps if the model calls it, the
+session *also* pre-seeds a compact org / retro digest directly into the planning
+brief: `_build_runtime_coordinator` builds a `ContextInjectionStrategy` over the
+same memory + org backends and threads it into the strategy as `planning_memory`
+(with `memory.planning_memory_digest_budget` as its token cap). The digest is
+spliced between the owner's persona prompt and the fenced brief, so prior
+learnings reach the plan even when the owner never calls `search_memory`. A zero
+budget injects nothing (the tool grant still applies).
 
 ## See Also
 

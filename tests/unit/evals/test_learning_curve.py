@@ -11,6 +11,7 @@ scorer are real.
 """
 
 import json
+import shutil
 from pathlib import Path
 from typing import Final
 
@@ -113,16 +114,31 @@ def _curve_judge() -> ScriptedJudge:
     return ScriptedJudge(responses=responses, default_scores={"correctness": 0.0})
 
 
+def _single_brief_suite(tmp_path: Path) -> Path:
+    """Return a suite directory holding only the brief this curve exercises.
+
+    The deterministic strategy keys solely on the ``checkout resilience`` title,
+    so every other brief in the real suite scores zero in every round: they
+    multiply the runtime by the suite size without touching a single assertion.
+    """
+    suite = tmp_path / "suite"
+    suite.mkdir()
+    brief = "checkout_resilience.yaml"
+    shutil.copy(_BRIEFS / brief, suite / brief)
+    return suite
+
+
 async def _run_round(
     out_dir: Path,
     *,
+    brief_suite: Path,
     memory_backend: InMemoryBackend | None,
     procedural_config: ProceduralMemoryConfig,
 ) -> int:
     """Run one benchmark round and return the suite total."""
     scorecard = await run_benchmark_async(
         company_config=_REFERENCE,
-        brief_suite=_BRIEFS,
+        brief_suite=brief_suite,
         out_dir=out_dir,
         anchors_dir=_ANCHORS,
         provider=ScriptedDriver("benchmark-provider", strategy=_CurveStrategy()),
@@ -139,9 +155,12 @@ async def test_curve_rises_with_learning(tmp_path: Path) -> None:
     await backend.connect()
     config = ProceduralMemoryConfig(model="test-small-001")
 
+    suite = _single_brief_suite(tmp_path)
+
     totals = [
         await _run_round(
             tmp_path / f"round-{index}",
+            brief_suite=suite,
             memory_backend=backend,
             procedural_config=config,
         )
@@ -157,10 +176,12 @@ async def test_curve_rises_with_learning(tmp_path: Path) -> None:
 async def test_curve_is_flat_when_learning_disabled(tmp_path: Path) -> None:
     """With procedural memory disabled, the score stays flat (no lesson recall)."""
     disabled = ProceduralMemoryConfig(model="test-small-001", enabled=False)
+    suite = _single_brief_suite(tmp_path)
 
     totals = [
         await _run_round(
             tmp_path / f"round-{index}",
+            brief_suite=suite,
             memory_backend=None,
             procedural_config=disabled,
         )

@@ -1801,7 +1801,12 @@ CREATE TABLE org_facts_snapshot (
     author_autonomy_level TEXT,
     created_at TEXT NOT NULL,
     retracted_at TEXT,
-    version INTEGER NOT NULL
+    version INTEGER NOT NULL,
+    -- Shared case/Unicode-folded search form of content (Python
+    -- normalize_for_search): both backends query this, never SQL LOWER, so
+    -- accented term matching stays identical across SQLite and Postgres.
+    -- Appended last to match the ALTER TABLE ADD COLUMN in its revision.
+    content_normalized TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX idx_snapshot_category ON org_facts_snapshot (category);
 CREATE INDEX idx_snapshot_active ON org_facts_snapshot (retracted_at)

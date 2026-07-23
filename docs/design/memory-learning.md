@@ -158,6 +158,86 @@ future pruning).
 
 ---
 
+## Retrospective Capture on SHIP
+
+Procedural auto-generation (above) learns from a single task's failure or
+success. The **retrospective** learns from a whole finished *objective*: when
+the initiative rollup moves a project to `COMPLETED`, the accountable lead
+distils what the organisation should carry forward, closing the loop from
+finished work back into standing memory. Without it a later run of the same
+objective would start from nothing.
+
+### The distillation session
+
+Judging a completed objective and distilling reusable learnings is a
+non-trivial chokepoint, so it is an **owner-run agent session**, not a single
+completion call (the same principle as owner-run planning). `RetroDistiller`
+(`engine/initiative/retro_session.py`) runs a bounded `ReactLoop` **as the
+project lead**: the lead is granted a read-only `search_memory` tool (fusing its
+own memory with org knowledge, via `build_memory_recall_tool`) so it can recall
+prior retros and avoid restating them, is fed a fenced summary of the objective,
+its acceptance criteria, and the completed plan items, and finally calls the
+terminal `submit_retrospective` tool. The session is bounded by a turn cap, a
+per-session cost ceiling, and a wall-clock timeout; it runs on the lead's own
+bound provider (the explicit `providers.default_provider` when that is
+unresolvable). When no lead is staffed the most senior team member stands in, so
+an owned initiative always has an accountable author.
+
+### The write side and its governance
+
+`submit_retrospective` yields a `RetrospectiveDraft` of `{summary, org_learnings,
+agent_learnings}`, written by `engine/initiative/retro_writes.py`:
+
+- **Org learnings** are reusable, company-wide lessons, written as
+  `PROCEDURE` / `CONVENTION` org facts (the taxonomy as designed, never
+  `CORE_POLICY`, which stays human-only). The retrospective is a
+  system-initiated write authored in the lead's name for provenance (like the
+  ontology-sync write path), so its governance is the org-memory **category
+  gate**, not the per-agent `memory.write` tool permission that gates an agent
+  calling the write tool directly: a retrospective may only write the
+  agent-writable `PROCEDURE` / `CONVENTION` categories, never core policy. The
+  bound is the category restriction plus redaction, write-gate dedup,
+  append-only audit, and the `retro_capture_enabled` kill switch. Direct writes
+  are the default and there is no proposal queue in the path (the loop closes
+  without a human).
+- **Agent learnings** are per-contributor lessons, written as `EPISODIC` entries
+  into each member's own memory, and only for agents actually on the initiative
+  (a hallucinated agent id lands nowhere).
+
+Every entry is redacted at the store boundary, deduped by the write gate, and
+tagged `retro` + `objective:<uuid5(project_id)>`. Writes are per-item
+best-effort: one refused or failed learning never loses the rest.
+
+### Idempotency and isolation from the loop
+
+Capture fires on the edge a project first reaches `COMPLETED`
+(`ProjectRollupService._maybe_capture_retro`), and that edge is derived from
+persisted project status, not from in-memory bookkeeping: the project row is
+already `COMPLETED` before the trigger runs, so every later recompute reads
+`before == COMPLETED` and no longer sees an edge. A process that restarts after
+(or during) a capture therefore cannot re-run it, and a redelivered completion
+event changes nothing. Two plans of one project completing together are
+collapsed by an in-flight guard keyed on the project id, and an org-memory scan
+for the objective's `objective:` tag is a secondary guard for the one remaining
+window: two replicas recomputing the same completion concurrently, each reading
+the pre-write status.
+
+The cost of that design is on the recovery side, not the duplication side: a
+hard crash mid-capture loses that objective's retrospective, since nothing
+re-triggers it. Graceful shutdown does not, because the runner drains in-flight
+captures before disconnecting the memory backends. Because the rollup is a
+best-effort, bounded-queue observer, capture runs **detached** on a tracked
+background task with the wall-clock ceiling, so it never blocks or fails task
+processing.
+
+Wired at boot by `api/lifecycle_helpers/project_rollup_wiring.py` (only when both
+the agent-memory and org-memory backends are present) and gated by
+`memory.retro_capture_enabled` (default on, hot-reloadable), with
+`memory.retro_session_max_turns` / `_cost_ceiling` / `_timeout_seconds` tuning the
+session.
+
+---
+
 ## Memory Injection Strategies
 
 Agent memory reaches agents through pluggable injection strategies behind the
@@ -189,7 +269,7 @@ the agent during execution.
     When `fusion_strategy: rrf` is configured, the pipeline runs both dense and BM25 sparse
     search in parallel and fuses results:
 
-    1. Dense search: `MemoryBackend.retrieve()` for personal, `SharedKnowledgeStore.search_shared()` for shared (in parallel)
+    1. Personal dense search `MemoryBackend.retrieve()` and shared org search `SharedKnowledgeStore.search_shared()` run in parallel. Personal search is dense vector; the org store's `query()` is a lexical term-match (tokenised OR-of-`LIKE`, ranked by distinct-term match count), not a dense/embedding search.
     2. Sparse BM25 search: `MemoryBackend.retrieve_sparse()` for personal (shared sparse disabled until `SharedKnowledgeStore` adds the method)
     3. Fuse via `fuse_ranked_lists()` with configurable `rrf_k` smoothing constant
     4. Post-RRF `min_relevance` filter on `combined_score`

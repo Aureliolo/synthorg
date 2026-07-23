@@ -1,7 +1,11 @@
 """Tests for the model tier-assignment REST endpoints."""
 
-import pytest
+from collections.abc import AsyncIterator
 
+import pytest
+from litestar import Litestar
+
+from synthorg.api.auth.service import AuthService
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig, RootConfig
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
@@ -9,6 +13,7 @@ from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
+    _seed_test_users,
     make_auth_headers,
 )
 
@@ -17,16 +22,30 @@ _CEO = make_auth_headers("ceo")
 _OBSERVER = make_auth_headers("observer")
 
 
-def _build_client(
-    *,
+@pytest.fixture(scope="class")
+def tier_settings(fake_persistence: FakePersistenceBackend) -> SettingsService:
+    """The settings service the shared app is built on."""
+    return SettingsService(
+        repository=fake_persistence.settings,
+        registry=get_registry(),
+    )
+
+
+@pytest.fixture(scope="class")
+def tier_app(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
-) -> LoopAsyncClient:
-    """Build a client with one provider (test-provider / test-small-001)."""
-    from synthorg.api.auth.service import AuthService
+    auth_service: AuthService,
+    tier_settings: SettingsService,
+) -> Litestar:
+    """One provider (test-provider / test-small-001), built once per class.
+
+    Assembling the app dominates this file's runtime and every case wants the
+    same one-provider company, so it is built once and ``_reset_tier_state``
+    restores the mutable state each case depends on.
+    """
     from synthorg.budget.tracker import CostTracker
     from tests._shared import build_test_app as create_app
-    from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
 
     config = RootConfig(
         company_name="test",
@@ -38,33 +57,48 @@ def _build_client(
             ),
         },
     )
-    auth_service: AuthService = _make_test_auth_service()
-    _seed_test_users(fake_persistence, auth_service)
-    settings_service = SettingsService(
-        repository=fake_persistence.settings,
-        registry=get_registry(),
-    )
-    app = create_app(
+    return create_app(
         config=config,
         persistence=fake_persistence,
         message_bus=fake_message_bus,
         cost_tracker=CostTracker(),
         auth_service=auth_service,
-        settings_service=settings_service,
+        settings_service=tier_settings,
+        # The persistence and bus are session-scoped and shared with every
+        # other API test, so this app must not disconnect them on teardown.
+        _skip_lifecycle_shutdown=True,
     )
-    return LoopAsyncClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _reset_tier_state(
+    fake_persistence: FakePersistenceBackend,
+    auth_service: AuthService,
+    tier_settings: SettingsService,
+) -> None:
+    """Undo tier overrides / classifier writes the shared app persisted."""
+    fake_persistence.clear()
+    _seed_test_users(fake_persistence, auth_service)
+    tier_settings._cache.clear()
+
+
+@pytest.fixture
+async def client(tier_app: Litestar) -> AsyncIterator[LoopAsyncClient]:
+    """A fresh transport per test, bound to the shared app.
+
+    Entered as a context manager so the ASGI lifespan runs on this test's loop
+    and the transport is closed afterwards.
+    """
+    async with LoopAsyncClient(tier_app) as entered:
+        yield entered
 
 
 @pytest.mark.unit
 class TestTierAssignmentsApi:
     async def test_list_returns_heuristic_assignment(
         self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
+        client: LoopAsyncClient,
     ) -> None:
-        client = _build_client(
-            fake_persistence=fake_persistence, fake_message_bus=fake_message_bus
-        )
         resp = await client.get(_BASE, headers=_CEO)
         assert resp.status_code == 200
         assignments = resp.json()["data"]["assignments"]
@@ -77,12 +111,8 @@ class TestTierAssignmentsApi:
 
     async def test_override_then_clear_round_trips(
         self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
+        client: LoopAsyncClient,
     ) -> None:
-        client = _build_client(
-            fake_persistence=fake_persistence, fake_message_bus=fake_message_bus
-        )
         put = await client.put(
             f"{_BASE}/test-provider/test-small-001",
             json={"tier": "large", "reason": "manual"},
@@ -104,12 +134,8 @@ class TestTierAssignmentsApi:
 
     async def test_override_unknown_model_is_404(
         self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
+        client: LoopAsyncClient,
     ) -> None:
-        client = _build_client(
-            fake_persistence=fake_persistence, fake_message_bus=fake_message_bus
-        )
         resp = await client.put(
             f"{_BASE}/test-provider/ghost-model",
             json={"tier": "large"},
@@ -119,12 +145,8 @@ class TestTierAssignmentsApi:
 
     async def test_override_unknown_provider_is_404(
         self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
+        client: LoopAsyncClient,
     ) -> None:
-        client = _build_client(
-            fake_persistence=fake_persistence, fake_message_bus=fake_message_bus
-        )
         resp = await client.put(
             f"{_BASE}/ghost-provider/test-small-001",
             json={"tier": "large"},
@@ -134,12 +156,8 @@ class TestTierAssignmentsApi:
 
     async def test_recommend_without_classifier_is_409(
         self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
+        client: LoopAsyncClient,
     ) -> None:
-        client = _build_client(
-            fake_persistence=fake_persistence, fake_message_bus=fake_message_bus
-        )
         resp = await client.post(
             f"{_BASE}/test-provider/test-small-001/recommend", headers=_CEO
         )
@@ -148,12 +166,8 @@ class TestTierAssignmentsApi:
 
     async def test_classifier_model_round_trips_enabled(
         self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
+        client: LoopAsyncClient,
     ) -> None:
-        client = _build_client(
-            fake_persistence=fake_persistence, fake_message_bus=fake_message_bus
-        )
         get = await client.get(f"{_BASE}/classifier-model", headers=_CEO)
         assert get.status_code == 200
         assert get.json()["data"]["enabled"] is False
@@ -177,12 +191,8 @@ class TestTierAssignmentsApi:
 
     async def test_write_requires_manager_role(
         self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
+        client: LoopAsyncClient,
     ) -> None:
-        client = _build_client(
-            fake_persistence=fake_persistence, fake_message_bus=fake_message_bus
-        )
         resp = await client.put(
             f"{_BASE}/test-provider/test-small-001",
             json={"tier": "large"},

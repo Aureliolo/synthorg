@@ -53,6 +53,9 @@ _ALLOWLIST: frozenset[str] = frozenset(
         # strict typed args model would duplicate that schema and reject the
         # retry-friendly partial submissions the parser is designed to accept.
         "synthorg.engine.plan_review.review_tool.SubmitPlanReviewTool",
+        # A typed args model would reject the retry-friendly partial submissions
+        # the parser accepts and lets the lead correct and resubmit.
+        "synthorg.engine.initiative.retro_session.SubmitRetrospectiveTool",
     }
 )
 

@@ -39,6 +39,10 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_WRITE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._org_fact_query import (
+    build_text_query,
+    normalize_for_search,
+)
 from synthorg.persistence._shared import normalize_utc, validate_pagination_args
 from synthorg.persistence._shared.org_fact_marshalling import (
     row_to_operation_log_entry,
@@ -48,7 +52,10 @@ from synthorg.persistence._shared.org_fact_marshalling import (
     tags_to_json,
 )
 from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_FACTS
-from synthorg.persistence.postgres._org_fact_sql import SNAPSHOT_AT_SQL
+from synthorg.persistence.postgres._org_fact_sql import (
+    SAVE_SNAPSHOT_UPSERT_SQL,
+    SNAPSHOT_AT_SQL,
+)
 
 logger = get_logger(__name__)
 
@@ -145,27 +152,11 @@ class PostgresOrgFactRepository:
                 )
                 async with conn.cursor() as cur:
                     await cur.execute(
-                        "INSERT INTO org_facts_snapshot "
-                        "(fact_id, content, category, tags, "
-                        "author_agent_id, author_role, "
-                        "author_is_human, "
-                        "author_autonomy_level, created_at, "
-                        "retracted_at, version) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s) "
-                        "ON CONFLICT (fact_id) DO UPDATE SET "
-                        "content=EXCLUDED.content, "
-                        "category=EXCLUDED.category, "
-                        "tags=EXCLUDED.tags, "
-                        "author_agent_id=EXCLUDED.author_agent_id, "
-                        "author_role=EXCLUDED.author_role, "
-                        "author_is_human=EXCLUDED.author_is_human, "
-                        "author_autonomy_level="
-                        "EXCLUDED.author_autonomy_level, "
-                        "retracted_at=NULL, "
-                        "version=EXCLUDED.version",
+                        SAVE_SNAPSHOT_UPSERT_SQL,
                         (
                             str(fact.id),
                             fact.content,
+                            normalize_for_search(fact.content),
                             fact.category.value,
                             tags_to_json(fact.tags),
                             fact.author.agent_id,
@@ -323,22 +314,19 @@ class PostgresOrgFactRepository:
             clauses.append(f"category IN ({placeholders})")
             params.extend(c.value for c in categories)
 
-        if text is not None:
-            escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            clauses.append("content LIKE %s ESCAPE '\\'")
-            params.append(f"%{escaped}%")
+        text_query = build_text_query(
+            text,
+            placeholder="%s",
+            int_cast="::int",
+            position_expr="POSITION(%s IN content_normalized)",
+        )
+        clauses.extend(text_query.where)
+        params.extend(text_query.where_params)
 
         where = f" WHERE {' AND '.join(clauses)}"
-        if text is not None:
-            order = (
-                "ORDER BY POSITION(LOWER(%s) IN LOWER(content)) ASC, "
-                "LENGTH(content) ASC, created_at DESC, fact_id ASC"
-            )
-            params.append(text)
-        else:
-            order = "ORDER BY created_at DESC, fact_id ASC"
+        params.extend(text_query.order_params)
         sql = (
-            f"SELECT * FROM org_facts_snapshot{where} {order} "  # noqa: S608
+            f"SELECT * FROM org_facts_snapshot{where} {text_query.order_by} "  # noqa: S608
             "LIMIT %s OFFSET %s"
         )
         params.extend([limit, offset])

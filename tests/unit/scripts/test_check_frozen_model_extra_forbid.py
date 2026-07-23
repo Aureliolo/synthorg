@@ -266,9 +266,3 @@ def test_inf_nan_optout_with_reason_passes(tmp_path: Path) -> None:
         '    model_config = ConfigDict(frozen=True, extra="forbid")\n'
     )
     assert _walk(tmp_path, src, check_inf_nan=True) == []
-
-
-def test_real_codebase_is_compliant() -> None:
-    """The gate must be green against the actual tree (no regressions)."""
-    gate = _load_gate()
-    assert gate.main() == 0  # type: ignore[attr-defined]

@@ -517,7 +517,8 @@
         "ManualDecompositionStrategy",
         "build_stakes_router",
         "build_work_pipeline",
-        "ForecastGate"
+        "ForecastGate",
+        "ShipRetroCaptureService"
       ],
       "mcp_tool_names": [
         "synthorg_tasks_list",
@@ -1469,6 +1470,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-21T21:26:47.437236Z",
+  "generated_at": "2026-07-22T18:03:44.927896Z",
   "schema_version": 1
 }

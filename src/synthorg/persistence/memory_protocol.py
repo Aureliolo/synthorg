@@ -94,14 +94,21 @@ class OrgFactRepository(Protocol):
         Args:
             categories: Optional frozenset of ``OrgFactCategory`` values.
                 If provided, only facts in these categories are returned.
-            text: Optional substring to search in fact content (case
-                sensitive; empty string matches all).
+            text: Optional text to search in fact content. Tokenised into
+                salient terms; a fact matches when it contains any term, ranked
+                by the number of distinct terms it matches (case-insensitive).
+                Text carrying no salient term (only stopwords / short tokens)
+                falls back to a single case-insensitive substring match; an
+                empty string matches all.
             limit: Maximum rows to return.
             offset: Rows to skip from the head of the ordering.
 
         Returns:
-            Active facts matching filters, ordered deterministically
-            (by fact_id ascending).
+            Active facts matching filters, ordered deterministically: for a
+            term query by descending match count, then ascending content
+            length, then descending recency, with ``fact_id`` ascending as the
+            final tie-break; category-only / match-all queries order by
+            descending recency then ``fact_id`` ascending.
 
         Raises:
             PersistenceError: If the operation fails.

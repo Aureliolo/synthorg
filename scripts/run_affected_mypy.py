@@ -203,10 +203,56 @@ def _mypy_env(base: dict[str, str] | None = None) -> dict[str, str]:
     return env
 
 
+# mypy exit code for an internal error / crash (distinct from 1, real type
+# errors). A ``--num-workers`` run can crash with this on Windows when a
+# worker's IPC pipe breaks (``WinError 233``) even on type-clean code -- a mypy
+# multiprocessing defect, not a type error -- so we retry such a crash
+# single-process, whose result is authoritative.
+_MYPY_INTERNAL_ERROR: Final[int] = 2
+
+
+def _invoke_mypy(
+    paths: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    extra: list[str] | None = None,
+) -> int:
+    """Run mypy over *paths*, retrying single-process on an internal-error crash.
+
+    The first pass uses ``--num-workers`` (matching CI) with the worker-timeout
+    sitecustomize wired via :func:`_mypy_env`, so a slow worker widens its IPC
+    timeout rather than crashing. If it still exits with the internal-error code
+    (a crash, never a type-error result), it is retried without ``--num-workers``
+    so a Windows worker-IPC crash cannot block a type-clean push; a real type
+    error (exit 1) is returned as-is, never masked.
+    """
+    extra = extra or []
+    run_env = _mypy_env(env)
+    base = [sys.executable, "-m", "mypy"]
+    first = subprocess.run(
+        [*base, *_MYPY_WORKERS, *extra, *paths],
+        cwd=_REPO_ROOT,
+        check=False,
+        env=run_env,
+    )
+    if first.returncode != _MYPY_INTERNAL_ERROR:
+        return first.returncode
+    print(
+        "mypy crashed under --num-workers (exit 2); retrying single-process",
+        file=sys.stderr,
+    )
+    retry = subprocess.run(
+        [*base, *extra, *paths],
+        cwd=_REPO_ROOT,
+        check=False,
+        env=run_env,
+    )
+    return retry.returncode
+
+
 def _run_mypy(paths: list[str]) -> int:
     """Run mypy with the given paths."""
-    cmd = [sys.executable, "-m", "mypy", *_MYPY_WORKERS, *paths]
-    return subprocess.run(cmd, cwd=_REPO_ROOT, check=False, env=_mypy_env()).returncode
+    return _invoke_mypy(paths)
 
 
 def _run_scripts_mypy() -> int:
@@ -217,16 +263,8 @@ def _run_scripts_mypy() -> int:
     repo plus ``--explicit-package-bases`` to resolve to canonical
     package names. Mirrors the second invocation in the CI type-check job.
     """
-    cmd = [
-        sys.executable,
-        "-m",
-        "mypy",
-        *_MYPY_WORKERS,
-        "--explicit-package-bases",
-        "scripts/",
-    ]
-    env = _mypy_env({**os.environ, "MYPYPATH": str(_REPO_ROOT)})
-    return subprocess.run(cmd, cwd=_REPO_ROOT, check=False, env=env).returncode
+    env = {**os.environ, "MYPYPATH": str(_REPO_ROOT)}
+    return _invoke_mypy(["scripts/"], env=env, extra=["--explicit-package-bases"])
 
 
 def _run_full() -> int:

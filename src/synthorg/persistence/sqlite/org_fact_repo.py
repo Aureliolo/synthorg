@@ -38,6 +38,10 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_WRITE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._org_fact_query import (
+    build_text_query,
+    normalize_for_search,
+)
 from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
 from synthorg.persistence._shared.org_fact_marshalling import (
     row_to_operation_log_entry,
@@ -148,6 +152,7 @@ class SQLiteOrgFactRepository:
         # transaction holding the write lock.
         created_at_iso = format_iso_utc(fact.created_at)
         tags_json = tags_to_json(fact.tags)
+        content_normalized = normalize_for_search(fact.content)
         async with self._write_context():
             try:
                 await db.execute("BEGIN IMMEDIATE")
@@ -165,14 +170,15 @@ class SQLiteOrgFactRepository:
                 )
                 await db.execute(
                     "INSERT INTO org_facts_snapshot "
-                    "(fact_id, content, category, tags, "
+                    "(fact_id, content, content_normalized, category, tags, "
                     "author_agent_id, author_role, "
                     "author_is_human, "
                     "author_autonomy_level, created_at, "
                     "retracted_at, version) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?) "
                     "ON CONFLICT(fact_id) DO UPDATE SET "
                     "content=excluded.content, "
+                    "content_normalized=excluded.content_normalized, "
                     "category=excluded.category, "
                     "tags=excluded.tags, "
                     "author_agent_id=excluded.author_agent_id, "
@@ -185,6 +191,7 @@ class SQLiteOrgFactRepository:
                     (
                         str(fact.id),
                         fact.content,
+                        content_normalized,
                         fact.category.value,
                         tags_json,
                         fact.author.agent_id,
@@ -343,22 +350,19 @@ class SQLiteOrgFactRepository:
             clauses.append(f"category IN ({placeholders})")
             params.extend(c.value for c in categories)
 
-        if text is not None:
-            escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            clauses.append("content LIKE ? ESCAPE '\\'")
-            params.append(f"%{escaped}%")
+        text_query = build_text_query(
+            text,
+            placeholder="?",
+            int_cast="",
+            position_expr="INSTR(content_normalized, ?)",
+        )
+        clauses.extend(text_query.where)
+        params.extend(text_query.where_params)
 
         where = f" WHERE {' AND '.join(clauses)}"
-        if text is not None:
-            order = (
-                "ORDER BY INSTR(LOWER(content), LOWER(?)) ASC, "
-                "LENGTH(content) ASC, created_at DESC, fact_id ASC"
-            )
-            params.append(text)
-        else:
-            order = "ORDER BY created_at DESC, fact_id ASC"
+        params.extend(text_query.order_params)
         sql = (
-            f"SELECT * FROM org_facts_snapshot{where} {order} "  # noqa: S608
+            f"SELECT * FROM org_facts_snapshot{where} {text_query.order_by} "  # noqa: S608
             "LIMIT ? OFFSET ?"
         )
         params.extend([limit, offset])

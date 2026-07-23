@@ -145,6 +145,110 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
+        key="retro_capture_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Whether a completed objective's lead distils a retrospective into"
+            " org and agent memory. On means finished work feeds the standing"
+            " organisation, so a later objective builds on it; off leaves the"
+            " loop open. Re-read per objective, so a change applies immediately."
+        ),
+        group="Learning",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="retro_session_max_turns",
+        type=SettingType.INTEGER,
+        default="8",
+        description=(
+            "Hard turn cap for the SHIP-time retrospective session the lead"
+            " runs. Higher lets the lead recall and self-review more before"
+            " submitting, at more cost per objective."
+        ),
+        group="Learning",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=50,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="retro_session_cost_ceiling",
+        type=SettingType.FLOAT,
+        default="1.0",
+        description=(
+            "Per-session spend ceiling (base currency) for the retrospective"
+            " session; it halts once accumulated cost reaches this."
+        ),
+        group="Learning",
+        level=SettingLevel.ADVANCED,
+        min_value=0.01,
+        max_value=100.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="retro_session_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="180.0",
+        description=(
+            "Wall-clock ceiling for one retrospective capture. A backstop to the"
+            " session's own cost and turn caps so a hung distillation cannot"
+            " occupy a background slot indefinitely."
+        ),
+        group="Learning",
+        level=SettingLevel.ADVANCED,
+        min_value=10.0,
+        max_value=1800.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="planning_memory_recall_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Whether the owner-run planning session recalls org playbooks, past"
+            " retros, and prior-initiative memory when decomposing an objective."
+            " On means plans build on what the organisation already learned; off"
+            " plans from priors only. Applied when the coordinator is (re)built."
+        ),
+        group="Learning",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="planning_memory_digest_budget",
+        type=SettingType.INTEGER,
+        default="1000",
+        description=(
+            "Token cap for the org/retro memory digest pre-seeded into the"
+            " planning brief. 0 injects no digest (the owner can still recall"
+            " with the search_memory tool). Applied when the coordinator is"
+            " (re)built."
+        ),
+        group="Learning",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=8000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
         key="consolidation_enabled",
         type=SettingType.BOOLEAN,
         default="true",
