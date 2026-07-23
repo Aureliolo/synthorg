@@ -191,7 +191,7 @@ class _Resolution:
 
 
 def _base_names(node: ast.ClassDef) -> list[str]:
-    """Return the referencable name of each of a class's bases.
+    """Return the referenceable name of each of a class's bases.
 
     Args:
         node: The class definition.
