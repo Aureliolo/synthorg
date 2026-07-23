@@ -75,6 +75,39 @@ package resolving a newer version, so the pin is a distinct control.
 
 `check_mcp_server_config_pinned.py` guards the validator against removal.
 
+## Destructive external-MCP auto-escalation
+
+Every MCP call already flows through the same `ToolInvoker` security
+interceptor as a native tool (there is no MCP bypass), but the built-in
+`DestructiveOpDetector` only recognises shell/SQL command *syntax*
+(`rm -rf`, `DROP TABLE`) embedded in string arguments. A third-party MCP
+call never carries that: its intent lives in the tool name
+(`mcp_github_delete_repository`) or a structured dispatch argument
+(`{"action": "delete_channel"}`), so a destructive third-party operation
+sailed through as a plain `comms:external` `ALLOW`.
+
+`MCPDestructiveOpDetector` (a `SecurityRule`, registered right after the
+shell detector, gated by `RuleEngineConfig.mcp_destructive_op_detection_enabled`)
+closes that gap. It fires only for `ToolCategory.MCP`, tokenises the tool
+name and string argument values, and **escalates** any call whose operation
+reads as destructive (delete / purge / revoke / terminate ...): HIGH, or
+CRITICAL for mass-destruction verbs. It only ever escalates, never
+auto-denies: a human, not a regex, makes the final call on a third-party
+operation, and escalation is the safe direction (an over-broad match costs
+a confirmation, never data). A rule-matched verdict is authoritative and
+bypasses the LLM fallback, which stays reserved for the low-confidence
+minority of unclassified MCP calls.
+
+A HIGH/CRITICAL `ESCALATE` verdict routes to the approval gate through the
+existing `_handle_escalation` -> `pending_escalations` -> `should_park`
+chain. That chain had a latent no-op: `ToolInvoker._check_security` skipped
+the escalation when a verdict reached it with no `approval_id` (an
+interceptor that never actually parked the call), yet still returned an
+"approval required" result, so the destructive call was blocked but the
+escalation was silently dropped instead of reaching a human. The invoker
+now **fails closed** on that combination (a loud error log plus a blocked
+result), so an unattributable escalation can never slip through unreviewed.
+
 ## Residual scope (tracked)
 
 - **Grant on demand.** The design intent is that a sensitive tool an
@@ -82,6 +115,3 @@ package resolving a newer version, so the pin is a distinct control.
   and then persisted onto the agent's `mcp_capabilities` so future use is
   seamless. The visibility layer above ships first; the request-then-
   persist flow layers on top of the existing approval gate.
-- **Rate limiting and destructive-call auto-escalation** on the external
-  MCP bridge reuse the existing security rules engine + LLM safety
-  classifier rather than a hand-authored per-server list.

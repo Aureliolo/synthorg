@@ -17,6 +17,7 @@ from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.engine.workflow.webhook_bridge import (
     WebhookEventBridge,
 )
+from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
 from synthorg.integrations.connections.catalog import (
     ConnectionCatalog,
 )
@@ -80,6 +81,10 @@ class IntegrationsStateSlice(BaseFeatureStateSlice):
     webhook_activity_service: WebhookActivityService | None = None
     webhook_receipt_service: WebhookReceiptService | None = None
     webhook_replay_protector: ReplayProtector | None = None
+    # Shared by the Slack notification sink (populates it at approval-notify
+    # time) and the inbound Socket-Mode consumer (resolves a threaded reply
+    # back to its approval); one instance so both sides see the same map.
+    inbound_thread_registry: InboundThreadRegistry | None = None
 
 
 def connection_catalog_of(app_state: AppStateSliceMixin) -> ConnectionCatalog:

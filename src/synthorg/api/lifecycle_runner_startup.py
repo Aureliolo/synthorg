@@ -24,6 +24,9 @@ from synthorg.api.lifecycle_helpers.bootstrap import (
     _maybe_bootstrap_agents,
     _maybe_promote_first_owner,
 )
+from synthorg.api.lifecycle_helpers.chat_inbound_wiring import (
+    start_chat_inbound_consumer,
+)
 from synthorg.api.lifecycle_helpers.config_apply import (
     _apply_bridge_config,
     _apply_security_timeout_interval,
@@ -690,6 +693,17 @@ async def _run_startup(  # noqa: PLR0913
         name="webhook-receipt-cleanup",
     )
     tasks.webhook_cleanup_task.add_done_callback(on_webhook_cleanup_done)
+    # Inbound Slack Socket-Mode consumer. Idempotent: stop a prior instance
+    # before starting a fresh one so consumers do not accumulate on lifespan
+    # re-entry. Inert until the operator enables it and binds a connection.
+    if tasks.chat_inbound_consumer is not None:
+        await _try_stop(
+            tasks.chat_inbound_consumer.stop(),
+            API_APP_STARTUP,
+            "Failed to stop prior chat inbound consumer before restart",
+        )
+        tasks.chat_inbound_consumer = None
+    tasks.chat_inbound_consumer = await start_chat_inbound_consumer(app_state)
     # Idempotent: stop any prior health prober instance before starting a new
     # one so probers do not accumulate when the shared app re-enters lifespan.
     if tasks.health_prober is not None:

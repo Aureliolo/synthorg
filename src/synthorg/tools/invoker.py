@@ -395,6 +395,30 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         if verdict.verdict == SecurityVerdictType.ALLOW:
             return context, None
         if verdict.verdict == SecurityVerdictType.ESCALATE:
+            # An ESCALATE reaching the invoker has already been through the
+            # interceptor's escalation handler, which attaches the approval
+            # id when it parks the call for a human. A missing id means no
+            # human was ever reached (an interceptor that bypassed the
+            # escalation handler, or a regression): fail closed with a loud
+            # log rather than returning an "approval required" result that
+            # silently never parks -- the destructive call would otherwise
+            # slip through unreviewed.
+            if verdict.approval_id is None:
+                logger.error(
+                    TOOL_SECURITY_ESCALATED,
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    reason=verdict.reason,
+                    severity="unattributable_escalation_denied",
+                )
+                return context, ToolResult(
+                    tool_call_id=tool_call.id,
+                    content=(
+                        "Security escalation could not reach an approver "
+                        "(fail-closed). Tool execution blocked."
+                    ),
+                    is_error=True,
+                )
             logger.warning(
                 TOOL_SECURITY_ESCALATED,
                 tool_call_id=tool_call.id,
@@ -402,17 +426,16 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 reason=verdict.reason,
                 approval_id=verdict.approval_id,
             )
-            if verdict.approval_id is not None:
-                self._pending_escalations.append(
-                    EscalationInfo(
-                        approval_id=verdict.approval_id,
-                        tool_call_id=tool_call.id,
-                        tool_name=tool_call.name,
-                        action_type=tool.action_type,
-                        risk_level=verdict.risk_level,
-                        reason=verdict.reason,
-                    ),
-                )
+            self._pending_escalations.append(
+                EscalationInfo(
+                    approval_id=verdict.approval_id,
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    action_type=tool.action_type,
+                    risk_level=verdict.risk_level,
+                    reason=verdict.reason,
+                ),
+            )
             agent_reason = verdict.agent_visible_reason or verdict.reason
             msg = (
                 f"Security escalation: {agent_reason}. "

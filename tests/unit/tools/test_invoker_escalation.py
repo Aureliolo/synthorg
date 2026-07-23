@@ -147,6 +147,22 @@ class TestEscalateVerdict:
         await invoker.invoke(_make_tool_call())
         assert invoker.pending_escalations == ()
 
+    async def test_escalate_without_approval_id_fails_closed(self) -> None:
+        """An unattributable ESCALATE blocks the tool instead of no-op passing."""
+        interceptor = AsyncMock()
+        interceptor.evaluate_pre_tool = AsyncMock(
+            return_value=_verdict(
+                SecurityVerdictType.ESCALATE,
+                reason="Needs approval",
+            ),
+        )
+        invoker = _make_invoker(_StubTool(), security_interceptor=interceptor)
+        result = await invoker.invoke(_make_tool_call())
+        assert result.is_error is True
+        # The stub tool must never have run (its content is "ok").
+        assert result.content != "ok"
+        assert "fail-closed" in result.content.lower()
+
     async def test_not_populated_on_allow_verdict(self) -> None:
         interceptor = AsyncMock()
         interceptor.evaluate_pre_tool = AsyncMock(

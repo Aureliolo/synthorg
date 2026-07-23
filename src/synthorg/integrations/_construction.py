@@ -47,6 +47,7 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
             if tunnel is not None
             else None,
             webhook_event_bridge=integrations.webhook_event_bridge,
+            inbound_thread_registry=integrations.inbound_thread_registry,
             mcp_catalog_service=integrations.mcp_catalog_service,
             mcp_installations_repo=integrations.mcp_installations_repo,
         )

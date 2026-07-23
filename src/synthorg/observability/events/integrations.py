@@ -224,6 +224,15 @@ CHAT_API_RATE_LIMITED: Final[str] = "integrations.chat_api.rate_limited"
 CHAT_API_ENVELOPE_FAILED: Final[str] = "integrations.chat_api.envelope_failed"
 CHAT_API_CONFIG_INVALID: Final[str] = "integrations.chat_api.config_invalid"
 
+# -- Chat inbound (Socket-Mode) events -----------------------------------
+CHAT_INBOUND_CONNECTED: Final[str] = "integrations.chat_inbound.connected"
+CHAT_INBOUND_DISCONNECTED: Final[str] = "integrations.chat_inbound.disconnected"
+CHAT_INBOUND_EVENT_RECEIVED: Final[str] = "integrations.chat_inbound.event_received"
+CHAT_INBOUND_EVENT_ROUTED: Final[str] = "integrations.chat_inbound.event_routed"
+CHAT_INBOUND_EVENT_IGNORED: Final[str] = "integrations.chat_inbound.event_ignored"
+CHAT_INBOUND_DECODE_FAILED: Final[str] = "integrations.chat_inbound.decode_failed"
+CHAT_INBOUND_DISABLED: Final[str] = "integrations.chat_inbound.disabled"
+
 # -- Deploy platform API client events -----------------------------------
 DEPLOY_API_DEPLOYMENT_TRIGGERED: Final[str] = (
     "integrations.deploy_api.deployment_triggered"

@@ -32,6 +32,9 @@ from synthorg.security.rules.destructive_op_detector import (
     DestructiveOpDetector,
 )
 from synthorg.security.rules.engine import RuleEngine
+from synthorg.security.rules.mcp_destructive_op_detector import (
+    MCPDestructiveOpDetector,
+)
 from synthorg.security.rules.path_traversal_detector import (
     PathTraversalDetector,
 )
@@ -195,6 +198,7 @@ def _build_rule_engine(cfg: SecurityConfig) -> RuleEngine:
         | CredentialDetector
         | PathTraversalDetector
         | DestructiveOpDetector
+        | MCPDestructiveOpDetector
         | DataLeakDetector
         | CustomPolicyRule
     ] = [policy_validator]
@@ -214,6 +218,8 @@ def _build_rule_engine(cfg: SecurityConfig) -> RuleEngine:
         rules.append(PathTraversalDetector())
     if re_cfg.destructive_op_detection_enabled:
         rules.append(DestructiveOpDetector())
+    if re_cfg.mcp_destructive_op_detection_enabled:
+        rules.append(MCPDestructiveOpDetector())
     if re_cfg.data_leak_detection_enabled:
         rules.append(DataLeakDetector())
 

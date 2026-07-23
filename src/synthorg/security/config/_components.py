@@ -133,6 +133,9 @@ class RuleEngineConfig(BaseModel):
         credential_patterns_enabled: Detect credentials in arguments.
         data_leak_detection_enabled: Detect sensitive file paths / PII.
         destructive_op_detection_enabled: Detect destructive operations.
+        mcp_destructive_op_detection_enabled: Escalate destructive
+            external-MCP operations (delete/purge/revoke on a third-party
+            server) that the shell/SQL detector cannot see.
         path_traversal_detection_enabled: Detect path traversal attacks.
         max_argument_length: Maximum argument string length for scanning.
         custom_allow_bypasses_detectors: When ``True``, custom ALLOW
@@ -147,6 +150,7 @@ class RuleEngineConfig(BaseModel):
     credential_patterns_enabled: bool = True
     data_leak_detection_enabled: bool = True
     destructive_op_detection_enabled: bool = True
+    mcp_destructive_op_detection_enabled: bool = True
     path_traversal_detection_enabled: bool = True
     max_argument_length: int = Field(default=100_000, gt=0)
     custom_allow_bypasses_detectors: bool = False

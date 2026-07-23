@@ -140,6 +140,7 @@ async def _apply_notification_dispatcher_config(
         bridge_config=notif_bridge,
         config_resolver=config_resolver_of(app_state),
         connection_catalog=app_state.slice(IntegrationsStateSlice).connection_catalog,
+        thread_registry=app_state.slice(IntegrationsStateSlice).inbound_thread_registry,
     )
     # Start BEFORE swapping so a failed start leaves the live (already
     # running) dispatcher in place rather than installing a built-but-

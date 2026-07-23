@@ -306,6 +306,20 @@ _SLACK = ConnectionTypeMetadata(
             capture_mode=SecretCaptureMode.MASKED_FIELD,
             help_text="Used to verify inbound webhooks",
         ),
+        ConnectionFieldMetadata(
+            name=NotBlankStr("app_token"),
+            label=NotBlankStr("App-Level Token"),
+            input_type=FieldInputType.PASSWORD,
+            placement=FieldPlacement.CREDENTIAL,
+            required=False,
+            secret=True,
+            capture_mode=SecretCaptureMode.MASKED_FIELD,
+            placeholder="xapp-...",
+            help_text=(
+                "Enables inbound Socket-Mode (mentions, DMs, reactions resume "
+                "tasks). Needs the connections:write scope."
+            ),
+        ),
     ),
 )
 

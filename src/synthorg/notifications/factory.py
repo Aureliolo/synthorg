@@ -11,6 +11,7 @@ from synthorg.core.normalization import (
 )
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
+from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.notifications.adapters.console import ConsoleNotificationSink
 from synthorg.notifications.config import (
@@ -57,6 +58,7 @@ def build_notification_dispatcher(
     bridge_config: NotificationsBridgeConfig | None = None,
     config_resolver: ConfigResolver | None = None,
     connection_catalog: ConnectionCatalog | None = None,
+    thread_registry: InboundThreadRegistry | None = None,
 ) -> NotificationDispatcher:
     """Build a ``NotificationDispatcher`` from configuration.
 
@@ -80,6 +82,8 @@ def build_notification_dispatcher(
             Slack sink to resolve its bound ``SLACK`` connection's bot
             token. ``None`` means the Slack sink cannot be built (it is
             skipped with a warning).
+        thread_registry: Optional inbound thread registry the Slack sink
+            populates so a human's threaded reply resumes the approval.
 
     Returns:
         Configured notification dispatcher.
@@ -96,6 +100,7 @@ def build_notification_dispatcher(
             sink_cfg,
             bridge_config=bridge_config,
             connection_catalog=connection_catalog,
+            thread_registry=thread_registry,
         )
         if sink is not None:
             sinks.append(sink)
@@ -113,8 +118,10 @@ def _create_console_sink(
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
     connection_catalog: ConnectionCatalog | None = None,
+    thread_registry: InboundThreadRegistry | None = None,
 ) -> NotificationSink | None:
-    del params, bridge_config, connection_catalog  # console sink takes no params
+    # console sink takes no params
+    del params, bridge_config, connection_catalog, thread_registry
     return ConsoleNotificationSink()
 
 
@@ -123,6 +130,7 @@ def _create_ntfy_sink(
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
     connection_catalog: ConnectionCatalog | None = None,
+    thread_registry: InboundThreadRegistry | None = None,
 ) -> NotificationSink | None:
     """Create an ntfy notification sink.
 
@@ -137,6 +145,7 @@ def _create_ntfy_sink(
             config. When provided, threads
             ``ntfy_webhook_timeout_seconds`` into the adapter.
         connection_catalog: Unused (ntfy targets a topic URL).
+        thread_registry: Unused (Slack inbound correlation only).
 
     Returns:
         Configured ntfy sink or ``None`` if topic is missing.
@@ -145,7 +154,8 @@ def _create_ntfy_sink(
         NtfyNotificationSink,
     )
 
-    del connection_catalog  # ntfy targets a topic URL, not a connection
+    # ntfy targets a topic URL, not a connection
+    del connection_catalog, thread_registry
     topic = params.get("topic", "")
     if not topic:
         logger.warning(
@@ -215,6 +225,7 @@ def _create_slack_sink(
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
     connection_catalog: ConnectionCatalog | None = None,
+    thread_registry: InboundThreadRegistry | None = None,
 ) -> NotificationSink | None:
     """Create a Slack Web API notification sink.
 
@@ -227,6 +238,9 @@ def _create_slack_sink(
             the adapter.
         connection_catalog: Connection catalog used to resolve the bound
             connection's bot token at send time. Required.
+        thread_registry: Optional inbound thread registry the sink
+            populates on an approval notification so a threaded reply
+            resolves back to the approval.
 
     Returns:
         Configured Slack sink, or ``None`` when the catalog is absent or
@@ -257,12 +271,14 @@ def _create_slack_sink(
             connection_catalog=connection_catalog,
             connection_name=connection,
             channel=channel,
+            thread_registry=thread_registry,
         )
     return SlackNotificationSink(
         connection_catalog=connection_catalog,
         connection_name=connection,
         channel=channel,
         timeout_seconds=bridge_config.slack_timeout_seconds,
+        thread_registry=thread_registry,
     )
 
 
@@ -271,6 +287,7 @@ def _create_email_sink(
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
     connection_catalog: ConnectionCatalog | None = None,
+    thread_registry: InboundThreadRegistry | None = None,
 ) -> NotificationSink | None:
     """Create an email SMTP notification sink.
 
@@ -280,6 +297,7 @@ def _create_email_sink(
             config. When provided, threads
             ``email_smtp_timeout_seconds`` into the adapter.
         connection_catalog: Unused (email uses SMTP params).
+        thread_registry: Unused (Slack inbound correlation only).
 
     Returns:
         Configured email sink or ``None`` if required params
@@ -289,7 +307,8 @@ def _create_email_sink(
         EmailNotificationSink,
     )
 
-    del connection_catalog  # email uses SMTP params, not a connection
+    # email uses SMTP params, not a connection
+    del connection_catalog, thread_registry
     host = (params.get("host") or "").strip()
     if not host:
         # Treat whitespace-only ("   ") the same as missing; otherwise
@@ -422,6 +441,7 @@ def _create_notification_sink(
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
     connection_catalog: ConnectionCatalog | None = None,
+    thread_registry: InboundThreadRegistry | None = None,
 ) -> NotificationSink | None:
     """Instantiate a notification sink from config.
 
@@ -430,6 +450,8 @@ def _create_notification_sink(
         bridge_config: Optional operator-tuned bridge settings.
         connection_catalog: Optional catalog threaded to connection-backed
             sinks (Slack).
+        thread_registry: Optional inbound thread registry threaded to the
+            Slack sink for approval-reply correlation.
 
     Returns:
         Sink instance, or ``None`` if the adapter declines to build
@@ -442,6 +464,7 @@ def _create_notification_sink(
             cfg.params,
             bridge_config=bridge_config,
             connection_catalog=connection_catalog,
+            thread_registry=thread_registry,
         )
     except StrategyFactoryNotFoundError:
         # Forward compatibility: a new ``NotificationSinkType`` value

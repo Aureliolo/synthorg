@@ -16,6 +16,7 @@ from synthorg.api.state import _ENTRY_TASK_DRAIN_GRACE_SECONDS, AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.client.state import client_simulation_state_of, has_simulation_runtime
 from synthorg.communication.state import CommunicationStateSlice
+from synthorg.integrations.chat_api.inbound.consumer import ChatInboundConsumer
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import (
     get_logger,
@@ -108,6 +109,7 @@ class _LifecycleTasks:
     webhook_cleanup_task: asyncio.Task[None] | None = None
     auto_wired_dispatcher: SettingsChangeDispatcher | None = None
     health_prober: ProviderHealthProber | None = None
+    chat_inbound_consumer: ChatInboundConsumer | None = None
 
 
 async def _cancel_with_timeout(

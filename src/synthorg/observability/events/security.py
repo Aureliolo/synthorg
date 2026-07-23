@@ -24,6 +24,9 @@ SECURITY_TURN_SECRET_REDACTED: Final[str] = "security.turn.secret_redacted"  # n
 SECURITY_PATH_TRAVERSAL_DETECTED: Final[str] = "security.path_traversal.detected"
 SECURITY_CURSOR_SIGNATURE_INVALID: Final[str] = "security.cursor.signature_invalid"
 SECURITY_DESTRUCTIVE_OP_DETECTED: Final[str] = "security.destructive_op.detected"
+SECURITY_MCP_DESTRUCTIVE_OP_DETECTED: Final[str] = (
+    "security.mcp_destructive_op.detected"
+)
 SECURITY_DATA_LEAK_DETECTED: Final[str] = "security.data_leak.detected"
 SECURITY_POLICY_DENY: Final[str] = "security.policy.deny"
 SECURITY_POLICY_AUTO_APPROVE: Final[str] = "security.policy.auto_approve"

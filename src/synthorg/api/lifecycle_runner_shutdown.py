@@ -318,6 +318,15 @@ async def _run_shutdown(  # noqa: PLR0913
             timeout=_WEBHOOK_CLEANUP_SHUTDOWN_SECONDS,
         )
         tasks.webhook_cleanup_task = None
+    if tasks.chat_inbound_consumer is not None:
+        await _try_stop(
+            tasks.chat_inbound_consumer.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop chat inbound consumer",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="chat_inbound_consumer",
+        )
+        tasks.chat_inbound_consumer = None
     communication = app_state.slice(CommunicationStateSlice)
     integrations = app_state.slice(IntegrationsStateSlice)
     if communication.event_stream_hub is not None:

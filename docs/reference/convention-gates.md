@@ -33,6 +33,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_credentialed_mcp_governed.py` | push | `api/mcp_gateway/tools.py` | full | no | none | add |
 | `check_governed_destructive_tools.py` | push | `tools/` | full | no | none | add |
 | `check_forge_repo_scoped.py` | push | `tools/forge/` | full | no | none | add |
+| `check_chat_inbound_fenced.py` | push | `integrations/chat_api/inbound/` | full | no | none | add |
 | `check_mcp_server_config_pinned.py` | push | `tools/mcp/config.py` | full | no | none | add |
 | `check_mcp_self_consumer_scoped.py` | push | `engine/mcp_self_consumer.py` | full | no | none | add |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |

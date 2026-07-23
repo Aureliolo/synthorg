@@ -116,6 +116,11 @@ mandatory_rules:
     header: Forge Repo-Scoping
     gate: scripts/check_forge_repo_scoped.py
 
+  - id: claude-md::chat-inbound-fencing
+    file: CLAUDE.md
+    header: Chat-Inbound Fencing
+    gate: scripts/check_chat_inbound_fenced.py
+
   - id: claude-md::agent-mcp-visibility
     file: CLAUDE.md
     header: Agent-MCP Visibility
