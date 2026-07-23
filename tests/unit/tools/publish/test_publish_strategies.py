@@ -214,6 +214,9 @@ def _write_multi_arch_layout(root: Path, *, nested: bool = False) -> None:
     amd_manifest = _image_manifest(amd_config, amd_layer, "sha256")
     arm_manifest = _image_manifest(arm_config, arm_layer, "sha256")
     second_media = OCI_INDEX_MEDIA_TYPE if nested else OCI_MANIFEST_MEDIA_TYPE
+    # Pretty-printed on purpose: a compact re-serialisation of the parsed dict
+    # would differ byte-for-byte, so a test asserting the tagged bytes equal the
+    # on-disk index proves the original bytes (not a re-dump) are published.
     index = json.dumps(
         {
             "schemaVersion": 2,
@@ -231,7 +234,7 @@ def _write_multi_arch_layout(root: Path, *, nested: bool = False) -> None:
                 },
             ],
         },
-        separators=(",", ":"),
+        indent=2,
     ).encode()
     _write_blobs(
         root,
@@ -326,6 +329,7 @@ class TestWorkspacePush:
         layout = tmp_path / "image"
         layout.mkdir()
         _write_multi_arch_layout(layout)
+        original_index = (layout / "index.json").read_bytes()
         client = _FakeRegistryClient()
         outcome = await WorkspacePushStrategy().publish(
             client,
@@ -334,7 +338,9 @@ class TestWorkspacePush:
         # Two children, each config + layer -> four blobs; each child tagged by
         # digest, plus the destination tag for the index.
         assert outcome.blobs_uploaded == 4
-        assert "latest" in client.put_tags
+        # The exact on-disk index bytes are tagged, so the index's content
+        # digest is preserved rather than diverging via a re-serialisation.
+        assert client.put_tags["latest"] == original_index
         child_tags = [tag for tag in client.put_tags if tag.startswith("sha256:")]
         assert len(child_tags) == 2
 

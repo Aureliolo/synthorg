@@ -85,6 +85,18 @@ class TestPublishPushArgs:
         with pytest.raises(ValidationError):
             PublishPushArgs(action="push", target=_TARGET, dest_tag="latest")
 
+    def test_both_sources_are_refused(self) -> None:
+        # An explicit method must not smuggle both sources past validation.
+        with pytest.raises(ValidationError):
+            PublishPushArgs(
+                action="push",
+                target=_TARGET,
+                dest_tag="latest",
+                method="digest_promote",
+                source_digest=_DIGEST,
+                source_image_path="image",
+            )
+
     def test_malformed_dest_tag_is_refused(self) -> None:
         with pytest.raises(ValidationError):
             PublishPushArgs(

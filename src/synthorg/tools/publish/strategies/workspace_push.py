@@ -33,7 +33,7 @@ from synthorg.observability.events.tool import (
     PUBLISH_TOOL_PUBLISHED,
     PUBLISH_TOOL_SOURCE_INVALID,
 )
-from synthorg.tools.file_system._path_validator import PathValidator
+from synthorg.tools.file_system import PathValidator
 from synthorg.tools.publish.errors import PublishSourceError
 from synthorg.tools.publish.strategies.protocol import PublishOutcome, PublishRequest
 
@@ -232,7 +232,13 @@ class WorkspacePushStrategy:
             msg = "image layout index.json lists no manifests"
             raise PublishSourceError(msg)
         uploaded, root_bytes, root_media = await self._push_graph(
-            client, layout_dir, index, manifests, budget, request.max_manifest_bytes
+            client,
+            layout_dir,
+            index,
+            index_bytes,
+            manifests,
+            budget,
+            request.max_manifest_bytes,
         )
         stored = await client.put_manifest(
             tag=request.dest_tag, raw=root_bytes, media_type=root_media
@@ -279,6 +285,7 @@ class WorkspacePushStrategy:
         client: RegistryApiClient,
         layout_dir: Path,
         index: dict[str, object],
+        index_bytes: bytes,
         manifests: list[object],
         budget: _Budget,
         manifest_cap: int,
@@ -286,7 +293,9 @@ class WorkspacePushStrategy:
         """Upload every blob + child manifest and return the root to tag.
 
         A single-image layout tags the image manifest directly; a multi-arch
-        layout pushes each child manifest by digest, then tags the index.
+        layout pushes each child manifest by digest, then tags the index by its
+        original on-disk bytes (re-serialising the parsed dict could change the
+        byte content, and the index's own content digest is over those bytes).
 
         Returns:
             ``(blobs_uploaded, root_bytes, root_media_type)``.
@@ -326,8 +335,7 @@ class WorkspacePushStrategy:
             if isinstance(index_media, str) and index_media
             else OCI_INDEX_MEDIA_TYPE
         )
-        root_bytes = json.dumps(index, separators=(",", ":")).encode()
-        return uploaded, root_bytes, root_media
+        return uploaded, index_bytes, root_media
 
 
 async def _read_manifest_blob(

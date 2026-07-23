@@ -154,6 +154,12 @@ class PublishPushArgs(BaseModel):
                 msg = "source_digest must be a valid content digest"
                 raise ValueError(msg)
             reject_unsafe_url_segment(str(self.source_digest), field="source_digest")
+        if self.source_digest is not None and self.source_image_path.strip():
+            # An explicit method would otherwise skip the auto-resolver's
+            # ambiguity check; reject both sources here so it fails as a typed
+            # argument error rather than deeper in request construction.
+            msg = "provide either source_digest or source_image_path, not both"
+            raise ValueError(msg)
         if self.method == "digest_promote" and self.source_digest is None:
             msg = "source_digest is required for method 'digest_promote'"
             raise ValueError(msg)

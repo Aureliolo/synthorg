@@ -225,6 +225,20 @@ class _FamilyKillSwitches:
     publish_enabled: bool
 
 
+@dataclass(frozen=True)
+class _ResolvedContextInputs:
+    """The awaited per-request reads a credentialed-tool context is built from."""
+
+    forge_connection: str
+    chat_connection: str
+    forge_timeout_seconds: float
+    chat_timeout_seconds: float
+    forge_max_read_chars: int
+    deploy_settings: _DeploySettings
+    publish_settings: _PublishSettings
+    actor: AgentIdentity | None
+
+
 async def _resolve_deploy_settings(resolver: ConfigResolver) -> _DeploySettings:
     """Read the deploy-tool settings for this request.
 
@@ -279,29 +293,19 @@ async def _resolve_publish_settings(resolver: ConfigResolver) -> _PublishSetting
 async def _build_context(
     app_state: AppState, *, agent_id: str, task_id: str | None
 ) -> tuple[CredentialedToolContext, _FamilyKillSwitches]:
-    """Assemble the host-side credentialed-tool context from app state.
+    """Fan out the per-request reads, then assemble the credentialed context.
 
-    The independent per-request reads (forge / chat settings, the deploy and
-    publish settings bundles, and the actor lookup) fan out under one
-    ``TaskGroup``, and the SecOps pre-tool screen is wired fail-closed so the
-    rule-engine screening runs before every credentialed dispatch.
-
-    Args:
-        app_state: The live application state.
-        agent_id: The caller id (from the verified bearer), bound into the
-            security context.
-        task_id: The run's task id (from the verified bearer), bound into the
-            security context so SecOps screening stays per-run.
+    The independent reads (forge / chat settings, the deploy and publish
+    settings bundles, and the actor lookup) run concurrently under one
+    ``TaskGroup``; :func:`_assemble_context` turns their results into the
+    context. ``agent_id`` / ``task_id`` come from the verified bearer and bind
+    the security context per run.
 
     Returns:
         The :class:`CredentialedToolContext` for this request, paired with the
         per-family kill switches the caller threads into the dispatch denials.
     """
     resolver = config_resolver_of(app_state)
-    catalog = require_service(
-        app_state.slice(IntegrationsStateSlice).connection_catalog,
-        "connection catalog",
-    )
     try:
         async with asyncio.TaskGroup() as tg:
             forge_conn = tg.create_task(
@@ -338,22 +342,54 @@ async def _build_context(
                 error_types=[type(exc).__name__ for exc in eg.exceptions],
             )
         raise eg.exceptions[0] from eg
-    interceptor = make_security_interceptor(
-        app_state.security_runtime_config.current,
-        audit_log_of(app_state),
-        approval_store=approval_store_of(app_state),
-    )
-    deploy_settings = deploy.result()
-    publish_settings = publish.result()
-    ctx = CredentialedToolContext(
-        connection_catalog=catalog,
-        approval_store=approval_store_of(app_state),
-        clock=app_state.clock,
+    inputs = _ResolvedContextInputs(
         forge_connection=forge_conn.result(),
         chat_connection=chat_conn.result(),
         forge_timeout_seconds=forge_timeout.result(),
         chat_timeout_seconds=chat_timeout.result(),
         forge_max_read_chars=forge_read.result(),
+        deploy_settings=deploy.result(),
+        publish_settings=publish.result(),
+        actor=actor.result(),
+    )
+    return _assemble_context(app_state, inputs, agent_id=agent_id, task_id=task_id)
+
+
+def _assemble_context(
+    app_state: AppState,
+    inputs: _ResolvedContextInputs,
+    *,
+    agent_id: str,
+    task_id: str | None,
+) -> tuple[CredentialedToolContext, _FamilyKillSwitches]:
+    """Assemble the context + kill switches from the resolved per-request reads.
+
+    The SecOps pre-tool screen is wired fail-closed so the rule-engine screening
+    runs before every credentialed dispatch.
+
+    Returns:
+        The :class:`CredentialedToolContext` paired with the per-family kill
+        switches the caller threads into the dispatch denials.
+    """
+    interceptor = make_security_interceptor(
+        app_state.security_runtime_config.current,
+        audit_log_of(app_state),
+        approval_store=approval_store_of(app_state),
+    )
+    deploy_settings = inputs.deploy_settings
+    publish_settings = inputs.publish_settings
+    ctx = CredentialedToolContext(
+        connection_catalog=require_service(
+            app_state.slice(IntegrationsStateSlice).connection_catalog,
+            "connection catalog",
+        ),
+        approval_store=approval_store_of(app_state),
+        clock=app_state.clock,
+        forge_connection=inputs.forge_connection,
+        chat_connection=inputs.chat_connection,
+        forge_timeout_seconds=inputs.forge_timeout_seconds,
+        chat_timeout_seconds=inputs.chat_timeout_seconds,
+        forge_max_read_chars=inputs.forge_max_read_chars,
         deploy_targets=deploy_settings.targets,
         deploy_timeout_seconds=deploy_settings.timeout_seconds,
         deploy_max_log_chars=deploy_settings.max_log_chars,
@@ -362,7 +398,7 @@ async def _build_context(
         publish_max_manifest_bytes=publish_settings.max_manifest_bytes,
         publish_max_image_bytes=publish_settings.max_image_bytes,
         workspace_root=agent_workspace_root_of(app_state),
-        actor=actor.result(),
+        actor=inputs.actor,
         security_pre_check=build_security_pre_check(
             interceptor, agent_id=agent_id, task_id=task_id
         ),
