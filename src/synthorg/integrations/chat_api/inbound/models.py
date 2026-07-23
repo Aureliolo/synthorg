@@ -5,7 +5,7 @@ so the consumer and router stay platform-agnostic (the same way the outbound
 :mod:`synthorg.integrations.chat_api.protocol` models decouple the send tools
 from Slack). ``text`` is raw, attacker-controlled human input and MUST be
 fenced with ``wrap_untrusted(TAG_TASK_DATA, ...)`` before it reaches any LLM
-prompt (SEC-1); nothing in this package feeds it to a prompt unfenced.
+prompt; nothing in this package feeds it to a prompt unfenced.
 """
 
 from enum import StrEnum

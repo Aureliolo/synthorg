@@ -1,4 +1,4 @@
-# module-kind: code
+# module-kind: orchestrator
 """The on-shutdown runner: ordered teardown of the lifecycle-owned services.
 
 ``_run_shutdown`` performs the ordered teardown. The janitor-task /

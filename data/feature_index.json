@@ -811,7 +811,8 @@
         "health_prober_service",
         "webhook_activity_service",
         "webhook_receipt_service",
-        "webhook_replay_protector"
+        "webhook_replay_protector",
+        "inbound_thread_registry"
       ]
     },
     {
@@ -1470,6 +1471,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-23T17:01:49.117373Z",
+  "generated_at": "2026-07-23T22:37:29.485974Z",
   "schema_version": 1
 }
