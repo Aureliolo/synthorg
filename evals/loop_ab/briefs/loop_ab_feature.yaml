@@ -55,6 +55,8 @@ checks:
       timeout_seconds: 30
     - cmd: ["{python}", "-c", "from inventory import Reservation\ntry:\n    Reservation(ref='r', sku='a', quantity=0)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError('quantity below 1 must raise ValueError')"]
       timeout_seconds: 30
+    - cmd: ["{python}", "-c", "import dataclasses\nfrom inventory import Reservation\nassert dataclasses.is_dataclass(Reservation), 'Reservation must be a dataclass'\nr = Reservation(ref='r', sku='a', quantity=1)\ntry:\n    r.quantity = 2\nexcept dataclasses.FrozenInstanceError:\n    pass\nelse:\n    raise AssertionError('Reservation must be a frozen dataclass')"]
+      timeout_seconds: 30
   lint:
     - cmd: ["{python}", "-c", "from inventory import Item, Store\ns = Store()\ns.add(Item(sku='a', quantity=2))\ns.add(Item(sku='a', quantity=3))\nassert s.quantity('a') == 5, 'existing quantity() accumulation must be preserved'\nassert s.quantity('unknown') == 0"]
       timeout_seconds: 30

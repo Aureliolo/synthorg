@@ -61,6 +61,12 @@ class LoopAbManifest(BaseModel):
         """
         registered = set(registered_loop_types())
         declared = set(self.loops)
+        if len(declared) != len(self.loops):
+            # A duplicated loop passes the set-based registry checks below but
+            # multiplies planned_runs by len(self.loops), silently doubling that
+            # loop's real-spend runs.
+            msg = f"manifest declares duplicate loop names: {sorted(self.loops)}"
+            raise ValueError(msg)
         if unknown := declared - registered:
             msg = (
                 f"manifest names unregistered loop(s) {sorted(unknown)}; "

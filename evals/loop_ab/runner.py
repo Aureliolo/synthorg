@@ -261,11 +261,20 @@ async def _run_repetition(
     )
 
 
-def _unavailable_row(coord: _CellCoordinates, exc: Exception) -> LoopBriefRow:
+def _unavailable_row(
+    coord: _CellCoordinates,
+    exc: Exception,
+    spend: tuple[ProviderSpend, ...] = (),
+) -> LoopBriefRow:
     """Build the unavailable row for a cell that could not be measured.
 
+    Any *spend* already booked by earlier successful repetitions is carried onto
+    the row: a failure on a later repetition must not erase the money the cell
+    has already consumed from ``total_cost`` and the per-provider breakdown.
+
     Returns:
-        A :class:`LoopBriefRow` carrying the redacted failure reason.
+        A :class:`LoopBriefRow` carrying the redacted failure reason and the
+        spend collected before the failure.
     """
     return LoopBriefRow(
         loop_type=NotBlankStr(coord.loop_type),
@@ -273,6 +282,7 @@ def _unavailable_row(coord: _CellCoordinates, exc: Exception) -> LoopBriefRow:
         tier=coord.tier.tier,
         model_id=coord.tier.model_id,
         unavailable_reason=f"{type(exc).__name__}: {safe_error_description(exc)}",
+        spend=spend,
     )
 
 
@@ -314,7 +324,7 @@ async def _run_cell(
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return _unavailable_row(coord, exc)
+            return _unavailable_row(coord, exc, tuple(spend))
         outcomes.append(outcome)
         spend.extend(run_spend)
 

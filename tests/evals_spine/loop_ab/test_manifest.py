@@ -101,6 +101,13 @@ def test_duplicate_tier_labels_are_refused() -> None:
         _manifest(tiers=(_tier("large"), _tier("large")))
 
 
+def test_duplicate_loop_names_are_refused() -> None:
+    """A duplicated loop still covers the registry (the set collapses it) but
+    multiplies planned_runs by len(loops), doubling that loop's real spend."""
+    with pytest.raises(ValueError, match="duplicate loop names"):
+        _manifest(loops=(*registered_loop_types(), "react"))
+
+
 def test_the_planned_run_count_is_reported() -> None:
     """A maintainer must be able to see the size of the bill before paying it."""
     manifest = _manifest(tiers=(_tier("large"), _tier("small")), repetitions=3)
