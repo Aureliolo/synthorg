@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Communication subsystem for the SynthOrg framework."""
 
 import threading

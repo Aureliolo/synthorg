@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Agent execution engine.
 
 Re-exports the public API for the agent orchestrator, task engine,
