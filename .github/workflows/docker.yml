@@ -892,7 +892,13 @@ jobs:
       needs.build-web.result == 'success' &&
       github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Hands off to publish-image-loaded, whose login / push / cosign /
+    # attest / syft-SBOM steps each carry a bounded retry ladder. The job
+    # timeout must clear the SUM of those ladders (~36m composed worst
+    # case, more than the retag path since it also signs and attests) so
+    # a transient blip that trips several is retried, not cancelled
+    # mid-retry.
+    timeout-minutes: 40
     environment: image-push
     permissions:
       contents: read
@@ -1221,7 +1227,15 @@ jobs:
       !cancelled() &&
       needs.version.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Every retag job shares publish-image-retag, whose GHCR-login
+    # (~8m45s worst case), digest-resolve, tag-apply and syft-SBOM
+    # (~15m30s worst case) steps each carry their own bounded retry
+    # ladder. The job timeout must clear the SUM of those ladders, not
+    # just the largest one, so a transient registry blip that trips
+    # several of them in one run is retried rather than cancelled
+    # mid-retry (the failure this family hit). 35 sits above the ~32m
+    # composed worst case with margin for checkout.
+    timeout-minutes: 35
     environment: image-push
     permissions:
       contents: read
@@ -1248,7 +1262,9 @@ jobs:
       !cancelled() &&
       needs.version.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # See retag-backend: sized above the summed publish-image-retag
+    # retry budget (~32m composed worst case).
+    timeout-minutes: 35
     environment: image-push
     permissions:
       contents: read
@@ -1275,7 +1291,9 @@ jobs:
       !cancelled() &&
       needs.version.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # See retag-backend: sized above the summed publish-image-retag
+    # retry budget (~32m composed worst case).
+    timeout-minutes: 35
     environment: image-push
     permissions:
       contents: read
@@ -1302,7 +1320,9 @@ jobs:
       !cancelled() &&
       needs.version.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # See retag-backend: sized above the summed publish-image-retag
+    # retry budget (~32m composed worst case).
+    timeout-minutes: 35
     environment: image-push
     permissions:
       contents: read
@@ -1338,7 +1358,15 @@ jobs:
       !cancelled() &&
       needs.version.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Highest of the retag family: alone among them this job runs the
+    # `Free disk space` reclaim (the GPU image is the only one large
+    # enough to fill a stock runner), stacking that on top of the summed
+    # publish-image-retag retry budget (~32m composed worst case). At 10
+    # min the GPU leg -- largest image, slowest syft scan -- had no margin
+    # and was cancelled mid-scan. 40 min clears the reclaim plus the full
+    # composed retry budget so the timeout is a runaway backstop, not a
+    # starvation trigger.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -1361,15 +1389,35 @@ jobs:
       # docker-daemon save and the oci-registry cache. A stock runner's
       # ~14 GB free fills up and syft fails with "no space left on device",
       # so mirror the build path's reclaim before the composite action.
+      #
+      # The directories are disjoint, so deleting them sequentially just
+      # sums independent I/O and has been observed to take up to ~9 min --
+      # long enough to starve the SBOM scan out of the job budget. Fan the
+      # deletes out in the background so wall-clock collapses to the
+      # slowest single tree. `wait` with no operands returns 0 regardless
+      # of the jobs' exit status, which under `bash -eo pipefail` would
+      # silently swallow a failed reclaim and let the job continue with
+      # less disk than expected (surfacing later as an opaque ENOSPC in
+      # syft), so wait on each PID and propagate a non-zero status.
       - name: Free disk space
         run: |
           df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache /usr/share/swift /usr/share/miniconda
-          sudo rm -rf /usr/local/share/powershell /usr/local/share/chromium
-          sudo rm -rf /usr/local/lib/node_modules /usr/local/.ghcup
-          sudo docker image prune --all --force
+          pids=()
+          for dir in /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                     /opt/hostedtoolcache /usr/share/swift /usr/share/miniconda \
+                     /usr/local/share/powershell /usr/local/share/chromium \
+                     /usr/local/lib/node_modules /usr/local/.ghcup; do
+            sudo rm -rf "$dir" &
+            pids+=("$!")
+          done
+          sudo docker image prune --all --force &
+          pids+=("$!")
+          status=0
+          for pid in "${pids[@]}"; do
+            wait "$pid" || status=$?
+          done
           df -h /
+          exit "$status"
 
       - id: retag
         uses: ./.github/actions/publish-image-retag
