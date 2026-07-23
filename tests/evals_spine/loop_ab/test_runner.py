@@ -23,7 +23,12 @@ import pytest
 from evals.loader.briefs import load_brief_suite
 from evals.loop_ab.manifest import LoopAbManifest, TierEntry
 from evals.loop_ab.models import Provenance
-from evals.loop_ab.runner import LoopAbDeps, run_matrix
+from evals.loop_ab.runner import (
+    LoopAbDeps,
+    _CellCoordinates,
+    _run_cell,
+    run_matrix,
+)
 from evals.models.brief import Brief
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
@@ -300,6 +305,54 @@ async def test_measured_rows_carry_their_ledger_spend(tmp_path: Path) -> None:
             assert item.provider == "example-provider"
             assert item.model_id == "example-large-001"
             assert item.cost > 0.0
+
+
+async def test_a_failed_later_repetition_keeps_the_earlier_spend(
+    tmp_path: Path,
+) -> None:
+    """A cell that dies on a later repetition still reports what it already paid.
+
+    Drive a two-repetition cell whose provider works for the first repetition
+    (booking real spend against the ledger) and then becomes unavailable for the
+    second. The emitted unavailable row must carry the first repetition's spend
+    forward, because that money was charged and the scoreboard's dollar total
+    must not silently lose it just because a later repetition failed.
+    """
+    calls = {"count": 0}
+
+    def _build_provider(tier: TierEntry) -> ScriptedProvider:
+        calls["count"] += 1
+        if calls["count"] >= 2:
+            msg = "provider unavailable on the second repetition"
+            raise RuntimeError(msg)
+        return ScriptedProvider(
+            response=CompletionResponse(
+                content=_PLAN_JSON,
+                finish_reason=FinishReason.STOP,
+                usage=TokenUsage(input_tokens=120, output_tokens=40, cost=0.002),
+                model=tier.model_id,
+            )
+        )
+
+    deps = LoopAbDeps(
+        build_provider=_build_provider,
+        build_tool_registry=lambda _work_dir: None,
+        openhands_loop_deps=None,
+    )
+    coord = _CellCoordinates(loop_type="react", tier=_tier(), brief=_simple_brief()[0])
+
+    row = await _run_cell(
+        coord=coord,
+        manifest=_manifest(repetitions=2),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work",
+        deps=deps,
+    )
+
+    assert row.unavailable_reason is not None
+    assert row.measurement is None
+    assert row.spend, "the failed cell dropped the first repetition's spend"
+    assert sum(item.cost for item in row.spend) > 0.0
 
 
 async def test_a_tool_less_run_disqualifies_every_measured_loop(

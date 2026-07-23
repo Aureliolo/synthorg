@@ -101,23 +101,14 @@ def _measured_row(loop_type: str = "react") -> LoopBriefRow:
     )
 
 
-def _unavailable_row(
-    reason: str = "sandbox image is not built",
-    *,
-    spend: tuple[ProviderSpend, ...] = (),
-) -> LoopBriefRow:
-    """A row for a loop that could not be measured at all.
-
-    *spend* models a cell that failed on a later repetition after earlier ones
-    had already booked cost.
-    """
+def _unavailable_row(reason: str = "sandbox image is not built") -> LoopBriefRow:
+    """A row for a loop that could not be measured at all."""
     return LoopBriefRow(
         loop_type=NotBlankStr("openhands"),
         brief_id=NotBlankStr("loop-ab-simple"),
         tier=NotBlankStr("large"),
         model_id=NotBlankStr("example-large-001"),
         unavailable_reason=reason,
-        spend=spend,
     )
 
 
@@ -205,27 +196,6 @@ def test_total_cost_sums_every_row_and_provider() -> None:
     scoreboard = _scoreboard(_measured_row("react"), _measured_row("hybrid"))
 
     assert scoreboard.total_cost == pytest.approx(0.50)
-
-
-def test_total_cost_counts_spend_booked_before_a_cell_failed() -> None:
-    """A cell that failed after earlier repetitions still consumed real money.
-
-    The runner carries the pre-failure spend onto the unavailable row, so the
-    headline total must include it rather than under-report what was billed.
-    """
-    booked = (
-        ProviderSpend(
-            provider=NotBlankStr("example-provider"),
-            model_id=NotBlankStr("example-large-001"),
-            input_tokens=400,
-            output_tokens=100,
-            cost=0.13,
-            currency=NotBlankStr("USD"),
-        ),
-    )
-    scoreboard = _scoreboard(_measured_row("react"), _unavailable_row(spend=booked))
-
-    assert scoreboard.total_cost == pytest.approx(0.38)
 
 
 def test_the_rendered_report_names_the_commit_it_measured() -> None:

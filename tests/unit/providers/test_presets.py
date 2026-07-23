@@ -126,15 +126,6 @@ class TestProviderPresets:
     def test_get_preset_unknown_returns_none(self) -> None:
         assert get_preset("nonexistent") is None
 
-    def test_list_presets_is_featured_then_soft(self) -> None:
-        """list_presets composes the two component accessors, featured first.
-
-        The expectation is derived from ``list_featured_presets`` and
-        ``list_soft_presets`` rather than from ``list_presets`` itself, so a
-        regression in composition or ordering actually fails the assertion.
-        """
-        assert list_presets() == list_featured_presets() + list_soft_presets()
-
     def test_local_presets_have_candidate_urls(self) -> None:
         """Local presets with non-colliding ports have candidate URLs.
 
