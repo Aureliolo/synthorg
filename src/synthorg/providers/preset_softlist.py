@@ -20,8 +20,6 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
 
-import litellm
-
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_LITELLM_CATALOG_INVALID
 from synthorg.providers.enums import AuthType
@@ -237,6 +235,8 @@ def _iter_litellm_chat_namespaces() -> tuple[str, ...]:
         A sorted, deduplicated tuple of LiteLLM provider namespace
         strings with at least one chat/completion-mode model.
     """
+    import litellm  # noqa: PLC0415 -- deferred: importing litellm is ~5s cold
+
     seen: set[str] = set()
     cost_table = getattr(litellm, "model_cost", {}) or {}
     if not isinstance(cost_table, Mapping):

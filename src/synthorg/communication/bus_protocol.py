@@ -8,7 +8,6 @@ default implementation is :class:`InMemoryMessageBus` in
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
-from synthorg.communication.bus.quadratic_enforcement import QuadraticAlertSink
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message
 from synthorg.communication.subscription import (
@@ -16,6 +15,20 @@ from synthorg.communication.subscription import (
     Subscription,
 )
 from synthorg.core.types import NotBlankStr
+
+
+@runtime_checkable
+class QuadraticAlertSink(Protocol):
+    """Receives a human-readable alert when a quadratic window is detected."""
+
+    async def alert(self, *, title: str, body: str) -> None:
+        """Deliver an operator alert.
+
+        Args:
+            title: Short alert title.
+            body: Human-readable alert body.
+        """
+        ...
 
 
 @runtime_checkable

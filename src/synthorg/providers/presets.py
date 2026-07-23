@@ -34,6 +34,7 @@ or attribute checks.
 """
 
 import re
+from functools import cache
 from types import MappingProxyType
 from typing import Final
 
@@ -52,7 +53,6 @@ from synthorg.providers.preset_softlist import build_soft_presets
 __all__ = [
     "MODEL_FAMILY_RULES",
     "MODEL_VERSION_FILTERS",
-    "PROVIDER_PRESETS",
     "CloudPreset",
     "LocalPreset",
     "ProviderPreset",
@@ -787,28 +787,51 @@ models).  Featured presets render in the wizard's primary grid."""
 # under the project's 800-line file ceiling.  See that module's
 # docstring for the maintainer note about LiteLLM dependency bumps.
 
-_SOFT_PRESETS: tuple[CloudPreset, ...] = build_soft_presets(_FEATURED_PRESETS)
-"""Auto-derived soft presets, one per LiteLLM chat namespace not
-already covered by :data:`_FEATURED_PRESETS` or denied by the
-soft-list module's denylist.  Computed once at module load because
-``litellm.model_cost`` is itself a static module-level table.
-"""
+
+@cache
+def _soft_presets() -> tuple[CloudPreset, ...]:
+    """Auto-derive one soft preset per uncovered LiteLLM chat namespace.
+
+    Covers every namespace not already in :data:`_FEATURED_PRESETS` or
+    denied by the soft-list module's denylist.
+
+    Built once on first access rather than at import: the source
+    ``litellm.model_cost`` requires importing ``litellm`` (~5s cold),
+    so deferring keeps app construction and cold module imports off
+    that cost until a preset listing is actually requested.
+
+    Returns:
+        Soft presets, alphabetical by namespace.
+    """
+    return build_soft_presets(_FEATURED_PRESETS)
 
 
-PROVIDER_PRESETS: tuple[CloudPreset | LocalPreset, ...] = (
-    *_FEATURED_PRESETS,
-    *_SOFT_PRESETS,
-)
-"""All available presets.  Featured (hand-curated, branded) entries
-land first, in the order declared in :data:`_FEATURED_PRESETS`; soft
-(auto-derived from ``litellm.model_cost``) entries follow,
-alphabetical by namespace."""
+@cache
+def _provider_presets() -> tuple[CloudPreset | LocalPreset, ...]:
+    """Return every provider preset, featured first then soft.
 
-audit_presets(PROVIDER_PRESETS)
+    Featured (hand-curated, branded) entries come first in declared
+    order; soft (auto-derived) entries follow, alphabetical by namespace.
 
-_PRESET_LOOKUP: MappingProxyType[str, CloudPreset | LocalPreset] = MappingProxyType(
-    {p.name: p for p in PROVIDER_PRESETS},
-)
+    Audited on first build; audit failures surface on first access
+    (boot wiring touches presets early, so this still fails fast).
+
+    Returns:
+        Every provider preset (cloud + local).
+    """
+    presets = (*_FEATURED_PRESETS, *_soft_presets())
+    audit_presets(presets)
+    return presets
+
+
+@cache
+def _preset_lookup() -> MappingProxyType[str, CloudPreset | LocalPreset]:
+    """Name -> preset index over :func:`_provider_presets`.
+
+    Returns:
+        Read-only mapping from preset name to preset.
+    """
+    return MappingProxyType({p.name: p for p in _provider_presets()})
 
 
 def get_preset(name: str) -> CloudPreset | LocalPreset | None:
@@ -820,7 +843,7 @@ def get_preset(name: str) -> CloudPreset | LocalPreset | None:
     Returns:
         The matching preset, or ``None`` if not found.
     """
-    return _PRESET_LOOKUP.get(name)
+    return _preset_lookup().get(name)
 
 
 def list_presets() -> tuple[CloudPreset | LocalPreset, ...]:
@@ -831,7 +854,7 @@ def list_presets() -> tuple[CloudPreset | LocalPreset, ...]:
         (hand-curated, branded) presets are first; soft (auto-derived
         from ``litellm.model_cost``) presets follow.
     """
-    return PROVIDER_PRESETS
+    return _provider_presets()
 
 
 def list_featured_presets() -> tuple[CloudPreset | LocalPreset, ...]:
@@ -842,7 +865,7 @@ def list_featured_presets() -> tuple[CloudPreset | LocalPreset, ...]:
         by the wizard's primary grid to surface the curated set
         separately from the auto-derived "More providers" section.
     """
-    return tuple(p for p in PROVIDER_PRESETS if p.is_featured)
+    return tuple(p for p in _provider_presets() if p.is_featured)
 
 
 def list_soft_presets() -> tuple[CloudPreset, ...]:
@@ -853,7 +876,7 @@ def list_soft_presets() -> tuple[CloudPreset, ...]:
         :attr:`is_featured` is ``False``.  Used by the wizard's
         "More providers" section.
     """
-    return _SOFT_PRESETS
+    return _soft_presets()
 
 
 def list_local_presets() -> tuple[LocalPreset, ...]:
@@ -863,7 +886,7 @@ def list_local_presets() -> tuple[LocalPreset, ...]:
         Tuple of presets for self-hosted backends, regardless of whether
         they have ``candidate_urls`` configured.
     """
-    return tuple(p for p in PROVIDER_PRESETS if isinstance(p, LocalPreset))
+    return tuple(p for p in _provider_presets() if isinstance(p, LocalPreset))
 
 
 def list_probable_presets() -> tuple[LocalPreset, ...]:
