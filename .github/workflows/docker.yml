@@ -892,11 +892,13 @@ jobs:
       needs.build-web.result == 'success' &&
       github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # Hands off to publish-image-loaded, whose login / cosign / attest /
-    # syft-SBOM steps each carry a bounded retry budget; the job timeout
-    # must clear a full SBOM retry cycle so a transient blip is retried,
-    # not cancelled mid-retry.
-    timeout-minutes: 25
+    # Hands off to publish-image-loaded, whose login / push / cosign /
+    # attest / syft-SBOM steps each carry a bounded retry ladder. The job
+    # timeout must clear the SUM of those ladders (~36m composed worst
+    # case, more than the retag path since it also signs and attests) so
+    # a transient blip that trips several is retried, not cancelled
+    # mid-retry.
+    timeout-minutes: 40
     environment: image-push
     permissions:
       contents: read
@@ -1225,11 +1227,15 @@ jobs:
       !cancelled() &&
       needs.version.result == 'success'
     runs-on: ubuntu-latest
-    # Every retag job shares publish-image-retag, whose GHCR-login and
-    # syft-SBOM steps each carry their own bounded retry budget; the job
-    # timeout must exceed a full retry cycle so a transient registry blip
-    # is retried, not cancelled mid-retry (the failure this family hit).
-    timeout-minutes: 25
+    # Every retag job shares publish-image-retag, whose GHCR-login
+    # (~8m45s worst case), digest-resolve, tag-apply and syft-SBOM
+    # (~15m30s worst case) steps each carry their own bounded retry
+    # ladder. The job timeout must clear the SUM of those ladders, not
+    # just the largest one, so a transient registry blip that trips
+    # several of them in one run is retried rather than cancelled
+    # mid-retry (the failure this family hit). 35 sits above the ~32m
+    # composed worst case with margin for checkout.
+    timeout-minutes: 35
     environment: image-push
     permissions:
       contents: read
@@ -1256,8 +1262,9 @@ jobs:
       !cancelled() &&
       needs.version.result == 'success'
     runs-on: ubuntu-latest
-    # See retag-backend: shared publish-image-retag retry budget.
-    timeout-minutes: 25
+    # See retag-backend: sized above the summed publish-image-retag
+    # retry budget (~32m composed worst case).
+    timeout-minutes: 35
     environment: image-push
     permissions:
       contents: read
@@ -1284,8 +1291,9 @@ jobs:
       !cancelled() &&
       needs.version.result == 'success'
     runs-on: ubuntu-latest
-    # See retag-backend: shared publish-image-retag retry budget.
-    timeout-minutes: 25
+    # See retag-backend: sized above the summed publish-image-retag
+    # retry budget (~32m composed worst case).
+    timeout-minutes: 35
     environment: image-push
     permissions:
       contents: read
@@ -1312,8 +1320,9 @@ jobs:
       !cancelled() &&
       needs.version.result == 'success'
     runs-on: ubuntu-latest
-    # See retag-backend: shared publish-image-retag retry budget.
-    timeout-minutes: 25
+    # See retag-backend: sized above the summed publish-image-retag
+    # retry budget (~32m composed worst case).
+    timeout-minutes: 35
     environment: image-push
     permissions:
       contents: read
@@ -1351,13 +1360,13 @@ jobs:
     runs-on: ubuntu-latest
     # Highest of the retag family: alone among them this job runs the
     # `Free disk space` reclaim (the GPU image is the only one large
-    # enough to fill a stock runner), stacking that on top of the shared
-    # publish-image-retag retry budget (GHCR login + syft SBOM). At 10
+    # enough to fill a stock runner), stacking that on top of the summed
+    # publish-image-retag retry budget (~32m composed worst case). At 10
     # min the GPU leg -- largest image, slowest syft scan -- had no margin
-    # and was cancelled mid-scan. 30 min clears the reclaim plus a full
-    # shared-action retry cycle so the timeout is a runaway backstop, not
-    # a starvation trigger.
-    timeout-minutes: 30
+    # and was cancelled mid-scan. 40 min clears the reclaim plus the full
+    # composed retry budget so the timeout is a runaway backstop, not a
+    # starvation trigger.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
