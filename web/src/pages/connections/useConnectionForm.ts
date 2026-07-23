@@ -18,6 +18,7 @@ const EMPTY_STATE: ConnectionFormState = {
   metadata: {},
   webhookRetention: '',
   sensitive: false,
+  allowedRepos: [],
 }
 
 function makeInitialState(
@@ -39,6 +40,7 @@ function makeInitialState(
           ? ''
           : String(connection.webhook_receipt_retention_days),
       sensitive: connection.sensitive,
+      allowedRepos: connection.allowed_repos,
     }
   }
   return { ...EMPTY_STATE, type: initialType ?? null }
@@ -79,6 +81,7 @@ export interface ConnectionForm {
   clearType: () => void
   setSensitive: (value: boolean) => void
   setWebhookRetention: (value: string) => void
+  setAllowedRepos: (repos: readonly string[]) => void
   handleFieldChange: (group: FieldGroup, key: string, value: string) => void
   handleSubmit: (event: React.SyntheticEvent) => Promise<void>
 }
@@ -89,6 +92,7 @@ interface ConnectionFieldSetters {
   clearType: () => void
   setSensitive: (value: boolean) => void
   setWebhookRetention: (value: string) => void
+  setAllowedRepos: (repos: readonly string[]) => void
   handleFieldChange: (group: FieldGroup, key: string, value: string) => void
 }
 
@@ -113,7 +117,15 @@ function useConnectionFieldSetters(
   )
   const setType = useCallback((type: ConnectionType) => setForm((p) => ({ ...p, type })), [setForm])
   const clearType = useCallback(
-    () => setForm((p) => ({ ...p, type: null, topLevel: {}, credentials: {}, metadata: {} })),
+    () =>
+      setForm((p) => ({
+        ...p,
+        type: null,
+        topLevel: {},
+        credentials: {},
+        metadata: {},
+        allowedRepos: [],
+      })),
     [setForm],
   )
   const setSensitive = useCallback(
@@ -129,7 +141,19 @@ function useConnectionFieldSetters(
     },
     [setForm, setErrors],
   )
-  return { setName, setType, clearType, setSensitive, setWebhookRetention, handleFieldChange }
+  const setAllowedRepos = useCallback(
+    (repos: readonly string[]) => setForm((p) => ({ ...p, allowedRepos: repos })),
+    [setForm],
+  )
+  return {
+    setName,
+    setType,
+    clearType,
+    setSensitive,
+    setWebhookRetention,
+    setAllowedRepos,
+    handleFieldChange,
+  }
 }
 
 export function useConnectionForm(props: ConnectionFormModalArgs): ConnectionForm {

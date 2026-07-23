@@ -50,6 +50,7 @@ const sampleConnection: Connection = {
   secret_refs: [],
   webhook_receipt_retention_days: null,
   sensitive: false,
+  allowed_repos: [],
   created_at: '2026-04-01T09:00:00Z',
   updated_at: '2026-04-12T08:00:00Z',
 }
@@ -122,6 +123,7 @@ describe('useConnectionsStore', () => {
       credentials: { token: 'abc' },
       health_check_enabled: true,
       sensitive: false,
+      allowed_repos: [],
     })
 
     expect(result).toEqual(sampleConnection)
@@ -132,6 +134,7 @@ describe('useConnectionsStore', () => {
       credentials: { token: 'abc' },
       health_check_enabled: true,
       sensitive: false,
+      allowed_repos: [],
     })
     expect(useConnectionsStore.getState().connections).toHaveLength(1)
   })

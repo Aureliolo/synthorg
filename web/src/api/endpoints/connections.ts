@@ -11,6 +11,7 @@ import type {
   Connection,
   ConnectionTypeMetadata,
   CreateConnectionRequest,
+  ForgeAccessibleRepo,
   HealthReport,
   RevealedSecretResponse,
   SecretCaptureRequest,
@@ -95,6 +96,18 @@ export async function deleteConnection(name: string): Promise<void> {
 export async function checkConnectionHealth(name: string): Promise<HealthReport> {
   const response = await apiClient.get<ApiResponse<HealthReport>>(
     `/connections/${encodeURIComponent(name)}/health`,
+  )
+  return unwrap(response)
+}
+
+export async function scanAccessibleRepos(
+  name: string,
+): Promise<readonly ForgeAccessibleRepo[]> {
+  // Discover the repositories the forge connection's token can reach so the
+  // operator can select the least-privilege repo scope. Egress is pinned to
+  // the connection host backend-side.
+  const response = await apiClient.get<ApiResponse<readonly ForgeAccessibleRepo[]>>(
+    `/connections/${encodeURIComponent(name)}/accessible-repos`,
   )
   return unwrap(response)
 }

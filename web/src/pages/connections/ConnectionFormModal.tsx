@@ -21,6 +21,8 @@ import {
   type ConnectionFieldSpec,
   type ResolvedConnectionSpec,
 } from './connection-fields'
+import { isForgeConnectionType } from './connection-submit'
+import { RepoScopePicker } from './RepoScopePicker'
 import { TypeBadge } from './TypeBadge'
 import { type ConnectionForm, type Mode, useConnectionForm } from './useConnectionForm'
 
@@ -216,6 +218,29 @@ function WebhookRetentionField({ f }: { f: ConnectionForm }) {
   )
 }
 
+function RepoScopeField({ f, mode }: { f: ConnectionForm; mode: Mode }) {
+  if (f.form.type === null || !isForgeConnectionType(f.form.type)) return null
+  // The scan is a live token-authenticated read against the forge, so it only
+  // works once the connection (and its captured credential) exists. On create
+  // the connection is fail-closed (deny-all) until the operator scopes it here
+  // after saving.
+  if (mode === 'create') {
+    return (
+      <p className="rounded-md bg-surface p-card text-xs text-text-muted">
+        This connection starts with no repository access. After creating it, edit the connection
+        to scan the token and grant per-repository scope.
+      </p>
+    )
+  }
+  return (
+    <RepoScopePicker
+      connectionName={f.form.name}
+      selected={f.form.allowedRepos}
+      onChange={f.setAllowedRepos}
+    />
+  )
+}
+
 function ConnectionFormFields({
   f,
   spec,
@@ -282,6 +307,8 @@ function ConnectionFormFields({
       )}
 
       <WebhookRetentionField f={f} />
+
+      <RepoScopeField f={f} mode={mode} />
 
       <ToggleField
         label="Sensitive connection"

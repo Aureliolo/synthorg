@@ -23,6 +23,18 @@ import type { ConnectionFormState, Mode } from './connection-form-state'
 
 type RetentionResult = { ok: true; value: number | null } | { ok: false; error: string }
 
+const FORGE_CONNECTION_TYPES = new Set<ConnectionType>([
+  'github',
+  'gitlab',
+  'gitea',
+  'forgejo',
+])
+
+/** Whether a connection type has a forge repository scope. */
+export function isForgeConnectionType(type: ConnectionType | null): boolean {
+  return type !== null && FORGE_CONNECTION_TYPES.has(type)
+}
+
 function parseRetentionDays(raw: string): RetentionResult {
   const trimmed = raw.trim()
   if (trimmed === '') return { ok: true, value: null }
@@ -158,6 +170,9 @@ function buildCreateBody(
     metadata: collectMetadata(form, spec),
     health_check_enabled: true,
     sensitive: form.sensitive,
+    // Always sent (non-forge types carry an empty, deny-all scope); the create
+    // schema requires the field even though it defaults empty.
+    allowed_repos: isForgeConnectionType(connectionType) ? form.allowedRepos : [],
     ...(hasHandles ? { connection_draft_id: ctx.draftId } : {}),
     ...(ctx.supportsWebhook
       ? { webhook_receipt_retention_days: ctx.retentionValue }
@@ -176,6 +191,9 @@ function buildUpdateBody(
     metadata: collectMetadata(form, spec),
     sensitive: form.sensitive,
     ...(supportsWebhook ? { webhook_receipt_retention_days: retentionValue } : {}),
+    ...(isForgeConnectionType(form.type)
+      ? { allowed_repos: form.allowedRepos }
+      : {}),
   }
 }
 

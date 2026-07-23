@@ -6,6 +6,7 @@ import type {
   getConnection,
   getConnectionTypes,
   revealConnectionSecret,
+  scanAccessibleRepos,
   updateConnection,
 } from '@/api/endpoints/connections'
 import type {
@@ -114,6 +115,7 @@ export function buildConnection(
     secret_refs: [],
     webhook_receipt_retention_days: null,
     sensitive: false,
+    allowed_repos: [],
     created_at: NOW,
     updated_at: NOW,
     ...overrides,
@@ -193,6 +195,14 @@ export const connectionsList = [
         { status: 201 },
       ),
   ),
+  http.get('/api/v1/connections/:name/accessible-repos', () =>
+    HttpResponse.json(
+      successFor<typeof scanAccessibleRepos>([
+        { owner: 'acme', repo: 'proj-1', permission: 'admin', private: true },
+        { owner: 'acme', repo: 'proj-2', permission: 'write', private: false },
+      ]),
+    ),
+  ),
   http.get('/api/v1/connections/:name', ({ params }) => {
     const conn = mockConnections.find((c) => c.name === params['name'])
     if (!conn) return HttpResponse.json(apiError('Connection not found'), { status: 404 })
@@ -262,6 +272,14 @@ export const connectionsHandlers = [
         successFor<typeof captureConnectionSecret>({ handle: 'sech_mock_handle_0001' }),
         { status: 201 },
       ),
+  ),
+  http.get('/api/v1/connections/:name/accessible-repos', () =>
+    HttpResponse.json(
+      successFor<typeof scanAccessibleRepos>([
+        { owner: 'acme', repo: 'proj-1', permission: 'admin', private: true },
+        { owner: 'acme', repo: 'proj-2', permission: 'write', private: false },
+      ]),
+    ),
   ),
   http.get('/api/v1/connections/:name', ({ params }) =>
     HttpResponse.json(
