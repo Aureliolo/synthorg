@@ -11,9 +11,14 @@ loop: finished work feeds the standing organisation.
 Everything here is best-effort and detached. The rollup is an idempotent,
 best-effort observer, so capture must not block it and must not raise into it;
 the work runs on a tracked background task with a wall-clock ceiling, and every
-failure is swallowed and logged. Capture is idempotent: a project already
-carrying a retrospective is skipped, so a redelivered completion event or a
-restart mid-capture cannot double-write.
+failure is swallowed and logged.
+
+Capture runs once per objective because the rollup derives its trigger edge from
+persisted project status: the project is already ``COMPLETED`` when the edge
+fires, so a redelivered event or a restarted process reads no edge at all. The
+in-flight guard below collapses two plans of one project completing together,
+and the org-fact scan covers the one window neither closes, two replicas
+recomputing the same completion concurrently.
 """
 
 import asyncio
@@ -126,8 +131,7 @@ class ShipRetroCaptureService:
         # Project ids with a capture in flight this process. The recompute lock
         # is keyed per-plan, but the retro edge fires on the shared project, so
         # two plans of one project could each schedule a capture; this guard
-        # collapses them synchronously (checked-and-set before spawn, no await)
-        # while the org-fact idempotency scan covers only the restart case.
+        # collapses them synchronously (checked-and-set before spawn, no await).
         self._inflight: set[str] = set()
 
     def schedule(self, *, plan: Plan, project: Project) -> None:

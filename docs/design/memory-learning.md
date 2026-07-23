@@ -211,19 +211,24 @@ best-effort: one refused or failed learning never loses the rest.
 ### Idempotency and isolation from the loop
 
 Capture fires on the edge a project first reaches `COMPLETED`
-(`ProjectRollupService._maybe_capture_retro`); a terminal project never
-re-triggers it. Same-process duplicates are collapsed by an in-flight guard
-keyed on the project id, and a restart mid-capture is caught, best-effort, by an
-org-memory backstop that skips a project already carrying its `objective:` tag.
-That backstop only sees retros that wrote an org learning: a retrospective with
-only per-agent learnings writes no org fact, so a restart in the narrow window
-before its writes land could re-run it (the org write gate still de-duplicates,
-and a
-repeat per-agent `EPISODIC` entry is low-harm). A durable per-objective capture
-record for a strict exactly-once guarantee is a tracked follow-up. Because the
-rollup is a best-effort, bounded-queue observer, capture runs **detached** on a
-tracked background task with the wall-clock ceiling, so it never blocks or fails
-task processing.
+(`ProjectRollupService._maybe_capture_retro`), and that edge is derived from
+persisted project status, not from in-memory bookkeeping: the project row is
+already `COMPLETED` before the trigger runs, so every later recompute reads
+`before == COMPLETED` and no longer sees an edge. A process that restarts after
+(or during) a capture therefore cannot re-run it, and a redelivered completion
+event changes nothing. Two plans of one project completing together are
+collapsed by an in-flight guard keyed on the project id, and an org-memory scan
+for the objective's `objective:` tag is a secondary guard for the one remaining
+window: two replicas recomputing the same completion concurrently, each reading
+the pre-write status.
+
+The cost of that design is on the recovery side, not the duplication side: a
+hard crash mid-capture loses that objective's retrospective, since nothing
+re-triggers it. Graceful shutdown does not, because the runner drains in-flight
+captures before disconnecting the memory backends. Because the rollup is a
+best-effort, bounded-queue observer, capture runs **detached** on a tracked
+background task with the wall-clock ceiling, so it never blocks or fails task
+processing.
 
 Wired at boot by `api/lifecycle_helpers/project_rollup_wiring.py` (only when both
 the agent-memory and org-memory backends are present) and gated by

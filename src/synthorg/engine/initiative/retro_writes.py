@@ -54,8 +54,8 @@ logger = get_logger(__name__)
 _RETRO_TAG: Final[NotBlankStr] = NotBlankStr("retro")
 
 #: How many recent org facts the idempotency backstop scans. The rollup's
-#: edge-once detection is the primary guard; this only catches a restart
-#: mid-capture, so a bounded recent window is enough.
+#: edge-once detection is the primary guard; this only narrows a concurrent
+#: cross-replica recompute, so a bounded recent window is enough.
 _IDEMPOTENCY_SCAN_LIMIT: Final[int] = 100
 
 #: Confidence recorded on a per-agent retro learning: the lead vouched for it
@@ -106,11 +106,15 @@ async def already_captured(
 ) -> bool:
     """Return whether a retrospective already exists for *project_id*.
 
-    A restart-safety backstop to the rollup's edge-once detection: it scans a
-    bounded window of recent procedure/convention facts for the objective's
-    retrospective tag. A miss (older than the window) simply lets capture run
-    again; the write gate then dedups the learnings, so the cost is a repeat
-    session, never a corrupt double-write.
+    A secondary guard behind the rollup's edge-once detection, which already
+    makes a redelivered event or a restarted process see no edge at all. What is
+    left for this scan is two replicas recomputing the same completion
+    concurrently, so it looks only at a bounded window of recent
+    procedure/convention facts. It is deliberately not a durable exactly-once
+    marker: a miss (an older fact, or a draft that carried only per-agent
+    learnings and so wrote no org fact) costs a repeat session and a repeat
+    ``EPISODIC`` entry, never a corrupt write, because the org write gate dedups
+    what does land.
 
     Returns:
         ``True`` when a recent org fact carries this objective's retro tag.
