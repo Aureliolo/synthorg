@@ -50,7 +50,10 @@ from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
-from synthorg.workers._planning_memory import build_planning_memory
+from synthorg.workers._planning_memory import (
+    PlanningMemoryGrant,
+    build_planning_memory,
+)
 from synthorg.workers.execution_service import WorkerExecutionService
 
 if TYPE_CHECKING:
@@ -171,21 +174,22 @@ async def _resolve_coordinator_dependencies(
     RoutingScorerConfig | None,
     tuple[PlannerWorktreeStrategy, WorkspaceIsolationConfig],
     bool,
+    PlanningMemoryGrant,
 ]:
     """Resolve decomposition model/strategy, session tuning, scorer, workspace.
 
     The resolution steps are independent, so they run under a
     ``TaskGroup`` to keep boot latency down (structured concurrency: any
     failure cancels the siblings and propagates). The agent-session turn cap
-    and spend ceiling plus the middleware-enabled flag are resolved here too
-    so every remote read happens in one group rather than serial tail reads at
-    the build site.
+    and spend ceiling, the middleware-enabled flag, and the planning memory
+    grant are resolved here too so every remote read happens in one group
+    rather than serial tail reads at the build site.
 
     Returns:
         A ``(decomposition_model, decomposition_strategy,
         agent_session_max_turns, agent_session_cost_ceiling,
         routing_scorer_config, (workspace_strategy, workspace_config),
-        middleware_enabled)`` tuple.
+        middleware_enabled, planning_memory_grant)`` tuple.
     """
     try:
         async with asyncio.TaskGroup() as tg:
@@ -222,6 +226,10 @@ async def _resolve_coordinator_dependencies(
                     _MIDDLEWARE_KEY,
                 )
             )
+            # A plan should build on what the organisation already learned, so
+            # the planning session recalls past retros, org playbooks, and the
+            # owner's prior-initiative memory.
+            planning_task = tg.create_task(build_planning_memory(app_state))
     except Exception as exc:
         reraise_critical(exc)
         log_exception_redacted(
@@ -241,6 +249,7 @@ async def _resolve_coordinator_dependencies(
         scorer_task.result(),
         workspace_task.result(),
         middleware_task.result(),
+        planning_task.result(),
     )
 
 
@@ -353,6 +362,7 @@ async def _build_runtime_coordinator(
         routing_scorer_config,
         (workspace_strategy, workspace_config),
         middleware_enabled,
+        planning,
     ) = await _resolve_coordinator_dependencies(app_state)
     # ``decomposition_model`` is a MODEL_REF: it must name an explicit
     # ``(provider, model_id)`` pair. It is never auto-bound to a default
@@ -414,10 +424,6 @@ async def _build_runtime_coordinator(
         # runtime's per-call resolve).
         return provider_registry_of(app_state).get(identity.model.provider)
 
-    # A plan should build on what the organisation already learned, so the
-    # planning session recalls past retros, org playbooks, and the owner's
-    # prior-initiative memory.
-    planning = await build_planning_memory(app_state)
     # Real research data beats guessing, so grant live web search when a
     # provider is configured; fail open (no provider -> no tool), matching the
     # research subsystem's web source.

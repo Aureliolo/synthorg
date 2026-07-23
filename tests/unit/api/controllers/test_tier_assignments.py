@@ -1,5 +1,7 @@
 """Tests for the model tier-assignment REST endpoints."""
 
+from collections.abc import AsyncIterator
+
 import pytest
 from litestar import Litestar
 
@@ -62,6 +64,9 @@ def tier_app(
         cost_tracker=CostTracker(),
         auth_service=auth_service,
         settings_service=tier_settings,
+        # The persistence and bus are session-scoped and shared with every
+        # other API test, so this app must not disconnect them on teardown.
+        _skip_lifecycle_shutdown=True,
     )
 
 
@@ -78,9 +83,14 @@ def _reset_tier_state(
 
 
 @pytest.fixture
-def client(tier_app: Litestar) -> LoopAsyncClient:
-    """A fresh transport per test, bound to the shared app."""
-    return LoopAsyncClient(tier_app)
+async def client(tier_app: Litestar) -> AsyncIterator[LoopAsyncClient]:
+    """A fresh transport per test, bound to the shared app.
+
+    Entered as a context manager so the ASGI lifespan runs on this test's loop
+    and the transport is closed afterwards.
+    """
+    async with LoopAsyncClient(tier_app) as entered:
+        yield entered
 
 
 @pytest.mark.unit
