@@ -34,6 +34,9 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathField, PathId, PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
+from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
+    ForgeAccessibleRepo,
+)
 from synthorg.integrations.connections.catalog import _UNSET, _UnsetType
 from synthorg.integrations.connections.field_metadata import (
     ConnectionTypeMetadata,
@@ -216,6 +219,7 @@ class ConnectionsController(Controller):
             health_check_enabled=data.health_check_enabled,
             webhook_receipt_retention_days=data.webhook_receipt_retention_days,
             sensitive=data.sensitive,
+            allowed_repos=tuple(str(r) for r in data.allowed_repos),
         )
         # Connection records carry credentials; route the success
         # event through the audit chain (the SECURITY_* prefix is the
@@ -292,6 +296,13 @@ class ConnectionsController(Controller):
         sensitive: bool | _UnsetType = (
             bool(data.sensitive) if "sensitive" in data.model_fields_set else _UNSET
         )
+        # An explicit ``allowed_repos: []`` clears the scope (deny-all); an
+        # omitted field keeps the stored scope.
+        allowed_repos: tuple[str, ...] | _UnsetType = (
+            tuple(str(r) for r in (data.allowed_repos or ()))
+            if "allowed_repos" in data.model_fields_set
+            else _UNSET
+        )
         catalog = require_service(
             state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
             "Connection Catalog",
@@ -304,6 +315,7 @@ class ConnectionsController(Controller):
                 health_check_enabled=health_check_enabled,
                 webhook_receipt_retention_days=webhook_receipt_retention_days,
                 sensitive=sensitive,
+                allowed_repos=allowed_repos,
             )
         except ConnectionNotFoundError as exc:
             logger.warning(
@@ -449,6 +461,42 @@ class ConnectionsController(Controller):
             # ``CONNECTION_NOT_FOUND`` error code.
             raise
         return ApiResponse(data=report)
+
+    @get(
+        "/{name:str}/accessible-repos",
+        guards=[require_write_access],
+        summary="Scan a forge connection's accessible repositories",
+    )
+    async def scan_accessible_repos(
+        self,
+        state: State,
+        name: PathName,
+    ) -> ApiResponse[list[ForgeAccessibleRepo]]:
+        """List the repositories the forge connection's token can reach.
+
+        Powers the operator repo-scope picker: the returned repositories
+        are the candidates an operator selects into the connection's
+        ``allowed_repos`` scope. Egress is pinned to the connection host by
+        construction. Write-guarded because it brokers the connection's
+        credentials to the forge.
+
+        Returns:
+            ``ApiResponse`` wrapping the accessible repositories.
+
+        Raises:
+            ConnectionNotFoundError: When no such connection exists.
+            ForgeUnsupportedError: When the connection is not a forge.
+        """
+        from synthorg.integrations.connections.forge_scan import (  # noqa: PLC0415
+            scan_accessible_repos,
+        )
+
+        catalog = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
+        repos = await scan_accessible_repos(catalog, name)
+        return ApiResponse(data=list(repos))
 
     @get(
         "/{name:str}/secrets/{field:str}",

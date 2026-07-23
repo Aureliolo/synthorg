@@ -111,6 +111,21 @@ mandatory_rules:
     header: Governed Destructive Tools
     gate: scripts/check_governed_destructive_tools.py
 
+  - id: claude-md::forge-repo-scoping
+    file: CLAUDE.md
+    header: Forge Repo-Scoping
+    gate: scripts/check_forge_repo_scoped.py
+
+  - id: claude-md::agent-mcp-visibility
+    file: CLAUDE.md
+    header: Agent-MCP Visibility
+    gate: scripts/check_mcp_self_consumer_scoped.py
+
+  - id: claude-md::mcp-server-npm-pin
+    file: CLAUDE.md
+    header: MCP Server NPM Pin
+    gate: scripts/check_mcp_server_config_pinned.py
+
   - id: claude-md::error-code-uniqueness
     file: CLAUDE.md
     header: Error-Code Uniqueness

@@ -9,6 +9,7 @@ payload + response, label handling, CI availability), so those are
 abstract and implemented per forge.
 """
 
+import base64
 from abc import ABC, abstractmethod
 from typing import ClassVar
 from urllib.parse import quote
@@ -19,9 +20,13 @@ from synthorg.engine.errors import GitBackendForgeApiError
 from synthorg.engine.workspace.git_backend.forge_api._base import BaseForgeClient
 from synthorg.engine.workspace.git_backend.forge_api._http import raise_for_forge_status
 from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
+    ForgeAccessibleRepo,
+    ForgeBranchRef,
     ForgeCiRun,
+    ForgeCiTrigger,
     ForgeComment,
     ForgeDirEntry,
+    ForgeFileCommit,
     ForgeFileContent,
     ForgeIssue,
     ForgeIssueState,
@@ -30,11 +35,13 @@ from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
     ForgePullRequest,
     ForgePullState,
     ForgeReview,
+    ForgeReviewComment,
     ForgeReviewDecision,
 )
 from synthorg.engine.workspace.git_backend.forge_api.protocol import ForgeRepo
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
+    FORGE_API_FILE_WRITTEN,
     FORGE_API_ISSUE_COMMENTED,
     FORGE_API_PULL_REQUEST_COMMENTED,
 )
@@ -99,6 +106,58 @@ class ForgeAgentBase(BaseForgeClient, ABC):
             )
             for item in _as_list(resp.json())
         )
+
+    async def list_accessible_repos(
+        self, *, limit: int
+    ) -> tuple[ForgeAccessibleRepo, ...]:
+        action = "list accessible repos"
+        resp = await self._request(
+            "GET",
+            "/user/repos",
+            action=action,
+            params={self._LIST_PARAM: limit},
+        )
+        raise_for_forge_status(resp, action=action)
+        parsed = (
+            gh.parse_github(item, gh.GhRepoPerm, what="repo")
+            for item in _as_list(resp.json())
+        )
+        mapped = (gh.accessible_repo_from(model) for model in parsed)
+        return tuple(repo for repo in mapped if repo is not None)
+
+    async def write_file(  # noqa: PLR0913 -- forge contents-API fields
+        self,
+        *,
+        owner: NotBlankStr,
+        repo: NotBlankStr,
+        path: NotBlankStr,
+        content: str,
+        branch: NotBlankStr,
+        message: NotBlankStr,
+        sha: str | None = None,
+    ) -> ForgeFileCommit:
+        action = f"write file {owner}/{repo}/{path}"
+        encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
+        payload: dict[str, object] = {
+            "message": str(message),
+            "content": encoded,
+            "branch": str(branch),
+        }
+        if sha:
+            payload["sha"] = sha
+        resp = await self._request(
+            "PUT",
+            f"/repos/{owner}/{repo}/contents/{quote(str(path), safe='/')}",
+            action=action,
+            json=payload,
+        )
+        raise_for_forge_status(resp, action=action)
+        commit = gh.file_commit_from(
+            gh.parse_github(resp.json(), gh.GhContentWrite, what="file write"),
+            branch=str(branch),
+        )
+        logger.info(FORGE_API_FILE_WRITTEN, path=str(path))
+        return commit
 
     async def get_issue(
         self, *, owner: NotBlankStr, repo: NotBlankStr, number: int
@@ -227,7 +286,18 @@ class ForgeAgentBase(BaseForgeClient, ABC):
         """Open a pull request from ``source_branch`` into ``target_branch``."""
 
     @abstractmethod
-    async def review_pull_request(
+    async def create_branch(
+        self,
+        *,
+        owner: NotBlankStr,
+        repo: NotBlankStr,
+        new_branch: NotBlankStr,
+        from_ref: NotBlankStr,
+    ) -> ForgeBranchRef:
+        """Create ``new_branch`` pointing at ``from_ref`` and return it."""
+
+    @abstractmethod
+    async def review_pull_request(  # noqa: PLR0913 -- forge review fields
         self,
         *,
         owner: NotBlankStr,
@@ -235,6 +305,7 @@ class ForgeAgentBase(BaseForgeClient, ABC):
         number: int,
         decision: ForgeReviewDecision,
         body: str = "",
+        comments: tuple[ForgeReviewComment, ...] = (),
     ) -> ForgeReview:
         """Submit a review (approve / request changes / comment)."""
 
@@ -266,6 +337,23 @@ class ForgeAgentBase(BaseForgeClient, ABC):
         self, *, owner: NotBlankStr, repo: NotBlankStr, run_id: int
     ) -> ForgeCiRun:
         """Return a single CI run by id."""
+
+    @abstractmethod
+    async def trigger_ci_run(
+        self,
+        *,
+        owner: NotBlankStr,
+        repo: NotBlankStr,
+        workflow: NotBlankStr,
+        branch: NotBlankStr,
+    ) -> ForgeCiTrigger:
+        """Trigger a CI workflow/pipeline on ``branch``."""
+
+    @abstractmethod
+    async def rerun_ci_run(
+        self, *, owner: NotBlankStr, repo: NotBlankStr, run_id: int
+    ) -> ForgeCiTrigger:
+        """Re-run an existing CI run by id."""
 
 
 def _as_list(data: object) -> list[object]:

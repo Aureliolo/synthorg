@@ -15,11 +15,17 @@ from typing import ClassVar, NamedTuple, override
 from pydantic import BaseModel
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
+    ForgeReviewComment,
+)
+from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.forge._args import (
     ForgeCiArgs,
     ForgeIssueArgs,
     ForgePullRequestArgs,
+    ForgePushArgs,
     ForgeRepoArgs,
+    ForgeReviewCommentArg,
 )
 from synthorg.tools.forge._base import (
     _TRUNCATED_NOTE,
@@ -29,6 +35,20 @@ from synthorg.tools.forge._base import (
     _json_result,
 )
 from synthorg.tools.forge._runtime import ForgeToolDeps
+
+
+def _to_review_comment(arg: ForgeReviewCommentArg) -> ForgeReviewComment:
+    """Map an agent-supplied inline comment onto the domain model.
+
+    Returns:
+        The vendor-neutral :class:`ForgeReviewComment`.
+    """
+    return ForgeReviewComment(
+        path=NotBlankStr(arg.path),
+        line=arg.line,
+        body=NotBlankStr(arg.body),
+        side=arg.side,
+    )
 
 
 class _ForgeGuard(NamedTuple):
@@ -250,6 +270,7 @@ class ForgePullRequestTool(_BaseForgeTool):
                 number=args.number,
                 decision=args.decision,
                 body=guard.body,
+                comments=tuple(_to_review_comment(c) for c in args.comments),
             )
             return _json_result(review.model_dump(mode="json"))
         guard = _guard_forge_text(title=args.commit_title, body="", is_commit=True)
@@ -266,11 +287,12 @@ class ForgePullRequestTool(_BaseForgeTool):
 
 
 class ForgeCiTool(_BaseForgeTool):
-    """Read CI runs for a repository.
+    """Read, trigger, or re-run CI runs for a repository.
 
-    CI reads are available only when the bound forge exposes a CI-run
-    API; a forge without one raises ``ForgeUnsupportedError`` at the
-    boundary.
+    CI operations are available only when the bound forge exposes a
+    CI/pipeline API; a forge without one raises ``ForgeUnsupportedError``
+    at the boundary. Triggering and re-running are writes and route
+    through the approval gate.
     """
 
     args_model: ClassVar[type[BaseModel] | None] = ForgeCiArgs
@@ -279,10 +301,12 @@ class ForgeCiTool(_BaseForgeTool):
         super().__init__(
             name="forge_ci",
             description=(
-                "Read continuous-integration runs for the bound forge repository:"
-                " list runs (list_runs, optional branch) or get a single run"
-                " (get_run, requires run_id). Available when the bound forge"
-                " connection exposes CI-run reads."
+                "Work with continuous-integration runs for the bound forge"
+                " repository: list runs (list_runs, optional branch), get a single"
+                " run (get_run, requires run_id), trigger a run (trigger, requires"
+                " workflow + branch), or re-run one (rerun, requires run_id)."
+                " Triggering and re-running require approval. Available when the"
+                " bound forge connection exposes a CI API."
             ),
             args_model=ForgeCiArgs,
             deps=deps,
@@ -297,15 +321,86 @@ class ForgeCiTool(_BaseForgeTool):
         if args.action == "get_run":
             run = await client.get_ci_run(owner=owner, repo=repo, run_id=args.run_id)
             return _json_result(run.model_dump(mode="json"))
+        if args.action == "trigger":
+            trigger = await client.trigger_ci_run(
+                owner=owner,
+                repo=repo,
+                workflow=NotBlankStr(args.workflow),
+                branch=NotBlankStr(args.branch),
+            )
+            return _json_result(trigger.model_dump(mode="json"))
+        if args.action == "rerun":
+            trigger = await client.rerun_ci_run(
+                owner=owner, repo=repo, run_id=args.run_id
+            )
+            return _json_result(trigger.model_dump(mode="json"))
         runs = await client.list_ci_runs(
             owner=owner, repo=repo, branch=args.branch or None, limit=args.limit
         )
         return _json_result([r.model_dump(mode="json") for r in runs])
 
 
+class ForgePushTool(_BaseForgeTool):
+    """Create a branch or write a file to the bound forge repository.
+
+    This is the forge-API on-ramp for an agent landing its own work: open
+    a feature branch, then commit file contents to it (before opening a
+    pull request with ``forge_pull_request``). Both actions mutate the
+    remote, so the tool binds its own ``ActionType.VCS_PUSH`` (never the
+    shared ``comms:external``) and is governed by the git-access
+    sub-constraint and the approval gate.
+    """
+
+    args_model: ClassVar[type[BaseModel] | None] = ForgePushArgs
+    _ACTION_TYPE: ClassVar[str] = ActionType.VCS_PUSH.value
+
+    def __init__(self, *, deps: ForgeToolDeps) -> None:
+        super().__init__(
+            name="forge_push",
+            description=(
+                "Land work on the bound forge repository: create a branch"
+                " (create_branch, requires new_branch + from_ref) or write a file"
+                " (write_file, requires path + branch + message; pass sha to update"
+                " an existing file). Then open a pull request with"
+                " forge_pull_request. Writes require approval."
+            ),
+            args_model=ForgePushArgs,
+            deps=deps,
+        )
+
+    @override
+    async def _dispatch(
+        self, client: ForgeAgentApiClient, args: BaseModel
+    ) -> ToolExecutionResult:
+        assert isinstance(args, ForgePushArgs)  # noqa: S101 -- parsed by execute
+        owner, repo = NotBlankStr(args.owner), NotBlankStr(args.repo)
+        if args.action == "create_branch":
+            branch = await client.create_branch(
+                owner=owner,
+                repo=repo,
+                new_branch=NotBlankStr(args.new_branch),
+                from_ref=NotBlankStr(args.from_ref),
+            )
+            return _json_result(branch.model_dump(mode="json"))
+        guard = _guard_forge_text(title=args.message, body="", is_commit=True)
+        if guard.error is not None:
+            return guard.error
+        commit = await client.write_file(
+            owner=owner,
+            repo=repo,
+            path=NotBlankStr(args.path),
+            content=args.content,
+            branch=NotBlankStr(args.branch),
+            message=NotBlankStr(guard.title),
+            sha=args.sha or None,
+        )
+        return _json_result(commit.model_dump(mode="json"))
+
+
 __all__ = [
     "ForgeCiTool",
     "ForgeIssueTool",
     "ForgePullRequestTool",
+    "ForgePushTool",
     "ForgeRepoTool",
 ]

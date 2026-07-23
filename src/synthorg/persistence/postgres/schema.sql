@@ -1278,6 +1278,7 @@ CREATE TABLE connections (
         OR webhook_receipt_retention_days >= 0
     ),
     sensitive BOOLEAN NOT NULL DEFAULT FALSE,
+    allowed_repos_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
 );

@@ -105,6 +105,36 @@ class TestConnectionRepository:
         assert refetched.metadata["owner"] == "secops"
         assert refetched.sensitive is True
 
+    async def test_allowed_repos_round_trips(self, backend: PersistenceBackend) -> None:
+        # Default scope is empty (fail-closed: no repository is in scope).
+        await backend.connections.save(_connection(name="conn-noscope"))
+        noscope = await backend.connections.get(NotBlankStr("conn-noscope"))
+        assert noscope is not None
+        assert noscope.allowed_repos == ()
+
+        # A selected scope round-trips and survives an unrelated upsert.
+        scoped = _connection(name="conn-scoped").model_copy(
+            update={"allowed_repos": ("acme/proj-1", "acme/*")},
+        )
+        await backend.connections.save(scoped)
+        fetched = await backend.connections.get(NotBlankStr("conn-scoped"))
+        assert fetched is not None
+        assert tuple(str(r) for r in fetched.allowed_repos) == (
+            "acme/proj-1",
+            "acme/*",
+        )
+
+        await backend.connections.save(
+            scoped.model_copy(update={"metadata": {"team": "core"}}),
+        )
+        refetched = await backend.connections.get(NotBlankStr("conn-scoped"))
+        assert refetched is not None
+        assert refetched.metadata["team"] == "core"
+        assert tuple(str(r) for r in refetched.allowed_repos) == (
+            "acme/proj-1",
+            "acme/*",
+        )
+
     async def test_save_is_idempotent_upsert(self, backend: PersistenceBackend) -> None:
         await backend.connections.save(_connection(metadata={"team": "a"}))
         await backend.connections.save(_connection(metadata={"team": "b"}))

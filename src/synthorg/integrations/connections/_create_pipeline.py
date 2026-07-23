@@ -82,6 +82,7 @@ class ConnectionCreateMixin:
         health_check_enabled: bool,
         webhook_receipt_retention_days: int | None,
         sensitive: bool = False,
+        allowed_repos: tuple[str, ...] = (),
     ) -> Connection:
         """Build and validate the ``Connection`` model BEFORE secret writes.
 
@@ -110,6 +111,7 @@ class ConnectionCreateMixin:
                 metadata=metadata or {},
                 webhook_receipt_retention_days=webhook_receipt_retention_days,
                 sensitive=sensitive,
+                allowed_repos=tuple(NotBlankStr(r) for r in allowed_repos),
                 created_at=now,
                 updated_at=now,
             )

@@ -35,7 +35,7 @@ def _config(**overrides: object) -> MCPServerConfig:
         "name": "srv",
         "transport": "stdio",
         "command": "npx",
-        "args": ("-y", "pkg"),
+        "args": ("-y", "pkg@1.0.0"),
     }
     base.update(overrides)
     return MCPServerConfig(**base)  # type: ignore[arg-type]
@@ -51,7 +51,7 @@ async def test_env_credentials_injected() -> None:
     assert env is not None
     assert env["GITHUB_PERSONAL_ACCESS_TOKEN"] == "secret123"
     # The secret is forwarded by env var only; it never lands on the argv.
-    assert args == ["-y", "pkg"]
+    assert args == ["-y", "pkg@1.0.0"]
 
 
 async def test_secret_never_appears_in_args() -> None:
@@ -77,7 +77,7 @@ async def test_no_credential_source_leaves_server_unauthenticated() -> None:
 async def test_connectionless_server_gets_no_injection() -> None:
     client = MCPClient(_config(), credential_source=_StubCreds({"token": "x"}))
     args, env = await resolve_stdio_launch(client._config, client._credential_source)
-    assert args == ["-y", "pkg"]
+    assert args == ["-y", "pkg@1.0.0"]
     assert env is None
 
 

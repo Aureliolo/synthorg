@@ -1280,6 +1280,7 @@ CREATE TABLE connections (
         OR webhook_receipt_retention_days >= 0
     ),
     sensitive INTEGER NOT NULL DEFAULT 0 CHECK (sensitive IN (0, 1)),
+    allowed_repos_json TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );

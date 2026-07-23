@@ -107,10 +107,25 @@ class ForgeUpstreamError(ForgeToolError):
     default_message: ClassVar[str] = "Forge upstream request failed"
 
 
+class ForgeRepoScopeError(ForgeToolError):
+    """The requested repository is outside the connection's allowed scope.
+
+    Repo scope is least-privilege and fail-closed: a connection with no
+    repositories selected denies every repository, and a selected scope
+    admits only its ``owner/repo`` entries (``owner/*`` globs permitted).
+    """
+
+    status_code: ClassVar[int] = 403
+    error_code: ClassVar[ErrorCode] = ErrorCode.FORBIDDEN
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    default_message: ClassVar[str] = "Repository is outside the connection's scope"
+
+
 __all__ = [
     "ForgeConnectionNotFoundError",
     "ForgeCredentialError",
     "ForgeRateLimitedError",
+    "ForgeRepoScopeError",
     "ForgeToolArgumentError",
     "ForgeToolError",
     "ForgeUnsupportedError",

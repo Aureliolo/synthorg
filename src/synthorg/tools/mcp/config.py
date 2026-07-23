@@ -28,6 +28,52 @@ _ALLOWED_URL_SCHEMES: Final[frozenset[str]] = frozenset({"http", "https"})
 SSRF guard: a server URL can arrive from a catalog installation, so
 ``file://`` / ``ftp://`` / ``gopher://`` and friends are rejected."""
 
+# Commands that resolve+run an npm package on the fly. A hand-authored
+# stdio server using one MUST pin an explicit version so a reconnect can
+# never silently pull a newer (and un-reviewed) package version.
+_NPX_COMMANDS: Final[frozenset[str]] = frozenset({"npx", "npx.cmd", "pnpm", "bunx"})
+# npm dist-tags that float to whatever is newest: not a pin.
+_FLOATING_NPM_TAGS: Final[frozenset[str]] = frozenset({"latest", "next", "canary", ""})
+# npx flags that take no package operand (skipped when finding the spec).
+_NPX_FLAGS: Final[frozenset[str]] = frozenset({"-y", "--yes", "--"})
+
+
+def _npm_package_spec(command: str, args: tuple[str, ...]) -> str | None:
+    """Return the npm package spec an ``npx``-style command will run.
+
+    Returns:
+        The package operand (e.g. ``@scope/pkg@2.1.0``), or ``None`` when
+        the command is not an npx-style launcher.
+    """
+    base = command.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    if base not in _NPX_COMMANDS:
+        return None
+    rest = list(args)
+    # ``pnpm dlx`` / ``bunx`` variants: drop a leading ``dlx`` subcommand.
+    if base == "pnpm" and rest and rest[0] == "dlx":
+        rest = rest[1:]
+    elif base == "pnpm":
+        return None
+    for arg in rest:
+        if arg in _NPX_FLAGS or arg.startswith("-"):
+            continue
+        return arg
+    return None
+
+
+def _npm_spec_is_pinned(spec: str) -> bool:
+    """Whether an npm package spec carries an explicit, non-floating pin.
+
+    Returns:
+        ``True`` when the spec ends in ``@<version>`` with a concrete
+        (non-floating-tag) version.
+    """
+    remainder = spec.removeprefix("@")
+    if "@" not in remainder:
+        return False
+    version = remainder.rsplit("@", 1)[1]
+    return version.lower() not in _FLOATING_NPM_TAGS
+
 
 class MCPServerConfig(BaseModel):
     """Configuration for a single MCP server connection.
@@ -158,6 +204,39 @@ class MCPServerConfig(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+    @model_validator(mode="after")
+    def _validate_npm_pin(self) -> Self:
+        """Reject an ``npx``-launched stdio server with an unpinned package.
+
+        The catalog installer pins every package to ``@<version>``, but a
+        hand-authored ``MCPServerConfig`` bypasses that path. An unpinned
+        (or ``@latest``) package resolves to whatever is newest on every
+        reconnect, so an un-reviewed version could start running under the
+        agent's tools without any change to the config. Requiring a
+        concrete pin closes that supply-chain gap at the model boundary.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If the command runs an unpinned npm package.
+        """
+        if self.transport != "stdio" or self.command is None:
+            return self
+        spec = _npm_package_spec(str(self.command), self.args)
+        if spec is None or _npm_spec_is_pinned(spec):
+            return self
+        msg = (
+            f"Server {self.name!r}: npm package {spec!r} must be pinned to an "
+            f"explicit version (e.g. '{spec}@1.2.3'), not floating/unpinned"
+        )
+        logger.warning(
+            MCP_CONFIG_VALIDATION_FAILED,
+            server=self.name,
+            reason=msg,
+        )
+        raise ValueError(msg)
 
     @model_validator(mode="after")
     def _validate_credential_binding_is_stdio(self) -> Self:

@@ -59,6 +59,7 @@ def registry_with_forge_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
         ForgeCiTool,
         ForgeIssueTool,
         ForgePullRequestTool,
+        ForgePushTool,
         ForgeRepoTool,
     )
 
@@ -74,6 +75,7 @@ def registry_with_forge_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
         ForgeRepoTool(deps=deps),
         ForgeIssueTool(deps=deps),
         ForgePullRequestTool(deps=deps),
+        ForgePushTool(deps=deps),
         ForgeCiTool(deps=deps),
     ]
     logger.debug(

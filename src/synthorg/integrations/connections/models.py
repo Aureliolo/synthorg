@@ -154,6 +154,11 @@ class Connection(BaseModel):
         sensitive: Marks the connection as sensitive so the governed
             external-access tool routes every call against it (read or
             write) to human approval, not just write methods.
+        allowed_repos: Least-privilege repository scope for a forge
+            connection (``owner/repo`` entries, ``owner/*`` globs
+            permitted). An empty tuple denies every repository
+            (fail-closed): an operator selects the in-scope repositories
+            for the connection before an agent can act through it.
         created_at: Creation timestamp.
         updated_at: Last modification timestamp.
     """
@@ -170,6 +175,7 @@ class Connection(BaseModel):
     health_check_enabled: bool = True
     health: ConnectionHealth = Field(default_factory=ConnectionHealth)
     sensitive: bool = False
+    allowed_repos: tuple[NotBlankStr, ...] = ()
     metadata: dict[str, str] = Field(default_factory=dict)
     webhook_receipt_retention_days: WebhookRetentionDays = Field(
         default=None,

@@ -297,15 +297,28 @@ class VisionVerifyConfig(BaseModel):
     )
 
 
+# Generous default MCP call budget per (agent, tool): high enough that
+# normal bursty use never trips it, low enough that a tight infinite loop
+# is refused rather than hammering one tool thousands of times a minute.
+_MCP_RATE_PER_MINUTE_DEFAULT: Final[int] = 600
+_MCP_RATE_BURST_DEFAULT: Final[int] = 120
+
+
 class McpSelfConsumerConfig(BaseModel):
     """Agent -> SynthOrg-MCP self-consumer bridge configuration.
 
     Attributes:
         mode: Bridge dispatch mode (default ``DISABLED``: no bridge).
-        elevated_capabilities: Capability patterns granted to an agent
-            whose earned trust level is ``ELEVATED`` (default ``("*",)``
-            -- the full MCP surface, still gated behind ELEVATED trust
-            and the per-handler admin guardrails).
+        elevated_capabilities: Operator-set capability patterns that
+            additionally grant *sensitive* (admin) MCP tools to every
+            ELEVATED agent, on top of each agent's own
+            ``ToolPermissions.mcp_capabilities``. Default ``()`` -- the
+            ambient non-admin surface is already visible out of the box,
+            so operators opt individual admin families in here (or set
+            ``("*",)`` to restore the whole surface org-wide). Read/write
+            tools are always visible to an ELEVATED agent regardless of
+            this field; only admin tools are gated by it plus the
+            per-agent grant.
         read_tool_allowlist: Explicit MCP tool names a sub-ELEVATED
             agent may call. Empty (default) means a low-trust agent
             gets no MCP access -- the safest posture; operators opt in
@@ -314,11 +327,19 @@ class McpSelfConsumerConfig(BaseModel):
             ``list``/``get``/``status`` actions.
         denied_tools: MCP tool names always excluded regardless of
             trust level or allowlist (highest-priority denylist).
+        rate_limit_per_minute: Per-(agent, tool) sustained MCP call rate.
+            A token bucket refills at this rate; a call over budget is
+            refused (fail-closed) so a runaway agent loop cannot hammer a
+            single tool. ``0`` disables rate limiting.
+        rate_limit_burst: Token-bucket capacity (the largest burst of
+            calls to one tool allowed before the sustained rate applies).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     mode: McpSelfConsumerMode = McpSelfConsumerMode.DISABLED
-    elevated_capabilities: tuple[NotBlankStr, ...] = ("*",)
+    elevated_capabilities: tuple[NotBlankStr, ...] = ()
     read_tool_allowlist: tuple[NotBlankStr, ...] = ()
     denied_tools: tuple[NotBlankStr, ...] = ()
+    rate_limit_per_minute: int = Field(default=_MCP_RATE_PER_MINUTE_DEFAULT, ge=0)
+    rate_limit_burst: int = Field(default=_MCP_RATE_BURST_DEFAULT, ge=1)

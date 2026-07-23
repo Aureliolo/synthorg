@@ -26,6 +26,12 @@ _MAX_BASE_URL_LEN: Final[int] = 2048
 _MAX_CRED_VALUE_LEN: Final[int] = 8192
 _MAX_METADATA_KEY_LEN: Final[int] = 128
 _MAX_METADATA_VALUE_LEN: Final[int] = 1024
+_MAX_REPO_ENTRIES: Final[int] = 1000
+_MAX_REPO_ENTRY_LEN: Final[int] = 512
+
+_AllowedRepos = tuple[
+    Annotated[NotBlankStr, Field(max_length=_MAX_REPO_ENTRY_LEN)], ...
+]
 
 
 class CreateConnectionRequest(BaseModel):
@@ -103,6 +109,15 @@ class CreateConnectionRequest(BaseModel):
             "against it routes to approval."
         ),
     )
+    allowed_repos: Annotated[_AllowedRepos, Field(max_length=_MAX_REPO_ENTRIES)] = (
+        Field(
+            default=(),
+            description=(
+                "Least-privilege forge repository scope ('owner/repo', 'owner/*' "
+                "globs). Empty denies every repository (fail-closed)."
+            ),
+        )
+    )
 
     @field_validator("name")
     @classmethod
@@ -170,6 +185,16 @@ class UpdateConnectionRequest(BaseModel):
         description=(
             "Marks the connection sensitive so every external-access call "
             "against it routes to approval."
+        ),
+    )
+    allowed_repos: (
+        Annotated[_AllowedRepos, Field(max_length=_MAX_REPO_ENTRIES)] | None
+    ) = Field(
+        default=None,
+        description=(
+            "Replace the forge repository scope ('owner/repo', 'owner/*' "
+            "globs). Send [] to clear it (deny-all); omit to keep the "
+            "existing scope."
         ),
     )
 

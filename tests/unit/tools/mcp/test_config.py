@@ -8,6 +8,56 @@ from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
 pytestmark = pytest.mark.unit
 
 
+class TestMCPServerConfigNpmPin:
+    """npm version-pin enforcement for npx-launched stdio servers."""
+
+    def test_unpinned_npx_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-y", "@scope/pkg"),
+            )
+
+    def test_latest_tag_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-y", "@scope/pkg@latest"),
+            )
+
+    def test_pinned_scoped_accepted(self) -> None:
+        cfg = MCPServerConfig(
+            name="s1",
+            transport="stdio",
+            command="npx",
+            args=("-y", "@scope/pkg@2.1.0"),
+        )
+        assert cfg.args == ("-y", "@scope/pkg@2.1.0")
+
+    def test_pinned_unscoped_accepted(self) -> None:
+        cfg = MCPServerConfig(
+            name="s1",
+            transport="stdio",
+            command="npx",
+            args=("pkg@1.2.3",),
+        )
+        assert cfg.args == ("pkg@1.2.3",)
+
+    def test_non_npx_command_exempt(self) -> None:
+        # A node/python server is not an on-the-fly npm resolve; no pin needed.
+        cfg = MCPServerConfig(
+            name="s1",
+            transport="stdio",
+            command="node",
+            args=("server.js",),
+        )
+        assert cfg.command == "node"
+
+
 class TestMCPServerConfigStdio:
     """Stdio transport validation."""
 

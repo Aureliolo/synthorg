@@ -116,6 +116,7 @@ class ConnectionCatalog(
         health_check_enabled: bool = True,
         webhook_receipt_retention_days: int | None = None,
         sensitive: bool = False,
+        allowed_repos: tuple[str, ...] = (),
     ) -> Connection:
         """Create a new connection.
 
@@ -137,6 +138,9 @@ class ConnectionCatalog(
             sensitive: Marks the connection sensitive so the governed
                 external-access tool routes every call against it to
                 human approval.
+            allowed_repos: Least-privilege forge repository scope
+                (``owner/repo`` entries, ``owner/*`` globs). Empty denies
+                every repository (fail-closed).
 
         Returns:
             The persisted connection.
@@ -168,6 +172,7 @@ class ConnectionCatalog(
                 health_check_enabled=health_check_enabled,
                 webhook_receipt_retention_days=webhook_receipt_retention_days,
                 sensitive=sensitive,
+                allowed_repos=allowed_repos,
             )
             await self._store_secret(secret_id, credentials, connection_name=name)
             await self._persist_connection_with_cleanup(
@@ -280,7 +285,7 @@ class ConnectionCatalog(
             1 for c in self._cache.values() if c.connection_type == connection_type
         )
 
-    def _build_update_candidate(
+    def _build_update_candidate(  # noqa: PLR0913 -- one kwarg per patchable field
         self,
         *,
         base_url: str | None | _UnsetType,
@@ -288,6 +293,7 @@ class ConnectionCatalog(
         health_check_enabled: bool | None | _UnsetType,
         webhook_receipt_retention_days: int | None | _UnsetType,
         sensitive: bool | _UnsetType,
+        allowed_repos: tuple[str, ...] | _UnsetType,
     ) -> dict[str, object]:
         """Compose the PATCH candidate dict, normalising explicit nulls.
 
@@ -327,6 +333,8 @@ class ConnectionCatalog(
             candidate["webhook_receipt_retention_days"] = webhook_receipt_retention_days
         if sensitive is not _UNSET:
             candidate["sensitive"] = sensitive
+        if not isinstance(allowed_repos, _UnsetType):
+            candidate["allowed_repos"] = tuple(NotBlankStr(r) for r in allowed_repos)
         return candidate
 
     async def update(  # noqa: PLR0913 -- one kwarg per independently-patchable field
@@ -338,6 +346,7 @@ class ConnectionCatalog(
         health_check_enabled: bool | None | _UnsetType = _UNSET,
         webhook_receipt_retention_days: int | None | _UnsetType = _UNSET,
         sensitive: bool | _UnsetType = _UNSET,
+        allowed_repos: tuple[str, ...] | _UnsetType = _UNSET,
     ) -> Connection:
         """Update a connection's mutable fields.
 
@@ -368,6 +377,7 @@ class ConnectionCatalog(
                     health_check_enabled=health_check_enabled,
                     webhook_receipt_retention_days=webhook_receipt_retention_days,
                     sensitive=sensitive,
+                    allowed_repos=allowed_repos,
                 )
             except Exception as exc:
                 reraise_critical(exc)

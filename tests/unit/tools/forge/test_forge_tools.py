@@ -35,6 +35,7 @@ from synthorg.tools.forge.forge_tools import (
     ForgeCiTool,
     ForgeIssueTool,
     ForgePullRequestTool,
+    ForgePushTool,
     ForgeRepoTool,
 )
 from tests._shared.mock_of import mock_of
@@ -58,12 +59,14 @@ def _connection(
     *,
     ctype: ConnectionType = ConnectionType.FORGEJO,
     base_url: str = "https://code.example.com",
+    allowed_repos: tuple[str, ...] = ("acme/*",),
 ) -> Connection:
     return Connection(
         name="forge",
         connection_type=ctype,
         auth_method=AuthMethod.BEARER_TOKEN,
         base_url=base_url,
+        allowed_repos=allowed_repos,
     )
 
 
@@ -447,3 +450,142 @@ class TestForgeToolErrorMapping:
                     }
                 )
         client.aclose.assert_awaited_once()
+
+
+_VCS_PUSH = "vcs:push"
+
+
+def _vcs_autonomy() -> EffectiveAutonomy:
+    return EffectiveAutonomy(
+        level=AutonomyLevel.FULL,
+        auto_approve_actions=frozenset({_VCS_PUSH}),
+        human_approval_actions=frozenset(),
+        security_agent=False,
+    )
+
+
+class TestForgeRepoScope:
+    async def test_empty_scope_denies_all(self) -> None:
+        tool = ForgeRepoTool(deps=_deps(conn=_connection(allowed_repos=())))
+        result = await tool.execute(
+            arguments={"action": "get_repo", "owner": "acme", "repo": "proj-1"}
+        )
+        assert result.is_error is True
+        assert "outside" in result.content
+
+    async def test_mismatched_scope_denies(self) -> None:
+        tool = ForgeRepoTool(deps=_deps(conn=_connection(allowed_repos=("other/*",))))
+        result = await tool.execute(
+            arguments={"action": "get_repo", "owner": "acme", "repo": "proj-1"}
+        )
+        assert result.is_error is True
+
+    @respx.mock
+    async def test_exact_scope_allows(self) -> None:
+        respx.get(f"{_FJ}/repos/acme/proj-1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "full_name": "acme/proj-1",
+                    "default_branch": "main",
+                    "private": True,
+                    "clone_url": "https://code.example.com/acme/proj-1.git",
+                },
+            ),
+        )
+        tool = ForgeRepoTool(
+            deps=_deps(conn=_connection(allowed_repos=("acme/proj-1",)))
+        )
+        result = await tool.execute(
+            arguments={"action": "get_repo", "owner": "acme", "repo": "proj-1"}
+        )
+        assert result.is_error is False
+
+
+class TestForgePushTool:
+    @respx.mock
+    async def test_create_branch_auto_approved(self) -> None:
+        respx.post(f"{_FJ}/repos/acme/proj-1/branches").mock(
+            return_value=httpx.Response(
+                201, json={"name": "feature", "commit": {"id": "sha1"}}
+            ),
+        )
+        tool = ForgePushTool(deps=_deps(conn=_connection(), autonomy=_vcs_autonomy()))
+        result = await tool.execute(
+            arguments={
+                "action": "create_branch",
+                "owner": "acme",
+                "repo": "proj-1",
+                "new_branch": "feature",
+                "from_ref": "main",
+            }
+        )
+        assert result.is_error is False
+        assert json.loads(result.content)["sha"] == "sha1"
+
+    async def test_write_file_parks_without_vcs_push_grant(self) -> None:
+        # comms:external autonomy does NOT auto-approve vcs:push, so the
+        # write parks: proof the push tool binds its own action type.
+        tool = ForgePushTool(deps=_deps(conn=_connection(), autonomy=_auto_autonomy()))
+        result = await tool.execute(
+            arguments={
+                "action": "write_file",
+                "owner": "acme",
+                "repo": "proj-1",
+                "path": "x.py",
+                "branch": "feature",
+                "content": "x=1",
+                "message": "add x",
+            }
+        )
+        assert result.metadata["requires_parking"] is True
+
+
+class TestForgeInlineReviewAndCi:
+    @respx.mock
+    async def test_review_forwards_inline_comments(self) -> None:
+        route = respx.post(f"{_FJ}/repos/acme/proj-1/pulls/2/reviews").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "state": "COMMENT",
+                    "user": {"login": "a"},
+                    "body": "b",
+                    "html_url": "https://code.example.com/acme/proj-1/pulls/2",
+                },
+            ),
+        )
+        tool = ForgePullRequestTool(
+            deps=_deps(conn=_connection(), autonomy=_auto_autonomy())
+        )
+        result = await tool.execute(
+            arguments={
+                "action": "review",
+                "owner": "acme",
+                "repo": "proj-1",
+                "number": 2,
+                "decision": "comment",
+                "body": "b",
+                "comments": [
+                    {"path": "a.py", "line": 4, "body": "nit", "side": "RIGHT"}
+                ],
+            }
+        )
+        assert result.is_error is False
+        assert b'"new_position":4' in route.calls.last.request.content
+
+    async def test_ci_trigger_parks_as_write(self) -> None:
+        # A CI trigger is a write: with no auto-approval it parks for a
+        # human before any egress attempt (unlike read-only list/get).
+        tool = ForgeCiTool(deps=_deps(conn=_connection()))
+        result = await tool.execute(
+            arguments={
+                "action": "trigger",
+                "owner": "acme",
+                "repo": "proj-1",
+                "workflow": "ci.yml",
+                "branch": "main",
+            }
+        )
+        assert result.metadata["requires_parking"] is True

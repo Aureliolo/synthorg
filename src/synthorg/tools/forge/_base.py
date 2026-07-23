@@ -9,6 +9,7 @@ and implement ``_dispatch``.
 """
 
 from abc import ABC
+from fnmatch import fnmatch
 from typing import ClassVar, override
 
 from pydantic import BaseModel
@@ -26,26 +27,44 @@ from synthorg.engine.workspace.git_backend.forge_api import (
     forge_agent_api_supported,
 )
 from synthorg.integrations.connections.models import Connection, ConnectionType
-from synthorg.observability import safe_error_description
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     FORGE_TOOL_CONNECTION_FAILED,
     FORGE_TOOL_CREDENTIAL_FAILED,
+    FORGE_TOOL_REPO_SCOPE_DENIED,
 )
 from synthorg.tools._governed_connection_tool import GovernedConnectionTool
 from synthorg.tools._governed_connection_tool import json_result as _json_result
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.errors import ToolError
+from synthorg.tools.forge._args import _ForgeArgsBase
 from synthorg.tools.forge._runtime import ForgeToolDeps, ForgeToolsRuntime
 from synthorg.tools.forge.errors import (
     ForgeConnectionNotFoundError,
     ForgeCredentialError,
     ForgeRateLimitedError,
+    ForgeRepoScopeError,
     ForgeToolArgumentError,
     ForgeUnsupportedError,
     ForgeUpstreamError,
 )
 
+logger = get_logger(__name__)
+
 _TRUNCATED_NOTE = "\n... [truncated]"
+
+
+def _repo_in_scope(owner: str, repo: str, allowed: tuple[str, ...]) -> bool:
+    """Whether ``owner/repo`` matches any allowed scope entry.
+
+    Scope entries are ``owner/repo`` with ``fnmatch`` globs permitted
+    (``owner/*``, ``*/*``). An empty scope matches nothing (fail-closed).
+
+    Returns:
+        ``True`` if the repository is admitted by the scope.
+    """
+    target = f"{owner}/{repo}"
+    return any(fnmatch(target, pattern) for pattern in allowed)
 
 
 class _BaseForgeTool(
@@ -82,6 +101,41 @@ class _BaseForgeTool(
             runtime=deps.runtime,
             gate_deps=deps,
         )
+
+    @override
+    async def _resolve_connection(self, args: BaseModel) -> Connection:
+        """Resolve the connection, then enforce its repository scope.
+
+        The scope check runs after resolution (it reads the live
+        connection's ``allowed_repos``) but before the approval gate, so an
+        out-of-scope call is refused outright rather than parked for a
+        human. The scope is fail-closed: a connection with no repositories
+        selected admits none.
+
+        Returns:
+            The resolved, in-scope connection.
+
+        Raises:
+            ForgeRepoScopeError: When ``owner/repo`` is outside the bound
+                connection's ``allowed_repos`` scope.
+        """
+        conn = await super()._resolve_connection(args)
+        if isinstance(args, _ForgeArgsBase):
+            owner, repo = str(args.owner), str(args.repo)
+            allowed = tuple(str(entry) for entry in conn.allowed_repos)
+            if not _repo_in_scope(owner, repo, allowed):
+                logger.warning(
+                    FORGE_TOOL_REPO_SCOPE_DENIED,
+                    connection=conn.name,
+                    owner=owner,
+                    repo=repo,
+                )
+                msg = (
+                    f"Repository {owner}/{repo!r} is outside connection "
+                    f"{conn.name!r}'s allowed scope. Ask an operator to add it."
+                )
+                raise ForgeRepoScopeError(msg)
+        return conn
 
     @override
     def _supported(self, connection_type: ConnectionType) -> bool:
