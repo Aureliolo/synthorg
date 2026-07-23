@@ -105,6 +105,7 @@ _GATES: tuple[str, ...] = (
     "check_no_provider_auto_pick",
     "check_gateway_explicit_binding",
     "check_credentialed_mcp_governed",
+    "check_governed_destructive_tools",
     "check_mcp_capability_gap_documented",
     "check_runtime_reachability",
     "check_output_boundaries_guarded",

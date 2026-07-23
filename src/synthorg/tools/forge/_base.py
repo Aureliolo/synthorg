@@ -25,16 +25,13 @@ from synthorg.engine.workspace.git_backend.forge_api import (
     build_forge_agent_api_client,
     forge_agent_api_supported,
 )
-from synthorg.integrations.connections.models import ConnectionType
+from synthorg.integrations.connections.models import Connection, ConnectionType
 from synthorg.observability import safe_error_description
 from synthorg.observability.events.tool import (
     FORGE_TOOL_CONNECTION_FAILED,
     FORGE_TOOL_CREDENTIAL_FAILED,
 )
-from synthorg.tools._governed_connection_tool import (
-    GovernedConnectionTool,
-    build_connection_gate,
-)
+from synthorg.tools._governed_connection_tool import GovernedConnectionTool
 from synthorg.tools._governed_connection_tool import json_result as _json_result
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.errors import ToolError
@@ -83,7 +80,7 @@ class _BaseForgeTool(
             description=description,
             args_model=args_model,
             runtime=deps.runtime,
-            gate=build_connection_gate(deps),
+            gate_deps=deps,
         )
 
     @override
@@ -94,15 +91,14 @@ class _BaseForgeTool(
     def _build_client(
         self,
         *,
-        connection_type: ConnectionType,
-        base_url: str,
+        conn: Connection,
         token: str,
         timeout: float,
     ) -> ForgeAgentApiClient:
         try:
             return build_forge_agent_api_client(
-                connection_type=connection_type,
-                base_url=base_url,
+                connection_type=conn.connection_type,
+                base_url=str(conn.base_url or ""),
                 token=token,
                 timeout=timeout,
             )

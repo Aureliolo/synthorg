@@ -89,13 +89,14 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 
 ## Pattern E -- Deliberate no-retry (governed one-shot)
 
-**When**: an agent-facing tool call that egresses to a bound connection exactly once per invocation, routing writes (and reads on a connection the operator marked sensitive) through the identity-bound approval flow while an ordinary read fast-allows. The `forge_*` and `chat_*` tools (`src/synthorg/tools/forge/`, `src/synthorg/tools/chat/`) fall here, as does the `external_api` tool they mirror. A transient upstream failure is surfaced to the agent, not retried inside the tool.
+**When**: an agent-facing tool call that egresses to a bound connection exactly once per invocation, routing writes (and reads on a connection the operator marked sensitive) through the identity-bound approval flow while an ordinary read fast-allows. The `forge_*`, `chat_*` and `deploy_*` tools (`src/synthorg/tools/forge/`, `src/synthorg/tools/chat/`, `src/synthorg/tools/deploy/`) fall here, as does the `external_api` tool they mirror. A transient upstream failure is surfaced to the agent, not retried inside the tool.
 
 **How**: no loop at all. The tool dispatches once; `_dispatch_guarded` maps an upstream failure to a typed `ToolError` leaf, which `execute()` catches and returns as a `ToolExecutionResult(is_error=True)` rather than letting the exception escape to the caller (rate-limit failures carry `retry_after_seconds` in that result's metadata so the agent, not the tool, decides whether to try again). This is deliberate, not an omission: a write consumes a one-shot approval token bound to `agent_id`+`task_id`, so a silent in-tool retry would either re-egress an already-approved side effect or re-park a fresh approval the operator never sanctioned; a non-sensitive read is a single fast-allow egress whose failure the agent should see rather than have masked (a read on a connection the operator marked sensitive parks for approval exactly like a write). Provider-layer resilience (`BaseCompletionProvider`) does not apply because these are direct connection calls, not LLM dispatches. The bounded-attempt budget of Pattern A is therefore the wrong shape: the correct budget is one.
 
 **Sites**:
 
 - `src/synthorg/tools/forge/forge_tools.py`, `src/synthorg/tools/chat/chat_tools.py`: each `_dispatch_guarded` call egresses once; a `ForgeRateLimitedError` / `ChatRateLimitedError` surfaces `retry_after_seconds` to the caller instead of sleeping.
+- `src/synthorg/tools/deploy/deploy_tools.py` (via `tools/deploy/_base.py::_dispatch_guarded`): the destructive release and the read observers egress once; a `DeployRateLimitedError` surfaces `retry_after_seconds` rather than retrying a release token in-tool.
 - `src/synthorg/tools/external_api/`: the pre-existing governed tool this pattern generalises.
 
 ## Decision tree

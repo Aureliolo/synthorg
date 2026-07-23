@@ -223,3 +223,18 @@ CHAT_API_REQUEST_FAILED: Final[str] = "integrations.chat_api.request_failed"
 CHAT_API_RATE_LIMITED: Final[str] = "integrations.chat_api.rate_limited"
 CHAT_API_ENVELOPE_FAILED: Final[str] = "integrations.chat_api.envelope_failed"
 CHAT_API_CONFIG_INVALID: Final[str] = "integrations.chat_api.config_invalid"
+
+# -- Deploy platform API client events -----------------------------------
+DEPLOY_API_DEPLOYMENT_TRIGGERED: Final[str] = (
+    "integrations.deploy_api.deployment_triggered"
+)
+DEPLOY_API_REQUEST_FAILED: Final[str] = "integrations.deploy_api.request_failed"
+DEPLOY_API_RATE_LIMITED: Final[str] = "integrations.deploy_api.rate_limited"
+DEPLOY_API_CONFIG_INVALID: Final[str] = "integrations.deploy_api.config_invalid"
+DEPLOY_API_UNKNOWN_STATE: Final[str] = "integrations.deploy_api.unknown_state"
+DEPLOY_API_OUT_OF_SCOPE: Final[str] = "integrations.deploy_api.out_of_scope"
+
+# -- Deploy-target metadata resolution events ----------------------------
+DEPLOY_TARGET_METADATA_UNRECOGNISED: Final[str] = (
+    "integrations.deploy_target.metadata_unrecognised"
+)

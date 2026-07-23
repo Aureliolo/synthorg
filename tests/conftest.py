@@ -700,6 +700,12 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    tree (``cmd_scan_all``), inherently near the budget and tipping past
 #    it under ``--dist=loadfile`` contention -- the full scan is the
 #    test's whole point, not a fixture leak.
+#  - ``test_check_dependency_inversion.py::TestLiveCodebase``: its anchor
+#    case AST-parses every module under ``src/synthorg`` (``_scan_all``) to
+#    assert the live tree has zero inversion violations, ~5.8s solo and so
+#    inherently at the budget before any contention -- the full scan is the
+#    test's whole point, not a fixture leak. Only the anchor class is exempt;
+#    the file's other cases scan synthetic ``tmp_path`` trees and stay fast.
 #  - ``test_check_error_code_uniqueness.py::test_real_tree_passes``: scans
 #    the entire committed ``src/synthorg`` tree for duplicate error-code
 #    mappings, the same whole-tree-scan class as above and likewise tipping
@@ -712,6 +718,19 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    spawning subprocesses, so the heaviest case can tip past the 6s
 #    budget on a loaded runner -- the real subprocess is the test's whole
 #    point, not a fixture leak (same class as ``test_cold_import.py``).
+#  - ``test_chunking.py::test_python_functions_split_by_definition``: the
+#    first code-chunking case pays the one-time
+#    ``tree_sitter_language_pack`` grammar-pack import, a large native load
+#    the tests exist to exercise for real rather than fake (~4s on a cold
+#    grammar cache, past the budget under ``--dist=loadfile`` contention),
+#    so passing in isolation is not evidence the guard will hold -- same
+#    class as the whole-tree scanners above, not a fixture leak. Pinned to
+#    this one case rather than the enclosing ``TestCodeChunker`` class:
+#    substring matching would exempt all five of its methods, and only the
+#    first to execute pays the import. It is reliably this one because the
+#    repo does not install ``pytest-randomly`` and ``--dist=loadfile`` keeps
+#    a file's cases in collection order on a single worker; the other four
+#    measure under 5ms each and stay guarded.
 #  - ``test_construction_wiring.py``: builds the whole app via
 #    ``create_app`` to assert construction-phase slice wiring. The build is
 #    class-scoped (one build shared across the class), so the one-time cost
@@ -741,8 +760,10 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/architecture/",
     "unit/test_cold_import.py",
     "unit/scripts/test_check_completion_config_temperature.py",
+    "unit/scripts/test_check_dependency_inversion.py::TestLiveCodebase",
     "unit/scripts/test_check_error_code_uniqueness.py::test_real_tree_passes",
     "unit/scripts/test_pretooluse_bash_gates.py",
+    "unit/knowledge/test_chunking.py::test_python_functions_split_by_definition",
     "unit/api/test_construction_wiring.py",
     "unit/api/test_app.py",
     "unit/api/test_health.py",

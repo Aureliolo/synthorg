@@ -779,6 +779,87 @@ _r.register(
     )
 )
 
+# ── Deploy tools ─────────────────────────────────────────────────
+# The governed deploy tools release to, and observe, an external hosting
+# platform. Unlike forge / chat there is no single bound connection: an
+# organisation deploys to several targets, so a call names one and the
+# host checks it against the allowlist below before brokering any
+# credential. Triggering a release always parks a human approval.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="deploy_tools_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether agents may trigger and observe deployments through the"
+            " deploy_release and deploy_run tools. Off by default: a deploy"
+            " target must be created and allowlisted first. Enabling exposes"
+            " a destructive, externally-reaching capability, so the enable"
+            " transition takes the deliberate confirm+reason+actor guardrail."
+        ),
+        group="Deploy Tools",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="deploy_tools_targets",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Comma-separated names of deploy connections agents may target"
+            " (e.g. 'staging-web,production-web'). Empty allows nothing"
+            " (secure default). A call naming a target outside this list is"
+            " refused before any credential is read. Each target's"
+            " environment is set on the connection, not by the agent, so"
+            " adding a production target here widens real blast radius:"
+            " widening takes the confirm+reason+actor guardrail."
+        ),
+        group="Deploy Tools",
+        level=SettingLevel.BASIC,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="deploy_tools_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="30.0",
+        description=(
+            "Maximum wall-clock time a single deploy API request may run"
+            " before it is cancelled."
+        ),
+        group="Deploy Tools",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=300.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="deploy_tools_max_log_chars",
+        type=SettingType.INTEGER,
+        default="20000",
+        description=(
+            "Maximum characters of deployment log an agent may pull in one"
+            " call. Build logs routinely echo environment detail, so this"
+            " bounds how much of it can reach a prompt at once; the tool"
+            " reports when it truncated."
+        ),
+        group="Deploy Tools",
+        level=SettingLevel.ADVANCED,
+        min_value=1000,
+        max_value=200000,
+    )
+)
+
 # ── Credentialed-tool MCP server (harness boundary) ──────────────
 # Exposes the governed forge / chat tools as an MCP server an embedded
 # coding harness (OpenHands) consumes. Tool execution + credential

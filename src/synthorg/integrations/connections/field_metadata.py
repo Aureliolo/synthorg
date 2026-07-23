@@ -24,6 +24,12 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.deploy_target import (
+    METADATA_KEY_ENVIRONMENT,
+    METADATA_KEY_PLATFORM,
+    DeployEnvironment,
+    DeployPlatform,
+)
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
 
 
@@ -110,6 +116,17 @@ class ConnectionFieldMetadata(BaseModel):
         if self.placement is FieldPlacement.BASE_URL and self.name != "base_url":
             msg = (
                 f"BASE_URL-placement field must be named 'base_url', got {self.name!r}"
+            )
+            raise ValueError(msg)
+        if self.secret and self.placement is not FieldPlacement.CREDENTIAL:
+            # Metadata is stored in the clear on the connection record and
+            # is readable back over the API; only the credential placement
+            # routes through out-of-band capture into the secret backend.
+            # Authoring the combination would persist the raw secret, so it
+            # fails at import rather than on the first connection created.
+            msg = (
+                f"secret field {self.name!r} must use the credential "
+                f"placement, got {self.placement.value!r}"
             )
             raise ValueError(msg)
         return self
@@ -574,6 +591,58 @@ _TUNNEL = ConnectionTypeMetadata(
 )
 
 
+_DEPLOY = ConnectionTypeMetadata(
+    connection_type=ConnectionType.DEPLOY,
+    label=NotBlankStr("Deploy Target"),
+    description=(
+        "A hosting platform the organisation releases a product to. Each "
+        "target covers one environment: create separate targets for staging "
+        "and production so each is approved and audited on its own."
+    ),
+    default_auth_method=AuthMethod.BEARER_TOKEN,
+    fields=(
+        _token(
+            label="API Token",
+            help_text="Platform API token. Scope it to the target project only.",
+        ),
+        _api_url(
+            required=True,
+            help_text="The platform's API base URL. All calls stay on this host.",
+            placeholder="https://api.example-deploy.com",
+        ),
+        ConnectionFieldMetadata(
+            name=NotBlankStr(METADATA_KEY_PLATFORM),
+            label=NotBlankStr("Platform"),
+            input_type=FieldInputType.SELECT,
+            placement=FieldPlacement.METADATA,
+            required=True,
+            options=tuple(NotBlankStr(p.value) for p in DeployPlatform),
+            help_text="Selects the deploy API this target speaks.",
+        ),
+        ConnectionFieldMetadata(
+            name=NotBlankStr(METADATA_KEY_ENVIRONMENT),
+            label=NotBlankStr("Environment"),
+            input_type=FieldInputType.SELECT,
+            placement=FieldPlacement.METADATA,
+            required=True,
+            options=tuple(NotBlankStr(e.value) for e in DeployEnvironment),
+            help_text=(
+                "Decides how hard a release to this target is gated. Anything "
+                "unset or unrecognised is treated as production."
+            ),
+        ),
+        ConnectionFieldMetadata(
+            name=NotBlankStr("project"),
+            label=NotBlankStr("Project"),
+            input_type=FieldInputType.TEXT,
+            placement=FieldPlacement.METADATA,
+            required=True,
+            help_text="The platform's identifier for the project to deploy.",
+        ),
+    ),
+)
+
+
 CONNECTION_FIELD_METADATA: MappingProxyType[ConnectionType, ConnectionTypeMetadata] = (
     MappingProxyType(
         {
@@ -589,6 +658,7 @@ CONNECTION_FIELD_METADATA: MappingProxyType[ConnectionType, ConnectionTypeMetada
             ConnectionType.A2A_PEER: _A2A_PEER,
             ConnectionType.LLM_PROVIDER: _LLM_PROVIDER,
             ConnectionType.TUNNEL: _TUNNEL,
+            ConnectionType.DEPLOY: _DEPLOY,
         }
     )
 )

@@ -3,13 +3,13 @@
 import pytest
 
 from synthorg.api.mcp_gateway import tools as tools_module
+from synthorg.api.mcp_gateway.scoping import deploy_denials, tool_schemas
 from synthorg.api.mcp_gateway.tools import (
     CREDENTIALED_TOOLS,
     CredentialedToolContext,
     _CredentialedTool,
     _render,
     invoke_credentialed_tool,
-    tool_schemas,
     visible_tool_names,
 )
 from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -38,12 +38,17 @@ class _SecurityDeniedError(Exception):
     """Sentinel raised by a security pre-check to prove it was reached."""
 
 
-def _ctx(*, deny: bool = False) -> CredentialedToolContext:
+def _ctx(
+    *,
+    deny: bool = False,
+    deploy_targets: frozenset[str] = frozenset(),
+    catalog: ConnectionCatalog | None = None,
+) -> CredentialedToolContext:
     async def _pre_check(_name: str, _arguments: dict[str, object]) -> None:
         raise _SecurityDeniedError
 
     return CredentialedToolContext(
-        connection_catalog=mock_of[ConnectionCatalog](),
+        connection_catalog=catalog or mock_of[ConnectionCatalog](),
         approval_store=mock_of[ApprovalStoreProtocol](),
         clock=FakeClock(),
         forge_connection="forge-conn",
@@ -51,6 +56,9 @@ def _ctx(*, deny: bool = False) -> CredentialedToolContext:
         forge_timeout_seconds=30.0,
         chat_timeout_seconds=30.0,
         forge_max_read_chars=2000,
+        deploy_targets=deploy_targets,
+        deploy_timeout_seconds=30.0,
+        deploy_max_log_chars=20000,
         security_pre_check=_pre_check if deny else None,
     )
 
@@ -64,20 +72,48 @@ def test_all_credentialed_tools_present() -> None:
         "forge_ci",
         "chat_messages",
         "chat_directory",
+        "deploy_run",
+        "deploy_release",
     }
 
 
-def test_visible_tools_scopes_by_capability() -> None:
-    assert visible_tool_names(capabilities=("forge:read",)) == frozenset(
-        {"forge_repo", "forge_ci"}
-    )
-    assert visible_tool_names(capabilities=("forge:*",)) == frozenset(
-        {"forge_repo", "forge_issue", "forge_pull_request", "forge_ci"}
-    )
-    assert visible_tool_names(capabilities=()) == frozenset()
-    assert "chat_messages" in visible_tool_names(capabilities=("*",))
-    assert visible_tool_names(capabilities=("*:read",)) == frozenset(
-        {"forge_repo", "forge_ci", "chat_directory"}
+@pytest.mark.parametrize(
+    ("capabilities", "expected"),
+    [
+        (("forge:read",), frozenset({"forge_repo", "forge_ci"})),
+        (
+            ("forge:*",),
+            frozenset({"forge_repo", "forge_issue", "forge_pull_request", "forge_ci"}),
+        ),
+        ((), frozenset()),
+        (
+            ("*:read",),
+            frozenset({"forge_repo", "forge_ci", "chat_directory", "deploy_run"}),
+        ),
+    ],
+)
+def test_visible_tools_scopes_by_capability(
+    capabilities: tuple[str, ...], expected: frozenset[str]
+) -> None:
+    assert visible_tool_names(capabilities=capabilities) == expected
+
+
+def test_wildcard_capability_exposes_every_tool() -> None:
+    assert visible_tool_names(capabilities=("*",)) == {
+        spec.name for spec in CREDENTIALED_TOOLS
+    }
+
+
+def test_deploy_read_grant_does_not_expose_the_release_tool() -> None:
+    """Observing deployments must never imply the ability to cause one."""
+    scoped = visible_tool_names(capabilities=("deploy:read",))
+    assert scoped == frozenset({"deploy_run"})
+    assert "deploy_release" not in scoped
+
+
+def test_deploy_write_grant_exposes_the_release_tool() -> None:
+    assert visible_tool_names(capabilities=("deploy:write",)) == frozenset(
+        {"deploy_release"}
     )
 
 
@@ -99,6 +135,46 @@ def test_tool_schemas_expose_input_schema_for_visible_tools() -> None:
     names = {s["name"] for s in schemas}
     assert names == {"forge_repo", "forge_ci"}
     assert all("inputSchema" in s for s in schemas)
+
+
+def test_deploy_denials_reflects_the_kill_switch() -> None:
+    assert deploy_denials(deploy_enabled=True) == ()
+    assert set(deploy_denials(deploy_enabled=False)) == {"deploy_run", "deploy_release"}
+
+
+def test_tool_schemas_omit_denied_tools() -> None:
+    # With the kill switch off, a deploy:* grant still yields no deploy tools.
+    schemas = tool_schemas(("deploy:*",), denied=deploy_denials(deploy_enabled=False))
+    assert schemas == []
+
+
+async def test_deploy_run_rejects_unlisted_target_before_brokering() -> None:
+    # The full gateway path (scope -> parse -> _deploy_deps -> governed tool):
+    # an unlisted target is refused before any credential is brokered.
+    catalog = mock_of[ConnectionCatalog]()
+    out = await invoke_credentialed_tool(
+        "deploy_run",
+        {"action": "list", "target": "prod"},
+        ctx=_ctx(deploy_targets=frozenset(), catalog=catalog),
+        agent_id="agent-1",
+        capabilities=("deploy:read",),
+    )
+    assert "allowlist" in out.lower()
+    catalog.get.assert_not_called()
+    catalog.get_credentials.assert_not_called()
+
+
+async def test_deploy_target_traversal_is_rejected() -> None:
+    # A traversal target is rejected at the typed boundary, before the
+    # allowlist check, even when it is (absurdly) allowlisted.
+    with pytest.raises(ValidationError):
+        await invoke_credentialed_tool(
+            "deploy_run",
+            {"action": "list", "target": "../secrets"},
+            ctx=_ctx(deploy_targets=frozenset({"../secrets"})),
+            agent_id="agent-1",
+            capabilities=("deploy:read",),
+        )
 
 
 async def test_unknown_tool_raises_not_found() -> None:

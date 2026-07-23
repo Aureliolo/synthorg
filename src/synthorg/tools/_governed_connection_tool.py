@@ -29,7 +29,9 @@ from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import Connection, ConnectionType
 from synthorg.integrations.errors import SecretRetrievalError
+from synthorg.meta.mcp.errors import GuardrailViolationError
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.tool import GOVERNED_TOOL_GUARDRAIL_REJECTED
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.security.timeout.protocol import RiskTierClassifier
 from synthorg.tools._governed_action import (
@@ -43,7 +45,7 @@ from synthorg.tools.errors import ToolError
 
 logger = get_logger(__name__)
 
-_ACTION_TYPE = ActionType.COMMS_EXTERNAL.value
+_DEFAULT_ACTION_TYPE = ActionType.COMMS_EXTERNAL.value
 
 
 class _AsyncCloseable(Protocol):
@@ -86,8 +88,17 @@ class _GateDeps(Protocol):
     def clock(self) -> Clock | None: ...
 
 
-def build_connection_gate(deps: _GateDeps) -> ConnectionApprovalGate:
+def build_connection_gate(
+    deps: _GateDeps, *, action_type: str = _DEFAULT_ACTION_TYPE
+) -> ConnectionApprovalGate:
     """Build the shared one-shot approval gate from per-run collaborators.
+
+    Args:
+        deps: The per-run collaborators the gate binds to.
+        action_type: The action type the gate parks and auto-approves
+            under. Families that reach a materially different system
+            (a deploy target, not a chat channel) bind their own so
+            autonomy grants and risk classification stay separable.
 
     Returns:
         The gate bound to this run's agent + task.
@@ -96,7 +107,7 @@ def build_connection_gate(deps: _GateDeps) -> ConnectionApprovalGate:
         approval_store=deps.approval_store,
         agent_id=deps.agent_id,
         task_id=deps.task_id,
-        action_type=_ACTION_TYPE,
+        action_type=action_type,
         effective_autonomy=deps.effective_autonomy,
         risk_classifier=deps.risk_classifier,
         clock=deps.clock,
@@ -139,6 +150,17 @@ class GovernedConnectionTool[
     _credential_error: ClassVar[type[ToolError]]
     _rate_limited_error: ClassVar[type[ToolError]]
 
+    # The action type this family parks, auto-approves and classifies risk
+    # under. A family reaching a materially different system binds its own:
+    # sharing one type would let an autonomy grant for the tamest family
+    # silently cover the most dangerous one.
+    _ACTION_TYPE: ClassVar[str] = _DEFAULT_ACTION_TYPE
+    # Whether this tool destroys or replaces upstream state, as opposed to
+    # merely writing (opening an issue is a write; replacing what is running
+    # in production is not). Destructive tools additionally carry the
+    # confirm + reason + actor guardrail.
+    _DESTRUCTIVE: ClassVar[bool] = False
+
     def __init__(
         self,
         *,
@@ -146,7 +168,7 @@ class GovernedConnectionTool[
         description: str,
         args_model: type[BaseModel],
         runtime: RuntimeT,
-        gate: ConnectionApprovalGate,
+        gate_deps: _GateDeps,
     ) -> None:
         super().__init__(
             name=name,
@@ -154,14 +176,13 @@ class GovernedConnectionTool[
             # EXTERNAL_DATA (not COMMUNICATION): these tools are external-API
             # access of the same shape as the external_api tool (bound
             # connection, credential-brokered, approval-gated egress).
-            # Governance is the COMMS_EXTERNAL action_type + the gate, not
-            # the category.
+            # Governance is the action_type + the gate, not the category.
             category=ToolCategory.EXTERNAL_DATA,
-            action_type=_ACTION_TYPE,
+            action_type=self._ACTION_TYPE,
             parameters_schema=args_model.model_json_schema(),
         )
         self._runtime: RuntimeT = runtime
-        self._gate = gate
+        self._gate_deps = gate_deps
 
     @property
     def _catalog(self) -> ConnectionCatalog:
@@ -177,28 +198,37 @@ class GovernedConnectionTool[
             ToolError: A connection / credential / argument / upstream
                 failure, as the family's typed leaf.
         """
-        conn = await self._resolve_connection()
+        # Preconditions run before the gate so a call that was never
+        # admissible (unconfirmed, unattributable) is refused outright
+        # rather than parking an approval for a human to adjudicate.
+        self._check_preconditions(args)
+        conn = await self._resolve_connection(args)
         governed = require_governed_args(args)
         # A connection the operator marked sensitive gates every call (read
         # or write); otherwise only mutating actions park for approval.
         if conn.sensitive or governed.is_write:
-            parked = await self._gate.gate(
+            # Built here, not at construction: the action type can depend on
+            # the resolved connection (a staging target is not a production
+            # one), and the connection is only known once args are parsed.
+            gate = build_connection_gate(
+                self._gate_deps, action_type=self._action_type_for(conn)
+            )
+            parked = await gate.gate(
                 signature_for(
                     namespace=self.name,
-                    connection=self._runtime.connection_name,
+                    connection=conn.name,
                     args=args,
                 ),
-                connection=self._runtime.connection_name,
+                connection=conn.name,
                 approval_id=None,
-                title=f"{self._KIND} {self.name} on {self._runtime.connection_name!r}",
+                title=f"{self._KIND} {self.name} on {conn.name!r}",
                 description=f"Agent requests a {self._KIND.lower()} {self.name} call.",
             )
             if parked is not None:
                 return parked
         token = await self._resolve_token(conn)
         client = self._build_client(
-            connection_type=conn.connection_type,
-            base_url=str(conn.base_url or ""),
+            conn=conn,
             token=token,
             timeout=self._runtime.timeout_seconds,
         )
@@ -207,7 +237,54 @@ class GovernedConnectionTool[
         finally:
             await self._safe_aclose(client)
 
-    async def _resolve_connection(self) -> Connection:
+    def _check_preconditions(
+        self,
+        args: BaseModel,
+    ) -> None:
+        """Reject a call that is inadmissible regardless of approval.
+
+        Runs before the approval gate. Destructive families override this
+        to enforce the confirm + reason + actor triple, so a call nobody
+        could authorise never reaches a human as a parked approval.
+
+        Args:
+            args: The parsed arguments.
+        """
+
+    def _action_type_for(
+        self,
+        conn: Connection,  # noqa: ARG002 -- read by families with per-target risk
+    ) -> str:
+        """Resolve the action type this call parks and classifies under.
+
+        Args:
+            conn: The already-resolved connection.
+
+        Returns:
+            The family's action type. Families whose blast radius varies
+            per connection (a staging versus a production deploy target)
+            override this to read the connection record, never an
+            agent-supplied value.
+        """
+        return self._ACTION_TYPE
+
+    async def _resolve_connection(
+        self,
+        args: BaseModel,  # noqa: ARG002 -- read by families selecting a target per call
+    ) -> Connection:
+        """Resolve the connection this call runs against.
+
+        Args:
+            args: The parsed arguments, for families that select their
+                target per call rather than binding one at boot.
+
+        Returns:
+            The resolved connection.
+
+        Raises:
+            ToolError: The family's typed leaf when the connection is
+                missing, of an unsupported type, or lacks a base_url.
+        """
         conn = await self._catalog.get(self._runtime.connection_name)
         if conn is None:
             logger.warning(
@@ -280,12 +357,16 @@ class GovernedConnectionTool[
     def _build_client(
         self,
         *,
-        connection_type: ConnectionType,
-        base_url: str,
+        conn: Connection,
         token: str,
         timeout: float,
     ) -> ClientT:
-        """Build the per-call client, mapping a config error to the leaf."""
+        """Build the per-call client, mapping a config error to the leaf.
+
+        Receives the whole connection, not just its type and base URL, so
+        a family whose client selection depends on operator-set record
+        metadata can read it without smuggling state across the call.
+        """
 
     @abstractmethod
     async def _dispatch_guarded(
@@ -325,6 +406,19 @@ class GovernedConnectionTool[
             return ToolExecutionResult(
                 content=str(exc), is_error=True, metadata=metadata
             )
+        except GuardrailViolationError as exc:
+            # A rejected destructive call (no confirm, blank reason,
+            # unattributable actor) is a security-relevant event: log it so
+            # repeated probing of the guardrail leaves an audit trail, then
+            # surface it as a result the agent can correct rather than an
+            # exception that aborts the invoker.
+            logger.warning(
+                GOVERNED_TOOL_GUARDRAIL_REJECTED,
+                tool=self.name,
+                action_type=self._ACTION_TYPE,
+                violation=exc.violation,
+            )
+            return ToolExecutionResult(content=str(exc), is_error=True)
         except (ToolError, GovernedApprovalMismatchError) as exc:
             return ToolExecutionResult(content=str(exc), is_error=True)
 

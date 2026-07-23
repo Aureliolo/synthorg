@@ -21,7 +21,7 @@ from synthorg.integrations.chat_api import (
     build_chat_api_client,
     chat_api_supported,
 )
-from synthorg.integrations.connections.models import ConnectionType
+from synthorg.integrations.connections.models import Connection, ConnectionType
 from synthorg.integrations.errors import (
     ChatApiAuthError,
     ChatApiError,
@@ -32,10 +32,7 @@ from synthorg.observability.events.tool import (
     CHAT_TOOL_CONNECTION_FAILED,
     CHAT_TOOL_CREDENTIAL_FAILED,
 )
-from synthorg.tools._governed_connection_tool import (
-    GovernedConnectionTool,
-    build_connection_gate,
-)
+from synthorg.tools._governed_connection_tool import GovernedConnectionTool
 from synthorg.tools._governed_connection_tool import json_result as _json_result
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.chat._args import ChatDirectoryArgs, ChatMessagesArgs
@@ -83,7 +80,7 @@ class _BaseChatTool(GovernedConnectionTool[ChatApiClient, ChatToolsRuntime], ABC
             description=description,
             args_model=args_model,
             runtime=deps.runtime,
-            gate=build_connection_gate(deps),
+            gate_deps=deps,
         )
 
     @override
@@ -94,15 +91,14 @@ class _BaseChatTool(GovernedConnectionTool[ChatApiClient, ChatToolsRuntime], ABC
     def _build_client(
         self,
         *,
-        connection_type: ConnectionType,
-        base_url: str,
+        conn: Connection,
         token: str,
         timeout: float,
     ) -> ChatApiClient:
         try:
             return build_chat_api_client(
-                connection_type=connection_type,
-                base_url=base_url,
+                connection_type=conn.connection_type,
+                base_url=str(conn.base_url or ""),
                 token=token,
                 timeout=timeout,
             )

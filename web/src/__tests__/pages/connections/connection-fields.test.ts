@@ -56,6 +56,106 @@ const databaseMeta: ConnectionTypeMetadata = {
   ],
 }
 
+const deployMeta: ConnectionTypeMetadata = {
+  connection_type: 'deploy',
+  default_auth_method: 'bearer_token',
+  label: 'Deploy',
+  description: 'A deploy target.',
+  required_field_names: ['token', 'base_url', 'platform', 'project'],
+  secret_field_names: ['token'],
+  fields: [
+    {
+      name: 'token',
+      label: 'Token',
+      input_type: 'password',
+      placement: 'credential',
+      required: true,
+      secret: true,
+      options: [],
+      placeholder: '',
+      help_text: '',
+      capture_mode: 'masked_field',
+    },
+    {
+      name: 'base_url',
+      label: 'API URL',
+      input_type: 'url',
+      placement: 'base_url',
+      required: true,
+      secret: false,
+      options: [],
+      placeholder: '',
+      help_text: '',
+      capture_mode: null,
+    },
+    {
+      name: 'platform',
+      label: 'Platform',
+      input_type: 'select',
+      placement: 'metadata',
+      required: true,
+      secret: false,
+      options: ['vercel'],
+      placeholder: '',
+      help_text: '',
+      capture_mode: null,
+    },
+    {
+      name: 'environment',
+      label: 'Environment',
+      input_type: 'select',
+      placement: 'metadata',
+      required: false,
+      secret: false,
+      options: ['staging', 'production'],
+      placeholder: '',
+      help_text: '',
+      capture_mode: null,
+    },
+    {
+      name: 'project',
+      label: 'Project',
+      input_type: 'text',
+      placement: 'metadata',
+      required: true,
+      secret: false,
+      options: [],
+      placeholder: '',
+      help_text: '',
+      capture_mode: null,
+    },
+  ],
+}
+
+/**
+ * A registry entry the backend's own validator rejects at import. The
+ * resolver still has to fail closed on it: metadata is submitted inline and
+ * stored in the clear, so routing this field by placement would persist the
+ * raw secret on the connection record.
+ */
+const secretMetadataMeta: ConnectionTypeMetadata = {
+  connection_type: 'deploy',
+  default_auth_method: 'bearer_token',
+  label: 'Deploy',
+  description: 'A deploy target.',
+  required_field_names: ['token'],
+  secret_field_names: ['token'],
+  fields: [
+    {
+      name: 'token',
+      label: 'Token',
+      input_type: 'password',
+      placement: 'metadata',
+      required: true,
+      secret: true,
+      options: [],
+      placeholder: '',
+      help_text: '',
+      capture_mode: 'masked_field',
+    },
+  ],
+}
+
 describe('resolveConnectionSpec', () => {
   it('splits fields by placement and carries the secret flag', () => {
     const spec = resolveConnectionSpec(databaseMeta)
@@ -63,11 +163,43 @@ describe('resolveConnectionSpec', () => {
     expect(spec.defaultAuthMethod).toBe('basic_auth')
     expect(spec.topLevelFields.map((f) => f.key)).toEqual(['base_url'])
     expect(spec.credentialFields.map((f) => f.key)).toEqual(['dialect', 'password'])
+    expect(spec.metadataFields).toEqual([])
     const password = spec.credentialFields.find((f) => f.key === 'password')
     expect(password?.secret).toBe(true)
     const dialect = spec.credentialFields.find((f) => f.key === 'dialect')
     expect(dialect?.secret).toBe(false)
     expect(dialect?.options).toEqual(['postgres', 'mysql', 'sqlite'])
+  })
+
+  it('routes metadata-placement fields into their own bucket', () => {
+    const spec = resolveConnectionSpec(deployMeta)
+    // platform/environment/project must NOT land in credentials (that would
+    // submit them as secrets and leave the connection metadata empty).
+    expect(spec.metadataFields.map((f) => f.key)).toEqual([
+      'platform',
+      'environment',
+      'project',
+    ])
+    expect(spec.credentialFields.map((f) => f.key)).toEqual(['token'])
+    expect(spec.topLevelFields.map((f) => f.key)).toEqual(['base_url'])
+  })
+
+  it('covers every required field name with a rendered field', () => {
+    const spec = resolveConnectionSpec(deployMeta)
+    const rendered = new Set([
+      ...spec.topLevelFields.map((f) => f.key),
+      ...spec.credentialFields.map((f) => f.key),
+      ...spec.metadataFields.map((f) => f.key),
+    ])
+    for (const name of deployMeta.required_field_names) {
+      expect(rendered.has(name)).toBe(true)
+    }
+  })
+
+  it('keeps a secret field out of metadata whatever its placement claims', () => {
+    const spec = resolveConnectionSpec(secretMetadataMeta)
+    expect(spec.metadataFields).toEqual([])
+    expect(spec.credentialFields.map((f) => f.key)).toEqual(['token'])
   })
 })
 

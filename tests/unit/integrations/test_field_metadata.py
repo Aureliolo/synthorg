@@ -6,11 +6,16 @@ stay in parity with each authenticator's referenced fields.
 """
 
 import pytest
+from pydantic import ValidationError
 
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.field_metadata import (
     CONNECTION_FIELD_METADATA,
+    ConnectionFieldMetadata,
     ConnectionTypeMetadata,
+    FieldInputType,
     FieldPlacement,
+    SecretCaptureMode,
     get_connection_type_metadata,
     list_connection_type_metadata,
 )
@@ -74,3 +79,34 @@ def test_required_field_names_computed() -> None:
     """``required_field_names`` reflects the required flags."""
     metadata = get_connection_type_metadata(ConnectionType.DATABASE)
     assert set(metadata.required_field_names) == {"dialect", "database"}
+
+
+@pytest.mark.parametrize("metadata", list_connection_type_metadata())
+def test_secret_fields_use_the_credential_placement(
+    metadata: ConnectionTypeMetadata,
+) -> None:
+    """Only the credential placement runs through out-of-band capture."""
+    for field in metadata.fields:
+        if field.secret:
+            assert field.placement is FieldPlacement.CREDENTIAL
+
+
+@pytest.mark.parametrize(
+    "placement", [FieldPlacement.METADATA, FieldPlacement.BASE_URL]
+)
+def test_a_secret_outside_the_credential_placement_is_refused(
+    placement: FieldPlacement,
+) -> None:
+    """Authoring one would persist the raw secret on the connection record."""
+    # A BASE_URL-placed field must be named base_url (a separate guard), so
+    # the name follows the placement to isolate the secret check.
+    name = "base_url" if placement is FieldPlacement.BASE_URL else "token"
+    with pytest.raises(ValidationError):
+        ConnectionFieldMetadata(
+            name=NotBlankStr(name),
+            label=NotBlankStr("Token"),
+            input_type=FieldInputType.PASSWORD,
+            placement=placement,
+            secret=True,
+            capture_mode=SecretCaptureMode.MASKED_FIELD,
+        )

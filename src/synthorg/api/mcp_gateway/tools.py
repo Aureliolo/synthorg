@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock
 from synthorg.core.domain_errors import (
@@ -41,6 +42,9 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.chat._args import ChatDirectoryArgs, ChatMessagesArgs
 from synthorg.tools.chat._runtime import ChatToolDeps, ChatToolsRuntime
 from synthorg.tools.chat.chat_tools import ChatDirectoryTool, ChatMessagesTool
+from synthorg.tools.deploy._args import DeployReleaseArgs, DeployRunArgs
+from synthorg.tools.deploy._runtime import DeployToolDeps, DeployToolsRuntime
+from synthorg.tools.deploy.deploy_tools import DeployReleaseTool, DeployRunTool
 from synthorg.tools.forge._args import (
     ForgeCiArgs,
     ForgeIssueArgs,
@@ -88,6 +92,17 @@ class CredentialedToolContext(BaseModel):
     forge_timeout_seconds: float = Field(gt=0)
     chat_timeout_seconds: float = Field(gt=0)
     forge_max_read_chars: int = Field(gt=0)
+    # Deploy targets are chosen per call from this operator-set allowlist
+    # rather than bound to one connection: an organisation deploys to
+    # several targets. Empty allows nothing, matching the secure default
+    # of the capability grant itself.
+    deploy_targets: frozenset[str] = frozenset()
+    deploy_timeout_seconds: float = Field(gt=0)
+    deploy_max_log_chars: int = Field(gt=0)
+    # Resolved host-side from the verified token claims, never synthesised
+    # from the claim string. ``None`` leaves the destructive path unable to
+    # attribute the action, so its guardrail refuses the call.
+    actor: AgentIdentity | None = None
     security_pre_check: SecurityPreCheck | None = None
 
 
@@ -133,6 +148,29 @@ def _chat_deps(ctx: CredentialedToolContext, agent_id: str) -> ChatToolDeps:
             connection_catalog=ctx.connection_catalog,
             connection_name=ctx.chat_connection,
             timeout_seconds=ctx.chat_timeout_seconds,
+        ),
+        approval_store=ctx.approval_store,
+        agent_id=agent_id,
+        clock=ctx.clock,
+    )
+
+
+def _deploy_deps(ctx: CredentialedToolContext, agent_id: str) -> DeployToolDeps:
+    """Build per-call deploy deps bound to *agent_id* and the target allowlist.
+
+    Args:
+        ctx: The per-request host-side collaborators.
+        agent_id: The verified calling agent.
+
+    Returns:
+        The per-call :class:`DeployToolDeps`.
+    """
+    return DeployToolDeps(
+        runtime=DeployToolsRuntime(
+            connection_catalog=ctx.connection_catalog,
+            allowed_targets=ctx.deploy_targets,
+            timeout_seconds=ctx.deploy_timeout_seconds,
+            max_log_chars=ctx.deploy_max_log_chars,
         ),
         approval_store=ctx.approval_store,
         agent_id=agent_id,
@@ -192,6 +230,30 @@ CREDENTIALED_TOOLS: Final[tuple[_CredentialedTool, ...]] = (
         args_model=ChatDirectoryArgs,
         build=lambda ctx, aid: ChatDirectoryTool(deps=_chat_deps(ctx, aid)),
     ),
+    _CredentialedTool(
+        name="deploy_run",
+        description=(
+            "Read a deployment's state, list recent deployments, or fetch a "
+            "deployment's logs from an allowlisted deploy target."
+        ),
+        capability="deploy:read",
+        category=ToolCategory.DEPLOYMENT,
+        args_model=DeployRunArgs,
+        build=lambda ctx, aid: DeployRunTool(deps=_deploy_deps(ctx, aid)),
+    ),
+    _CredentialedTool(
+        name="deploy_release",
+        description=(
+            "Trigger a release to an allowlisted deploy target. Replaces what "
+            "is running; requires confirm, a reason, and human approval."
+        ),
+        capability="deploy:write",
+        category=ToolCategory.DEPLOYMENT,
+        args_model=DeployReleaseArgs,
+        build=lambda ctx, aid: DeployReleaseTool(
+            deps=_deploy_deps(ctx, aid), actor=ctx.actor
+        ),
+    ),
 )
 
 _TOOLS_BY_NAME: Final[MappingProxyType[str, _CredentialedTool]] = MappingProxyType(
@@ -247,27 +309,6 @@ def visible_tool_names(
         if spec.name in allowed or _capability_matches(spec.capability, capabilities):
             visible.add(spec.name)
     return frozenset(visible)
-
-
-def tool_schemas(capabilities: tuple[str, ...]) -> list[dict[str, object]]:
-    """Return MCP tool schemas for the tools visible under *capabilities*.
-
-    Args:
-        capabilities: Capability patterns the actor is granted.
-
-    Returns:
-        A list of ``{name, description, inputSchema}`` MCP tool descriptors.
-    """
-    visible = visible_tool_names(capabilities=capabilities)
-    return [
-        {
-            "name": spec.name,
-            "description": spec.description,
-            "inputSchema": spec.args_model.model_json_schema(),
-        }
-        for spec in CREDENTIALED_TOOLS
-        if spec.name in visible
-    ]
 
 
 async def invoke_credentialed_tool(  # noqa: PLR0913 -- scope + validate + dispatch surface

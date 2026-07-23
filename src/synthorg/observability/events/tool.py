@@ -98,6 +98,12 @@ FORGE_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.forge.credential_failed"
 CHAT_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.chat.credential_failed"
 FORGE_TOOL_CONNECTION_FAILED: Final[str] = "tool.forge.connection_failed"
 CHAT_TOOL_CONNECTION_FAILED: Final[str] = "tool.chat.connection_failed"
+DEPLOY_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.deploy.credential_failed"
+DEPLOY_TOOL_CONNECTION_FAILED: Final[str] = "tool.deploy.connection_failed"
+DEPLOY_TOOL_RELEASE_REQUESTED: Final[str] = "tool.deploy.release_requested"
+# Shared across every governed-connection family: a destructive call
+# rejected by the confirm+reason+actor guardrail before the approval gate.
+GOVERNED_TOOL_GUARDRAIL_REJECTED: Final[str] = "tool.governed.guardrail_rejected"
 FORGE_TOOL_GRANTED: Final[str] = "tool.forge.granted"
 CHAT_TOOL_GRANTED: Final[str] = "tool.chat.granted"
 DELEGATE_TOOL_GRANTED: Final[str] = "tool.delegate.granted"

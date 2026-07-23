@@ -385,6 +385,90 @@ class ChatApiRateLimitError(ChatApiError):
         self.retry_after_seconds = retry_after_seconds
 
 
+# -- Deploy API errors ---------------------------------------------------
+
+
+class DeployApiError(IntegrationError):
+    """Base for deploy-platform API client failures.
+
+    Transient by default (an upstream 5xx / network failure is safe to
+    retry). The auth and rate-limit leaves below narrow the HTTP status
+    while keeping the family ``INTEGRATION_ERROR`` code so callers branch
+    on the class, not a dedicated code.
+    """
+
+    is_retryable = True
+    retryable: ClassVar[bool] = True
+    default_message: ClassVar[str] = "Deploy API request failed"
+
+
+class DeployApiClientError(DeployApiError):
+    """A deterministic 4xx client error from the deploy platform.
+
+    Non-retryable: a 400/404/422 (bad request, unknown deployment,
+    unprocessable body) will never succeed on a bare retry, unlike the
+    transient 5xx the base class covers. Kept in the ``DeployApiError``
+    family so the tool layer's generic mapping still catches it.
+    """
+
+    is_retryable = False
+    retryable: ClassVar[bool] = False
+    status_code: ClassVar[int] = 400
+    default_message: ClassVar[str] = "Deploy API client error"
+
+
+class DeployApiOutOfScopeError(DeployApiError):
+    """The platform returned a deployment outside the client's binding.
+
+    A client is bound to one project and one environment at construction,
+    from the operator's connection record. A deployment identifier, by
+    contrast, is quotable from an earlier call or simply remembered, so a
+    by-id read is the one path that can reach across that binding. Kept
+    non-retryable: the binding is fixed, so the same call resolves to the
+    same refusal.
+    """
+
+    is_retryable = False
+    retryable: ClassVar[bool] = False
+    status_code: ClassVar[int] = 403
+    default_message: ClassVar[str] = "Deployment is outside the bound scope"
+
+
+class DeployApiAuthError(DeployApiError):
+    """The deploy platform rejected the API token (auth / scope failure).
+
+    Non-retryable: a fresh or better-scoped credential is required, not a
+    backoff.
+    """
+
+    is_retryable = False
+    retryable: ClassVar[bool] = False
+    status_code: ClassVar[int] = 401
+    default_message: ClassVar[str] = "Deploy API authentication failed"
+
+
+class DeployApiRateLimitError(DeployApiError):
+    """The deploy platform rate-limited the request (HTTP 429).
+
+    Carries the advertised ``Retry-After`` cool-off (seconds) when the
+    response supplied a parseable one.
+    """
+
+    is_retryable = True
+    retryable: ClassVar[bool] = True
+    status_code: ClassVar[int] = 429
+    retry_after_seconds: float | None
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        retry_after_seconds: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
 # -- Tunnel errors -------------------------------------------------------
 
 

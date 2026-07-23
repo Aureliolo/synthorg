@@ -16,6 +16,9 @@ from synthorg.integrations.connections.types.a2a_peer import (
 from synthorg.integrations.connections.types.database import (
     DatabaseAuthenticator,
 )
+from synthorg.integrations.connections.types.deploy import (
+    DeployAuthenticator,
+)
 from synthorg.integrations.connections.types.generic_http import (
     GenericHttpAuthenticator,
 )
@@ -56,6 +59,7 @@ CONNECTION_TYPE_REGISTRY: MappingProxyType[ConnectionType, ConnectionAuthenticat
             ConnectionType.A2A_PEER: A2APeerAuthenticator(),
             ConnectionType.LLM_PROVIDER: LLMProviderAuthenticator(),
             ConnectionType.TUNNEL: TunnelAuthenticator(),
+            ConnectionType.DEPLOY: DeployAuthenticator(),
         },
     )
 )

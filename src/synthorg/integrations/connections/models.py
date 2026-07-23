@@ -66,6 +66,11 @@ class ConnectionType(StrEnum):
     # Backs a tunnel provider's auth token (minted from the dashboard tunnel
     # card). No base_url: the tunnel target is the local API itself.
     TUNNEL = "tunnel"
+    # A hosting platform a synthetic org releases a product to. The record's
+    # ``metadata`` carries the platform preset and the target environment;
+    # the environment is read from here and never from an agent argument,
+    # so naming a production target cannot dodge production gating.
+    DEPLOY = "deploy"
 
 
 class AuthMethod(StrEnum):

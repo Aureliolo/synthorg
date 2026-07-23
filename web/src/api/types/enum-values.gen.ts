@@ -293,6 +293,7 @@ export const CONNECTION_TYPE_VALUES = [
     'a2a_peer',
     'llm_provider',
     'tunnel',
+    'deploy',
 ] as const
 export type ConnectionType = (typeof CONNECTION_TYPE_VALUES)[number]
 

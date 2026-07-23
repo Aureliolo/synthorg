@@ -21,6 +21,47 @@ logger = get_logger(__name__)
 
 _BEARER_PARTS: Final[int] = 2
 
+_CONTROL_CHAR_THRESHOLD: Final[int] = 0x20
+# Characters that must never appear in a value destined for a REST URL
+# path segment: the separators plus the URL-structure characters (query /
+# fragment / userinfo / percent-escape) that could smuggle a different
+# request shape onto a pinned host.
+_SEGMENT_FORBIDDEN: Final[frozenset[str]] = frozenset({"\\", "/", "?", "#", "@", "%"})
+
+
+def reject_unsafe_url_segment(value: str, *, field: str) -> str:
+    """Reject traversal / separator / URL-structure / control characters.
+
+    A client that pins its ``base_url`` still resolves each request path
+    relative to it, so an unvalidated value interpolated into that path
+    can rewrite the request on the pinned host. Every caller building a
+    path segment from a value it did not define runs it through here.
+
+    Args:
+        value: The candidate segment.
+        field: The field name, for the error message.
+
+    Returns:
+        The validated value, unchanged.
+
+    Raises:
+        ValueError: When *value* contains a ``..`` segment, a leading
+            slash, a disallowed character, or a control character.
+    """
+    if ".." in value:
+        msg = f"{field} must not contain '..'"
+        raise ValueError(msg)
+    if value.startswith("/"):
+        msg = f"{field} must not start with '/'"
+        raise ValueError(msg)
+    if any(ch in value for ch in _SEGMENT_FORBIDDEN):
+        msg = f"{field} contains a disallowed character"
+        raise ValueError(msg)
+    if any(ord(ch) < _CONTROL_CHAR_THRESHOLD for ch in value):
+        msg = f"{field} contains a control character"
+        raise ValueError(msg)
+    return value
+
 
 def normalize_identifier(value: str) -> str:
     """Normalize an identifier for case-insensitive comparison.

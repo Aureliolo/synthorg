@@ -255,6 +255,16 @@ function ConnectionFormFields({
         onChange={(key, value) => f.handleFieldChange('topLevel', key, value)}
       />
 
+      {/* Metadata fields sit on the connection record (non-secret) and stay
+          editable after creation, so they render in both modes. */}
+      <ConnectionFieldList
+        fields={spec.metadataFields}
+        values={f.form.metadata}
+        errors={f.errors}
+        submitted={f.submitted}
+        onChange={(key, value) => f.handleFieldChange('metadata', key, value)}
+      />
+
       {mode === 'create' && (
         <ConnectionFieldList
           fields={spec.credentialFields}
