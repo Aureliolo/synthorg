@@ -17,6 +17,7 @@ import contextlib
 import os
 import tempfile
 from pathlib import Path
+from typing import Final
 
 from evals.loop_ab.models import Scoreboard
 from synthorg.observability import get_logger
@@ -24,9 +25,9 @@ from synthorg.observability.events.evals import EVALS_LOOP_AB_SCOREBOARD_EMITTED
 
 logger = get_logger(__name__)
 
-SCOREBOARD_JSON_FILENAME: str = "scoreboard.json"
-SCOREBOARD_MD_FILENAME: str = "scoreboard.md"
-JSON_INDENT: int = 2
+SCOREBOARD_JSON_FILENAME: Final[str] = "scoreboard.json"
+SCOREBOARD_MD_FILENAME: Final[str] = "scoreboard.md"
+JSON_INDENT: Final[int] = 2
 
 
 def _write_atomic(payload: str, target: Path) -> Path:

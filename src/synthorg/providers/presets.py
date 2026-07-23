@@ -795,10 +795,13 @@ def _soft_presets() -> tuple[CloudPreset, ...]:
     Covers every namespace not already in :data:`_FEATURED_PRESETS` or
     denied by the soft-list module's denylist.
 
-    Built once on first access rather than at import: the source
+    Built lazily on first access rather than at import: the source
     ``litellm.model_cost`` requires importing ``litellm`` (~5s cold),
     so deferring keeps app construction and cold module imports off
-    that cost until a preset listing is actually requested.
+    that cost until a preset listing is actually requested. The result
+    is cached; two threads racing the very first call may each build it
+    (``@cache`` does not serialise the miss), but the build is pure and
+    deterministic, so the cached value is identical either way.
 
     Returns:
         Soft presets, alphabetical by namespace.

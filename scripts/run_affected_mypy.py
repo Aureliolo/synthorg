@@ -63,15 +63,16 @@ _MYPY_WORKERS: Final[list[str]] = (
 )
 
 # mypy's parallel build spawns ``mypy.build_worker`` subprocesses that connect
-# back over a named pipe. The worker's server and the parent's status poll each
-# wait only ``WORKER_CONNECTION_TIMEOUT`` / ``WORKER_START_TIMEOUT`` (10s on
-# Windows, mypy/defaults.py); several fresh interpreters importing the compiled
-# mypy package don't reliably win that window under the pre-push's process
-# contention, so the pipe closes and the parent's source-broadcast write aborts
-# mypy with an INTERNAL ERROR. Those timeouts are hardcoded with no env or flag
-# override, so ``scripts/_mypy_worker_timeout/sitecustomize.py`` widens them at
-# interpreter startup; this directory goes on the mypy subprocess ``PYTHONPATH``
-# (workers inherit it) via ``_mypy_env``.
+# back to the parent. The worker's server and the parent's status poll each wait
+# only ``WORKER_CONNECTION_TIMEOUT`` / ``WORKER_START_TIMEOUT`` (mypy/defaults.py);
+# several fresh interpreters importing the compiled mypy package don't reliably
+# win that window under the pre-push's process contention, so the connection
+# drops and mypy aborts with an INTERNAL ERROR. Those timeouts are hardcoded with
+# no env or flag override, so ``scripts/_mypy_worker_timeout/sitecustomize.py``
+# widens them at interpreter startup; this directory goes on the mypy subprocess
+# ``PYTHONPATH`` (workers inherit it) via ``_mypy_env``. Windows runs
+# single-process (see ``_MYPY_WORKERS``), so this is inert there and takes effect
+# for the POSIX socketpair workers.
 _MYPY_TIMEOUT_SITECUSTOMIZE_DIR: Final[Path] = (
     _REPO_ROOT / "scripts" / "_mypy_worker_timeout"
 )
@@ -210,7 +211,9 @@ def _mypy_env(base: dict[str, str] | None = None) -> dict[str, str]:
 
     Prepends ``_MYPY_TIMEOUT_SITECUSTOMIZE_DIR`` to ``PYTHONPATH`` so the parent
     mypy interpreter (and every ``mypy.build_worker`` it spawns, which inherit
-    ``os.environ``) widens the named-pipe worker timeouts at startup.
+    ``os.environ``) widens the parallel-worker connection timeouts at startup. It
+    is inert on Windows, which runs single-process, and effective for the POSIX
+    socketpair workers (see ``_MYPY_WORKERS``).
     """
     env = dict(os.environ if base is None else base)
     sitecustomize_dir = str(_MYPY_TIMEOUT_SITECUSTOMIZE_DIR)

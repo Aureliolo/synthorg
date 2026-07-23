@@ -164,8 +164,10 @@ engine.loop_complexity_overrides = complex:openhands
 ```
 
 Per complexity bucket, the winner is the highest-scoring loop that cleared the
-gate. A loop's standing in a bucket is its **mean** across tiers, and a loop
-disqualified on **any** tier is disqualified for the bucket: the setting routes
+gate. A loop's standing in a bucket is its **mean** across every `(brief, tier)`
+cell in the bucket (one brief per complexity today, so a mean across tiers), and
+a loop disqualified on **any** tier is disqualified for the bucket: the setting
+routes
 on complexity alone and applies whatever model the agent is pinned to, so
 promoting a loop that fails on the small model would break that deployment.
 

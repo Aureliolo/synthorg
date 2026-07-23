@@ -13,7 +13,7 @@ a manifest that silently omits one is refused.
 """
 
 from pathlib import Path
-from typing import Self
+from typing import Final, Self
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -23,7 +23,7 @@ from synthorg.engine.loop_selector import registered_loop_types
 
 #: Repetitions per (loop, tier, brief) cell when the manifest does not say.
 #: Three is the smallest count that yields a median resistant to one outlier.
-DEFAULT_REPETITIONS: int = 3
+DEFAULT_REPETITIONS: Final[int] = 3
 
 
 class TierEntry(BaseModel):

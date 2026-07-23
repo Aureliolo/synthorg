@@ -11,8 +11,8 @@
 # committed manifest never names a vendor.
 #
 # 4 loops x 3 tiers x 3 briefs x 3 repetitions = 108 runs. Run
-# `python scripts/record_loop_ab.py --dry-run` to see the plan and the estimated
-# spend before charging anything.
+# `python scripts/record_loop_ab.py` (the default, no --record) to print the plan
+# and the run count before charging anything.
 brief_suite: evals/loop_ab/briefs
 repetitions: 3
 loops:

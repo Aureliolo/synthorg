@@ -17,7 +17,7 @@ acceptance_criteria:
   - "The analysis diagnoses the actual root cause of the recurring failure."
   - "The proposed improvement is targeted and grounded, not speculative."
 limits:
-  max_total_cost_usd: 7.0
+  max_total_cost: 7.0
   max_wall_clock_seconds: 180
   max_turns: 8
 rubric:

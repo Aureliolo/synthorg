@@ -28,7 +28,7 @@ acceptance_criteria:
   - "truncate returns short input unchanged and ellipsis-terminates longer input at the limit."
   - "truncate rejects a limit below 1 with ValueError."
 limits:
-  max_total_cost_usd: 2.0
+  max_total_cost: 2.0
   max_wall_clock_seconds: 300
   max_turns: 12
 checks:

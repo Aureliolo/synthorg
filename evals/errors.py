@@ -151,6 +151,20 @@ class ProvenanceUnavailableError(EvalError):
     default_message: ClassVar[str] = "Scoreboard git provenance is unavailable"
 
 
+class LoopAbProviderMissingError(EvalError):
+    """Raised when a loop A/B manifest tier names an unknown provider.
+
+    The manifest binds each tier to an explicit ``(provider, model)`` pair, so a
+    tier naming a provider absent from the company config is a configuration
+    error that must fail loud before any real-spend run, not a bare ``KeyError``
+    that loses the domain taxonomy and its structured context.
+    """
+
+    default_message: ClassVar[str] = (
+        "Loop A/B manifest tier names a provider absent from the company config"
+    )
+
+
 class ResearchBriefUnsupportedError(EvalError):
     """Raised when a research brief is run without a research-mode integration.
 
@@ -178,6 +192,7 @@ __all__ = [
     "EvalToolMissingError",
     "JudgeAnchorSetTooSmallError",
     "JudgeCalibrationFailedError",
+    "LoopAbProviderMissingError",
     "ProvenanceUnavailableError",
     "ResearchBriefUnsupportedError",
     "WorkspacePathEscapeError",

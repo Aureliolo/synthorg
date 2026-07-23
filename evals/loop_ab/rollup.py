@@ -8,8 +8,10 @@ just on the tier that flatters a loop most.
 
 Two rules follow from that:
 
-* A loop's standing in a bucket is its **mean** composite across the tiers it
-  was measured on, so a single flattering tier cannot carry it.
+* A loop's standing in a bucket is its **mean** composite across every
+  ``(brief, tier)`` cell that lands in the bucket (the current suite has one
+  brief per complexity, so today that is a mean across tiers), so a single
+  flattering cell cannot carry it.
 * A loop disqualified on **any** tier is disqualified for the bucket. Promoting
   a loop that fails on the small model would break every small-model
   deployment, which is precisely what the gate exists to prevent.

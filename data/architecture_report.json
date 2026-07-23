@@ -330,12 +330,6 @@
       "ratio": 0.958,
       "tier": "code"
     },
-    "src/synthorg/communication/__init__.py": {
-      "cap": 500,
-      "loc": 614,
-      "ratio": 1.228,
-      "tier": "code"
-    },
     "src/synthorg/communication/async_tasks/service.py": {
       "cap": 500,
       "loc": 404,
@@ -419,12 +413,6 @@
       "loc": 542,
       "ratio": 0.903,
       "tier": "service"
-    },
-    "src/synthorg/engine/__init__.py": {
-      "cap": 500,
-      "loc": 909,
-      "ratio": 1.818,
-      "tier": "code"
     },
     "src/synthorg/engine/_prompt_helpers.py": {
       "cap": 500,

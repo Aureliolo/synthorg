@@ -19,7 +19,7 @@ acceptance_criteria:
   - "Phase 3 honours the architectural decision recorded in phase 1."
   - "The deliverable explains how the early decision constrained later phases."
 limits:
-  max_total_cost_usd: 8.0
+  max_total_cost: 8.0
   max_wall_clock_seconds: 240
   max_turns: 12
 rubric:

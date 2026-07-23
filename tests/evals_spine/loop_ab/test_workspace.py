@@ -10,9 +10,9 @@ artifacts, the acceptance grade would measure run order rather than the loop.
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from evals.errors import (
-    WorkspacePathEscapeError,
     WorkspaceSeedNotFoundError,
     WorkspaceSpecMissingError,
 )
@@ -42,9 +42,7 @@ def _brief(*, brief_id: str = "loop-ab-simple", workspace: bool = True) -> Brief
         description=NotBlankStr("Build the widget."),
         estimated_complexity=1,
         acceptance_criteria=(NotBlankStr("The widget imports."),),
-        limits=LimitsSpec(
-            max_total_cost_usd=1.0, max_wall_clock_seconds=60, max_turns=4
-        ),
+        limits=LimitsSpec(max_total_cost=1.0, max_wall_clock_seconds=60, max_turns=4),
         checks=ExecutableChecks(
             hidden_tests=(
                 HiddenCheckSpec(cmd=(NotBlankStr("echo"), NotBlankStr("ok"))),
@@ -129,11 +127,8 @@ def test_brief_without_a_workspace_block_is_refused(
         )
 
 
-def test_brief_id_cannot_escape_the_work_root(suite_root: Path, tmp_path: Path) -> None:
-    """``brief_id`` reaches the path join from YAML, so it is treated as untrusted."""
-    with pytest.raises(WorkspacePathEscapeError):
-        seed_workspace(
-            brief=_brief(brief_id="../escaped"),
-            suite_root=suite_root,
-            work_root=tmp_path / "work",
-        )
+def test_brief_id_that_escapes_the_work_root_is_refused_at_the_model() -> None:
+    """``brief_id`` reaches a path join from YAML, so an escaping value is
+    rejected at the model boundary before it can ever reach the seeding join."""
+    with pytest.raises(ValidationError):
+        _brief(brief_id="../escaped")

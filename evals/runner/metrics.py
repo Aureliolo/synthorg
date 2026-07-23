@@ -12,6 +12,8 @@ on provider-neutral tokens and the authoritative per-``(provider, model)`` spend
 is read separately from the gateway's cost ledger.
 """
 
+from typing import Final
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.engine.loop_protocol import ExecutionResult
@@ -19,7 +21,7 @@ from synthorg.engine.loop_protocol import ExecutionResult
 #: Key the planning loops stash their replan count under in result metadata.
 #: ``react`` and ``openhands`` cannot replan and never set it; its absence is a
 #: true zero, treated by the rubric as a rework cost rather than a credit.
-REPLANS_USED_KEY = "replans_used"
+REPLANS_USED_KEY: Final[str] = "replans_used"
 
 
 class RunMetrics(BaseModel):

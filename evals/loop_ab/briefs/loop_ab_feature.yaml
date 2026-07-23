@@ -35,7 +35,7 @@ acceptance_criteria:
   - "release returns the quantity to availability and rejects an unknown ref with KeyError."
   - "Existing quantity() behaviour is unchanged."
 limits:
-  max_total_cost_usd: 6.0
+  max_total_cost: 6.0
   max_wall_clock_seconds: 900
   max_turns: 30
 checks:

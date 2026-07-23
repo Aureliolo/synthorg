@@ -17,14 +17,22 @@ Two reporting rules the models enforce structurally:
 """
 
 from datetime import datetime
-from typing import Final, Self
+from typing import Annotated, Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from evals.loop_ab.aggregate import LoopRepetitionSummary
 from evals.loop_ab.promotion import PromotionRecommendation
 from evals.loop_ab.rubric import (
     CORRECTNESS_GATE_FLOOR,
+    RUBRIC_TOTAL,
     RUBRIC_WEIGHT_CORRECTNESS,
     RUBRIC_WEIGHT_LATENCY,
     RUBRIC_WEIGHT_RESILIENCE,
@@ -32,10 +40,18 @@ from evals.loop_ab.rubric import (
     RUBRIC_WEIGHT_TURNS,
     LoopCellScore,
 )
+from evals.scoring.executable import EXEC_TOTAL
+from synthorg.budget.currency import CurrencyCode, assert_currencies_match
 from synthorg.core.types import NotBlankStr
 
 #: Bumping this is a deliberate, breaking change for downstream readers.
 LOOP_AB_SCHEMA_VERSION: Final[int] = 1
+
+#: A git commit SHA: lowercase hex, abbreviated (>=7) up to a full SHA-256 id.
+GitCommitSha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{7,64}$")]
+
+#: A ``sha256:``-prefixed digest, matching what :func:`manifest_digest` emits.
+Sha256Digest = Annotated[str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$")]
 
 
 class ProviderSpend(BaseModel):
@@ -53,7 +69,7 @@ class ProviderSpend(BaseModel):
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
     cost: float = Field(ge=0.0)
-    currency: NotBlankStr
+    currency: CurrencyCode
 
 
 class RubricWeights(BaseModel):
@@ -71,7 +87,29 @@ class RubricWeights(BaseModel):
     latency: int = Field(ge=0)
     turns: int = Field(ge=0)
     resilience: int = Field(ge=0)
-    correctness_gate_floor: float = Field(ge=0.0)
+    # Bounded by the correctness scale: a floor above the maximum grade would
+    # disqualify every loop, silently disabling the promotion safety gate.
+    correctness_gate_floor: float = Field(ge=0.0, le=float(EXEC_TOTAL))
+
+    @model_validator(mode="after")
+    def _weights_sum_to_total(self) -> Self:
+        """Reject a weighting that does not sum to the composite total.
+
+        The composite is a weighted sum of dimensions each normalised to
+        ``0..1``, so weights that do not sum to ``RUBRIC_TOTAL`` produce a score
+        off the documented ``0..RUBRIC_TOTAL`` scale and make cross-artifact
+        comparison meaningless.
+        """
+        total = (
+            self.correctness + self.tokens + self.latency + self.turns + self.resilience
+        )
+        if total != RUBRIC_TOTAL:
+            msg = (
+                f"rubric weights sum to {total}, expected {RUBRIC_TOTAL} "
+                "(correctness + tokens + latency + turns + resilience)"
+            )
+            raise ValueError(msg)
+        return self
 
     @classmethod
     def current(cls) -> Self:
@@ -102,9 +140,9 @@ class Provenance(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     generated_at: datetime
-    git_commit: NotBlankStr
+    git_commit: GitCommitSha
     git_dirty: bool
-    manifest_sha256: NotBlankStr
+    manifest_sha256: Sha256Digest
     brief_suite_version: NotBlankStr
 
     @field_validator("generated_at")
@@ -217,8 +255,17 @@ class Scoreboard(BaseModel):
 
     @property
     def total_cost(self) -> float:
-        """Total measured spend across every row and provider."""
-        return sum(spend.cost for row in self.rows for spend in row.spend)
+        """Total measured spend across every row and provider.
+
+        Raises:
+            MixedCurrencyAggregationError: The rows span more than one currency.
+                A single blended figure across currencies is meaningless, so it
+                fails loud rather than reporting a wrong headline number; the
+                per-``(provider, model, currency)`` breakdown carries the detail.
+        """
+        spend = [item for row in self.rows for item in row.spend]
+        assert_currencies_match([item.currency for item in spend])
+        return sum(item.cost for item in spend)
 
 
 __all__ = [

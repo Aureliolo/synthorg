@@ -1,25 +1,29 @@
 """Widen mypy's parallel-worker IPC timeouts before mypy binds them.
 
 mypy's parallel build (``--num-workers``) spawns ``mypy.build_worker``
-subprocesses that connect back to the parent over a named pipe. The worker's
-pipe server waits for the parent only for ``WORKER_CONNECTION_TIMEOUT`` and the
-parent polls the worker's status file for ``WORKER_START_TIMEOUT`` (both 10s on
-Windows). Several fresh interpreters importing the compiled mypy package do not
-reliably win that window under the pre-push's process contention: when the
-window lapses the worker closes the pipe and the parent's source-broadcast
-``write_bytes`` dies with ``WinError 233`` (ERROR_PIPE_NOT_CONNECTED), aborting
-mypy with an INTERNAL ERROR instead of a type result.
+subprocesses that connect back to the parent. The worker's server waits for the
+parent only for ``WORKER_CONNECTION_TIMEOUT`` and the parent polls the worker's
+status for ``WORKER_START_TIMEOUT``; several fresh interpreters importing the
+compiled mypy package do not reliably win that window under the pre-push's
+process contention, and when it lapses the connection drops and mypy aborts with
+an INTERNAL ERROR instead of a type result. These two values are hardcoded
+``Final`` constants in ``mypy/defaults.py`` with no environment or command-line
+override, so they are widened here as ceilings on how long each side waits (the
+happy path, an immediate connection, is unaffected).
 
-Those two values are hardcoded ``Final`` constants in ``mypy/defaults.py`` with
-no environment or command-line override, so they are widened here. ``site``
-imports ``sitecustomize`` at interpreter startup, which runs in the parent and
-in every worker (workers inherit ``PYTHONPATH`` via ``os.environ``) before mypy
-is first imported; a value set on ``mypy.defaults`` before ``mypy.build`` binds
-it is honoured by the compiled build module. The values are ceilings on how long
-each side waits, so the happy path (an immediate connection) is unaffected.
+This only bites when workers actually exist. ``scripts/run_affected_mypy.py``
+runs mypy single-process on Windows (``--num-workers`` omitted), because the
+Windows named-pipe worker transport is where the connection race manifested as
+``WinError 233`` (ERROR_PIPE_NOT_CONNECTED); with no workers there, this hook is
+inert on Windows. It stays effective for the POSIX socketpair workers that
+``run_affected_mypy.py`` still spawns, widening their startup ceilings under
+contention.
 
-``scripts/run_affected_mypy.py`` puts this directory on ``PYTHONPATH`` for its
-mypy subprocesses; it is inert for any interpreter that never imports mypy.
+``run_affected_mypy.py`` puts this directory on ``PYTHONPATH`` for its mypy
+subprocesses; ``site`` imports ``sitecustomize`` at interpreter startup in the
+parent and in every worker (workers inherit ``PYTHONPATH`` via ``os.environ``)
+before mypy is first imported, and it is inert for any interpreter that never
+imports mypy.
 """
 
 from typing import Final

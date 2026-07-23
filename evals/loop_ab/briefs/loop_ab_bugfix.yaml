@@ -30,7 +30,7 @@ acceptance_criteria:
   - "A negative deposit or withdrawal is rejected with ValueError."
   - "Withdrawing more than the balance is rejected with ValueError."
 limits:
-  max_total_cost_usd: 4.0
+  max_total_cost: 4.0
   max_wall_clock_seconds: 600
   max_turns: 20
 checks:

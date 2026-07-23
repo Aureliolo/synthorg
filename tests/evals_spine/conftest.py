@@ -25,7 +25,7 @@ def _brief_yaml(kind: str, **overrides: object) -> str:
         "estimated_complexity": 3,
         "acceptance_criteria": ["criterion one"],
         "limits": {
-            "max_total_cost_usd": 1.0,
+            "max_total_cost": 1.0,
             "max_wall_clock_seconds": 60,
             "max_turns": 8,
         },

@@ -186,13 +186,19 @@ def __getattr__(name: str) -> object:
         raise AttributeError(msg)
     import importlib  # noqa: PLC0415
 
+    if name in globals():
+        return globals()[name]
+    module_path, attr = _LAZY_EXPORTS[name]
+    # Resolve the import OUTSIDE the lock: importing the target runs arbitrary
+    # module-level code that can re-enter this hub (the import cycles this lazy
+    # machinery exists to break), so holding a non-reentrant lock across the
+    # import would risk a same-thread self-deadlock or a cross-hub lock-order
+    # inversion. Python's per-module import lock already dedups the work, so a
+    # racing first access at worst resolves the idempotent value twice;
+    # ``setdefault`` keeps a single cached object.
+    value = getattr(importlib.import_module(module_path), attr)
     with _LAZY_EXPORT_LOCK:
-        if name in globals():
-            return globals()[name]
-        module_path, attr = _LAZY_EXPORTS[name]
-        value = getattr(importlib.import_module(module_path), attr)
-        globals()[name] = value
-        return value
+        return globals().setdefault(name, value)
 
 
 def __dir__() -> list[str]:

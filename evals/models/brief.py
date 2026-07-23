@@ -4,22 +4,37 @@ A brief is one item in the exam suite. Briefs are authored as YAML files
 under ``evals/briefs/<id>.yaml`` and loaded into frozen Pydantic models
 at the file boundary via :func:`evals.loader.briefs.load_brief_suite`.
 
-Two kinds:
+Three kinds:
 
 * ``executable`` -- has hidden acceptance tests + build + lint commands;
   the run is graded binary-deterministically by command exit codes.
 * ``judged`` -- has a weighted rubric and a reference answer; the run
   is graded by a calibrated LLM judge against a hand-scored anchor set
   (see :mod:`evals.scoring.judged`).
+* ``research`` -- carries a research question and expected claims; the
+  run grades a :class:`~synthorg.research.models.ResearchRun`.
 """
 
 from enum import StrEnum
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Final, Literal, Self
+from typing import Annotated, Final, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr
+
+#: A brief id: a slug of letters, digits, ``-`` and ``_`` starting on an
+#: alphanumeric. Constrained because it is joined onto a filesystem root when
+#: seeding a workspace, so a value with path separators, a leading ``.`` or a
+#: drive prefix (all of which a ``..``/absolute escape needs) is refused at the
+#: model boundary rather than only at the seeding call site.
+BriefId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")]
 
 # Shell metacharacters refused at the leading argv token in a hidden
 # check command. The grader runs commands with ``shell=False`` so a
@@ -137,7 +152,7 @@ class LimitsSpec(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    max_total_cost_usd: float = Field(gt=0.0)
+    max_total_cost: float = Field(gt=0.0)
     max_wall_clock_seconds: int = Field(gt=0)
     max_turns: int = Field(gt=0)
 
@@ -258,7 +273,7 @@ class Brief(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    brief_id: NotBlankStr
+    brief_id: BriefId
     schema_version: Literal[1]
     kind: BriefKind
     title: NotBlankStr

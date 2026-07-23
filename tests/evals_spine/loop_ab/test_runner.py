@@ -42,7 +42,7 @@ def _provenance() -> Provenance:
         generated_at=datetime(2026, 7, 22, 12, 0, tzinfo=UTC),
         git_commit=NotBlankStr("b" * 40),
         git_dirty=False,
-        manifest_sha256=NotBlankStr("sha256:feed"),
+        manifest_sha256=NotBlankStr("sha256:" + "f" * 64),
         brief_suite_version=NotBlankStr("sha256:beef"),
     )
 
@@ -199,6 +199,10 @@ async def test_the_scoreboard_separates_loops_on_measured_behaviour(
     assert len(set(turns.values())) > 1, (
         f"the loops must differ in measured turns to be comparable, got {turns}"
     )
+    # A whole-turn gap, not merely any difference: the planning loops execute
+    # both scripted steps while the reactive loop stops at the plan, so the
+    # separation is a real measured margin rather than rounding noise.
+    assert max(turns.values()) - min(turns.values()) >= 1, turns
     assert len(set(composites.values())) > 1, (
         f"differing measurements must produce differing scores, got {composites}"
     )
@@ -230,8 +234,10 @@ async def test_a_cheaper_loop_outscores_a_more_expensive_one(
         key=lambda r: r.measurement.aggregate.total_tokens,  # type: ignore[union-attr]
     )
 
-    if cheapest.loop_type != dearest.loop_type:
-        assert cheapest.score.composite >= dearest.score.composite  # type: ignore[union-attr]
+    # Unconditional: if only one loop were measured, cheapest is dearest and
+    # this is a trivial ``x >= x``; a real token spread must never leave the
+    # ranking silently unchecked, which a guarded assertion would allow.
+    assert cheapest.score.composite >= dearest.score.composite  # type: ignore[union-attr]
 
 
 async def test_each_repetition_starts_from_a_freshly_seeded_workspace(
@@ -269,5 +275,48 @@ async def test_the_scoreboard_carries_its_promotion_recommendation(
         provenance=_provenance(),
     )
 
-    assert scoreboard.recommendation is not None
+    # Every scripted loop runs tool-less, writes nothing, and grades below the
+    # correctness gate, so none clears it and the recommendation degrades to
+    # "promote nothing": a real assertion, not a tautological not-None check on a
+    # required field.
+    assert scoreboard.recommendation.default_loop_type is None
     assert scoreboard.provenance.git_commit == "b" * 40
+
+
+async def test_measured_rows_carry_their_ledger_spend(tmp_path: Path) -> None:
+    """Cost is read back from the run's own ledger, not re-derived from tokens."""
+    scoreboard = await run_matrix(
+        manifest=_manifest(),
+        briefs=_simple_brief(),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work",
+        deps=_scripted_deps(),
+        provenance=_provenance(),
+    )
+
+    for row in scoreboard.measured_rows:
+        assert row.spend, f"{row.loop_type} recorded no spend"
+        for item in row.spend:
+            assert item.provider == "example-provider"
+            assert item.model_id == "example-large-001"
+            assert item.cost > 0.0
+
+
+async def test_a_tool_less_run_disqualifies_every_measured_loop(
+    tmp_path: Path,
+) -> None:
+    """With no tools the loops write nothing, so the correctness gate fires."""
+    scoreboard = await run_matrix(
+        manifest=_manifest(),
+        briefs=_simple_brief(),
+        suite_root=_SUITE,
+        work_root=tmp_path / "work",
+        deps=_scripted_deps(),
+        provenance=_provenance(),
+    )
+
+    measured = scoreboard.measured_rows
+    assert measured
+    for row in measured:
+        assert row.score is not None
+        assert row.score.disqualified is True

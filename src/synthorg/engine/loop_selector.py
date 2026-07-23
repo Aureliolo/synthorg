@@ -64,7 +64,7 @@ class AutoLoopRule(BaseModel):
     Attributes:
         complexity: The task complexity this rule matches.
         loop_type: One of the known loop types (``"react"``,
-            ``"plan_execute"``, ``"hybrid"``).
+            ``"plan_execute"``, ``"hybrid"``, ``"openhands"``).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)

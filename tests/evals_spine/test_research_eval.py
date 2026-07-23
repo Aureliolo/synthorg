@@ -125,7 +125,7 @@ def _exam_brief() -> Brief:
         estimated_complexity=2,
         acceptance_criteria=(NotBlankStr("Report cites retrievable sources."),),
         limits=LimitsSpec(
-            max_total_cost_usd=10.0, max_wall_clock_seconds=120, max_turns=10
+            max_total_cost=10.0, max_wall_clock_seconds=120, max_turns=10
         ),
         research_spec=_research_spec(),
     )

@@ -50,7 +50,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_selector import build_execution_loop
 from synthorg.engine.openhands.config import OpenHandsLoopDeps
-from synthorg.engine.openhands.errors import OpenHandsUnavailableError
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
@@ -96,6 +95,19 @@ class LoopAbDeps:
     openhands_loop_deps: OpenHandsLoopDeps | None = None
 
 
+@dataclass(frozen=True)
+class _CellCoordinates:
+    """The ``(loop, tier, brief)`` a repetition runs at.
+
+    Bundled so the per-cell coordinate cluster travels as one value rather than
+    three parallel parameters threaded through every run helper.
+    """
+
+    loop_type: str
+    tier: TierEntry
+    brief: Brief
+
+
 def _identity(tier: TierEntry) -> AgentIdentity:
     """Build the A/B agent bound to *tier*'s explicit provider and model.
 
@@ -134,7 +146,10 @@ def _spend_from_records(records: tuple[CostRecord, ...]) -> tuple[ProviderSpend,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost=cost,
-            currency=NotBlankStr(currency),
+            # The ledger already validated this as a CurrencyCode; pass it
+            # through rather than downcasting to a bare string and discarding
+            # the ISO-4217 guarantee.
+            currency=currency,
         )
         for (provider, model, currency), (
             input_tokens,
@@ -167,26 +182,25 @@ def _resolved(brief: Brief) -> Brief:
 
 def _build_engine(
     *,
-    loop_type: str,
-    tier: TierEntry,
+    coord: _CellCoordinates,
     work_dir: Path,
     deps: LoopAbDeps,
     cost_tracker: CostTracker,
 ) -> AgentEngine:
-    """Build an engine running exactly *loop_type* against *work_dir*.
+    """Build an engine running exactly *coord*'s loop against *work_dir*.
 
     Returns:
         The configured :class:`AgentEngine`.
 
     Raises:
-        OpenHandsUnavailableError: ``loop_type`` is openhands and its runtime
-            deps are not wired.
+        OpenHandsUnavailableError: The loop is openhands and its runtime deps
+            are not wired.
     """
     execution_loop = build_execution_loop(
-        loop_type, openhands_loop_deps=deps.openhands_loop_deps
+        coord.loop_type, openhands_loop_deps=deps.openhands_loop_deps
     )
     return AgentEngine(
-        provider=deps.build_provider(tier),
+        provider=deps.build_provider(coord.tier),
         execution_loop=execution_loop,
         tool_registry=deps.build_tool_registry(work_dir),
         cost_tracker=cost_tracker,
@@ -194,11 +208,9 @@ def _build_engine(
     )
 
 
-async def _run_repetition(  # noqa: PLR0913 -- orthogonal per-cell coordinates
+async def _run_repetition(
     *,
-    loop_type: str,
-    tier: TierEntry,
-    brief: Brief,
+    coord: _CellCoordinates,
     suite_root: Path,
     work_root: Path,
     deps: LoopAbDeps,
@@ -208,29 +220,30 @@ async def _run_repetition(  # noqa: PLR0913 -- orthogonal per-cell coordinates
     Returns:
         ``(outcome, spend)`` for this repetition.
     """
-    work_dir = seed_workspace(brief=brief, suite_root=suite_root, work_root=work_root)
+    work_dir = seed_workspace(
+        brief=coord.brief, suite_root=suite_root, work_root=work_root
+    )
     # One tracker per run: ``run_brief`` derives a deterministic task id from the
     # brief alone, so records would otherwise pool across every loop and tier
     # measuring that brief and become unattributable.
     cost_tracker = CostTracker()
     engine = _build_engine(
-        loop_type=loop_type,
-        tier=tier,
+        coord=coord,
         work_dir=work_dir,
         deps=deps,
         cost_tracker=cost_tracker,
     )
 
-    outcome = await run_brief(engine, brief, identity=_identity(tier))
-    grade = grade_executable(_resolved(brief), work_dir)
+    outcome = await run_brief(engine, coord.brief, identity=_identity(coord.tier))
+    grade = grade_executable(_resolved(coord.brief), work_dir)
     metrics = outcome.metrics
     spend = _spend_from_records(await collect_all_records(cost_tracker))
 
     logger.info(
         EVALS_LOOP_AB_RUN_RECORDED,
-        loop_type=loop_type,
-        tier=tier.tier,
-        brief_id=brief.brief_id,
+        loop_type=coord.loop_type,
+        tier=coord.tier.tier,
+        brief_id=coord.brief.brief_id,
         grade=grade.score,
         total_tokens=metrics.total_tokens,
         duration_seconds=metrics.duration_seconds,
@@ -248,11 +261,24 @@ async def _run_repetition(  # noqa: PLR0913 -- orthogonal per-cell coordinates
     )
 
 
-async def _run_cell(  # noqa: PLR0913 -- orthogonal per-cell coordinates
+def _unavailable_row(coord: _CellCoordinates, exc: Exception) -> LoopBriefRow:
+    """Build the unavailable row for a cell that could not be measured.
+
+    Returns:
+        A :class:`LoopBriefRow` carrying the redacted failure reason.
+    """
+    return LoopBriefRow(
+        loop_type=NotBlankStr(coord.loop_type),
+        brief_id=coord.brief.brief_id,
+        tier=coord.tier.tier,
+        model_id=coord.tier.model_id,
+        unavailable_reason=f"{type(exc).__name__}: {safe_error_description(exc)}",
+    )
+
+
+async def _run_cell(
     *,
-    loop_type: str,
-    tier: TierEntry,
-    brief: Brief,
+    coord: _CellCoordinates,
     manifest: LoopAbManifest,
     suite_root: Path,
     work_root: Path,
@@ -260,53 +286,46 @@ async def _run_cell(  # noqa: PLR0913 -- orthogonal per-cell coordinates
 ) -> LoopBriefRow:
     """Run every repetition for one ``(loop, tier, brief)`` and build its row.
 
-    A loop whose runtime is unavailable yields an unavailable row carrying the
-    reason, never a missing row and never a fabricated zero.
-
-    Returns:
-        The assembled :class:`LoopBriefRow`.
+    A cell that cannot be measured (its loop's runtime is unwired, its provider
+    exhausts retries, a grading tool is missing, or any other failure) yields an
+    unavailable row carrying the reason, never a missing row and never a
+    fabricated zero. This is what keeps a transient failure on one cell of a
+    long real-spend matrix from discarding every other already-measured,
+    already-paid-for cell: the whole scoreboard is always assembled and written.
     """
     outcomes: list[RepetitionOutcome] = []
     spend: list[ProviderSpend] = []
     for _ in range(manifest.repetitions):
         try:
             outcome, run_spend = await _run_repetition(
-                loop_type=loop_type,
-                tier=tier,
-                brief=brief,
+                coord=coord,
                 suite_root=suite_root,
                 work_root=work_root,
                 deps=deps,
             )
-        except OpenHandsUnavailableError as exc:
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- failed cell recorded as unavailable
             logger.warning(
                 EVALS_LOOP_AB_LOOP_UNAVAILABLE,
-                loop_type=loop_type,
-                tier=tier.tier,
-                brief_id=brief.brief_id,
+                loop_type=coord.loop_type,
+                tier=coord.tier.tier,
+                brief_id=coord.brief.brief_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return LoopBriefRow(
-                loop_type=NotBlankStr(loop_type),
-                brief_id=brief.brief_id,
-                tier=tier.tier,
-                model_id=tier.model_id,
-                unavailable_reason=(
-                    f"{type(exc).__name__}: {safe_error_description(exc)}"
-                ),
-            )
+            return _unavailable_row(coord, exc)
         outcomes.append(outcome)
         spend.extend(run_spend)
 
     summary: LoopRepetitionSummary = summarise_repetitions(
-        loop_type=loop_type, outcomes=tuple(outcomes)
+        loop_type=coord.loop_type, outcomes=tuple(outcomes)
     )
     return LoopBriefRow(
-        loop_type=NotBlankStr(loop_type),
-        brief_id=brief.brief_id,
-        tier=tier.tier,
-        model_id=tier.model_id,
+        loop_type=NotBlankStr(coord.loop_type),
+        brief_id=coord.brief.brief_id,
+        tier=coord.tier.tier,
+        model_id=coord.tier.model_id,
         measurement=summary,
         score=None,
         spend=tuple(spend),
@@ -323,22 +342,22 @@ def _score_rows(rows: tuple[LoopBriefRow, ...]) -> tuple[LoopBriefRow, ...]:
     Returns:
         The rows with scores attached where a measurement exists.
     """
-    cells: dict[tuple[str, str], list[LoopBriefRow]] = {}
-    for row in rows:
+    cells: dict[tuple[str, str], list[int]] = {}
+    for index, row in enumerate(rows):
         if row.measurement is not None:
-            cells.setdefault((row.brief_id, row.tier), []).append(row)
+            cells.setdefault((row.brief_id, row.tier), []).append(index)
 
-    scored_by_row: dict[int, LoopCellScore] = {}
-    for members in cells.values():
+    scored_by_index: dict[int, LoopCellScore] = {}
+    for indices in cells.values():
+        members = [rows[index] for index in indices]
         scores = score_cell(tuple(row.measurement.aggregate for row in members))  # type: ignore[union-attr]
-        for row, score in zip(members, scores, strict=True):
-            scored_by_row[id(row)] = score
+        scored_by_index.update(zip(indices, scores, strict=True))
 
     return tuple(
-        row.model_copy(update={"score": scored_by_row[id(row)]})
-        if id(row) in scored_by_row
+        row.model_copy(update={"score": scored_by_index[index]})
+        if index in scored_by_index
         else row
-        for row in rows
+        for index, row in enumerate(rows)
     )
 
 
@@ -367,9 +386,7 @@ async def run_matrix(  # noqa: PLR0913 -- orthogonal matrix inputs
     """
     rows = [
         await _run_cell(
-            loop_type=loop_type,
-            tier=tier,
-            brief=brief,
+            coord=_CellCoordinates(loop_type=loop_type, tier=tier, brief=brief),
             manifest=manifest,
             suite_root=suite_root,
             work_root=work_root / tier.tier / loop_type,

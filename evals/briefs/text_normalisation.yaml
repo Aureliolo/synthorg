@@ -29,7 +29,7 @@ acceptance_criteria:
   - "normalise trims surrounding whitespace and case-folds its input."
   - "The deliverable is importable Python."
 limits:
-  max_total_cost_usd: 5.0
+  max_total_cost: 5.0
   max_wall_clock_seconds: 60
   max_turns: 4
 checks:

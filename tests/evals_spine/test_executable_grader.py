@@ -39,7 +39,7 @@ def _exec_brief(
         estimated_complexity=2,
         acceptance_criteria=("c1",),
         limits=LimitsSpec(
-            max_total_cost_usd=1.0,
+            max_total_cost=1.0,
             max_wall_clock_seconds=30,
             max_turns=4,
         ),
@@ -216,7 +216,7 @@ def test_wrong_kind_rejected(tmp_path: Path) -> None:
         estimated_complexity=1,
         acceptance_criteria=("c",),
         limits=LimitsSpec(
-            max_total_cost_usd=1.0,
+            max_total_cost=1.0,
             max_wall_clock_seconds=30,
             max_turns=4,
         ),

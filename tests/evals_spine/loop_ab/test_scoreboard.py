@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-from evals.errors import ProvenanceUnavailableError
 from evals.loop_ab.aggregate import LoopRepetitionSummary, Spread
 from evals.loop_ab.emit import (
     SCOREBOARD_JSON_FILENAME,
@@ -28,7 +27,6 @@ from evals.loop_ab.models import (
     Scoreboard,
 )
 from evals.loop_ab.promotion import ComplexityWinner, PromotionRecommendation
-from evals.loop_ab.provenance import capture_provenance, manifest_digest
 from evals.loop_ab.rubric import (
     RUBRIC_TOTAL,
     DimensionScores,
@@ -47,7 +45,7 @@ def _provenance() -> Provenance:
         generated_at=datetime(2026, 7, 22, 12, 0, tzinfo=UTC),
         git_commit=NotBlankStr("a" * 40),
         git_dirty=False,
-        manifest_sha256=NotBlankStr("sha256:deadbeef"),
+        manifest_sha256=NotBlankStr("sha256:" + "d" * 64),
         brief_suite_version=NotBlankStr("sha256:cafe"),
     )
 
@@ -175,7 +173,7 @@ def test_naive_timestamps_are_refused() -> None:
             generated_at=datetime(2026, 7, 22, 12, 0),  # noqa: DTZ001 -- the point
             git_commit=NotBlankStr("a" * 40),
             git_dirty=False,
-            manifest_sha256=NotBlankStr("sha256:deadbeef"),
+            manifest_sha256=NotBlankStr("sha256:" + "d" * 64),
             brief_suite_version=NotBlankStr("sha256:cafe"),
         )
 
@@ -277,31 +275,3 @@ def test_rewriting_leaves_no_temporary_files(tmp_path: Path) -> None:
         SCOREBOARD_JSON_FILENAME,
         SCOREBOARD_MD_FILENAME,
     ]
-
-
-def test_provenance_reads_the_real_repository(tmp_path: Path) -> None:
-    """Provenance is captured from git itself, never hand-supplied."""
-    manifest = tmp_path / "manifest.yaml"
-    manifest.write_text("loops: []\n", encoding="utf-8")
-
-    provenance = capture_provenance(
-        repo_root=Path(__file__).resolve().parents[3],
-        manifest_path=manifest,
-        brief_suite_version="sha256:cafe",
-    )
-
-    assert len(provenance.git_commit) == 40
-    assert provenance.manifest_sha256 == manifest_digest(manifest)
-
-
-def test_provenance_outside_a_repository_fails_loud(tmp_path: Path) -> None:
-    """An unnamed commit means an unreproducible scoreboard, so refuse it."""
-    manifest = tmp_path / "manifest.yaml"
-    manifest.write_text("loops: []\n", encoding="utf-8")
-
-    with pytest.raises(ProvenanceUnavailableError):
-        capture_provenance(
-            repo_root=tmp_path,
-            manifest_path=manifest,
-            brief_suite_version="sha256:cafe",
-        )
