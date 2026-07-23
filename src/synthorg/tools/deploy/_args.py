@@ -14,48 +14,13 @@ from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.normalization import reject_unsafe_url_segment
 from synthorg.core.types import NotBlankStr
 
 _DEFAULT_LIST_LIMIT: Final[int] = 20
 _MAX_LIST_LIMIT: Final[int] = 100
 _DEFAULT_LOG_LINES: Final[int] = 200
 _MAX_LOG_LINES: Final[int] = 1000
-
-_CONTROL_CHAR_THRESHOLD: Final[int] = 0x20
-# Characters that must never appear in a value destined for a deploy REST
-# URL path segment: the separators plus the URL-structure characters
-# (query / fragment / userinfo) that could smuggle a different request
-# shape onto the pinned host.
-_SEGMENT_FORBIDDEN: Final[frozenset[str]] = frozenset({"\\", "/", "?", "#", "@", "%"})
-
-
-def _reject_unsafe_segment(value: str, *, field: str) -> str:
-    """Reject traversal / separator / URL-structure / control chars.
-
-    Args:
-        value: The candidate value.
-        field: The field name, for the error message.
-
-    Returns:
-        The validated value.
-
-    Raises:
-        ValueError: When ``value`` contains a ``..`` segment, a leading
-            slash, a disallowed character, or a control char.
-    """
-    if ".." in value:
-        msg = f"{field} must not contain '..'"
-        raise ValueError(msg)
-    if value.startswith("/"):
-        msg = f"{field} must not start with '/'"
-        raise ValueError(msg)
-    if any(ch in value for ch in _SEGMENT_FORBIDDEN):
-        msg = f"{field} contains a disallowed character"
-        raise ValueError(msg)
-    if any(ord(ch) < _CONTROL_CHAR_THRESHOLD for ch in value):
-        msg = f"{field} contains a control character"
-        raise ValueError(msg)
-    return value
 
 
 class DeployReleaseArgs(BaseModel):
@@ -101,7 +66,7 @@ class DeployReleaseArgs(BaseModel):
         Returns:
             ``self`` when every value is safe.
         """
-        _reject_unsafe_segment(str(self.target), field="target")
+        reject_unsafe_url_segment(str(self.target), field="target")
         return self
 
 
@@ -147,12 +112,12 @@ class DeployRunArgs(BaseModel):
         Raises:
             ValueError: When an action's required field is missing.
         """
-        _reject_unsafe_segment(str(self.target), field="target")
+        reject_unsafe_url_segment(str(self.target), field="target")
         if self.action in ("get", "logs"):
             if self.deployment_id is None:
                 msg = f"deployment_id is required for action {self.action!r}"
                 raise ValueError(msg)
-            _reject_unsafe_segment(str(self.deployment_id), field="deployment_id")
+            reject_unsafe_url_segment(str(self.deployment_id), field="deployment_id")
         return self
 
 

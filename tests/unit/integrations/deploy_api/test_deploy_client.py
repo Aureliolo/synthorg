@@ -148,6 +148,26 @@ class TestTargetBinding:
         assert route.calls.last.request.url.params["target"] == expected_target
 
 
+class TestPathSegmentSafety:
+    @respx.mock
+    @pytest.mark.parametrize(
+        "deployment_id",
+        ["../admin", "/abs", "dpl?x=1", "dpl#f", "user@host", "a%2fb", "a\x00b"],
+        ids=["traversal", "absolute", "query", "fragment", "userinfo", "escape", "ctl"],
+    )
+    async def test_an_unsafe_id_never_reaches_the_wire(
+        self, deployment_id: str
+    ) -> None:
+        """The pin is structural, not a promise about who calls the client."""
+        route = respx.get(url__startswith=_HOST).mock(
+            return_value=httpx.Response(200, json=_payload())
+        )
+        async with _client() as client:
+            with pytest.raises(DeployApiClientError):
+                await client.get_deployment(deployment_id=NotBlankStr(deployment_id))
+        assert route.call_count == 0
+
+
 class TestOwnershipBinding:
     """A client bound to one project + environment cannot read outside it.
 

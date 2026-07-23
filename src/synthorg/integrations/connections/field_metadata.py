@@ -118,6 +118,17 @@ class ConnectionFieldMetadata(BaseModel):
                 f"BASE_URL-placement field must be named 'base_url', got {self.name!r}"
             )
             raise ValueError(msg)
+        if self.secret and self.placement is not FieldPlacement.CREDENTIAL:
+            # Metadata is stored in the clear on the connection record and
+            # is readable back over the API; only the credential placement
+            # routes through out-of-band capture into the secret backend.
+            # Authoring the combination would persist the raw secret, so it
+            # fails at import rather than on the first connection created.
+            msg = (
+                f"secret field {self.name!r} must use the credential "
+                f"placement, got {self.placement.value!r}"
+            )
+            raise ValueError(msg)
         return self
 
 

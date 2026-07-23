@@ -16,8 +16,8 @@ from typing import Self
 
 import httpx
 
-from synthorg.core.normalization import normalize_base_url
-from synthorg.integrations.errors import DeployApiError
+from synthorg.core.normalization import normalize_base_url, reject_unsafe_url_segment
+from synthorg.integrations.errors import DeployApiClientError, DeployApiError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import DEPLOY_API_REQUEST_FAILED
 
@@ -61,6 +61,40 @@ class BaseDeployClient:
                 follow_redirects=False,
             )
         return self.__client
+
+    @staticmethod
+    def _safe_segment(value: str, *, field: str) -> str:
+        """Validate a value before it becomes part of a request path.
+
+        The pin holds because paths are code-defined constants resolved
+        relative to ``base_url``; a *value* interpolated into one is the
+        seam where that stops being structural. Validating here, rather
+        than trusting the tool layer's own argument validation, keeps the
+        guarantee inside the layer that makes it, so a future preset or a
+        direct caller cannot lose it.
+
+        Args:
+            value: The candidate path segment.
+            field: The field name, for the error message.
+
+        Returns:
+            The validated value, unchanged.
+
+        Raises:
+            DeployApiClientError: When the value could rewrite the path.
+                Non-retryable: the same value fails identically.
+        """
+        try:
+            return reject_unsafe_url_segment(value, field=field)
+        except ValueError as exc:
+            logger.warning(
+                DEPLOY_API_REQUEST_FAILED,
+                action="build a request path",
+                error_type=type(exc).__name__,
+                detail=f"unsafe {field}",
+            )
+            msg = f"deploy {field} is not a usable path segment"
+            raise DeployApiClientError(msg) from exc
 
     async def _request(
         self,

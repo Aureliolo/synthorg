@@ -49,6 +49,7 @@ import argparse
 import ast
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -174,39 +175,88 @@ def _calls_guardrail(stmt: ast.stmt) -> bool:
     return isinstance(func, ast.Attribute) and func.attr == _GUARDRAIL_CALL
 
 
+@dataclass(frozen=True)
+class _Resolution:
+    """The outcome of walking a class's bases for an action type.
+
+    ``ambiguous`` is the fail-closed signal: a base name that several
+    modules define and none of them the referencing module. Resolving it
+    by guessing could attribute the wrong action type to a destructive
+    tool, which is precisely the auto-approval hazard this gate exists to
+    catch, so the caller reports it instead of continuing.
+    """
+
+    leaf: str | None
+    ambiguous: tuple[str, ...]
+
+
+def _base_names(node: ast.ClassDef) -> list[str]:
+    """Return the referencable name of each of a class's bases.
+
+    Args:
+        node: The class definition.
+
+    Returns:
+        The bare names, with an attribute base reduced to its attribute.
+    """
+    names: list[str] = []
+    for base in node.bases:
+        if isinstance(base, ast.Name):
+            names.append(base.id)
+        elif isinstance(base, ast.Attribute):
+            names.append(base.attr)
+    return names
+
+
 def _resolve_action_type(
-    node: ast.ClassDef, classes: dict[str, ast.ClassDef]
-) -> str | None:
+    node: ast.ClassDef,
+    classes: dict[str, list[tuple[str, ast.ClassDef]]],
+    *,
+    module: str,
+) -> _Resolution:
     """Resolve a class's effective action type through its bases.
 
     A family normally binds ``_ACTION_TYPE`` once on its shared base, so a
     concrete tool inherits it rather than repeating it.
 
+    Bases are looked up by bare name because an AST scan cannot follow
+    imports, so a name several modules define is resolved *within the
+    referencing module* first. When only other modules define it and there
+    is more than one candidate, the name is reported as ambiguous rather
+    than guessed: picking the wrong one could hide an unguarded
+    destructive tool.
+
     Args:
         node: The class definition to resolve from.
-        classes: Every class definition in the scanned package, by name.
+        classes: Every class definition in the scanned package, keyed by
+            bare name, each carrying the module that defines it.
+        module: The repo-relative module defining *node*.
 
     Returns:
-        The enum member name, or ``None`` when nothing in the resolvable
-        hierarchy binds one.
+        The resolution: the enum member name when the hierarchy binds one,
+        plus any base names that could not be resolved unambiguously.
     """
-    seen: set[str] = set()
-    queue = [node]
+    seen: set[tuple[str, str]] = set()
+    ambiguous: list[str] = []
+    queue: list[tuple[str, ast.ClassDef]] = [(module, node)]
     while queue:
-        current = queue.pop(0)
-        if current.name in seen:
+        current_module, current = queue.pop(0)
+        if (current_module, current.name) in seen:
             continue
-        seen.add(current.name)
+        seen.add((current_module, current.name))
         leaf = _action_type_leaf(_assigned_value(current, _ACTION_TYPE_ATTR))
         if leaf is not None:
-            return leaf
-        for base in current.bases:
-            name = base.id if isinstance(base, ast.Name) else None
-            if name is None and isinstance(base, ast.Attribute):
-                name = base.attr
-            if name is not None and name in classes:
-                queue.append(classes[name])
-    return None
+            return _Resolution(leaf=leaf, ambiguous=())
+        for name in _base_names(current):
+            candidates = classes.get(name, [])
+            same_module = [c for c in candidates if c[0] == current_module]
+            if same_module:
+                queue.extend(same_module)
+            elif len(candidates) == 1:
+                queue.extend(candidates)
+            elif candidates:
+                ambiguous.append(name)
+    return _Resolution(leaf=None, ambiguous=tuple(dict.fromkeys(ambiguous)))
 
 
 def _check_class(
@@ -214,7 +264,7 @@ def _check_class(
     *,
     rel: str,
     lines: list[str],
-    classes: dict[str, ast.ClassDef],
+    classes: dict[str, list[tuple[str, ast.ClassDef]]],
 ) -> list[str]:
     """Return findings for one class definition.
 
@@ -233,7 +283,7 @@ def _check_class(
         return []
     if not _is_true(_assigned_value(node, _DESTRUCTIVE_FLAG)):
         return []
-    leaf = _resolve_action_type(node, classes)
+    resolved = _resolve_action_type(node, classes, module=rel)
 
     findings: list[str] = []
     if not _guardrail_is_first_statement(node):
@@ -241,7 +291,14 @@ def _check_class(
             f"{rel}:{line}: {node.name} is destructive but does not call "
             f"{_GUARDRAIL_CALL} as the first statement of {_PRECONDITION_FN}"
         )
-    if leaf is None or leaf == _SHARED_ACTION_TYPE:
+    if resolved.ambiguous:
+        names = ", ".join(resolved.ambiguous)
+        findings.append(
+            f"{rel}:{line}: {node.name} is destructive and its base(s) {names} "
+            f"are defined in several modules, so its {_ACTION_TYPE_ATTR} cannot "
+            "be resolved; rename the base or bind the action type on this class"
+        )
+    elif resolved.leaf is None or resolved.leaf == _SHARED_ACTION_TYPE:
         findings.append(
             f"{rel}:{line}: {node.name} is destructive but does not bind its "
             f"own {_ACTION_TYPE_ATTR}; inheriting the shared "
@@ -268,13 +325,17 @@ def _check(root: Path) -> list[str]:
         msg = f"expected tools package not found: {base}"
         raise GateSourceError(msg)
     parsed: list[tuple[str, list[str], ast.Module]] = []
-    classes: dict[str, ast.ClassDef] = {}
+    # Keyed by bare name but carrying every definition of it: a name two
+    # modules define must not silently overwrite, because the resolver
+    # would then attribute one module's action type to the other's class.
+    classes: dict[str, list[tuple[str, ast.ClassDef]]] = {}
     for path in sorted(base.rglob("*.py")):
         text, tree = read_and_parse(path)
-        parsed.append((path.relative_to(root).as_posix(), text.splitlines(), tree))
+        rel = path.relative_to(root).as_posix()
+        parsed.append((rel, text.splitlines(), tree))
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
-                classes[node.name] = node
+                classes.setdefault(node.name, []).append((rel, node))
 
     findings: list[str] = []
     for rel, lines, tree in parsed:

@@ -278,7 +278,8 @@ class VercelDeployClient(BaseDeployClient):
         Returns:
             The deployment record, always within the bound scope.
         """
-        path = _DEPLOYMENT_PATH.format(deployment_id=deployment_id)
+        segment = self._safe_segment(str(deployment_id), field="deployment_id")
+        path = _DEPLOYMENT_PATH.format(deployment_id=segment)
         resp = await self._request("GET", path, action="read a deployment")
         raise_for_deploy_status(resp, action="read a deployment")
         payload = self._json_or_raise(resp, action="read a deployment")
@@ -351,7 +352,8 @@ class VercelDeployClient(BaseDeployClient):
         # staging-bound client pulling a production build log, which is
         # the most environment-revealing surface this client exposes.
         await self.get_deployment(deployment_id=deployment_id)
-        path = _EVENTS_PATH.format(deployment_id=deployment_id)
+        segment = self._safe_segment(str(deployment_id), field="deployment_id")
+        path = _EVENTS_PATH.format(deployment_id=segment)
         resp = await self._request(
             "GET", path, action="read deployment logs", params={"limit": limit}
         )

@@ -117,6 +117,69 @@ class DeployReadTool:
 '''
 
 
+# Two modules defining the same base name. The one that binds the action
+# type sits in the module that also holds the destructive tool; the inert
+# twin sorts *after* it, so a resolver keyed on the bare name alone would
+# keep the twin and report the tool as unbound.
+_LOCAL_BASE_WINS: dict[str, str] = {
+    "a_family.py": '''
+from typing import ClassVar
+
+from synthorg.meta.mcp.handlers.common import require_admin_guardrails
+from synthorg.security.autonomy.enums import ActionType
+
+
+class FamilyBase:
+    _ACTION_TYPE: ClassVar[str] = ActionType.DEPLOY_PRODUCTION.value
+
+
+class ConcreteTool(FamilyBase):
+    _DESTRUCTIVE: ClassVar[bool] = True
+
+    def _check_preconditions(self, args: object) -> None:
+        """Guarded; action type comes from this module's family base."""
+        reason, actor = require_admin_guardrails({}, None)
+''',
+    "z_unrelated.py": '''
+class FamilyBase:
+    """An unrelated class that happens to share the name."""
+''',
+}
+
+# The destructive tool's base is defined only in *other* modules, and by
+# more than one of them, so nothing picks a winner honestly.
+_AMBIGUOUS_BASE: dict[str, str] = {
+    "tool.py": '''
+from typing import ClassVar
+
+from synthorg.meta.mcp.handlers.common import require_admin_guardrails
+
+from synthorg.tools.a_family import FamilyBase
+
+
+class ConcreteTool(FamilyBase):
+    _DESTRUCTIVE: ClassVar[bool] = True
+
+    def _check_preconditions(self, args: object) -> None:
+        """Guarded, but the base name is defined in two other modules."""
+        reason, actor = require_admin_guardrails({}, None)
+''',
+    "a_family.py": """
+from typing import ClassVar
+
+from synthorg.security.autonomy.enums import ActionType
+
+
+class FamilyBase:
+    _ACTION_TYPE: ClassVar[str] = ActionType.DEPLOY_PRODUCTION.value
+""",
+    "z_family.py": '''
+class FamilyBase:
+    """A same-named base binding no action type."""
+''',
+}
+
+
 def _run_gate(root: Path) -> subprocess.CompletedProcess[str]:
     # Fixed argv of interpreter + gate path + a tmp_path root; no shell, and
     # no caller-supplied string reaches the command line.
@@ -129,9 +192,14 @@ def _run_gate(root: Path) -> subprocess.CompletedProcess[str]:
 
 
 def _tree(tmp_path: Path, source: str) -> Path:
+    return _multi_module_tree(tmp_path, {"sample.py": source})
+
+
+def _multi_module_tree(tmp_path: Path, modules: dict[str, str]) -> Path:
     tools = tmp_path / "src" / "synthorg" / "tools"
     tools.mkdir(parents=True)
-    (tools / "sample.py").write_text(source, encoding="utf-8")
+    for name, source in modules.items():
+        (tools / name).write_text(source, encoding="utf-8")
     return tmp_path
 
 
@@ -183,6 +251,26 @@ def test_read_only_tool_on_a_deploy_type_is_not_required_to_be_destructive(
     """Observing a deployment carries deploy risk without causing anything."""
     result = _run_gate(_tree(tmp_path, _NON_DESTRUCTIVE_DEPLOY_READ))
     assert result.returncode == 0, result.stderr
+
+
+def test_a_same_named_base_elsewhere_does_not_mask_the_local_one(
+    tmp_path: Path,
+) -> None:
+    """Base lookup is by bare name, so it must prefer the defining module.
+
+    Resolving to whichever module happened to be scanned last would
+    attribute one family's action type to another's tool: the exact
+    mis-attribution that could let an unguarded destructive tool pass.
+    """
+    result = _run_gate(_multi_module_tree(tmp_path, _LOCAL_BASE_WINS))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_an_ambiguous_base_name_fails_closed(tmp_path: Path) -> None:
+    """Unresolvable is reported, never guessed."""
+    result = _run_gate(_multi_module_tree(tmp_path, _AMBIGUOUS_BASE))
+    assert result.returncode == 1
+    assert "defined in several modules" in result.stdout + result.stderr
 
 
 def test_missing_tools_package_fails_closed(tmp_path: Path) -> None:

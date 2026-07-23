@@ -57,6 +57,13 @@ function fieldToSpec(field: ConnectionFieldMetadata): ConnectionFieldSpec {
  * spec, splitting fields by placement: ``base_url`` renders as a top-level
  * field, ``metadata`` fields go on the connection record (non-secret, editable
  * after creation), and everything else is a credential field.
+ *
+ * A secret field is never routed by placement. Metadata is submitted inline
+ * and stored in the clear on the connection record, so a registry entry
+ * marking a field both secret and metadata-placed would persist the raw
+ * secret; only the credential path runs through out-of-band capture. The
+ * backend rejects that combination at import, and this fails closed on it
+ * too rather than trusting the payload it was handed.
  */
 export function resolveConnectionSpec(meta: ConnectionTypeMetadata): ResolvedConnectionSpec {
   const topLevelFields: ConnectionFieldSpec[] = []
@@ -64,7 +71,8 @@ export function resolveConnectionSpec(meta: ConnectionTypeMetadata): ResolvedCon
   const metadataFields: ConnectionFieldSpec[] = []
   for (const field of meta.fields) {
     const spec = fieldToSpec(field)
-    if (field.placement === 'base_url') topLevelFields.push(spec)
+    if (field.secret) credentialFields.push(spec)
+    else if (field.placement === 'base_url') topLevelFields.push(spec)
     else if (field.placement === 'metadata') metadataFields.push(spec)
     else credentialFields.push(spec)
   }
