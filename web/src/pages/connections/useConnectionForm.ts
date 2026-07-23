@@ -7,11 +7,15 @@ import { useConnectionSubmit } from './connection-submit'
 
 export type { ConnectionFormState, Mode } from './connection-form-state'
 
+/** The three form buckets a field's value can be written to. */
+export type FieldGroup = 'topLevel' | 'credentials' | 'metadata'
+
 const EMPTY_STATE: ConnectionFormState = {
   name: '',
   type: null,
   topLevel: {},
   credentials: {},
+  metadata: {},
   webhookRetention: '',
   sensitive: false,
 }
@@ -27,6 +31,9 @@ function makeInitialState(
       type: connection.connection_type,
       topLevel: { base_url: connection.base_url ?? '' },
       credentials: {},
+      // Metadata lives on the record and stays editable, so hydrate it from
+      // the connection (credentials, by contrast, are never re-surfaced).
+      metadata: { ...connection.metadata },
       webhookRetention:
         connection.webhook_receipt_retention_days === null
           ? ''
@@ -72,7 +79,7 @@ export interface ConnectionForm {
   clearType: () => void
   setSensitive: (value: boolean) => void
   setWebhookRetention: (value: string) => void
-  handleFieldChange: (group: 'topLevel' | 'credentials', key: string, value: string) => void
+  handleFieldChange: (group: FieldGroup, key: string, value: string) => void
   handleSubmit: (event: React.SyntheticEvent) => Promise<void>
 }
 
@@ -82,7 +89,7 @@ interface ConnectionFieldSetters {
   clearType: () => void
   setSensitive: (value: boolean) => void
   setWebhookRetention: (value: string) => void
-  handleFieldChange: (group: 'topLevel' | 'credentials', key: string, value: string) => void
+  handleFieldChange: (group: FieldGroup, key: string, value: string) => void
 }
 
 /** Field-level setters that also clear the matching validation error. */
@@ -91,7 +98,7 @@ function useConnectionFieldSetters(
   setErrors: React.Dispatch<React.SetStateAction<Record<string, string | null>>>,
 ): ConnectionFieldSetters {
   const handleFieldChange = useCallback(
-    (group: 'topLevel' | 'credentials', key: string, value: string) => {
+    (group: FieldGroup, key: string, value: string) => {
       setForm((p) => ({ ...p, [group]: { ...p[group], [key]: value } }))
       setErrors((p) => (p[key] ? { ...p, [key]: null } : p))
     },
@@ -106,7 +113,7 @@ function useConnectionFieldSetters(
   )
   const setType = useCallback((type: ConnectionType) => setForm((p) => ({ ...p, type })), [setForm])
   const clearType = useCallback(
-    () => setForm((p) => ({ ...p, type: null, topLevel: {}, credentials: {} })),
+    () => setForm((p) => ({ ...p, type: null, topLevel: {}, credentials: {}, metadata: {} })),
     [setForm],
   )
   const setSensitive = useCallback(

@@ -17,6 +17,7 @@ from synthorg.core.resilience import (
 )
 from synthorg.integrations.errors import (
     DeployApiAuthError,
+    DeployApiClientError,
     DeployApiError,
     DeployApiRateLimitError,
 )
@@ -30,6 +31,8 @@ logger = get_logger(__name__)
 
 _AUTH_STATUS: Final[frozenset[int]] = frozenset({401, 403})
 _RATE_LIMIT_STATUS: Final[int] = 429
+_CLIENT_ERROR_FLOOR: Final[int] = 400
+_SERVER_ERROR_FLOOR: Final[int] = 500
 _RETRY_AFTER_HEADER: Final[str] = "retry-after"
 _MAX_BODY_SNIPPET: Final[int] = 500
 
@@ -103,7 +106,8 @@ def raise_for_deploy_status(resp: httpx.Response, *, action: str) -> None:
     Raises:
         DeployApiRateLimitError: On HTTP 429.
         DeployApiAuthError: On HTTP 401/403.
-        DeployApiError: On any other non-2xx status.
+        DeployApiClientError: On any other deterministic 4xx (non-retryable).
+        DeployApiError: On a 5xx / other transient status (retryable).
     """
     if resp.is_success:
         return
@@ -126,6 +130,12 @@ def raise_for_deploy_status(resp: httpx.Response, *, action: str) -> None:
     if resp.status_code in _AUTH_STATUS:
         msg = f"deploy authentication failed while attempting to {action}"
         raise DeployApiAuthError(msg)
+    if _CLIENT_ERROR_FLOOR <= resp.status_code < _SERVER_ERROR_FLOOR:
+        # A deterministic 4xx (bad request, unknown deployment) will not
+        # succeed on a bare retry; classify it non-retryable rather than
+        # letting it inherit the transient-by-default base.
+        msg = f"deploy API rejected the request to {action} (status {resp.status_code})"
+        raise DeployApiClientError(msg)
     msg = f"deploy API failed to {action} (status {resp.status_code})"
     raise DeployApiError(msg)
 

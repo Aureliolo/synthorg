@@ -134,14 +134,13 @@ class DeployRunTool(_BaseDeployTool):
 
         Raises:
             DeployToolArgumentError: Arguments were not the read shape.
-            DeploySetupRequiredError: The target declares no project.
         """
         if not isinstance(args, DeployRunArgs):
             msg = "deploy_run received unexpected arguments"
             raise DeployToolArgumentError(msg)
         if args.action == "get":
             deployment = await client.get_deployment(
-                deployment_id=NotBlankStr(args.deployment_id)
+                deployment_id=self._deployment_id(args)
             )
             return json_result(deployment.model_dump(mode="json"))
         if args.action == "logs":
@@ -149,14 +148,39 @@ class DeployRunTool(_BaseDeployTool):
         deployments = await client.list_deployments(limit=args.limit)
         return json_result([d.model_dump(mode="json") for d in deployments])
 
+    @staticmethod
+    def _deployment_id(args: DeployRunArgs) -> NotBlankStr:
+        """Return the deployment id the get / logs action requires.
+
+        The args validator already rejects a get / logs call with no
+        ``deployment_id``; this narrows the ``NotBlankStr | None`` field at
+        the client boundary and fails loudly rather than silently if that
+        invariant is ever bypassed.
+
+        Args:
+            args: The parsed read arguments.
+
+        Returns:
+            The non-blank deployment id.
+
+        Raises:
+            DeployToolArgumentError: The id is absent.
+        """
+        if args.deployment_id is None:
+            msg = f"deployment_id is required for action {args.action!r}"
+            raise DeployToolArgumentError(msg)
+        return args.deployment_id
+
     async def _logs(
         self, client: DeployApiClient, args: DeployRunArgs
     ) -> ToolExecutionResult:
         """Fetch a deployment's log lines, truncated to the runtime budget.
 
-        Build logs routinely echo environment detail, so the volume an
-        agent can pull in one call is bounded by the operator-set
-        ``max_log_chars`` rather than by the platform's page size.
+        Two independent bounds cap one call: ``args.log_lines`` limits how
+        many lines the platform returns, and the operator-set
+        ``max_log_chars`` caps the character volume assembled here. Build
+        logs routinely echo environment detail, so the tighter of the two
+        governs what an agent can pull at once.
 
         Args:
             client: The platform client.
@@ -166,7 +190,7 @@ class DeployRunTool(_BaseDeployTool):
             The log lines, truncated when over budget.
         """
         lines = await client.get_deployment_logs(
-            deployment_id=NotBlankStr(args.deployment_id), limit=args.log_lines
+            deployment_id=self._deployment_id(args), limit=args.log_lines
         )
         budget = self._runtime.max_log_chars
         kept: list[dict[str, object]] = []

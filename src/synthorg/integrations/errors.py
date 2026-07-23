@@ -402,6 +402,21 @@ class DeployApiError(IntegrationError):
     default_message: ClassVar[str] = "Deploy API request failed"
 
 
+class DeployApiClientError(DeployApiError):
+    """A deterministic 4xx client error from the deploy platform.
+
+    Non-retryable: a 400/404/422 (bad request, unknown deployment,
+    unprocessable body) will never succeed on a bare retry, unlike the
+    transient 5xx the base class covers. Kept in the ``DeployApiError``
+    family so the tool layer's generic mapping still catches it.
+    """
+
+    is_retryable = False
+    retryable: ClassVar[bool] = False
+    status_code: ClassVar[int] = 400
+    default_message: ClassVar[str] = "Deploy API client error"
+
+
 class DeployApiAuthError(DeployApiError):
     """The deploy platform rejected the API token (auth / scope failure).
 

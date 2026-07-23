@@ -269,6 +269,62 @@ async def test_mcp_sandbox_strengthening_or_unguarded_is_unguarded(
     )
 
 
+@pytest.mark.parametrize(
+    ("key", "current", "new"),
+    [
+        ("deploy_tools_enabled", "false", "true"),  # enable the capability
+        ("deploy_tools_enabled", None, "true"),  # first write of on
+        ("deploy_tools_targets", "prod", "prod,staging"),  # add a target
+        ("deploy_tools_targets", None, "prod"),  # first target added
+    ],
+)
+async def test_deploy_widening_without_confirmation_rejected(
+    key: str, current: str | None, new: str
+) -> None:
+    """Enabling deploy or adding a target widens real blast radius: guarded."""
+    with pytest.raises(SecurityToggleConfirmationRequiredError):
+        await enforce_security_write_governance(
+            [("tools", key, new)],
+            governance=None,
+            get_current=_current_factory({("tools", key): current}),
+        )
+
+
+@pytest.mark.parametrize(
+    ("key", "current", "new"),
+    [
+        ("deploy_tools_enabled", "false", "true"),
+        ("deploy_tools_targets", "prod", "prod,staging"),
+    ],
+)
+async def test_deploy_widening_with_confirmation_allowed(
+    key: str, current: str, new: str
+) -> None:
+    await enforce_security_write_governance(
+        [("tools", key, new)],
+        governance=_SATISFIED,
+        get_current=_current_factory({("tools", key): current}),
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "current", "new"),
+    [
+        ("deploy_tools_enabled", "true", "false"),  # disabling = strengthen
+        ("deploy_tools_targets", "prod,staging", "prod"),  # removing a target
+        ("deploy_tools_targets", "prod", "prod"),  # unchanged = no widening
+    ],
+)
+async def test_deploy_narrowing_or_disabling_is_unguarded(
+    key: str, current: str, new: str
+) -> None:
+    await enforce_security_write_governance(
+        [("tools", key, new)],
+        governance=None,
+        get_current=_current_factory({("tools", key): current}),
+    )
+
+
 def _entry_factory(
     values: dict[tuple[str, str], str],
 ) -> Callable[[str, str], Awaitable[SettingValue]]:

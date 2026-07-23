@@ -63,11 +63,31 @@ function validateConnectionForm(
   const next: Record<string, string | null> = {}
   if (mode === 'create') next['name'] = validateConnectionName(form.name)
   collectFieldErrors(spec.topLevelFields, form.topLevel, dialect, next)
+  // Metadata lives on the record and is editable in both modes, so validate
+  // it whether creating or editing (credentials only exist at create time).
+  collectFieldErrors(spec.metadataFields, form.metadata, dialect, next)
   if (mode === 'create') {
     collectFieldErrors(spec.credentialFields, form.credentials, dialect, next)
     if (form.type === 'a2a_peer') applyA2APeerErrors(form, next)
   }
   return next
+}
+
+/**
+ * Collect the non-blank metadata field values into the record's metadata map.
+ * Only fields the type actually declares are sent, so a stale value left in
+ * form state from a previous type never leaks onto the connection.
+ */
+function collectMetadata(
+  form: ConnectionFormState,
+  spec: ResolvedConnectionSpec,
+): Record<string, string> {
+  const metadata: Record<string, string> = {}
+  for (const field of spec.metadataFields) {
+    const raw = form.metadata[field.key]?.trim()
+    if (raw) metadata[field.key] = raw
+  }
+  return metadata
 }
 
 interface ResolvedCredentials {
@@ -135,6 +155,7 @@ function buildCreateBody(
     credentials: resolved.credentials,
     credential_handles: resolved.handles,
     base_url: form.topLevel['base_url']?.trim() || null,
+    metadata: collectMetadata(form, spec),
     health_check_enabled: true,
     sensitive: form.sensitive,
     ...(hasHandles ? { connection_draft_id: ctx.draftId } : {}),
@@ -146,11 +167,13 @@ function buildCreateBody(
 
 function buildUpdateBody(
   form: ConnectionFormState,
+  spec: ResolvedConnectionSpec,
   supportsWebhook: boolean,
   retentionValue: number | null,
 ): UpdateConnectionRequest {
   return {
     base_url: form.topLevel['base_url']?.trim() || null,
+    metadata: collectMetadata(form, spec),
     sensitive: form.sensitive,
     ...(supportsWebhook ? { webhook_receipt_retention_days: retentionValue } : {}),
   }
@@ -194,7 +217,10 @@ async function submitConnection(deps: SubmitDeps): Promise<boolean> {
   }
   if (deps.connection) {
     return Boolean(
-      await deps.updateConnection(deps.connection.name, buildUpdateBody(deps.form, deps.supportsWebhook, deps.retentionValue)),
+      await deps.updateConnection(
+        deps.connection.name,
+        buildUpdateBody(deps.form, deps.spec, deps.supportsWebhook, deps.retentionValue),
+      ),
     )
   }
   return false

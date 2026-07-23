@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from synthorg.core.registry import StrategyFactoryNotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.deploy_target import (
+    METADATA_KEY_PROJECT,
     DeployEnvironment,
     resolve_environment,
     resolve_platform,
@@ -58,9 +59,7 @@ from synthorg.tools.errors import ToolError
 
 logger = get_logger(__name__)
 
-PROJECT_METADATA_KEY: Final[str] = "project"
-
-_ENVIRONMENT_ACTION_TYPES: dict[DeployEnvironment, str] = {
+_ENVIRONMENT_ACTION_TYPES: Final[dict[DeployEnvironment, str]] = {
     DeployEnvironment.STAGING: ActionType.DEPLOY_STAGING.value,
     DeployEnvironment.PRODUCTION: ActionType.DEPLOY_PRODUCTION.value,
 }
@@ -114,7 +113,14 @@ class _BaseDeployTool(GovernedConnectionTool[DeployApiClient, DeployToolsRuntime
             cannot route a production release through a staging grant.
         """
         environment = resolve_environment(dict(conn.metadata))
-        return _ENVIRONMENT_ACTION_TYPES[environment]
+        # ``.get`` with the strictest default, not ``[]``: a future
+        # ``DeployEnvironment`` member added without updating this map must
+        # degrade to production gating (a raw KeyError would escape every
+        # ``execute()`` except clause and crash the call), mirroring
+        # ``resolve_environment``'s own fail-safe.
+        return _ENVIRONMENT_ACTION_TYPES.get(
+            environment, ActionType.DEPLOY_PRODUCTION.value
+        )
 
     @override
     async def _resolve_connection(self, args: BaseModel) -> Connection:
@@ -171,7 +177,10 @@ class _BaseDeployTool(GovernedConnectionTool[DeployApiClient, DeployToolsRuntime
                 or project. The message names what is missing so the
                 agent can ask a person for exactly that.
         """
-        if conn.connection_type is not ConnectionType.DEPLOY:
+        # Delegate the type check to _supported so there is one source of
+        # truth for "is this a deploy connection", shared with the base
+        # pipeline's own gate rather than duplicated here.
+        if not self._supported(conn.connection_type):
             msg = (
                 f"Connection {conn.name!r} is not a deploy target "
                 f"(it is a {conn.connection_type.value} connection)."
@@ -183,7 +192,7 @@ class _BaseDeployTool(GovernedConnectionTool[DeployApiClient, DeployToolsRuntime
             missing.append("the platform API URL")
         if resolve_platform(metadata) is None:
             missing.append("a supported platform")
-        if not metadata.get("project", "").strip():
+        if not metadata.get(METADATA_KEY_PROJECT, "").strip():
             missing.append("the project identifier")
         if missing:
             logger.warning(
@@ -226,10 +235,18 @@ class _BaseDeployTool(GovernedConnectionTool[DeployApiClient, DeployToolsRuntime
         metadata = dict(conn.metadata)
         platform = resolve_platform(metadata)
         if platform is None or not deploy_api_supported(platform):
+            # Reachable when a DeployPlatform member is added without a wired
+            # client (an interim state during incremental rollout), so log it
+            # like every other rejection in this family before raising.
+            logger.warning(
+                self._CONNECTION_FAILED_EVENT,
+                connection=conn.name,
+                reason="unsupported_platform",
+            )
             raise DeployUnsupportedError(self._UNSUPPORTED_MSG.format(ctype=platform))
         # ``_resolve_connection`` already refused a target without one, so
         # the project is guaranteed present by the time a client is built.
-        project = metadata[PROJECT_METADATA_KEY].strip()
+        project = metadata[METADATA_KEY_PROJECT].strip()
         try:
             return build_deploy_api_client(
                 platform=platform,
@@ -237,9 +254,10 @@ class _BaseDeployTool(GovernedConnectionTool[DeployApiClient, DeployToolsRuntime
                 token=token,
                 timeout=timeout,
                 project=NotBlankStr(project),
+                environment=resolve_environment(metadata),
             )
         except StrategyFactoryNotFoundError as exc:
-            raise DeployUnsupportedError(str(exc)) from exc
+            raise DeployUnsupportedError(safe_error_description(exc)) from exc
         except DeployApiError as exc:
             raise DeployToolArgumentError(safe_error_description(exc)) from exc
 

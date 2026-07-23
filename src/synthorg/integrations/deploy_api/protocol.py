@@ -39,25 +39,39 @@ class Deployment(BaseModel):
 
 
 class DeployLogLine(BaseModel):
-    """One line of a deployment's build or runtime log."""
+    """One line of a deployment's build or runtime log.
+
+    A line always carries content: an empty or whitespace-only event is
+    noise a parser drops rather than emits, so ``text`` is non-blank.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     timestamp: str = ""
-    text: str = ""
+    text: NotBlankStr
 
 
 @runtime_checkable
 class DeployApiClient(Protocol):
     """The deploy operations a governed deploy tool can perform.
 
-    A client is bound to one project at construction, from the resolved
-    connection record. Keeping the project off the call surface means an
-    agent cannot name a project the operator did not configure.
+    A client is bound to one project *and one environment* at construction,
+    from the resolved connection record. Keeping both off the call surface
+    means an agent cannot name a project the operator did not configure, nor
+    escalate a staging target to a production release through an argument.
     """
 
+    @property
+    def project(self) -> NotBlankStr:
+        """The operator-configured project this client is bound to.
+
+        Exposed so the binding is a structural fact a caller (and every
+        implementation's tests) can assert against, not a docstring promise.
+        """
+        ...
+
     async def trigger_deployment(self, *, git_ref: str) -> Deployment:
-        """Start a deployment of ``git_ref`` for the bound project."""
+        """Start a deployment of ``git_ref`` for the bound project + environment."""
         ...
 
     async def get_deployment(self, *, deployment_id: NotBlankStr) -> Deployment:

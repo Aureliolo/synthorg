@@ -45,6 +45,7 @@ methods.
 | `a2a_peer` | `base_url`, `auth_scheme`, scheme credentials (`api_key` / `bearer_token` / `client_id` + `client_secret` / mTLS `cert_path` + `key_path`), `signing_secret` | N/A |
 | `llm_provider` | `api_key` | N/A |
 | `tunnel` | `auth_token` | N/A |
+| `deploy` | `token`, `base_url`, `platform`, `environment`, `project` | `HEAD base_url` |
 
 The authoritative per-field metadata (label, input type, required/secret flags, capture mode, placement) for every type lives in the backend registry `integrations/connections/field_metadata.py`, exposed read-only via `GET /api/v1/connections/types` and the `connections.field_metadata` MCP tool; the dashboard form and the operator console both render from it.
 

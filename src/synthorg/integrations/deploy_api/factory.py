@@ -15,7 +15,10 @@ call can never leave the host the operator approved.
 
 from synthorg.core.registry import StrategyRegistry
 from synthorg.core.types import NotBlankStr
-from synthorg.integrations.connections.deploy_target import DeployPlatform
+from synthorg.integrations.connections.deploy_target import (
+    DeployEnvironment,
+    DeployPlatform,
+)
 from synthorg.integrations.deploy_api.protocol import DeployApiClient
 from synthorg.integrations.deploy_api.vercel import VercelDeployClient
 from synthorg.integrations.errors import DeployApiError
@@ -48,13 +51,18 @@ def _require_base_url(base_url: str) -> str:
 
 
 def _build_vercel(
-    base_url: str, token: str, timeout: float, project: NotBlankStr
+    base_url: str,
+    token: str,
+    timeout: float,
+    project: NotBlankStr,
+    environment: DeployEnvironment,
 ) -> DeployApiClient:
     return VercelDeployClient(
         api_base_url=_require_base_url(base_url),
         token=token,
         timeout=timeout,
         project=project,
+        environment=environment,
     )
 
 
@@ -76,13 +84,14 @@ def deploy_api_supported(platform: DeployPlatform) -> bool:
     return platform in _REGISTRY
 
 
-def build_deploy_api_client(
+def build_deploy_api_client(  # noqa: PLR0913 -- connection facts threaded into one client
     *,
     platform: DeployPlatform,
     base_url: str,
     token: str,
     timeout: float,
     project: NotBlankStr,
+    environment: DeployEnvironment,
 ) -> DeployApiClient:
     """Build the per-platform deploy API client.
 
@@ -92,6 +101,8 @@ def build_deploy_api_client(
         token: Resolved platform token (header auth only, never logged).
         timeout: Per-request timeout in seconds.
         project: The operator-configured project the client is bound to.
+        environment: The target environment; decides the vendor-side deploy
+            target so a staging connection cannot emit a production release.
 
     Returns:
         A client satisfying :class:`DeployApiClient`.
@@ -101,7 +112,7 @@ def build_deploy_api_client(
             (check ``deploy_api_supported`` first).
         DeployApiError: The base URL is blank or not HTTPS.
     """
-    return _REGISTRY.build(platform, base_url, token, timeout, project)
+    return _REGISTRY.build(platform, base_url, token, timeout, project, environment)
 
 
 __all__ = ["build_deploy_api_client", "deploy_api_supported"]

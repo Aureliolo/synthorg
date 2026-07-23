@@ -31,7 +31,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_convention_gate_inventory.py` | push | canonical docs + `convention_gate_map.yaml` | full | no | none | keep (meta-gate) |
 | `check_cost_scope_purpose.py` | push | `src/synthorg/` | full | no | `cost_scope_purpose_baseline.txt` | add |
 | `check_credentialed_mcp_governed.py` | push | `api/mcp_gateway/tools.py` | full | no | none | add |
-| `check_governed_destructive_tools.py` | push | `tools/` | full | no | `governed-destructive` | add |
+| `check_governed_destructive_tools.py` | push | `tools/` | full | no | none | add |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_dead_api_endpoints.py` | push | `api/` + `web/src/` | full | no | `dead_api_endpoints_baseline.txt` | keep |
 | `check_dependency_inversion.py` | push | `api`/`engine`/`communication`/`persistence` | full | no | none | keep |

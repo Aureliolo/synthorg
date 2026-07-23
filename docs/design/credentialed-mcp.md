@@ -2,8 +2,8 @@
 
 The credentialed-MCP server is a streamable-HTTP MCP endpoint mounted on
 the Litestar API app that exposes a scoped, governed subset of the
-credential-holding tools (forge / chat, with connections and remote-git
-following the same pattern) to an embedded coding harness. It is the
+credential-holding tools (forge / chat / deploy, with connections and
+remote-git following the same pattern) to an embedded coding harness. It is the
 second governance boundary behind the embedded [OpenHands loop](openhands-loop.md);
 the first is the [LLM gateway](llm-gateway.md).
 

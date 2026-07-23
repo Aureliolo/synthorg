@@ -21,14 +21,24 @@ def _ctx() -> CredentialedToolContext:
         forge_timeout_seconds=30.0,
         chat_timeout_seconds=30.0,
         forge_max_read_chars=2000,
+        deploy_targets=frozenset({"prod"}),
+        deploy_timeout_seconds=30.0,
+        deploy_max_log_chars=20000,
     )
 
 
 async def _dispatch(
-    message: dict[str, object], *, capabilities: tuple[str, ...]
+    message: dict[str, object],
+    *,
+    capabilities: tuple[str, ...],
+    denied: tuple[str, ...] = (),
 ) -> dict[str, object] | None:
     return await dispatch_mcp(
-        message, ctx=_ctx(), agent_id="agent-1", capabilities=capabilities
+        message,
+        ctx=_ctx(),
+        agent_id="agent-1",
+        capabilities=capabilities,
+        denied=denied,
     )
 
 
@@ -50,6 +60,41 @@ async def test_tools_list_is_capability_scoped() -> None:
     assert response is not None
     names = {t["name"] for t in response["result"]["tools"]}  # type: ignore[index]
     assert names == {"forge_repo", "forge_ci"}
+
+
+async def test_tools_list_honours_denied_kill_switch() -> None:
+    # A deploy:* grant would expose the deploy tools, but the kill switch
+    # (threaded as ``denied``) must hide them from discovery too, not merely
+    # from dispatch.
+    response = await _dispatch(
+        {"jsonrpc": "2.0", "id": 6, "method": "tools/list"},
+        capabilities=("deploy:*",),
+        denied=("deploy_run", "deploy_release"),
+    )
+
+    assert response is not None
+    names = {t["name"] for t in response["result"]["tools"]}  # type: ignore[index]
+    assert names == frozenset()
+
+
+async def test_tools_call_denied_tool_returns_forbidden_iserror() -> None:
+    # Even with a deploy:write grant, a denied deploy tool must not dispatch.
+    response = await _dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "tools/call",
+            "params": {
+                "name": "deploy_release",
+                "arguments": {"action": "trigger", "target": "prod"},
+            },
+        },
+        capabilities=("deploy:write",),
+        denied=("deploy_release",),
+    )
+
+    assert response is not None
+    assert response["result"]["isError"] is True  # type: ignore[index]
 
 
 async def test_notification_returns_no_response() -> None:

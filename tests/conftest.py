@@ -750,7 +750,7 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/scripts/test_check_completion_config_temperature.py",
     "unit/scripts/test_check_error_code_uniqueness.py::test_real_tree_passes",
     "unit/scripts/test_pretooluse_bash_gates.py",
-    "unit/knowledge/test_chunking.py",
+    "unit/knowledge/test_chunking.py::TestCodeChunker",
     "unit/api/test_construction_wiring.py",
     "unit/api/test_app.py",
     "unit/api/test_health.py",

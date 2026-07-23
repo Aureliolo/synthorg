@@ -158,7 +158,12 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4029 | `ROLLBACK_MUTATION_DENIED` | Rollback mutator's underlying store refused the write |
 | 4030 | `UPGRADE_RECOMMENDATION_ALREADY_DECIDED` | Approving/rejecting an already-decided recommendation |
 | 4031 | `TURN_SEQUENCE_CONFLICT` | Conversation-turn append lost the `(conversation_id, sequence)` uniqueness race after the retry budget (retryable) |
+| 4032 | `KANBAN_WIP_LIMIT_EXCEEDED` | Kanban column is at its work-in-progress limit |
+| 4033 | `SPRINT_BACKLOG_FULL` | Sprint backlog is at capacity |
+| 4034 | `SPRINT_TRANSITION_CONFLICT` | Sprint state transition lost a concurrency race |
+| 4035 | `PROJECT_REPOSITORY_NOT_CONFIGURED` | Project has no repository configured for the operation |
 | 4036 | `SUB_AGENT_DELEGATION_DEPTH_EXCEEDED` | Blocking delegation refused: chain at its depth limit or would form a cycle |
+| 4037 | `DEPLOY_TARGET_NOT_CONFIGURED` | Deploy target is unlisted, absent, or not finished being set up |
 
 ## Rate Limit (5xxx)
 

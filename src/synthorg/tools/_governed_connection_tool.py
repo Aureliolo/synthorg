@@ -31,6 +31,7 @@ from synthorg.integrations.connections.models import Connection, ConnectionType
 from synthorg.integrations.errors import SecretRetrievalError
 from synthorg.meta.mcp.errors import GuardrailViolationError
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.tool import GOVERNED_TOOL_GUARDRAIL_REJECTED
 from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.security.timeout.protocol import RiskTierClassifier
 from synthorg.tools._governed_action import (
@@ -405,14 +406,20 @@ class GovernedConnectionTool[
             return ToolExecutionResult(
                 content=str(exc), is_error=True, metadata=metadata
             )
-        except (
-            ToolError,
-            GovernedApprovalMismatchError,
-            GuardrailViolationError,
-        ) as exc:
-            # A guardrail violation is a correctable caller error (no
-            # confirm, blank reason): surface it as a result the agent can
-            # act on rather than an exception that aborts the invoker.
+        except GuardrailViolationError as exc:
+            # A rejected destructive call (no confirm, blank reason,
+            # unattributable actor) is a security-relevant event: log it so
+            # repeated probing of the guardrail leaves an audit trail, then
+            # surface it as a result the agent can correct rather than an
+            # exception that aborts the invoker.
+            logger.warning(
+                GOVERNED_TOOL_GUARDRAIL_REJECTED,
+                tool=self.name,
+                action_type=self._ACTION_TYPE,
+                violation=exc.violation,
+            )
+            return ToolExecutionResult(content=str(exc), is_error=True)
+        except (ToolError, GovernedApprovalMismatchError) as exc:
             return ToolExecutionResult(content=str(exc), is_error=True)
 
 

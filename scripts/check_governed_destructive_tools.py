@@ -258,7 +258,7 @@ def _check(root: Path) -> list[str]:
         root: The repository root.
 
     Returns:
-        The findings, newest module first in walk order.
+        The findings, in the alphabetical module order the walk sorts by.
 
     Raises:
         GateSourceError: When the tools package is absent (fail closed).

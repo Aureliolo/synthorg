@@ -13,6 +13,8 @@ export interface ConnectionFormState {
   type: ConnectionType | null
   topLevel: Record<string, string>
   credentials: Record<string, string>
+  /** Non-secret fields stored on the connection record; editable after create. */
+  metadata: Record<string, string>
   webhookRetention: string
   sensitive: boolean
 }

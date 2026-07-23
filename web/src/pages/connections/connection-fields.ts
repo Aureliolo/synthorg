@@ -34,6 +34,7 @@ export interface ResolvedConnectionSpec {
   readonly defaultAuthMethod: ConnectionTypeMetadata['default_auth_method']
   readonly topLevelFields: readonly ConnectionFieldSpec[]
   readonly credentialFields: readonly ConnectionFieldSpec[]
+  readonly metadataFields: readonly ConnectionFieldSpec[]
 }
 
 function fieldToSpec(field: ConnectionFieldMetadata): ConnectionFieldSpec {
@@ -54,14 +55,17 @@ function fieldToSpec(field: ConnectionFieldMetadata): ConnectionFieldSpec {
 /**
  * Adapt one backend connection-type metadata entry into the form's resolved
  * spec, splitting fields by placement: ``base_url`` renders as a top-level
- * field, everything else as a credential field.
+ * field, ``metadata`` fields go on the connection record (non-secret, editable
+ * after creation), and everything else is a credential field.
  */
 export function resolveConnectionSpec(meta: ConnectionTypeMetadata): ResolvedConnectionSpec {
   const topLevelFields: ConnectionFieldSpec[] = []
   const credentialFields: ConnectionFieldSpec[] = []
+  const metadataFields: ConnectionFieldSpec[] = []
   for (const field of meta.fields) {
     const spec = fieldToSpec(field)
     if (field.placement === 'base_url') topLevelFields.push(spec)
+    else if (field.placement === 'metadata') metadataFields.push(spec)
     else credentialFields.push(spec)
   }
   return {
@@ -70,6 +74,7 @@ export function resolveConnectionSpec(meta: ConnectionTypeMetadata): ResolvedCon
     defaultAuthMethod: meta.default_auth_method,
     topLevelFields,
     credentialFields,
+    metadataFields,
   }
 }
 

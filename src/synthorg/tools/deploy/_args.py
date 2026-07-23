@@ -72,10 +72,17 @@ class DeployReleaseArgs(BaseModel):
     )
     confirm: bool = Field(
         default=False,
-        description="Must be true. Triggering a release replaces what is running.",
+        description=(
+            "Acknowledges that a release replaces what is running; a true "
+            "value is enforced by the admin guardrail, not this model."
+        ),
     )
     reason: str = Field(
-        default="", description="Why this release is being made. Recorded in the audit."
+        default="",
+        description=(
+            "Why this release is being made; a non-blank value is enforced "
+            "by the admin guardrail and recorded in the audit."
+        ),
     )
 
     @property
@@ -107,8 +114,8 @@ class DeployRunArgs(BaseModel):
     target: NotBlankStr = Field(
         description="Name of an operator-allowlisted deploy target."
     )
-    deployment_id: str = Field(
-        default="", description="Deployment to read. Required for get and logs."
+    deployment_id: NotBlankStr | None = Field(
+        default=None, description="Deployment to read. Required for get and logs."
     )
     limit: int = Field(
         default=_DEFAULT_LIST_LIMIT, ge=1, le=_MAX_LIST_LIMIT, description="Page size."
@@ -142,10 +149,10 @@ class DeployRunArgs(BaseModel):
         """
         _reject_unsafe_segment(str(self.target), field="target")
         if self.action in ("get", "logs"):
-            if not self.deployment_id.strip():
+            if self.deployment_id is None:
                 msg = f"deployment_id is required for action {self.action!r}"
                 raise ValueError(msg)
-            _reject_unsafe_segment(self.deployment_id, field="deployment_id")
+            _reject_unsafe_segment(str(self.deployment_id), field="deployment_id")
         return self
 
 

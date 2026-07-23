@@ -10,6 +10,7 @@ setting gates the surface per request; while off it 503s.
 
 import asyncio
 import json
+from dataclasses import dataclass
 from typing import Final
 
 from litestar import Controller, Request, post
@@ -19,6 +20,7 @@ from litestar.response import Response
 from synthorg._core.features import require_service
 from synthorg.api.gateway.state import GatewayStateSlice
 from synthorg.api.mcp_gateway.protocol import dispatch_mcp
+from synthorg.api.mcp_gateway.scoping import deploy_denials
 from synthorg.api.mcp_gateway.tools import (
     CredentialedToolContext,
     build_security_pre_check,
@@ -40,6 +42,7 @@ from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.gateway import GATEWAY_DISPATCH_FAILED
 from synthorg.security.state import audit_log_of
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -93,12 +96,13 @@ class CredentialedMcpController(Controller):
         try:
             claims = signer.verify(token)
             messages, is_batch = await _read_messages(request)
-            ctx = await _build_context(
+            ctx, deploy_enabled = await _build_context(
                 app_state, agent_id=claims.agent_id, task_id=claims.task_id
             )
             capabilities = _parse_capabilities(
                 await resolver.get_str(_TOOLS_NS, "credentialed_mcp_capabilities")
             )
+            denied = deploy_denials(deploy_enabled=deploy_enabled)
             responses = [
                 response
                 for message in messages
@@ -108,6 +112,7 @@ class CredentialedMcpController(Controller):
                         ctx=ctx,
                         agent_id=claims.agent_id,
                         capabilities=capabilities,
+                        denied=denied,
                     )
                 )
                 is not None
@@ -180,14 +185,54 @@ async def _read_messages(
     raise ValidationError(msg)
 
 
+@dataclass(frozen=True)
+class _DeploySettings:
+    """The per-request deploy-tool settings resolved as one unit.
+
+    ``enabled`` is the defence-in-depth kill switch: when off, the caller
+    denies every deploy tool this request regardless of the capability grant.
+    """
+
+    enabled: bool
+    targets: frozenset[str]
+    timeout_seconds: float
+    max_log_chars: int
+
+
+async def _resolve_deploy_settings(resolver: ConfigResolver) -> _DeploySettings:
+    """Read the deploy-tool settings for this request.
+
+    Scheduled as one task in the caller's ``TaskGroup`` so it runs alongside
+    the forge / chat / actor reads; its own reads are cheap resolver-cache
+    hits, so they resolve sequentially here rather than nesting a second group.
+
+    Args:
+        resolver: The per-request configuration resolver.
+
+    Returns:
+        The resolved :class:`_DeploySettings`.
+    """
+    enabled = await resolver.get_bool(_TOOLS_NS, "deploy_tools_enabled")
+    targets = await resolver.get_str(_TOOLS_NS, "deploy_tools_targets")
+    timeout = await resolver.get_float(_TOOLS_NS, "deploy_tools_timeout_seconds")
+    max_log_chars = await resolver.get_int(_TOOLS_NS, "deploy_tools_max_log_chars")
+    return _DeploySettings(
+        enabled=enabled,
+        targets=_parse_targets(targets),
+        timeout_seconds=timeout,
+        max_log_chars=max_log_chars,
+    )
+
+
 async def _build_context(
     app_state: AppState, *, agent_id: str, task_id: str | None
-) -> CredentialedToolContext:
+) -> tuple[CredentialedToolContext, bool]:
     """Assemble the host-side credentialed-tool context from app state.
 
-    The five per-request settings reads fan out under a ``TaskGroup`` (they
-    are independent), and the SecOps pre-tool screen is wired fail-closed so
-    the rule-engine screening runs before every credentialed dispatch.
+    The independent per-request reads (forge / chat settings, the deploy
+    settings bundle, and the actor lookup) fan out under one ``TaskGroup``,
+    and the SecOps pre-tool screen is wired fail-closed so the rule-engine
+    screening runs before every credentialed dispatch.
 
     Args:
         app_state: The live application state.
@@ -197,7 +242,9 @@ async def _build_context(
             security context so SecOps screening stays per-run.
 
     Returns:
-        The :class:`CredentialedToolContext` for this request.
+        The :class:`CredentialedToolContext` for this request, paired with
+        whether the deploy tool family is enabled (the kill switch the caller
+        threads into the dispatch denials).
     """
     resolver = config_resolver_of(app_state)
     catalog = require_service(
@@ -221,15 +268,8 @@ async def _build_context(
             forge_read = tg.create_task(
                 resolver.get_int(_TOOLS_NS, "forge_tools_max_read_chars")
             )
-            deploy_targets = tg.create_task(
-                resolver.get_str(_TOOLS_NS, "deploy_tools_targets")
-            )
-            deploy_timeout = tg.create_task(
-                resolver.get_float(_TOOLS_NS, "deploy_tools_timeout_seconds")
-            )
-            deploy_logs = tg.create_task(
-                resolver.get_int(_TOOLS_NS, "deploy_tools_max_log_chars")
-            )
+            deploy = tg.create_task(_resolve_deploy_settings(resolver))
+            actor = tg.create_task(_resolve_actor(app_state, agent_id=agent_id))
     except ExceptionGroup as eg:
         # Surface the first underlying error (e.g. a DomainError from a
         # settings read) so the caller's ``except DomainError`` mapping runs
@@ -241,7 +281,8 @@ async def _build_context(
         audit_log_of(app_state),
         approval_store=approval_store_of(app_state),
     )
-    return CredentialedToolContext(
+    deploy_settings = deploy.result()
+    ctx = CredentialedToolContext(
         connection_catalog=catalog,
         approval_store=approval_store_of(app_state),
         clock=app_state.clock,
@@ -250,14 +291,15 @@ async def _build_context(
         forge_timeout_seconds=forge_timeout.result(),
         chat_timeout_seconds=chat_timeout.result(),
         forge_max_read_chars=forge_read.result(),
-        deploy_targets=_parse_targets(deploy_targets.result()),
-        deploy_timeout_seconds=deploy_timeout.result(),
-        deploy_max_log_chars=deploy_logs.result(),
-        actor=await _resolve_actor(app_state, agent_id=agent_id),
+        deploy_targets=deploy_settings.targets,
+        deploy_timeout_seconds=deploy_settings.timeout_seconds,
+        deploy_max_log_chars=deploy_settings.max_log_chars,
+        actor=actor.result(),
         security_pre_check=build_security_pre_check(
             interceptor, agent_id=agent_id, task_id=task_id
         ),
     )
+    return ctx, deploy_settings.enabled
 
 
 def _parse_targets(raw: str) -> frozenset[str]:

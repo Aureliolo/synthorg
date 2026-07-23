@@ -231,3 +231,9 @@ DEPLOY_API_DEPLOYMENT_TRIGGERED: Final[str] = (
 DEPLOY_API_REQUEST_FAILED: Final[str] = "integrations.deploy_api.request_failed"
 DEPLOY_API_RATE_LIMITED: Final[str] = "integrations.deploy_api.rate_limited"
 DEPLOY_API_CONFIG_INVALID: Final[str] = "integrations.deploy_api.config_invalid"
+DEPLOY_API_UNKNOWN_STATE: Final[str] = "integrations.deploy_api.unknown_state"
+
+# -- Deploy-target metadata resolution events ----------------------------
+DEPLOY_TARGET_METADATA_UNRECOGNISED: Final[str] = (
+    "integrations.deploy_target.metadata_unrecognised"
+)

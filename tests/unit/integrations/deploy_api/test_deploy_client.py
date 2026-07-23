@@ -11,7 +11,10 @@ import pytest
 import respx
 
 from synthorg.core.types import NotBlankStr
-from synthorg.integrations.connections.deploy_target import DeployPlatform
+from synthorg.integrations.connections.deploy_target import (
+    DeployEnvironment,
+    DeployPlatform,
+)
 from synthorg.integrations.deploy_api import (
     DeployState,
     build_deploy_api_client,
@@ -29,12 +32,17 @@ pytestmark = pytest.mark.unit
 _HOST = "https://api.example-deploy.com"
 
 
-def _client(*, base_url: str = _HOST) -> VercelDeployClient:
+def _client(
+    *,
+    base_url: str = _HOST,
+    environment: DeployEnvironment = DeployEnvironment.PRODUCTION,
+) -> VercelDeployClient:
     return VercelDeployClient(
         api_base_url=base_url,
         token="t0ken",
         timeout=5.0,
         project=NotBlankStr("acme-web"),
+        environment=environment,
     )
 
 
@@ -47,11 +55,8 @@ class TestEgressPin:
                 200, json={"id": "dpl_1", "readyState": "READY"}
             )
         )
-        client = _client()
-        try:
+        async with _client() as client:
             await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
-        finally:
-            await client.aclose()
         assert route.call_count == 1
 
     @respx.mock
@@ -64,27 +69,47 @@ class TestEgressPin:
                 200, json={"id": "dpl_1", "readyState": "READY"}
             )
         )
-        client = _client(base_url="https://selfhosted.example.com/deploy")
-        try:
+        async with _client(base_url="https://selfhosted.example.com/deploy") as client:
             await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
-        finally:
-            await client.aclose()
         assert route.call_count == 1
 
     @respx.mock
     async def test_redirects_are_not_followed(self) -> None:
         """A 3xx must not carry the Authorization header off the pinned host."""
-        respx.post(f"{_HOST}/v13/deployments").mock(
+        route = respx.post(f"{_HOST}/v13/deployments").mock(
             return_value=httpx.Response(
                 302, headers={"location": "https://evil.example.com/steal"}
             )
         )
-        client = _client()
-        try:
+        async with _client() as client:
             with pytest.raises(DeployApiError):
                 await client.trigger_deployment(git_ref="main")
-        finally:
-            await client.aclose()
+        # The redirect target is never requested: exactly one hop is made.
+        assert route.call_count == 1
+
+
+class TestTargetBinding:
+    @respx.mock
+    @pytest.mark.parametrize(
+        ("environment", "expected_target"),
+        [
+            (DeployEnvironment.PRODUCTION, "production"),
+            (DeployEnvironment.STAGING, "staging"),
+        ],
+    )
+    async def test_environment_decides_the_vendor_target(
+        self, environment: DeployEnvironment, expected_target: str
+    ) -> None:
+        """A staging client can never emit a production release."""
+        route = respx.post(f"{_HOST}/v13/deployments").mock(
+            return_value=httpx.Response(
+                200, json={"id": "dpl_1", "readyState": "QUEUED"}
+            )
+        )
+        async with _client(environment=environment) as client:
+            await client.trigger_deployment(git_ref="main")
+        body = route.calls.last.request.content
+        assert f'"target":"{expected_target}"' in body.decode()
 
 
 class TestStateNormalisation:
@@ -106,11 +131,8 @@ class TestStateNormalisation:
         respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
             return_value=httpx.Response(200, json={"id": "dpl_1", "readyState": raw})
         )
-        client = _client()
-        try:
+        async with _client() as client:
             deployment = await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
-        finally:
-            await client.aclose()
         assert deployment.state is expected
 
     @respx.mock
@@ -121,11 +143,8 @@ class TestStateNormalisation:
                 200, json={"id": "dpl_1", "readyState": "WARP_DRIVE"}
             )
         )
-        client = _client()
-        try:
+        async with _client() as client:
             deployment = await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
-        finally:
-            await client.aclose()
         assert deployment.state is DeployState.QUEUED
 
 
@@ -135,12 +154,9 @@ class TestStatusMapping:
         respx.post(f"{_HOST}/v13/deployments").mock(
             return_value=httpx.Response(429, headers={"retry-after": "12"})
         )
-        client = _client()
-        try:
+        async with _client() as client:
             with pytest.raises(DeployApiRateLimitError) as caught:
                 await client.trigger_deployment(git_ref="main")
-        finally:
-            await client.aclose()
         assert caught.value.retry_after_seconds == 12.0
 
     @respx.mock
@@ -149,24 +165,59 @@ class TestStatusMapping:
         respx.post(f"{_HOST}/v13/deployments").mock(
             return_value=httpx.Response(status, json={"error": {"message": "nope"}})
         )
-        client = _client()
-        try:
+        async with _client() as client:
             with pytest.raises(DeployApiAuthError):
                 await client.trigger_deployment(git_ref="main")
-        finally:
-            await client.aclose()
 
     @respx.mock
     async def test_missing_id_is_rejected(self) -> None:
         respx.post(f"{_HOST}/v13/deployments").mock(
             return_value=httpx.Response(200, json={"readyState": "READY"})
         )
-        client = _client()
-        try:
+        async with _client() as client:
             with pytest.raises(DeployApiError):
                 await client.trigger_deployment(git_ref="main")
-        finally:
-            await client.aclose()
+
+    @respx.mock
+    async def test_non_json_body_maps_to_deploy_error(self) -> None:
+        """A 2xx body that is not JSON fails loudly, not as an empty result."""
+        respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+            return_value=httpx.Response(200, text="<html>proxy error</html>")
+        )
+        async with _client() as client:
+            with pytest.raises(DeployApiError):
+                await client.get_deployment(deployment_id=NotBlankStr("dpl_1"))
+
+    @respx.mock
+    async def test_non_list_log_body_maps_to_deploy_error(self) -> None:
+        """A debugging read must not report 'no logs' when the fetch failed."""
+        respx.get(f"{_HOST}/v3/deployments/dpl_1/events").mock(
+            return_value=httpx.Response(200, json={"unexpected": "shape"})
+        )
+        async with _client() as client:
+            with pytest.raises(DeployApiError):
+                await client.get_deployment_logs(
+                    deployment_id=NotBlankStr("dpl_1"), limit=10
+                )
+
+    @respx.mock
+    async def test_blank_log_lines_are_dropped(self) -> None:
+        """An empty event carries no content, so it is not emitted."""
+        respx.get(f"{_HOST}/v3/deployments/dpl_1/events").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {"created": 1, "text": "building"},
+                    {"created": 2, "text": "   "},
+                    {"created": 3, "text": ""},
+                ],
+            )
+        )
+        async with _client() as client:
+            lines = await client.get_deployment_logs(
+                deployment_id=NotBlankStr("dpl_1"), limit=10
+            )
+        assert [line.text for line in lines] == ["building"]
 
 
 class TestFactory:
@@ -182,6 +233,7 @@ class TestFactory:
                 token="t0ken",
                 timeout=5.0,
                 project=NotBlankStr("acme-web"),
+                environment=DeployEnvironment.PRODUCTION,
             )
 
     def test_blank_base_url_is_refused(self) -> None:
@@ -192,6 +244,7 @@ class TestFactory:
                 token="t0ken",
                 timeout=5.0,
                 project=NotBlankStr("acme-web"),
+                environment=DeployEnvironment.PRODUCTION,
             )
 
     def test_builds_a_client_for_a_wired_platform(self) -> None:
@@ -201,5 +254,7 @@ class TestFactory:
             token="t0ken",
             timeout=5.0,
             project=NotBlankStr("acme-web"),
+            environment=DeployEnvironment.PRODUCTION,
         )
         assert isinstance(client, VercelDeployClient)
+        assert client.project == "acme-web"

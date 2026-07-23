@@ -12,10 +12,10 @@ errors.
 
 from typing import Final
 
+from synthorg.api.mcp_gateway.scoping import tool_schemas
 from synthorg.api.mcp_gateway.tools import (
     CredentialedToolContext,
     invoke_credentialed_tool,
-    tool_schemas,
 )
 from synthorg.core.domain_errors import DomainError
 from synthorg.observability import get_logger, safe_error_description
@@ -59,7 +59,8 @@ async def dispatch_mcp(  # noqa: PLR0913 -- scoping + dispatch surface
     if method == "initialize":
         return _ok(message_id, _initialize_result())
     if method == "tools/list":
-        return _ok(message_id, {"tools": tool_schemas(capabilities)})
+        schemas = tool_schemas(capabilities, allowed=allowed, denied=denied)
+        return _ok(message_id, {"tools": schemas})
     if method == "tools/call":
         return await _tools_call(
             message_id,

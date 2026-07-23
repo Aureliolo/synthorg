@@ -63,6 +63,7 @@ def _connection(  # noqa: PLR0913 -- test helper mirrors the connection record
     environment: str = "production",
     platform: str = "vercel",
     project: str = "acme-web",
+    sensitive: bool = False,
 ) -> Connection:
     metadata = {
         k: v
@@ -79,6 +80,7 @@ def _connection(  # noqa: PLR0913 -- test helper mirrors the connection record
         auth_method=AuthMethod.BEARER_TOKEN,
         base_url=base_url,
         metadata=metadata,
+        sensitive=sensitive,
     )
 
 
@@ -305,6 +307,13 @@ class TestSetupRequired:
         assert result.is_error is True
         assert "not a deploy target" in result.content
 
+    async def test_missing_base_url_reports_setup_required(self) -> None:
+        result = await DeployRunTool(
+            deps=_deps(conn=_connection(base_url=None))
+        ).execute(arguments={"action": "list", "target": _TARGET})
+        assert result.is_error is True
+        assert "the platform API URL" in result.content
+
     async def test_credential_failure_is_reported(self) -> None:
         result = await DeployRunTool(
             deps=_deps(
@@ -375,6 +384,27 @@ class TestReadSurface:
         )
         assert result.is_error is True
 
+    async def test_sensitive_connection_gates_a_read(self) -> None:
+        """An operator-marked-sensitive target parks even a read."""
+        result = await DeployRunTool(
+            deps=_deps(conn=_connection(sensitive=True))
+        ).execute(arguments={"action": "list", "target": _TARGET})
+        assert result.metadata["requires_parking"] is True
+
+
+class TestResilience:
+    @respx.mock
+    async def test_rate_limit_is_surfaced_with_retry_after(self) -> None:
+        """A 429 becomes a typed rate-limit result carrying the cooldown."""
+        respx.get(f"{_HOST}/v13/deployments/dpl_1").mock(
+            return_value=httpx.Response(429, headers={"Retry-After": "12"})
+        )
+        result = await DeployRunTool(deps=_deps(conn=_connection())).execute(
+            arguments={"action": "get", "target": _TARGET, "deployment_id": "dpl_1"}
+        )
+        assert result.is_error is True
+        assert result.metadata["retry_after_seconds"] == 12.0
+
 
 class TestArgumentSafety:
     async def test_traversal_in_deployment_id_is_rejected(self) -> None:
@@ -387,7 +417,7 @@ class TestArgumentSafety:
         )
         assert result.is_error is True
 
-    async def test_no_environment_argument_is_accepted(self) -> None:
+    async def test_environment_argument_is_rejected(self) -> None:
         """The environment is the connection's to declare, never the caller's."""
         result = await DeployReleaseTool(
             deps=_deps(conn=_connection()), actor=_actor()

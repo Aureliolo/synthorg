@@ -97,8 +97,8 @@ class CredentialedToolContext(BaseModel):
     # several targets. Empty allows nothing, matching the secure default
     # of the capability grant itself.
     deploy_targets: frozenset[str] = frozenset()
-    deploy_timeout_seconds: float = Field(default=30.0, gt=0)
-    deploy_max_log_chars: int = Field(default=20000, gt=0)
+    deploy_timeout_seconds: float = Field(gt=0)
+    deploy_max_log_chars: int = Field(gt=0)
     # Resolved host-side from the verified token claims, never synthesised
     # from the claim string. ``None`` leaves the destructive path unable to
     # attribute the action, so its guardrail refuses the call.
@@ -309,27 +309,6 @@ def visible_tool_names(
         if spec.name in allowed or _capability_matches(spec.capability, capabilities):
             visible.add(spec.name)
     return frozenset(visible)
-
-
-def tool_schemas(capabilities: tuple[str, ...]) -> list[dict[str, object]]:
-    """Return MCP tool schemas for the tools visible under *capabilities*.
-
-    Args:
-        capabilities: Capability patterns the actor is granted.
-
-    Returns:
-        A list of ``{name, description, inputSchema}`` MCP tool descriptors.
-    """
-    visible = visible_tool_names(capabilities=capabilities)
-    return [
-        {
-            "name": spec.name,
-            "description": spec.description,
-            "inputSchema": spec.args_model.model_json_schema(),
-        }
-        for spec in CREDENTIALED_TOOLS
-        if spec.name in visible
-    ]
 
 
 async def invoke_credentialed_tool(  # noqa: PLR0913 -- scope + validate + dispatch surface
