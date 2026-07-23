@@ -19,7 +19,7 @@ acceptance_criteria:
   - "The second session reuses the first session's consolidated approach."
   - "The deliverable names the retained lesson and where it applied."
 limits:
-  max_total_cost_usd: 8.0
+  max_total_cost: 8.0
   max_wall_clock_seconds: 240
   max_turns: 10
 rubric:

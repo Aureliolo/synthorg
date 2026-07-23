@@ -18,7 +18,7 @@ acceptance_criteria:
   - "The run applies the single relevant prior lesson, not a near-duplicate."
   - "The deliverable identifies which prior lesson it reused and why."
 limits:
-  max_total_cost_usd: 8.0
+  max_total_cost: 8.0
   max_wall_clock_seconds: 240
   max_turns: 10
 rubric:

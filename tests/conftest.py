@@ -682,100 +682,6 @@ DISALLOWED_VENDOR_NAMES: frozenset[str] = frozenset(
 # integration work (real subprocess, real network, real heavy I/O)
 # that belongs in ``tests/integration/`` instead.
 _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
-# Meta-tests whose per-test cost is inherent to their job, not misplaced
-# integration work, so the per-test guard exempts them (the suite-level
-# timing regression guard still covers real slowdowns):
-#  - ``tests/unit/architecture/``: AST-parse the entire src tree (the
-#    ``@cache``d sweep in test_layering.py); the one-time fill lands on
-#    whichever such test runs first under ``--dist=loadfile`` and is
-#    inherently near the budget.
-#  - ``tests/unit/test_cold_import.py``: spawns a fresh interpreter per
-#    leaf to import it on a cold graph (the only faithful cold-path
-#    check). Interpreter startup plus a heavy cold import, contending
-#    with the xdist workers that are themselves spawning it, routinely
-#    pushes the heaviest leaf past the 6s budget on a loaded CI runner;
-#    the real subprocess is the test's whole point, not a fixture leak.
-#  - ``test_check_completion_config_temperature.py``: its
-#    ``test_clean_src_tree`` regression guard AST-parses the entire src
-#    tree (``cmd_scan_all``), inherently near the budget and tipping past
-#    it under ``--dist=loadfile`` contention -- the full scan is the
-#    test's whole point, not a fixture leak.
-#  - ``test_check_dependency_inversion.py::TestLiveCodebase``: its anchor
-#    case AST-parses every module under ``src/synthorg`` (``_scan_all``) to
-#    assert the live tree has zero inversion violations, ~5.8s solo and so
-#    inherently at the budget before any contention -- the full scan is the
-#    test's whole point, not a fixture leak. Only the anchor class is exempt;
-#    the file's other cases scan synthetic ``tmp_path`` trees and stay fast.
-#  - ``test_check_error_code_uniqueness.py::test_real_tree_passes``: scans
-#    the entire committed ``src/synthorg`` tree for duplicate error-code
-#    mappings, the same whole-tree-scan class as above and likewise tipping
-#    past the budget under ``--dist=loadfile`` contention. Only this one
-#    test is exempt; the file's other cases scan synthetic ``tmp_path``
-#    trees and stay fast.
-#  - ``test_pretooluse_bash_gates.py``: every case spawns a real ``bash``
-#    subprocess to run the PreToolUse gate script under test. Windows
-#    process spawn contends with the xdist workers that are themselves
-#    spawning subprocesses, so the heaviest case can tip past the 6s
-#    budget on a loaded runner -- the real subprocess is the test's whole
-#    point, not a fixture leak (same class as ``test_cold_import.py``).
-#  - ``test_chunking.py::test_python_functions_split_by_definition``: the
-#    first code-chunking case pays the one-time
-#    ``tree_sitter_language_pack`` grammar-pack import, a large native load
-#    the tests exist to exercise for real rather than fake (~4s on a cold
-#    grammar cache, past the budget under ``--dist=loadfile`` contention),
-#    so passing in isolation is not evidence the guard will hold -- same
-#    class as the whole-tree scanners above, not a fixture leak. Pinned to
-#    this one case rather than the enclosing ``TestCodeChunker`` class:
-#    substring matching would exempt all five of its methods, and only the
-#    first to execute pays the import. It is reliably this one because the
-#    repo does not install ``pytest-randomly`` and ``--dist=loadfile`` keeps
-#    a file's cases in collection order on a single worker; the other four
-#    measure under 5ms each and stay guarded.
-#  - ``test_construction_wiring.py``: builds the whole app via
-#    ``create_app`` to assert construction-phase slice wiring. The build is
-#    class-scoped (one build shared across the class), so the one-time cost
-#    lands on whichever assert runs first and is inherently near the budget
-#    under ``--dist=loadfile`` contention -- the full build is the test's
-#    whole point, not a fixture leak.
-#  - The api files below each build a fresh or config-variant app via
-#    ``create_app`` because that is precisely what they assert on: the
-#    construction / auto-wire phase (``test_app.py``), boot-guard refusal and
-#    route assembly (``test_app_boot_no_kwarg_ambiguity.py``), readiness with
-#    absent or variant persistence (``test_health.py``), or a controller
-#    served from a ``RootConfig`` whose agents / providers / departments /
-#    DB-override differ from the shared app (``test_agents``, ``test_analytics``,
-#    ``test_departments``, ``test_departments_health``, ``test_provider_health``,
-#    ``test_meetings`` auto-wire, ``test_learning`` scorecard-history-dir). The
-#    config or service absence is baked at construction and cannot be expressed
-#    via ``app_state.wire(...)`` on the session-shared app, so the full build is
-#    the test's whole point, not a fixture leak. A test that only needs a custom
-#    collaborator (a per-test ``PerformanceTracker`` / coordinator / meeting
-#    services) uses the shared ``async_test_client`` and wires it instead, so it
-#    stays off this list. ``test_meetings.py`` is listed for the single
-#    ``test_auto_wired_meetings_returns_200`` build; its other tests use the
-#    shared client.
-# pytest nodeids always use ``/`` separators on every platform, so these
-# fragments match on Windows too.
-_WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
-    "unit/architecture/",
-    "unit/test_cold_import.py",
-    "unit/scripts/test_check_completion_config_temperature.py",
-    "unit/scripts/test_check_dependency_inversion.py::TestLiveCodebase",
-    "unit/scripts/test_check_error_code_uniqueness.py::test_real_tree_passes",
-    "unit/scripts/test_pretooluse_bash_gates.py",
-    "unit/knowledge/test_chunking.py::test_python_functions_split_by_definition",
-    "unit/api/test_construction_wiring.py",
-    "unit/api/test_app.py",
-    "unit/api/test_health.py",
-    "unit/api/test_app_boot_no_kwarg_ambiguity.py",
-    "unit/api/controllers/test_agents.py",
-    "unit/api/controllers/test_analytics.py",
-    "unit/api/controllers/test_departments.py",
-    "unit/api/controllers/test_departments_health.py",
-    "unit/api/controllers/test_provider_health.py",
-    "unit/api/controllers/test_meetings.py::test_auto_wired_meetings_returns_200",
-    "unit/api/controllers/test_learning.py",
-)
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 # pytest-repeat's ``--count`` flag is no longer produced by any automated
 # caller; it now appears only when a developer runs ``pytest --count N`` by
@@ -787,6 +693,19 @@ _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme
 _COUNT_ISOLATION_RUN = "--count" in sys.argv or any(
     arg.startswith("--count=") for arg in sys.argv
 )
+# The per-test cap measures wall-clock, which under xdist folds in CPU
+# contention from the other workers plus one-time amortised costs (the
+# litellm first-load behind preset enumeration, app construction, a
+# whole-tree AST scan, the migration-template build) landing on whichever
+# test triggers them first. Both are load- and ordering-dependent, so the
+# cap is only meaningful in a single-process run; under xdist -- the mandated
+# ``-n 8`` push/CI flow -- the suite-level timing-regression guard below is
+# the real "suite got slower" signal, so the per-test cap is not enforced
+# there. This is why no per-test exemption list is needed: the tests that
+# used to need one (subprocess spawns, whole-tree scans, full app builds) are
+# exactly the ones whose wall-clock is dominated by contention or a one-time
+# cost under xdist.
+_RUNNING_UNDER_XDIST = "PYTEST_XDIST_WORKER" in os.environ
 _start_key = pytest.StashKey[float]()
 # Accumulator for unit-only wall-clock time, summed across tests in
 # ``pytest_runtest_teardown``.  Used by the suite regression guard
@@ -855,10 +774,8 @@ def pytest_runtest_teardown(item: pytest.Item) -> None:
     if (
         not _FUZZ_PROFILE_ACTIVE
         and not _COUNT_ISOLATION_RUN
+        and not _RUNNING_UNDER_XDIST
         and item.get_closest_marker("unit")
-        and not any(
-            fragment in item.nodeid for fragment in _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS
-        )
         and guard_elapsed > _UNIT_TEST_WALL_CLOCK_LIMIT
     ):
         pytest.fail(

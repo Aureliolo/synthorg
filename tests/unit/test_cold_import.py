@@ -39,46 +39,26 @@ import pytest
 # os.abort the pytest-timeout patch triggers at 30s.
 _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
 
-# Leaves that must import cold. The first two are the primary regression
-# targets (the original cold-import failure points). The rest pin each
-# structural cut so any regression at the leaf boundary is caught:
+# Leaves that must import cold. Each pins a structural cut so any regression at
+# the leaf boundary is caught:
 # ``core.tool_constraints`` (sub-constraint types out of the ``tools`` hub),
-# ``config.schema`` (no longer reached through the config-to-communication
-# eager chain), ``engine.quality.models`` (pins the lazy ``quality/__init__``
-# so ``loop_protocol`` -> ``quality.models`` cannot regress into eagerly
-# pulling ``quality.classifier`` -> ``loop_protocol`` mid-init), and the
-# ``execution.*`` leaves plus
+# ``config.schema`` (the settings-schema aggregator; imports cold despite
+# transitively referencing engine section configs), ``engine.quality.models``
+# (pins the lazy ``quality/__init__`` so ``loop_protocol`` -> ``quality.models``
+# cannot regress into eagerly pulling ``quality.classifier`` -> ``loop_protocol``
+# mid-init), and the ``execution.*`` leaves plus
 # ``budget.coordination_collector`` (turn/efficiency shapes out of
 # ``engine.loop_protocol``), with ``persistence._shared`` as a representative
-# persistence leaf. ``communication.config`` is intentionally absent: a
-# remaining ``communication`` <-> ``engine`` cycle (``communication/__init__``
-# -> ``meeting._prompts`` -> ``engine.prompt_safety`` -> ``engine/__init__`` ->
-# ``agent_engine`` -> ``engine.context`` -> ``communication.async_tasks`` ->
-# ``communication.config``) blocks it from importing cold on its own. The
-# former ``engine.classification`` -> ``communication.delegation`` ->
-# ``communication.config`` edge no longer contributes: the delegation request /
-# result / record value objects moved to the ``core.delegation_types`` leaf, so
-# the classification loaders reference them without importing the
-# ``communication`` hub. ``config.schema`` importing cold already proves
-# the ``config.schema`` <-> ``communication.config`` edge is broken. Add a new
-# leaf here whenever a new dependency-free ``core.*`` / ``execution.*`` module
-# is introduced, so its cold-import safety is pinned from the start. The same
-# applies to a dependency-free enum leaf placed inside a feature package whose
-# ``__init__`` is heavy (``approval.enums`` / ``security.autonomy.enums`` /
-# ``security.timeout.enums`` / ``templates.enums`` /
-# ``engine.workspace.enums`` / ``engine.intervention.enums``): every consumer
-# of those enums now forces the package ``__init__`` to run, so the cold path
-# through that init must be pinned. ``communication.conversation.enums`` and
-# ``meta.charter.enums`` are intentionally absent: both reach the heavy
-# ``communication`` init, which still cold-cycles (the same ``communication``
-# <-> ``engine`` edge that keeps ``communication.config`` out).
-# ``communication.conversation.enums`` triggers it directly via its parent
-# package; ``meta.charter.enums`` reaches it indirectly
-# (``meta.charter.__init__`` -> ``meta.charter.service`` ->
-# ``communication.conversation.enums`` -> ``communication.__init__``). Neither
-# can import cold on its own, and no cold leaf consumes those enums.
-# Dependency-free ``core.*`` foundation leaves whose consumers annotate against
-# them at module level: ``core.completion_enums`` (the ``FinishReason``
+# persistence leaf. Add a new leaf here whenever a new dependency-free
+# ``core.*`` / ``execution.*`` module is introduced, so its cold-import safety
+# is pinned from the start. The same applies to a dependency-free enum leaf
+# placed inside a feature package whose ``__init__`` is heavy
+# (``approval.enums`` / ``security.autonomy.enums`` / ``security.timeout.enums``
+# / ``templates.enums`` / ``engine.workspace.enums`` /
+# ``engine.intervention.enums``): every consumer of those enums forces the
+# package ``__init__`` to run, so the cold path through that init must be
+# pinned. Dependency-free ``core.*`` foundation leaves whose consumers annotate
+# against them at module level: ``core.completion_enums`` (the ``FinishReason``
 # completion-outcome enum), ``core.effective_autonomy`` and
 # ``core.redteam_review_input`` (resolved-autonomy and red-team gate-input value
 # objects), and ``core.approval`` (the human-approval value object). Each imports
@@ -86,6 +66,24 @@ _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
 # regresses this gate. ``budget.cost_record`` is pinned because it sources
 # ``FinishReason`` from the ``core`` leaf, so importing it does not pull the heavy
 # ``providers`` package (whose eager init imports ``budget.cost_record`` back).
+#
+# The ``communication`` / ``engine`` cluster below was the historical cold-cycle
+# blind spot. Two independent cuts opened it up: (1) the heavy package hubs
+# (``communication`` / ``engine`` / ``providers`` / ``security`` /
+# ``templates``) now resolve their re-exports lazily (PEP 562), so importing a
+# light leaf no longer drags the whole subgraph; and (2) the genuine
+# interface<->implementation cycle where ``communication.bus_protocol`` imported
+# ``QuadraticAlertSink`` from the concrete ``communication.bus`` package while
+# ``bus/__init__`` re-exported ``MessageBus`` from ``bus_protocol`` was broken by
+# moving the ``QuadraticAlertSink`` protocol up into ``bus_protocol`` (the
+# interface module), so the concrete package depends on the interface and never
+# the reverse (ADR-0012). ``bus_protocol`` / ``bus`` / ``engine.context`` pin
+# that cut directly; ``communication.config`` / ``communication.conversation.enums``
+# / ``meta.charter.enums`` were previously excluded because they could not import
+# cold at all, and are pinned here now that both cuts hold. They remain heavier
+# than the ``core.*`` leaves (they still transitively reach eager engine
+# sub-hubs owned elsewhere); aggregate drift is the suite-timing gate's job, not
+# a per-leaf wall-clock assert that would be load-sensitive and flaky.
 COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.providers.enums",
     "synthorg.core.agent",
@@ -113,7 +111,20 @@ COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.templates.enums",
     "synthorg.engine.workspace.enums",
     "synthorg.engine.intervention.enums",
+    "synthorg.communication.bus_protocol",
+    "synthorg.communication.bus",
+    "synthorg.engine.context",
+    "synthorg.communication.config",
+    "synthorg.communication.conversation.enums",
+    "synthorg.meta.charter.enums",
 )
+
+
+# Floor on the leaf count so an accidental deletion (a bad merge, a careless
+# edit) fails the guard instead of silently shrinking coverage. Raise this in
+# lock-step whenever leaves are added; only lower it with a deliberate,
+# explained edit when a pinned module is genuinely removed from the tree.
+_MIN_LEAF_COUNT: Final[int] = 32
 
 
 class _ColdImportOutcome(NamedTuple):
@@ -139,6 +150,31 @@ def _import_leaf_cold(module_name: str) -> _ColdImportOutcome:
     return _ColdImportOutcome(
         returncode=result.returncode, stderr=result.stderr, timed_out=False
     )
+
+
+@pytest.mark.unit
+def test_leaf_set_is_well_formed() -> None:
+    """The leaf set stays unique, module-shaped, and never silently shrinks.
+
+    A cold-import cycle is only caught for a module that is actually in the set,
+    so a leaf dropped by a bad merge would erase coverage without any test going
+    red. This guard makes such a removal fail loudly: it pins a floor on the
+    count and rejects duplicates or non-``synthorg`` entries.
+    """
+    assert len(COLD_IMPORT_LEAVES) >= _MIN_LEAF_COUNT, (
+        f"COLD_IMPORT_LEAVES shrank to {len(COLD_IMPORT_LEAVES)} entries, below "
+        f"the {_MIN_LEAF_COUNT} floor; a leaf was likely removed by accident. "
+        f"If a pinned module was genuinely deleted, lower _MIN_LEAF_COUNT in the "
+        f"same edit with a note explaining which leaf went and why."
+    )
+    duplicates = sorted(
+        name for name in set(COLD_IMPORT_LEAVES) if COLD_IMPORT_LEAVES.count(name) > 1
+    )
+    assert not duplicates, f"Duplicate cold-import leaves: {duplicates}"
+    malformed = [
+        name for name in COLD_IMPORT_LEAVES if not name.startswith("synthorg.")
+    ]
+    assert not malformed, f"Cold-import leaves must be synthorg modules: {malformed}"
 
 
 @pytest.mark.unit

@@ -1,0 +1,32 @@
+# Recording matrix for the inner execution-loop A/B.
+#
+# Every registered loop is measured on every tier against every brief in the
+# suite, repeated `repetitions` times. The loop list must match the live loop
+# registry exactly; adding a fifth loop to the registry makes this manifest fail
+# validation until it is listed here, which is deliberate.
+#
+# Tiers bind an explicit (provider, model_id) pair. The example-* ids are the
+# vendor-agnostic placeholders used throughout this repository; a maintainer
+# recording real numbers aliases them to real models in provider config, so the
+# committed manifest never names a vendor.
+#
+# 4 loops x 3 tiers x 3 briefs x 3 repetitions = 108 runs. Run
+# `python scripts/record_loop_ab.py` (the default, no --record) to print the plan
+# and the run count before charging anything.
+brief_suite: evals/loop_ab/briefs
+repetitions: 3
+loops:
+  - react
+  - plan_execute
+  - hybrid
+  - openhands
+tiers:
+  - tier: large
+    provider: example-provider
+    model_id: example-large-001
+  - tier: medium
+    provider: example-provider
+    model_id: example-medium-001
+  - tier: small
+    provider: example-provider
+    model_id: example-small-001

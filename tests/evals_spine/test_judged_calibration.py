@@ -224,7 +224,7 @@ def test_grade_judged_full_score_for_perfect_output() -> None:
         estimated_complexity=1,
         acceptance_criteria=("c",),
         limits=LimitsSpec(
-            max_total_cost_usd=1.0,
+            max_total_cost=1.0,
             max_wall_clock_seconds=30,
             max_turns=4,
         ),
@@ -254,7 +254,7 @@ def test_grade_judged_partial_score_quantized_to_ternary() -> None:
         estimated_complexity=1,
         acceptance_criteria=("c",),
         limits=LimitsSpec(
-            max_total_cost_usd=1.0,
+            max_total_cost=1.0,
             max_wall_clock_seconds=30,
             max_turns=4,
         ),

@@ -166,6 +166,7 @@ nav:
       - Engine: design/engine.md
       - Agent Execution: design/agent-execution.md
       - OpenHands Execution Loop: design/openhands-loop.md
+      - Inner-Loop A/B Harness: design/loop-ab-harness.md
       - LLM Gateway: design/llm-gateway.md
       - Credentialed-tool MCP: design/credentialed-mcp.md
       - Mid-Flight Steering: design/mid-flight-steering.md

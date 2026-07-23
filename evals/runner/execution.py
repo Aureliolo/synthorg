@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from structlog.testing import capture_logs
 
 from evals.models.brief import Brief
+from evals.runner.metrics import RunMetrics, run_metrics
 from evals.scoring.penalties import DEFAULT_PENALTY_TABLE
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
@@ -36,8 +37,10 @@ logger = get_logger(__name__)
 class BriefRunOutcome(BaseModel):
     """Result of running one brief through the engine.
 
-    Carries the raw agent result, the deliverable text the judge scores, and
-    the per-class counts of process-fact events the penalty table tracks.
+    Carries the raw agent result, the deliverable text the judge scores, the
+    per-class counts of process-fact events the penalty table tracks, and the
+    per-run metrics (tokens, wall-clock, turns, tool profile, rework) the loop
+    A/B ranks on.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -48,6 +51,7 @@ class BriefRunOutcome(BaseModel):
     tracked_events: dict[str, int]
     prompt_class_usage: dict[str, int]
     total_cost: float
+    metrics: RunMetrics
 
     @field_validator("tracked_events", "prompt_class_usage")
     @classmethod
@@ -159,6 +163,9 @@ async def run_brief(
         tracked_events=tracked,
         prompt_class_usage=prompt_class_usage,
         total_cost=result.total_cost,
+        metrics=run_metrics(
+            result.execution_result, duration_seconds=result.duration_seconds
+        ),
     )
 
 

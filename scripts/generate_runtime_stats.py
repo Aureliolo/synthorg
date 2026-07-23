@@ -52,7 +52,11 @@ _TESTS_ROUND_TO: Final[int] = 1000
 # "N+" stays stable across minor LiteLLM dependency bumps.
 _LITELLM_PROVIDER_ROUND_TO: Final[int] = 5
 
-_PYTEST_TIMEOUT_SECONDS: Final[int] = 120
+# Collecting the full suite takes ~90s on a warm checkout and longer under the
+# generator's subprocess, so 120s left no headroom and silently fell back to the
+# previous count. Sized to absorb that without masking a genuinely hung
+# collection.
+_PYTEST_TIMEOUT_SECONDS: Final[int] = 300
 _GIT_TIMEOUT_SECONDS: Final[int] = 5
 
 _PYTEST_SUMMARY_RE: Final[re.Pattern[str]] = re.compile(

@@ -30,7 +30,7 @@ from synthorg.communication.bus import _nats_receive as _recv
 from synthorg.communication.bus._nats_state import create_state
 from synthorg.communication.bus._nats_utils import require_running
 from synthorg.communication.bus.errors import BusUnrestartableError
-from synthorg.communication.bus.quadratic_enforcement import QuadraticAlertSink
+from synthorg.communication.bus_protocol import QuadraticAlertSink
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import MessageBusConfig
 from synthorg.communication.enums import ChannelType

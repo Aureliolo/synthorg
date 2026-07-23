@@ -113,6 +113,58 @@ class BriefExecutionError(EvalError):
     default_message: ClassVar[str] = "Brief execution failed to produce a result"
 
 
+class WorkspaceSpecMissingError(EvalError):
+    """Raised when a workspace operation is asked for a brief with no workspace."""
+
+    default_message: ClassVar[str] = "Brief does not declare a workspace block"
+
+
+class WorkspaceSeedNotFoundError(EvalError):
+    """Raised when a brief's seed fixture directory does not exist.
+
+    Seeding an empty workspace would silently hand every loop a blank slate
+    and grade them all at zero, which reads as a measured result rather than
+    a broken harness. Fail closed instead.
+    """
+
+    default_message: ClassVar[str] = "Brief workspace seed fixture not found"
+
+
+class WorkspacePathEscapeError(EvalError):
+    """Raised when a resolved workspace path escapes its containing root.
+
+    ``brief_id`` and ``seed_dir`` both arrive from authored YAML, so every
+    path built from them is re-checked after resolution rather than trusted.
+    """
+
+    default_message: ClassVar[str] = "Workspace path escapes its root directory"
+
+
+class ProvenanceUnavailableError(EvalError):
+    """Raised when a scoreboard's commit provenance cannot be read.
+
+    A scoreboard that cannot name the commit it measured is not reproducible,
+    and reproducibility is an acceptance criterion for the A/B rather than a
+    nicety, so this fails closed instead of stamping an unknown placeholder.
+    """
+
+    default_message: ClassVar[str] = "Scoreboard git provenance is unavailable"
+
+
+class LoopAbProviderMissingError(EvalError):
+    """Raised when a loop A/B manifest tier names an unknown provider.
+
+    The manifest binds each tier to an explicit ``(provider, model)`` pair, so a
+    tier naming a provider absent from the company config is a configuration
+    error that must fail loud before any real-spend run, not a bare ``KeyError``
+    that loses the domain taxonomy and its structured context.
+    """
+
+    default_message: ClassVar[str] = (
+        "Loop A/B manifest tier names a provider absent from the company config"
+    )
+
+
 class ResearchBriefUnsupportedError(EvalError):
     """Raised when a research brief is run without a research-mode integration.
 
@@ -140,5 +192,10 @@ __all__ = [
     "EvalToolMissingError",
     "JudgeAnchorSetTooSmallError",
     "JudgeCalibrationFailedError",
+    "LoopAbProviderMissingError",
+    "ProvenanceUnavailableError",
     "ResearchBriefUnsupportedError",
+    "WorkspacePathEscapeError",
+    "WorkspaceSeedNotFoundError",
+    "WorkspaceSpecMissingError",
 ]

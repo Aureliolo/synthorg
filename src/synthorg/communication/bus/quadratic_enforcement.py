@@ -16,8 +16,8 @@ the construction phase, before the dispatcher exists).
 """
 
 from collections import deque
-from typing import Protocol, runtime_checkable
 
+from synthorg.communication.bus_protocol import QuadraticAlertSink
 from synthorg.communication.config import QuadraticEnforcementConfig
 from synthorg.communication.enums import QuadraticEnforcementStrategy
 from synthorg.core.clock import Clock, SystemClock
@@ -31,20 +31,6 @@ from synthorg.observability.events.communication import (
 )
 
 logger = get_logger(__name__)
-
-
-@runtime_checkable
-class QuadraticAlertSink(Protocol):
-    """Receives a human-readable alert when a quadratic window is detected."""
-
-    async def alert(self, *, title: str, body: str) -> None:
-        """Deliver an operator alert.
-
-        Args:
-            title: Short alert title.
-            body: Human-readable alert body.
-        """
-        ...
 
 
 class QuadraticEnforcer:

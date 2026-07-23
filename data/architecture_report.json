@@ -414,12 +414,6 @@
       "ratio": 0.903,
       "tier": "service"
     },
-    "src/synthorg/engine/__init__.py": {
-      "cap": 500,
-      "loc": 450,
-      "ratio": 0.9,
-      "tier": "code"
-    },
     "src/synthorg/engine/_prompt_helpers.py": {
       "cap": 500,
       "loc": 448,
@@ -530,8 +524,8 @@
     },
     "src/synthorg/engine/loop_selector.py": {
       "cap": 500,
-      "loc": 413,
-      "ratio": 0.826,
+      "loc": 422,
+      "ratio": 0.844,
       "tier": "code"
     },
     "src/synthorg/engine/middleware/protocol.py": {
@@ -1576,7 +1570,7 @@
     "synthorg.budget.state": 42,
     "synthorg.budget.tracker_protocol": 110,
     "synthorg.client.models": 41,
-    "synthorg.communication.bus_protocol": 32,
+    "synthorg.communication.bus_protocol": 35,
     "synthorg.communication.enums": 33,
     "synthorg.communication.errors": 24,
     "synthorg.communication.mcp_errors": 27,

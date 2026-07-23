@@ -13,10 +13,8 @@ from datetime import UTC, datetime
 from typing import Final, NoReturn, cast
 
 from synthorg.communication.bus.persistence import DequeHistoryAccessor
-from synthorg.communication.bus.quadratic_enforcement import (
-    QuadraticAlertSink,
-    QuadraticEnforcer,
-)
+from synthorg.communication.bus.quadratic_enforcement import QuadraticEnforcer
+from synthorg.communication.bus_protocol import QuadraticAlertSink
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import MessageBusConfig
 from synthorg.communication.enums import ChannelType

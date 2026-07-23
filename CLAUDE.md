@@ -51,6 +51,7 @@ uv run python -m pytest tests/ -m e2e
 uv run python -m pytest tests/ --ignore=tests/benchmarks/ --cov=synthorg --cov-fail-under=80
 uv run python -m pytest tests/benchmarks/ --codspeed -n0
 uv run python -m evals --help                       # golden-company benchmark CLI (or `make benchmark`)
+make loop-ab                                        # print the inner-loop A/B matrix (no spend); `make loop-ab-record` measures for real
 HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -k properties
 HYPOTHESIS_PROFILE=fuzz uv run python -m pytest tests/ -m unit --timeout=0
 bash scripts/install_git_hooks.sh                   # one-time per clone: wire core.hooksPath -> scripts/git-hooks

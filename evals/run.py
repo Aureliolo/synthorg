@@ -18,7 +18,6 @@ when learning is disabled. See ``tests/unit/evals/`` for the curve experiment.
 import asyncio
 import hashlib
 import shutil
-import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Final
@@ -32,7 +31,7 @@ from evals.errors import (
 from evals.history import ScorecardHistory
 from evals.loader.anchors import AnchorSet, load_anchor_set
 from evals.loader.briefs import load_brief_suite
-from evals.models.brief import Brief, BriefKind, ExecutableChecks, HiddenCheckSpec
+from evals.models.brief import Brief, BriefKind
 from evals.models.scorecard import (
     AggregatedProcessFacts,
     BriefResult,
@@ -42,6 +41,7 @@ from evals.models.scorecard import (
 from evals.runner.deliverables import BENCHMARK_DELIVERABLES, DEFAULT_DELIVERABLE
 from evals.runner.execution import BriefRunOutcome, run_brief
 from evals.runner.grading import grade_brief
+from evals.runner.interpreter import resolve_checks
 from evals.runner.penalties import (
     BENCHMARK_PENALTY_TABLE,
     PENALTY_CLASS_BRIEF_BUDGET_OVER,
@@ -82,10 +82,6 @@ _DEFAULT_DELIVERABLE_SCORE: Final[float] = 0.5
 # Hex characters of the suite-version digest retained in the scorecard; long
 # enough to be collision-free for a brief suite, short enough to read.
 _SUITE_VERSION_DIGEST_LEN: Final[int] = 16
-# Placeholder token in an executable brief's check commands, substituted for the
-# running interpreter at grade time so the checks are portable across platforms
-# and virtual environments (a hardcoded ``python`` may be absent or mismatched).
-_INTERPRETER_PLACEHOLDER: Final[str] = "{python}"
 
 
 def _default_identity(
@@ -274,38 +270,6 @@ def _tracked_with_synthetic(
     return tracked
 
 
-def _resolve_cmd(cmd: tuple[str, ...]) -> tuple[str, ...]:
-    """Substitute the interpreter token in a check command for ``sys.executable``.
-
-    Returns:
-        The command with ``{python}`` resolved to the running interpreter.
-    """
-    return tuple(
-        sys.executable if token == _INTERPRETER_PLACEHOLDER else token for token in cmd
-    )
-
-
-def _resolve_checks(checks: ExecutableChecks) -> ExecutableChecks:
-    """Resolve every check command's interpreter token in a copy of *checks*.
-
-    Returns:
-        The checks with ``{python}`` resolved in every hidden / build / lint cmd.
-    """
-
-    def _resolve(specs: tuple[HiddenCheckSpec, ...]) -> tuple[HiddenCheckSpec, ...]:
-        return tuple(
-            spec.model_copy(update={"cmd": _resolve_cmd(spec.cmd)}) for spec in specs
-        )
-
-    return checks.model_copy(
-        update={
-            "hidden_tests": _resolve(checks.hidden_tests),
-            "build": _resolve(checks.build),
-            "lint": _resolve(checks.lint),
-        }
-    )
-
-
 def _materialise_executable_brief(
     brief: Brief, *, deliverable_text: str | None, base_dir: Path
 ) -> tuple[Brief, Path]:
@@ -351,7 +315,7 @@ def _materialise_executable_brief(
             raise BriefExecutionError(msg)
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(content, encoding="utf-8")
-    return brief.model_copy(update={"checks": _resolve_checks(checks)}), work_dir
+    return brief.model_copy(update={"checks": resolve_checks(checks)}), work_dir
 
 
 def _select_provider(

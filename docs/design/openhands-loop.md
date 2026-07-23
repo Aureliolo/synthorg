@@ -154,3 +154,8 @@ fallback, so an operator can route any complexity (or every unmatched
 task) to OpenHands for an A/B. The registry factory requires
 `OpenHandsLoopDeps`; without them it fails loud, so an unwired deployment
 can never silently fall back to a different loop.
+
+The scored comparison against the native loops, and the promotion
+recommendation it feeds into those settings, is the
+[inner-loop A/B harness](loop-ab-harness.md). An unwired OpenHands runtime
+surfaces there as an explicitly unavailable row rather than a missing one.

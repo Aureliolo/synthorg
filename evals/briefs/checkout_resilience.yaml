@@ -15,7 +15,7 @@ acceptance_criteria:
   - "The checkout flow completes without an unrecovered failure."
   - "The deliverable explains the corrected approach."
 limits:
-  max_total_cost_usd: 5.0
+  max_total_cost: 5.0
   max_wall_clock_seconds: 120
   max_turns: 6
 rubric:

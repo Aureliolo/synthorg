@@ -4,7 +4,6 @@ import pytest
 
 from synthorg.providers.family_parser import get_family_parser
 from synthorg.providers.presets import (
-    PROVIDER_PRESETS,
     CloudPreset,
     LocalPreset,
     candidate_urls_for,
@@ -70,14 +69,14 @@ class TestOllamaFamilyRules:
 @pytest.mark.unit
 class TestProviderPresets:
     def test_all_presets_valid_provider_configs(self) -> None:
-        for preset in PROVIDER_PRESETS:
+        for preset in list_presets():
             assert preset.name
             assert preset.display_name
             assert preset.description
             assert preset.driver
 
     def test_preset_names_unique(self) -> None:
-        names = [p.name for p in PROVIDER_PRESETS]
+        names = [p.name for p in list_presets()]
         assert len(names) == len(set(names))
 
     @pytest.mark.parametrize(
@@ -126,11 +125,6 @@ class TestProviderPresets:
 
     def test_get_preset_unknown_returns_none(self) -> None:
         assert get_preset("nonexistent") is None
-
-    def test_list_presets_returns_all(self) -> None:
-        presets = list_presets()
-        assert len(presets) == len(PROVIDER_PRESETS)
-        assert presets == PROVIDER_PRESETS
 
     def test_local_presets_have_candidate_urls(self) -> None:
         """Local presets with non-colliding ports have candidate URLs.
@@ -301,7 +295,7 @@ class TestProviderPresets:
         track the branded set only.
         """
         featured_names: set[str] = {
-            str(p.name) for p in PROVIDER_PRESETS if p.is_featured
+            str(p.name) for p in list_presets() if p.is_featured
         }
         categorized: set[str] = set(self._CLOUD_PRESETS) | set(self._LOCAL_PRESETS)
         assert featured_names == categorized, (
@@ -613,9 +607,9 @@ class TestProviderPresets:
             )
 
     def test_provider_presets_is_featured_then_soft(self) -> None:
-        """``PROVIDER_PRESETS`` orders featured entries before soft entries."""
+        """``list_presets()`` orders featured entries before soft entries."""
         seen_soft = False
-        for preset in PROVIDER_PRESETS:
+        for preset in list_presets():
             if not preset.is_featured:
                 seen_soft = True
             elif seen_soft:
