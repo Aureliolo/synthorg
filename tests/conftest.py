@@ -700,6 +700,12 @@ _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 #    tree (``cmd_scan_all``), inherently near the budget and tipping past
 #    it under ``--dist=loadfile`` contention -- the full scan is the
 #    test's whole point, not a fixture leak.
+#  - ``test_check_dependency_inversion.py::TestLiveCodebase``: its anchor
+#    case AST-parses every module under ``src/synthorg`` (``_scan_all``) to
+#    assert the live tree has zero inversion violations, ~5.8s solo and so
+#    inherently at the budget before any contention -- the full scan is the
+#    test's whole point, not a fixture leak. Only the anchor class is exempt;
+#    the file's other cases scan synthetic ``tmp_path`` trees and stay fast.
 #  - ``test_check_error_code_uniqueness.py::test_real_tree_passes``: scans
 #    the entire committed ``src/synthorg`` tree for duplicate error-code
 #    mappings, the same whole-tree-scan class as above and likewise tipping
@@ -748,6 +754,7 @@ _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
     "unit/architecture/",
     "unit/test_cold_import.py",
     "unit/scripts/test_check_completion_config_temperature.py",
+    "unit/scripts/test_check_dependency_inversion.py::TestLiveCodebase",
     "unit/scripts/test_check_error_code_uniqueness.py::test_real_tree_passes",
     "unit/scripts/test_pretooluse_bash_gates.py",
     "unit/knowledge/test_chunking.py::TestCodeChunker",
