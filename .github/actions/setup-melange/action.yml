@@ -12,9 +12,7 @@ runs:
     # Mirrors setup-apko: download to a file with a bounded retry budget
     # and verify the published checksum before extracting, so a truncated
     # release-CDN download self-recovers instead of failing the build on a
-    # single blip (the `curl | tar` pipe in the upstream setup-melange
-    # action had neither retry nor checksum and a truncated body killed the
-    # whole run).
+    # single blip.
     - name: Install melange
       shell: bash
       env:
@@ -33,9 +31,14 @@ runs:
         rm -rf "/tmp/${MELANGE_ARCHIVE}" /tmp/melange-checksums.txt "/tmp/melange_${MELANGE_VERSION#v}_linux_amd64"
 
     # melange's default container runner shells out to bubblewrap to build
-    # apks; the upstream setup-melange action installed it, so keep parity.
+    # apks. Both apt calls reach the Ubuntu mirror, so wrap each in the
+    # generic retry helper (idempotent: re-running update/install
+    # converges) so a transient mirror 5xx/reset retries rather than
+    # failing the job on a single blip, matching the binary download above.
     - name: Install bubblewrap
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends bubblewrap
+        .github/scripts/retry_cmd.sh "apt-get update (bubblewrap)" \
+          sudo apt-get update
+        .github/scripts/retry_cmd.sh "apt-get install bubblewrap" \
+          sudo apt-get install -y --no-install-recommends bubblewrap
