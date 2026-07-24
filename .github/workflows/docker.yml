@@ -21,6 +21,7 @@ on:
       - ".github/actions/publish-image/**"
       - ".github/actions/publish-image-loaded/**"
       - ".github/actions/setup-apko/**"
+      - ".github/actions/setup-melange/**"
       - ".github/actions/setup-python-uv/**"
       - "scripts/cis-scan.sh"
       - "docs/**"
@@ -90,6 +91,7 @@ jobs:
               - '.github/actions/publish-image/**'
               - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
+              - '.github/actions/setup-melange/**'
               - 'scripts/cis-scan.sh'
             sandbox:
               - 'docker/sandbox/**'
@@ -102,6 +104,7 @@ jobs:
               - '.github/actions/publish-image/**'
               - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
+              - '.github/actions/setup-melange/**'
               - 'scripts/cis-scan.sh'
             sidecar:
               - 'docker/sidecar/**'
@@ -114,6 +117,7 @@ jobs:
               - '.github/actions/publish-image/**'
               - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
+              - '.github/actions/setup-melange/**'
               - 'scripts/cis-scan.sh'
             fine-tune:
               - 'docker/fine-tune/**'
@@ -129,6 +133,7 @@ jobs:
               - '.github/actions/publish-image/**'
               - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
+              - '.github/actions/setup-melange/**'
               - 'scripts/cis-scan.sh'
             web:
               - 'docker/web/**'
@@ -142,6 +147,7 @@ jobs:
               - '.github/actions/cis-scan/**'
               - '.github/actions/publish-image-loaded/**'
               - '.github/actions/setup-apko/**'
+              - '.github/actions/setup-melange/**'
               - '.github/actions/setup-python-uv/**'
               - 'scripts/cis-scan.sh'
 
@@ -694,15 +700,13 @@ jobs:
         run: uv run zensical build
 
       - name: Set up melange
-        # ``setup-melange`` accepts a ``version:`` input that pins the
-        # melange binary; the SHA pin on the action itself locks the
-        # action's own code so neither layer can drift unexpectedly.
-        # The action also installs bubblewrap on the runner, which
-        # melange's default container runner needs to build apks.
-        # Renovate watches the binary version via the comment marker
-        # below; the action SHA is bumped via the standard
-        # ``actions/*`` Renovate manager.
-        uses: chainguard-dev/actions/setup-melange@4d37df0d85a91f619edc34a8803323033cdcb124 # v1.6.27
+        # Local action (twin of setup-apko): a retrying, checksum-verified
+        # binary download plus bubblewrap, which melange's default runner
+        # needs to build apks. The upstream chainguard-dev/actions install
+        # piped `curl | tar` with no retry, so a truncated release-CDN
+        # download failed the whole build; this fails only on a sustained
+        # outage. Renovate watches the binary version via the marker below.
+        uses: ./.github/actions/setup-melange
         with:
           # renovate: datasource=github-releases depName=chainguard-dev/melange
           version: v0.56.3

@@ -1,0 +1,41 @@
+name: Set up melange
+description: Download, verify, and install the melange binary from GitHub releases, plus bubblewrap
+
+inputs:
+  version:
+    description: "melange version to install (e.g. v1.2.3)"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Mirrors setup-apko: download to a file with a bounded retry budget
+    # and verify the published checksum before extracting, so a truncated
+    # release-CDN download self-recovers instead of failing the build on a
+    # single blip (the `curl | tar` pipe in the upstream setup-melange
+    # action had neither retry nor checksum and a truncated body killed the
+    # whole run).
+    - name: Install melange
+      shell: bash
+      env:
+        MELANGE_VERSION: ${{ inputs.version }}
+      run: |
+        MELANGE_ARCHIVE="melange_${MELANGE_VERSION#v}_linux_amd64.tar.gz"
+        curl -fsSL --connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300 \
+          "https://github.com/chainguard-dev/melange/releases/download/${MELANGE_VERSION}/${MELANGE_ARCHIVE}" \
+          -o "/tmp/${MELANGE_ARCHIVE}"
+        curl -fsSL --connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300 \
+          "https://github.com/chainguard-dev/melange/releases/download/${MELANGE_VERSION}/checksums.txt" \
+          -o /tmp/melange-checksums.txt
+        awk -v f="${MELANGE_ARCHIVE}" '$2==f {print $1"  /tmp/"$2; found=1} END{if(!found) exit 1}' /tmp/melange-checksums.txt | sha256sum -c -
+        tar -xzf "/tmp/${MELANGE_ARCHIVE}" -C /tmp
+        mv "/tmp/melange_${MELANGE_VERSION#v}_linux_amd64/melange" /usr/local/bin/melange
+        rm -rf "/tmp/${MELANGE_ARCHIVE}" /tmp/melange-checksums.txt "/tmp/melange_${MELANGE_VERSION#v}_linux_amd64"
+
+    # melange's default container runner shells out to bubblewrap to build
+    # apks; the upstream setup-melange action installed it, so keep parity.
+    - name: Install bubblewrap
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends bubblewrap
