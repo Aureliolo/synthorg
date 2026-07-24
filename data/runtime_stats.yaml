@@ -1,11 +1,11 @@
 schema_version: 1
-last_generated_utc: '2026-07-24T16:49:42Z'
-generator_revision: c617559a4
+last_generated_utc: '2026-07-24T17:24:57Z'
+generator_revision: 7793a8ef8
 stats:
   tests:
-    raw: 41989
-    rounded: 41000
-    display: 41,000+
+    raw: 42060
+    rounded: 42000
+    display: 42,000+
   providers_curated:
     raw: 21
     display: '21'

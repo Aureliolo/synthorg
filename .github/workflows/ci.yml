@@ -414,8 +414,39 @@ jobs:
       # in-container pg_dump, so it needs neither the start-postgres
       # service nor the postgresql-client package -- only the synced test
       # dependencies this job already installs.
+      #
+      # Bringing that container up reaches Docker Hub at job runtime,
+      # which times out from the hosted runners often enough to fail the
+      # gate on its own. The script exits 3 for "container never came
+      # up" specifically so the retry below covers that and nothing else:
+      # a real drift finding (exit 1) fails on the first attempt, as it
+      # must, since retrying a deterministic result only burns the job's
+      # 15-minute budget.
       - name: Postgres drift detection
-        run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
+        env:
+          # The reaper exists to clean up leaked containers on a
+          # long-lived host. A hosted runner is destroyed after the job,
+          # so it buys nothing here while adding a second Docker Hub pull
+          # (testcontainers/ryuk, unpinned) of an image that runs with
+          # the Docker socket mounted. The script stops its own container
+          # in a finally block, so disabling the reaper removes both the
+          # extra failure mode and the socket-mounted third-party image.
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+        run: |
+          set -euo pipefail
+          # Keep in step with _PROVISION_EXIT_CODE in the script.
+          provision_exit=3
+          for attempt in 1 2 3; do
+            status=0
+            uv run python scripts/check_schema_drift_revisions.py --backend postgres || status=$?
+            if [ "$status" -ne "$provision_exit" ]; then
+              exit "$status"
+            fi
+            echo "::warning::Postgres drift gate could not provision its container (attempt ${attempt}/3); retrying after backoff"
+            sleep $((attempt * 20))
+          done
+          echo "::error::Postgres drift gate could not provision its container after 3 attempts" >&2
+          exit 1
 
   # ── Python: Type Check ──
   type-check:
