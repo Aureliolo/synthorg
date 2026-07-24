@@ -403,7 +403,10 @@ class FakeResumeIntentRepository:
         self._intents: dict[str, ResumeIntent] = {}
 
     async def save(self, entity: ResumeIntent) -> None:
-        self._intents[entity.approval_id] = entity
+        # Insert-if-absent, mirroring both backends: a later caller racing
+        # the same approval must not replace the earlier marker's timestamp,
+        # which is what the startup drain reasons about.
+        self._intents.setdefault(entity.approval_id, entity)
 
     async def get(self, entity_id: NotBlankStr) -> ResumeIntent | None:
         return self._intents.get(entity_id)

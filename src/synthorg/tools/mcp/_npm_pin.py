@@ -37,6 +37,40 @@ def _option_value(arg: str, options: frozenset[str]) -> str | None:
     return None
 
 
+def _pnpm_dlx_args(rest: list[str]) -> list[str] | None:
+    """Strip a ``pnpm`` invocation down to its ``dlx`` arguments.
+
+    pnpm accepts its own options before the subcommand, so
+    ``pnpm --package=floating dlx bin`` is a resolve-and-run launcher even
+    though ``dlx`` is not the first token. Matching only ``rest[0]`` let
+    that form skip the pin check entirely.
+
+    Returns:
+        The arguments after ``dlx`` (with any leading pnpm options kept,
+        since a ``--package`` among them still names an installed
+        package), or ``None`` when this is not a ``dlx`` invocation and
+        so resolves nothing on the fly.
+    """
+    skip_next = False
+    for index, arg in enumerate(rest):
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "dlx":
+            return rest[:index] + rest[index + 1 :]
+        # A split option (``-p <spec>`` / ``--call <cmd>``) carries its value
+        # in the next token, which must not be mistaken for the subcommand.
+        if arg in _PACKAGE_OPTS or arg in _CALL_OPTS:
+            skip_next = True
+            continue
+        # The first remaining non-option token is the subcommand. Anything
+        # other than ``dlx`` (``run``, ``install``, ...) executes code that
+        # is already installed, so there is nothing resolved at spawn time.
+        if not arg.startswith("-"):
+            return None
+    return None
+
+
 def npm_package_specs(command: str, args: tuple[str, ...]) -> tuple[str, ...]:
     """Return every npm package spec an ``npx``-style command installs.
 
@@ -62,11 +96,11 @@ def npm_package_specs(command: str, args: tuple[str, ...]) -> tuple[str, ...]:
     if base not in _NPX_COMMANDS:
         return ()
     rest = list(args)
-    # ``pnpm dlx`` / ``bunx`` variants: drop a leading ``dlx`` subcommand.
-    if base == "pnpm" and rest and rest[0] == "dlx":
-        rest = rest[1:]
-    elif base == "pnpm":
-        return ()
+    if base == "pnpm":
+        dlx_args = _pnpm_dlx_args(rest)
+        if dlx_args is None:
+            return ()
+        rest = dlx_args
     named, positional = _package_operands(rest)
     if named:
         return tuple(named)

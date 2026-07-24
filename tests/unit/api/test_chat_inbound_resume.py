@@ -226,6 +226,32 @@ class TestApprovalResumeDispatcherOutbox:
         )
         assert trail == ["record", "clear"]
 
+    async def test_marker_is_recorded_before_the_decision_timestamp(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``recorded_at`` must not postdate ``decided_at``.
+
+        The drain retires any marker recorded after the decision, so
+        stamping ``decided_at`` first would make every genuine marker look
+        stale and silently disable crash recovery on this path.
+        """
+        store = _FakeStore(_item())
+        recorded_at: list[datetime] = []
+        _patch(monkeypatch, store)
+
+        async def _record(_app_state: object, _approval_id: str) -> None:
+            recorded_at.append(datetime.now(UTC))
+
+        monkeypatch.setattr(resume_mod, "record_resume_intent", _record)
+        dispatcher = ApprovalResumeDispatcher(app_state=mock_of[AppState]())
+        await dispatcher.resume(
+            approval_id="ap-1", approved=True, decided_by="U1", decision_reason="go"
+        )
+
+        assert store.saved is not None
+        assert store.saved.decided_at is not None
+        assert recorded_at[0] <= store.saved.decided_at
+
     async def test_no_marker_when_the_approval_is_not_pending(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

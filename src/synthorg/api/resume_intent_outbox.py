@@ -138,6 +138,21 @@ class ResumeIntentDrain:
         )
         return redispatched
 
+    async def _discard(self, approval_id: NotBlankStr, reason: str) -> bool:
+        """Retire a marker that has nothing left to finish.
+
+        Returns:
+            ``False`` always, so a caller can ``return await self._discard(...)``
+            as its own not-re-dispatched result.
+        """
+        logger.info(
+            APPROVAL_GATE_RESUME_INTENT_DISCARDED,
+            approval_id=approval_id,
+            reason=reason,
+        )
+        await clear_resume_intent(self._app_state, approval_id)
+        return False
+
     async def _resolve(self, intent: ResumeIntent) -> bool:
         """Re-dispatch or discard one marker.
 
@@ -151,26 +166,16 @@ class ResumeIntentDrain:
         # to finish. Dropping the marker here is what keeps a crash
         # *before* the decision write from resurrecting a stale resume.
         if item is None or item.status is ApprovalStatus.PENDING:
-            logger.info(
-                APPROVAL_GATE_RESUME_INTENT_DISCARDED,
-                approval_id=approval_id,
-                reason="unknown" if item is None else "still_pending",
+            return await self._discard(
+                approval_id, "unknown" if item is None else "still_pending"
             )
-            await clear_resume_intent(self._app_state, approval_id)
-            return False
         # A marker recorded AFTER the decision cannot be bracketing it: it
         # was written by a caller that went on to lose ``save_if_pending``
         # (a duplicate event, or a stale dashboard POST against an approval
         # decided long ago). Re-dispatching on it would re-run a resume
         # that already completed, so it is discarded instead.
         if item.decided_at is not None and item.decided_at < intent.recorded_at:
-            logger.info(
-                APPROVAL_GATE_RESUME_INTENT_DISCARDED,
-                approval_id=approval_id,
-                reason="recorded_after_decision",
-            )
-            await clear_resume_intent(self._app_state, approval_id)
-            return False
+            return await self._discard(approval_id, "recorded_after_decision")
         try:
             await signal_resume_intent(
                 self._app_state,

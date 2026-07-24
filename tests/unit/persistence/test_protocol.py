@@ -1889,6 +1889,11 @@ class TestProtocolCompliance:
         )
 
     def test_fake_resume_intent_repo_is_resume_intent_repository(self) -> None:
+        # Assert through the backend too, so a regression that nulls or
+        # mistypes ``_FakeBackend.resume_intents`` fails here rather than
+        # slipping past on the standalone-class check alone.
+        backend = _FakeBackend()
+        assert isinstance(backend.resume_intents, ResumeIntentRepository)
         assert isinstance(
             _FakeResumeIntentRepository(),
             ResumeIntentRepository,

@@ -70,6 +70,13 @@ class ApprovalResumeDispatcher:
             NotBlankStr(decided_by.strip()) if decided_by.strip() else _DEFAULT_DECIDER
         )
         status = ApprovalStatus.APPROVED if approved else ApprovalStatus.REJECTED
+        # Recorded BEFORE the decision write: a crash after the decision but
+        # before the resume dispatch would otherwise strand the parked task
+        # with nothing left PENDING for anyone to act on. It must also be
+        # recorded before ``decided_at`` is stamped below, because the drain
+        # retires any marker whose timestamp postdates the decision; stamping
+        # first would make every genuine marker look like a stale one.
+        await record_resume_intent(self._app_state, approval_id)
         updated = item.model_copy(
             update={
                 "status": status,
@@ -78,10 +85,6 @@ class ApprovalResumeDispatcher:
                 "decision_reason": NotBlankStr(decision_reason),
             },
         )
-        # Recorded BEFORE the decision write: a crash after the decision but
-        # before the resume dispatch would otherwise strand the parked task
-        # with nothing left PENDING for anyone to act on.
-        await record_resume_intent(self._app_state, approval_id)
         # Atomic first-writer-wins: if a concurrent dashboard decision or a
         # second inbound event already moved it off PENDING, this returns
         # None and we do not double-resume.

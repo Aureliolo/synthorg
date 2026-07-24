@@ -98,6 +98,45 @@ class TestMCPServerConfigNpmPin:
         )
         assert cfg.command == "pnpm"
 
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("--package=pkg", "dlx", "bin"),
+            ("--package", "pkg", "dlx", "bin"),
+            ("-p", "pkg", "dlx", "bin"),
+            ("--silent", "--package=pkg", "dlx", "bin"),
+        ],
+        ids=["inline", "long_split", "short_split", "after_other_flag"],
+    )
+    def test_pnpm_options_before_dlx_are_still_checked(
+        self, args: tuple[str, ...]
+    ) -> None:
+        # pnpm takes its own options before the subcommand, so matching only
+        # args[0] == "dlx" let `pnpm --package=floating dlx bin` skip the pin
+        # check entirely and resolve a fresh package on every reconnect.
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(name="s1", transport="stdio", command="pnpm", args=args)
+
+    def test_pnpm_pinned_package_before_dlx_accepted(self) -> None:
+        args = ("--package=pkg@1.2.3", "dlx", "bin")
+        cfg = MCPServerConfig(name="s1", transport="stdio", command="pnpm", args=args)
+        assert cfg.args == args
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("--silent", "run", "server"),
+            ("-p", "pkg", "run", "server"),
+        ],
+        ids=["flag_then_run", "package_operand_then_run"],
+    )
+    def test_pnpm_non_dlx_subcommand_stays_exempt(self, args: tuple[str, ...]) -> None:
+        # Scanning for `dlx` must not swallow the subcommand slot: a split
+        # option's operand is not the subcommand, and `run` still means
+        # already-installed code with nothing resolved at spawn time.
+        cfg = MCPServerConfig(name="s1", transport="stdio", command="pnpm", args=args)
+        assert cfg.args == args
+
     def test_bunx_unpinned_rejected(self) -> None:
         with pytest.raises(ValidationError, match="must be pinned"):
             MCPServerConfig(name="s1", transport="stdio", command="bunx", args=("pkg",))
@@ -209,6 +248,39 @@ class TestMCPServerConfigNpmPin:
         # A range still resolves to whatever is newest that satisfies it, so
         # a reconnect can pull an un-reviewed release exactly as `@latest`
         # would. Only an immutable exact version counts as a pin.
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-y", f"pkg@{version}"),
+            )
+
+    @pytest.mark.parametrize(
+        "version",
+        # One case uses FULLWIDTH DIGIT ONE (U+FF11), which ``\d`` matches
+        # but the strict ``[0-9]`` grammar does not.
+        [
+            "01.2.3",
+            "1.02.3",
+            "1.2.3-01",
+            "1.2.3-alpha..1",
+            "１.2.3",  # noqa: RUF001 -- the confusable digit IS the case
+            "1.2.3\n",
+        ],
+        ids=[
+            "leading_zero_major",
+            "leading_zero_minor",
+            "leading_zero_prerelease",
+            "empty_prerelease_segment",
+            "unicode_digit",
+            "trailing_newline",
+        ],
+    )
+    def test_malformed_version_rejected(self, version: str) -> None:
+        # A spec npm itself would never resolve is not a pin. Accepting one
+        # is how a pin check gets talked past, so the grammar is the strict
+        # SemVer one and the match is anchored at both ends.
         with pytest.raises(ValidationError, match="must be pinned"):
             MCPServerConfig(
                 name="s1",

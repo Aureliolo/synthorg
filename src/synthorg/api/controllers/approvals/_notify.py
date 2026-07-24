@@ -335,6 +335,13 @@ async def _save_decision_and_notify(  # noqa: PLR0913
     # before ``signal_resume_intent`` below would otherwise strand the parked
     # task with nothing left PENDING for anyone to act on.
     await record_resume_intent(app_state, approval_id)
+    # ``decided_at`` is re-stamped here, AFTER the marker, because the drain
+    # retires any marker whose timestamp postdates the decision. The callers
+    # build ``updated`` (and its timestamp) before reaching this function, so
+    # keeping the ordering here rather than at each call site is what stops a
+    # future decision path from silently recording a marker the drain will
+    # then throw away.
+    updated = updated.model_copy(update={"decided_at": datetime.now(UTC)})
     saved = await store.save_if_pending(updated)
     if saved is None:
         # The marker is left alone: a concurrent winner may own an in-flight
