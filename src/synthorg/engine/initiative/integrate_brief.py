@@ -8,8 +8,8 @@ them run as one thing, and that the objective's success criteria are what
 
 Objective title, item titles, and criteria are agent-authored or
 operator-authored text reaching an agent prompt, so they are fenced with
-:func:`wrap_untrusted` under ``TAG_TASK_DATA`` (SEC-1); the instructions around
-the fence are the only trusted text in the brief.
+:func:`wrap_untrusted` under ``TAG_TASK_DATA``; the instructions around the
+fence are the only trusted text in the brief.
 """
 
 from typing import Final

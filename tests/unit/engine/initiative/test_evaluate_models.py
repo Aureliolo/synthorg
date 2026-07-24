@@ -1,6 +1,7 @@
 """Tests for the evaluate stage's verdict model and its coverage invariant."""
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import InitiativeEvaluationParseError
@@ -15,7 +16,7 @@ pytestmark = pytest.mark.unit
 _CRITERIA = (NotBlankStr("the game is playable"), NotBlankStr("it saves scores"))
 
 
-def _verdict(criterion: str, outcome: str) -> dict[str, str]:
+def _verdict(criterion: str, outcome: str) -> dict[str, JsonValue]:
     return {
         "criterion": criterion,
         "outcome": outcome,
@@ -118,14 +119,15 @@ class TestCoverage:
 
     def test_missing_evidence_is_rejected(self) -> None:
         """An unevidenced pass is a guess."""
+        unevidenced: dict[str, JsonValue] = {
+            "criterion": _CRITERIA[0],
+            "outcome": "met",
+        }
         with pytest.raises(InitiativeEvaluationParseError, match=r"evidence"):
             args_to_evaluation(
                 {
                     "summary": "Played it",
-                    "verdicts": [
-                        {"criterion": _CRITERIA[0], "outcome": "met"},
-                        _verdict(_CRITERIA[1], "met"),
-                    ],
+                    "verdicts": [unevidenced, _verdict(_CRITERIA[1], "met")],
                 },
                 criteria=_CRITERIA,
             )

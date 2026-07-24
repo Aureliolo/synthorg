@@ -7,8 +7,8 @@ and the objective's success criteria (which the successor still has to satisfy).
 
 Item titles and objective criteria are agent-authored or operator-authored text
 reaching a planning prompt, so they are fenced with :func:`wrap_untrusted` under
-``TAG_TASK_DATA`` (SEC-1); the instructions around the fence are the only
-trusted text in the result.
+``TAG_TASK_DATA``; the instructions around the fence are the only trusted text
+in the result.
 """
 
 from synthorg.core.plan import Plan
