@@ -29,6 +29,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _BARRIER_TIMEOUT_SECONDS = 10.0
 
 
+class _ToolShape(Protocol):
+    """The two fields the tests read off a declared tool."""
+
+    name: str
+    argv: tuple[str, ...]
+
+
 class _GateModule(Protocol):
     """Subset of ``scripts/run_prepush_hook_group.py`` the tests exercise.
 
@@ -38,8 +45,8 @@ class _GateModule(Protocol):
     nothing.
     """
 
-    _Tool: Callable[[str, tuple[str, ...]], object]
-    _GROUPS: Mapping[str, tuple[object, ...]]
+    _Tool: Callable[[str, tuple[str, ...]], _ToolShape]
+    _GROUPS: Mapping[str, tuple[_ToolShape, ...]]
     _validate_groups: Callable[[Mapping[str, tuple[object, ...]]], None]
 
     @staticmethod
@@ -151,6 +158,16 @@ class TestGroupDeclarations:
 
     def test_every_declared_group_is_well_formed(self) -> None:
         _MODULE._validate_groups(_MODULE._GROUPS)
+
+    def test_eslint_skips_ignored_files_instead_of_failing(self) -> None:
+        # A changed set can include generated ``*.gen.ts`` files that eslint's
+        # config ignores. Without ``--no-warn-ignored`` eslint emits a "File
+        # ignored" warning for each, which ``--max-warnings 0`` turns into a
+        # push-blocking failure on files no one was ever meant to lint.
+        eslint = next(
+            tool for tool in _MODULE._GROUPS["web-checks"] if tool.name == "eslint"
+        )
+        assert "--no-warn-ignored" in eslint.argv
 
 
 class TestGroupDispatch:
