@@ -243,7 +243,10 @@ async def _start_runtime_background_services(
             started_webhook_event_bridge=started_webhook_event_bridge,
             provider_health_prober=tasks.health_prober,
             started_provider_health_prober=started_provider_health_prober,
+            chat_inbound_consumer=tasks.chat_inbound_consumer,
+            started_chat_inbound_consumer=tasks.chat_inbound_consumer is not None,
         )
+        tasks.chat_inbound_consumer = None
         raise
 
 

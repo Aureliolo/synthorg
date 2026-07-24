@@ -179,6 +179,36 @@ class TestGitHubHands:
         assert str(repos[-1].repo) == "proj-149"
 
     @respx.mock
+    async def test_list_accessible_repos_keeps_page_size_fixed(self) -> None:
+        """Every request asks for the same page size.
+
+        ``page`` is an offset counted in units of the page size, so a size
+        that shrank with the remaining budget would make page 2 start
+        somewhere other than where page 1 ended and skip repositories.
+        """
+
+        def _page(start: int, count: int) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "full_name": f"acme/proj-{index}",
+                        "private": False,
+                        "permissions": {"admin": False, "push": False, "pull": True},
+                    }
+                    for index in range(start, start + count)
+                ],
+            )
+
+        route = respx.get(f"{_GH}/user/repos").mock(
+            side_effect=[_page(0, 100), _page(100, 100), _page(200, 5)],
+        )
+        async with _github() as client:
+            await client.list_accessible_repos(limit=250)
+        sizes = {call.request.url.params.get("per_page") for call in route.calls}
+        assert sizes == {"100"}
+
+    @respx.mock
     async def test_list_accessible_repos_stops_on_short_page(self) -> None:
         """A page smaller than requested is the last one; stop asking."""
         route = respx.get(f"{_GH}/user/repos").mock(
@@ -403,6 +433,32 @@ class TestGitLabHands:
         async with _gitlab() as client:
             repos = await client.list_accessible_repos(limit=20)
         assert repos[0].permission == "admin"
+
+    @respx.mock
+    async def test_nested_subgroup_project_is_skipped(self) -> None:
+        # A subgroup path (``group/subgroup/project``) has no owner/repo
+        # counterpart, so it is skipped rather than failing the whole scan
+        # on one entry an operator could never select anyway.
+        respx.get(f"{_GL}/projects").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "path_with_namespace": "acme/team/proj-1",
+                        "visibility": "private",
+                        "permissions": {"project_access": {"access_level": 40}},
+                    },
+                    {
+                        "path_with_namespace": "acme/proj-2",
+                        "visibility": "private",
+                        "permissions": {"project_access": {"access_level": 40}},
+                    },
+                ],
+            ),
+        )
+        async with _gitlab() as client:
+            repos = await client.list_accessible_repos(limit=20)
+        assert [str(r.repo) for r in repos] == ["proj-2"]
 
     @respx.mock
     async def test_list_accessible_repos_pages_past_the_page_cap(self) -> None:

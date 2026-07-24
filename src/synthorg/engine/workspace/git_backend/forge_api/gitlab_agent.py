@@ -176,9 +176,12 @@ class GitLabAgentForgeClient(GitLabForgeClient):
         """
         action = "list accessible repos"
         collected: list[ForgeAccessibleRepo] = []
+        # Fixed for the whole walk: ``page`` is an offset in units of
+        # ``per_page``, so shrinking it mid-walk would move where the next
+        # page starts and skip projects.
+        page_size = min(_MAX_PAGE_SIZE, limit)
         page = 1
         while len(collected) < limit:
-            page_size = min(_MAX_PAGE_SIZE, limit - len(collected))
             resp = await self._request(
                 "GET",
                 "/projects",

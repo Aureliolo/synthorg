@@ -92,6 +92,37 @@ async def route(event, dispatcher):
     assert "decision_reason" in violations[0]
 
 
+def test_dead_resume_call_does_not_satisfy_the_gate(tmp_path: Path) -> None:
+    """A fenced dispatch parked after an early return never runs."""
+    router = """\
+async def route(event, dispatcher):
+    return await dispatcher.publish(event)
+    return await dispatcher.resume(
+        approval_id=event.approval_id,
+        approved=True,
+        decided_by=event.user,
+        decision_reason=event.text,
+    )
+"""
+    root = _make_tree(tmp_path, {"router.py": router})
+    assert len(_MODULE._check(root)) == 1
+
+
+def test_prompt_sink_in_a_nested_module_flagged(tmp_path: Path) -> None:
+    """The package's subdirectories are part of the package."""
+    root = _make_tree(tmp_path, {"router.py": _ROUTER_OK})
+    nested = root / _INBOUND_REL / "handlers"
+    nested.mkdir()
+    (nested / "summarise.py").write_text(
+        "async def run(text, provider):\n"
+        "    return await complete_text(provider, text)\n",
+        encoding="utf-8",
+    )
+    violations = _MODULE._check(root)
+    assert len(violations) == 1
+    assert "handlers/summarise.py" in violations[0]
+
+
 def test_router_without_resume_dispatch_flagged(tmp_path: Path) -> None:
     router = """\
 async def route(event, dispatcher):

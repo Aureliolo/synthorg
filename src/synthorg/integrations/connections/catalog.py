@@ -31,9 +31,11 @@ from synthorg.integrations.connections.models import (
     ConnectionStatus,
     ConnectionType,
 )
+from synthorg.integrations.connections.repo_scope import validate_repo_scope_entry
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     DuplicateConnectionError,
+    InvalidRepoScopeError,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
@@ -56,6 +58,22 @@ from synthorg.persistence.secret_backends.protocol import (
 )
 
 logger = get_logger(__name__)
+
+
+def _checked_scope_entry(entry: str) -> str:
+    """Return ``entry`` once it passes repo-scope validation.
+
+    Returns:
+        The unchanged entry.
+
+    Raises:
+        InvalidRepoScopeError: When the entry is malformed or over-broad.
+    """
+    try:
+        validate_repo_scope_entry(entry)
+    except ValueError as exc:
+        raise InvalidRepoScopeError(safe_error_description(exc)) from exc
+    return entry
 
 
 class _UnsetType:
@@ -334,7 +352,13 @@ class ConnectionCatalog(
         if sensitive is not _UNSET:
             candidate["sensitive"] = sensitive
         if not isinstance(allowed_repos, _UnsetType):
-            candidate["allowed_repos"] = tuple(NotBlankStr(r) for r in allowed_repos)
+            # The scope is a security boundary, so it is validated here at
+            # the persistence entry rather than only in the API DTO: any
+            # other caller of update() would otherwise be able to persist
+            # an over-broad entry that the forge tools then honour.
+            candidate["allowed_repos"] = tuple(
+                NotBlankStr(_checked_scope_entry(r)) for r in allowed_repos
+            )
         return candidate
 
     async def update(  # noqa: PLR0913 -- one kwarg per independently-patchable field

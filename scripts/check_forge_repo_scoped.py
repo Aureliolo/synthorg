@@ -65,19 +65,27 @@ _SCOPE_ERROR: Final[str] = "ForgeRepoScopeError"
 _BASE_CLASS: Final[str] = "_BaseForgeTool"
 _SUPER: Final[str] = "super"
 _MARKER: Final[str] = "lint-allow: forge-repo-scoped"
+
+type _Method = ast.FunctionDef | ast.AsyncFunctionDef
+
+_METHOD_TYPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef)
 _ALLOW_RE: Final[re.Pattern[str]] = re.compile(
     r"#.*" + re.escape(_MARKER) + r"\s*--\s*\S"
 )
 
 
-def _resolve_method(node: ast.ClassDef) -> ast.AsyncFunctionDef | None:
+def _resolve_method(node: ast.ClassDef) -> _Method | None:
     """Return the class's ``_resolve_connection`` override, if any.
+
+    Both ``def`` and ``async def`` count: a synchronous override bypasses
+    the scope check exactly as an asynchronous one would, so matching only
+    the coroutine form would leave a trivial hole.
 
     Returns:
         The method node, or ``None`` when the class does not override it.
     """
     for stmt in node.body:
-        if isinstance(stmt, ast.AsyncFunctionDef) and stmt.name == _RESOLVE_FN:
+        if isinstance(stmt, _METHOD_TYPES) and stmt.name == _RESOLVE_FN:
             return stmt
     return None
 
@@ -96,7 +104,7 @@ def _exception_name(exc: ast.expr) -> str | None:
     return None
 
 
-def _raises_scope_error(method: ast.AsyncFunctionDef) -> bool:
+def _raises_scope_error(method: _Method) -> bool:
     """Whether the method has a reachable ``raise ForgeRepoScopeError``.
 
     A bare name reference is not enough: an ``except ForgeRepoScopeError``
@@ -116,7 +124,7 @@ def _raises_scope_error(method: ast.AsyncFunctionDef) -> bool:
     return False
 
 
-def _delegates_to_base(method: ast.AsyncFunctionDef) -> bool:
+def _delegates_to_base(method: _Method) -> bool:
     """Whether the override reaches the shared check via ``super()``.
 
     Returns:
@@ -160,7 +168,7 @@ def _check(repo_root: Path) -> list[str]:
     violations: list[str] = []
     forge_dir = repo_root / _FORGE_REL
     base_ok = False
-    for path in sorted(forge_dir.glob("*.py")):
+    for path in sorted(forge_dir.rglob("*.py")):
         source, tree = read_and_parse(path)
         rel = path.relative_to(repo_root).as_posix()
         for node in ast.walk(tree):

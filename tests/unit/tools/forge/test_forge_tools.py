@@ -312,6 +312,24 @@ class TestForgeCiTool:
         assert result.is_error is True
         assert "not" in result.content.lower()
 
+    @pytest.mark.parametrize(
+        ("field", "bad"),
+        [("branch", "../../main"), ("workflow", "../ci.yml"), ("workflow", "a/b")],
+    )
+    async def test_trigger_field_traversal_rejected(self, field: str, bad: str) -> None:
+        arguments = {
+            "action": "trigger",
+            "owner": "acme",
+            "repo": "proj-1",
+            "branch": "main",
+            "workflow": "ci.yml",
+        }
+        arguments[field] = bad
+        tool = ForgeCiTool(deps=_deps(conn=_connection()))
+        result = await tool.execute(arguments=arguments)
+        assert result.is_error is True
+        assert "invalid arguments" in result.content.lower()
+
 
 class TestForgeToolGuards:
     async def test_connection_not_found(self) -> None:
@@ -559,6 +577,54 @@ class TestForgePushTool:
             }
         )
         assert result.metadata["requires_parking"] is True
+
+    @pytest.mark.parametrize("field", ["new_branch", "from_ref"])
+    @pytest.mark.parametrize("bad", ["../../etc", "..", "a?x", "a#x", "a\\b"])
+    async def test_ref_traversal_rejected(self, field: str, bad: str) -> None:
+        # A ref name lands in the request path exactly as owner/repo does,
+        # so it takes the same guard: no egress on a malformed ref.
+        arguments = {
+            "action": "create_branch",
+            "owner": "acme",
+            "repo": "proj-1",
+            "new_branch": "feature",
+            "from_ref": "main",
+        }
+        arguments[field] = bad
+        tool = ForgePushTool(deps=_deps(conn=_connection(), autonomy=_vcs_autonomy()))
+        result = await tool.execute(arguments=arguments)
+        assert result.is_error is True
+        assert "invalid arguments" in result.content.lower()
+
+    async def test_write_file_branch_traversal_rejected(self) -> None:
+        tool = ForgePushTool(deps=_deps(conn=_connection(), autonomy=_vcs_autonomy()))
+        result = await tool.execute(
+            arguments={
+                "action": "write_file",
+                "owner": "acme",
+                "repo": "proj-1",
+                "path": "x.py",
+                "branch": "../../main",
+                "content": "x=1",
+                "message": "add x",
+            }
+        )
+        assert result.is_error is True
+        assert "invalid arguments" in result.content.lower()
+
+    async def test_slashed_ref_still_accepted(self) -> None:
+        # ``feature/x`` is an ordinary ref; the guard must allow the slash.
+        tool = ForgePushTool(deps=_deps(conn=_connection(), autonomy=_auto_autonomy()))
+        result = await tool.execute(
+            arguments={
+                "action": "create_branch",
+                "owner": "acme",
+                "repo": "proj-1",
+                "new_branch": "feature/x",
+                "from_ref": "main",
+            }
+        )
+        assert "invalid arguments" not in result.content.lower()
 
 
 class TestForgeInlineReviewAndCi:

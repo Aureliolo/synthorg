@@ -157,8 +157,8 @@ class ForgePushTool(_BaseForgeTool):
     assert "ForgePushTool" in violations[0]
 
 
-def test_subclass_reenforcing_itself_passes(tmp_path: Path) -> None:
-    reenforcing = """\
+def test_subclass_reinforcing_itself_passes(tmp_path: Path) -> None:
+    reinforcing = """\
 class ForgePushTool(_BaseForgeTool):
     async def _resolve_connection(self, args):
         conn = await self._catalog.get(self._connection)
@@ -166,8 +166,57 @@ class ForgePushTool(_BaseForgeTool):
             raise ForgeRepoScopeError("out of scope")
         return conn
 """
-    root = _make_tree(tmp_path, {"_base.py": _BASE_OK, "forge_tools.py": reenforcing})
+    root = _make_tree(tmp_path, {"_base.py": _BASE_OK, "forge_tools.py": reinforcing})
     assert _MODULE._check(root) == []
+
+
+def test_sync_override_is_also_checked(tmp_path: Path) -> None:
+    """A synchronous override bypasses the scope check just as well."""
+    sync_bypass = """\
+class ForgePushTool(_BaseForgeTool):
+    def _resolve_connection(self, args):
+        return self._catalog.get(self._connection)
+"""
+    root = _make_tree(tmp_path, {"_base.py": _BASE_OK, "forge_tools.py": sync_bypass})
+    violations = _MODULE._check(root)
+    assert len(violations) == 1
+    assert "ForgePushTool" in violations[0]
+
+
+def test_nested_module_is_scanned(tmp_path: Path) -> None:
+    """A bypass in a subpackage is still a bypass."""
+    bypass = """\
+class ForgePushTool(_BaseForgeTool):
+    async def _resolve_connection(self, args):
+        return await self._catalog.get(self._connection)
+"""
+    root = _make_tree(tmp_path, {"_base.py": _BASE_OK})
+    nested = root / _FORGE_REL / "sub"
+    nested.mkdir()
+    (nested / "tools.py").write_text(bypass, encoding="utf-8")
+    violations = _MODULE._check(root)
+    assert len(violations) == 1
+    assert "sub/tools.py" in violations[0]
+
+
+def test_enforcement_inside_a_nested_helper_does_not_count(tmp_path: Path) -> None:
+    """A raise inside an inner function is that function's control flow.
+
+    The enclosing override returns without ever calling it, so the scope
+    check never runs even though the raise is lexically present.
+    """
+    nested_helper = """\
+class ForgePushTool(_BaseForgeTool):
+    async def _resolve_connection(self, args):
+        def _unused():
+            raise ForgeRepoScopeError("never called")
+
+        return await self._catalog.get(self._connection)
+"""
+    root = _make_tree(tmp_path, {"_base.py": _BASE_OK, "forge_tools.py": nested_helper})
+    violations = _MODULE._check(root)
+    assert len(violations) == 1
+    assert "ForgePushTool" in violations[0]
 
 
 def test_annotated_opt_out_marker_passes(tmp_path: Path) -> None:

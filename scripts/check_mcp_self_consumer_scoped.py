@@ -35,10 +35,15 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _gate_source import (  # type: ignore[import-not-found]
         GateSourceError,
+        direct_body_nodes,
         read_and_parse,
     )
 else:
-    from scripts._gate_source import GateSourceError, read_and_parse
+    from scripts._gate_source import (
+        GateSourceError,
+        direct_body_nodes,
+        read_and_parse,
+    )
 
 _SELF_CONSUMER_REL: Final[str] = "src/synthorg/engine/mcp_self_consumer.py"
 _GRANT_ATTR: Final[str] = "mcp_capabilities"
@@ -70,14 +75,21 @@ def _reads_per_agent_grant(tree: ast.Module) -> bool:
     return any(_is_grant_chain(node) for node in ast.walk(tree))
 
 
-def _local_bindings(scope: ast.AST) -> dict[str, list[ast.expr]]:
+def _local_bindings(
+    scope: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> dict[str, list[ast.expr]]:
     """Map each locally bound name to the expressions assigned to it.
+
+    Only this scope's own body counts: an assignment inside a nested
+    closure binds that closure's local, so crediting it here would let a
+    dead inner function supply the capability set the real provider no
+    longer derives from the grant.
 
     Returns:
         A name -> assigned-expressions map for the given scope.
     """
     bindings: dict[str, list[ast.expr]] = defaultdict(list)
-    for node in ast.walk(scope):
+    for node in direct_body_nodes(scope):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):

@@ -42,10 +42,17 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _gate_source import (  # type: ignore[import-not-found]
         GateSourceError,
+        reachable_statements,
         read_and_parse,
+        statement_expressions,
     )
 else:
-    from scripts._gate_source import GateSourceError, read_and_parse
+    from scripts._gate_source import (
+        GateSourceError,
+        reachable_statements,
+        read_and_parse,
+        statement_expressions,
+    )
 
 _INBOUND_REL: Final[str] = "src/synthorg/integrations/chat_api/inbound"
 _ROUTER_REL: Final[str] = "src/synthorg/integrations/chat_api/inbound/router.py"
@@ -102,7 +109,7 @@ def _prompt_sink_violations(repo_root: Path) -> list[str]:
     """
     violations: list[str] = []
     inbound_dir = repo_root / _INBOUND_REL
-    for path in sorted(inbound_dir.glob("*.py")):
+    for path in sorted(inbound_dir.rglob("*.py")):
         source, tree = read_and_parse(path)
         rel = path.relative_to(repo_root).as_posix()
         for node in ast.walk(tree):
@@ -120,24 +127,28 @@ def _prompt_sink_violations(repo_root: Path) -> list[str]:
 def _fenced_handoff_present(repo_root: Path) -> bool:
     """Whether the router's resume dispatch forwards ``decision_reason=``.
 
-    Bound to the actual inbound-resume call (``...resume(...)``) rather
-    than to the keyword appearing anywhere in the module: a bare token
-    search is satisfied by dead code, so the fencing contract could be
-    dropped from the real dispatch while the gate stayed green.
+    Bound to a *reachable* ``...resume(...)`` call inside a router
+    function, rather than to the keyword appearing anywhere in the
+    module: a bare token search is satisfied by dead code or by a helper
+    nobody calls, so the fencing contract could be dropped from the real
+    dispatch while the gate stayed green.
 
     Returns:
-        ``True`` when a call to ``resume(...)`` in the router passes the
-        ``decision_reason=`` keyword.
+        ``True`` when a reachable call to ``resume(...)`` in the router
+        passes the ``decision_reason=`` keyword.
     """
-    source, tree = read_and_parse(repo_root / _ROUTER_REL)
-    _ = source
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+    _source, tree = read_and_parse(repo_root / _ROUTER_REL)
+    for scope in ast.walk(tree):
+        if not isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
-        if _called_name(node) != _RESUME_CALL:
-            continue
-        if any(kw.arg == _FENCED_KWARG for kw in node.keywords):
-            return True
+        for stmt in reachable_statements(scope.body):
+            for node in statement_expressions(stmt):
+                if not isinstance(node, ast.Call):
+                    continue
+                if _called_name(node) != _RESUME_CALL:
+                    continue
+                if any(kw.arg == _FENCED_KWARG for kw in node.keywords):
+                    return True
     return False
 
 

@@ -145,6 +145,31 @@ class TestMCPServerConfigNpmPin:
         cfg = MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
         assert cfg.args == args
 
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("-c", "run-my-server --port 1234"),
+            ("--call", "run-my-server --port 1234"),
+            ("--call=run-my-server --port 1234",),
+        ],
+        ids=["short", "long", "inline"],
+    )
+    def test_shell_command_option_is_not_a_package(self, args: tuple[str, ...]) -> None:
+        # ``npx -c '<cmd>'`` runs a command line in the npx shell; it names
+        # no package, so there is nothing to pin and the launcher is valid.
+        cfg = MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
+        assert cfg.args == args
+
+    def test_unpinned_package_alongside_shell_command_rejected(self) -> None:
+        # Skipping the -c operand must not skip a later --package spec.
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-c", "run-server", "--package", "pkg"),
+            )
+
 
 class TestMCPServerConfigStdio:
     """Stdio transport validation."""

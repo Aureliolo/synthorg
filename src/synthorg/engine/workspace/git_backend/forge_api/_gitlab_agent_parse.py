@@ -274,6 +274,12 @@ def accessible_repo_from(model: GlProject) -> ForgeAccessibleRepo | None:
     owner, _, repo = model.path_with_namespace.rpartition("/")
     if not owner or not repo:
         return None
+    # GitLab subgroups nest arbitrarily deep (``group/subgroup/project``),
+    # which has no owner/repo counterpart: the scope model rejects a
+    # slash-bearing owner, so a nested project is skipped rather than
+    # failing the whole scan on one entry an operator could not select.
+    if "/" in owner:
+        return None
     return ForgeAccessibleRepo(
         owner=NotBlankStr(owner),
         repo=NotBlankStr(repo),

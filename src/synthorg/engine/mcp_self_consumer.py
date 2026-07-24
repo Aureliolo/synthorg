@@ -48,6 +48,11 @@ class MCPRateLimiter:
     limiter would only slow it. This bucket instead *refuses* a call over
     budget (returns ``False``), so the agent gets a retryable error and
     the loop cannot monopolise a tool. ``per_minute <= 0`` disables it.
+
+    The budget is per process, which is the whole deployment: the backend
+    image runs a single uvicorn worker, and agents execute in-process.
+    Introducing multiple workers would multiply the effective ceiling by
+    the worker count and this state would have to move to a shared store.
     """
 
     def __init__(

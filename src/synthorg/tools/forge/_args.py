@@ -199,6 +199,12 @@ class ForgeCiArgs(_ForgeArgsBase):
 
     @model_validator(mode="after")
     def _validate_action(self) -> ForgeCiArgs:
+        # Both reach the request path (branch as a ref, workflow as a file
+        # name or numeric id), so both take the same guard as owner/repo.
+        if self.branch:
+            _reject_traversal(self.branch, field="branch", allow_slash=True)
+        if self.workflow:
+            _reject_traversal(self.workflow, field="workflow", allow_slash=False)
         if self.action in {"get_run", "rerun"} and self.run_id <= 0:
             msg = f"{self.action} requires a positive 'run_id'"
             raise ValueError(msg)
@@ -241,6 +247,16 @@ class ForgePushArgs(_ForgeArgsBase):
     def _validate_action(self) -> ForgePushArgs:
         if self.path:
             _reject_traversal(self.path, field="path", allow_slash=True)
+        # Ref names land in the request path exactly as owner/repo do, so
+        # they get the same guard. Slashes are legitimate in a ref
+        # (``feature/x``), hence ``allow_slash``.
+        for field, value in (
+            ("new_branch", self.new_branch),
+            ("from_ref", self.from_ref),
+            ("branch", self.branch),
+        ):
+            if value:
+                _reject_traversal(value, field=field, allow_slash=True)
         if self.action == "create_branch" and not (self.new_branch and self.from_ref):
             msg = "create_branch requires 'new_branch' and 'from_ref'"
             raise ValueError(msg)

@@ -117,9 +117,13 @@ class ForgeAgentBase(BaseForgeClient, ABC):
     ) -> tuple[ForgeAccessibleRepo, ...]:
         action = "list accessible repos"
         collected: list[ForgeAccessibleRepo] = []
+        # The page size stays fixed for the whole walk: ``page`` is an
+        # offset counted in units of the page size, so shrinking it as the
+        # remaining budget falls would make page N+1 start somewhere other
+        # than where page N ended, silently skipping repositories.
+        page_size = min(_MAX_PAGE_SIZE, limit)
         page = 1
         while len(collected) < limit:
-            page_size = min(_MAX_PAGE_SIZE, limit - len(collected))
             resp = await self._request(
                 "GET",
                 "/user/repos",

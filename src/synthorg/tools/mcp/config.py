@@ -37,6 +37,21 @@ _FLOATING_NPM_TAGS: Final[frozenset[str]] = frozenset({"latest", "next", "canary
 # ``npx`` options that name the package to install independently of the
 # command to run, so THEY carry the spec that must be pinned.
 _PACKAGE_OPTS: Final[frozenset[str]] = frozenset({"-p", "--package"})
+# ``npx`` options whose operand is a shell command line, never a package.
+_CALL_OPTS: Final[frozenset[str]] = frozenset({"-c", "--call"})
+
+
+def _option_value(arg: str, options: frozenset[str]) -> str | None:
+    """Return the value of an ``--opt=<value>`` argument for *options*.
+
+    Returns:
+        The inline value, or ``None`` when ``arg`` is not that form.
+    """
+    for opt in options:
+        prefix = f"{opt}="
+        if arg.startswith(prefix):
+            return arg[len(prefix) :]
+    return None
 
 
 def _package_option_value(arg: str) -> str | None:
@@ -45,11 +60,16 @@ def _package_option_value(arg: str) -> str | None:
     Returns:
         The package spec, or ``None`` when ``arg`` is not that form.
     """
-    for opt in _PACKAGE_OPTS:
-        prefix = f"{opt}="
-        if arg.startswith(prefix):
-            return arg[len(prefix) :]
-    return None
+    return _option_value(arg, _PACKAGE_OPTS)
+
+
+def _call_option_value(arg: str) -> str | None:
+    """Return the command named by a ``--call=<cmd>`` style argument.
+
+    Returns:
+        The inline command, or ``None`` when ``arg`` is not that form.
+    """
+    return _option_value(arg, _CALL_OPTS)
 
 
 def _npm_package_spec(command: str, args: tuple[str, ...]) -> str | None:
@@ -76,7 +96,11 @@ def _npm_package_spec(command: str, args: tuple[str, ...]) -> str | None:
     elif base == "pnpm":
         return None
     expect_package = False
+    skip_next = False
     for arg in rest:
+        if skip_next:
+            skip_next = False
+            continue
         if expect_package:
             return arg
         if arg in _PACKAGE_OPTS:
@@ -85,6 +109,16 @@ def _npm_package_spec(command: str, args: tuple[str, ...]) -> str | None:
         named = _package_option_value(arg)
         if named is not None:
             return named
+        # ``npx -c '<shell command>'`` runs a command in the npx-augmented
+        # shell: the operand is a command line, not a package spec, so
+        # treating it as one would reject a legitimate launcher. Any
+        # package it needs must be named by an explicit --package, which a
+        # later iteration still picks up.
+        if arg in _CALL_OPTS:
+            skip_next = True
+            continue
+        if _call_option_value(arg) is not None:
+            continue
         # Every other npx flag (-y, --yes, --) starts with a dash; the
         # package operand is the first non-flag argument.
         if arg.startswith("-"):

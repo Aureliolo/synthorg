@@ -190,6 +190,8 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     started_webhook_event_bridge: bool = False,
     provider_health_prober: _AsyncStartStop | None = None,
     started_provider_health_prober: bool = False,
+    chat_inbound_consumer: _AsyncStartStop | None = None,
+    started_chat_inbound_consumer: bool = False,
 ) -> None:
     """Reverse cleanup on startup failure.
 
@@ -254,6 +256,17 @@ async def _cleanup_on_failure(  # noqa: PLR0913
             provider_health_prober,
             "Cleanup: failed to stop provider health prober",
             "provider_health_prober",
+            runtime_budget,
+        ),
+        # The Socket-Mode consumer holds a live outbound WebSocket, so a
+        # startup failure after it starts would otherwise leave it
+        # consuming (and resuming approvals) for the process lifetime:
+        # shutdown cleanup never runs on a failed startup.
+        _StopStep(
+            started_chat_inbound_consumer,
+            chat_inbound_consumer,
+            "Cleanup: failed to stop chat inbound consumer",
+            "chat_inbound_consumer",
             runtime_budget,
         ),
         _StopStep(

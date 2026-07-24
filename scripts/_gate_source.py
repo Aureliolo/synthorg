@@ -135,20 +135,28 @@ def reachable_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
     present" must therefore ignore dead statements, or a single early
     ``return`` silently disables the contract while the gate stays green.
 
+    Nested ``def`` / ``async def`` / ``class`` bodies are NOT traversed,
+    matching :func:`direct_body_nodes`: a statement inside an inner helper
+    belongs to that helper's control flow, not this scope's, and counting
+    it would let an unreachable local function satisfy a gate the enclosing
+    scope no longer honours.
+
     Args:
         body: The statement block to traverse.
 
     Yields:
-        Each reachable statement, recursing into nested blocks.
+        Each reachable statement of this scope, recursing into its own
+        control-flow blocks only.
     """
     for stmt in body:
         yield stmt
-        for field in ("body", "orelse", "finalbody"):
-            nested = getattr(stmt, field, None)
-            if isinstance(nested, list):
-                yield from reachable_statements(nested)
-        for handler in getattr(stmt, "handlers", []):
-            yield from reachable_statements(handler.body)
+        if not isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            for field in ("body", "orelse", "finalbody"):
+                nested = getattr(stmt, field, None)
+                if isinstance(nested, list):
+                    yield from reachable_statements(nested)
+            for handler in getattr(stmt, "handlers", []):
+                yield from reachable_statements(handler.body)
         if isinstance(stmt, ast.Return | ast.Raise | ast.Break | ast.Continue):
             return
 
