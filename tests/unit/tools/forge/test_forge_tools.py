@@ -317,7 +317,7 @@ class TestForgeCiTool:
         [("branch", "../../main"), ("workflow", "../ci.yml"), ("workflow", "a/b")],
     )
     async def test_trigger_field_traversal_rejected(self, field: str, bad: str) -> None:
-        arguments = {
+        arguments: dict[str, object] = {
             "action": "trigger",
             "owner": "acme",
             "repo": "proj-1",
@@ -583,7 +583,7 @@ class TestForgePushTool:
     async def test_ref_traversal_rejected(self, field: str, bad: str) -> None:
         # A ref name lands in the request path exactly as owner/repo does,
         # so it takes the same guard: no egress on a malformed ref.
-        arguments = {
+        arguments: dict[str, object] = {
             "action": "create_branch",
             "owner": "acme",
             "repo": "proj-1",
