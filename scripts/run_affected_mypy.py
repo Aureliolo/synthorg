@@ -107,6 +107,11 @@ _SAFE_MODULE_NAME = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 # never received.
 _CHECK_COMPLETED_CODES: Final[frozenset[int]] = frozenset({0, 1})
 
+# Two attempts per daemon: exactly enough to absorb the one-invocation failure
+# a stale status file causes (see ``_check_daemon``). More would only delay the
+# cold fallback that a genuinely broken daemon needs.
+_DAEMON_ATTEMPTS: Final[int] = 2
+
 # Opt out of the daemon for a single run. CI is opted out unconditionally: a
 # fresh container pays the multi-minute cold build and is then discarded before
 # any warm run repays it.
@@ -371,9 +376,21 @@ def _check_daemon(daemon: _Daemon) -> int | None:
 
     Uses ``run`` rather than ``check`` so the daemon starts on first use and
     restarts itself whenever the mypy configuration changes.
+
+    A daemon killed without cleaning up (a reboot, a machine-wide process
+    sweep) leaves a status file pointing at a dead pid. dmypy reports "Daemon
+    has died" and fails that invocation, but does start a replacement, so the
+    attempt after it succeeds. Retrying here rather than degrading to a cold
+    run costs the same wall clock either way and leaves a warm daemon behind
+    instead of nothing. The retry is safe when the daemon is merely busy:
+    ``run`` starts a daemon only when none is listening, so a second attempt
+    competes for the existing one and falls through to cold if it loses.
     """
-    code = _dmypy(daemon, "run", "--", *daemon.paths, *daemon.extra)
-    return code if code in _CHECK_COMPLETED_CODES else None
+    for _attempt in range(_DAEMON_ATTEMPTS):
+        code = _dmypy(daemon, "run", "--", *daemon.paths, *daemon.extra)
+        if code in _CHECK_COMPLETED_CODES:
+            return code
+    return None
 
 
 def _daemon_running(daemon: _Daemon) -> bool:

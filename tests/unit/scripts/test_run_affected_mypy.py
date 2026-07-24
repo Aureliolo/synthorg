@@ -79,9 +79,59 @@ def test_check_daemon_trusts_mypy_result_codes(
 def test_check_daemon_reports_no_verdict_on_daemon_failure(
     monkeypatch: pytest.MonkeyPatch, code: int
 ) -> None:
-    """A busy or broken daemon yields no verdict, so the caller re-checks cold."""
+    """A persistently broken daemon yields no verdict, so the caller goes cold."""
     monkeypatch.setattr(_MODULE, "_dmypy", lambda *a, **k: code)
     assert _MODULE._check_daemon(_MODULE._MAIN_DAEMON) is None
+
+
+def test_check_daemon_retries_past_a_stale_status_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead daemon fails once then serves the replacement it just started."""
+    codes = iter([2, 0])
+    monkeypatch.setattr(_MODULE, "_dmypy", lambda *a, **k: next(codes))
+    assert _MODULE._check_daemon(_MODULE._MAIN_DAEMON) == 0
+
+
+def test_check_daemon_retry_preserves_a_real_type_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retrying must not mask type errors found on the second attempt."""
+    codes = iter([2, 1])
+    monkeypatch.setattr(_MODULE, "_dmypy", lambda *a, **k: next(codes))
+    assert _MODULE._check_daemon(_MODULE._MAIN_DAEMON) == 1
+
+
+def test_check_daemon_does_not_retry_a_clean_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A verdict on the first attempt must not cost a second full check."""
+    attempts = 0
+
+    def _count(*_args: object, **_kwargs: object) -> int:
+        nonlocal attempts
+        attempts += 1
+        return 0
+
+    monkeypatch.setattr(_MODULE, "_dmypy", _count)
+    assert _MODULE._check_daemon(_MODULE._MAIN_DAEMON) == 0
+    assert attempts == 1
+
+
+def test_check_daemon_gives_up_after_the_bounded_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fallback must not be delayed indefinitely by a broken daemon."""
+    attempts = 0
+
+    def _count(*_args: object, **_kwargs: object) -> int:
+        nonlocal attempts
+        attempts += 1
+        return 2
+
+    monkeypatch.setattr(_MODULE, "_dmypy", _count)
+    assert _MODULE._check_daemon(_MODULE._MAIN_DAEMON) is None
+    assert attempts == _MODULE._DAEMON_ATTEMPTS
 
 
 def test_daemon_pass_skips_cold_scripts_daemon_when_out_of_scope(
