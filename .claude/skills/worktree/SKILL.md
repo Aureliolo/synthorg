@@ -225,6 +225,14 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 
    **IMPORTANT:** Never use `cd` to change into the worktree directory; use `--project`, `--prefix`, or `-C` flags instead. `cd` poisons the shell cwd for all subsequent Bash calls.
 
+   e. **Do NOT warm the mypy daemon here.** Each warm daemon holds ~2.5GB resident, so warming every worktree at creation would cost more memory than the machine has spare once several are open. It is worth warming only the worktree actually being pushed from, so surface the command in step 8's output instead and let the user fire it there:
+
+   ```bash
+   make typecheck-warm
+   ```
+
+   Pair it with `make typecheck-stop` when abandoning a worktree, since the daemon outlives the shell that started it.
+
 5. **Verify all worktrees created:**
 
    ```bash
@@ -469,11 +477,14 @@ Remove worktrees and clean up branches after PRs are merged.
    - If PR is **open**: warn user: "Branch <name> has open PR #N. Still remove?" Ask via AskUserQuestion.
    - If **no PR found**: warn: "No PR found for <branch>. `git branch -D` will permanently delete any unpushed commits on this branch. Still remove?" Ask via AskUserQuestion.
 
-5. **For each approved worktree**, remove it and track success:
+5. **For each approved worktree**, stop its mypy daemons, then remove it and track success:
 
    ```bash
+   uv run --project <path> python <path>/scripts/run_affected_mypy.py --stop
    git worktree remove <path>
    ```
+
+   The `--stop` runs first because a live daemon holds the worktree as its working directory, which on Windows makes the directory undeletable and `git worktree remove` fail with a locked-file error that looks nothing like its cause. It is a no-op when no daemon is running, so it is safe to run unconditionally.
 
    If removal fails (dirty worktree), warn the user and ask via AskUserQuestion whether to force-remove. Track which worktrees were **successfully removed**. Only these branches are eligible for deletion in Step 6.
 
