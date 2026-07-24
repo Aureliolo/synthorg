@@ -37,6 +37,30 @@ fi
 hook_type="$1"
 shift
 
+# Fail with a named diagnosis instead of git's opaque "this operation must
+# be run in a work tree", which is what `rev-parse --show-toplevel` below
+# emits once core.bare is set and which reads like the whole toolchain is
+# broken. core.bare is a SHARED setting living in the common .git/config, so
+# a single stray `git init --bare` that ran with GIT_DIR inherited from a
+# hook environment flips it for the main repo and EVERY worktree at once.
+# Nothing in this repo does that (both `--bare` call sites scrub GIT_*), so
+# the cause is external and the useful response is to name it on sight.
+if [ "$(git config --get core.bare 2>/dev/null || true)" = "true" ]; then
+  {
+    echo "core.bare is true, so this repository has no work tree and every"
+    echo "git command here will fail. That is a corrupted setting, not a"
+    echo "normal state for a checkout with files in it."
+    echo
+    echo "Fix:  git config core.bare false"
+    echo
+    echo "Cause: some process ran 'git init --bare' with GIT_DIR pointing at"
+    echo "this repo (a pre-push hook exports GIT_DIR, so a tool spawned from"
+    echo "one inherits it). The setting is shared, so all worktrees broke"
+    echo "together and all recover together."
+  } >&2
+  exit 1
+fi
+
 ROOT="$(git rev-parse --show-toplevel)"
 export UV_FROZEN=1
 
