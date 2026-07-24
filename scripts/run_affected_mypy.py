@@ -712,10 +712,11 @@ def _resolve_changed_files() -> list[str] | None:
         The changed paths, or ``None`` when git could not report them.
     """
     try:
-        return changed_files(merge_base())
+        changed: list[str] = changed_files(merge_base())
     except GitError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return None
+    return changed
 
 
 def _warm() -> int:
