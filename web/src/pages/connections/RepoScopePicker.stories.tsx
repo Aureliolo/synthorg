@@ -44,6 +44,18 @@ export const WithSelection: Story = {
   },
 }
 
+export const WithWildcardScope: Story = {
+  args: {
+    selected: ['acme/*'],
+  },
+}
+
+export const WithStaleSelection: Story = {
+  args: {
+    selected: ['acme/web-app', 'acme/removed-repo'],
+  },
+}
+
 export const NoReachableRepos: Story = {
   parameters: {
     msw: { handlers: [scanHandler([])] },

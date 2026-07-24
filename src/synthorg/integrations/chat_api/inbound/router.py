@@ -27,6 +27,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Final, Protocol, runtime_checkable
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.chat_api.inbound.models import (
     InboundChatEvent,
@@ -44,6 +45,15 @@ from synthorg.settings.resolver import ConfigResolver
 logger = get_logger(__name__)
 
 _DECIDERS_KEY: Final[str] = "chat_inbound_deciders"
+
+# A decision reaction can reach the consumer before the notifier finishes
+# registering the thread: the message is live in Slack while our postMessage
+# response is still returning, so the ``(channel, ts) -> approval_id`` mapping
+# is written a beat later. Re-resolve a few times before giving up so a fast
+# reaction is not dropped. Only decision-bearing reactions pay this; ordinary
+# channel reactions resolve to no decision and never reach the retry.
+_RESOLVE_ATTEMPTS: Final[int] = 4
+_RESOLVE_RETRY_SECONDS: Final[float] = 0.5
 
 # Reaction shortcodes (no leading/trailing colons) that decide an approval.
 _APPROVE_REACTIONS: Final[frozenset[str]] = frozenset(
@@ -106,9 +116,10 @@ class InboundResumeRouter:
         config_resolver: Live settings resolver for the decider allowlist.
             ``None`` denies every decision (an inbound control surface must
             never authorise itself).
+        clock: Clock seam for the resolve-retry backoff; tests inject a fake.
     """
 
-    __slots__ = ("_config_resolver", "_dispatcher", "_registry")
+    __slots__ = ("_clock", "_config_resolver", "_dispatcher", "_registry")
 
     def __init__(
         self,
@@ -116,10 +127,12 @@ class InboundResumeRouter:
         registry: InboundThreadRegistry,
         dispatcher: ChatResumeDispatcher,
         config_resolver: ConfigResolver | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._registry = registry
         self._dispatcher = dispatcher
         self._config_resolver = config_resolver
+        self._clock: Clock = clock if clock is not None else SystemClock()
 
     def set_config_resolver(self, resolver: ConfigResolver) -> None:
         """Wire the live settings resolver (post-construction)."""
@@ -153,18 +166,30 @@ class InboundResumeRouter:
             return frozenset()
         return frozenset(part.strip() for part in raw.split(",") if part.strip())
 
+    async def _resolve_approval(self, event: InboundChatEvent) -> str | None:
+        """Resolve the approval a decision answers, retrying the notify race.
+
+        The notifier registers ``(channel, ts) -> approval_id`` a beat after
+        the message goes live, so a fast reaction can arrive first. Re-resolve
+        a few times before conceding it is genuinely untracked.
+
+        Returns:
+            The approval id, or ``None`` once the bounded retries are spent.
+        """
+        for attempt in range(_RESOLVE_ATTEMPTS):
+            approval_id = self._registry.resolve(
+                channel=event.channel, thread_ts=event.thread_ts
+            )
+            if approval_id is not None:
+                return approval_id
+            if attempt + 1 < _RESOLVE_ATTEMPTS:
+                await self._clock.sleep(_RESOLVE_RETRY_SECONDS)
+        return None
+
     async def route(self, event: InboundChatEvent) -> None:
         """Resume the approval this event answers, or ignore it."""
-        approval_id = self._registry.resolve(
-            channel=event.channel, thread_ts=event.thread_ts
-        )
-        if approval_id is None:
-            logger.debug(
-                CHAT_INBOUND_EVENT_IGNORED,
-                kind=event.kind.value,
-                reason="no_tracked_approval",
-            )
-            return
+        # Decide first: only a real approve/reject reaction is worth the
+        # resolve retry, so ordinary channel reactions never pay for it.
         decision = _decide(event)
         if decision is None:
             logger.debug(
@@ -173,10 +198,16 @@ class InboundResumeRouter:
                 reason="no_decision",
             )
             return
-        # Authorisation is checked AFTER the decision is resolved but BEFORE
-        # any write: the thread correlation proves which approval an event
-        # answers, never that this human may answer it. Anyone able to add a
-        # reaction in the channel would otherwise decide a governed action.
+        approval_id = await self._resolve_approval(event)
+        if approval_id is None:
+            logger.debug(
+                CHAT_INBOUND_EVENT_IGNORED,
+                kind=event.kind.value,
+                reason="no_tracked_approval",
+            )
+            return
+        # Correlation identifies the approval, not an authorised decider;
+        # authorise before any write (see _authorised_deciders).
         if event.user not in await self._authorised_deciders():
             logger.warning(
                 CHAT_INBOUND_EVENT_IGNORED,

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { scanAccessibleRepos } from '@/api/endpoints/connections'
 import { type ForgeAccessibleRepo } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,16 @@ const log = createLogger('RepoScopePicker')
 /** Wire key a repository is scoped by: ``owner/repo``. */
 function repoKey(repo: ForgeAccessibleRepo): string {
   return `${repo.owner}/${repo.repo}`
+}
+
+/**
+ * Whether a scope entry is an ``owner/*`` wildcard. The backend validator
+ * permits these, so the picker must treat them as broad grants rather than
+ * exact repository keys: a concrete repo under the wildcard is in scope even
+ * though its own key is not selected, so a per-repo checkbox cannot narrow it.
+ */
+function isWildcardScope(key: string): boolean {
+  return key.endsWith('/*')
 }
 
 type ScanState =
@@ -110,6 +120,36 @@ function UnscannedRepoRow({
   )
 }
 
+/**
+ * A broad ``owner/*`` grant. The concrete repositories it covers stay
+ * unchecked in the scan list because their exact keys are not selected, so the
+ * only way to narrow it is to revoke the wildcard itself: this row makes that
+ * explicit and removable rather than leaving a silent org-wide grant in place.
+ */
+function WildcardScopeRow({ scopeKey, onRemove }: { scopeKey: string; onRemove: () => void }) {
+  const labelId = `repo-scope-wildcard-${scopeKey}`
+  return (
+    <label
+      htmlFor={labelId}
+      className={cn(
+        'flex cursor-pointer items-center gap-2 rounded-md border border-warning/40 bg-card p-3',
+        'transition-colors hover:bg-card-hover',
+      )}
+    >
+      <Checkbox
+        id={labelId}
+        checked
+        onCheckedChange={onRemove}
+        aria-label={`Remove ${scopeKey} from scope`}
+      />
+      <span className="flex-1 text-sm text-foreground">{scopeKey}</span>
+      <span className="text-micro uppercase tracking-wide text-warning">
+        every repository under this owner
+      </span>
+    </label>
+  )
+}
+
 function ScanResults({
   scan,
   selected,
@@ -142,6 +182,30 @@ function ScanResults({
   )
 }
 
+function WildcardScope({
+  selected,
+  onRemove,
+}: {
+  selected: readonly string[]
+  onRemove: (key: string) => void
+}) {
+  const wildcards = selected.filter(isWildcardScope)
+  if (wildcards.length === 0) return null
+  return (
+    <div className="flex flex-col gap-2">
+      {wildcards.map((key) => (
+        <WildcardScopeRow
+          key={key}
+          scopeKey={key}
+          onRemove={() => {
+            onRemove(key)
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
 function UnscannedScope({
   scan,
   selected,
@@ -153,7 +217,8 @@ function UnscannedScope({
 }) {
   const scanned =
     scan.status === 'loaded' ? new Set(scan.repos.map(repoKey)) : new Set<string>()
-  const unscanned = selected.filter((key) => !scanned.has(key))
+  // Wildcards are rendered by WildcardScope, not as unscanned concrete repos.
+  const unscanned = selected.filter((key) => !isWildcardScope(key) && !scanned.has(key))
   if (unscanned.length === 0) return null
   return (
     <div className="flex flex-col gap-2">
@@ -185,12 +250,26 @@ function UnscannedScope({
 export function RepoScopePicker({ connectionName, selected, onChange }: RepoScopePickerProps) {
   const [scan, setScan] = useState<ScanState>({ status: 'idle' })
 
+  // The picker stays mounted while the form switches connections, so a scan
+  // must belong to the connection currently shown. Reset the scan the moment
+  // the prop changes (adjust-state-during-render, not an effect), and drop any
+  // in-flight response whose connection is no longer active. Without this a
+  // slow scan of the previous connection overwrites this one's repo list.
+  const activeConnectionRef = useRef(connectionName)
+  if (activeConnectionRef.current !== connectionName) {
+    activeConnectionRef.current = connectionName
+    setScan({ status: 'idle' })
+  }
+
   const runScan = useCallback(async () => {
+    const requested = connectionName
     setScan({ status: 'loading' })
     try {
       const repos = await scanAccessibleRepos(connectionName)
+      if (activeConnectionRef.current !== requested) return
       setScan({ status: 'loaded', repos })
     } catch (err) {
+      if (activeConnectionRef.current !== requested) return
       log.error('accessible-repo scan failed', err)
       setScan({ status: 'error', message: getCrudErrorTitle(err, 'Scan failed').title })
     }
@@ -230,6 +309,7 @@ export function RepoScopePicker({ connectionName, selected, onChange }: RepoScop
         repository.
       </p>
 
+      <WildcardScope selected={selected} onRemove={remove} />
       <ScanResults scan={scan} selected={selected} onToggle={toggle} />
       <UnscannedScope scan={scan} selected={selected} onRemove={remove} />
 

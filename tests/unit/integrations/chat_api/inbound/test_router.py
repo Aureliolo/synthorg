@@ -1,6 +1,7 @@
 """Tests for the inbound resume router."""
 
 from dataclasses import dataclass, field
+from typing import override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,8 +11,12 @@ from synthorg.integrations.chat_api.inbound.models import (
     InboundEventKind,
 )
 from synthorg.integrations.chat_api.inbound.registry import InboundThreadRegistry
-from synthorg.integrations.chat_api.inbound.router import InboundResumeRouter
+from synthorg.integrations.chat_api.inbound.router import (
+    _RESOLVE_ATTEMPTS,
+    InboundResumeRouter,
+)
 from synthorg.settings.resolver import ConfigResolver
+from tests._shared.fake_clock import FakeClock
 from tests._shared.mock_of import mock_of
 
 pytestmark = pytest.mark.unit
@@ -55,14 +60,38 @@ def _router(
     dispatcher: _FakeDispatcher,
     *,
     config_resolver: ConfigResolver | None = None,
+    clock: FakeClock | None = None,
 ) -> tuple[InboundResumeRouter, InboundThreadRegistry]:
     registry = InboundThreadRegistry()
     router = InboundResumeRouter(
         registry=registry,
         dispatcher=dispatcher,
         config_resolver=config_resolver if config_resolver is not None else _resolver(),
+        clock=clock if clock is not None else FakeClock(),
     )
     return router, registry
+
+
+class _LateRegistry(InboundThreadRegistry):
+    """A registry that only resolves after ``resolve_after`` misses.
+
+    Stands in for the notify-race window: the ``(channel, ts) -> approval_id``
+    mapping is written a beat after the message goes live. Subclasses the real
+    registry so the router's typed constructor accepts it.
+    """
+
+    def __init__(self, approval_id: str, *, resolve_after: int) -> None:
+        super().__init__()
+        self._approval_id = approval_id
+        self._resolve_after = resolve_after
+        self.calls = 0
+
+    @override
+    def resolve(self, *, channel: str, thread_ts: str) -> str | None:
+        _ = (channel, thread_ts)
+        hit = self.calls >= self._resolve_after
+        self.calls += 1
+        return self._approval_id if hit else None
 
 
 def _reply(text: str = "go ahead", *, thread_ts: str = "100.1") -> InboundChatEvent:
@@ -204,3 +233,54 @@ class TestDeciderAuthorisation:
         registry.register(channel="C1", thread_ts="100.1", approval_id="ap-1")
         await router.route(_reaction("white_check_mark"))
         assert registry.resolve(channel="C1", thread_ts="100.1") == "ap-1"
+
+
+class TestResolveRaceWindow:
+    """A decision reaction that beats thread registration is not dropped."""
+
+    async def test_reaction_resolves_after_a_late_registration(self) -> None:
+        # First resolve misses (registration not written yet); the second hit.
+        clock = FakeClock()
+        registry = _LateRegistry("ap-1", resolve_after=1)
+        dispatcher = _FakeDispatcher()
+        router = InboundResumeRouter(
+            registry=registry,
+            dispatcher=dispatcher,
+            config_resolver=_resolver(),
+            clock=clock,
+        )
+        await router.route(_reaction("white_check_mark"))
+        assert dispatcher.calls[0]["approval_id"] == "ap-1"
+        assert len(clock.sleep_calls) == 1
+
+    async def test_gives_up_after_the_bounded_retries(self) -> None:
+        clock = FakeClock()
+        registry = _LateRegistry("ap-1", resolve_after=_RESOLVE_ATTEMPTS + 1)
+        dispatcher = _FakeDispatcher()
+        router = InboundResumeRouter(
+            registry=registry,
+            dispatcher=dispatcher,
+            config_resolver=_resolver(),
+            clock=clock,
+        )
+        await router.route(_reaction("white_check_mark"))
+        assert dispatcher.calls == []
+        assert registry.calls == _RESOLVE_ATTEMPTS
+        # One fewer sleep than attempts: no backoff after the final miss.
+        assert len(clock.sleep_calls) == _RESOLVE_ATTEMPTS - 1
+
+    async def test_non_decision_reaction_never_retries(self) -> None:
+        # An ordinary channel reaction resolves to no decision, so it must
+        # not pay the resolve retry at all.
+        clock = FakeClock()
+        registry = _LateRegistry("ap-1", resolve_after=99)
+        dispatcher = _FakeDispatcher()
+        router = InboundResumeRouter(
+            registry=registry,
+            dispatcher=dispatcher,
+            config_resolver=_resolver(),
+            clock=clock,
+        )
+        await router.route(_reaction("eyes"))
+        assert registry.calls == 0
+        assert len(clock.sleep_calls) == 0

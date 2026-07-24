@@ -225,6 +225,84 @@ def f(value):
         assert _reaches_trailing_call(source) is True
 
 
+class TestStaticallyDeadBranches:
+    """A branch a constant condition can never enter is not traversed.
+
+    A scoper call parked in ``if False:`` would otherwise satisfy a gate
+    while the live path uses an unscoped capability set.
+    """
+
+    def test_if_false_body_is_skipped(self) -> None:
+        source = f"""\
+def f():
+    if False:
+        marker("{_TRAILING_MARKER}")
+    return None
+"""
+        assert _reaches_trailing_call(source) is False
+
+    def test_if_true_else_is_skipped(self) -> None:
+        source = f"""\
+def f():
+    if True:
+        pass
+    else:
+        marker("{_TRAILING_MARKER}")
+    return None
+"""
+        assert _reaches_trailing_call(source) is False
+
+    def test_while_false_body_is_skipped(self) -> None:
+        source = f"""\
+def f(step):
+    while False:
+        marker("{_TRAILING_MARKER}")
+    return None
+"""
+        assert _reaches_trailing_call(source) is False
+
+    def test_if_true_body_stays_live(self) -> None:
+        source = f"""\
+def f():
+    if True:
+        marker("{_TRAILING_MARKER}")
+    return None
+"""
+        assert _reaches_trailing_call(source) is True
+
+    def test_if_false_else_stays_live(self) -> None:
+        source = f"""\
+def f():
+    if False:
+        pass
+    else:
+        marker("{_TRAILING_MARKER}")
+    return None
+"""
+        assert _reaches_trailing_call(source) is True
+
+    def test_non_constant_condition_stays_live(self) -> None:
+        source = f"""\
+def f(cond):
+    if cond:
+        marker("{_TRAILING_MARKER}")
+    return None
+"""
+        assert _reaches_trailing_call(source) is True
+
+    def test_while_false_else_stays_live(self) -> None:
+        # ``else`` runs on normal completion, immediately for a false test.
+        source = f"""\
+def f():
+    while False:
+        pass
+    else:
+        marker("{_TRAILING_MARKER}")
+    return None
+"""
+        assert _reaches_trailing_call(source) is True
+
+
 class TestNestedScopes:
     """A nested ``def`` body belongs to that helper, not this scope."""
 

@@ -196,6 +196,61 @@ def _block_terminates(body: Sequence[ast.stmt]) -> bool:
     return any(_terminates(stmt) for stmt in body)
 
 
+def _const_bool(test: ast.expr) -> bool | None:
+    """The truthiness of a bare-constant test, or ``None`` if not constant.
+
+    Returns:
+        ``True`` / ``False`` for a literal test (``if True:``,
+        ``while False:``), ``None`` for anything the value of which is not
+        statically known. ``None`` keeps the branch reachable, so an
+        unprovable condition is never mistaken for dead code.
+    """
+    if isinstance(test, ast.Constant):
+        return bool(test.value)
+    return None
+
+
+def _live_child_blocks(stmt: ast.stmt) -> Iterator[Sequence[ast.stmt]]:
+    """Yield the sub-blocks of *stmt* control flow can actually enter.
+
+    A statically dead branch is omitted: the body of ``if False:`` / the
+    ``else`` of ``if True:`` / the body of ``while False:`` never runs, so a
+    scoper call parked there must not satisfy a gate the live path no longer
+    honours. A nested ``def`` / ``class`` owns its own control flow and is
+    not descended into (matching :func:`direct_body_nodes`).
+
+    Args:
+        stmt: The statement whose reachable sub-blocks to yield.
+
+    Yields:
+        Each statement block of *stmt* that is not provably unreachable.
+    """
+    if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+        return
+    if isinstance(stmt, ast.If):
+        cond = _const_bool(stmt.test)
+        if cond is not False:
+            yield stmt.body
+        if cond is not True:
+            yield stmt.orelse
+        return
+    if isinstance(stmt, ast.While):
+        # ``orelse`` runs on normal completion, including immediately when
+        # the test is a constant false, so it stays reachable regardless.
+        if _const_bool(stmt.test) is not False:
+            yield stmt.body
+        yield stmt.orelse
+        return
+    for field in ("body", "orelse", "finalbody"):
+        block = getattr(stmt, field, None)
+        if isinstance(block, list):
+            yield block
+    for handler in getattr(stmt, "handlers", []):
+        yield handler.body
+    for case in getattr(stmt, "cases", []):
+        yield case.body
+
+
 def reachable_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
     """Yield the statements of a block control flow can still reach.
 
@@ -209,11 +264,12 @@ def reachable_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
     or a ``try`` whose ``finally`` raises, ends the block just as firmly as
     a bare ``return``. :func:`_terminates` decides that, conservatively.
 
-    Nested ``def`` / ``async def`` / ``class`` bodies are NOT traversed,
-    matching :func:`direct_body_nodes`: a statement inside an inner helper
-    belongs to that helper's control flow, not this scope's, and counting
-    it would let an unreachable local function satisfy a gate the enclosing
-    scope no longer honours.
+    A statically dead branch is skipped entirely: the body of ``if False:``
+    or ``while False:``, or the ``else`` of ``if True:``, is never entered,
+    so :func:`_live_child_blocks` omits it and a call parked there cannot
+    satisfy a gate. Nested ``def`` / ``async def`` / ``class`` bodies are
+    likewise NOT traversed, matching :func:`direct_body_nodes`: a statement
+    inside an inner helper belongs to that helper's control flow.
 
     Args:
         body: The statement block to traverse.
@@ -224,15 +280,8 @@ def reachable_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
     """
     for stmt in body:
         yield stmt
-        if not isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            for field in ("body", "orelse", "finalbody"):
-                nested = getattr(stmt, field, None)
-                if isinstance(nested, list):
-                    yield from reachable_statements(nested)
-            for handler in getattr(stmt, "handlers", []):
-                yield from reachable_statements(handler.body)
-            for case in getattr(stmt, "cases", []):
-                yield from reachable_statements(case.body)
+        for block in _live_child_blocks(stmt):
+            yield from reachable_statements(block)
         if _terminates(stmt):
             return
 

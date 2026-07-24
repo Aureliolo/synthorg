@@ -323,14 +323,19 @@ async def _run_shutdown(  # noqa: PLR0913
         # for its own 10s so the Socket-Mode WebSocket closes gracefully. A 2s
         # outer bound would cancel that on any ordinary shutdown and report a
         # timeout for a consumer that was not hung at all.
-        await _try_stop(
+        chat_consumer_stopped = await _try_stop(
             tasks.chat_inbound_consumer.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop chat inbound consumer",
             timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
             service="chat_inbound_consumer",
         )
-        tasks.chat_inbound_consumer = None
+        # Cleared only on a clean stop: a timed-out stop leaves the loop task
+        # still owning the Socket-Mode session, and a lifespan re-entry that
+        # saw ``None`` here would open a second session against the same
+        # connection. Keeping the handle makes the next entry re-attempt it.
+        if chat_consumer_stopped:
+            tasks.chat_inbound_consumer = None
     communication = app_state.slice(CommunicationStateSlice)
     integrations = app_state.slice(IntegrationsStateSlice)
     if communication.event_stream_hub is not None:

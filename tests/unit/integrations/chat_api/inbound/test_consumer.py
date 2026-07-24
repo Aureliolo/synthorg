@@ -43,9 +43,15 @@ def _resolver(
         get_bool.return_value = enabled
 
     # Key-aware: the consumer reads the bound connection while the router
-    # reads the decider allowlist off the same resolver.
+    # reads the decider allowlist off the same resolver. A misspelt production
+    # key must fail loudly, not silently resolve to the connection.
     async def _get_str(_namespace: str, key: str) -> str:
-        return deciders if key == "chat_inbound_deciders" else connection
+        if key == "chat_inbound_deciders":
+            return deciders
+        if key == "chat_inbound_connection":
+            return connection
+        msg = f"unexpected settings key: {key}"
+        raise AssertionError(msg)
 
     resolver: ConfigResolver = mock_of[ConfigResolver](
         get_bool=get_bool,

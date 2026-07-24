@@ -10,7 +10,10 @@ a Socket-Mode app token, so starting it unconditionally is safe. Returns
 the consumer so the shutdown runner can stop it.
 """
 
+from typing import Final
+
 from synthorg.api.chat_inbound_resume import ApprovalResumeDispatcher
+from synthorg.api.lifecycle_shared import _try_stop
 from synthorg.api.state import AppState
 from synthorg.integrations.chat_api.inbound.consumer import ChatInboundConsumer
 from synthorg.integrations.chat_api.inbound.router import InboundResumeRouter
@@ -20,6 +23,15 @@ from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_AUTO_
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
+
+_CONSUMER_RESTART_STOP_SECONDS: Final[float] = 15.0
+"""Budget for stopping a prior inbound consumer before restarting it.
+
+Exceeds ``ChatInboundConsumer``'s own 10s shield so an ordinary graceful
+Socket-Mode close completes, while still bounding a genuinely hung stop
+rather than blocking startup indefinitely. On expiry the restart is
+skipped, never forced.
+"""
 
 
 async def start_chat_inbound_consumer(
@@ -66,4 +78,43 @@ async def start_chat_inbound_consumer(
     return consumer
 
 
-__all__ = ["start_chat_inbound_consumer"]
+async def restart_chat_inbound_consumer(
+    app_state: AppState,
+    current: ChatInboundConsumer | None,
+) -> ChatInboundConsumer | None:
+    """Stop *current* if present, then start a fresh consumer if it stopped.
+
+    Idempotent on lifespan re-entry: a prior instance is stopped before a new
+    one starts so consumers do not accumulate. Inert until the operator enables
+    inbound and binds a connection, so an unconditional call is safe.
+
+    Returns:
+        The handle the caller should store: the fresh consumer after a clean
+        stop (or when there was none), or *current* unchanged when the stop
+        did NOT complete. A timed-out stop leaves the old loop task still
+        owning the Socket-Mode session; returning a fresh handle then would let
+        a second session open against the same connection (the collision the
+        consumer's own ``_unrestartable`` guard prevents for a reused instance
+        but cannot when the orchestrator replaces it). Keeping *current* makes
+        the next lifespan entry re-attempt the stop first.
+    """
+    stopped = True
+    if current is not None:
+        stopped = await _try_stop(
+            current.stop(),
+            API_APP_STARTUP,
+            "Failed to stop prior chat inbound consumer before restart",
+            timeout=_CONSUMER_RESTART_STOP_SECONDS,
+            service="chat_inbound_consumer",
+        )
+    if not stopped:
+        logger.warning(
+            API_APP_STARTUP,
+            detail="chat_inbound_consumer_restart_skipped",
+            service="chat_inbound_consumer",
+        )
+        return current
+    return await start_chat_inbound_consumer(app_state)
+
+
+__all__ = ["restart_chat_inbound_consumer", "start_chat_inbound_consumer"]
