@@ -118,6 +118,7 @@ class _StopStrategy:
                                     "acceptance_criteria": [
                                         "The release scope is documented.",
                                     ],
+                                    "expected_artifacts": ["docs/release-scope.md"],
                                 },
                             ],
                         },

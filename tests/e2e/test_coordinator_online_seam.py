@@ -119,6 +119,7 @@ class _DecompositionAwareStrategy:
                                     "acceptance_criteria": [
                                         "Data sources are catalogued.",
                                     ],
+                                    "expected_artifacts": ["docs/data-sources.md"],
                                 },
                                 {
                                     "id": "sub-analysis",
@@ -128,6 +129,7 @@ class _DecompositionAwareStrategy:
                                     "acceptance_criteria": [
                                         "Findings are summarised.",
                                     ],
+                                    "expected_artifacts": ["docs/findings.md"],
                                 },
                             ],
                         },

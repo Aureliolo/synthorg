@@ -7,23 +7,20 @@ backslashes and exits 127. A hook test that resolved it would fail on a
 machine where the hook itself is perfectly fine, which is the opposite of what
 these tests are for.
 
-So the WSL launcher is rejected and Git Bash is looked for by its usual
-install locations. When neither is present the tests skip, exactly as they
-already do on a machine with no Bash at all.
+So the WSL launcher is rejected and Git Bash is located relative to the ``git``
+already on PATH, which finds it wherever Git for Windows was installed. When
+neither is present the tests skip, exactly as they already do on a machine with
+no Bash at all.
 """
 
-import os
 import shutil
 from pathlib import Path
 
-#: Where Git for Windows puts Bash. Checked in order when PATH only offers the
-#: WSL launcher.
-_GIT_BASH_CANDIDATES: tuple[Path, ...] = (
-    Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Git/bin/bash.exe",
-    Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Git/usr/bin/bash.exe",
-    Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"))
-    / "Git/bin/bash.exe",
-)
+#: The subdirectories Git for Windows puts Bash in, relative to its install
+#: root. ``bin`` is the wrapper, ``usr/bin`` the MSYS binary behind it.
+_BASH_SUBPATHS: tuple[str, ...] = ("bin/bash.exe", "usr/bin/bash.exe")
+
+_WSL_LAUNCHER_DIR = "system32"
 
 
 def _is_wsl_launcher(candidate: Path) -> bool:
@@ -32,11 +29,26 @@ def _is_wsl_launcher(candidate: Path) -> bool:
     Returns:
         ``True`` for the ``System32\\bash.exe`` launcher.
     """
-    system_root = Path(os.environ.get("SYSTEMROOT", r"C:\Windows"))
     try:
-        return candidate.resolve().is_relative_to(system_root / "System32")
+        resolved = candidate.resolve()
     except OSError:
         return False
+    return any(part.lower() == _WSL_LAUNCHER_DIR for part in resolved.parts)
+
+
+def _git_bash_candidates() -> tuple[Path, ...]:
+    """Bash paths derived from the Git install that owns the ``git`` on PATH.
+
+    Returns:
+        The candidate paths, empty when Git is not installed.
+    """
+    git = shutil.which("git")
+    if git is None:
+        return ()
+    # Git lives in <root>/cmd/git.exe or <root>/bin/git.exe; Bash is a sibling
+    # of that directory, so the install root is two levels up either way.
+    root = Path(git).resolve().parent.parent
+    return tuple(root / sub for sub in _BASH_SUBPATHS)
 
 
 def resolve_bash() -> str | None:
@@ -48,7 +60,7 @@ def resolve_bash() -> str | None:
     found = shutil.which("bash")
     if found is not None and not _is_wsl_launcher(Path(found)):
         return found
-    for candidate in _GIT_BASH_CANDIDATES:
+    for candidate in _git_bash_candidates():
         if candidate.is_file():
             return str(candidate)
     return None
