@@ -19,7 +19,7 @@ from synthorg.observability.events.mcp import (
     MCP_CONFIG_VALIDATION_FAILED,
 )
 from synthorg.observability.redaction import safe_error_description
-from synthorg.tools.mcp._npm_pin import npm_package_spec, npm_spec_is_pinned
+from synthorg.tools.mcp._npm_pin import unpinned_npm_packages
 
 logger = get_logger(__name__)
 
@@ -180,12 +180,14 @@ class MCPServerConfig(BaseModel):
         """
         if self.transport != "stdio" or self.command is None:
             return self
-        spec = npm_package_spec(str(self.command), self.args)
-        if spec is None or npm_spec_is_pinned(spec):
+        unpinned = unpinned_npm_packages(str(self.command), self.args)
+        if not unpinned:
             return self
+        rendered = ", ".join(repr(spec) for spec in unpinned)
         msg = (
-            f"Server {self.name!r}: npm package {spec!r} must be pinned to an "
-            f"explicit version (e.g. '{spec}@1.2.3'), not floating/unpinned"
+            f"Server {self.name!r}: npm package(s) {rendered} must be pinned to "
+            f"an explicit version (e.g. '{unpinned[0]}@1.2.3'), not "
+            f"floating/unpinned"
         )
         logger.warning(
             MCP_CONFIG_VALIDATION_FAILED,

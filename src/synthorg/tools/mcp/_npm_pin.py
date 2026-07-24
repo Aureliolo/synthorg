@@ -37,38 +37,51 @@ def _option_value(arg: str, options: frozenset[str]) -> str | None:
     return None
 
 
-def npm_package_spec(command: str, args: tuple[str, ...]) -> str | None:
-    """Return the npm package spec an ``npx``-style command will run.
+def npm_package_specs(command: str, args: tuple[str, ...]) -> tuple[str, ...]:
+    """Return every npm package spec an ``npx``-style command installs.
+
+    ``--package`` is repeatable and npx installs each one, so stopping at
+    the first spec would clear
+    ``npx --package=safe@1.0.0 --package=whatever`` on the strength of the
+    pinned half while the floating half still resolves fresh on every
+    reconnect. Every operand is returned so the caller can reject on any
+    of them.
 
     ``npx --package=foo bar`` installs ``foo`` and runs the ``bar`` binary
-    from it, so the package option (not the first positional) is what has
-    to be pinned; taking the positional would let an unpinned ``foo``
-    through unchecked.
+    from it, so once any ``--package`` is present the positional is a
+    binary name, not a package.
 
     Returns:
-        The package operand (e.g. ``@scope/pkg@2.1.0``), or ``None`` when
-        the command is not an npx-style launcher.
+        Each package operand (e.g. ``@scope/pkg@2.1.0``), or an empty
+        tuple when the command is not an npx-style launcher or names no
+        package.
     """
     # Case-folded: Windows resolves ``NPX``/``Npx.cmd`` to the same launcher,
     # so a case-varied command must not slip past the pin check.
     base = command.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].lower()
     if base not in _NPX_COMMANDS:
-        return None
+        return ()
     rest = list(args)
     # ``pnpm dlx`` / ``bunx`` variants: drop a leading ``dlx`` subcommand.
     if base == "pnpm" and rest and rest[0] == "dlx":
         rest = rest[1:]
     elif base == "pnpm":
-        return None
-    return _first_package_operand(rest)
+        return ()
+    named, positional = _package_operands(rest)
+    if named:
+        return tuple(named)
+    return (positional,) if positional is not None else ()
 
 
-def _first_package_operand(rest: list[str]) -> str | None:
-    """Return the first argument that names a package, if any.
+def _package_operands(rest: list[str]) -> tuple[list[str], str | None]:
+    """Split arguments into explicit package operands and the positional.
 
     Returns:
-        The package spec, or ``None`` when the arguments name none.
+        Every ``--package`` operand, and the first bare argument (the
+        package only when no ``--package`` was given).
     """
+    named: list[str] = []
+    positional: str | None = None
     expect_package = False
     skip_next = False
     for arg in rest:
@@ -76,13 +89,16 @@ def _first_package_operand(rest: list[str]) -> str | None:
             skip_next = False
             continue
         if expect_package:
-            return arg
+            named.append(arg)
+            expect_package = False
+            continue
         if arg in _PACKAGE_OPTS:
             expect_package = True
             continue
-        named = _option_value(arg, _PACKAGE_OPTS)
-        if named is not None:
-            return named
+        value = _option_value(arg, _PACKAGE_OPTS)
+        if value is not None:
+            named.append(value)
+            continue
         # ``npx -c '<shell command>'`` runs a command in the npx-augmented
         # shell: the operand is a command line, not a package spec, so
         # treating it as one would reject a legitimate launcher. Any
@@ -97,8 +113,20 @@ def _first_package_operand(rest: list[str]) -> str | None:
         # package operand is the first non-flag argument.
         if arg.startswith("-"):
             continue
-        return arg
-    return None
+        if positional is None:
+            positional = arg
+    return named, positional
+
+
+def unpinned_npm_packages(command: str, args: tuple[str, ...]) -> tuple[str, ...]:
+    """Return the package specs *command* installs without a version pin.
+
+    Returns:
+        Every floating or unpinned spec, in command-line order; empty when
+        the command pins everything it installs (or installs nothing).
+    """
+    specs = npm_package_specs(command, args)
+    return tuple(spec for spec in specs if not npm_spec_is_pinned(spec))
 
 
 def npm_spec_is_pinned(spec: str) -> bool:

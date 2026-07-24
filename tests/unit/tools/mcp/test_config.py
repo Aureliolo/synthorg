@@ -170,6 +170,27 @@ class TestMCPServerConfigNpmPin:
                 args=("-c", "run-server", "--package", "pkg"),
             )
 
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("--package=safe@1.0.0", "--package=floating", "bin"),
+            ("--package", "safe@1.0.0", "--package", "floating", "bin"),
+            ("--package=floating", "--package=safe@1.0.0", "bin"),
+        ],
+        ids=["inline_pinned_first", "separate_pinned_first", "inline_floating_first"],
+    )
+    def test_every_repeated_package_must_be_pinned(self, args: tuple[str, ...]) -> None:
+        # ``--package`` is repeatable and npx installs each one, so clearing
+        # the launcher on the strength of the pinned half would leave the
+        # floating half resolving fresh on every reconnect.
+        with pytest.raises(ValidationError, match="'floating'"):
+            MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
+
+    def test_repeated_packages_all_pinned_accepted(self) -> None:
+        args = ("--package=a@1.0.0", "--package=b@2.0.0", "bin")
+        cfg = MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
+        assert cfg.args == args
+
 
 class TestMCPServerConfigStdio:
     """Stdio transport validation."""
