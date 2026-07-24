@@ -45,7 +45,12 @@ shift
 # hook environment flips it for the main repo and EVERY worktree at once.
 # Nothing in this repo does that (both `--bare` call sites scrub GIT_*), so
 # the cause is external and the useful response is to name it on sight.
-if [ "$(git config --get core.bare 2>/dev/null || true)" = "true" ]; then
+# ``--local`` so a stray GLOBAL core.bare (someone's ~/.gitconfig) cannot block
+# an ordinary checkout: the corruption we detect is written into the repo's own
+# shared config by an inherited-GIT_DIR ``git init --bare``, which is exactly the
+# local scope. ``--bool`` canonicalises git's truthy spellings (true/yes/on/1)
+# so a non-``true`` literal cannot slip a bare repo past the guard.
+if [ "$(git config --local --bool --get core.bare 2>/dev/null || true)" = "true" ]; then
   {
     echo "core.bare is true, so this repository has no work tree and every"
     echo "git command here will fail. That is a corrupted setting, not a"
