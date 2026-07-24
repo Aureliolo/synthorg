@@ -35,6 +35,7 @@ Exit codes:
 """
 
 import argparse
+import contextlib
 import re
 import shutil
 import subprocess
@@ -155,6 +156,14 @@ _GROUPS: Final[Mapping[str, tuple[_Tool, ...]]] = MappingProxyType(
                     "eslint",
                     "--max-warnings",
                     "0",
+                    # A changed set can include generated files (``*.gen.ts``)
+                    # that eslint's own config ignores. Handing eslint an
+                    # explicitly-ignored path makes it emit a "File ignored"
+                    # warning, which ``--max-warnings 0`` then fails on. Defer
+                    # to eslint's ignore config as the single source of truth:
+                    # skip such a file silently instead of failing the push on
+                    # a file no one was ever meant to lint.
+                    "--no-warn-ignored",
                 ),
                 filename_pattern=_ESLINT_FILES,
             ),
@@ -266,6 +275,17 @@ def main() -> int:
     Returns:
         The process exit code (0 clean, 1 a tool failed, 2 unknown group).
     """
+    # ESLint (and other Node tools) print a ✖ summary and box-drawing
+    # glyphs the Windows console's default cp1252 codec cannot encode, so
+    # relaying their captured UTF-8 output through a bare ``print`` raises
+    # UnicodeEncodeError and crashes the runner that is only the messenger
+    # -- turning a real lint failure into an unreadable traceback. Re-encode
+    # our own streams as UTF-8 with replacement so a tool's Unicode
+    # diagnostic can never take the runner down with it.
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(AttributeError, ValueError):
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("group", help="group name from _GROUPS")
     parser.add_argument("filenames", nargs="*", help="files pre-commit matched")
