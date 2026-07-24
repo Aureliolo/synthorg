@@ -23,6 +23,8 @@ entirely as well as a walk that writes once per hop.
 from typing import Final
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
@@ -44,6 +46,28 @@ logger = get_logger(__name__)
 #: actor wrote first; re-reading and recomputing converges, so a small budget is
 #: sufficient and keeps a hot row from spinning.
 MAX_WRITE_ATTEMPTS: Final[int] = 3
+
+
+class ProjectAdvance(BaseModel):
+    """The outcome of one advance, with the status it actually found.
+
+    Attributes:
+        project: The project after the walk, or ``None`` when it no longer
+            exists or the write stayed contended.
+        before: The status observed on the read the winning write was computed
+            from. Callers that fire once on an edge into a status must test
+            against this, not against a read of their own: a separate read can
+            be overtaken between the two calls, and the edge would be missed
+            exactly when it mattered.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    project: Project | None = Field(default=None, description="Project after the walk")
+    before: ProjectStatus | None = Field(
+        default=None,
+        description="Status observed before the walk",
+    )
 
 
 async def link_project_to_plan(
@@ -111,7 +135,7 @@ async def advance_project_status(
     *,
     project_id: NotBlankStr,
     target: ProjectStatus,
-) -> Project | None:
+) -> ProjectAdvance:
     """Walk *project_id* to *target*, persisting one legal hop at a time.
 
     The project may be several valid hops from its derived status (a project
@@ -130,8 +154,9 @@ async def advance_project_status(
     than forcing a status.
 
     Returns:
-        The persisted project, or ``None`` when it no longer exists, the
-        target is unreachable, or the write stayed contended.
+        The walk's outcome, carrying the persisted project (``None`` when it
+        no longer exists or the write stayed contended) and the status it was
+        found in.
     """
     for attempt in range(1, MAX_WRITE_ATTEMPTS + 1):
         project = await repository.get(project_id)
@@ -141,9 +166,10 @@ async def advance_project_status(
                 project=str(project_id),
                 operation="advance",
             )
-            return None
+            return ProjectAdvance()
+        before = project.status
         if project.status == target:
-            return project
+            return ProjectAdvance(project=project, before=before)
         path = transition_path(project.status, target)
         if path is None:
             logger.info(
@@ -153,10 +179,10 @@ async def advance_project_status(
                 target_state=target.value,
                 note="unreachable; leaving the project as the operator set it",
             )
-            return project
+            return ProjectAdvance(project=project, before=before)
         walked = await _walk_hops(repository, project, path)
         if walked is not None:
-            return walked
+            return ProjectAdvance(project=walked, before=before)
         logger.info(
             PROJECT_ROLLUP_CONFLICT_RETRY,
             project=str(project_id),
@@ -169,7 +195,7 @@ async def advance_project_status(
         operation="advance",
         attempts=MAX_WRITE_ATTEMPTS,
     )
-    return None
+    return ProjectAdvance()
 
 
 async def _walk_hops(

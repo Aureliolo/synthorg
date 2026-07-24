@@ -120,7 +120,7 @@ codebase analysis / run narrative) and a `DocViewer` that renders a `LivingDocum
 
 - **Card grid**: responsive 3/2/1 column layout with hover effects, stagger animation
 - **Search**: client-side filtering by name, description, and ID
-- **Status filter**: dropdown filtering by project status (planning, active, on_hold, completed, cancelled)
+- **Status filter**: dropdown filtering by project status (planning, active, integrating, evaluating, on_hold, completed, cancelled)
 - **Create drawer**: 6-field form with validation, optimistic state update
 - **Team section**: avatar grid with links to agent detail pages, lead badge
 - **Oversight mode**: sets the initiative's operator-set autonomy tier the SecOps gate resolves against; the gate-off `full` option is CEO-only and confirmed

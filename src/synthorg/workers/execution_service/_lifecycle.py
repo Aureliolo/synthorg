@@ -42,6 +42,11 @@ def _needs_review_gate(task: Task) -> bool:
     oracle, so it must not mint that verdict: it stops at ``IN_REVIEW`` and
     leaves the decision to whoever can actually make it.
 
+    Scoped to plan linkage on purpose. A directly-filed task rolls up to
+    nothing, so walking it through this baseline misstates only itself and
+    leaves the honest alternative (a provider-less boot where no task can ever
+    finish) worse. An initiative's completion is the claim worth fencing.
+
     Returns:
         ``True`` when the task was dispatched by a plan.
     """

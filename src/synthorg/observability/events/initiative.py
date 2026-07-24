@@ -15,11 +15,13 @@ INITIATIVE_REPLAN_COMPLETED: Final[str] = "initiative.replan.completed"
 INITIATIVE_REPLAN_SKIPPED: Final[str] = "initiative.replan.skipped"
 INITIATIVE_REPLAN_FAILED: Final[str] = "initiative.replan.failed"
 
+INITIATIVE_INTEGRATION_SCHEDULED: Final[str] = "initiative.integration.scheduled"
 INITIATIVE_INTEGRATION_STARTED: Final[str] = "initiative.integration.started"
 INITIATIVE_INTEGRATION_DISPATCHED: Final[str] = "initiative.integration.dispatched"
 INITIATIVE_INTEGRATION_SKIPPED: Final[str] = "initiative.integration.skipped"
 INITIATIVE_INTEGRATION_FAILED: Final[str] = "initiative.integration.failed"
 
+INITIATIVE_EVALUATION_SCHEDULED: Final[str] = "initiative.evaluation.scheduled"
 INITIATIVE_EVALUATION_STARTED: Final[str] = "initiative.evaluation.started"
 INITIATIVE_EVALUATION_COMPLETED: Final[str] = "initiative.evaluation.completed"
 INITIATIVE_EVALUATION_SKIPPED: Final[str] = "initiative.evaluation.skipped"

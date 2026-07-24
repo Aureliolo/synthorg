@@ -11,6 +11,8 @@ reaching a planning prompt, so they are fenced with :func:`wrap_untrusted` under
 in the result.
 """
 
+from typing import Final
+
 from synthorg.core.plan import Plan
 from synthorg.engine.decomposition._ids import subtask_uuid
 from synthorg.engine.initiative.completion import (
@@ -22,7 +24,7 @@ from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 
 #: What each stall shape means for the planner, phrased as the constraint the
 #: successor has to satisfy rather than as a diagnosis of the retired plan.
-_REASON_GUIDANCE: dict[StallReason, str] = {
+_REASON_GUIDANCE: Final[dict[StallReason, str]] = {
     StallReason.ALL_FAILED: (
         "Every outstanding item was attempted and did not survive. Re-planning "
         "the same shape will fail the same way: change the approach, split the "
@@ -78,14 +80,28 @@ def build_replan_brief(
     plan: Plan,
     items: tuple[ItemProgress, ...],
     reason: StallReason,
+    *,
+    detail: str | None = None,
 ) -> str:
     """Compose the planning brief for a stalled initiative.
+
+    Args:
+        plan: The plan being retired.
+        items: Its items with their live task statuses.
+        reason: The stall shape.
+        detail: What the caller knows that the item statuses do not. The
+            evaluate stage passes its unmet criteria and their evidence, which
+            is the only account of what the delivered whole actually failed at;
+            it is agent-authored, so it is fenced with the rest of the report.
 
     Returns:
         The brief: trusted framing around a fenced report of the retired plan's
         outcomes and the criteria the successor must still satisfy.
     """
     report = ["Where the previous plan got to:", *_progress_lines(plan, items)]
+    if detail:
+        report.append("What the stage that stopped this plan observed:")
+        report.append(detail)
     if plan.objective_criteria:
         report.append("The objective is met only when all of these hold:")
         report.extend(f"- {criterion}" for criterion in plan.objective_criteria)

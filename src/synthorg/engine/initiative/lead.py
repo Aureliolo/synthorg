@@ -78,7 +78,11 @@ def resolve_lead_provider(
     try:
         return selector(lead)
     except DriverNotRegisteredError:
-        logger.debug(
+        # WARNING, not DEBUG: this silently runs the judgement (or the
+        # retrospective) on a different model from the one bound to the
+        # accountable lead, and a persistently misconfigured lead should not
+        # need debug logging to be discoverable.
+        logger.warning(
             skipped_event,
             lead_id=str(lead.id),
             reason="lead_provider_unregistered_using_default",

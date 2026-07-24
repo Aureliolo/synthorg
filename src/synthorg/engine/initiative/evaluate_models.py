@@ -21,6 +21,7 @@ from pydantic import (
     ConfigDict,
     Field,
     JsonValue,
+    ValidationError,
     computed_field,
     model_validator,
 )
@@ -31,7 +32,12 @@ from synthorg.providers.models import ToolDefinition
 
 #: Defence in depth against a runaway or adversarial submission. An objective
 #: with more criteria than this is not something a single verdict can settle.
-_MAX_VERDICTS: Final[int] = 100
+MAX_VERDICTS: Final[int] = 100
+
+#: Ceiling on any one free-text field a submission carries. Generous enough for
+#: a real narrative or a real piece of evidence, small enough that a runaway
+#: generation is refused rather than parsed.
+_MAX_TEXT_LENGTH: Final[int] = 4000
 
 
 class CriterionOutcome(StrEnum):
@@ -60,9 +66,15 @@ class CriterionVerdict(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    criterion: NotBlankStr = Field(description="The objective criterion judged")
+    criterion: NotBlankStr = Field(
+        max_length=_MAX_TEXT_LENGTH,
+        description="The objective criterion judged",
+    )
     outcome: CriterionOutcome = Field(description="Met, partial, or unmet")
-    evidence: NotBlankStr = Field(description="What was observed")
+    evidence: NotBlankStr = Field(
+        max_length=_MAX_TEXT_LENGTH,
+        description="What was observed",
+    )
 
 
 class EvaluationReport(BaseModel):
@@ -75,10 +87,13 @@ class EvaluationReport(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    summary: NotBlankStr = Field(description="Short evaluation narrative")
+    summary: NotBlankStr = Field(
+        max_length=_MAX_TEXT_LENGTH,
+        description="Short evaluation narrative",
+    )
     verdicts: tuple[CriterionVerdict, ...] = Field(
         min_length=1,
-        max_length=_MAX_VERDICTS,
+        max_length=MAX_VERDICTS,
         description="One verdict per objective criterion",
     )
 
@@ -92,6 +107,42 @@ class EvaluationReport(BaseModel):
             deliver: the gap is what the replan is for.
         """
         return all(v.outcome is CriterionOutcome.MET for v in self.verdicts)
+
+    @classmethod
+    def covering(
+        cls,
+        *,
+        summary: NotBlankStr,
+        verdicts: tuple[CriterionVerdict, ...],
+        criteria: tuple[NotBlankStr, ...],
+    ) -> Self:
+        """Build a report and check it judges exactly *criteria*.
+
+        The coverage rule is the module's headline invariant, and the model
+        alone cannot enforce it: it has no way to know what the objective
+        actually asked for. Binding it to a factory is what makes "a criterion
+        cannot be quietly dropped to reach a pass" one rule with one entry
+        point rather than a check any future call site could forget.
+
+        Returns:
+            The validated report.
+
+        Raises:
+            InitiativeEvaluationParseError: When a criterion is unjudged or a
+                verdict names something the objective does not have.
+        """
+        report = cls(summary=summary, verdicts=verdicts)
+        judged = {v.criterion for v in report.verdicts}
+        expected = set(criteria)
+        missing = sorted(expected - judged)
+        if missing:
+            msg = f"Evaluation does not judge these criteria: {missing}"
+            raise InitiativeEvaluationParseError(msg)
+        invented = sorted(judged - expected)
+        if invented:
+            msg = f"Evaluation judges criteria the objective does not have: {invented}"
+            raise InitiativeEvaluationParseError(msg)
+        return report
 
     @model_validator(mode="after")
     def _validate_unique_criteria(self) -> Self:
@@ -189,7 +240,7 @@ def args_to_evaluation(
             invalid or do not cover the criteria exactly.
     """
     try:
-        report = EvaluationReport(
+        return EvaluationReport.covering(
             summary=NotBlankStr(_require_str(args, "summary")),
             verdicts=tuple(
                 CriterionVerdict(
@@ -199,34 +250,20 @@ def args_to_evaluation(
                 )
                 for item in _as_items(args.get("verdicts"))
             ),
+            criteria=criteria,
         )
+    except ValidationError as exc:
+        # The rule text, never the rejected input: a ValidationError's own
+        # string echoes what was submitted, and this message goes back to the
+        # model and into the log.
+        reasons = "; ".join(dict.fromkeys(error["msg"] for error in exc.errors()))
+        msg = f"Invalid evaluation submission: {reasons}"
+        raise InitiativeEvaluationParseError(msg) from exc
     except (ValueError, TypeError, KeyError) as exc:
+        # Raised by this module's own field checks, whose messages name the
+        # field rather than quoting what was submitted.
         msg = f"Invalid evaluation submission: {exc}"
         raise InitiativeEvaluationParseError(msg) from exc
-    _require_full_coverage(report, criteria)
-    return report
-
-
-def _require_full_coverage(
-    report: EvaluationReport,
-    criteria: tuple[NotBlankStr, ...],
-) -> None:
-    """Reject a report that does not judge exactly the objective's criteria.
-
-    Raises:
-        InitiativeEvaluationParseError: When a criterion is unjudged or a
-            verdict names something that is not a criterion.
-    """
-    judged = {v.criterion for v in report.verdicts}
-    expected = set(criteria)
-    missing = sorted(expected - judged)
-    if missing:
-        msg = f"Evaluation does not judge these criteria: {missing}"
-        raise InitiativeEvaluationParseError(msg)
-    invented = sorted(judged - expected)
-    if invented:
-        msg = f"Evaluation judges criteria the objective does not have: {invented}"
-        raise InitiativeEvaluationParseError(msg)
 
 
 def _as_items(value: JsonValue | None) -> tuple[dict[str, JsonValue], ...]:

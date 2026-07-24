@@ -185,10 +185,63 @@ async def _seed(
     return service, replan, decompose
 
 
-async def _fire(service: ReplanTriggerService, plan: Plan) -> None:
+async def _fire(
+    service: ReplanTriggerService,
+    plan: Plan,
+    reason: StallReason = StallReason.ALL_FAILED,
+    detail: str | None = None,
+) -> None:
     """Schedule a replan and wait for the detached task to finish."""
-    service.schedule(plan=plan, reason=StallReason.ALL_FAILED)
+    service.schedule(plan=plan, reason=reason, detail=detail)
     await service.drain(timeout_sec=5.0)
+
+
+class TestTailStageVerdicts:
+    """A verdict no derivation over items can see."""
+
+    async def test_an_integration_failure_replans_a_plan_still_integrating(
+        self,
+    ) -> None:
+        """Every item is COMPLETED here, so `stall_reason` sees nothing."""
+        plan = _plan(_item(_ITEM_A), status=PlanStatus.INTEGRATING)
+        service, replan, _ = await _seed(plan, _task(_ITEM_A, TaskStatus.COMPLETED))
+
+        await _fire(service, plan, StallReason.INTEGRATION_FAILED)
+
+        assert len(replan.calls) == 1
+
+    async def test_an_unmet_evaluation_replans_a_plan_still_evaluating(self) -> None:
+        plan = _plan(_item(_ITEM_A), status=PlanStatus.EVALUATING)
+        service, replan, _ = await _seed(plan, _task(_ITEM_A, TaskStatus.COMPLETED))
+
+        await _fire(service, plan, StallReason.EVALUATION_UNMET)
+
+        assert len(replan.calls) == 1
+
+    async def test_a_verdict_from_a_stage_the_plan_has_left_is_dropped(self) -> None:
+        """It was already dealt with: a human replanned it, or the stage re-ran."""
+        plan = _plan(_item(_ITEM_A), status=PlanStatus.EVALUATING)
+        service, replan, _ = await _seed(plan, _task(_ITEM_A, TaskStatus.COMPLETED))
+
+        await _fire(service, plan, StallReason.INTEGRATION_FAILED)
+
+        assert replan.calls == []
+
+    async def test_the_stage_detail_reaches_the_successors_planner(self) -> None:
+        """The judged evidence is the only account of what actually failed."""
+        plan = _plan(_item(_ITEM_A), status=PlanStatus.EVALUATING)
+        service, _, decompose = await _seed(plan, _task(_ITEM_A, TaskStatus.COMPLETED))
+
+        await _fire(
+            service,
+            plan,
+            StallReason.EVALUATION_UNMET,
+            detail="- it saves scores [unmet]: the file is never written",
+        )
+
+        assert decompose.await_args is not None
+        briefed = decompose.await_args.args[0]
+        assert "the file is never written" in briefed.description
 
 
 class TestReplan:

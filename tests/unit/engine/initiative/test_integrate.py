@@ -15,11 +15,12 @@ from synthorg.engine.initiative.integrate import (
     ACTOR,
     IntegrationStageService,
     escalated_stakes,
-    integration_task_id,
 )
 from synthorg.engine.initiative.tail_stages import (
+    MAX_INTEGRATION_ATTEMPTS,
     IntegrationOutcome,
-    read_integration_outcome,
+    integration_task_id,
+    read_integration_state,
 )
 from synthorg.engine.pipeline.models import (
     ExecutionPath,
@@ -98,7 +99,7 @@ def _pipeline_result() -> WorkPipelineResult:
         work_item=work_item,
         verdict=RoutingVerdict.LEAF,
         execution_path=ExecutionPath.SOLO,
-        task_id=NotBlankStr(integration_task_id(_plan())),
+        task_id=NotBlankStr(integration_task_id(_plan(), 0)),
         final_task_status=TaskStatus.IN_REVIEW,
         phases=(
             WorkPhaseResult(
@@ -123,7 +124,22 @@ async def _seed(
     await backend.plans.save(plan)
     for task in tasks:
         await backend.tasks.save(task)
-    continue_from_intake = AsyncMock(return_value=_pipeline_result())
+
+    async def _run_it(_work_item: WorkItem, task: Task) -> WorkPipelineResult:
+        # The real spine runs the task inline and leaves it past CREATED. The
+        # stage distinguishes "never started" from "under way" on exactly that,
+        # so a mock that left it at CREATED would not be a faithful stand-in.
+        await backend.tasks.save(
+            task.model_copy(
+                update={
+                    "status": TaskStatus.IN_REVIEW,
+                    "assigned_to": sid("agent-1"),
+                }
+            )
+        )
+        return _pipeline_result()
+
+    continue_from_intake = AsyncMock(side_effect=_run_it)
     service = IntegrationStageService(
         persistence=backend,
         task_engine=mock_of[TaskEngine](
@@ -140,10 +156,18 @@ async def _seed(
     return service, backend, continue_from_intake
 
 
-async def _fire(service: IntegrationStageService, plan: Plan) -> None:
-    """Schedule the stage and wait for the detached task to finish."""
-    service.schedule(plan=plan)
-    await service.drain(timeout_sec=5.0)
+async def _fire(
+    service: IntegrationStageService,
+    plan: Plan,
+    attempt: int = 0,
+) -> None:
+    """Schedule the stage and wait for the detached task to finish.
+
+    Settles rather than drains: a drain closes the stage for good, which is
+    right at shutdown and wrong for a test that fires it more than once.
+    """
+    service.schedule(plan=plan, attempt=attempt)
+    await service.settle(timeout_sec=5.0)
 
 
 class TestMinting:
@@ -155,7 +179,7 @@ class TestMinting:
 
         await _fire(service, plan)
 
-        task = await backend.tasks.get(integration_task_id(plan))
+        task = await backend.tasks.get(integration_task_id(plan, 0))
         assert task is not None
         assert dispatched.await_count == 1
         assert dispatched.await_args is not None
@@ -170,7 +194,7 @@ class TestMinting:
 
         await _fire(service, plan)
 
-        task = await backend.tasks.get(integration_task_id(plan))
+        task = await backend.tasks.get(integration_task_id(plan, 0))
         assert task is not None
         assert task.plan_id == plan.id
         assert task.plan_item_id is None
@@ -183,7 +207,7 @@ class TestMinting:
 
         await _fire(service, plan)
 
-        task = await backend.tasks.get(integration_task_id(plan))
+        task = await backend.tasks.get(integration_task_id(plan, 0))
         assert task is not None
         assert len(task.artifacts_expected) == 2
         assert any("test" in a.path.lower() for a in task.artifacts_expected)
@@ -194,7 +218,7 @@ class TestMinting:
 
         await _fire(service, plan)
 
-        task = await backend.tasks.get(integration_task_id(plan))
+        task = await backend.tasks.get(integration_task_id(plan, 0))
         assert task is not None
         assert [c.description for c in task.acceptance_criteria] == [
             "the game is playable"
@@ -206,7 +230,7 @@ class TestMinting:
 
         await _fire(service, plan)
 
-        task = await backend.tasks.get(integration_task_id(plan))
+        task = await backend.tasks.get(integration_task_id(plan, 0))
         assert task is not None
         assert task.stakes is Stakes.HIGH
 
@@ -235,7 +259,7 @@ class TestGuards:
         await _fire(service, plan)
 
         assert dispatched.await_count == 0
-        assert await backend.tasks.get(integration_task_id(plan)) is None
+        assert await backend.tasks.get(integration_task_id(plan, 0)) is None
 
     async def test_a_missing_objective_task_is_not_minted(self) -> None:
         plan = _plan()
@@ -244,10 +268,10 @@ class TestGuards:
         await _fire(service, plan)
 
         assert dispatched.await_count == 0
-        assert await backend.tasks.get(integration_task_id(plan)) is None
+        assert await backend.tasks.get(integration_task_id(plan, 0)) is None
 
     async def test_a_dispatch_failure_never_escapes(self) -> None:
-        """The stage is best-effort; the plan stays INTEGRATING and re-fires."""
+        """The stage is best-effort; the plan stays INTEGRATING."""
         plan = _plan()
         service, _, dispatched = await _seed(plan)
         dispatched.side_effect = RuntimeError("no coordinator")
@@ -256,14 +280,69 @@ class TestGuards:
 
         assert dispatched.await_count == 1
 
+    async def test_a_dispatch_failure_leaves_a_re_dispatchable_row(self) -> None:
+        """The row is saved before the pipeline is handed the task.
+
+        A dispatch that dies in between leaves a task nothing is driving, and
+        treating its mere existence as "already minted" would park the plan at
+        INTEGRATING for good.
+        """
+        plan = _plan()
+        service, backend, dispatched = await _seed(plan)
+        working = dispatched.side_effect
+        dispatched.side_effect = RuntimeError("no coordinator")
+        await _fire(service, plan)
+        dispatched.side_effect = working
+
+        await _fire(service, plan)
+
+        assert dispatched.await_count == 2
+        state = await read_integration_state(backend, plan, allow_new_attempt=False)
+        assert state.attempt == 0
+
+    async def test_a_burst_of_schedules_collapses_to_one_attempt(self) -> None:
+        """The rollup fires on every recompute, not on an edge."""
+        plan = _plan()
+        service, _, dispatched = await _seed(plan)
+
+        service.schedule(plan=plan)
+        service.schedule(plan=plan)
+        await service.drain(timeout_sec=5.0)
+
+        assert dispatched.await_count == 1
+
+    async def test_a_foreign_task_at_the_derived_id_is_refused(self) -> None:
+        """Plan item ids are caller-supplied, and the id is derivable."""
+        plan = _plan()
+        impostor = Task(
+            id=UUID(integration_task_id(plan, 0)),
+            title="Not the assembly job",
+            description="Filed by a caller",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.HIGH,
+            project=sid(_PROJECT),
+            plan_id=plan.id,
+            plan_item_id=as_uuid(_ITEM_A),
+            created_by="someone-else",
+            assigned_to=sid("agent-1"),
+            status=TaskStatus.COMPLETED,
+        )
+        service, backend, dispatched = await _seed(plan, impostor)
+
+        await _fire(service, plan)
+
+        assert dispatched.await_count == 0
+        state = await read_integration_state(backend, plan, allow_new_attempt=False)
+        assert state.outcome is IntegrationOutcome.FAILED
+
 
 class TestOutcome:
     """Reading where the assembly job got to."""
 
     @staticmethod
-    def _integration_task(status: TaskStatus) -> Task:
+    def _integration_task(status: TaskStatus, attempt: int = 0) -> Task:
         return Task(
-            id=UUID(integration_task_id(_plan())),
+            id=UUID(integration_task_id(_plan(), attempt)),
             title="Integrate",
             description="Assemble it",
             type=TaskType.DEVELOPMENT,
@@ -271,22 +350,24 @@ class TestOutcome:
             project=sid(_PROJECT),
             plan_id=as_uuid(_PLAN_ID),
             created_by=ACTOR,
-            assigned_to=sid("agent-1"),
+            # A CREATED task is by definition unassigned; every later status
+            # requires an assignee.
+            assigned_to=None if status is TaskStatus.CREATED else sid("agent-1"),
             status=status,
         )
 
     async def test_absent_when_no_task_exists(self) -> None:
         backend = FakePersistenceBackend()
 
-        outcome = await read_integration_outcome(
-            backend, task_id=integration_task_id(_plan())
-        )
+        state = await read_integration_state(backend, _plan(), allow_new_attempt=False)
 
-        assert outcome is IntegrationOutcome.ABSENT
+        assert state.outcome is IntegrationOutcome.ABSENT
+        assert state.attempt == 0
 
     @pytest.mark.parametrize(
         ("status", "expected"),
         [
+            (TaskStatus.CREATED, IntegrationOutcome.PENDING),
             (TaskStatus.IN_PROGRESS, IntegrationOutcome.RUNNING),
             (TaskStatus.IN_REVIEW, IntegrationOutcome.RUNNING),
             (TaskStatus.COMPLETED, IntegrationOutcome.PASSED),
@@ -303,8 +384,32 @@ class TestOutcome:
         backend = FakePersistenceBackend()
         await backend.tasks.save(self._integration_task(status))
 
-        outcome = await read_integration_outcome(
-            backend, task_id=integration_task_id(_plan())
+        state = await read_integration_state(backend, _plan(), allow_new_attempt=False)
+
+        assert state.outcome is expected
+
+    async def test_a_spent_attempt_is_stepped_over_only_on_re_entry(self) -> None:
+        """Otherwise a failed assembly re-runs itself on every rollup event."""
+        backend = FakePersistenceBackend()
+        await backend.tasks.save(self._integration_task(TaskStatus.FAILED))
+
+        held = await read_integration_state(backend, _plan(), allow_new_attempt=False)
+        reworked = await read_integration_state(
+            backend, _plan(), allow_new_attempt=True
         )
 
-        assert outcome is expected
+        assert held.outcome is IntegrationOutcome.FAILED
+        assert held.attempt == 0
+        assert reworked.outcome is IntegrationOutcome.ABSENT
+        assert reworked.attempt == 1
+
+    async def test_attempts_are_capped(self) -> None:
+        """Repeated assembly failures are a planning problem, not a retry one."""
+        backend = FakePersistenceBackend()
+        for attempt in range(MAX_INTEGRATION_ATTEMPTS):
+            await backend.tasks.save(self._integration_task(TaskStatus.FAILED, attempt))
+
+        state = await read_integration_state(backend, _plan(), allow_new_attempt=True)
+
+        assert state.outcome is IntegrationOutcome.FAILED
+        assert state.attempt == MAX_INTEGRATION_ATTEMPTS - 1

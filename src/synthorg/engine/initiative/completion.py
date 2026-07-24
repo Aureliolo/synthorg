@@ -91,6 +91,15 @@ _PLAN_TO_PROJECT_STATUS: Final[dict[PlanStatus, ProjectStatus]] = {
     PlanStatus.COMPLETED: ProjectStatus.COMPLETED,
 }
 
+# The mirror is hand-maintained across three files, so it is checked at import
+# rather than only by a test somebody has to remember to run: a tail stage
+# added to PlanStatus without a project counterpart would otherwise park every
+# project one stage behind its plan, silently.
+if not _PLAN_TO_PROJECT_STATUS.keys() >= TAIL_STATUSES:
+    _MISSING = sorted(s.value for s in TAIL_STATUSES - _PLAN_TO_PROJECT_STATUS.keys())
+    _MIRROR_ERROR = f"tail statuses missing a project counterpart: {_MISSING}"
+    raise ImportError(_MIRROR_ERROR)
+
 #: Project statuses the rollup will not move away from. COMPLETED and
 #: CANCELLED are terminal; ON_HOLD is a deliberate operator pause that the
 #: rollup must not finish work out from under.

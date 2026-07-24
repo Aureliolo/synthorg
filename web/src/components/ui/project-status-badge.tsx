@@ -23,11 +23,18 @@ const DOT_COLOR_CLASSES: Record<ProjectStatus, string> = {
 
 export interface ProjectStatusBadgeProps {
   status: ProjectStatus
+  /**
+   * Defaults on. Three in-flight statuses (active, integrating, evaluating)
+   * share the `accent` tone, because the palette has one colour for "in
+   * flight" and inventing another would leave the design system, so the label
+   * is what tells them apart. Turn it off only where the surrounding text
+   * already names the status.
+   */
   showLabel?: boolean
   className?: string
 }
 
-export function ProjectStatusBadge({ status, showLabel = false, className }: ProjectStatusBadgeProps) {
+export function ProjectStatusBadge({ status, showLabel = true, className }: ProjectStatusBadgeProps) {
   const label = STATUS_LABELS[status]
 
   return (

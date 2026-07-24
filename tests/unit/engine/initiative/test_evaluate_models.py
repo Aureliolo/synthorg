@@ -39,35 +39,28 @@ class TestParsing:
         assert report.objective_met is True
         assert len(report.verdicts) == 2
 
-    def test_a_partial_outcome_does_not_deliver(self) -> None:
+    @pytest.mark.parametrize(
+        ("outcome", "expected"),
+        [("partial", CriterionOutcome.PARTIAL), ("unmet", CriterionOutcome.UNMET)],
+        ids=["partial", "unmet"],
+    )
+    def test_anything_short_of_met_does_not_deliver(
+        self, outcome: str, expected: CriterionOutcome
+    ) -> None:
         """Mostly met is not met: the gap is what the replan is for."""
         report = args_to_evaluation(
             {
                 "summary": "Played it",
                 "verdicts": [
                     _verdict(_CRITERIA[0], "met"),
-                    _verdict(_CRITERIA[1], "partial"),
+                    _verdict(_CRITERIA[1], outcome),
                 ],
             },
             criteria=_CRITERIA,
         )
 
         assert report.objective_met is False
-
-    def test_an_unmet_outcome_does_not_deliver(self) -> None:
-        report = args_to_evaluation(
-            {
-                "summary": "Played it",
-                "verdicts": [
-                    _verdict(_CRITERIA[0], "met"),
-                    _verdict(_CRITERIA[1], "unmet"),
-                ],
-            },
-            criteria=_CRITERIA,
-        )
-
-        assert report.objective_met is False
-        assert report.verdicts[1].outcome is CriterionOutcome.UNMET
+        assert report.verdicts[1].outcome is expected
 
 
 class TestCoverage:

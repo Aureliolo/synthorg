@@ -117,7 +117,10 @@ def transition_path(
     """Return the shortest valid hop sequence from *current* to *target*.
 
     Used by the rollup to advance a plan that is several valid hops away from
-    its derived status (e.g. APPROVED to COMPLETED via EXECUTING).
+    its derived status (e.g. APPROVED to INTEGRATING via EXECUTING, when a
+    plan's dispatch-time status write lost its race). COMPLETED is never a
+    target here: the evaluate stage writes it directly, as the single hop out
+    of EVALUATING that its verdict earns.
 
     Args:
         current: The current plan status.

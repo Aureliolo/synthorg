@@ -75,11 +75,18 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
             ship_retro_capture=_build_ship_retro_capture(app_state),
             replan_trigger=replan_trigger,
             integration=build_integration_stage(app_state, persistence),
-            evaluation=build_evaluation_stage(
+        )
+        # Built after the rollup exists, because the evaluate stage needs to
+        # call back into it: its verdict writes a plan status while mutating no
+        # task, so nothing else would ever re-derive the project, the objective
+        # task, or the retrospective behind it.
+        service.attach_tail(
+            evaluation=lambda trigger: build_evaluation_stage(
                 app_state,
                 persistence,
                 plan_status_writer=plan_writer,
-                replan_trigger=replan_trigger,
+                replan_trigger=trigger,
+                reconcile=service,
             ),
         )
         # Register the observer BEFORE committing the service to state, so a
@@ -118,15 +125,18 @@ def _attach_tail(
 
     try:
         plan_writer = PlanService(repo=persistence.plans, clock=app_state.clock)
-        replan_trigger = build_replan_trigger(app_state, persistence)
         rollup.attach_tail(
-            replan_trigger=replan_trigger,
+            replan_trigger=build_replan_trigger(app_state, persistence),
             integration=build_integration_stage(app_state, persistence),
-            evaluation=build_evaluation_stage(
+            # A factory, not an instance: the stage captures the replan trigger
+            # for the life of the process, so it must be built against the one
+            # the rollup keeps rather than one this call built and it discarded.
+            evaluation=lambda trigger: build_evaluation_stage(
                 app_state,
                 persistence,
                 plan_status_writer=plan_writer,
-                replan_trigger=replan_trigger,
+                replan_trigger=trigger,
+                reconcile=rollup,
             ),
         )
     except Exception as exc:  # noqa: BLE001 -- best-effort wiring: log, continue

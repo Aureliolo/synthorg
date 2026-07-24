@@ -22,9 +22,13 @@ from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.initiative.integrate import integration_task_id
-from synthorg.engine.initiative.ports import EvaluationPort, IntegrationPort
+from synthorg.engine.initiative.ports import (
+    EvaluationPort,
+    IntegrationPort,
+    PlanReconcilePort,
+)
 from synthorg.engine.initiative.rollup import ProjectRollupService
+from synthorg.engine.initiative.tail_stages import integration_task_id
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from tests._shared import FakeClock, as_uuid, sid
@@ -133,8 +137,8 @@ class _MintingIntegration:
     def __init__(self) -> None:
         self.fired = 0
 
-    def schedule(self, *, plan: Plan) -> None:
-        del plan
+    def schedule(self, *, plan: Plan, attempt: int = 0) -> None:
+        del plan, attempt
         self.fired += 1
 
     async def drain(self, *, timeout_sec: float) -> None:
@@ -146,7 +150,7 @@ class _MintingIntegration:
         assert plan is not None
         await backend.tasks.save(
             Task(
-                id=UUID(integration_task_id(plan)),
+                id=UUID(integration_task_id(plan, 0)),
                 title="Integrate",
                 description="Assemble the pieces",
                 type=TaskType.DEVELOPMENT,
@@ -163,12 +167,21 @@ class _MintingIntegration:
 class _PassingEvaluation:
     """An EVALUATE stage whose verdict is that the objective is met.
 
-    Mirrors the real stage's shape: the rollup only fires it, and the stage
-    itself writes the one transition that completes a plan.
+    Mirrors the real stage's shape in the two ways that matter here: the
+    rollup only fires it, the stage itself writes the one transition that
+    completes a plan, and it then calls back into the rollup. That callback is
+    load-bearing rather than decorative: the completion write mutates no task,
+    so it emits no observer event, and without it the project and the
+    objective task would stay a stage behind the plan forever.
     """
 
     def __init__(self) -> None:
         self.fired = 0
+        self._reconcile: PlanReconcilePort | None = None
+
+    def bind(self, reconcile: PlanReconcilePort) -> None:
+        """Attach the rollup this stage reports back to."""
+        self._reconcile = reconcile
 
     def schedule(self, *, plan: Plan) -> None:
         self.fired += 1
@@ -177,7 +190,7 @@ class _PassingEvaluation:
         del timeout_sec
 
     async def deliver(self, backend: FakePersistenceBackend) -> None:
-        """Write the passing verdict's completion through the audited path."""
+        """Write the passing verdict's completion, then reconcile the graph."""
         plan = await backend.plans.get(NotBlankStr(sid(_PLAN)))
         assert plan is not None
         await PlanService(repo=backend.plans, clock=FakeClock()).sync_status(
@@ -186,6 +199,8 @@ class _PassingEvaluation:
             requested_by="initiative-evaluate",
             reason="evaluation: every success criterion met",
         )
+        assert self._reconcile is not None
+        await self._reconcile.recompute(plan.id)
 
 
 def _rollup(
@@ -238,11 +253,9 @@ class TestInitiativeRollupWiring:
                 TaskStatus.COMPLETED,
                 requested_by="reviewer",
             )
-            # Stop drains the observer queue, so the rollup has run by the
-            # time the assertions below read the statuses. The finally is the
-            # cleanup guard; stop() is idempotent, so both calls are safe.
-            await engine.stop()
         finally:
+            # Stop drains the observer queue, so the rollup has run by the
+            # time the assertions below read the statuses.
             await engine.stop()
 
         assert await _statuses(backend) == (
@@ -270,8 +283,9 @@ class TestInitiativeRollupWiring:
             await engine.transition_task(
                 _ITEM_B, TaskStatus.COMPLETED, requested_by="reviewer"
             )
-            await engine.stop()
         finally:
+            # Stop drains the observer queue, so the rollup has run by the
+            # time the assertions below read the statuses.
             await engine.stop()
 
         # The tail opened and the assembly job was minted.
@@ -284,12 +298,14 @@ class TestInitiativeRollupWiring:
         # The assembly job passes its own review gate.
         await integration.pass_the_job(backend)
         rollup = _rollup(backend, integration=integration, evaluation=evaluation)
+        evaluation.bind(rollup)
         await rollup.recompute(as_uuid(_PLAN))
 
-        # Which opens evaluation, whose verdict delivers the initiative.
+        # Which opens evaluation, whose verdict delivers the initiative. No
+        # manual recompute here: the stage's own callback is what carries the
+        # project and the objective task across with the plan.
         assert evaluation.fired == 1
         await evaluation.deliver(backend)
-        await rollup.recompute(as_uuid(_PLAN))
         assert await _statuses(backend) == (
             PlanStatus.COMPLETED,
             ProjectStatus.COMPLETED,
@@ -309,9 +325,8 @@ class TestInitiativeRollupWiring:
                 TaskStatus.IN_REVIEW,
                 requested_by="execution",
             )
-            # Drains the observer queue before the assertions; see above.
-            await engine.stop()
         finally:
+            # Drains the observer queue before the assertions; see above.
             await engine.stop()
 
         assert await _statuses(backend) == (

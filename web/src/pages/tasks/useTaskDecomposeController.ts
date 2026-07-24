@@ -3,7 +3,7 @@ import { decomposeTaskManually } from '@/api/endpoints/decomposition'
 import type { DecompositionResult, ManualDecomposeRequest } from '@/api/types'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getCrudErrorTitle } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('task-decompose')
@@ -78,6 +78,17 @@ function toRequest(drafts: readonly SubtaskDraft[]): ManualDecomposeRequest {
   }
 }
 
+/** Whether a draft carries every field the backend requires of a subtask. */
+function isComplete(draft: SubtaskDraft): boolean {
+  return (
+    draft.label.trim() !== '' &&
+    draft.title.trim() !== '' &&
+    draft.description.trim() !== '' &&
+    parseLines(draft.acceptanceCriteria).length > 0 &&
+    parseLines(draft.expectedArtifacts).length > 0
+  )
+}
+
 /** Page-local controller for the manual task-decomposition form. */
 export function useTaskDecomposeController(taskId: string | undefined) {
   const [drafts, setDrafts] = useState<readonly SubtaskDraft[]>(() => [emptyDraft()])
@@ -117,7 +128,9 @@ export function useTaskDecomposeController(taskId: string | undefined) {
       useToastStore.getState().add({
         variant: 'error',
         title: getCrudErrorTitle(err, 'Decomposition failed').title,
-        description: 'Could not decompose the task. Check the plan and try again.',
+        // The backend detail names which subtask was rejected and why, which
+        // is exactly what the author needs to fix it.
+        description: getErrorMessage(err),
       })
     } finally {
       setSubmitting(false)
@@ -128,6 +141,9 @@ export function useTaskDecomposeController(taskId: string | undefined) {
     drafts,
     result,
     submitting,
+    // Gate the submit rather than letting a guaranteed 422 round-trip: a work
+    // subtask that declares no deliverable is rejected by the backend.
+    canSubmit: drafts.length > 0 && drafts.every(isComplete),
     addDraft,
     removeDraft,
     updateDraft,

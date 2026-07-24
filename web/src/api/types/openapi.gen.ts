@@ -14483,9 +14483,12 @@ export type components = {
          *     deliverable and checked end to end; EVALUATING is where that whole is
          *     scored against the objective's success criteria. Only then is COMPLETED
          *     reachable, and only from EVALUATING: a plan cannot jump from EXECUTING to
-         *     COMPLETED, which makes the tail structurally unskippable rather than a
-         *     convention. Either tail stage can fall back to EXECUTING when an item
-         *     regresses (integration findings routed back as rework).
+         *     COMPLETED. The guard that makes that true is the transition table in
+         *     ``core/plan_transitions.py``, not this enum; a reader auditing the ordering
+         *     should look there (and at ``scripts/check_verified_completion_paths.py``,
+         *     which holds the forbidden edges out of the table). Either tail stage can
+         *     fall back to EXECUTING when an item regresses (integration findings routed
+         *     back as rework).
          *
          *     REJECTED, SUPERSEDED, COMPLETED, and FAILED are terminal; an operator
          *     rework or request-changes is only accepted while the plan is still under

@@ -9,7 +9,9 @@ than growing a second one inside the engine that could drift from the audited
 one.
 """
 
+from collections.abc import Callable
 from typing import Protocol, runtime_checkable
+from uuid import UUID
 
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
@@ -78,8 +80,19 @@ class ReplanTriggerPort(Protocol):
     must not block or raise: the call schedules detached work and returns.
     """
 
-    def schedule(self, *, plan: Plan, reason: StallReason) -> None:
-        """Schedule a replan for a plan that can no longer advance."""
+    def schedule(
+        self,
+        *,
+        plan: Plan,
+        reason: StallReason,
+        detail: str | None = None,
+    ) -> None:
+        """Schedule a replan for a plan that can no longer advance.
+
+        *detail* carries whatever the caller knows that the item statuses do
+        not: the evaluate stage passes its unmet criteria and their evidence,
+        which is the only account of what the delivered whole failed at.
+        """
         ...
 
     async def drain(self, *, timeout_sec: float) -> None:
@@ -98,8 +111,8 @@ class IntegrationPort(Protocol):
     must not block or raise: the call schedules detached work and returns.
     """
 
-    def schedule(self, *, plan: Plan) -> None:
-        """Schedule the assembly job for a plan that entered INTEGRATING."""
+    def schedule(self, *, plan: Plan, attempt: int = 0) -> None:
+        """Schedule assembly attempt *attempt* for a plan in INTEGRATING."""
         ...
 
     async def drain(self, *, timeout_sec: float) -> None:
@@ -124,6 +137,30 @@ class EvaluationPort(Protocol):
 
     async def drain(self, *, timeout_sec: float) -> None:
         """Await outstanding judgements at shutdown, bounded by *timeout_sec*."""
+        ...
+
+
+#: Builds the EVALUATE stage against whichever replan trigger the rollup is
+#: actually holding. The stage captures the trigger for the life of the
+#: process, so handing it one the rollup then discards would split the
+#: in-flight bookkeeping across two live instances and leave one undrained.
+EvaluationFactory = Callable[[ReplanTriggerPort | None], EvaluationPort | None]
+
+
+@runtime_checkable
+class PlanReconcilePort(Protocol):
+    """Re-derive an initiative's status graph, as the tail stages need it.
+
+    Structurally satisfied by ``ProjectRollupService.recompute``. The rollup
+    normally re-derives on a task event, but the EVALUATE stage's verdict
+    writes a plan status while mutating no task, so nothing would follow it:
+    the project, the objective task, and the retrospective all hang off a
+    recompute that would never happen. The stage calls this once its verdict
+    lands to close that gap.
+    """
+
+    async def recompute(self, plan_id: UUID) -> None:
+        """Re-derive and persist the status graph behind *plan_id*."""
         ...
 
 

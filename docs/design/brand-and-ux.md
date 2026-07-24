@@ -242,7 +242,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `MobileUnsupportedOverlay` | `mobile-unsupported.tsx` | (none, self-managing) | Full-screen overlay at <768px viewports directing users to desktop or CLI. Self-manages visibility via `useBreakpoint`. |
 | `LazyCodeMirrorEditor` | `lazy-code-mirror-editor.tsx` | Same as `CodeMirrorEditor` | Suspense-wrapped lazy-loaded CodeMirrorEditor. Drop-in replacement that defers ~200KB+ CodeMirror bundle. |
 | `MetadataGrid` | `metadata-grid.tsx` | `items`, `columns?`, `className?` | Key-value metadata grid for detail pages with configurable 2/3/4 columns and density-aware spacing. |
-| `ProjectStatusBadge` | `project-status-badge.tsx` | `status`, `showLabel?`, `className?` | Project status dot with optional label and semantic colours (planning/active/on_hold/completed/cancelled). |
+| `ProjectStatusBadge` | `project-status-badge.tsx` | `status`, `showLabel?`, `className?` | Project status dot with optional label and semantic colours (planning/active/integrating/evaluating/on_hold/completed/cancelled). |
 | `ContentTypeBadge` | `content-type-badge.tsx` | `contentType`, `className?` | MIME content type pill badge with semantic colours (JSON, PDF, Image, Text, Markdown, CSV, Binary). |
 | `TaskProgress` | `task-progress.tsx` | `status`, `stages`, `className?` | Live task-execution progress panel (`running` / `finished` / `error` header + accumulated `ProgressStage`s). Presentational leaf fed by the `useTaskProgress` hook; shown inline in the chat flows so an operator watches approved work execute instead of a silent gap. |
 
@@ -310,7 +310,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `ApprovalRiskLevel` | `api/types` | `"low"`, `"medium"`, `"high"`, `"critical"` |
 | `UrgencyLevel` | `api/types` | `"critical"`, `"high"`, `"normal"`, `"no_expiry"` |
 | `ApprovalPageFilters` | `utils/approvals` | Filter shape: `status?`, `riskLevel?`, `actionType?`, `search?` |
-| `ProjectStatus` | `api/types` | `"planning"`, `"active"`, `"on_hold"`, `"completed"`, `"cancelled"` |
+| `ProjectStatus` | `api/types` | `"planning"`, `"active"`, `"integrating"`, `"evaluating"`, `"on_hold"`, `"completed"`, `"cancelled"` |
 | `ArtifactType` | `api/types` | `"code"`, `"tests"`, `"documentation"` |
 
 ### When to Create a New Shared Component

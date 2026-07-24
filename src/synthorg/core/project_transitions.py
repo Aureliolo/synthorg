@@ -106,7 +106,9 @@ def transition_path(
     """Return the shortest valid hop sequence from *current* to *target*.
 
     Used by the rollup to advance a project that is several valid hops away
-    from its derived status (e.g. PLANNING to COMPLETED via ACTIVE).
+    from its derived status (e.g. PLANNING to COMPLETED, which now walks
+    ACTIVE, INTEGRATING, and EVALUATING because delivery has exactly one
+    predecessor).
 
     Args:
         current: The current project status.

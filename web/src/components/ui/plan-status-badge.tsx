@@ -35,7 +35,10 @@ export interface PlanStatusBadgeProps {
   className?: string
 }
 
-/** Inline status pill for a plan's lifecycle state (draft → approved/rejected). */
+/**
+ * Inline status pill for a plan's lifecycle state, from draft through the
+ * tail: executing, then integrating, then evaluating, then completed.
+ */
 export function PlanStatusBadge({ status, className }: PlanStatusBadgeProps) {
   return (
     <StatusPill tone={STATUS_TONES[status]} className={className}>

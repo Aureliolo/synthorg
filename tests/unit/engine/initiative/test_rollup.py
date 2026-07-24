@@ -16,7 +16,6 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.completion import StallReason
-from synthorg.engine.initiative.integrate import integration_task_id
 from synthorg.engine.initiative.item_progress import TASK_PAGE_SIZE
 from synthorg.engine.initiative.ports import (
     IntegrationPort,
@@ -25,6 +24,7 @@ from synthorg.engine.initiative.ports import (
     RetroCapturePort,
 )
 from synthorg.engine.initiative.rollup import ProjectRollupService
+from synthorg.engine.initiative.tail_stages import integration_task_id
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult, TaskStateChanged
 from synthorg.persistence.plan_protocol import PlanRepository
@@ -153,10 +153,18 @@ class _RecordingReplanTrigger:
 
     def __init__(self) -> None:
         self.fired: list[tuple[str, StallReason]] = []
+        self.details: list[str | None] = []
         self.drained: list[float] = []
 
-    def schedule(self, *, plan: Plan, reason: StallReason) -> None:
+    def schedule(
+        self,
+        *,
+        plan: Plan,
+        reason: StallReason,
+        detail: str | None = None,
+    ) -> None:
         self.fired.append((str(plan.id), reason))
+        self.details.append(detail)
 
     async def drain(self, *, timeout_sec: float) -> None:
         self.drained.append(timeout_sec)
@@ -655,19 +663,21 @@ class _RecordingIntegration:
 
     def __init__(self) -> None:
         self.fired: list[str] = []
+        self.attempts: list[int] = []
         self.drained: list[float] = []
 
-    def schedule(self, *, plan: Plan) -> None:
+    def schedule(self, *, plan: Plan, attempt: int = 0) -> None:
         self.fired.append(str(plan.id))
+        self.attempts.append(attempt)
 
     async def drain(self, *, timeout_sec: float) -> None:
         self.drained.append(timeout_sec)
 
 
-def _integration_task(status: TaskStatus) -> Task:
+def _integration_task(status: TaskStatus, attempt: int = 0) -> Task:
     """Build the plan's integration task, which implements no plan item."""
     return Task(
-        id=UUID(integration_task_id(_plan(_item(_ITEM_A)))),
+        id=UUID(integration_task_id(_plan(_item(_ITEM_A)), attempt)),
         title="Integrate",
         description="Assemble it",
         type=TaskType.DEVELOPMENT,

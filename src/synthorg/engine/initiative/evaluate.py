@@ -17,19 +17,22 @@ the replan trigger with the gap: the organisation goes back to work rather than
 shipping something that does not meet its own objective.
 """
 
-import asyncio
 from pathlib import Path
 from typing import Final
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import VersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.completion import StallReason
-from synthorg.engine.initiative.evaluate_brief import build_evaluation_material
+from synthorg.engine.initiative.evaluate_brief import (
+    build_evaluation_material,
+    unmet_verdict_detail,
+)
 from synthorg.engine.initiative.evaluate_models import (
     CriterionOutcome,
     EvaluationReport,
@@ -43,14 +46,20 @@ from synthorg.engine.initiative.lead import (
     resolve_initiative_lead,
     resolve_lead_provider,
 )
-from synthorg.engine.initiative.ports import PlanStatusWriter, ReplanTriggerPort
+from synthorg.engine.initiative.ports import (
+    PlanReconcilePort,
+    PlanStatusWriter,
+    ReplanTriggerPort,
+)
+from synthorg.engine.initiative.project_writes import MAX_WRITE_ATTEMPTS
+from synthorg.engine.initiative.stage_runner import StageRunner
 from synthorg.engine.loop_protocol import ShutdownChecker
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.initiative import (
     INITIATIVE_EVALUATION_COMPLETED,
     INITIATIVE_EVALUATION_FAILED,
+    INITIATIVE_EVALUATION_SCHEDULED,
     INITIATIVE_EVALUATION_SKIPPED,
 )
 from synthorg.persistence.protocol import PersistenceBackend
@@ -73,6 +82,11 @@ _COMPLETION_REASON: Final[str] = "evaluation: every success criterion met"
 _DEFAULT_MAX_TURNS: Final[int] = 10
 _DEFAULT_COST_CEILING: Final[float] = 1.0
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 300.0
+
+#: Judgements one plan may start in a process. Each is a paid LLM session and
+#: the rollup schedules one on every recompute that reads EVALUATING, so a plan
+#: whose verdict never lands must stop spending rather than re-judge forever.
+_MAX_EVALUATION_ATTEMPTS: Final[int] = 3
 
 
 class EvaluationStageService:
@@ -99,18 +113,18 @@ class EvaluationStageService:
     """
 
     __slots__ = (
-        "_clock",
+        "_attempts",
         "_config_resolver",
         "_cost_tracker",
         "_default_provider",
-        "_inflight",
         "_persistence",
         "_plan_writer",
         "_provider_selector",
+        "_reconcile",
         "_registry",
         "_replan_trigger",
+        "_runner",
         "_shutdown_checker",
-        "_tasks",
         "_workspace_root",
     )
 
@@ -123,6 +137,7 @@ class EvaluationStageService:
         default_provider: CompletionProvider | None,
         plan_status_writer: PlanStatusWriter,
         replan_trigger: ReplanTriggerPort | None = None,
+        reconcile: PlanReconcilePort | None = None,
         workspace_root: Path | None = None,
         cost_tracker: CostTrackerProtocol | None = None,
         shutdown_checker: ShutdownChecker | None = None,
@@ -135,16 +150,22 @@ class EvaluationStageService:
         self._default_provider = default_provider
         self._plan_writer = plan_status_writer
         self._replan_trigger = replan_trigger
+        self._reconcile = reconcile
         self._workspace_root = workspace_root
         self._cost_tracker = cost_tracker
         self._shutdown_checker = shutdown_checker
         self._config_resolver = config_resolver
-        self._clock = clock
-        self._tasks = BackgroundTaskRegistry(owner="initiative.evaluate", clock=clock)
-        # Plan ids with an evaluation in flight this process. The rollup fires
-        # on every recompute that reads EVALUATING, so without this a burst of
-        # task events would each start their own judgement of the same plan.
-        self._inflight: set[str] = set()
+        self._runner = StageRunner(
+            owner="initiative.evaluate",
+            clock=clock,
+            skipped_event=INITIATIVE_EVALUATION_SKIPPED,
+            failed_event=INITIATIVE_EVALUATION_FAILED,
+        )
+        # Judgements started per plan this process. Every recompute that reads
+        # EVALUATING schedules one, and each is a paid LLM session, so a plan
+        # whose verdict never lands must stop costing money rather than
+        # re-judging on every passing task event.
+        self._attempts: dict[str, int] = {}
 
     def schedule(self, *, plan: Plan) -> None:
         """Schedule the evaluation for a plan that entered EVALUATING.
@@ -154,56 +175,46 @@ class EvaluationStageService:
         observer: it never raises.
         """
         plan_id = str(plan.id)
-        if plan_id in self._inflight:
-            logger.debug(
+        attempt = self._attempts.get(plan_id, 0)
+        if attempt >= _MAX_EVALUATION_ATTEMPTS:
+            logger.warning(
                 INITIATIVE_EVALUATION_SKIPPED,
                 plan_id=plan_id,
-                reason="already_inflight",
+                reason="attempt_cap_reached",
+                attempts=attempt,
+                note="plan parked at evaluating for an operator",
             )
             return
-        self._inflight.add(plan_id)
-        _ = self._tasks.spawn(
-            self._evaluate_bounded(plan),
-            event=INITIATIVE_EVALUATION_FAILED,
-            plan_id=plan_id,
+        started = self._runner.start(
+            key=plan_id,
+            work=self._run(plan),
+            deadline=self._timeout_seconds,
+            fallback_seconds=_DEFAULT_TIMEOUT_SECONDS,
+            fields={"plan_id": plan_id},
         )
+        if started:
+            self._attempts[plan_id] = attempt + 1
+            logger.info(
+                INITIATIVE_EVALUATION_SCHEDULED,
+                plan_id=plan_id,
+                attempt=attempt + 1,
+            )
 
     async def drain(self, *, timeout_sec: float) -> None:
         """Wait for outstanding evaluations at shutdown, then bound them."""
-        await self._tasks.drain(timeout_sec=timeout_sec)
+        await self._runner.drain(timeout_sec=timeout_sec)
 
-    async def _evaluate_bounded(self, plan: Plan) -> None:
-        """Run one evaluation, swallowing every non-critical failure.
+    async def settle(self, *, timeout_sec: float) -> None:
+        """Wait for in-flight judgements without closing the stage."""
+        await self._runner.settle(timeout_sec=timeout_sec)
 
-        Every failure path leaves the plan EVALUATING, never COMPLETED: an
-        evaluation that did not happen is not a pass.
+    def attempts_for(self, plan: Plan) -> int:
+        """Return how many judgements this process has started for *plan*.
 
-        Raises:
-            asyncio.CancelledError: If the task is cancelled at shutdown; it
-                propagates so the background registry can reap it.
+        Returns:
+            The attempt count, for assertions and operator diagnostics.
         """
-        try:
-            await asyncio.wait_for(
-                self._run(plan), timeout=await self._timeout_seconds()
-            )
-        except asyncio.CancelledError:
-            raise
-        except TimeoutError:
-            logger.warning(
-                INITIATIVE_EVALUATION_FAILED, plan_id=str(plan.id), reason="timeout"
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- fail-closed tail; the plan stays
-            # EVALUATING and the next rollup event re-fires the stage
-            reraise_critical(exc)
-            logger.warning(
-                INITIATIVE_EVALUATION_FAILED,
-                plan_id=str(plan.id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-        finally:
-            self._inflight.discard(str(plan.id))
+        return self._attempts.get(str(plan.id), 0)
 
     async def _run(self, plan: Plan) -> None:
         """Judge the initiative, then complete it or send it back for rework."""
@@ -286,25 +297,11 @@ class EvaluationStageService:
     async def _apply(self, plan: Plan, report: EvaluationReport) -> None:
         """Complete the initiative, or send the gap back as new work."""
         if report.objective_met:
-            await self._plan_writer.sync_status(
-                plan,
-                PlanStatus.COMPLETED,
-                requested_by=ACTOR,
-                reason=_COMPLETION_REASON,
-            )
-            logger.info(
-                INITIATIVE_EVALUATION_COMPLETED,
-                plan_id=str(plan.id),
-                project=str(plan.project),
-                objective_met=True,
-                criteria=len(report.verdicts),
-            )
+            await self._complete(plan, report)
             return
-        unmet = [
-            v.criterion
-            for v in report.verdicts
-            if v.outcome is not CriterionOutcome.MET
-        ]
+        unmet = tuple(
+            v for v in report.verdicts if v.outcome is not CriterionOutcome.MET
+        )
         logger.info(
             INITIATIVE_EVALUATION_COMPLETED,
             plan_id=str(plan.id),
@@ -320,7 +317,83 @@ class EvaluationStageService:
                 note="objective unmet; plan parked at evaluating",
             )
             return
-        self._replan_trigger.schedule(plan=plan, reason=StallReason.EVALUATION_UNMET)
+        # The judged evidence is the best account of what went wrong that this
+        # initiative will ever produce. Handing the trigger only the enum would
+        # leave the successor's planner with generic boilerplate instead.
+        self._replan_trigger.schedule(
+            plan=plan,
+            reason=StallReason.EVALUATION_UNMET,
+            detail=unmet_verdict_detail(unmet),
+        )
+
+    async def _complete(self, plan: Plan, report: EvaluationReport) -> None:
+        """Write the one status only this stage may write, then reconcile.
+
+        The write is CAS-guarded, so an operator touching the plan during the
+        judgement loses the race, and a lost race here throws away a verdict
+        that cost real money and cannot be re-derived from anything persisted.
+        It is therefore retried against a fresh read rather than abandoned.
+        """
+        for attempt in range(1, MAX_WRITE_ATTEMPTS + 1):
+            fresh = await self._persistence.plans.get(NotBlankStr(str(plan.id)))
+            if fresh is None or fresh.status is not PlanStatus.EVALUATING:
+                logger.info(
+                    INITIATIVE_EVALUATION_SKIPPED,
+                    plan_id=str(plan.id),
+                    reason="no_longer_evaluating",
+                    status=fresh.status.value if fresh else None,
+                    note="verdict discarded; the plan moved during the judgement",
+                )
+                return
+            try:
+                await self._plan_writer.sync_status(
+                    fresh,
+                    PlanStatus.COMPLETED,
+                    requested_by=ACTOR,
+                    reason=_COMPLETION_REASON,
+                )
+            except VersionConflictError:
+                logger.info(
+                    INITIATIVE_EVALUATION_SKIPPED,
+                    plan_id=str(plan.id),
+                    reason="write_contended",
+                    attempt=attempt,
+                )
+                continue
+            logger.info(
+                INITIATIVE_EVALUATION_COMPLETED,
+                plan_id=str(plan.id),
+                project=str(plan.project),
+                objective_met=True,
+                criteria=len(report.verdicts),
+            )
+            await self._reconcile_graph(plan)
+            return
+        logger.warning(
+            INITIATIVE_EVALUATION_FAILED,
+            plan_id=str(plan.id),
+            reason="completion_write_contended",
+            attempts=MAX_WRITE_ATTEMPTS,
+        )
+
+    async def _reconcile_graph(self, plan: Plan) -> None:
+        """Re-derive the initiative graph now the plan has completed.
+
+        This write mutates no task, so it emits no task event, and the rollup
+        only recomputes on one of those. Without this call the project would
+        stay at EVALUATING, the objective task would stay held open, and the
+        SHIP retrospective would never fire: the plan would be the only thing
+        that finished.
+        """
+        if self._reconcile is None:
+            logger.warning(
+                INITIATIVE_EVALUATION_SKIPPED,
+                plan_id=str(plan.id),
+                reason="reconcile_unwired",
+                note="plan completed; project and objective task will lag",
+            )
+            return
+        await self._reconcile.recompute(plan.id)
 
     def _read_tools(self) -> tuple[BaseTool, ...]:
         """Build the read-only tools the judgement runs with.

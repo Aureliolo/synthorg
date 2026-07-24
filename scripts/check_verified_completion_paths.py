@@ -14,7 +14,11 @@ from being undone, so each is checked here.
 2. **Only the evaluate stage completes a plan.** A call writing
    ``PlanStatus.COMPLETED`` through the audited plan-status seam belongs to
    :mod:`synthorg.engine.initiative.evaluate` and nowhere else. Any other
-   writer is a second delivery path that skips the verdict.
+   writer is a second delivery path that skips the verdict. The owner is
+   excluded by filename, so this does not distinguish call sites *within* that
+   module; the companion check is that ``derive_plan_status`` never returns
+   ``COMPLETED``, so a status the rollup computed can never reach the seam
+   either.
 
 3. **Every work unit declares a deliverable.** ``PlanItem`` and
    ``DecompositionPlan`` must both call ``validate_expected_artifacts``: it is
@@ -164,6 +168,40 @@ def _check_state_machines(root: Path) -> list[str]:
     return messages
 
 
+def _check_derivation_never_completes(root: Path) -> list[str]:
+    """Check that ``derive_plan_status`` cannot return COMPLETED.
+
+    The writer check above matches a literal ``PlanStatus.COMPLETED`` argument,
+    so it cannot see ``_advance_plan(plan, derived)``. That call is safe only
+    because the derivation has no COMPLETED branch; making that explicit here
+    keeps the two halves of the invariant from drifting apart.
+
+    Returns:
+        One message when the derivation gained a COMPLETED branch.
+    """
+    rel = "src/synthorg/engine/initiative/completion.py"
+    parsed = _read(root, rel)
+    if parsed is None:
+        return [f"{rel}: unreadable; the derivation invariant is unchecked"]
+    for node in ast.walk(parsed[1]):
+        if not isinstance(node, ast.FunctionDef) or node.name != "derive_plan_status":
+            continue
+        for inner in ast.walk(node):
+            if (
+                isinstance(inner, ast.Attribute)
+                and inner.attr == "COMPLETED"
+                and isinstance(inner.value, ast.Name)
+                and inner.value.id == "PlanStatus"
+            ):
+                return [
+                    f"{rel}:{inner.lineno}: derive_plan_status names "
+                    "PlanStatus.COMPLETED. The rollup writes whatever this "
+                    "derives, so a COMPLETED branch here is a second delivery "
+                    "path that skips the evaluate stage's verdict."
+                ]
+    return []
+
+
 def _check_plan_completion_writers(root: Path) -> list[str]:
     """Check that only the evaluate stage writes a plan's COMPLETED status.
 
@@ -266,6 +304,7 @@ def main(argv: list[str] | None = None) -> int:
 
     messages = [
         *_check_state_machines(root),
+        *_check_derivation_never_completes(root),
         *_check_plan_completion_writers(root),
         *_check_artifact_invariant(root),
     ]

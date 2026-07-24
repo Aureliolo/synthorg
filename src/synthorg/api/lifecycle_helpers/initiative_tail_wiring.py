@@ -20,9 +20,11 @@ from synthorg.core.plan import Plan, PlanItem
 from synthorg.engine.initiative.ports import (
     EvaluationPort,
     IntegrationPort,
+    PlanReconcilePort,
     PlanStatusWriter,
     ReplanTriggerPort,
 )
+from synthorg.engine.loop_protocol import ShutdownChecker
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.protocol import PersistenceBackend
@@ -156,6 +158,7 @@ def build_evaluation_stage(
     *,
     plan_status_writer: PlanStatusWriter,
     replan_trigger: ReplanTriggerPort | None,
+    reconcile: PlanReconcilePort | None,
 ) -> EvaluationPort | None:
     """Build the EVALUATE stage, or ``None``.
 
@@ -194,8 +197,10 @@ def build_evaluation_stage(
             default_provider=registry.default_provider(),
             plan_status_writer=plan_status_writer,
             replan_trigger=replan_trigger,
+            reconcile=reconcile,
             workspace_root=agent_workspace_root_of(app_state),
             cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+            shutdown_checker=_shutdown_checker(app_state),
             config_resolver=config_resolver_of(app_state),
             clock=app_state.clock,
         )
@@ -203,6 +208,19 @@ def build_evaluation_stage(
         reraise_critical(exc)
         _log_degraded("initiative_evaluation_stage", "evaluate stage not wired", exc)
         return None
+
+
+def _shutdown_checker(app_state: AppState) -> ShutdownChecker:
+    """Return the graceful-shutdown signal for the judgement session.
+
+    Without it the session cannot stop at a turn boundary, so SIGTERM
+    hard-cancels it mid provider call and the whole (paid) judgement is lost
+    rather than exiting cleanly.
+
+    Returns:
+        A checker over the app's shutdown manager.
+    """
+    return app_state.shutdown_manager.is_shutting_down
 
 
 def _log_degraded(service: str, note: str, exc: Exception) -> None:

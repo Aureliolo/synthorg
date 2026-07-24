@@ -54,9 +54,9 @@ from synthorg.engine.initiative.completion import (
     derive_project_status,
     stall_reason,
 )
-from synthorg.engine.initiative.integrate import integration_task_id
 from synthorg.engine.initiative.item_progress import collect_item_progress
 from synthorg.engine.initiative.ports import (
+    EvaluationFactory,
     EvaluationPort,
     IntegrationPort,
     PlanStatusWriter,
@@ -69,7 +69,7 @@ from synthorg.engine.initiative.project_writes import (
 )
 from synthorg.engine.initiative.tail_stages import (
     IntegrationOutcome,
-    read_integration_outcome,
+    read_integration_state,
 )
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskStateChanged
@@ -89,6 +89,24 @@ logger = get_logger(__name__)
 #: Identity recorded on rollup-driven status writes, so the audit log
 #: distinguishes a derived transition from an operator decision.
 _ACTOR: Final[str] = "initiative-rollup"
+
+#: Integration outcomes the stage can act on by dispatching: no attempt yet, or
+#: one whose row was persisted and then never handed to the pipeline.
+_DISPATCHABLE_OUTCOMES: Final[frozenset[IntegrationOutcome]] = frozenset(
+    {IntegrationOutcome.ABSENT, IntegrationOutcome.PENDING}
+)
+
+#: Statuses that read as "the objective is over" on the board. The objective
+#: outlives every individual item, so the parent walk may only land one of
+#: these once the plan itself has delivered.
+_OBJECTIVE_FINISHED_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
+    {
+        TaskStatus.COMPLETED,
+        TaskStatus.FAILED,
+        TaskStatus.CANCELLED,
+        TaskStatus.REJECTED,
+    }
+)
 
 
 def _parent_status_of(item: ItemProgress) -> TaskStatus:
@@ -166,8 +184,9 @@ class ProjectRollupService:
         self._replan_trigger = replan_trigger
         self._integration = integration
         self._evaluation = evaluation
-        # Serialises same-process recomputes for one plan so concurrent task
-        # completions do not each read the pre-write state. Cross-process
+        # The observer dispatch is sequential, so events alone cannot overlap
+        # two recomputes for one plan. The tail stages can: each calls back in
+        # once its verdict lands, from its own detached task. Cross-process
         # safety comes from the version-guarded writes, not this lock.
         self._locks: RefcountedLockMap[str] = RefcountedLockMap()
 
@@ -176,7 +195,7 @@ class ProjectRollupService:
         *,
         replan_trigger: ReplanTriggerPort | None = None,
         integration: IntegrationPort | None = None,
-        evaluation: EvaluationPort | None = None,
+        evaluation: EvaluationFactory | None = None,
     ) -> None:
         """Fill in tail collaborators that a later boot phase resolved.
 
@@ -187,14 +206,18 @@ class ProjectRollupService:
         and the tail comes online without a restart.
 
         Only unset collaborators are filled: an already-wired stage keeps its
-        instance, so a re-run never orphans one mid-flight.
+        instance, so a re-run never orphans one mid-flight. The evaluate stage
+        arrives as a factory rather than an instance for that same reason: it
+        captures the replan trigger permanently, so it must be built against
+        whichever trigger this rollup ends up holding, not against one a
+        caller built speculatively and this method then discarded.
         """
         if self._replan_trigger is None:
             self._replan_trigger = replan_trigger
         if self._integration is None:
             self._integration = integration
-        if self._evaluation is None:
-            self._evaluation = evaluation
+        if self._evaluation is None and evaluation is not None:
+            self._evaluation = evaluation(self._replan_trigger)
 
     def has_full_tail(self) -> bool:
         """Whether every tail collaborator is wired.
@@ -307,17 +330,24 @@ class ProjectRollupService:
                     # last known status; the project still reconciles against
                     # that below rather than being skipped for this event.
                     plan = await self._advance_plan(plan, derived) or plan
-                plan = await self._run_tail_stage(plan)
+                plan = await self._run_tail_stage(
+                    plan, reopened=plan.status is not started_as
+                )
             # A terminal plan still reconciles its project. The project write
             # can fail on the very event that terminalises the plan, and if a
             # terminal plan short-circuited here no later event could ever
             # repair it: the project would stay behind its plan permanently.
-            before = await self._project_status(plan)
-            project = await advance_project_status(
+            # This read only picks the target. The edge test below uses the
+            # status the winning write itself observed, so a project completed
+            # between the two reads cannot swallow the retrospective.
+            current = await self._project_status(plan)
+            advance = await advance_project_status(
                 self._persistence.projects,
                 project_id=NotBlankStr(str(plan.project)),
-                target=derive_project_status(plan.status, current=before),
+                target=derive_project_status(plan.status, current=current),
             )
+            project = advance.project
+            before = advance.before if advance.before is not None else current
             await self._advance_parent_task(plan, items)
             self._maybe_trigger_replan(plan, items)
             self._maybe_capture_retro(plan, project, before=before)
@@ -334,7 +364,7 @@ class ProjectRollupService:
                 item_count=item_count,
             )
 
-    async def _run_tail_stage(self, plan: Plan) -> Plan:
+    async def _run_tail_stage(self, plan: Plan, *, reopened: bool) -> Plan:
         """Drive the tail stage *plan* currently sits in.
 
         The tail is where an initiative stops being a set of finished items and
@@ -357,13 +387,18 @@ class ProjectRollupService:
             The plan, advanced when a stage produced a verdict.
         """
         if plan.status is PlanStatus.INTEGRATING:
-            plan = await self._run_integration(plan)
+            plan = await self._run_integration(plan, reopened=reopened)
         if plan.status is PlanStatus.EVALUATING:
             self._run_evaluation(plan)
         return plan
 
-    async def _run_integration(self, plan: Plan) -> Plan:
+    async def _run_integration(self, plan: Plan, *, reopened: bool) -> Plan:
         """Fire or read the INTEGRATE stage for a plan sitting in it.
+
+        *reopened* says whether this recompute is what put the plan into
+        INTEGRATING. Only then may a spent assembly attempt be stepped over:
+        that is the difference between reworking an item and re-running the
+        same failed assembly on every event.
 
         Returns:
             The plan, advanced to EVALUATING when the assembly job passed.
@@ -376,19 +411,34 @@ class ProjectRollupService:
                 note="plan parked at integrating; it will not auto-complete",
             )
             return plan
-        outcome = await read_integration_outcome(
-            self._persistence, task_id=integration_task_id(plan)
+        state = await read_integration_state(
+            self._persistence, plan, allow_new_attempt=reopened
         )
-        if outcome is IntegrationOutcome.ABSENT:
-            self._integration.schedule(plan=plan)
+        if state.outcome in _DISPATCHABLE_OUTCOMES:
+            self._integration.schedule(plan=plan, attempt=state.attempt)
             return plan
-        if outcome is IntegrationOutcome.PASSED:
+        if state.outcome is IntegrationOutcome.PASSED:
             return await self._advance_plan(plan, PlanStatus.EVALUATING) or plan
-        if outcome is IntegrationOutcome.FAILED and self._replan_trigger is not None:
+        if (
+            state.outcome is IntegrationOutcome.FAILED
+            and self._replan_trigger is not None
+        ):
             # The pieces work and the whole does not, which no derivation over
             # items can see: every item is COMPLETED here.
             self._replan_trigger.schedule(
                 plan=plan, reason=StallReason.INTEGRATION_FAILED
+            )
+            return plan
+        if state.outcome is IntegrationOutcome.RUNNING:
+            # Logged rather than passed over in silence: an assembly job that
+            # is genuinely working and one that died without terminalising its
+            # row look identical from here, and this line is the only place an
+            # operator can tell how long the plan has been waiting.
+            logger.debug(
+                PROJECT_ROLLUP_STARTED,
+                plan_id=str(plan.id),
+                plan_status=plan.status.value,
+                note="integration job still running",
             )
         return plan
 
@@ -425,15 +475,29 @@ class ProjectRollupService:
 
         The objective task is the initiative on the board, so it is held open
         for exactly as long as the plan is: every item passing its own gate
-        does not deliver the objective, the tail does. The walk therefore
-        stops short of terminal until the plan itself is COMPLETED, while the
-        rollup counts it records stay the children's real ones.
+        does not deliver the objective, the tail does, and one item failing
+        does not end the objective while its siblings are still building. The
+        walk therefore stops short of any finished-looking status until the
+        plan itself is COMPLETED, while the rollup counts it records stay the
+        children's real ones.
+
+        A superseded plan is skipped entirely. Its successor owns the
+        objective, and the replan that superseded it cancels the retired
+        items, so deriving from them here would walk the objective task to a
+        truly terminal CANCELLED that the successor could never reopen.
 
         Best-effort and idempotent, like the rest of the recompute: an
         unreachable target or a rejected hop is logged and repaired by the
         next event.
         """
         if self._task_engine is None or not items:
+            return
+        if plan.status is PlanStatus.SUPERSEDED:
+            logger.debug(
+                PROJECT_ROLLUP_SKIPPED,
+                plan_id=str(plan.id),
+                reason="superseded_plan_no_longer_owns_objective",
+            )
             return
         live = await self._task_engine.get_task(plan.parent_task_id)
         if live is None:
@@ -449,7 +513,8 @@ class ProjectRollupService:
         )
         derived = rollup.derived_parent_status
         held = (
-            derived is TaskStatus.COMPLETED and plan.status is not PlanStatus.COMPLETED
+            derived in _OBJECTIVE_FINISHED_STATUSES
+            and plan.status is not PlanStatus.COMPLETED
         )
         outcome = await advance_parent_to_rollup_status(
             self._task_engine,

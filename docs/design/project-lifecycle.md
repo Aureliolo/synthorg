@@ -89,6 +89,7 @@ stateDiagram-v2
     EVALUATING --> ACTIVE: an item regressed
     ACTIVE --> ON_HOLD: operator pauses
     ON_HOLD --> ACTIVE: operator resumes
+    ON_HOLD --> CANCELLED: operator cancels a paused project
     PLANNING --> CANCELLED
     ACTIVE --> CANCELLED
     COMPLETED --> [*]
@@ -98,7 +99,8 @@ stateDiagram-v2
 The project mirrors its plan's tail stage by stage, so the cockpit distinguishes
 an initiative still building from one whose pieces are being assembled, and both
 from one awaiting a verdict. `INTEGRATING` and `EVALUATING` also carry the
-`ON_HOLD` and `CANCELLED` edges (omitted above for readability).
+`ON_HOLD` and `CANCELLED` edges, omitted above for readability; every other edge
+in `core/project_transitions.py` is shown.
 
 **`ACTIVE -> COMPLETED` does not exist**, and neither does the plan's
 `EXECUTING -> COMPLETED`. Delivery has exactly one predecessor, which is what

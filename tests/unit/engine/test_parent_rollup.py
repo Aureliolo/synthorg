@@ -105,7 +105,10 @@ class TestAdvanceParentToRollupStatus:
 
     async def test_empty_path_is_noop_success(self) -> None:
         """Parent already at the derived status: no submits, success."""
-        task_engine = mock_of[TaskEngine](submit=AsyncMock())
+        task_engine = mock_of[TaskEngine](
+            submit=AsyncMock(),
+            get_task=AsyncMock(return_value=None),
+        )
         rollup = _rollup(total=1, completed=1)  # derived COMPLETED
 
         outcome = await advance_parent_to_rollup_status(
@@ -122,7 +125,10 @@ class TestAdvanceParentToRollupStatus:
 
     async def test_no_valid_path_returns_failure(self) -> None:
         """Terminal parent that cannot reach the derived status."""
-        task_engine = mock_of[TaskEngine](submit=AsyncMock())
+        task_engine = mock_of[TaskEngine](
+            submit=AsyncMock(),
+            get_task=AsyncMock(return_value=None),
+        )
         rollup = _rollup(total=1, failed=1)  # derived FAILED
 
         outcome = await advance_parent_to_rollup_status(
@@ -144,6 +150,7 @@ class TestAdvanceParentToRollupStatus:
         assert expected is not None
         task_engine = mock_of[TaskEngine](
             submit=AsyncMock(return_value=_ok_result()),
+            get_task=AsyncMock(return_value=None),
         )
         rollup = _rollup(total=1, completed=1)  # derived COMPLETED
 
@@ -175,12 +182,18 @@ class TestAdvanceParentToRollupStatus:
                     _fail_result("transition not allowed"),
                 ],
             ),
+            # First read starts the walk (the parent really is CREATED); the
+            # second is the diagnostic re-read after the rejected hop, by
+            # which point two hops have landed.
             get_task=AsyncMock(
-                return_value=make_assignment_task(
-                    id="parent-1",
-                    status=TaskStatus.IN_PROGRESS,
-                    assigned_to="coordinator",
-                ),
+                side_effect=[
+                    make_assignment_task(id="parent-1", status=TaskStatus.CREATED),
+                    make_assignment_task(
+                        id="parent-1",
+                        status=TaskStatus.IN_PROGRESS,
+                        assigned_to="coordinator",
+                    ),
+                ],
             ),
         )
         rollup = _rollup(total=1, completed=1)  # derived COMPLETED

@@ -26,6 +26,7 @@ export default function TaskDecomposePage() {
         <TaskDecomposeForm
           drafts={ctrl.drafts}
           submitting={ctrl.submitting}
+          canSubmit={ctrl.canSubmit}
           onChange={ctrl.updateDraft}
           onRemove={ctrl.removeDraft}
           onAdd={ctrl.addDraft}

@@ -22,13 +22,12 @@ belongs to the initiative without implementing any plan item, so every
 derivation over plan items ignores it and it cannot distort the rollup that
 opened this stage.
 
-Minting is idempotent by construction: the task id is derived from the plan id,
-so a re-fired edge finds the existing row and stops.
+Minting is idempotent by construction: each attempt's task id is derived from
+the plan id and the attempt index, so a re-fired edge finds the existing row
+and stops.
 """
 
-import asyncio
 from typing import Final
-from uuid import NAMESPACE_OID, UUID, uuid5
 
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
@@ -43,14 +42,21 @@ from synthorg.engine.initiative.integrate_brief import (
     build_integration_brief,
     integration_title,
 )
+from synthorg.engine.initiative.stage_runner import StageRunner
+from synthorg.engine.initiative.tail_stages import (
+    INTEGRATION_ACTOR,
+    integration_task_id,
+    integration_task_uuid,
+    is_integration_task,
+)
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.initiative import (
     INITIATIVE_INTEGRATION_DISPATCHED,
     INITIATIVE_INTEGRATION_FAILED,
+    INITIATIVE_INTEGRATION_SCHEDULED,
     INITIATIVE_INTEGRATION_SKIPPED,
     INITIATIVE_INTEGRATION_STARTED,
 )
@@ -59,54 +65,27 @@ from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
-#: Identity recorded on the integration task, so the board shows the stage
-#: rather than attributing the work to whoever last touched the initiative.
-ACTOR: Final[str] = "initiative-integrate"
+#: Identity recorded on the integration task, re-exported so callers reading
+#: provenance and callers minting the row agree by construction.
+ACTOR: Final[str] = INTEGRATION_ACTOR
 
 #: Adapter id the integration brief enters the pipeline under.
 _ORIGIN: Final[str] = "initiative-tail"
 
-#: Namespace the integration task's id is derived in, so it is stable across
-#: processes and restarts without colliding with any other derived id.
-_TASK_NAMESPACE: Final[UUID] = uuid5(NAMESPACE_OID, "synthorg.initiative.integrate")
-
-#: Wall-clock ceiling on minting and dispatching, used when no resolver is
-#: wired or the read fails. This bounds the dispatch, not the run: the task
-#: itself is governed by the pipeline's own budgets once it is under way.
+#: Wall-clock ceiling on one assembly attempt, used when no resolver is wired
+#: or the read fails. The pipeline runs the assembly inline, so this bounds the
+#: whole attempt, not just the hand-off.
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 1800.0
 
 #: One level up from the plan's own highest-stakes item. Assembling is where a
 #: mistake is most expensive: it is the first point the whole thing runs, and
-#: the last point before delivery.
+#: the last point before the objective is judged.
 _STAKES_LADDER: Final[tuple[Stakes, ...]] = (
     Stakes.LOW,
     Stakes.NORMAL,
     Stakes.HIGH,
     Stakes.CRITICAL,
 )
-
-
-def integration_task_uuid(plan: Plan) -> UUID:
-    """Return the deterministic id of *plan*'s integration task.
-
-    Derived from the plan id rather than random, so a re-fired stage edge
-    resolves the same row instead of minting a second assembly job. That is
-    the whole idempotency mechanism: there is no separate "already started"
-    flag to keep in step with reality.
-
-    Returns:
-        The integration task's id.
-    """
-    return uuid5(_TASK_NAMESPACE, str(plan.id))
-
-
-def integration_task_id(plan: Plan) -> str:
-    """Return :func:`integration_task_uuid` in the repositories' string form.
-
-    Returns:
-        The integration task's id, as a canonical UUID string.
-    """
-    return str(integration_task_uuid(plan))
 
 
 def escalated_stakes(plan: Plan) -> Stakes:
@@ -136,13 +115,11 @@ class IntegrationStageService:
     """
 
     __slots__ = (
-        "_clock",
         "_config_resolver",
-        "_inflight",
         "_persistence",
         "_pipeline",
+        "_runner",
         "_task_engine",
-        "_tasks",
     )
 
     def __init__(
@@ -158,76 +135,44 @@ class IntegrationStageService:
         self._task_engine = task_engine
         self._pipeline = pipeline
         self._config_resolver = config_resolver
-        self._clock = clock
-        self._tasks = BackgroundTaskRegistry(owner="initiative.integrate", clock=clock)
-        # Plan ids with a dispatch in flight this process. The rollup fires on
-        # every recompute that reads INTEGRATING, and the persisted-row check
-        # only closes the window once the row is written, so this collapses a
-        # burst synchronously (checked-and-set before spawn, no await).
-        self._inflight: set[str] = set()
+        self._runner = StageRunner(
+            owner="initiative.integrate",
+            clock=clock,
+            skipped_event=INITIATIVE_INTEGRATION_SKIPPED,
+            failed_event=INITIATIVE_INTEGRATION_FAILED,
+        )
 
-    def schedule(self, *, plan: Plan) -> None:
-        """Schedule the integration job for a plan that entered INTEGRATING.
+    def schedule(self, *, plan: Plan, attempt: int = 0) -> None:
+        """Schedule the assembly job for a plan sitting in INTEGRATING.
 
         Returns immediately; the work runs detached on a tracked task so the
         rollup observer is never blocked. Safe to call from a best-effort
         observer: it never raises.
         """
-        plan_id = str(plan.id)
-        if plan_id in self._inflight:
-            logger.debug(
-                INITIATIVE_INTEGRATION_SKIPPED,
-                plan_id=plan_id,
-                reason="already_inflight",
-            )
-            return
-        self._inflight.add(plan_id)
-        _ = self._tasks.spawn(
-            self._integrate_bounded(plan),
-            event=INITIATIVE_INTEGRATION_FAILED,
-            plan_id=plan_id,
+        started = self._runner.start(
+            key=str(plan.id),
+            work=self._run(plan, attempt),
+            deadline=self._timeout_seconds,
+            fallback_seconds=_DEFAULT_TIMEOUT_SECONDS,
+            fields={"plan_id": str(plan.id), "attempt": attempt},
         )
+        if started:
+            logger.info(
+                INITIATIVE_INTEGRATION_SCHEDULED,
+                plan_id=str(plan.id),
+                attempt=attempt,
+            )
 
     async def drain(self, *, timeout_sec: float) -> None:
         """Wait for outstanding integration dispatches at shutdown."""
-        await self._tasks.drain(timeout_sec=timeout_sec)
+        await self._runner.drain(timeout_sec=timeout_sec)
 
-    async def _integrate_bounded(self, plan: Plan) -> None:
-        """Run one integration dispatch, swallowing every non-critical failure.
+    async def settle(self, *, timeout_sec: float) -> None:
+        """Wait for in-flight dispatches without closing the stage."""
+        await self._runner.settle(timeout_sec=timeout_sec)
 
-        A failure leaves the plan INTEGRATING with no integration task, which
-        the next rollup event re-fires. The plan never advances on a failure:
-        the tail is fail-closed.
-
-        Raises:
-            asyncio.CancelledError: If the task is cancelled at shutdown; it
-                propagates so the background registry can reap it.
-        """
-        try:
-            await asyncio.wait_for(
-                self._run(plan), timeout=await self._timeout_seconds()
-            )
-        except asyncio.CancelledError:
-            raise
-        except TimeoutError:
-            logger.warning(
-                INITIATIVE_INTEGRATION_FAILED, plan_id=str(plan.id), reason="timeout"
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort tail; the plan stays
-            # INTEGRATING and the next rollup event re-fires the stage
-            reraise_critical(exc)
-            logger.warning(
-                INITIATIVE_INTEGRATION_FAILED,
-                plan_id=str(plan.id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-        finally:
-            self._inflight.discard(str(plan.id))
-
-    async def _run(self, plan: Plan) -> None:
-        """Mint the integration task if it is still needed, then dispatch it."""
+    async def _run(self, plan: Plan, attempt: int) -> None:
+        """Mint the assembly job if it is still needed, then dispatch it."""
         fresh = await self._persistence.plans.get(NotBlankStr(str(plan.id)))
         if fresh is None or fresh.status is not PlanStatus.INTEGRATING:
             logger.debug(
@@ -235,15 +180,6 @@ class IntegrationStageService:
                 plan_id=str(plan.id),
                 reason="no_longer_integrating",
                 status=fresh.status.value if fresh else None,
-            )
-            return
-        existing = await self._persistence.tasks.get(integration_task_id(fresh))
-        if existing is not None:
-            logger.debug(
-                INITIATIVE_INTEGRATION_SKIPPED,
-                plan_id=str(fresh.id),
-                task_id=str(existing.id),
-                reason="already_minted",
             )
             return
         objective = await self._task_engine.get_task(fresh.parent_task_id)
@@ -254,18 +190,60 @@ class IntegrationStageService:
                 reason="objective_task_missing",
             )
             return
+        existing = await self._persistence.tasks.get(
+            integration_task_id(fresh, attempt)
+        )
+        if existing is not None:
+            await self._resume(fresh, objective, existing)
+            return
         logger.info(
             INITIATIVE_INTEGRATION_STARTED,
             plan_id=str(fresh.id),
             project=str(fresh.project),
+            attempt=attempt,
         )
-        await self._dispatch(fresh, objective)
+        await self._dispatch(fresh, objective, attempt)
 
-    async def _dispatch(self, plan: Plan, objective: Task) -> None:
-        """Persist the integration task and run it through the work spine."""
+    async def _resume(self, plan: Plan, objective: Task, existing: Task) -> None:
+        """Re-hand an already-minted assembly job to the pipeline, if it stalled.
+
+        The row is persisted before the pipeline is handed the task, and the
+        pipeline runs the assembly inline, so a dispatch that died in between
+        leaves a row nothing is driving. A task still at CREATED is exactly
+        that case and is re-dispatchable; anything further along is either
+        under way or finished, and the outcome read owns it from there.
+        """
+        if not is_integration_task(existing, plan):
+            logger.warning(
+                INITIATIVE_INTEGRATION_FAILED,
+                plan_id=str(plan.id),
+                task_id=str(existing.id),
+                reason="task_id_occupied_by_foreign_task",
+            )
+            return
+        if existing.status is not TaskStatus.CREATED:
+            logger.debug(
+                INITIATIVE_INTEGRATION_SKIPPED,
+                plan_id=str(plan.id),
+                task_id=str(existing.id),
+                reason="already_minted",
+                status=existing.status.value,
+            )
+            return
+        logger.info(
+            INITIATIVE_INTEGRATION_STARTED,
+            plan_id=str(plan.id),
+            project=str(plan.project),
+            task_id=str(existing.id),
+            note="re-dispatching an assembly job that never left created",
+        )
+        await self._hand_to_pipeline(plan, objective, existing)
+
+    async def _dispatch(self, plan: Plan, objective: Task, attempt: int) -> None:
+        """Persist the assembly job and run it through the work spine."""
         brief = build_integration_brief(plan)
         task = Task(
-            id=integration_task_uuid(plan),
+            id=integration_task_uuid(plan, attempt),
             title=NotBlankStr(integration_title(plan)),
             description=NotBlankStr(brief),
             type=objective.type,
@@ -290,6 +268,15 @@ class IntegrationStageService:
             stakes=escalated_stakes(plan),
         )
         await self._persistence.tasks.save(task)
+        await self._hand_to_pipeline(plan, objective, task)
+
+    async def _hand_to_pipeline(
+        self,
+        plan: Plan,
+        objective: Task,
+        task: Task,
+    ) -> None:
+        """Run *task* through the work spine as a forced-LEAF objective item."""
         work_item = WorkItem(
             origin_adapter_id=NotBlankStr(_ORIGIN),
             source=WorkSource.OBJECTIVE,

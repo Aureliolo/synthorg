@@ -87,17 +87,23 @@ def build_decomposition_tool() -> ToolDefinition:
                 "items": {"type": "string"},
                 "description": "Skills needed for this subtask",
             },
+            # No minItems: a 'decision' item builds nothing and MUST declare
+            # an empty list, so a schema-level floor of one would make a
+            # decision item unsatisfiable and push a schema-enforcing provider
+            # into emitting artifacts the parser then rejects. The
+            # kind-dependent invariant is stated here and enforced by
+            # ``validate_expected_artifacts`` at parse time, where it can see
+            # the kind.
             "expected_artifacts": {
                 "type": "array",
                 "items": {"type": "string"},
-                "minItems": 1,
                 "description": (
                     "Concrete deliverables this subtask must produce "
-                    "(file paths, docs, or test suites). At least one is "
-                    "required for a 'work' item and the plan is rejected "
-                    "without it, because the fail-loud zero-artifact guard "
-                    "engages off this list when the item runs. A 'decision' "
-                    "item builds nothing and must leave this empty."
+                    "(file paths, docs, or test suites). A 'work' item must "
+                    "list at least one and the plan is rejected without it, "
+                    "because the fail-loud zero-artifact guard engages off "
+                    "this list when the item runs. A 'decision' item builds "
+                    "nothing and must leave this empty."
                 ),
             },
             "acceptance_criteria": {

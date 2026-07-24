@@ -50,6 +50,13 @@ _MIN_DECISION_OPTIONS: Final[int] = 2
 _MAX_DECISION_OPTIONS: Final[int] = 50
 MAX_PLAN_VERSION_HISTORY: Final[int] = 20
 
+#: Ceiling on an objective's success criteria. Matched to the evaluate stage's
+#: per-verdict cap: an objective carrying more criteria than one verdict may
+#: judge would be permanently unevaluatable, burning a paid session per rollup
+#: to produce a submission the coverage check must reject. Refusing it at
+#: write time says so once, at the point an operator can fix it.
+MAX_OBJECTIVE_CRITERIA: Final[int] = 100
+
 
 def validate_decision_options(
     *,
@@ -387,6 +394,7 @@ class Plan(BaseModel):
     )
     objective_criteria: tuple[NotBlankStr, ...] = Field(
         default=(),
+        max_length=MAX_OBJECTIVE_CRITERIA,
         description="The objective's acceptance criteria, denormalised so the "
         "coverage map can flag any criterion no item advances",
     )

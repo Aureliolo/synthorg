@@ -13,7 +13,8 @@ and the artefacts, and is asked to check them.
 
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanItemKind
-from synthorg.engine.initiative.integrate import integration_task_id
+from synthorg.engine.initiative.evaluate_models import CriterionVerdict
+from synthorg.engine.initiative.tail_stages import read_integration_state
 from synthorg.persistence.protocol import PersistenceBackend
 
 
@@ -54,7 +55,8 @@ async def build_evaluation_material(
         "What the plan set out to deliver:",
         *_delivered_lines(plan),
     ]
-    integration = await persistence.tasks.get(integration_task_id(plan))
+    state = await read_integration_state(persistence, plan, allow_new_attempt=False)
+    integration = await persistence.tasks.get(str(state.task_id))
     if integration is not None:
         expected = ", ".join(a.path for a in integration.artifacts_expected)
         sections.extend(
@@ -65,3 +67,19 @@ async def build_evaluation_material(
             ]
         )
     return "\n".join(sections)
+
+
+def unmet_verdict_detail(verdicts: tuple[CriterionVerdict, ...]) -> str:
+    """Render the criteria a judgement did not pass, with their evidence.
+
+    The verdict is the only account of what the delivered whole actually
+    failed at, and the successor's planner needs it in those terms rather than
+    as a generic "the objective was not met".
+
+    Returns:
+        One line per unmet criterion, naming the outcome and what was observed.
+    """
+    return "\n".join(
+        f"- {verdict.criterion} [{verdict.outcome.value}]: {verdict.evidence}"
+        for verdict in verdicts
+    )

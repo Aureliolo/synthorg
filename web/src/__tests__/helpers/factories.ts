@@ -336,7 +336,9 @@ export function makePlanItem(id: string, overrides?: Partial<PlanItem>): PlanIte
     dependencies: [],
     owner: null,
     acceptance_criteria: [`${id} is done`],
-    expected_artifacts: [],
+    // Non-empty: the backend rejects a work item declaring no deliverable, so
+    // an empty default would model a plan the API cannot return.
+    expected_artifacts: [`src/${id}.ts`],
     required_skills: [],
     required_tags: [],
     estimated_complexity: 'medium',

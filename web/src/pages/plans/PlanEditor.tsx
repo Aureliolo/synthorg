@@ -97,6 +97,18 @@ function acceptanceText(draft: DraftItem): string {
   return draft.acceptanceCriteria.join('\n')
 }
 
+function artifactsText(draft: DraftItem): string {
+  return draft.expectedArtifacts.join('\n')
+}
+
+/** Whether a draft carries everything the backend requires of its kind. */
+function isComplete(draft: DraftItem): boolean {
+  const nonBlank = (lines: readonly string[]) =>
+    lines.some((line) => line.trim().length > 0)
+  if (!draft.title.trim() || !nonBlank(draft.acceptanceCriteria)) return false
+  return draft.kind !== 'work' || nonBlank(draft.expectedArtifacts)
+}
+
 function newDraft(): DraftItem {
   return {
     id: crypto.randomUUID(),
@@ -159,11 +171,28 @@ function PlanEditorRow({ index, draft, canRemove, onChange, onRemove }: RowProps
         label="Acceptance criteria (one per line)"
         multiline
         rows={2}
+        required
         value={acceptanceText(draft)}
         maxLength={TEXT_MAX}
         hint="Every item needs at least one criterion that defines done."
         onValueChange={(value) =>
           onChange(index, { acceptanceCriteria: value.split('\n') })
+        }
+      />
+      <InputField
+        label="Expected deliverables (one per line)"
+        multiline
+        rows={2}
+        required={draft.kind === 'work'}
+        value={artifactsText(draft)}
+        maxLength={TEXT_MAX}
+        hint={
+          draft.kind === 'work'
+            ? 'A work item that declares none is rejected: the deliverables arm the zero-artifact guard.'
+            : 'A decision item builds nothing, so leave this empty.'
+        }
+        onValueChange={(value) =>
+          onChange(index, { expectedArtifacts: value.split('\n') })
         }
       />
       <InputField
@@ -229,16 +258,17 @@ export function PlanEditor({ plan, onDone }: PlanEditorProps) {
     if (result) onDone()
   }, [plan.id, drafts, onDone])
 
-  // The backend requires every item to carry a title and at least one
-  // acceptance criterion (and caps criteria at MAX_CRITERIA), so gate the save
-  // on both rather than surfacing the 422 after a round trip.
+  // The backend requires every item to carry a title, at least one acceptance
+  // criterion (capped at MAX_CRITERIA), and, for a work item, at least one
+  // expected deliverable. Gate the save on all of them rather than surfacing
+  // the 422 after a round trip.
   const canSave =
     drafts.length > 0 &&
     drafts.length <= MAX_ITEMS &&
-    drafts.every((d) => {
-      const criteria = nonBlankCriteria(d.acceptanceCriteria)
-      return d.title.trim() !== '' && criteria.length >= 1 && criteria.length <= MAX_CRITERIA
-    })
+    drafts.every(
+      (d) =>
+        isComplete(d) && nonBlankCriteria(d.acceptanceCriteria).length <= MAX_CRITERIA,
+    )
 
   return (
     <div className="space-y-3">

@@ -44,9 +44,17 @@ class _RecordingReplanTrigger:
 
     def __init__(self) -> None:
         self.fired: list[tuple[str, StallReason]] = []
+        self.details: list[str | None] = []
 
-    def schedule(self, *, plan: Plan, reason: StallReason) -> None:
+    def schedule(
+        self,
+        *,
+        plan: Plan,
+        reason: StallReason,
+        detail: str | None = None,
+    ) -> None:
         self.fired.append((str(plan.id), reason))
+        self.details.append(detail)
 
     async def drain(self, *, timeout_sec: float) -> None:
         del timeout_sec

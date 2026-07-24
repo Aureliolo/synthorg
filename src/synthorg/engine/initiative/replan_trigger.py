@@ -21,10 +21,9 @@ replan supersedes the plan, and every later attempt reads a superseded plan and
 stops.
 """
 
-import asyncio
-from typing import Final
+from typing import Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
@@ -44,9 +43,9 @@ from synthorg.engine.initiative.completion import (
 from synthorg.engine.initiative.item_progress import collect_item_progress
 from synthorg.engine.initiative.ports import InitiativeReplanPort
 from synthorg.engine.initiative.replan_brief import build_replan_brief
+from synthorg.engine.initiative.stage_runner import StageRunner
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.initiative import (
     INITIATIVE_REPLAN_COMPLETED,
     INITIATIVE_REPLAN_FAILED,
@@ -87,6 +86,8 @@ class ConfirmedStall(BaseModel):
         reason: The stall shape derived from the live item statuses.
         items: Those item statuses, carried forward so the brief is built from
             the same read the verdict came from.
+        detail: What the scheduling stage observed, when it knows something the
+            item statuses do not.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -94,6 +95,35 @@ class ConfirmedStall(BaseModel):
     plan: Plan = Field(description="The freshly read, still-stalled plan")
     reason: StallReason = Field(description="Live stall shape")
     items: tuple[ItemProgress, ...] = Field(description="Live item progress")
+    detail: str | None = Field(
+        default=None,
+        description="What the scheduling stage observed",
+    )
+
+    @model_validator(mode="after")
+    def _validate_reason_matches_evidence(self) -> Self:
+        """Reject a stall whose reason does not match what it carries.
+
+        The type's whole claim is that it has been confirmed, and every
+        consumer builds the successor's brief on that basis. Checking it here
+        keeps the guarantee attached to the type rather than resting on the one
+        private method that happens to construct it correctly today.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: When the reason contradicts the items or the plan's
+                own status.
+        """
+        if self.reason in ITEM_DERIVED_STALLS:
+            if stall_reason(self.items) is not self.reason:
+                msg = "reason does not match the live item stall shape"
+                raise ValueError(msg)
+        elif self.plan.status is not _STAGE_OF_REASON[self.reason]:
+            msg = "reason does not match the plan's tail stage"
+            raise ValueError(msg)
+        return self
 
 
 class ReplanTriggerService:
@@ -111,14 +141,12 @@ class ReplanTriggerService:
     """
 
     __slots__ = (
-        "_clock",
         "_config_resolver",
         "_decomposition",
-        "_inflight",
         "_persistence",
         "_replan",
+        "_runner",
         "_task_engine",
-        "_tasks",
     )
 
     def __init__(  # noqa: PLR0913 -- keyword-only dependency injection
@@ -136,15 +164,20 @@ class ReplanTriggerService:
         self._decomposition = decomposition_service
         self._replan = replan
         self._config_resolver = config_resolver
-        self._clock = clock
-        self._tasks = BackgroundTaskRegistry(owner="initiative.replan", clock=clock)
-        # Plan ids with a replan in flight this process. The rollup fires on
-        # every recompute that reads a stall, not on an edge, so without this
-        # a burst of task events would each start their own replan of the same
-        # plan. Checked-and-set synchronously (no await) so it cannot race.
-        self._inflight: set[str] = set()
+        self._runner = StageRunner(
+            owner="initiative.replan",
+            clock=clock,
+            skipped_event=INITIATIVE_REPLAN_SKIPPED,
+            failed_event=INITIATIVE_REPLAN_FAILED,
+        )
 
-    def schedule(self, *, plan: Plan, reason: StallReason) -> None:
+    def schedule(
+        self,
+        *,
+        plan: Plan,
+        reason: StallReason,
+        detail: str | None = None,
+    ) -> None:
         """Schedule a re-plan for a stalled initiative.
 
         Returns immediately; the work runs detached on a tracked task so the
@@ -152,66 +185,37 @@ class ReplanTriggerService:
         observer: it never raises.
         """
         plan_id = str(plan.id)
-        if plan_id in self._inflight:
-            logger.debug(
-                INITIATIVE_REPLAN_SKIPPED,
+        started = self._runner.start(
+            key=plan_id,
+            work=self._run(plan, reason, detail),
+            deadline=self._timeout_seconds,
+            fallback_seconds=_DEFAULT_TIMEOUT_SECONDS,
+            fields={"plan_id": plan_id, "stall_reason": reason.value},
+        )
+        if started:
+            logger.info(
+                INITIATIVE_REPLAN_SCHEDULED,
                 plan_id=plan_id,
-                reason="already_inflight",
+                stall_reason=reason.value,
             )
-            return
-        self._inflight.add(plan_id)
-        logger.info(
-            INITIATIVE_REPLAN_SCHEDULED, plan_id=plan_id, stall_reason=reason.value
-        )
-        _ = self._tasks.spawn(
-            self._replan_bounded(plan, reason),
-            event=INITIATIVE_REPLAN_FAILED,
-            plan_id=plan_id,
-        )
 
     async def drain(self, *, timeout_sec: float) -> None:
         """Wait for outstanding replans at shutdown, then bound them."""
-        await self._tasks.drain(timeout_sec=timeout_sec)
+        await self._runner.drain(timeout_sec=timeout_sec)
 
-    async def _replan_bounded(self, plan: Plan, reason: StallReason) -> None:
-        """Run one re-plan end to end, swallowing every non-critical failure.
-
-        Raises:
-            asyncio.CancelledError: If the task is cancelled at shutdown; it
-                propagates so the background registry can reap it.
-        """
-        try:
-            await asyncio.wait_for(
-                self._run(plan, reason),
-                timeout=await self._timeout_seconds(),
-            )
-        except asyncio.CancelledError:
-            raise
-        except TimeoutError:
-            logger.warning(
-                INITIATIVE_REPLAN_FAILED, plan_id=str(plan.id), reason="timeout"
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort trigger; the stall persists
-            # and the next rollup event re-fires it
-            reraise_critical(exc)
-            logger.warning(
-                INITIATIVE_REPLAN_FAILED,
-                plan_id=str(plan.id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-        finally:
-            self._inflight.discard(str(plan.id))
-
-    async def _run(self, plan: Plan, reason: StallReason) -> None:
+    async def _run(
+        self,
+        plan: Plan,
+        reason: StallReason,
+        detail: str | None = None,
+    ) -> None:
         """Re-check the stall, then plan and open the successor."""
         if not await self._enabled():
             logger.debug(
                 INITIATIVE_REPLAN_SKIPPED, plan_id=str(plan.id), reason="disabled"
             )
             return
-        confirmed = await self._confirm_stalled(plan, reason)
+        confirmed = await self._confirm_stalled(plan, reason, detail)
         if confirmed is None:
             return
         parent = await self._task_engine.get_task(confirmed.plan.parent_task_id)
@@ -232,7 +236,10 @@ class ReplanTriggerService:
         await self._open_successor(confirmed, parent)
 
     async def _confirm_stalled(
-        self, plan: Plan, reason: StallReason
+        self,
+        plan: Plan,
+        reason: StallReason,
+        detail: str | None = None,
     ) -> ConfirmedStall | None:
         """Re-read *plan* and confirm it is still a replan candidate.
 
@@ -290,7 +297,7 @@ class ReplanTriggerService:
                     stall_reason=reason.value,
                 )
                 return None
-            return ConfirmedStall(plan=fresh, reason=reason, items=items)
+            return ConfirmedStall(plan=fresh, reason=reason, items=items, detail=detail)
         live_reason = stall_reason(items)
         if live_reason is None:
             logger.info(
@@ -299,12 +306,14 @@ class ReplanTriggerService:
                 reason="no_longer_stalled",
             )
             return None
-        return ConfirmedStall(plan=fresh, reason=live_reason, items=items)
+        return ConfirmedStall(
+            plan=fresh, reason=live_reason, items=items, detail=detail
+        )
 
     async def _open_successor(self, stall: ConfirmedStall, parent: Task) -> None:
         """Decompose the objective afresh and open the successor plan."""
         plan = stall.plan
-        brief = build_replan_brief(plan, stall.items, stall.reason)
+        brief = build_replan_brief(plan, stall.items, stall.reason, detail=stall.detail)
         # The brief rides on a copy of the objective task, never the persisted
         # row: the planner needs the stall context, but the objective itself
         # has not changed and must not accumulate one brief per re-plan.

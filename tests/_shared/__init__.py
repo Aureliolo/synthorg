@@ -10,6 +10,7 @@ are not scanned for the bare-mock convention they implement.
 """
 
 from tests._shared.app_state import make_app_state
+from tests._shared.bash import resolve_bash
 from tests._shared.benchmark import FIXTURE_SOURCE, FakeTierBenchmarkScoreProvider
 from tests._shared.build_app import build_test_app
 from tests._shared.capturing_logger import CapturingErrorLogger
@@ -51,6 +52,7 @@ __all__ = [
     "make_pipeline_result",
     "mock_of",
     "recall_request",
+    "resolve_bash",
     "sid",
     "task_from_work_item",
     "wire_decomposition_model",
