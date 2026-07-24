@@ -122,6 +122,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "company.reorder_departments": (10, 60),
     "company.update": (20, 60),
     # connections
+    "connections.accessible_repos": (10, 60),
     "connections.create": (20, 60),
     "connections.delete": (10, 60),
     "connections.update": (30, 60),

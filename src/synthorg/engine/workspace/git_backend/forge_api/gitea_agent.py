@@ -21,17 +21,21 @@ from synthorg.engine.errors import GitBackendForgeApiError
 from synthorg.engine.workspace.git_backend.forge_api._agent_base import ForgeAgentBase
 from synthorg.engine.workspace.git_backend.forge_api._http import raise_for_forge_status
 from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
+    ForgeBranchRef,
     ForgeCiRun,
+    ForgeCiTrigger,
     ForgeIssue,
     ForgeMergeMethod,
     ForgeMergeResult,
     ForgePullRequest,
     ForgeReview,
+    ForgeReviewComment,
     ForgeReviewDecision,
 )
 from synthorg.engine.workspace.git_backend.forge_api.gitea import GiteaForgeClient
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
+    FORGE_API_BRANCH_CREATED,
     FORGE_API_ISSUE_OPENED,
     FORGE_API_PULL_REQUEST_MERGED,
     FORGE_API_PULL_REQUEST_OPENED,
@@ -49,6 +53,9 @@ _REVIEW_EVENTS: Final[Mapping[str, str]] = {
 _CI_UNSUPPORTED: Final[str] = (
     "CI-run reads are not available for the Gitea/Forgejo forge client"
 )
+_CI_TRIGGER_UNSUPPORTED: Final[str] = (
+    "CI triggering is not available for the Gitea/Forgejo forge client"
+)
 
 
 class _GiteaLabel(BaseModel):  # lint-allow: frozen-extra-forbid -- forge extras
@@ -58,6 +65,40 @@ class _GiteaLabel(BaseModel):  # lint-allow: frozen-extra-forbid -- forge extras
 
     id: int = 0
     name: str = ""
+
+
+class _GiteaBranchCommit(BaseModel):  # lint-allow: frozen-extra-forbid -- forge extras
+    """The ``commit`` block of a Gitea branch response (carries the sha)."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
+
+    id: str = ""
+
+
+class _GiteaBranch(BaseModel):  # lint-allow: frozen-extra-forbid -- forge extras
+    """A Gitea ``/branches`` response ``{name, commit: {id}}``."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="ignore")
+
+    name: str = ""
+    commit: _GiteaBranchCommit | None = None
+
+
+def _gitea_review_comment(comment: ForgeReviewComment) -> dict[str, object]:
+    """Project an inline review comment onto the Gitea reviews payload.
+
+    Gitea anchors an inline comment by ``path`` plus a positional line:
+    ``new_position`` for the head side, ``old_position`` for the base.
+
+    Returns:
+        The ``comments[]`` entry for the Gitea reviews API.
+    """
+    position_key = "new_position" if comment.side == "RIGHT" else "old_position"
+    return {
+        "path": str(comment.path),
+        "body": str(comment.body),
+        position_key: comment.line,
+    }
 
 
 class GiteaAgentForgeClient(GiteaForgeClient, ForgeAgentBase):
@@ -136,6 +177,46 @@ class GiteaAgentForgeClient(GiteaForgeClient, ForgeAgentBase):
         return pull
 
     @override
+    async def create_branch(
+        self,
+        *,
+        owner: NotBlankStr,
+        repo: NotBlankStr,
+        new_branch: NotBlankStr,
+        from_ref: NotBlankStr,
+    ) -> ForgeBranchRef:
+        """Create ``new_branch`` from ``from_ref`` and return it.
+
+        Gitea exposes a one-shot branch create (unlike GitHub's
+        resolve-then-create-ref dance).
+
+        Returns:
+            The created branch ref.
+
+        Raises:
+            GitBackendForgeApiError: When the branch response carries no
+                commit id.
+        """
+        action = f"create branch {owner}/{repo}@{new_branch}"
+        resp = await self._request(
+            "POST",
+            f"/repos/{owner}/{repo}/branches",
+            action=action,
+            json={
+                "new_branch_name": str(new_branch),
+                "old_branch_name": str(from_ref),
+            },
+        )
+        raise_for_forge_status(resp, action=action)
+        branch = gh.parse_github(resp.json(), _GiteaBranch, what="branch")
+        sha = branch.commit.id if branch.commit is not None else ""
+        if not sha:
+            msg = "Gitea branch response carried no commit id"
+            raise GitBackendForgeApiError(msg)
+        logger.info(FORGE_API_BRANCH_CREATED, branch=str(new_branch))
+        return ForgeBranchRef(name=NotBlankStr(branch.name or str(new_branch)), sha=sha)
+
+    @override
     async def review_pull_request(
         self,
         *,
@@ -144,6 +225,7 @@ class GiteaAgentForgeClient(GiteaForgeClient, ForgeAgentBase):
         number: int,
         decision: ForgeReviewDecision,
         body: str = "",
+        comments: tuple[ForgeReviewComment, ...] = (),
     ) -> ForgeReview:
         """Submit a review (approve / request changes / comment).
 
@@ -151,15 +233,22 @@ class GiteaAgentForgeClient(GiteaForgeClient, ForgeAgentBase):
             The submitted review.
         """
         action = f"review pull request {owner}/{repo}#{number}"
+        payload: dict[str, object] = {
+            "event": _REVIEW_EVENTS[decision],
+            "body": body,
+        }
+        if comments:
+            payload["comments"] = [_gitea_review_comment(c) for c in comments]
         resp = await self._request(
             "POST",
             f"/repos/{owner}/{repo}/pulls/{number}/reviews",
             action=action,
-            json={"event": _REVIEW_EVENTS[decision], "body": body},
+            json=payload,
         )
         raise_for_forge_status(resp, action=action)
         review = gh.review_from(
-            gh.parse_github(resp.json(), gh.GhReview, what="review")
+            gh.parse_github(resp.json(), gh.GhReview, what="review"),
+            comment_count=len(comments),
         )
         logger.info(FORGE_API_PULL_REQUEST_REVIEWED, number=number, decision=decision)
         return review
@@ -225,6 +314,33 @@ class GiteaAgentForgeClient(GiteaForgeClient, ForgeAgentBase):
             FeatureNotImplementedError: Always (CI reads are GitHub-only).
         """
         raise FeatureNotImplementedError(_CI_UNSUPPORTED)
+
+    @override
+    async def trigger_ci_run(
+        self,
+        *,
+        owner: NotBlankStr,
+        repo: NotBlankStr,
+        workflow: NotBlankStr,
+        branch: NotBlankStr,
+    ) -> ForgeCiTrigger:
+        """Reject: this forge client does not expose CI triggering.
+
+        Raises:
+            FeatureNotImplementedError: Always (CI is GitHub-only here).
+        """
+        raise FeatureNotImplementedError(_CI_TRIGGER_UNSUPPORTED)
+
+    @override
+    async def rerun_ci_run(
+        self, *, owner: NotBlankStr, repo: NotBlankStr, run_id: int
+    ) -> ForgeCiTrigger:
+        """Reject: this forge client does not expose CI re-runs.
+
+        Raises:
+            FeatureNotImplementedError: Always (CI is GitHub-only here).
+        """
+        raise FeatureNotImplementedError(_CI_TRIGGER_UNSUPPORTED)
 
     async def _resolve_label_ids(
         self, *, owner: NotBlankStr, repo: NotBlankStr, labels: tuple[str, ...]

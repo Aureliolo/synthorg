@@ -9,8 +9,9 @@ payload + response, label handling, CI availability), so those are
 abstract and implemented per forge.
 """
 
+import base64
 from abc import ABC, abstractmethod
-from typing import ClassVar
+from typing import ClassVar, Final
 from urllib.parse import quote
 
 import synthorg.engine.workspace.git_backend.forge_api._github_agent_parse as gh
@@ -19,9 +20,13 @@ from synthorg.engine.errors import GitBackendForgeApiError
 from synthorg.engine.workspace.git_backend.forge_api._base import BaseForgeClient
 from synthorg.engine.workspace.git_backend.forge_api._http import raise_for_forge_status
 from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
+    ForgeAccessibleRepo,
+    ForgeBranchRef,
     ForgeCiRun,
+    ForgeCiTrigger,
     ForgeComment,
     ForgeDirEntry,
+    ForgeFileCommit,
     ForgeFileContent,
     ForgeIssue,
     ForgeIssueState,
@@ -30,16 +35,23 @@ from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
     ForgePullRequest,
     ForgePullState,
     ForgeReview,
+    ForgeReviewComment,
     ForgeReviewDecision,
 )
 from synthorg.engine.workspace.git_backend.forge_api.protocol import ForgeRepo
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
+    FORGE_API_FILE_WRITTEN,
     FORGE_API_ISSUE_COMMENTED,
     FORGE_API_PULL_REQUEST_COMMENTED,
 )
 
 logger = get_logger(__name__)
+
+# GitHub and the Gitea family both cap a list page at 100 regardless of a
+# larger requested size, so a single request can never satisfy a scan
+# wider than that; the scan pages until the forge returns a short page.
+_MAX_PAGE_SIZE: Final[int] = 100
 
 
 class ForgeAgentBase(BaseForgeClient, ABC):
@@ -99,6 +111,72 @@ class ForgeAgentBase(BaseForgeClient, ABC):
             )
             for item in _as_list(resp.json())
         )
+
+    async def list_accessible_repos(
+        self, *, limit: int
+    ) -> tuple[ForgeAccessibleRepo, ...]:
+        action = "list accessible repos"
+        collected: list[ForgeAccessibleRepo] = []
+        # The page size stays fixed for the whole walk: ``page`` is an
+        # offset counted in units of the page size, so shrinking it as the
+        # remaining budget falls would make page N+1 start somewhere other
+        # than where page N ended, silently skipping repositories.
+        page_size = min(_MAX_PAGE_SIZE, limit)
+        page = 1
+        while len(collected) < limit:
+            resp = await self._request(
+                "GET",
+                "/user/repos",
+                action=action,
+                params={self._LIST_PARAM: page_size, "page": page},
+            )
+            raise_for_forge_status(resp, action=action)
+            items = _as_list(resp.json())
+            if not items:
+                break
+            parsed = (
+                gh.parse_github(item, gh.GhRepoPerm, what="repo") for item in items
+            )
+            mapped = (gh.accessible_repo_from(model) for model in parsed)
+            collected.extend(repo for repo in mapped if repo is not None)
+            if len(items) < page_size:
+                break
+            page += 1
+        return tuple(collected[:limit])
+
+    async def write_file(  # noqa: PLR0913 -- forge contents-API fields
+        self,
+        *,
+        owner: NotBlankStr,
+        repo: NotBlankStr,
+        path: NotBlankStr,
+        content: str,
+        branch: NotBlankStr,
+        message: NotBlankStr,
+        sha: str | None = None,
+    ) -> ForgeFileCommit:
+        action = f"write file {owner}/{repo}/{path}"
+        encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
+        payload: dict[str, object] = {
+            "message": str(message),
+            "content": encoded,
+            "branch": str(branch),
+        }
+        if sha:
+            payload["sha"] = sha
+        resp = await self._request(
+            "PUT",
+            f"/repos/{owner}/{repo}/contents/{quote(str(path), safe='/')}",
+            action=action,
+            json=payload,
+        )
+        raise_for_forge_status(resp, action=action)
+        commit = gh.file_commit_from(
+            gh.parse_github(resp.json(), gh.GhContentWrite, what="file write"),
+            branch=str(branch),
+        )
+        logger.info(FORGE_API_FILE_WRITTEN, path=str(path))
+        return commit
 
     async def get_issue(
         self, *, owner: NotBlankStr, repo: NotBlankStr, number: int
@@ -227,7 +305,18 @@ class ForgeAgentBase(BaseForgeClient, ABC):
         """Open a pull request from ``source_branch`` into ``target_branch``."""
 
     @abstractmethod
-    async def review_pull_request(
+    async def create_branch(
+        self,
+        *,
+        owner: NotBlankStr,
+        repo: NotBlankStr,
+        new_branch: NotBlankStr,
+        from_ref: NotBlankStr,
+    ) -> ForgeBranchRef:
+        """Create ``new_branch`` pointing at ``from_ref`` and return it."""
+
+    @abstractmethod
+    async def review_pull_request(  # noqa: PLR0913 -- forge review fields
         self,
         *,
         owner: NotBlankStr,
@@ -235,6 +324,7 @@ class ForgeAgentBase(BaseForgeClient, ABC):
         number: int,
         decision: ForgeReviewDecision,
         body: str = "",
+        comments: tuple[ForgeReviewComment, ...] = (),
     ) -> ForgeReview:
         """Submit a review (approve / request changes / comment)."""
 
@@ -266,6 +356,23 @@ class ForgeAgentBase(BaseForgeClient, ABC):
         self, *, owner: NotBlankStr, repo: NotBlankStr, run_id: int
     ) -> ForgeCiRun:
         """Return a single CI run by id."""
+
+    @abstractmethod
+    async def trigger_ci_run(
+        self,
+        *,
+        owner: NotBlankStr,
+        repo: NotBlankStr,
+        workflow: NotBlankStr,
+        branch: NotBlankStr,
+    ) -> ForgeCiTrigger:
+        """Trigger a CI workflow/pipeline on ``branch``."""
+
+    @abstractmethod
+    async def rerun_ci_run(
+        self, *, owner: NotBlankStr, repo: NotBlankStr, run_id: int
+    ) -> ForgeCiTrigger:
+        """Re-run an existing CI run by id."""
 
 
 def _as_list(data: object) -> list[object]:

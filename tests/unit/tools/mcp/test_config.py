@@ -8,6 +8,337 @@ from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
 pytestmark = pytest.mark.unit
 
 
+class TestMCPServerConfigNpmPin:
+    """npm version-pin enforcement for npx-launched stdio servers."""
+
+    def test_unpinned_npx_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-y", "@scope/pkg"),
+            )
+
+    def test_latest_tag_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-y", "@scope/pkg@latest"),
+            )
+
+    def test_pinned_scoped_accepted(self) -> None:
+        cfg = MCPServerConfig(
+            name="s1",
+            transport="stdio",
+            command="npx",
+            args=("-y", "@scope/pkg@2.1.0"),
+        )
+        assert cfg.args == ("-y", "@scope/pkg@2.1.0")
+
+    def test_pinned_unscoped_accepted(self) -> None:
+        cfg = MCPServerConfig(
+            name="s1",
+            transport="stdio",
+            command="npx",
+            args=("pkg@1.2.3",),
+        )
+        assert cfg.args == ("pkg@1.2.3",)
+
+    def test_non_npx_command_exempt(self) -> None:
+        # A node/python server is not an on-the-fly npm resolve; no pin needed.
+        cfg = MCPServerConfig(
+            name="s1",
+            transport="stdio",
+            command="node",
+            args=("server.js",),
+        )
+        assert cfg.command == "node"
+
+    @pytest.mark.parametrize(
+        "command",
+        ["NPX", "Npx", "NPX.CMD", "PNPM", "BUNX", "/usr/local/bin/NPX"],
+        ids=["upper", "mixed", "cmd_upper", "pnpm_upper", "bunx_upper", "path_upper"],
+    )
+    def test_case_varied_launcher_still_pinned(self, command: str) -> None:
+        # Windows resolves NPX/PNPM/BUNX to the same launcher, so a
+        # case-varied command must not slip past the pin check.
+        args = ("dlx", "pkg") if command.lower().endswith("pnpm") else ("pkg",)
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(name="s1", transport="stdio", command=command, args=args)
+
+    def test_pnpm_dlx_unpinned_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="pnpm",
+                args=("dlx", "@scope/pkg"),
+            )
+
+    def test_pnpm_dlx_pinned_accepted(self) -> None:
+        cfg = MCPServerConfig(
+            name="s1",
+            transport="stdio",
+            command="pnpm",
+            args=("dlx", "@scope/pkg@1.0.0"),
+        )
+        assert cfg.args == ("dlx", "@scope/pkg@1.0.0")
+
+    def test_bare_pnpm_is_exempt(self) -> None:
+        # `pnpm` without `dlx` is a normal script runner, not an on-the-fly
+        # resolve; nothing to pin.
+        cfg = MCPServerConfig(
+            name="s1",
+            transport="stdio",
+            command="pnpm",
+            args=("run", "server"),
+        )
+        assert cfg.command == "pnpm"
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("--package=pkg", "dlx", "bin"),
+            ("--package", "pkg", "dlx", "bin"),
+            ("-p", "pkg", "dlx", "bin"),
+            ("--silent", "--package=pkg", "dlx", "bin"),
+        ],
+        ids=["inline", "long_split", "short_split", "after_other_flag"],
+    )
+    def test_pnpm_options_before_dlx_are_still_checked(
+        self, args: tuple[str, ...]
+    ) -> None:
+        # pnpm takes its own options before the subcommand, so matching only
+        # args[0] == "dlx" let `pnpm --package=floating dlx bin` skip the pin
+        # check entirely and resolve a fresh package on every reconnect.
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(name="s1", transport="stdio", command="pnpm", args=args)
+
+    def test_pnpm_pinned_package_before_dlx_accepted(self) -> None:
+        args = ("--package=pkg@1.2.3", "dlx", "bin")
+        cfg = MCPServerConfig(name="s1", transport="stdio", command="pnpm", args=args)
+        assert cfg.args == args
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("--silent", "run", "server"),
+            ("-p", "pkg", "run", "server"),
+        ],
+        ids=["flag_then_run", "package_operand_then_run"],
+    )
+    def test_pnpm_non_dlx_subcommand_stays_exempt(self, args: tuple[str, ...]) -> None:
+        # Scanning for `dlx` must not swallow the subcommand slot: a split
+        # option's operand is not the subcommand, and `run` still means
+        # already-installed code with nothing resolved at spawn time.
+        cfg = MCPServerConfig(name="s1", transport="stdio", command="pnpm", args=args)
+        assert cfg.args == args
+
+    def test_bunx_unpinned_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(name="s1", transport="stdio", command="bunx", args=("pkg",))
+
+    def test_windows_npx_cmd_unpinned_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1", transport="stdio", command="npx.cmd", args=("pkg",)
+            )
+
+    @pytest.mark.parametrize("tag", ["next", "canary", ""])
+    def test_other_floating_tags_rejected(self, tag: str) -> None:
+        spec = f"pkg@{tag}" if tag else "pkg@"
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1", transport="stdio", command="npx", args=("-y", spec)
+            )
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("--package", "pkg", "bin"),
+            ("-p", "pkg", "bin"),
+            ("--package=pkg", "bin"),
+        ],
+        ids=["long", "short", "inline"],
+    )
+    def test_package_option_is_the_pinned_spec(self, args: tuple[str, ...]) -> None:
+        # ``npx --package <pkg> <bin>`` resolves the PACKAGE, not the binary
+        # name that follows it, so the pin must be read off the option value.
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("--package", "pkg@1.2.3", "bin"),
+            ("-p", "pkg@1.2.3", "bin"),
+            ("--package=pkg@1.2.3", "bin"),
+        ],
+        ids=["long", "short", "inline"],
+    )
+    def test_pinned_package_option_accepted(self, args: tuple[str, ...]) -> None:
+        # The unpinned trailing binary name must not be mistaken for a package.
+        cfg = MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
+        assert cfg.args == args
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("-c", "run-my-server --port 1234"),
+            ("--call", "run-my-server --port 1234"),
+            ("--call=run-my-server --port 1234",),
+        ],
+        ids=["short", "long", "inline"],
+    )
+    def test_shell_command_option_is_not_a_package(self, args: tuple[str, ...]) -> None:
+        # ``npx -c '<cmd>'`` runs a command line in the npx shell; it names
+        # no package, so there is nothing to pin and the launcher is valid.
+        cfg = MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
+        assert cfg.args == args
+
+    def test_unpinned_package_alongside_shell_command_rejected(self) -> None:
+        # Skipping the -c operand must not skip a later --package spec.
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-c", "run-server", "--package", "pkg"),
+            )
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("--package=safe@1.0.0", "--package=floating", "bin"),
+            ("--package", "safe@1.0.0", "--package", "floating", "bin"),
+            ("--package=floating", "--package=safe@1.0.0", "bin"),
+        ],
+        ids=["inline_pinned_first", "separate_pinned_first", "inline_floating_first"],
+    )
+    def test_every_repeated_package_must_be_pinned(self, args: tuple[str, ...]) -> None:
+        # ``--package`` is repeatable and npx installs each one, so clearing
+        # the launcher on the strength of the pinned half would leave the
+        # floating half resolving fresh on every reconnect.
+        with pytest.raises(ValidationError, match="'floating'"):
+            MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
+
+    def test_repeated_packages_all_pinned_accepted(self) -> None:
+        args = ("--package=a@1.0.0", "--package=b@2.0.0", "bin")
+        cfg = MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
+        assert cfg.args == args
+
+    @pytest.mark.parametrize(
+        "version",
+        ["^1.2.3", "~1.2.3", ">=1.2.3", "1.2.x", "1.x", "*", "1.2", "1"],
+        ids=[
+            "caret",
+            "tilde",
+            "gte",
+            "patch_wild",
+            "minor_wild",
+            "star",
+            "minor",
+            "major",
+        ],
+    )
+    def test_version_range_rejected(self, version: str) -> None:
+        # A range still resolves to whatever is newest that satisfies it, so
+        # a reconnect can pull an un-reviewed release exactly as `@latest`
+        # would. Only an immutable exact version counts as a pin.
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-y", f"pkg@{version}"),
+            )
+
+    @pytest.mark.parametrize(
+        "version",
+        # One case uses FULLWIDTH DIGIT ONE (U+FF11), which ``\d`` matches
+        # but the strict ``[0-9]`` grammar does not.
+        [
+            "01.2.3",
+            "1.02.3",
+            "1.2.3-01",
+            "1.2.3-alpha..1",
+            "１.2.3",  # noqa: RUF001 -- the confusable digit IS the case
+            "1.2.3\n",
+        ],
+        ids=[
+            "leading_zero_major",
+            "leading_zero_minor",
+            "leading_zero_prerelease",
+            "empty_prerelease_segment",
+            "unicode_digit",
+            "trailing_newline",
+        ],
+    )
+    def test_malformed_version_rejected(self, version: str) -> None:
+        # A spec npm itself would never resolve is not a pin. Accepting one
+        # is how a pin check gets talked past, so the grammar is the strict
+        # SemVer one and the match is anchored at both ends.
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-y", f"pkg@{version}"),
+            )
+
+    @pytest.mark.parametrize(
+        "version",
+        ["1.2.3", "1.2.3-beta.1", "1.2.3+build.5", "1.2.3-rc.1+exp.sha.5114f85"],
+        ids=["release", "prerelease", "build", "prerelease_build"],
+    )
+    def test_exact_semver_accepted(self, version: str) -> None:
+        # Prerelease and build metadata still name one immutable artifact.
+        spec = f"pkg@{version}"
+        cfg = MCPServerConfig(
+            name="s1", transport="stdio", command="npx", args=("-y", spec)
+        )
+        assert cfg.args == ("-y", spec)
+
+    def test_package_flag_after_positional_is_forwarded(self) -> None:
+        # npx's own options end at the first positional: `--package=floating`
+        # here is an argument to `pkg`, not a second install. Reading past the
+        # positional would reject a valid launcher AND lose the real package.
+        args = ("pkg@1.2.3", "--package=floating")
+        cfg = MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
+        assert cfg.args == args
+
+    def test_unpinned_positional_still_rejected_before_forwarded_flags(self) -> None:
+        with pytest.raises(ValidationError, match="'pkg'"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("pkg", "--package=safe@1.0.0"),
+            )
+
+    def test_error_example_uses_the_package_name(self) -> None:
+        # Appending to the offending spec would suggest 'pkg@latest@1.2.3'.
+        with pytest.raises(ValidationError, match=r"e\.g\. 'pkg@1\.2\.3'"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-y", "pkg@latest"),
+            )
+
+    def test_error_example_keeps_the_scope_of_a_scoped_package(self) -> None:
+        with pytest.raises(ValidationError, match=r"e\.g\. '@scope/pkg@1\.2\.3'"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-y", "@scope/pkg@^1.0.0"),
+            )
+
+
 class TestMCPServerConfigStdio:
     """Stdio transport validation."""
 

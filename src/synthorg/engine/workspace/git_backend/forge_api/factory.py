@@ -20,12 +20,16 @@ from synthorg.engine.workspace.git_backend.forge_api.gitea import (
 )
 from synthorg.engine.workspace.git_backend.forge_api.gitea_agent import (
     ForgejoAgentForgeClient,
+    GiteaAgentForgeClient,
 )
 from synthorg.engine.workspace.git_backend.forge_api.github import GitHubForgeClient
 from synthorg.engine.workspace.git_backend.forge_api.github_agent import (
     GitHubAgentForgeClient,
 )
 from synthorg.engine.workspace.git_backend.forge_api.gitlab import GitLabForgeClient
+from synthorg.engine.workspace.git_backend.forge_api.gitlab_agent import (
+    GitLabAgentForgeClient,
+)
 from synthorg.engine.workspace.git_backend.forge_api.protocol import ForgeApiClient
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.observability import get_logger
@@ -132,6 +136,26 @@ def _build_forgejo_agent(
     )
 
 
+def _build_gitea_agent(
+    base_url: str, token: str, timeout: float
+) -> ForgeAgentApiClient:
+    return GiteaAgentForgeClient(
+        api_base_url=_gitea_api_base(base_url),
+        token=token,
+        timeout=timeout,
+    )
+
+
+def _build_gitlab_agent(
+    base_url: str, token: str, timeout: float
+) -> ForgeAgentApiClient:
+    return GitLabAgentForgeClient(
+        api_base_url=_gitlab_api_base(base_url),
+        token=token,
+        timeout=timeout,
+    )
+
+
 _REGISTRY: StrategyRegistry[ForgeApiClient] = StrategyRegistry(
     {
         ConnectionType.GITHUB: _build_github,
@@ -142,13 +166,14 @@ _REGISTRY: StrategyRegistry[ForgeApiClient] = StrategyRegistry(
     kind="forge_api_client",
 )
 
-# The richer agent-operations surface is wired for GitHub + Forgejo now.
-# Gitea shares Forgejo's client (add ``ConnectionType.GITEA: _build_gitea_agent``
-# to enable it) and GitLab's merge-request surface is a separate follow-up; both
-# absent here surface as a typed unsupported-forge error at the tool boundary.
+# The richer agent-operations surface is wired for every supported forge.
+# GitHub and the Gitea family share the GitHub-compatible read surface;
+# GitLab implements the protocol directly on its own v4 API.
 _AGENT_REGISTRY: StrategyRegistry[ForgeAgentApiClient] = StrategyRegistry(
     {
         ConnectionType.GITHUB: _build_github_agent,
+        ConnectionType.GITLAB: _build_gitlab_agent,
+        ConnectionType.GITEA: _build_gitea_agent,
         ConnectionType.FORGEJO: _build_forgejo_agent,
     },
     kind="forge_agent_api_client",

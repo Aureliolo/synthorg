@@ -82,6 +82,21 @@ class InvalidConnectionAuthError(IntegrationError):
     default_message: ClassVar[str] = "Connection authentication is invalid"
 
 
+class InvalidRepoScopeError(IntegrationError):
+    """A forge connection's ``allowed_repos`` entry is malformed or over-broad.
+
+    Raised at the persistence entry rather than only in the request DTO:
+    the scope decides which repositories an agent's token may act on, so
+    every caller of the catalog must be held to it, not just the HTTP
+    path. The caller supplies the value, so the wire contract is a 422.
+    """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Repository scope entry is invalid"
+
+
 class ConnectionHealthError(IntegrationError):
     """A health check operation failed."""
 

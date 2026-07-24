@@ -49,6 +49,16 @@ TOOL_FS_NOOP: Final[str] = "tool.fs.noop"
 # ── Security interception events ────────────────────────────────
 TOOL_SECURITY_DENIED: Final[str] = "tool.security.denied"
 TOOL_SECURITY_ESCALATED: Final[str] = "tool.security.escalated"
+TOOL_SECURITY_ESCALATION_UNATTRIBUTABLE: Final[str] = (
+    "tool.security.escalation_unattributable"
+)
+"""An ESCALATE verdict carried no approval id, so no human was reached.
+
+Its own event rather than a severity kwarg on
+``TOOL_SECURITY_ESCALATED``: this is a fail-closed regression signal (a
+destructive call that never parked for review) and must be alertable
+apart from the routine escalations that did reach an approver.
+"""
 TOOL_OUTPUT_REDACTED: Final[str] = "tool.output.redacted"
 TOOL_OUTPUT_WITHHELD: Final[str] = "tool.output.withheld"
 
@@ -97,6 +107,7 @@ TOOL_MEMORY_AUGMENTATION_FAILED: Final[str] = "tool.memory.augmentation_failed"
 FORGE_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.forge.credential_failed"
 CHAT_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.chat.credential_failed"
 FORGE_TOOL_CONNECTION_FAILED: Final[str] = "tool.forge.connection_failed"
+FORGE_TOOL_REPO_SCOPE_DENIED: Final[str] = "tool.forge.repo_scope_denied"
 CHAT_TOOL_CONNECTION_FAILED: Final[str] = "tool.chat.connection_failed"
 DEPLOY_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.deploy.credential_failed"
 DEPLOY_TOOL_CONNECTION_FAILED: Final[str] = "tool.deploy.connection_failed"

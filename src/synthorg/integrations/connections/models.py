@@ -6,10 +6,9 @@ at runtime via the configured ``SecretBackend``.
 """
 
 import copy
-import re
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Final, Literal, Self
+from typing import Literal, Self
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -21,20 +20,15 @@ from pydantic import (
 )
 
 from synthorg.core.env_var_safety import validate_credential_env_var_name
+from synthorg.core.npm_version import is_exact_npm_version
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.repo_scope import validate_repo_scope_entry
 
 # Canonical database dialect set. Lives here (a leaf import for the whole
 # connections package) so both the database authenticator and the catalog
 # entry validate against one source rather than drifting copies.
 VALID_DIALECTS: frozenset[str] = frozenset({"postgres", "mysql", "sqlite", "mariadb"})
-
-# An exact published version (MAJOR.MINOR.PATCH with optional pre-release/build),
-# NOT an npm dist-tag (``latest``) or a semver range (``^1.0.0`` / ``~1`` / ``1.x``).
-# A range or tag still resolves to a mutable version at launch, defeating the pin.
-_EXACT_NPM_VERSION: Final[re.Pattern[str]] = re.compile(
-    r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
-)
 
 # Per-connection webhook-receipt retention window in days. Tri-state:
 #   None    -- fall back to the global
@@ -154,6 +148,11 @@ class Connection(BaseModel):
         sensitive: Marks the connection as sensitive so the governed
             external-access tool routes every call against it (read or
             write) to human approval, not just write methods.
+        allowed_repos: Least-privilege repository scope for a forge
+            connection (``owner/repo`` entries, ``owner/*`` globs
+            permitted). An empty tuple denies every repository
+            (fail-closed): an operator selects the in-scope repositories
+            for the connection before an agent can act through it.
         created_at: Creation timestamp.
         updated_at: Last modification timestamp.
     """
@@ -170,6 +169,7 @@ class Connection(BaseModel):
     health_check_enabled: bool = True
     health: ConnectionHealth = Field(default_factory=ConnectionHealth)
     sensitive: bool = False
+    allowed_repos: tuple[NotBlankStr, ...] = ()
     metadata: dict[str, str] = Field(default_factory=dict)
     webhook_receipt_retention_days: WebhookRetentionDays = Field(
         default=None,
@@ -195,6 +195,17 @@ class Connection(BaseModel):
             The instance with ``metadata`` replaced by a deep copy.
         """
         object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        return self
+
+    @model_validator(mode="after")
+    def _validate_allowed_repos(self) -> Self:
+        """Reject an over-broad or malformed repo-scope entry at the source.
+
+        Returns:
+            The unchanged instance when every scope entry is well-formed.
+        """
+        for entry in self.allowed_repos:
+            validate_repo_scope_entry(str(entry))
         return self
 
 
@@ -546,9 +557,7 @@ class CatalogEntry(BaseModel):
                 f"(npm_package {self.npm_package!r} would resolve 'latest')"
             )
             raise ValueError(msg)
-        if self.npm_version is not None and not _EXACT_NPM_VERSION.fullmatch(
-            self.npm_version
-        ):
+        if self.npm_version is not None and not is_exact_npm_version(self.npm_version):
             msg = (
                 f"Catalog entry {self.id!r}: npm_version {self.npm_version!r} must "
                 f"be an exact published version (e.g. '1.2.3'), not a dist-tag or "

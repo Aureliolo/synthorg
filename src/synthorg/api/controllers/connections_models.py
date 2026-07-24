@@ -20,12 +20,19 @@ from pydantic import (
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.field_metadata import reject_inline_secret_fields
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
+from synthorg.integrations.connections.repo_scope import validate_repo_scope_entry
 
 _MAX_NAME_LEN: Final[int] = 128
 _MAX_BASE_URL_LEN: Final[int] = 2048
 _MAX_CRED_VALUE_LEN: Final[int] = 8192
 _MAX_METADATA_KEY_LEN: Final[int] = 128
 _MAX_METADATA_VALUE_LEN: Final[int] = 1024
+_MAX_REPO_ENTRIES: Final[int] = 1000
+_MAX_REPO_ENTRY_LEN: Final[int] = 512
+
+_AllowedRepos = tuple[
+    Annotated[NotBlankStr, Field(max_length=_MAX_REPO_ENTRY_LEN)], ...
+]
 
 
 class CreateConnectionRequest(BaseModel):
@@ -103,6 +110,15 @@ class CreateConnectionRequest(BaseModel):
             "against it routes to approval."
         ),
     )
+    allowed_repos: Annotated[_AllowedRepos, Field(max_length=_MAX_REPO_ENTRIES)] = (
+        Field(
+            default=(),
+            description=(
+                "Least-privilege forge repository scope ('owner/repo', 'owner/*' "
+                "globs). Empty denies every repository (fail-closed)."
+            ),
+        )
+    )
 
     @field_validator("name")
     @classmethod
@@ -113,6 +129,18 @@ class CreateConnectionRequest(BaseModel):
             The name with surrounding whitespace stripped.
         """
         return v.strip()
+
+    @field_validator("allowed_repos")
+    @classmethod
+    def _validate_allowed_repos(cls, v: tuple[str, ...]) -> tuple[str, ...]:
+        """Reject an over-broad or malformed repo-scope entry at the boundary.
+
+        Returns:
+            The validated scope tuple.
+        """
+        for entry in v:
+            validate_repo_scope_entry(str(entry))
+        return v
 
     @model_validator(mode="after")
     def _validate_credentials(self) -> Self:
@@ -172,6 +200,16 @@ class UpdateConnectionRequest(BaseModel):
             "against it routes to approval."
         ),
     )
+    allowed_repos: (
+        Annotated[_AllowedRepos, Field(max_length=_MAX_REPO_ENTRIES)] | None
+    ) = Field(
+        default=None,
+        description=(
+            "Replace the forge repository scope ('owner/repo', 'owner/*' "
+            "globs). Send [] to clear it (deny-all); omit to keep the "
+            "existing scope."
+        ),
+    )
 
     @field_validator("sensitive")
     @classmethod
@@ -190,6 +228,34 @@ class UpdateConnectionRequest(BaseModel):
         if v is None:
             msg = "sensitive must be true or false, not null"
             raise ValueError(msg)
+        return v
+
+    @field_validator("allowed_repos")
+    @classmethod
+    def _validate_allowed_repos(
+        cls, v: tuple[str, ...] | None
+    ) -> tuple[str, ...] | None:
+        """Reject an over-broad, malformed, or null repo-scope value.
+
+        An explicit ``null`` is neither "omit to keep" nor "``[]`` to clear",
+        so it is refused rather than silently resolved to one of them (the
+        same stance ``sensitive`` takes). Omitting the field skips this
+        validator entirely and keeps the stored scope.
+
+        Returns:
+            The validated scope tuple.
+
+        Raises:
+            ValueError: When an explicit ``null`` is supplied.
+        """
+        if v is None:
+            msg = (
+                "allowed_repos must be a list of 'owner/repo' entries; "
+                "send [] to clear the scope or omit the field to keep it"
+            )
+            raise ValueError(msg)
+        for entry in v:
+            validate_repo_scope_entry(str(entry))
         return v
 
 

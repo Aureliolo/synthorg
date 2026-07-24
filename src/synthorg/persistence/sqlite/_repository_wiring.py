@@ -190,6 +190,9 @@ from synthorg.persistence.sqlite.refresh_repo import (
 from synthorg.persistence.sqlite.research_run_repo import (
     SQLiteResearchRunRepository,
 )
+from synthorg.persistence.sqlite.resume_intent_repo import (
+    SQLiteResumeIntentRepository,
+)
 from synthorg.persistence.sqlite.risk_override_repo import (
     SQLiteRiskOverrideRepository,
 )
@@ -281,6 +284,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._task_metrics = None
         self._collaboration_metrics = None
         self._parked_contexts = None
+        self._resume_intents = None
         self._audit_entries = None
         self._provider_audit_events = None
         self._preset_overrides = None
@@ -416,6 +420,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._parked_contexts = SQLiteParkedContextRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._resume_intents = SQLiteResumeIntentRepository(
             self._db,
             write_context=self.write_context,
         )

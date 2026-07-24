@@ -169,6 +169,9 @@ nav:
       - Inner-Loop A/B Harness: design/loop-ab-harness.md
       - LLM Gateway: design/llm-gateway.md
       - Credentialed-tool MCP: design/credentialed-mcp.md
+      - Agent Hands (Forge Tools): design/agent-hands.md
+      - Chat Inbound (Socket-Mode): design/chat-inbound.md
+      - Agent MCP Governance: design/agent-mcp-governance.md
       - Mid-Flight Steering: design/mid-flight-steering.md
       - Coordination & Resilience: design/coordination.md
       - Verification & Quality: design/verification-quality.md

@@ -18,9 +18,10 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.chat_api import ChatApiClient, build_chat_api_client
+from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.errors import ChatApiError
-from synthorg.notifications.models import Notification
+from synthorg.notifications.models import Notification, NotificationCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
     NOTIFICATION_SLACK_DELIVERED,
@@ -70,6 +71,11 @@ class SlackNotificationSink:
         connection_name: Name of the bound ``SLACK`` connection.
         channel: Target channel id (or name) to post to.
         timeout_seconds: Per-request HTTP timeout. Must be positive.
+        thread_registry: Optional thread correlation. When wired, an
+            APPROVAL notification's posted message root is registered
+            against its approval id, so the inbound Socket-Mode consumer
+            can resolve a threaded human reply back to the parked task.
+            ``None`` leaves the sink send-only.
 
     The client is built lazily on the first send and reused; ``close()``
     releases it. Both lifecycle methods are idempotent under the
@@ -85,6 +91,7 @@ class SlackNotificationSink:
         "_client",
         "_connection_name",
         "_lifecycle_lock",
+        "_thread_registry",
         "_timeout_seconds",
     )
 
@@ -95,6 +102,7 @@ class SlackNotificationSink:
         connection_name: str,
         channel: str,
         timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+        thread_registry: InboundThreadRegistry | None = None,
     ) -> None:
         if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
             msg = f"timeout_seconds must be a finite number > 0, got {timeout_seconds}"
@@ -103,6 +111,10 @@ class SlackNotificationSink:
         self._connection_name = connection_name
         self._channel = channel
         self._timeout_seconds = timeout_seconds
+        # When wired, an APPROVAL notification's posted message roots a
+        # thread the inbound Socket-Mode consumer can resolve back to this
+        # approval, so a human's threaded reply resumes the parked task.
+        self._thread_registry = thread_registry
         self._client: ChatApiClient | None = None
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init
 
@@ -167,7 +179,7 @@ class SlackNotificationSink:
         if client is None:
             return
         try:
-            await client.send_message(
+            ref = await client.send_message(
                 channel=NotBlankStr(self._channel),
                 text=NotBlankStr(_format_message(notification)),
             )
@@ -180,7 +192,28 @@ class SlackNotificationSink:
                 error=safe_error_description(exc),
             )
             raise
+        self._register_approval_thread(notification, ref.channel, ref.ts)
         logger.info(NOTIFICATION_SLACK_DELIVERED, notification_id=str(notification.id))
+
+    def _register_approval_thread(
+        self, notification: Notification, channel: str, ts: str
+    ) -> None:
+        """Correlate an approval notification's posted message for resume.
+
+        The message just posted is the thread root a human replies under;
+        registering ``(channel, ts) -> approval_id`` lets the inbound
+        consumer route that reply back to the parked approval.
+        """
+        if (
+            self._thread_registry is None
+            or notification.category is not NotificationCategory.APPROVAL
+        ):
+            return
+        approval_id = notification.metadata.get("approval_id")
+        if isinstance(approval_id, str) and approval_id:
+            self._thread_registry.register(
+                channel=channel, thread_ts=ts, approval_id=approval_id
+            )
 
     async def _ensure_client(self) -> ChatApiClient | None:
         """Resolve the connection + token and build the client once.

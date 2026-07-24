@@ -238,6 +238,62 @@ _r.register(
     )
 )
 
+# ── Chat inbound (Slack Socket-Mode) ─────────────────────────────
+# Off by default: an inbound control surface (a human reply resumes a
+# parked task) must be opted into explicitly. The resident consumer loop
+# reads the kill-switch live per iteration and connects only when a bound
+# connection with a Socket-Mode app-level token is also configured.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="chat_inbound_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Whether inbound Slack Socket-Mode is active. Off by default: when"
+            " on, a human mention / DM / reply / reaction in an approval thread"
+            " resumes the parked task it answers. Needs chat_inbound_connection"
+            " set to a Slack connection holding an app-level token."
+        ),
+        group="Chat Inbound",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="chat_inbound_connection",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Name of the Slack connection whose app-level token (its"
+            " 'app_token' credential) opens the inbound Socket-Mode socket."
+            " Empty keeps inbound inert even when chat_inbound_enabled is on."
+        ),
+        group="Chat Inbound",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="chat_inbound_deciders",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Comma-separated Slack user IDs allowed to decide an approval from"
+            " a chat thread. Empty denies every inbound decision: reacting in a"
+            " channel is not authorisation on its own, so an operator names the"
+            " deciders explicitly. A reaction from anyone else is ignored."
+        ),
+        group="Chat Inbound",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
 # ── MCP server sandboxing ────────────────────────────────────────
 # A stdio MCP server is arbitrary third-party code; per ADR D16 every
 # execution-capable surface runs in a container. Enabled by default:

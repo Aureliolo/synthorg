@@ -232,6 +232,18 @@ CREATE INDEX idx_pc_approval_id ON parked_contexts (approval_id);
 CREATE INDEX idx_parked_contexts_agent_parked_at
 ON parked_contexts (agent_id, parked_at DESC);
 
+-- ── Resume intents ────────────────────────────────────────────
+-- Crash-recovery marker for the two-write approval decision: written
+-- before the decision lands on the approval and cleared once the resume
+-- has dispatched, so a row surviving a restart means "this approval's
+-- parked task may never have been woken". Keyed by approval_id (one
+-- in-flight resume per approval); the decision itself is NOT copied
+-- here, the approval row stays the system of record.
+CREATE TABLE resume_intents (
+    approval_id TEXT NOT NULL PRIMARY KEY,
+    recorded_at TEXT NOT NULL
+);
+
 -- ── Audit entries ─────────────────────────────────────────────
 CREATE TABLE audit_entries (
     id TEXT NOT NULL PRIMARY KEY,
@@ -1280,6 +1292,7 @@ CREATE TABLE connections (
         OR webhook_receipt_retention_days >= 0
     ),
     sensitive INTEGER NOT NULL DEFAULT 0 CHECK (sensitive IN (0, 1)),
+    allowed_repos_json TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );

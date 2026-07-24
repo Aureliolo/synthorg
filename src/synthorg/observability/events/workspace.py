@@ -66,6 +66,9 @@ FORGE_API_PULL_REQUEST_OPENED: Final[str] = "forge_api.pull_request.opened"
 FORGE_API_PULL_REQUEST_COMMENTED: Final[str] = "forge_api.pull_request.commented"
 FORGE_API_PULL_REQUEST_REVIEWED: Final[str] = "forge_api.pull_request.reviewed"
 FORGE_API_PULL_REQUEST_MERGED: Final[str] = "forge_api.pull_request.merged"
+FORGE_API_BRANCH_CREATED: Final[str] = "forge_api.branch.created"
+FORGE_API_FILE_WRITTEN: Final[str] = "forge_api.file.written"
+FORGE_API_CI_TRIGGERED: Final[str] = "forge_api.ci.triggered"
 
 # ── Project workspace provisioning events ────────────────────────
 PROJECT_WORKSPACE_PROVISIONED: Final[str] = "project_workspace.provisioned"

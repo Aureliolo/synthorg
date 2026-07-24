@@ -7,6 +7,7 @@ export type {
   ConnectionTypeMetadata,
   CreateConnectionRequest,
   DeviceLoginPrompt,
+  ForgeAccessibleRepo,
   HealthReport,
   InitiateOAuthFlowRequest,
   InstallEntryRequest,

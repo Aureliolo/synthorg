@@ -75,6 +75,9 @@ class ForgeRateLimitedError(ForgeToolError):
     status_code: ClassVar[int] = 429
     error_code: ClassVar[ErrorCode] = ErrorCode.RATE_LIMITED
     error_category: ClassVar[ErrorCategory] = ErrorCategory.RATE_LIMIT
+    # A rate limit is transient by definition; match every sibling
+    # RateLimitError leaf so the wire/retry contract stays consistent.
+    retryable: ClassVar[bool] = True
     default_message: ClassVar[str] = "Forge rate limit exceeded"
 
     retry_after_seconds: float | None
@@ -99,7 +102,13 @@ class ForgeRateLimitedError(ForgeToolError):
 
 
 class ForgeUpstreamError(ForgeToolError):
-    """The forge request failed (auth, transport, or non-2xx)."""
+    """Base for a failed forge request (auth, transport, or non-2xx).
+
+    Split into a non-retryable auth leaf and a retryable API leaf so a
+    permanent auth failure and a transient upstream failure are never
+    conflated into one retryability verdict (mirrors the engine-layer
+    ``GitBackendForgeAuthError`` / ``GitBackendForgeApiError`` split).
+    """
 
     status_code: ClassVar[int] = 502
     error_code: ClassVar[ErrorCode] = ErrorCode.TOOL_EXECUTION_ERROR
@@ -107,12 +116,47 @@ class ForgeUpstreamError(ForgeToolError):
     default_message: ClassVar[str] = "Forge upstream request failed"
 
 
+class ForgeUpstreamAuthError(
+    ForgeUpstreamError
+):  # lint-allow: error-code-uniqueness -- inheritance alias of ForgeUpstreamError
+    """Forge authentication failed; a deterministic, non-retryable failure."""
+
+    retryable: ClassVar[bool] = False
+    default_message: ClassVar[str] = "Forge authentication failed"
+
+
+class ForgeUpstreamApiError(
+    ForgeUpstreamError
+):  # lint-allow: error-code-uniqueness -- inheritance alias of ForgeUpstreamError
+    """Forge returned a non-2xx / transport failure; retryable."""
+
+    retryable: ClassVar[bool] = True
+    default_message: ClassVar[str] = "Forge upstream request failed"
+
+
+class ForgeRepoScopeError(ForgeToolError):
+    """The requested repository is outside the connection's allowed scope.
+
+    Repo scope is least-privilege and fail-closed: a connection with no
+    repositories selected denies every repository, and a selected scope
+    admits only its ``owner/repo`` entries (``owner/*`` globs permitted).
+    """
+
+    status_code: ClassVar[int] = 403
+    error_code: ClassVar[ErrorCode] = ErrorCode.FORBIDDEN
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    default_message: ClassVar[str] = "Repository is outside the connection's scope"
+
+
 __all__ = [
     "ForgeConnectionNotFoundError",
     "ForgeCredentialError",
     "ForgeRateLimitedError",
+    "ForgeRepoScopeError",
     "ForgeToolArgumentError",
     "ForgeToolError",
     "ForgeUnsupportedError",
+    "ForgeUpstreamApiError",
+    "ForgeUpstreamAuthError",
     "ForgeUpstreamError",
 ]

@@ -532,14 +532,16 @@ class TestAgentFactory:
     def test_supported_predicate(self) -> None:
         assert forge_agent_api_supported(ConnectionType.GITHUB) is True
         assert forge_agent_api_supported(ConnectionType.FORGEJO) is True
-        assert forge_agent_api_supported(ConnectionType.GITEA) is False
-        assert forge_agent_api_supported(ConnectionType.GITLAB) is False
+        assert forge_agent_api_supported(ConnectionType.GITEA) is True
+        assert forge_agent_api_supported(ConnectionType.GITLAB) is True
+        # A non-forge connection type has no agent-operations client.
+        assert forge_agent_api_supported(ConnectionType.SLACK) is False
 
     def test_unsupported_forge_raises(self) -> None:
         with pytest.raises(StrategyFactoryNotFoundError):
             build_forge_agent_api_client(
-                connection_type=ConnectionType.GITLAB,
-                base_url="https://gitlab.com/acme",
+                connection_type=ConnectionType.SLACK,
+                base_url="https://slack.example.com/acme",
                 token="t",
                 timeout=5.0,
             )

@@ -246,3 +246,85 @@ class TestFormatMessage:
         lines = text.splitlines()
         assert len(lines) == 2  # header + context line only
         assert lines[0].startswith("*[INFO]*")
+
+
+class TestThreadRegistryPopulation:
+    """An approval notification correlates its thread for inbound resume."""
+
+    async def test_approval_notification_registers_thread(self) -> None:
+        from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
+
+        registry = InboundThreadRegistry()
+        fake = _FakeChatClient()
+        sink = SlackNotificationSink(
+            connection_catalog=_catalog(conn=_connection()),
+            connection_name="slack-conn",
+            channel="C1",
+            thread_registry=registry,
+        )
+        notification = Notification(
+            category=NotificationCategory.APPROVAL,
+            severity=NotificationSeverity.WARNING,
+            title="Approval required: ap-1",
+            source="approval_gate",
+            metadata={"approval_id": "ap-1"},
+        )
+        with patch(_PATCH_TARGET, return_value=fake):
+            await sink.send(notification)
+        assert registry.resolve(channel="C1", thread_ts="1.0") == "ap-1"
+
+    async def test_non_approval_notification_does_not_register(self) -> None:
+        from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
+
+        registry = InboundThreadRegistry()
+        fake = _FakeChatClient()
+        sink = SlackNotificationSink(
+            connection_catalog=_catalog(conn=_connection()),
+            connection_name="slack-conn",
+            channel="C1",
+            thread_registry=registry,
+        )
+        with patch(_PATCH_TARGET, return_value=fake):
+            await sink.send(_notification())
+        assert registry.resolve(channel="C1", thread_ts="1.0") is None
+
+    async def test_approval_without_registry_is_a_no_op(self) -> None:
+        # No thread registry wired: an APPROVAL notification must still send
+        # cleanly (correlation is best-effort), not crash.
+        fake = _FakeChatClient()
+        sink = SlackNotificationSink(
+            connection_catalog=_catalog(conn=_connection()),
+            connection_name="slack-conn",
+            channel="C1",
+        )
+        notification = Notification(
+            category=NotificationCategory.APPROVAL,
+            severity=NotificationSeverity.WARNING,
+            title="Approval required: ap-1",
+            source="approval_gate",
+            metadata={"approval_id": "ap-1"},
+        )
+        with patch(_PATCH_TARGET, return_value=fake):
+            await sink.send(notification)
+
+    async def test_approval_without_approval_id_does_not_register(self) -> None:
+        from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
+
+        registry = InboundThreadRegistry()
+        fake = _FakeChatClient()
+        sink = SlackNotificationSink(
+            connection_catalog=_catalog(conn=_connection()),
+            connection_name="slack-conn",
+            channel="C1",
+            thread_registry=registry,
+        )
+        notification = Notification(
+            category=NotificationCategory.APPROVAL,
+            severity=NotificationSeverity.WARNING,
+            title="Approval required",
+            source="approval_gate",
+            metadata={},
+        )
+        with patch(_PATCH_TARGET, return_value=fake):
+            await sink.send(notification)
+        assert registry.resolve(channel="C1", thread_ts="1.0") is None

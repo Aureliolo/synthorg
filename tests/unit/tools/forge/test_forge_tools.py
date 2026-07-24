@@ -10,6 +10,7 @@ layer tests.
 
 import base64
 import json
+from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, patch
 
@@ -30,11 +31,13 @@ from synthorg.integrations.connections.models import (
     ConnectionType,
 )
 from synthorg.integrations.errors import SecretRetrievalError
+from synthorg.tools.forge._base import _repo_in_scope
 from synthorg.tools.forge._runtime import ForgeToolDeps, ForgeToolsRuntime
 from synthorg.tools.forge.forge_tools import (
     ForgeCiTool,
     ForgeIssueTool,
     ForgePullRequestTool,
+    ForgePushTool,
     ForgeRepoTool,
 )
 from tests._shared.mock_of import mock_of
@@ -58,12 +61,14 @@ def _connection(
     *,
     ctype: ConnectionType = ConnectionType.FORGEJO,
     base_url: str = "https://code.example.com",
+    allowed_repos: tuple[str, ...] = ("acme/*",),
 ) -> Connection:
     return Connection(
         name="forge",
         connection_type=ctype,
         auth_method=AuthMethod.BEARER_TOKEN,
         base_url=base_url,
+        allowed_repos=allowed_repos,
     )
 
 
@@ -307,6 +312,24 @@ class TestForgeCiTool:
         assert result.is_error is True
         assert "not" in result.content.lower()
 
+    @pytest.mark.parametrize(
+        ("field", "bad"),
+        [("branch", "../../main"), ("workflow", "../ci.yml"), ("workflow", "a/b")],
+    )
+    async def test_trigger_field_traversal_rejected(self, field: str, bad: str) -> None:
+        arguments: dict[str, object] = {
+            "action": "trigger",
+            "owner": "acme",
+            "repo": "proj-1",
+            "branch": "main",
+            "workflow": "ci.yml",
+        }
+        arguments[field] = bad
+        tool = ForgeCiTool(deps=_deps(conn=_connection()))
+        result = await tool.execute(arguments=arguments)
+        assert result.is_error is True
+        assert "invalid arguments" in result.content.lower()
+
 
 class TestForgeToolGuards:
     async def test_connection_not_found(self) -> None:
@@ -447,3 +470,246 @@ class TestForgeToolErrorMapping:
                     }
                 )
         client.aclose.assert_awaited_once()
+
+
+_VCS_PUSH = "vcs:push"
+
+
+def _vcs_autonomy() -> EffectiveAutonomy:
+    return EffectiveAutonomy(
+        level=AutonomyLevel.FULL,
+        auto_approve_actions=frozenset({_VCS_PUSH}),
+        human_approval_actions=frozenset(),
+        security_agent=False,
+    )
+
+
+class TestForgeRepoScope:
+    async def test_empty_scope_denies_all(self) -> None:
+        tool = ForgeRepoTool(deps=_deps(conn=_connection(allowed_repos=())))
+        result = await tool.execute(
+            arguments={"action": "get_repo", "owner": "acme", "repo": "proj-1"}
+        )
+        assert result.is_error is True
+        assert "outside" in result.content
+
+    async def test_mismatched_scope_denies(self) -> None:
+        tool = ForgeRepoTool(deps=_deps(conn=_connection(allowed_repos=("other/*",))))
+        result = await tool.execute(
+            arguments={"action": "get_repo", "owner": "acme", "repo": "proj-1"}
+        )
+        assert result.is_error is True
+
+    @respx.mock
+    async def test_exact_scope_allows(self) -> None:
+        respx.get(f"{_FJ}/repos/acme/proj-1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "full_name": "acme/proj-1",
+                    "default_branch": "main",
+                    "private": True,
+                    "clone_url": "https://code.example.com/acme/proj-1.git",
+                },
+            ),
+        )
+        tool = ForgeRepoTool(
+            deps=_deps(conn=_connection(allowed_repos=("acme/proj-1",)))
+        )
+        result = await tool.execute(
+            arguments={"action": "get_repo", "owner": "acme", "repo": "proj-1"}
+        )
+        assert result.is_error is False
+
+
+class TestRepoInScope:
+    """The scope predicate is deterministic and case-insensitive."""
+
+    def test_case_insensitive_exact_match(self) -> None:
+        # OS-independent, case-folded: a forge-resolved case variant of an
+        # in-scope repo must still be admitted (and never bypass the scope).
+        assert _repo_in_scope("Acme", "Proj-1", ("acme/proj-1",)) is True
+
+    def test_case_insensitive_glob_match(self) -> None:
+        assert _repo_in_scope("ACME", "anything", ("acme/*",)) is True
+
+    def test_empty_scope_denies(self) -> None:
+        assert _repo_in_scope("acme", "proj-1", ()) is False
+
+    def test_mismatch_denies(self) -> None:
+        assert _repo_in_scope("acme", "proj-1", ("other/*",)) is False
+
+
+class TestForgePushTool:
+    @respx.mock
+    async def test_create_branch_auto_approved(self) -> None:
+        respx.post(f"{_FJ}/repos/acme/proj-1/branches").mock(
+            return_value=httpx.Response(
+                201, json={"name": "feature", "commit": {"id": "sha1"}}
+            ),
+        )
+        tool = ForgePushTool(deps=_deps(conn=_connection(), autonomy=_vcs_autonomy()))
+        result = await tool.execute(
+            arguments={
+                "action": "create_branch",
+                "owner": "acme",
+                "repo": "proj-1",
+                "new_branch": "feature",
+                "from_ref": "main",
+            }
+        )
+        assert result.is_error is False
+        assert json.loads(result.content)["sha"] == "sha1"
+
+    async def test_write_file_parks_without_vcs_push_grant(self) -> None:
+        # comms:external autonomy does NOT auto-approve vcs:push, so the
+        # write parks: proof the push tool binds its own action type.
+        tool = ForgePushTool(deps=_deps(conn=_connection(), autonomy=_auto_autonomy()))
+        result = await tool.execute(
+            arguments={
+                "action": "write_file",
+                "owner": "acme",
+                "repo": "proj-1",
+                "path": "x.py",
+                "branch": "feature",
+                "content": "x=1",
+                "message": "add x",
+            }
+        )
+        assert result.metadata["requires_parking"] is True
+
+    @pytest.mark.parametrize("field", ["new_branch", "from_ref"])
+    @pytest.mark.parametrize("bad", ["../../etc", "..", "a?x", "a#x", "a\\b"])
+    async def test_ref_traversal_rejected(self, field: str, bad: str) -> None:
+        # A ref name lands in the request path exactly as owner/repo does,
+        # so it takes the same guard: no egress on a malformed ref.
+        arguments: dict[str, object] = {
+            "action": "create_branch",
+            "owner": "acme",
+            "repo": "proj-1",
+            "new_branch": "feature",
+            "from_ref": "main",
+        }
+        arguments[field] = bad
+        tool = ForgePushTool(deps=_deps(conn=_connection(), autonomy=_vcs_autonomy()))
+        result = await tool.execute(arguments=arguments)
+        assert result.is_error is True
+        assert "invalid arguments" in result.content.lower()
+
+    async def test_write_file_branch_traversal_rejected(self) -> None:
+        tool = ForgePushTool(deps=_deps(conn=_connection(), autonomy=_vcs_autonomy()))
+        result = await tool.execute(
+            arguments={
+                "action": "write_file",
+                "owner": "acme",
+                "repo": "proj-1",
+                "path": "x.py",
+                "branch": "../../main",
+                "content": "x=1",
+                "message": "add x",
+            }
+        )
+        assert result.is_error is True
+        assert "invalid arguments" in result.content.lower()
+
+    async def test_slashed_ref_still_accepted(self) -> None:
+        # ``feature/x`` is an ordinary ref; the guard must allow the slash.
+        tool = ForgePushTool(deps=_deps(conn=_connection(), autonomy=_auto_autonomy()))
+        result = await tool.execute(
+            arguments={
+                "action": "create_branch",
+                "owner": "acme",
+                "repo": "proj-1",
+                "new_branch": "feature/x",
+                "from_ref": "main",
+            }
+        )
+        assert "invalid arguments" not in result.content.lower()
+
+
+class TestForgeInlineReviewAndCi:
+    @respx.mock
+    async def test_review_forwards_inline_comments(self) -> None:
+        route = respx.post(f"{_FJ}/repos/acme/proj-1/pulls/2/reviews").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "state": "COMMENT",
+                    "user": {"login": "a"},
+                    "body": "b",
+                    "html_url": "https://code.example.com/acme/proj-1/pulls/2",
+                },
+            ),
+        )
+        tool = ForgePullRequestTool(
+            deps=_deps(conn=_connection(), autonomy=_auto_autonomy())
+        )
+        result = await tool.execute(
+            arguments={
+                "action": "review",
+                "owner": "acme",
+                "repo": "proj-1",
+                "number": 2,
+                "decision": "comment",
+                "body": "b",
+                "comments": [
+                    {"path": "a.py", "line": 4, "body": "nit", "side": "RIGHT"}
+                ],
+            }
+        )
+        assert result.is_error is False
+        assert b'"new_position":4' in route.calls.last.request.content
+
+    @respx.mock
+    async def test_inline_comment_policy_violation_rejected_before_dispatch(
+        self,
+    ) -> None:
+        # An inline review-comment body is agent-authored prose bound for a
+        # public forge, so it passes the output-style guard like every other
+        # field. A blocked body must stop the review before any forge call.
+        route = respx.post(f"{_FJ}/repos/acme/proj-1/pulls/2/reviews").mock(
+            return_value=httpx.Response(200, json={})
+        )
+        bad_body = "policy-violating body"
+
+        def _fake_policy(text: str, _ctx: object) -> object | None:
+            if text == bad_body:
+                return SimpleNamespace(
+                    blocked=True, summary="blocked", rewritten_text=None
+                )
+            return None
+
+        tool = ForgePullRequestTool(
+            deps=_deps(conn=_connection(), autonomy=_auto_autonomy())
+        )
+        target = "synthorg.engine.output_style.evaluate_output_policy"
+        with patch(target, _fake_policy):
+            result = await tool.execute(
+                arguments={
+                    "action": "review",
+                    "owner": "acme",
+                    "repo": "proj-1",
+                    "number": 2,
+                    "decision": "comment",
+                    "body": "fine summary",
+                    "comments": [{"path": "a.py", "line": 4, "body": bad_body}],
+                }
+            )
+        assert result.is_error is True
+        assert not route.called
+
+    async def test_ci_trigger_parks_as_write(self) -> None:
+        # A CI trigger is a write: with no auto-approval it parks for a
+        # human before any egress attempt (unlike read-only list/get).
+        tool = ForgeCiTool(deps=_deps(conn=_connection()))
+        result = await tool.execute(
+            arguments={
+                "action": "trigger",
+                "owner": "acme",
+                "repo": "proj-1",
+                "workflow": "ci.yml",
+                "branch": "main",
+            }
+        )
+        assert result.metadata["requires_parking"] is True

@@ -15,9 +15,13 @@ from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
+    ForgeAccessibleRepo,
+    ForgeBranchRef,
     ForgeCiRun,
+    ForgeCiTrigger,
     ForgeComment,
     ForgeDirEntry,
+    ForgeFileCommit,
     ForgeFileContent,
     ForgeIssue,
     ForgeIssueState,
@@ -26,6 +30,7 @@ from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
     ForgePullRequest,
     ForgePullState,
     ForgeReview,
+    ForgeReviewComment,
     ForgeReviewDecision,
 )
 from synthorg.engine.workspace.git_backend.forge_api.protocol import ForgeRepo
@@ -67,6 +72,50 @@ class ForgeAgentApiClient(Protocol):
         ref: str | None = None,
     ) -> tuple[ForgeDirEntry, ...]:
         """List the entries under ``path`` at ``ref``."""
+        ...
+
+    async def list_accessible_repos(
+        self, *, limit: int
+    ) -> tuple[ForgeAccessibleRepo, ...]:
+        """List repositories the bound token can reach.
+
+        Used to populate the operator's repo-scope selection: the caller
+        presents these and persists the chosen subset as the connection's
+        allowed repositories. ``limit`` caps the TOTAL number of
+        repositories returned, so a truncated result is not the full
+        accessible set; how many requests it takes to reach that cap is an
+        implementation detail.
+        """
+        ...
+
+    async def create_branch(
+        self,
+        *,
+        owner: NotBlankStr,
+        repo: NotBlankStr,
+        new_branch: NotBlankStr,
+        from_ref: NotBlankStr,
+    ) -> ForgeBranchRef:
+        """Create ``new_branch`` pointing at ``from_ref`` and return it."""
+        ...
+
+    async def write_file(  # noqa: PLR0913 -- forge contents-API fields
+        self,
+        *,
+        owner: NotBlankStr,
+        repo: NotBlankStr,
+        path: NotBlankStr,
+        content: str,
+        branch: NotBlankStr,
+        message: NotBlankStr,
+        sha: str | None = None,
+    ) -> ForgeFileCommit:
+        """Create or update ``path`` on ``branch`` and return the commit.
+
+        ``sha`` is the blob sha of the file being replaced; omit it to
+        create a new file (supplying it for an existing file, or omitting
+        it for one that exists, is a forge-side conflict).
+        """
         ...
 
     async def get_issue(
@@ -151,7 +200,7 @@ class ForgeAgentApiClient(Protocol):
         """Add a discussion comment to a pull request and return it."""
         ...
 
-    async def review_pull_request(
+    async def review_pull_request(  # noqa: PLR0913 -- forge review fields
         self,
         *,
         owner: NotBlankStr,
@@ -159,8 +208,13 @@ class ForgeAgentApiClient(Protocol):
         number: int,
         decision: ForgeReviewDecision,
         body: str = "",
+        comments: tuple[ForgeReviewComment, ...] = (),
     ) -> ForgeReview:
-        """Submit a review (approve / request changes / comment)."""
+        """Submit a review (approve / request changes / comment).
+
+        ``comments`` are inline, diff-anchored comments the forge attaches
+        to the review at the given ``path``/``line``/``side``.
+        """
         ...
 
     async def merge_pull_request(
@@ -199,6 +253,33 @@ class ForgeAgentApiClient(Protocol):
         Raises:
             FeatureNotImplementedError: When the forge does not expose a
                 CI-run surface this client supports.
+        """
+        ...
+
+    async def trigger_ci_run(
+        self,
+        *,
+        owner: NotBlankStr,
+        repo: NotBlankStr,
+        workflow: NotBlankStr,
+        branch: NotBlankStr,
+    ) -> ForgeCiTrigger:
+        """Trigger a CI workflow/pipeline on ``branch``.
+
+        Raises:
+            FeatureNotImplementedError: When the forge does not expose a
+                CI-trigger surface this client supports.
+        """
+        ...
+
+    async def rerun_ci_run(
+        self, *, owner: NotBlankStr, repo: NotBlankStr, run_id: int
+    ) -> ForgeCiTrigger:
+        """Re-run an existing CI run by id.
+
+        Raises:
+            FeatureNotImplementedError: When the forge does not expose a
+                CI-rerun surface this client supports.
         """
         ...
 

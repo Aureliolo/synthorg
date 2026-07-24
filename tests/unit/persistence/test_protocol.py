@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Literal
 import pytest
 
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.resume_intent import ResumeIntent
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.hr.persistence_protocol import (
@@ -86,6 +87,7 @@ from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
 )
 from synthorg.persistence.research_protocol import ResearchRunRepository
+from synthorg.persistence.resume_intent_protocol import ResumeIntentRepository
 from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
@@ -322,6 +324,26 @@ class _FakeParkedContextRepository:
         return ()
 
     async def delete(self, parked_id: str) -> bool:
+        return False
+
+
+class _FakeResumeIntentRepository:
+    async def save(self, intent: ResumeIntent) -> None:
+        pass
+
+    async def get(self, approval_id: str) -> ResumeIntent | None:
+        return None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ResumeIntent, ...]:
+        del limit, offset
+        return ()
+
+    async def delete(self, approval_id: str) -> bool:
         return False
 
 
@@ -1433,6 +1455,10 @@ class _FakeBackend:
         return _FakeParkedContextRepository()
 
     @property
+    def resume_intents(self) -> _FakeResumeIntentRepository:
+        return _FakeResumeIntentRepository()
+
+    @property
     def collaboration_metrics(self) -> _FakeCollaborationMetricRepository:
         return _FakeCollaborationMetricRepository()
 
@@ -1860,6 +1886,17 @@ class TestProtocolCompliance:
         assert isinstance(
             _FakeParkedContextRepository(),
             ParkedContextRepository,
+        )
+
+    def test_fake_resume_intent_repo_is_resume_intent_repository(self) -> None:
+        # Assert through the backend too, so a regression that nulls or
+        # mistypes ``_FakeBackend.resume_intents`` fails here rather than
+        # slipping past on the standalone-class check alone.
+        backend = _FakeBackend()
+        assert isinstance(backend.resume_intents, ResumeIntentRepository)
+        assert isinstance(
+            _FakeResumeIntentRepository(),
+            ResumeIntentRepository,
         )
 
     def test_fake_audit_repo_is_audit_repository(self) -> None:

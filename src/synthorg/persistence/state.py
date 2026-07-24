@@ -22,6 +22,7 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
 )
+from synthorg.persistence.resume_intent_protocol import ResumeIntentRepository
 
 
 class PersistenceStateSlice(BaseFeatureStateSlice):
@@ -85,6 +86,28 @@ def code_execution_records_of(
     """
     backend = app_state.slice(PersistenceStateSlice).backend
     return backend.code_execution_records if backend is not None else None
+
+
+def resume_intents_of(
+    app_state: AppStateSliceMixin,
+) -> ResumeIntentRepository | None:
+    """Return the resume-intent outbox, or ``None`` if unwired.
+
+    Companion to :func:`persistence_of` for the crash-recovery path. The
+    outbox exists to survive a process death, which a run with no backend
+    cannot do at all, so a ``None`` here degrades the marker to a no-op
+    rather than 503-ing an approval decision that is otherwise perfectly
+    serviceable.
+
+    Args:
+        app_state: The application state (any slice-reader).
+
+    Returns:
+        The resume-intent repository, or ``None`` when no backend is
+        wired.
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    return backend.resume_intents if backend is not None else None
 
 
 def red_team_reports_of(

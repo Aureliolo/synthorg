@@ -18,15 +18,19 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import GitBackendForgeApiError
 from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
+    ForgeAccessibleRepo,
+    ForgeBranchRef,
     ForgeCiRun,
     ForgeComment,
     ForgeDirEntry,
     ForgeEntryKind,
+    ForgeFileCommit,
     ForgeFileContent,
     ForgeIssue,
     ForgeMergeResult,
     ForgeOpenClosedState,
     ForgePullRequest,
+    ForgeRepoPermission,
     ForgeReview,
 )
 from synthorg.engine.workspace.git_backend.forge_api.protocol import ForgeRepo
@@ -156,6 +160,47 @@ class GhRunList(_GhBase):
     workflow_runs: tuple[GhRun, ...] = ()
 
 
+class _GhRefObject(_GhBase):
+    sha: str = ""
+
+
+class GhGitRef(_GhBase):
+    """A ``git/refs`` response (branch ref resolution + creation)."""
+
+    ref: str = ""
+    object: _GhRefObject | None = None
+
+
+class _GhWriteContent(_GhBase):
+    path: str = ""
+    sha: str = ""
+
+
+class _GhWriteCommit(_GhBase):
+    sha: str = ""
+
+
+class GhContentWrite(_GhBase):
+    """A ``PUT /contents`` (create-or-update file) response."""
+
+    content: _GhWriteContent | None = None
+    commit: _GhWriteCommit | None = None
+
+
+class _GhRepoPermissions(_GhBase):
+    admin: bool = False
+    push: bool = False
+    pull: bool = False
+
+
+class GhRepoPerm(_GhBase):
+    """A repository list entry carrying the token's effective permission."""
+
+    full_name: str = ""
+    private: bool = False
+    permissions: _GhRepoPermissions | None = None
+
+
 def _login(user: _GhUser | None) -> str:
     return user.login if user is not None else ""
 
@@ -278,13 +323,79 @@ def pull_from(model: GhPull) -> ForgePullRequest:
         raise GitBackendForgeApiError(msg) from exc
 
 
-def review_from(model: GhReview) -> ForgeReview:
+def review_from(model: GhReview, *, comment_count: int = 0) -> ForgeReview:
     return ForgeReview(
         id=model.id,
         state=model.state,
         author=_login(model.user),
         body=model.body or "",
         url=model.html_url,
+        comment_count=comment_count,
+    )
+
+
+def branch_ref_from(model: GhGitRef, *, name: str) -> ForgeBranchRef:
+    """Project a ``git/refs`` payload onto the domain branch ref.
+
+    Returns:
+        The created :class:`ForgeBranchRef`.
+
+    Raises:
+        GitBackendForgeApiError: When the payload carries no object sha.
+    """
+    sha = model.object.sha if model.object is not None else ""
+    if not sha:
+        msg = "GitHub git-ref response carried no object sha"
+        raise GitBackendForgeApiError(msg)
+    return ForgeBranchRef(name=NotBlankStr(name), sha=sha)
+
+
+def file_commit_from(model: GhContentWrite, *, branch: str) -> ForgeFileCommit:
+    """Project a ``PUT /contents`` payload onto the domain file commit.
+
+    Returns:
+        The resulting :class:`ForgeFileCommit`.
+
+    Raises:
+        GitBackendForgeApiError: When the payload lacks the content path
+            or the commit sha.
+    """
+    path = model.content.path if model.content is not None else ""
+    content_sha = model.content.sha if model.content is not None else ""
+    commit_sha = model.commit.sha if model.commit is not None else ""
+    if not path or not commit_sha:
+        msg = "GitHub content-write response missing path/commit sha"
+        raise GitBackendForgeApiError(msg)
+    return ForgeFileCommit(
+        path=NotBlankStr(path),
+        branch=NotBlankStr(branch),
+        content_sha=content_sha,
+        commit_sha=commit_sha,
+    )
+
+
+def accessible_repo_from(model: GhRepoPerm) -> ForgeAccessibleRepo | None:
+    """Project a repo-list entry onto the domain accessible-repo model.
+
+    Returns:
+        The :class:`ForgeAccessibleRepo`, or ``None`` when the entry
+        carries no parseable ``owner/repo`` full name (skipped, not
+        fatal, so one odd row cannot abort scope discovery).
+    """
+    owner, _, repo = model.full_name.partition("/")
+    if not owner or not repo:
+        return None
+    perms = model.permissions
+    permission: ForgeRepoPermission = "read"
+    if perms is not None and perms.admin:
+        permission = "admin"
+    elif perms is not None and perms.push:
+        permission = "write"
+    return ForgeAccessibleRepo(
+        owner=NotBlankStr(owner),
+        repo=NotBlankStr(repo),
+        permission=permission,
+        private=model.private,
     )
 
 
@@ -308,15 +419,21 @@ __all__ = [
     "GhComment",
     "GhContentEntry",
     "GhContentFile",
+    "GhContentWrite",
+    "GhGitRef",
     "GhIssue",
     "GhMerge",
     "GhPull",
     "GhRepo",
+    "GhRepoPerm",
     "GhReview",
     "GhRun",
     "GhRunList",
+    "accessible_repo_from",
+    "branch_ref_from",
     "comment_from",
     "dir_entry_from",
+    "file_commit_from",
     "file_content_from",
     "issue_from",
     "merge_from",

@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
+    ForgeDiffSide,
     ForgeIssueState,
     ForgeMergeMethod,
     ForgePullState,
@@ -128,6 +129,22 @@ class ForgeIssueArgs(_ForgeArgsBase):
         return self
 
 
+class ForgeReviewCommentArg(BaseModel):
+    """One inline, diff-anchored review comment supplied by the agent."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    path: NotBlankStr
+    line: int = Field(gt=0)
+    body: NotBlankStr
+    side: ForgeDiffSide = "RIGHT"
+
+    @model_validator(mode="after")
+    def _validate_path(self) -> ForgeReviewCommentArg:
+        _reject_traversal(str(self.path), field="path", allow_slash=True)
+        return self
+
+
 class ForgePullRequestArgs(_ForgeArgsBase):
     """Arguments for the ``forge_pull_request`` tool."""
 
@@ -139,6 +156,7 @@ class ForgePullRequestArgs(_ForgeArgsBase):
     target_branch: str = ""
     draft: bool = False
     decision: ForgeReviewDecision = "comment"
+    comments: tuple[ForgeReviewCommentArg, ...] = ()
     method: ForgeMergeMethod = "merge"
     commit_title: str = ""
     state: ForgePullState = "open"
@@ -166,22 +184,86 @@ class ForgePullRequestArgs(_ForgeArgsBase):
 
 
 class ForgeCiArgs(_ForgeArgsBase):
-    """Arguments for the ``forge_ci`` tool (read-only)."""
+    """Arguments for the ``forge_ci`` tool (reads + triggers)."""
 
-    action: Literal["list_runs", "get_run"]
+    action: Literal["list_runs", "get_run", "trigger", "rerun"]
     branch: str = ""
+    workflow: str = ""
     run_id: int = Field(default=0, ge=0)
     limit: int = Field(default=_DEFAULT_LIST_LIMIT, ge=1, le=_MAX_LIST_LIMIT)
 
     @property
     def is_write(self) -> bool:
-        """CI reads never mutate forge state."""
-        return False
+        """Triggering/re-running CI mutates forge state; reads do not."""
+        return self.action in {"trigger", "rerun"}
 
     @model_validator(mode="after")
     def _validate_action(self) -> ForgeCiArgs:
-        if self.action == "get_run" and self.run_id <= 0:
-            msg = "get_run requires a positive 'run_id'"
+        # Both reach the request path (branch as a ref, workflow as a file
+        # name or numeric id), so both take the same guard as owner/repo.
+        if self.branch:
+            _reject_traversal(self.branch, field="branch", allow_slash=True)
+        if self.workflow:
+            _reject_traversal(self.workflow, field="workflow", allow_slash=False)
+        if self.action in {"get_run", "rerun"} and self.run_id <= 0:
+            msg = f"{self.action} requires a positive 'run_id'"
+            raise ValueError(msg)
+        if self.action == "trigger" and not (self.workflow and self.branch):
+            msg = "trigger requires a 'workflow' and a 'branch'"
+            raise ValueError(msg)
+        return self
+
+
+class ForgePushArgs(_ForgeArgsBase):
+    """Arguments for the ``forge_push`` tool (branch + file writes).
+
+    ``create_branch`` opens ``new_branch`` from ``from_ref``; ``write_file``
+    creates or updates ``path`` on ``branch`` with a commit ``message``.
+    Both mutate the remote, so the tool binds ``ActionType.VCS_PUSH`` and
+    is governed by the git-access sub-constraint.
+
+    ``sha`` is optional and best-effort: pass the current blob sha to update
+    an existing file (some forges require it), omit it to create a new one.
+    Whether the target already exists is not knowable at args-construction
+    time, so the create/update distinction is not enforced here; the forge
+    is the authority and surfaces a conflict if the sha is wrong or missing.
+    """
+
+    action: Literal["create_branch", "write_file"]
+    new_branch: str = ""
+    from_ref: str = ""
+    branch: str = ""
+    path: str = ""
+    content: str = ""
+    message: str = ""
+    sha: str = ""
+
+    @property
+    def is_write(self) -> bool:
+        """Every push action mutates remote state."""
+        return True
+
+    @model_validator(mode="after")
+    def _validate_action(self) -> ForgePushArgs:
+        if self.path:
+            _reject_traversal(self.path, field="path", allow_slash=True)
+        # Ref names land in the request path exactly as owner/repo do, so
+        # they get the same guard. Slashes are legitimate in a ref
+        # (``feature/x``), hence ``allow_slash``.
+        for field, value in (
+            ("new_branch", self.new_branch),
+            ("from_ref", self.from_ref),
+            ("branch", self.branch),
+        ):
+            if value:
+                _reject_traversal(value, field=field, allow_slash=True)
+        if self.action == "create_branch" and not (self.new_branch and self.from_ref):
+            msg = "create_branch requires 'new_branch' and 'from_ref'"
+            raise ValueError(msg)
+        if self.action == "write_file" and not (
+            self.path and self.branch and self.message.strip()
+        ):
+            msg = "write_file requires 'path', 'branch', and a non-blank 'message'"
             raise ValueError(msg)
         return self
 
@@ -190,5 +272,7 @@ __all__ = [
     "ForgeCiArgs",
     "ForgeIssueArgs",
     "ForgePullRequestArgs",
+    "ForgePushArgs",
     "ForgeRepoArgs",
+    "ForgeReviewCommentArg",
 ]

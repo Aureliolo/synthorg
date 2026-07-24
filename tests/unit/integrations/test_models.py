@@ -33,6 +33,55 @@ class TestConnectionModel:
         assert conn.secret_refs == ()
         assert conn.metadata == {}
 
+    @pytest.mark.parametrize(
+        "scope",
+        [("acme/proj-1",), ("acme/*",), ("acme/proj-1", "org/repo")],
+        ids=["exact", "owner_glob", "multiple"],
+    )
+    def test_valid_allowed_repos_accepted(self, scope: tuple[str, ...]) -> None:
+        conn = Connection(
+            name="forge",
+            connection_type=ConnectionType.GITHUB,
+            auth_method=AuthMethod.BEARER_TOKEN,
+            allowed_repos=scope,
+        )
+        assert conn.allowed_repos == scope
+
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            "*",
+            "*/*",
+            "*/repo",
+            "acme",
+            "a/b/c",
+            "ac*/repo",
+            "acme/pr..oj",
+            "acme/re po",
+        ],
+        ids=[
+            "bare_star",
+            "star_star",
+            "star_owner",
+            "no_slash",
+            "multi_slash",
+            "partial_glob_owner",
+            "traversal",
+            "space",
+        ],
+    )
+    def test_overbroad_or_malformed_allowed_repos_rejected(self, entry: str) -> None:
+        # A bare `*` or partial glob would over-match fnmatch and silently
+        # defeat the least-privilege scope; a no-slash/multi-slash entry is
+        # not a valid owner/repo. All are rejected at the source.
+        with pytest.raises(ValidationError):
+            Connection(
+                name="forge",
+                connection_type=ConnectionType.GITHUB,
+                auth_method=AuthMethod.BEARER_TOKEN,
+                allowed_repos=(entry,),
+            )
+
     def test_frozen(self) -> None:
         conn = Connection(
             name="test",

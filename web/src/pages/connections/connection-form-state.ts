@@ -17,4 +17,9 @@ export interface ConnectionFormState {
   metadata: Record<string, string>
   webhookRetention: string
   sensitive: boolean
+  /**
+   * Least-privilege forge repository scope (`owner/repo`). Empty denies every
+   * repository (fail-closed); only relevant for forge connection types.
+   */
+  allowedRepos: readonly string[]
 }

@@ -15,6 +15,10 @@ For one backend at a time:
    script pulls trigger and function bodies out of the SQL directly.
 
 Exits 0 on parity, non-zero on drift, prints a structured finding list.
+Exit codes: 0 parity, 1 drift, 2 missing input file, 3 the Postgres
+throwaway container could not be provisioned. 3 is split out from 1 so a
+caller can retry a transient registry / daemon failure without retrying
+a deterministic drift finding.
 
 Usage::
 
@@ -83,6 +87,21 @@ _POSTGRES_TESTCONTAINER_IMAGE: Final[str] = (
     "postgres:18-alpine@sha256:"
     "96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88"
 )
+_PROVISION_EXIT_CODE: Final[int] = 3
+"""Exit code for "the throwaway Postgres container never came up".
+
+Distinct from the drift code (1) so a caller can retry the transient
+half of the gate. Pulling the image reaches Docker Hub at job runtime,
+which times out often enough to fail the gate on its own; conflating
+that with a drift finding forces a caller to choose between retrying a
+deterministic failure three times or never retrying a blip at all.
+"""
+
+
+class SchemaDriftProvisionError(Exception):
+    """The Postgres throwaway container could not be started."""
+
+
 _POSTGRES_DEFAULT_PORT: Final[int] = 5432
 """Default Postgres listener port inside the testcontainer.
 
@@ -195,7 +214,22 @@ async def _dump_postgres_schema(revisions_path: Path) -> str:
         )
         raise SystemExit(msg) from exc
 
-    with PostgresContainer(_POSTGRES_TESTCONTAINER_IMAGE) as pg:
+    pg = PostgresContainer(_POSTGRES_TESTCONTAINER_IMAGE)
+    # Inside the cleanup-owning try so a start that fails AFTER Docker
+    # created the container still reaches ``stop()``; a leaked container
+    # would otherwise accumulate across the caller's provisioning retries.
+    # The catch stays scoped to ``start()`` alone: widening it would fold a
+    # migration or pg_dump failure into the retryable exit code and let a
+    # real defect be retried away as a registry blip.
+    try:
+        try:
+            pg.start()
+        except Exception as exc:
+            msg = (
+                f"could not start the Postgres throwaway container "
+                f"({type(exc).__name__}): {exc}"
+            )
+            raise SchemaDriftProvisionError(msg) from exc
         host = pg.get_container_host_ip()
         port = pg.get_exposed_port(_POSTGRES_DEFAULT_PORT)
         user = pg.username
@@ -209,6 +243,8 @@ async def _dump_postgres_schema(revisions_path: Path) -> str:
             raise SystemExit(msg)
         container_id = wrapped_container.id
         dump = await asyncio.to_thread(_run_pg_dump, container_id, user, dbname)
+    finally:
+        pg.stop()
     return _strip_postgres_dump_prelude(dump)
 
 
@@ -685,7 +721,13 @@ def _build_argparser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point: parse args + run the drift check for one backend."""
     args = _build_argparser().parse_args(argv)
-    return asyncio.run(_main(args.backend))
+    try:
+        return asyncio.run(_main(args.backend))
+    except SchemaDriftProvisionError as exc:
+        # Printed rather than raised so the retryable case reads as one
+        # legible line instead of a Docker traceback a caller must parse.
+        print(f"PROVISION-FAILED: {exc}", file=sys.stderr)
+        return _PROVISION_EXIT_CODE
 
 
 if __name__ == "__main__":

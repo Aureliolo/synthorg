@@ -1788,6 +1788,23 @@ export type paths = {
         readonly patch: operations["ApiV1ConnectionsNameUpdateConnection"];
         readonly trace?: never;
     };
+    readonly "/api/v1/connections/{name}/accessible-repos": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Scan a forge connection's accessible repositories */
+        readonly get: operations["ApiV1ConnectionsNameAccessibleReposScanAccessibleRepos"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/connections/{name}/health": {
         readonly parameters: {
             readonly query?: never;
@@ -7040,6 +7057,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[list[ForgeAccessibleRepo]] */
+        readonly ApiResponse_list_ForgeAccessibleRepo_: {
+            readonly data: readonly components["schemas"]["ForgeAccessibleRepo"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[list[PlanItemComment]] */
         readonly ApiResponse_list_PlanItemComment_: {
             readonly data: readonly components["schemas"]["PlanItemComment"][] | null;
@@ -9331,6 +9356,8 @@ export type components = {
         readonly ConflictType: "architecture" | "implementation" | "priority" | "resource" | "process" | "other";
         /** Connection */
         readonly Connection: {
+            /** @default [] */
+            readonly allowed_repos: readonly string[];
             readonly auth_method: components["schemas"]["AuthMethod"];
             readonly base_url: string | null;
             readonly connection_type: components["schemas"]["ConnectionType"];
@@ -9775,6 +9802,11 @@ export type components = {
         };
         /** CreateConnectionRequest */
         readonly CreateConnectionRequest: {
+            /**
+             * @description Least-privilege forge repository scope ('owner/repo', 'owner/*' globs). Empty denies every repository (fail-closed).
+             * @default []
+             */
+            readonly allowed_repos: readonly string[];
             readonly auth_method?: components["schemas"]["AuthMethod"];
             readonly base_url?: string | null;
             /** @description Client-generated draft id the secret-capture handles are bound to; required when credential_handles are supplied. */
@@ -11490,6 +11522,15 @@ export type components = {
             readonly horizon_days: number;
             /** @description Projected total spend over the horizon */
             readonly projected_total: number;
+        };
+        /** ForgeAccessibleRepo */
+        readonly ForgeAccessibleRepo: {
+            readonly owner: string;
+            /** @enum {string} */
+            readonly permission: "admin" | "write" | "read";
+            /** @default false */
+            readonly private: boolean;
+            readonly repo: string;
         };
         /** GenerateReportRequest */
         readonly GenerateReportRequest: {
@@ -18076,6 +18117,8 @@ export type components = {
         };
         /** UpdateConnectionRequest */
         readonly UpdateConnectionRequest: {
+            /** @description Replace the forge repository scope ('owner/repo', 'owner/*' globs). Send [] to clear it (deny-all); omit to keep the existing scope. */
+            readonly allowed_repos?: readonly string[] | null;
             readonly base_url?: string | null;
             /** @description Whether periodic health checks run against the connection. */
             readonly health_check_enabled?: boolean | null;
@@ -23107,6 +23150,36 @@ export interface operations {
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
             readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ConnectionsNameAccessibleReposScanAccessibleRepos: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource name */
+                readonly name: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_list_ForgeAccessibleRepo_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

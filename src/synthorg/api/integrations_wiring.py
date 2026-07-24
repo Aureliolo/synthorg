@@ -18,6 +18,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
+from synthorg.integrations.chat_api.inbound import InboundThreadRegistry
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.secret_capture import SecretCaptureService
 from synthorg.integrations.health.prober import HealthProberService
@@ -53,6 +54,7 @@ class IntegrationsBundle:
     health_prober_service: HealthProberService | None = None
     tunnel_provider: TunnelManager | None = None
     webhook_event_bridge: WebhookEventBridge | None = None
+    inbound_thread_registry: InboundThreadRegistry | None = None
     mcp_catalog_service: CatalogService | None = None
     mcp_installations_repo: McpInstallationRepository | None = None
     _unused: tuple[str, ...] = field(default_factory=tuple)
@@ -404,6 +406,11 @@ def auto_wire_integrations(  # noqa: PLR0913
                 API_SERVICE_AUTO_WIRED,
                 service="webhook_event_bridge",
             )
+
+        # Pure boot object shared by the Slack notification sink (populates
+        # it) and the inbound Socket-Mode consumer (reads it); constructed
+        # unconditionally so both sides bind the same instance.
+        bundle.inbound_thread_registry = InboundThreadRegistry()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(

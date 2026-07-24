@@ -24,6 +24,9 @@ from synthorg.api.lifecycle_helpers.bootstrap import (
     _maybe_bootstrap_agents,
     _maybe_promote_first_owner,
 )
+from synthorg.api.lifecycle_helpers.chat_inbound_wiring import (
+    restart_chat_inbound_consumer,
+)
 from synthorg.api.lifecycle_helpers.config_apply import (
     _apply_bridge_config,
     _apply_security_timeout_interval,
@@ -42,6 +45,7 @@ from synthorg.api.lifecycle_helpers.ticket_cleanup import (
     _ticket_cleanup_loop,
 )
 from synthorg.api.lifecycle_runner_support import (
+    _drain_resume_intents,
     _LifecycleTasks,
     _wire_approval_gate,
     _wire_task_activity_observer,
@@ -240,7 +244,10 @@ async def _start_runtime_background_services(
             started_webhook_event_bridge=started_webhook_event_bridge,
             provider_health_prober=tasks.health_prober,
             started_provider_health_prober=started_provider_health_prober,
+            chat_inbound_consumer=tasks.chat_inbound_consumer,
+            started_chat_inbound_consumer=tasks.chat_inbound_consumer is not None,
         )
+        tasks.chat_inbound_consumer = None
         raise
 
 
@@ -617,6 +624,10 @@ async def _run_startup(  # noqa: PLR0913
             reraise_critical(exc)
     await _apply_bridge_config(app_state, effective_config)
     await _apply_security_timeout_interval(app_state, approval_timeout_scheduler)
+    # After the approval gate and the worker execution service are wired,
+    # since the re-dispatch routes through both. Finishes any approval the
+    # previous process decided but died before resuming.
+    await _drain_resume_intents(app_state)
 
     # Rebind the live ``MessageBusBridge`` to the now-wired resolver.
     # ``create_app`` captures the resolver eagerly when the bridge is
@@ -690,6 +701,12 @@ async def _run_startup(  # noqa: PLR0913
         name="webhook-receipt-cleanup",
     )
     tasks.webhook_cleanup_task.add_done_callback(on_webhook_cleanup_done)
+    # Idempotent: stop a prior instance before starting a fresh one so
+    # consumers do not accumulate on lifespan re-entry. The handle is retained
+    # unchanged when the prior stop did not complete (see the helper).
+    tasks.chat_inbound_consumer = await restart_chat_inbound_consumer(
+        app_state, tasks.chat_inbound_consumer
+    )
     # Idempotent: stop any prior health prober instance before starting a new
     # one so probers do not accumulate when the shared app re-enters lifespan.
     if tasks.health_prober is not None:

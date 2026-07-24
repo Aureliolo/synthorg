@@ -51,7 +51,8 @@ _SELECT_COLS = (
     "name, connection_type, auth_method, base_url, secret_refs_json, "
     "rate_limit_rpm, rate_limit_concurrent, health_check_enabled, "
     "health_status, last_health_check_at, metadata_json, "
-    "webhook_receipt_retention_days, sensitive, created_at, updated_at"
+    "webhook_receipt_retention_days, sensitive, allowed_repos_json, "
+    "created_at, updated_at"
 )
 
 
@@ -75,12 +76,16 @@ def _row_to_connection(row: aiosqlite.Row) -> Connection:
         metadata_json,
         webhook_receipt_retention_days,
         sensitive,
+        allowed_repos_json,
         created_at,
         updated_at,
     ) = row
     secret_refs_payload = json.loads(secret_refs_json or "[]")
     secret_refs = tuple(SecretRef(**entry) for entry in secret_refs_payload)
     metadata = json.loads(metadata_json or "{}")
+    allowed_repos = tuple(
+        NotBlankStr(entry) for entry in json.loads(allowed_repos_json or "[]")
+    )
     rate_limiter = (
         RateLimiterConfig(
             max_requests_per_minute=int(rate_limit_rpm),
@@ -112,6 +117,7 @@ def _row_to_connection(row: aiosqlite.Row) -> Connection:
             else None
         ),
         sensitive=bool(sensitive),
+        allowed_repos=allowed_repos,
         created_at=coerce_row_timestamp(created_at),
         updated_at=coerce_row_timestamp(updated_at),
     )
@@ -150,6 +156,7 @@ class SQLiteConnectionRepository:
             else 0
         )
         metadata_json = json.dumps(connection.metadata)
+        allowed_repos_json = json.dumps([str(r) for r in connection.allowed_repos])
         created_at_iso = format_iso_utc(connection.created_at)
         updated_at_iso = format_iso_utc(connection.updated_at)
         last_health_check_at_iso = (
@@ -167,8 +174,8 @@ class SQLiteConnectionRepository:
                         health_check_enabled, health_status,
                         last_health_check_at, metadata_json,
                         webhook_receipt_retention_days, sensitive,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        allowed_repos_json, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(name) DO UPDATE SET
                         connection_type = excluded.connection_type,
                         auth_method = excluded.auth_method,
@@ -183,6 +190,7 @@ class SQLiteConnectionRepository:
                         webhook_receipt_retention_days =
                             excluded.webhook_receipt_retention_days,
                         sensitive = excluded.sensitive,
+                        allowed_repos_json = excluded.allowed_repos_json,
                         updated_at = excluded.updated_at
                     """,
                     (
@@ -199,6 +207,7 @@ class SQLiteConnectionRepository:
                         metadata_json,
                         connection.webhook_receipt_retention_days,
                         1 if connection.sensitive else 0,
+                        allowed_repos_json,
                         created_at_iso,
                         updated_at_iso,
                     ),
