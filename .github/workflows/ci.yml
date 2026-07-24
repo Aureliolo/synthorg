@@ -1450,7 +1450,8 @@ jobs:
       - run: npm run lint:circular
         working-directory: web
       # This job is the whole-dashboard CI counterpart for the local
-      # `web-checks` pre-push hook, which lints only the pushed files.
+      # `web-checks` pre-push hook. That hook scopes only ESLint to the
+      # pushed files; knip and circular already run whole-dashboard there.
       - run: npm run lint:knip
         working-directory: web
 

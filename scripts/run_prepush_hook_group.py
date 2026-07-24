@@ -52,6 +52,13 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 # POSIX convention for "command not found", reused so a tool that cannot
 # start reads like any other tool failure rather than an interpreter crash.
 _EXIT_NOT_FOUND: Final[int] = 127
+# This runner gates every push, so no child may block one without bound: a
+# wedged eslint/knip/deptry would otherwise hang the push with no exit but
+# Ctrl-C. A tool that times out is a failure to run, never a pass -- matching
+# the sibling gate scripts' own child bounds (``GIT_TIMEOUT_SECONDS`` in
+# ``_prepush_scope.py``, ``_MYPY_TIMEOUT_SECONDS`` in ``run_affected_mypy.py``,
+# the pytest watchdog in ``run_affected_tests.py``).
+_TOOL_TIMEOUT_SECONDS: Final[int] = 180
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,6 +247,16 @@ def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=_TOOL_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        # lint-allow: clock-seam -- gate script, no DI
+        return _Result(
+            tool.name,
+            _EXIT_NOT_FOUND,
+            f"timed out after {_TOOL_TIMEOUT_SECONDS}s; the push must not "
+            "wait on a wedged tool, so this reads as a failure.",
+            time.monotonic() - started,
         )
     except OSError as exc:
         # lint-allow: clock-seam -- gate script, no DI

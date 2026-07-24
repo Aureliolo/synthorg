@@ -58,6 +58,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _prepush_scope import (  # type: ignore[import-not-found]
         MIN_MODULE_DEPTH,
+        PYPROJECT,
         REPO_ROOT,
         SAFE_MODULE_NAME,
         GitError,
@@ -69,6 +70,7 @@ if __package__ in {None, ""}:
 else:
     from scripts._prepush_scope import (
         MIN_MODULE_DEPTH,
+        PYPROJECT,
         REPO_ROOT,
         SAFE_MODULE_NAME,
         GitError,
@@ -698,18 +700,22 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _changed_python_files() -> list[str] | None:
-    """Return the changed ``.py`` files, or ``None`` if git could not say.
+def _resolve_changed_files() -> list[str] | None:
+    """Return the changed files, or ``None`` if git could not say.
+
+    The full list, not just ``.py``: a ``pyproject.toml``-only change alters
+    how mypy runs (its own config, the third-party override block, dependency
+    pins) with no ``.py`` file in the diff, so the caller must see it to defer
+    rather than silently report nothing to do.
 
     Returns:
-        The changed Python paths, or ``None`` when git could not report them.
+        The changed paths, or ``None`` when git could not report them.
     """
     try:
-        changed: list[str] = changed_files(merge_base())
+        return changed_files(merge_base())
     except GitError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return None
-    return [f for f in changed if f.endswith(".py")]
 
 
 def _warm() -> int:
@@ -840,13 +846,23 @@ def main() -> int:
     if args.full:
         return _run_full()
 
-    py_changed = _changed_python_files()
+    changed = _resolve_changed_files()
+    py_changed = None if changed is None else [f for f in changed if f.endswith(".py")]
 
     # Before the daemon, not after: a confirmed-empty diff needs no type check
     # at all, and consulting the daemon first would make a docs-only push pay
     # a full recheck, or a cold graph build if no daemon is up. An unreadable
     # diff (``None``) is not the same as an empty one and still gets checked.
     if py_changed is not None and not py_changed:
+        if changed is not None and PYPROJECT in changed:
+            # A config-only change alters how mypy runs with no .py in the
+            # diff; that is a whole-tree question, announced not silently
+            # dropped -- the same trigger run_affected_tests.py uses.
+            _defer_to_ci(
+                "pyproject.toml changed (mypy configuration)",
+                scoped_run_follows=False,
+            )
+            return 0
         print("No Python files changed -- skipping mypy.")
         return 0
 

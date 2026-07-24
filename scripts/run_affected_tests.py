@@ -924,21 +924,28 @@ def _run_tests() -> int:
     py_changed = [f for f in changed if f.endswith(".py")]
     test_dirs, deferred = _affected_test_dirs(py_changed)
 
+    deferred_announced = False
     if _pytest_config_changed(changed):
         _defer_to_ci(
             "pyproject.toml changed (pytest configuration)",
             scoped_run_follows=bool(test_dirs),
         )
+        deferred_announced = True
     elif deferred:
         _defer_to_ci(
             "Foundational module or conftest changed",
             scoped_run_follows=bool(test_dirs),
         )
+        deferred_announced = True
 
-    if not py_changed and not test_dirs:
-        print("No Python files changed -- skipping unit tests.")
-        return 0
     if not test_dirs:
+        # A deferral already stated whether anything runs locally; a
+        # second no-op verdict on the same push would read as unrelated.
+        if deferred_announced:
+            return 0
+        if not py_changed:
+            print("No Python files changed -- skipping unit tests.")
+            return 0
         print("Changed files don't map to any test directories -- skipping.")
         return 0
 

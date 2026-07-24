@@ -275,16 +275,17 @@ def test_daemons_do_not_share_a_status_file() -> None:
         pytest.param(["tests/shallow.py"], id="shallow-tests-file"),
     ],
 )
-def test_unmapped_test_directories_widen_instead_of_vanishing(
+def test_unmapped_test_directories_defer_instead_of_vanishing(
     changed: list[str],
 ) -> None:
-    """A tests/ kind with no narrow mapping must never yield zero targets.
+    """A tests/ kind with no narrow mapping must be handed to CI.
 
-    Classifying it "other" would leave the cold path with nothing to check and
-    let the gate exit 0 on an unexamined change.
+    Classifying it "other" would drop it silently: the gate would exit 0 on
+    an unexamined change with nothing announced. The second return value is
+    the deferral flag, so it must be ``True`` for these kinds.
     """
-    _paths, run_all = _MODULE._affected_mypy_paths(changed)
-    assert run_all is True
+    _paths, deferred = _MODULE._affected_mypy_paths(changed)
+    assert deferred is True
 
 
 @pytest.mark.parametrize(
@@ -546,17 +547,37 @@ def test_main_skips_everything_when_no_python_changed(
 ) -> None:
     """A docs-only push must not wake the daemon or pay a cold build."""
     monkeypatch.setattr(_MODULE, "_parse_args", _no_flags)
-    monkeypatch.setattr(_MODULE, "_changed_python_files", list)
+    monkeypatch.setattr(_MODULE, "_resolve_changed_files", list)
     monkeypatch.setattr(_MODULE, "_run_daemon_pass", _unreachable)
     monkeypatch.setattr(_MODULE, "_run_full", _unreachable)
 
     assert _MODULE.main() == 0
 
 
+def test_main_defers_a_pyproject_only_change_instead_of_skipping(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A config-only push alters how mypy runs, so it is announced not dropped.
+
+    ``pyproject.toml`` carries mypy's own config and the dependency pins with
+    no ``.py`` in the diff; reporting "No Python files changed" would hide a
+    whole-tree question from the reader.
+    """
+    monkeypatch.setattr(_MODULE, "_parse_args", _no_flags)
+    monkeypatch.setattr(_MODULE, "_resolve_changed_files", lambda: ["pyproject.toml"])
+    monkeypatch.setattr(_MODULE, "_run_daemon_pass", _unreachable)
+    monkeypatch.setattr(_MODULE, "_run_full", _unreachable)
+
+    assert _MODULE.main() == 0
+    out = capsys.readouterr().out
+    assert "deferred to CI" in out
+    assert "No Python files changed" not in out
+
+
 def test_main_returns_the_daemon_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
     """A daemon verdict is authoritative and short-circuits the cold path."""
     monkeypatch.setattr(_MODULE, "_parse_args", _no_flags)
-    monkeypatch.setattr(_MODULE, "_changed_python_files", lambda: ["src/x.py"])
+    monkeypatch.setattr(_MODULE, "_resolve_changed_files", lambda: ["src/x.py"])
     monkeypatch.setattr(_MODULE, "_daemon_opted_out", lambda: False)
     monkeypatch.setattr(_MODULE, "_run_daemon_pass", lambda _changed: 1)
     monkeypatch.setattr(_MODULE, "_run_full", _unreachable)
@@ -569,7 +590,7 @@ def test_main_runs_full_cold_when_the_diff_is_unreadable(
 ) -> None:
     """An unknown diff must widen to the full tree, never skip."""
     monkeypatch.setattr(_MODULE, "_parse_args", _no_flags)
-    monkeypatch.setattr(_MODULE, "_changed_python_files", lambda: None)
+    monkeypatch.setattr(_MODULE, "_resolve_changed_files", lambda: None)
     monkeypatch.setattr(_MODULE, "_daemon_opted_out", lambda: True)
     monkeypatch.setattr(_MODULE, "_run_full", lambda: 0)
 
@@ -581,7 +602,7 @@ def test_main_falls_back_cold_when_the_daemon_gives_no_verdict(
 ) -> None:
     """The gate must re-derive an answer rather than report the daemon's silence."""
     monkeypatch.setattr(_MODULE, "_parse_args", _no_flags)
-    monkeypatch.setattr(_MODULE, "_changed_python_files", lambda: None)
+    monkeypatch.setattr(_MODULE, "_resolve_changed_files", lambda: None)
     monkeypatch.setattr(_MODULE, "_daemon_opted_out", lambda: False)
     monkeypatch.setattr(_MODULE, "_run_daemon_pass", lambda _changed: None)
     monkeypatch.setattr(_MODULE, "_run_full", lambda: 1)
@@ -604,7 +625,7 @@ def test_main_dispatches_each_management_flag(
             full=False,
         ),
     )
-    monkeypatch.setattr(_MODULE, "_changed_python_files", _unreachable)
+    monkeypatch.setattr(_MODULE, "_resolve_changed_files", _unreachable)
     monkeypatch.setattr(_MODULE, f"_{flag}", lambda: 0)
 
     assert _MODULE.main() == 0
@@ -624,7 +645,7 @@ def test_full_runs_the_cold_ci_scope_without_a_daemon(
         "_parse_args",
         lambda: argparse.Namespace(warm=False, stop=False, status=False, full=True),
     )
-    monkeypatch.setattr(_MODULE, "_changed_python_files", _unreachable)
+    monkeypatch.setattr(_MODULE, "_resolve_changed_files", _unreachable)
     monkeypatch.setattr(_MODULE, "_run_daemon_pass", _unreachable)
     monkeypatch.setattr(_MODULE, "_run_full", lambda: 0)
 

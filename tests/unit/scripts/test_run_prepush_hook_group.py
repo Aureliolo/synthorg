@@ -48,6 +48,7 @@ class _GateModule(Protocol):
     _Tool: Callable[[str, tuple[str, ...]], _ToolShape]
     _GROUPS: Mapping[str, tuple[_ToolShape, ...]]
     _validate_groups: Callable[[Mapping[str, tuple[object, ...]]], None]
+    _TOOL_TIMEOUT_SECONDS: int
 
     @staticmethod
     def main() -> int: ...
@@ -248,6 +249,21 @@ class TestGroupDispatch:
 
         assert _MODULE.main() == 1
         assert "failed to start: OSError" in capsys.readouterr().out
+
+    def test_a_wedged_tool_times_out_and_fails_the_group(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # This runner gates every push, so a hung tool must read as a
+        # failure, never block the push with no exit but Ctrl-C.
+        def _hang(argv: list[str], **_kwargs: object) -> object:
+            raise subprocess.TimeoutExpired(argv, _MODULE._TOOL_TIMEOUT_SECONDS)
+
+        monkeypatch.setattr(subprocess, "run", _hang)
+        monkeypatch.setattr(shutil, "which", lambda name: name)
+        monkeypatch.setattr("sys.argv", ["run_prepush_hook_group.py", "python-audits"])
+
+        assert _MODULE.main() == 1
+        assert "timed out" in capsys.readouterr().out
 
     def test_the_tools_actually_overlap(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The whole point of the runner is wall-clock, not tidiness.

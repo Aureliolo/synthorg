@@ -971,3 +971,25 @@ def test_main_preserves_test_failure_exit_code(
     monkeypatch.setattr(_MODULE, "_run_tests", lambda: 1)
     monkeypatch.setattr(_MODULE, "_reconcile_worktree", lambda _b: 0)
     assert _MODULE.main() == 1
+
+
+def test_run_tests_suppresses_the_no_op_line_after_a_deferral(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A pyproject-only push announces the deferral, then stays quiet.
+
+    The deferral line already states whether anything runs locally; a
+    following "No Python files changed" would read as an unrelated no-op
+    verdict on the same push.
+    """
+    monkeypatch.setattr(_MODULE, "_resolve_changed_files", lambda: ["pyproject.toml"])
+    monkeypatch.setattr(
+        _MODULE,
+        "_run_pytest",
+        lambda *_a, **_k: pytest.fail("no test directory selected -- must not run"),
+    )
+
+    assert _MODULE._run_tests() == 0
+    out = capsys.readouterr().out
+    assert "deferred to CI" in out
+    assert "No Python files changed" not in out

@@ -73,8 +73,9 @@ _COVERED_ELSEWHERE: Final[dict[str, str]] = {
     "golangci-lint": "cli.yml :: cli-lint (golangci-lint run)",
     "web-checks": (
         "ci.yml :: dashboard-lint (npm run lint + lint:knip + lint:circular; "
-        "the job runs each script over the whole dashboard, where the hook "
-        "lints only the pushed files)"
+        "the job runs each script over the whole dashboard. The hook scopes "
+        "only ESLint to the pushed files; knip and circular run whole-dashboard "
+        "in the hook too, since neither takes a file list)"
     ),
     "dto-types-ts-in-sync": (
         "ci.yml :: dashboard-type-check (runs the gate where the pinned "
