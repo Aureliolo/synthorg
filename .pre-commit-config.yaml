@@ -16,7 +16,7 @@ ci:
   #     (actionlint is NOT skipped: no dedicated CI job covers it, and
   #     pre-commit.ci is the only enforcement layer for contributors who
   #     skipped local hooks.)
-  #   - mypy / pytest-unit / go-* / lychee / vale / eslint-web:
+  #   - mypy / pytest-unit / go-* / lychee / vale / web-checks:
   #     too slow / toolchain-heavy for the cloud runner.
   #     lychee is also a Rust binary not bundled with pre-commit-uv;
   #     operators install it via `bash scripts/install_cli_tools.sh`,
@@ -50,7 +50,7 @@ ci:
   # local-only pre-push hook surface) so pre-commit.ci does not pick
   # them up; their CI counterpart is the ``Lint`` job in ``ci.yml``
   # which runs the same scripts on every PR.
-  skip: [commitizen, gitleaks, hadolint-docker, markdownlint, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, no-new-logger-exception-str-exc, completion-config-temperature, otlp-span-redaction, doc-drift-counts, list-pagination, runtime-stats-freshness, dto-types-ts-in-sync, no-client-state-persistence, no-growth-in-god-modules, no-central-junk-drawer, lint-imports, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular, consolidated-python-gates]
+  skip: [commitizen, gitleaks, hadolint-docker, markdownlint, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, web-checks, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, no-new-logger-exception-str-exc, completion-config-temperature, otlp-span-redaction, doc-drift-counts, list-pagination, runtime-stats-freshness, dto-types-ts-in-sync, no-client-state-persistence, no-growth-in-god-modules, no-central-junk-drawer, lint-imports, python-audits, sqlfluff, yamllint, consolidated-python-gates]
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
 repos:
@@ -84,11 +84,14 @@ repos:
         stages: [pre-commit]
         types: []
       # Consolidated runner for the pre-push-only Python gates
-      # (scripts/run_prepush_python_gates.py). Folding ~48 individual
+      # (scripts/run_prepush_python_gates.py). Folding the individual
       # `uv run python scripts/check_*.py` hooks into one runner keeps the
       # concurrent spawn count bounded -- the desktop-heap / STATUS_DLL_INIT_
       # FAILED (0xC0000142) pressure on Windows -- while fanning the CPU-bound
-      # whole-tree AST gates across a reused-worker pool. The underlying
+      # whole-tree AST gates across a reused-worker pool, so a gate's cost is
+      # absorbed by the pool instead of added to the push. Any pre-push-only
+      # whole-tree gate that takes no filenames and no extra arguments belongs
+      # in `_GATES`, not in its own stanza. The underlying
       # scripts/check_*.py files stay on disk so the convention-gate-inventory
       # meta-gate still resolves each gate path, and CI's `pre-commit run
       # --all-files` runs this one hook from the same config so local<->CI
@@ -99,6 +102,10 @@ repos:
         language: system
         always_run: true
         pass_filenames: false
+        # Surfaces the runner's own "N gates in Xs across J jobs" line on a
+        # green run; without it the largest single hook reports nothing and
+        # a scope regression here is invisible until a push feels slow.
+        verbose: true
         stages: [pre-push]
         types: []
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -232,21 +239,6 @@ repos:
         args: [run, python, scripts/check_no_redundant_timeout.py]
         language: system
         files: ^tests/.*\.py$
-        stages: [pre-push]
-
-      - id: no-ruff100-self-cloak
-        name: no RUF100 self-cloak (RUF100 paired with another noqa code)
-        entry: uv
-        args: [run, python, scripts/check_no_ruff100_self_cloak.py]
-        language: system
-        # Whole-tree scan (git ls-files) so a self-cloak in any tracked
-        # .py is caught regardless of which file the commit touches;
-        # trigger on any .py change, the gate script, or this config so a
-        # weakening edit cannot bypass it.
-        files: ^(.*\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        # Anti-workaround review check; pre-push catches it before code leaves
-        # the machine without slowing every commit.
         stages: [pre-push]
 
       - id: timeout-interval-default-drift
@@ -417,26 +409,9 @@ repos:
         pass_filenames: false
         # Documentation-consistency gate (enumerates the events package and
         # parses each claim file end-to-end); runs at pre-push with the other
-        # doc gates, matching doc-numeric-macros below.
-        stages: [pre-push]
-
-      - id: doc-numeric-macros
-        name: doc numeric macros (no bare claims in public docs)
-        entry: uv
-        args: [run, python, scripts/check_doc_numeric_macros.py]
-        language: system
-        # Pre-push catches bare numeric literals in scoped docs before
-        # they leave the dev's machine; CI then regenerates and injects
-        # values from data/runtime_stats.yaml at build time. The two
-        # halves are complementary: the gate enforces the contract,
-        # the injector keeps values fresh.
-        #
-        # Files list mirrors `_SCOPED_FILES` in
-        # scripts/check_doc_numeric_macros.py + the YAML source of
-        # truth + the injector/generator/gate themselves. Keep this
-        # list in sync with `_SCOPED_FILES` whenever the scope changes.
-        files: ^(README\.md|docs/index\.md|docs/roadmap/index\.md|docs/architecture/(decisions|tech-stack)\.md|docs/reference/(convention-gates|mcp-handler-contract|standards|research|claude-reference|protocols-audit|conventions)\.md|docs/design/(tools|self-improvement|providers|observability)\.md|docs/guides/(settings-reference|custom-mcp-server-dev|index)\.md|data/runtime_stats\.yaml|scripts/(check_doc_numeric_macros|inject_runtime_stats|generate_runtime_stats)\.py|\.pre-commit-config\.yaml)$
-        pass_filenames: false
+        # doc gates. It keeps its own stanza rather than joining the
+        # consolidated pool because its scope is a narrow trigger list, not
+        # the whole tree.
         stages: [pre-push]
 
       - id: docs-nav-coverage
@@ -500,12 +475,17 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      # ``verbose`` on the two heavy runners: pre-commit hides a passing
+      # hook's stdout, which also hid the scope each one selected and how
+      # long it took. A push is held to a five-minute budget, so both have
+      # to be visible on a green run, not only when something breaks.
       - id: mypy
         name: mypy type-check (daemon full-tree; cold affected-module fallback)
         entry: uv run python scripts/run_affected_mypy.py
         language: system
         files: ^(src/|tests/|scripts/).*\.py$
         pass_filenames: false
+        verbose: true
         stages: [pre-push]
 
       - id: pytest-unit
@@ -514,6 +494,7 @@ repos:
         language: system
         files: ^(src/|tests/).*\.py$
         pass_filenames: false
+        verbose: true
         stages: [pre-push]
 
       - id: golangci-lint
@@ -583,16 +564,28 @@ repos:
         pass_filenames: true
         stages: [pre-push]
 
-      - id: eslint-web
-        name: ESLint (web dashboard)
-        entry: npm --prefix web run lint
+      # ESLint, knip and dpdm are independent read-only passes over the
+      # dashboard, so the group runs them concurrently: wall-clock is the
+      # slowest single tool instead of the sum of all three.
+      #
+      # ESLint receives only the CHANGED files. Its cost is dominated by
+      # per-file work across the ~700-file dashboard, so scoping it to the
+      # push turns the repo's size into a non-factor; a whole-tree run is
+      # the single most expensive hook in the pre-push suite.
+      #
+      # Whole-tree lint stays CI's job: a config edit or a deletion can
+      # affect files this push does not name, and the dedicated
+      # ``dashboard-lint`` job runs the full scripts on every branch.
+      - id: web-checks
+        name: web dashboard checks (eslint + knip + circular, concurrent)
+        entry: uv
+        # The trailing ``--`` keeps a path that begins with a dash from
+        # being parsed as an option when pre-commit appends the file list.
+        args: [run, python, scripts/run_prepush_hook_group.py, web-checks, --]
         language: system
-        files: ^web/src/.*\.(ts|tsx)$
-        pass_filenames: false
-        # Pre-push only: ESLint boots the TS project graph which can
-        # take 15-30s locally even on unrelated backend commits. The
-        # dedicated ``dashboard-lint`` CI job still gates pushes that
-        # land on the branch, so nothing escapes review.
+        # The union of the three tools' interests; the runner re-filters
+        # per tool, so ESLint never receives the JSON only knip cares about.
+        files: ^web/.*\.(ts|tsx|json)$
         stages: [pre-push]
 
       - id: list-pagination
@@ -646,9 +639,9 @@ repos:
         entry: bash -c 'uv run python scripts/export_openapi.py && uv run python scripts/generate_endpoint_table.py --check'
         language: system
         # Trigger on any controller edit, the exported schema, the generator
-        # and the export script, and the committed table itself. The
-        # generator has always supported --check but nothing invoked it, so
-        # the table drifted silently whenever a route was added.
+        # and the export script, and the committed table itself. Without a
+        # hook invoking the generator's --check mode, the committed table
+        # drifts silently every time a route is added.
         files: ^(src/synthorg/api/controllers/.*\.py|src/synthorg/api/openapi\.py|scripts/(export_openapi|generate_endpoint_table)\.py|docs/openapi/(index\.md|openapi\.json)|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
@@ -767,30 +760,22 @@ repos:
         stages: [pre-push]
 
       # ── Cross-stack quality tools ─────────────────────────────────
-      # Dependency hygiene; configured via [tool.deptry] in pyproject.
-      - id: deptry
-        name: deptry (pyproject dependency hygiene)
-        entry: uv run deptry src/synthorg
+      # Dead code (vulture), docstring coverage (interrogate) and
+      # dependency hygiene (deptry) are independent read-only scans over
+      # the same tree, configured via pyproject, so the group runs them
+      # concurrently: wall-clock is the slowest scan, not the sum.
+      #
+      # One filter covers all three, being the union of their individual
+      # interests. deptry therefore sees any ``src/synthorg`` Python
+      # change, which is if anything more correct -- an added import is
+      # exactly what it checks -- and vulture and interrogate see a
+      # lockfile-only change, rare enough to be worth the single filter.
+      - id: python-audits
+        name: python audits (vulture + interrogate + deptry, concurrent)
+        entry: uv
+        args: [run, python, scripts/run_prepush_hook_group.py, python-audits]
         language: system
-        files: ^(pyproject\.toml|uv\.lock|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      # Dead-code detection; configured via [tool.vulture] in pyproject.
-      - id: vulture
-        name: vulture (unused code in src/synthorg/)
-        entry: uv run vulture
-        language: system
-        files: ^(src/synthorg/.*\.py|pyproject\.toml|\.pre-commit-config\.yaml)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      # Docstring coverage threshold; configured via [tool.interrogate].
-      - id: interrogate
-        name: interrogate (docstring coverage)
-        entry: uv run interrogate -c pyproject.toml src/synthorg
-        language: system
-        files: ^(src/synthorg/.*\.py|pyproject\.toml|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/.*\.py|pyproject\.toml|uv\.lock|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 
@@ -816,21 +801,3 @@ repos:
         language: system
         files: ^(\.github/workflows/.*\.ya?ml|\.pre-commit-config\.yaml|\.yamllint|docker/.*\.ya?ml|data/.*\.ya?ml)$
         pass_filenames: true
-
-      # Web: unused-export detection (knip) + circular-deps (dpdm).
-      # Both run pre-push only because they boot the TS project graph.
-      - id: web-knip
-        name: knip (unused exports / files / deps)
-        entry: npm --prefix web run lint:knip
-        language: system
-        files: ^web/.*\.(ts|tsx|json)$
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: web-circular
-        name: dpdm (circular import detection)
-        entry: npm --prefix web run lint:circular
-        language: system
-        files: ^web/.*\.(ts|tsx)$
-        pass_filenames: false
-        stages: [pre-push]

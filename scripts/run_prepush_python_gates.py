@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Runner for the pre-push-only pure-Python gates.
 
-The ~48 gates in ``_GATES`` are folded into this one runner rather than ~48
-individual ``uv run python scripts/check_*.py`` pre-commit hooks. Each gate is
+Every gate in ``_GATES`` is folded into this one runner rather than its own
+``uv run python scripts/check_*.py`` pre-commit hook. Each gate is
 a whole-tree static analysis (AST parse, tokenize, or regex over the tracked
 source) costing several seconds -- reading and analysing the tree dominates
 each gate's runtime -- so the runner fans them out across a bounded reused-
@@ -12,7 +12,8 @@ worker pool (``--jobs``; default ``min(12, cores)``, override via
 The pool is BOUNDED -- a handful of workers reused across the whole batch, not
 one process per gate -- so the concurrent process count stays modest. That is
 what avoids the desktop-heap / STATUS_DLL_INIT_FAILED (0xC0000142) pressure on
-Windows that an unbounded 48-way fan-out would cause. Each ``scripts/check_*.py``
+Windows that an unbounded one-process-per-gate fan-out would cause. Each
+``scripts/check_*.py``
 file stays on disk so the convention-gate-inventory meta-gate resolves each gate
 path, and CI's ``pre-commit run --all-files`` runs this one hook from the same
 config, so local<->CI parity holds.
@@ -51,11 +52,11 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 # Each gate is a whole-tree static analysis (AST parse, tokenize, or regex over
-# the tracked source) costing several seconds, so the 48 gates fan out across a
+# the tracked source) costing several seconds, so the gates fan out across a
 # bounded reused-worker pool. Bounding the pool (rather than one process per
 # gate) keeps the concurrent process count modest, which avoids the desktop-heap
 # / STATUS_DLL_INIT_FAILED (0xC0000142) pressure on Windows that an unbounded
-# 48-way fan-out would cause. Workers are reused for the whole batch
+# fan-out would cause. Workers are reused for the whole batch
 # (``max_tasks_per_child`` left at its default), so one worker handles many
 # gates over its lifetime rather than respawning per gate.
 _DEFAULT_MAX_JOBS: Final[int] = 12
@@ -153,6 +154,8 @@ _GATES: tuple[str, ...] = (
     "check_feature_manifest",
     "check_no_implicit_state_attribute",
     "check_feature_index_freshness",
+    "check_no_ruff100_self_cloak",
+    "check_doc_numeric_macros",
 )
 
 

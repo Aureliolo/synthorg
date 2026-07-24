@@ -112,7 +112,7 @@ jobs:
       # enforces that this SKIP list equals _COVERED_ELSEWHERE u _LOCAL_ONLY
       # exactly. The two all-files steps share this one job-level SKIP so a hook
       # can never be skipped at one stage but silently run at another.
-      SKIP: go-vet,go-test,golangci-lint,eslint-web,web-knip,web-circular,dto-types-ts-in-sync,lychee,hadolint-docker,gitleaks,zizmor,mypy,pytest-unit,vale,caddy-validate,check-single-migration-per-pr,check-no-modify-migration,check-push-rebased
+      SKIP: go-vet,go-test,golangci-lint,web-checks,dto-types-ts-in-sync,lychee,hadolint-docker,gitleaks,zizmor,mypy,pytest-unit,vale,caddy-validate,check-single-migration-per-pr,check-no-modify-migration,check-push-rebased
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
@@ -136,8 +136,8 @@ jobs:
       # TWO invocations are required because `pre-commit run --all-files` runs
       # ONLY the pre-commit stage, but nearly every heavy content gate
       # (forbidden-literals, persistence-boundary, architecture-drift,
-      # lint-imports, deptry, vulture, interrogate, sqlfluff,
-      # docstring-completeness, the AST gates, ...) is `stages: [pre-push]`. A
+      # lint-imports, python-audits, sqlfluff, docstring-completeness,
+      # the AST gates, ...) is `stages: [pre-push]`. A
       # single pre-commit-stage run would silently skip the bulk of the suite.
       # check_local_ci_parity.py asserts both parity stages are covered.
       - name: Cache pre-commit hook environments
@@ -322,8 +322,8 @@ jobs:
     runs-on: ubuntu-latest
     # The Postgres drift arm pulls postgres:18-alpine via testcontainers
     # (cold on this runner, since no start-postgres precedes it), applies
-    # every revision, then runs pg_dump -- heavier than the git-state +
-    # SQLite-drift steps this budget was originally sized for.
+    # every revision, then runs pg_dump -- far heavier than the git-state
+    # and SQLite-drift steps it shares this job with.
     timeout-minutes: 15
     permissions:
       contents: read
@@ -521,17 +521,15 @@ jobs:
     # single blocked await, and ``--session-timeout`` (the run step
     # below) fails the whole session if cumulative wall-clock creeps past
     # its budget without any single test tripping the per-test timeout --
-    # the case that previously hit GHA's job timeout and surfaced as a
+    # otherwise that case hits GHA's job timeout and surfaces as a
     # confusing job cancellation. ``timeout-minutes`` here is only a
     # backstop above the session timeout, for the rare case where pytest
     # itself wedges (e.g. a collection hang) before the session timer can
     # fire; it should never be the primary signal. It must comfortably
     # exceed (job setup + the 300s ``--session-timeout`` + the post-fail
-    # all-threads dump, junit write, and artifact upload): at 7 min that
-    # margin was thin (setup ~90s + 300s session leaves ~30s for teardown),
-    # so the GHA timeout could fire first and mask the named session
-    # failure. 10 min restores a comfortable backstop without padding the
-    # healthy ~2-3 min run.
+    # all-threads dump, junit write, and artifact upload). Setup alone is
+    # ~90s, so anything under 10 min leaves too little for teardown and
+    # lets the GHA timeout fire first, masking the named session failure.
     timeout-minutes: 10
     permissions:
       contents: read
@@ -1391,11 +1389,11 @@ jobs:
           dockerfile: docker/sandbox/Dockerfile
 
   # ── OpenAPI: export once, share with dashboard arm ──
-  # scripts/export_openapi.py was previously re-run in dashboard-type-check,
-  # dashboard-test, AND dashboard-build, each paying for a fresh uv sync.
-  # The export is deterministic given pinned backend code, so a single
-  # upstream job + actions/upload-artifact lets the downstream Node-only
-  # jobs skip the Python env spin-up entirely. Runs on python OR dashboard
+  # dashboard-type-check, dashboard-test and dashboard-build all need the
+  # exported schema, and each would otherwise pay for its own uv sync. The
+  # export is deterministic given pinned backend code, so a single upstream
+  # job + actions/upload-artifact lets those Node-only jobs skip the Python
+  # env spin-up entirely. Runs on python OR dashboard
   # changes (the dashboard filter already includes src/synthorg/api/**).
   export-openapi:
     name: Export OpenAPI Schema
@@ -1451,7 +1449,8 @@ jobs:
         working-directory: web
       - run: npm run lint:circular
         working-directory: web
-      # CI counterpart for the local `web-knip` pre-push hook (parity).
+      # This job is the whole-dashboard CI counterpart for the local
+      # `web-checks` pre-push hook, which lints only the pushed files.
       - run: npm run lint:knip
         working-directory: web
 

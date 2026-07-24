@@ -131,6 +131,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 - Commits: `<type>: <description>` (feat/fix/refactor/docs/test/chore/perf/ci); commitizen-enforced. Branches `<type>/<slug>` from main. Squash merge; trailers (`Release-As`, `Closes #N`) go in the PR body.
 - Signed commits required on protected refs.
 - Pre-commit/pre-push hooks in `.pre-commit-config.yaml`; tool-call gates in `.claude/settings.json` PreToolUse.
+- **Push budget (MANDATORY)**: a push must finish inside 300s (`BUDGET_SECONDS` in `scripts/git-hooks/_run-hook.sh`), which prints every run's duration and an OVER BUDGET banner past the ceiling. Over budget is a gate-scope defect to fix, never a cost to absorb: `mypy`/`pytest` scope to what changed (`run_affected_{mypy,tests}.py`, sharing `scripts/_prepush_scope.py`; a cross-tree question defers to CI and says so), and independent tools run concurrently in groups (`scripts/run_prepush_hook_group.py`, one `_GROUPS` entry per group; a tool belongs in one only if it writes nothing and depends on no sibling's output).
 - A failed pre-push leaves a `<hook>-FAILED` marker under `synthorg-hooks/` that blocks the next push; after fixing the root cause, clear it with `bash scripts/clear_prepush_marker.sh` (never a raw `rm`).
 - GitHub queries: `gh issue list` via Bash, NOT MCP `list_issues`.
 

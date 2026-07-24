@@ -598,7 +598,10 @@ def test_main_dispatches_each_management_flag(
         _MODULE,
         "_parse_args",
         lambda: argparse.Namespace(
-            warm=flag == "warm", stop=flag == "stop", status=flag == "status"
+            warm=flag == "warm",
+            stop=flag == "stop",
+            status=flag == "status",
+            full=False,
         ),
     )
     monkeypatch.setattr(_MODULE, "_changed_python_files", _unreachable)
@@ -607,9 +610,30 @@ def test_main_dispatches_each_management_flag(
     assert _MODULE.main() == 0
 
 
+def test_full_runs_the_cold_ci_scope_without_a_daemon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``--full`` is the only way to ask for the cold whole-tree scope.
+
+    The daemon always checks the full scope but never cold, and the cold
+    path defers the whole-tree question to CI, so neither reproduces what
+    CI's Type Check job runs.
+    """
+    monkeypatch.setattr(
+        _MODULE,
+        "_parse_args",
+        lambda: argparse.Namespace(warm=False, stop=False, status=False, full=True),
+    )
+    monkeypatch.setattr(_MODULE, "_changed_python_files", _unreachable)
+    monkeypatch.setattr(_MODULE, "_run_daemon_pass", _unreachable)
+    monkeypatch.setattr(_MODULE, "_run_full", lambda: 0)
+
+    assert _MODULE.main() == 0
+
+
 def _no_flags() -> argparse.Namespace:
     """Return parsed args for a plain pre-push invocation."""
-    return argparse.Namespace(warm=False, stop=False, status=False)
+    return argparse.Namespace(warm=False, stop=False, status=False, full=False)
 
 
 def _unreachable(*_args: object, **_kwargs: object) -> int:
