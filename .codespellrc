@@ -16,7 +16,9 @@ ignore-words = .vale/styles/config/vocabularies/SynthOrg/accept.txt
 uri-ignore-words-list = doesnt
 # Intentional string fragments in gateway streaming tests: a ``"hel"`` + ``"lo"``
 # content-delta pair reassembles to "hello", so ``hel`` is deliberate, not a typo.
+# ``fo`` is Windows ``tasklist /FO CSV`` (output format), a command-line flag
+# rather than prose, and codespell reads it as a misspelling of "of".
 # Kept here (codespell-only) rather than the shared Vale vocab so Vale is unaffected.
-ignore-words-list = hel
+ignore-words-list = hel,fo
 quiet-level = 3
 check-hidden = false
