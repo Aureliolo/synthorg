@@ -54,6 +54,20 @@ _RECONNECT_CAP_SECONDS: Final[float] = 30.0
 _STOP_TIMEOUT_SECONDS: Final[float] = 10.0
 
 
+def _stop_was_cancelled() -> bool:
+    """Whether the currently-running ``stop()`` was itself cancelled.
+
+    Distinguishes an outer shutdown budget cancelling ``stop()`` (must
+    propagate) from the loop task's own cancellation surfacing through the
+    shield (expected, must not propagate).
+
+    Returns:
+        ``True`` when the current task has a pending cancellation request.
+    """
+    current = asyncio.current_task()
+    return current is not None and current.cancelling() > 0
+
+
 class ChatInboundConsumer:
     """Resident Socket-Mode inbound loop with a live kill-switch.
 
@@ -114,19 +128,45 @@ class ChatInboundConsumer:
                 self._task = asyncio.create_task(self._run_loop())
 
     async def stop(self) -> None:
-        """Cancel the inbound loop and await its teardown (idempotent)."""
+        """Cancel the inbound loop and await its teardown (idempotent).
+
+        The cancel+await is held under the lifecycle lock so a concurrent
+        ``start()`` cannot observe a half-torn-down loop and spawn a second
+        Socket-Mode session. If ``stop()`` is itself cancelled (an outer
+        shutdown budget elapsing), the loop task is cancelled before the
+        cancellation propagates, so it can never outlive the consumer as an
+        orphan.
+
+        Raises:
+            asyncio.CancelledError: If ``stop()`` is cancelled by an outer
+                shutdown budget (propagated after cancelling the loop task).
+        """
         async with self._lifecycle_lock:
             task = self._task
             if task is None:
                 return
-            self._task = None
-        task.cancel()
-        try:
-            await asyncio.wait_for(asyncio.shield(task), timeout=_STOP_TIMEOUT_SECONDS)
-        except TimeoutError, asyncio.CancelledError:
-            # The socket close is bounded by aiohttp's own teardown; a
-            # timed-out cancel still stops accepting inbound events.
-            return
+            task.cancel()
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(task), timeout=_STOP_TIMEOUT_SECONDS
+                )
+            except TimeoutError:
+                # The task did not wind down within the budget; leave it
+                # cancelled (aiohttp bounds the socket close) so it stops
+                # accepting inbound events.
+                task.cancel()
+                logger.warning(CHAT_INBOUND_DISABLED, reason="stop_timeout")
+            except asyncio.CancelledError:
+                # Either the loop task's own cancellation surfaced through
+                # the shield (expected), or our stop() was cancelled by an
+                # outer budget. Ensure the task is cancelled either way, and
+                # re-raise only when WE were cancelled so structured
+                # cancellation is preserved.
+                task.cancel()
+                if _stop_was_cancelled():
+                    raise
+            finally:
+                self._task = None
 
     async def _run_loop(self) -> None:
         """Kill-switch-gated connect/stream/reconnect loop."""

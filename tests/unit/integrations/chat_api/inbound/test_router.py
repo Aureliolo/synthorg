@@ -74,19 +74,21 @@ class TestRouting:
         await router.route(_reply())
         assert dispatcher.calls == []
 
-    async def test_text_reply_resumes_as_approved_with_reason(self) -> None:
+    async def test_text_reply_never_approves(self) -> None:
+        # Consent is explicit-token-only: arbitrary human text must never
+        # be read as an approval (the Socket-Mode authz bar).
         dispatcher = _FakeDispatcher()
         router, registry = _router(dispatcher)
         registry.register(channel="C1", thread_ts="100.1", approval_id="ap-1")
         await router.route(_reply(text="looks good, proceed"))
-        assert dispatcher.calls == [
-            {
-                "approval_id": "ap-1",
-                "approved": True,
-                "decided_by": "U1",
-                "decision_reason": "looks good, proceed",
-            }
-        ]
+        assert dispatcher.calls == []
+
+    async def test_approve_reaction_reason_is_generic_not_human_text(self) -> None:
+        dispatcher = _FakeDispatcher()
+        router, registry = _router(dispatcher)
+        registry.register(channel="C1", thread_ts="100.1", approval_id="ap-1")
+        await router.route(_reaction("white_check_mark"))
+        assert dispatcher.calls[0]["decision_reason"] == "Approved via reaction"
 
     async def test_approve_reaction_resumes_approved(self) -> None:
         dispatcher = _FakeDispatcher()
@@ -120,13 +122,13 @@ class TestRouting:
         dispatcher = _FakeDispatcher(outcome=True)
         router, registry = _router(dispatcher)
         registry.register(channel="C1", thread_ts="100.1", approval_id="ap-1")
-        await router.route(_reply())
-        # A second reply on the same thread no longer resolves.
+        await router.route(_reaction("white_check_mark"))
+        # A second event on the same thread no longer resolves.
         assert registry.resolve(channel="C1", thread_ts="100.1") is None
 
     async def test_correlation_kept_when_resume_declined(self) -> None:
         dispatcher = _FakeDispatcher(outcome=False)
         router, registry = _router(dispatcher)
         registry.register(channel="C1", thread_ts="100.1", approval_id="ap-1")
-        await router.route(_reply())
+        await router.route(_reaction("white_check_mark"))
         assert registry.resolve(channel="C1", thread_ts="100.1") == "ap-1"

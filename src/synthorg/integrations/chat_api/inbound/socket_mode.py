@@ -79,6 +79,12 @@ class SlackSocketModeClient:
         api_base_url: str,
         timeout: float,
     ) -> None:
+        if not app_token:
+            msg = "SlackSocketModeClient requires a non-blank app_token"
+            raise ValueError(msg)
+        if timeout <= 0:
+            msg = "SlackSocketModeClient timeout must be positive"
+            raise ValueError(msg)
         self._app_token = app_token
         self._connector = connector
         self._api_base_url = normalize_base_url(api_base_url)
@@ -88,8 +94,12 @@ class SlackSocketModeClient:
         """Open the socket and dispatch events until it disconnects.
 
         Returns when Slack sends a ``disconnect`` frame or the socket
-        closes; the caller reconnects. Every envelope is acked before its
-        event is dispatched so a slow handler cannot trigger re-delivery.
+        closes; the caller reconnects. An event envelope is acked only
+        AFTER its event is dispatched: the resume dispatcher is idempotent
+        (``save_if_pending`` CAS), so at-least-once delivery (a re-delivery
+        on a crash between receipt and ack) is strictly safer than losing a
+        human decision. A disconnect envelope is still acked before return
+        so it is not re-delivered on reconnect.
 
         Raises:
             ChatApiAuthError: The app token was rejected.
@@ -100,12 +110,14 @@ class SlackSocketModeClient:
         async with self._connector(url) as session:
             async for frame in session:
                 decoded = decode_frame(frame)
-                if decoded.envelope_id:
-                    await session.ack(decoded.envelope_id)
                 if decoded.disconnect:
+                    if decoded.envelope_id:
+                        await session.ack(decoded.envelope_id)
                     return
                 if decoded.event is not None:
                     await on_event(decoded.event)
+                if decoded.envelope_id:
+                    await session.ack(decoded.envelope_id)
 
     async def _open_socket_url(self) -> str:
         """Resolve the short-lived ``wss://`` gateway URL.

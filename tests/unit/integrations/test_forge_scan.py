@@ -1,11 +1,14 @@
 """Unit tests for the forge accessible-repo scan (repo-scope selection)."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 import respx
 
+from synthorg.engine.workspace.git_backend.forge_api.agent_protocol import (
+    ForgeAgentApiClient,
+)
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.forge_scan import scan_accessible_repos
 from synthorg.integrations.connections.models import (
@@ -14,7 +17,11 @@ from synthorg.integrations.connections.models import (
     ConnectionType,
 )
 from synthorg.integrations.errors import ConnectionNotFoundError
-from synthorg.tools.forge.errors import ForgeUnsupportedError
+from synthorg.tools.forge.errors import (
+    ForgeCredentialError,
+    ForgeToolArgumentError,
+    ForgeUnsupportedError,
+)
 from tests._shared.mock_of import mock_of
 
 pytestmark = pytest.mark.unit
@@ -78,3 +85,41 @@ class TestForgeScan:
         )
         with pytest.raises(ForgeUnsupportedError):
             await scan_accessible_repos(_catalog(conn), "chat")
+
+    async def test_missing_base_url_raises_argument_error(self) -> None:
+        conn = Connection(
+            name="forge",
+            connection_type=ConnectionType.FORGEJO,
+            auth_method=AuthMethod.BEARER_TOKEN,
+        )
+        with pytest.raises(ForgeToolArgumentError):
+            await scan_accessible_repos(_catalog(conn), "forge")
+
+    async def test_missing_token_raises_credential_error(self) -> None:
+        catalog: ConnectionCatalog = mock_of[ConnectionCatalog](
+            get=AsyncMock(spec=ConnectionCatalog.get, return_value=_forge_conn()),
+            get_credentials=AsyncMock(
+                spec=ConnectionCatalog.get_credentials, return_value={}
+            ),
+        )
+        with pytest.raises(ForgeCredentialError):
+            await scan_accessible_repos(catalog, "forge")
+
+    async def test_client_closed_even_when_scan_raises(self) -> None:
+        client = mock_of[ForgeAgentApiClient](
+            list_accessible_repos=AsyncMock(
+                spec=ForgeAgentApiClient.list_accessible_repos,
+                side_effect=RuntimeError("scan blew up"),
+            ),
+            aclose=AsyncMock(spec=ForgeAgentApiClient.aclose),
+        )
+        target = (
+            "synthorg.engine.workspace.git_backend.forge_api"
+            ".build_forge_agent_api_client"
+        )
+        with (
+            patch(target, return_value=client),
+            pytest.raises(RuntimeError, match="scan blew up"),
+        ):
+            await scan_accessible_repos(_catalog(_forge_conn()), "forge")
+        client.aclose.assert_awaited_once()

@@ -20,6 +20,7 @@ from pydantic import (
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.field_metadata import reject_inline_secret_fields
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
+from synthorg.integrations.connections.repo_scope import validate_repo_scope_entry
 
 _MAX_NAME_LEN: Final[int] = 128
 _MAX_BASE_URL_LEN: Final[int] = 2048
@@ -129,6 +130,18 @@ class CreateConnectionRequest(BaseModel):
         """
         return v.strip()
 
+    @field_validator("allowed_repos")
+    @classmethod
+    def _validate_allowed_repos(cls, v: tuple[str, ...]) -> tuple[str, ...]:
+        """Reject an over-broad or malformed repo-scope entry at the boundary.
+
+        Returns:
+            The validated scope tuple.
+        """
+        for entry in v:
+            validate_repo_scope_entry(str(entry))
+        return v
+
     @model_validator(mode="after")
     def _validate_credentials(self) -> Self:
         """Enforce the credential-boundary invariants at request parse time.
@@ -215,6 +228,20 @@ class UpdateConnectionRequest(BaseModel):
         if v is None:
             msg = "sensitive must be true or false, not null"
             raise ValueError(msg)
+        return v
+
+    @field_validator("allowed_repos")
+    @classmethod
+    def _validate_allowed_repos(
+        cls, v: tuple[str, ...] | None
+    ) -> tuple[str, ...] | None:
+        """Reject an over-broad or malformed repo-scope entry at the boundary.
+
+        Returns:
+            The validated scope tuple (or ``None`` to keep the stored scope).
+        """
+        for entry in v or ():
+            validate_repo_scope_entry(str(entry))
         return v
 
 

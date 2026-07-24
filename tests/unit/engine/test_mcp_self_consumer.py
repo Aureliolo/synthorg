@@ -209,6 +209,17 @@ class TestMCPRateLimiter:
         limiter = MCPRateLimiter(per_minute=0, burst=1)
         assert all(limiter.try_acquire("a", "t") for _ in range(100))
 
+    def test_bucket_map_is_bounded(self) -> None:
+        # A long-lived process with many ephemeral agent ids must not grow
+        # the bucket map without bound; the LRU eviction caps it.
+        from synthorg.engine.mcp_self_consumer import _MAX_TRACKED_BUCKETS
+
+        clock = FakeClock()
+        limiter = MCPRateLimiter(per_minute=60, burst=1, clock=clock)
+        for i in range(_MAX_TRACKED_BUCKETS + 50):
+            limiter.try_acquire(f"agent-{i}", "t")
+        assert len(limiter._buckets) == _MAX_TRACKED_BUCKETS
+
 
 class TestAdapterRateLimit:
     async def test_over_budget_call_refused(self) -> None:

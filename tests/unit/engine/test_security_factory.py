@@ -98,6 +98,41 @@ class TestMakeSecurityInterceptor:
         assert result is not None
 
 
+class TestMcpDestructiveWiring:
+    """The MCP destructive-op detector is toggled into the built engine."""
+
+    def _interceptor(self, *, mcp_enabled: bool) -> object:
+        from synthorg.security.config import RuleEngineConfig, SecurityConfig
+
+        cfg = SecurityConfig(
+            enabled=True,
+            rule_engine=RuleEngineConfig(
+                mcp_destructive_op_detection_enabled=mcp_enabled
+            ),
+        )
+        return make_security_interceptor(cfg, _make_audit_log())
+
+    def test_detector_included_when_enabled(self) -> None:
+        from synthorg.security.rules.mcp_destructive_op_detector import (
+            MCPDestructiveOpDetector,
+        )
+
+        svc = self._interceptor(mcp_enabled=True)
+        assert svc is not None
+        engine = svc._rule_engine  # type: ignore[attr-defined]
+        assert any(isinstance(r, MCPDestructiveOpDetector) for r in engine._rules)
+
+    def test_detector_excluded_when_disabled(self) -> None:
+        from synthorg.security.rules.mcp_destructive_op_detector import (
+            MCPDestructiveOpDetector,
+        )
+
+        svc = self._interceptor(mcp_enabled=False)
+        assert svc is not None
+        engine = svc._rule_engine  # type: ignore[attr-defined]
+        assert not any(isinstance(r, MCPDestructiveOpDetector) for r in engine._rules)
+
+
 class TestCustomPolicyWiring:
     """Custom policies are wired into the rule engine pipeline."""
 

@@ -224,7 +224,8 @@ def _login(user: _GlUser | None) -> str:
 
 
 def _open_closed(state: str) -> str:
-    # GitLab uses "opened"; a merged MR is closed from the open/closed view.
+    # GitLab uses "opened"; every other state (closed, merged, locked) folds
+    # to "closed" in the vendor-neutral open/closed view.
     return "open" if state == "opened" else "closed"
 
 

@@ -41,22 +41,34 @@ free of any engine/approval import.
    approval is re-notified on its own cadence after a restart.
 2. **Open + stream.** The consumer resolves the connection's app token,
    calls `apps.connections.open` (host-pinned to slack.com) for a
-   short-lived `wss://` gateway URL, and streams frames. Every envelope is
-   acknowledged before its event is dispatched so a slow handler cannot
-   trigger re-delivery.
+   short-lived `wss://` gateway URL, and streams frames. An event envelope
+   is acknowledged only **after** its event is dispatched: the resume
+   dispatcher is idempotent (`save_if_pending` CAS), so at-least-once
+   delivery (a re-delivery if the process dies between receipt and ack) is
+   strictly safer than losing a human decision. A disconnect envelope is
+   still acked before reconnecting.
 3. **Decode.** `decode_frame` maps `app_mention` / `message` (including
    direct messages) / `reaction_added` onto `InboundChatEvent`, dropping bot
    echoes and message subtypes (edits/joins). A top-level message roots its
    own thread for correlation.
 4. **Route + resume.** The router resolves the event's thread to an
-   approval. A reaction (`white_check_mark` / `x` ...) is an explicit
-   approve/reject; a text reply is an approving reply whose body becomes
-   the human guidance. The `ApprovalResumeDispatcher` records the decision
-   atomically (`save_if_pending`, so a concurrent dashboard decision or a
-   duplicate event cannot double-resume) and hands off to
-   `signal_resume_intent` (the same internal entrypoint the dashboard
-   approve/reject endpoint uses), which resumes the parked task through
-   the existing routing.
+   approval and decides **explicit-token-only** (see Authorization). The
+   `ApprovalResumeDispatcher` records the decision atomically
+   (`save_if_pending`, so a concurrent dashboard decision or a duplicate
+   event cannot double-resume) and hands off to `signal_resume_intent` (the
+   same internal entrypoint the dashboard approve/reject endpoint uses),
+   which resumes the parked task through the existing routing.
+
+## Authorization: explicit-token-only
+
+An approval is consent, so it is **never** inferred from arbitrary human
+text. Only an explicit approve/reject **reaction** (`white_check_mark` /
+`x` ...) constitutes a decision; a plain text reply (mention / message /
+DM) resolves to no decision and is ignored. This closes the gap where any
+user who could post in the notified thread would approve a parked action
+(including a destructive one) merely by typing something: the Socket-Mode
+path now requires the same explicit affirmative signal the dashboard does,
+not a free-text reply.
 
 ## Kill-switch + resilience
 
@@ -70,11 +82,13 @@ malformed event is isolated so it cannot drop the socket.
 
 ## SEC-1: fencing
 
-Inbound human text is attacker-controlled. The inbound package never turns
-it into a prompt: the router forwards it **only** as a resume
-`decision_reason`, which `build_resume_message` fences with
+Inbound human content is attacker-controlled. The inbound package never
+turns it into a prompt: the router forwards a decision's reason **only** as
+a resume `decision_reason`, which `build_resume_message` fences with
 `wrap_untrusted(TAG_TASK_DATA, ...)` before any LLM boundary: the exact
 path the dashboard approval comment takes, so there is one fencing site,
-not two. The `check_chat_inbound_fenced.py` gate enforces this structurally:
+not two. (Under explicit-token-only the reason is a fixed string rather
+than raw human text, but the fenced hand-off remains the single escape
+path.) The `check_chat_inbound_fenced.py` gate enforces this structurally:
 no inbound module may call an LLM-completion chokepoint, and the router must
 keep the `decision_reason=` hand-off.

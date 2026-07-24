@@ -9,7 +9,7 @@ and implement ``_dispatch``.
 """
 
 from abc import ABC
-from fnmatch import fnmatch
+from fnmatch import fnmatchcase
 from typing import ClassVar, override
 
 from pydantic import BaseModel
@@ -46,7 +46,8 @@ from synthorg.tools.forge.errors import (
     ForgeRepoScopeError,
     ForgeToolArgumentError,
     ForgeUnsupportedError,
-    ForgeUpstreamError,
+    ForgeUpstreamApiError,
+    ForgeUpstreamAuthError,
 )
 
 logger = get_logger(__name__)
@@ -57,14 +58,18 @@ _TRUNCATED_NOTE = "\n... [truncated]"
 def _repo_in_scope(owner: str, repo: str, allowed: tuple[str, ...]) -> bool:
     """Whether ``owner/repo`` matches any allowed scope entry.
 
-    Scope entries are ``owner/repo`` with ``fnmatch`` globs permitted
-    (``owner/*``, ``*/*``). An empty scope matches nothing (fail-closed).
+    Scope entries are ``owner/repo`` with globs permitted (``owner/*``).
+    An empty scope matches nothing (fail-closed). Matching is case-folded
+    with ``fnmatchcase`` so the security boundary is deterministic across
+    host OSes (plain ``fnmatch`` normalises case per-OS) and cannot be
+    bypassed by varying the case of an identifier the forge resolves
+    case-insensitively.
 
     Returns:
         ``True`` if the repository is admitted by the scope.
     """
-    target = f"{owner}/{repo}"
-    return any(fnmatch(target, pattern) for pattern in allowed)
+    target = f"{owner}/{repo}".lower()
+    return any(fnmatchcase(target, pattern.lower()) for pattern in allowed)
 
 
 class _BaseForgeTool(
@@ -131,7 +136,7 @@ class _BaseForgeTool(
                     repo=repo,
                 )
                 msg = (
-                    f"Repository {owner}/{repo!r} is outside connection "
+                    f"Repository {owner}/{repo} is outside connection "
                     f"{conn.name!r}'s allowed scope. Ask an operator to add it."
                 )
                 raise ForgeRepoScopeError(msg)
@@ -170,7 +175,8 @@ class _BaseForgeTool(
 
         Raises:
             ForgeRateLimitedError: The forge rate-limited the request.
-            ForgeUpstreamError: An auth or other non-2xx / transport failure.
+            ForgeUpstreamAuthError: Authentication failed (not retryable).
+            ForgeUpstreamApiError: A non-2xx / transport failure (retryable).
             ForgeUnsupportedError: The forge does not support the operation.
         """
         try:
@@ -182,9 +188,9 @@ class _BaseForgeTool(
             ) from exc
         except GitBackendForgeAuthError as exc:
             msg = "Forge authentication failed (check the connection token/scopes)"
-            raise ForgeUpstreamError(msg) from exc
+            raise ForgeUpstreamAuthError(msg) from exc
         except GitBackendForgeApiError as exc:
-            raise ForgeUpstreamError(safe_error_description(exc)) from exc
+            raise ForgeUpstreamApiError(safe_error_description(exc)) from exc
         except FeatureNotImplementedError as exc:
             raise ForgeUnsupportedError(str(exc)) from exc
 

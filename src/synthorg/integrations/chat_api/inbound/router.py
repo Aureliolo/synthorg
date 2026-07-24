@@ -3,19 +3,23 @@
 A threaded reply / reaction is resolved to the approval it answers via the
 :class:`~synthorg.integrations.chat_api.inbound.registry.InboundThreadRegistry`,
 then handed to a :class:`ChatResumeDispatcher` that records the decision
-and resumes the parked task. Decision semantics:
+and resumes the parked task. Decision semantics are explicit-token-only:
 
-- an approve/reject reaction (``white_check_mark`` / ``x`` ...) is an
-  explicit decision;
-- a text reply (mention / message / DM) is an approving reply whose body
-  becomes the human guidance the resumed agent sees.
+- ONLY an approve/reject reaction (``white_check_mark`` / ``x`` ...)
+  constitutes a decision. Approval is consent, so it must never be
+  inferred from arbitrary human text: a plain text reply (mention /
+  message / DM) never approves or rejects, it merely carries guidance the
+  resumed agent sees once a reaction has decided the outcome.
+- A text reply on its own resolves to no decision and is ignored (there is
+  nothing to act on without an explicit approve/reject signal).
 
-The router never feeds the raw human text to a prompt: it forwards it as
-``decision_reason`` only, which the resume machinery fences with
-``wrap_untrusted(TAG_TASK_DATA, ...)`` before it reaches any LLM boundary
-(the same path the dashboard approval comment takes).
+The router never feeds the raw human text to a prompt: it forwards a
+decision's reason as ``decision_reason`` only, which the resume machinery
+fences with ``wrap_untrusted(TAG_TASK_DATA, ...)`` before it reaches any
+LLM boundary (the same path the dashboard approval comment takes).
 """
 
+from dataclasses import dataclass
 from typing import Final, Protocol, runtime_checkable
 
 from synthorg.integrations.chat_api.inbound.models import (
@@ -56,33 +60,31 @@ class ChatResumeDispatcher(Protocol):
         ...
 
 
+@dataclass(frozen=True, slots=True)
 class _Decision:
     """A resolved (approved, reason) pair, or ``None`` to ignore."""
 
-    __slots__ = ("approved", "reason")
-
-    def __init__(self, *, approved: bool, reason: str) -> None:
-        self.approved = approved
-        self.reason = reason
+    approved: bool
+    reason: str
 
 
 def _decide(event: InboundChatEvent) -> _Decision | None:
     """Resolve an inbound event to an approve/reject decision.
 
+    Only an explicit approve/reject reaction decides: consent is never
+    inferred from human text, so a text reply resolves to ``None``.
+
     Returns:
-        The decision, or ``None`` for an unrecognised reaction or an
-        empty text reply (nothing to act on).
+        The decision, or ``None`` for a text reply or an unrecognised
+        reaction (nothing to act on without an explicit signal).
     """
-    if event.kind is InboundEventKind.REACTION:
-        if event.reaction in _APPROVE_REACTIONS:
-            return _Decision(approved=True, reason="Approved via reaction")
-        if event.reaction in _REJECT_REACTIONS:
-            return _Decision(approved=False, reason="Rejected via reaction")
+    if event.kind is not InboundEventKind.REACTION:
         return None
-    # A text reply is an approving reply whose body is the human guidance.
-    if not event.text.strip():
-        return None
-    return _Decision(approved=True, reason=event.text)
+    if event.reaction in _APPROVE_REACTIONS:
+        return _Decision(approved=True, reason="Approved via reaction")
+    if event.reaction in _REJECT_REACTIONS:
+        return _Decision(approved=False, reason="Rejected via reaction")
+    return None
 
 
 class InboundResumeRouter:

@@ -15,6 +15,7 @@ surface exposed to agents.
 """
 
 import threading
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Final, Protocol, override
 
 from synthorg.core.agent import AgentIdentity
@@ -33,6 +34,11 @@ if TYPE_CHECKING:
 # high-blast-radius surface gated behind an explicit per-agent grant.
 _ADMIN_SUFFIX: Final[str] = ":admin"
 _SECONDS_PER_MINUTE: Final[float] = 60.0
+# Cap on distinct (agent, tool) buckets held at once: a long-lived process
+# with many ephemeral agent ids must not grow the map without bound. The
+# least-recently-used bucket is evicted past this (a dead agent's bucket
+# simply refills to full if it ever returns).
+_MAX_TRACKED_BUCKETS: Final[int] = 4096
 
 
 class MCPRateLimiter:
@@ -51,7 +57,7 @@ class MCPRateLimiter:
         self._rate_per_sec = per_minute / _SECONDS_PER_MINUTE
         self._capacity = float(burst)
         self._clock = clock or SystemClock()
-        self._buckets: dict[tuple[str, str], tuple[float, float]] = {}
+        self._buckets: OrderedDict[tuple[str, str], tuple[float, float]] = OrderedDict()
         self._lock = threading.Lock()
 
     def try_acquire(self, agent_id: str, tool_name: str) -> bool:
@@ -68,11 +74,12 @@ class MCPRateLimiter:
         with self._lock:
             tokens, last = self._buckets.get(key, (self._capacity, now))
             tokens = min(self._capacity, tokens + (now - last) * self._rate_per_sec)
-            if tokens < 1.0:
-                self._buckets[key] = (tokens, now)
-                return False
-            self._buckets[key] = (tokens - 1.0, now)
-            return True
+            permitted = tokens >= 1.0
+            self._buckets[key] = (tokens - 1.0 if permitted else tokens, now)
+            self._buckets.move_to_end(key)
+            while len(self._buckets) > _MAX_TRACKED_BUCKETS:
+                self._buckets.popitem(last=False)
+            return permitted
 
 
 class MCPSelfConsumerProvider(Protocol):

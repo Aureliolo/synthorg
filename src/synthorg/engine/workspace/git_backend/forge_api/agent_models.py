@@ -6,11 +6,39 @@ and ``extra="forbid"`` because they are SynthOrg's own contract, unlike
 the ``extra="ignore"`` payload-parsing models internal to each client.
 """
 
-from typing import Literal
+from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import NotBlankStr
+
+_REPO_ID_FORBIDDEN: Final[frozenset[str]] = frozenset({"/", "\\", "?", "#", "@", "%"})
+_CONTROL_CHAR_THRESHOLD: Final[int] = 0x20
+
+
+def _reject_unsafe_repo_id(value: str, *, field: str) -> str:
+    """Reject a forge-returned owner/repo identifier unsafe as a scope segment.
+
+    A forge response is untrusted here: an embedded ``/``, ``..``, or control
+    character in ``owner``/``repo`` would flow into the ``owner/repo`` scope
+    string and a REST URL path segment, so it is rejected on the read side
+    just as the request-side args reject it.
+
+    Returns:
+        The validated identifier.
+
+    Raises:
+        ValueError: When the identifier carries a traversal, separator, or
+            control character.
+    """
+    if ".." in value or any(ch in value for ch in _REPO_ID_FORBIDDEN):
+        msg = f"forge-returned {field} contains a disallowed character"
+        raise ValueError(msg)
+    if any(ord(ch) < _CONTROL_CHAR_THRESHOLD for ch in value):
+        msg = f"forge-returned {field} contains a control character"
+        raise ValueError(msg)
+    return value
+
 
 # Request-side closed sets shared by the protocol and the tool args.
 # ``all`` is a list-filter value; a returned issue/PR is only ever open
@@ -138,6 +166,16 @@ class ForgeAccessibleRepo(_ForgeResult):
     repo: NotBlankStr
     permission: ForgeRepoPermission
     private: bool = False
+
+    @field_validator("owner", "repo")
+    @classmethod
+    def _validate_identifier(cls, v: str) -> str:
+        """Reject an unsafe forge-returned owner/repo identifier.
+
+        Returns:
+            The validated identifier.
+        """
+        return _reject_unsafe_repo_id(str(v), field="identifier")
 
 
 class ForgeMergeResult(_ForgeResult):

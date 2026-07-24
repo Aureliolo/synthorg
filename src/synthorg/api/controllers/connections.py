@@ -464,7 +464,10 @@ class ConnectionsController(Controller):
 
     @get(
         "/{name:str}/accessible-repos",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit_from_policy("connections.accessible_repos", key="user"),
+        ],
         summary="Scan a forge connection's accessible repositories",
     )
     async def scan_accessible_repos(
@@ -477,8 +480,9 @@ class ConnectionsController(Controller):
         Powers the operator repo-scope picker: the returned repositories
         are the candidates an operator selects into the connection's
         ``allowed_repos`` scope. Egress is pinned to the connection host by
-        construction. Write-guarded because it brokers the connection's
-        credentials to the forge.
+        construction. Write-guarded and per-user rate-limited because it
+        brokers the connection's credentials into a live outbound call to
+        the forge on every request.
 
         Returns:
             ``ApiResponse`` wrapping the accessible repositories.

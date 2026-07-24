@@ -57,6 +57,65 @@ class TestMCPServerConfigNpmPin:
         )
         assert cfg.command == "node"
 
+    @pytest.mark.parametrize(
+        "command",
+        ["NPX", "Npx", "NPX.CMD", "PNPM", "BUNX", "/usr/local/bin/NPX"],
+        ids=["upper", "mixed", "cmd_upper", "pnpm_upper", "bunx_upper", "path_upper"],
+    )
+    def test_case_varied_launcher_still_pinned(self, command: str) -> None:
+        # Windows resolves NPX/PNPM/BUNX to the same launcher, so a
+        # case-varied command must not slip past the pin check.
+        args = ("dlx", "pkg") if command.lower().endswith("pnpm") else ("pkg",)
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(name="s1", transport="stdio", command=command, args=args)
+
+    def test_pnpm_dlx_unpinned_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="pnpm",
+                args=("dlx", "@scope/pkg"),
+            )
+
+    def test_pnpm_dlx_pinned_accepted(self) -> None:
+        cfg = MCPServerConfig(
+            name="s1",
+            transport="stdio",
+            command="pnpm",
+            args=("dlx", "@scope/pkg@1.0.0"),
+        )
+        assert cfg.args == ("dlx", "@scope/pkg@1.0.0")
+
+    def test_bare_pnpm_is_exempt(self) -> None:
+        # `pnpm` without `dlx` is a normal script runner, not an on-the-fly
+        # resolve; nothing to pin.
+        cfg = MCPServerConfig(
+            name="s1",
+            transport="stdio",
+            command="pnpm",
+            args=("run", "server"),
+        )
+        assert cfg.command == "pnpm"
+
+    def test_bunx_unpinned_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(name="s1", transport="stdio", command="bunx", args=("pkg",))
+
+    def test_windows_npx_cmd_unpinned_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1", transport="stdio", command="npx.cmd", args=("pkg",)
+            )
+
+    @pytest.mark.parametrize("tag", ["next", "canary", ""])
+    def test_other_floating_tags_rejected(self, tag: str) -> None:
+        spec = f"pkg@{tag}" if tag else "pkg@"
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1", transport="stdio", command="npx", args=("-y", spec)
+            )
+
 
 class TestMCPServerConfigStdio:
     """Stdio transport validation."""

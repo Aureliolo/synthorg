@@ -2,8 +2,11 @@
 
 import pytest
 
-from synthorg.integrations.chat_api.inbound.decode import decode_frame
-from synthorg.integrations.chat_api.inbound.models import InboundEventKind
+from synthorg.integrations.chat_api.inbound.decode import DecodedFrame, decode_frame
+from synthorg.integrations.chat_api.inbound.models import (
+    InboundChatEvent,
+    InboundEventKind,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -143,9 +146,61 @@ class TestEventDecoding:
         )
         assert decoded.event is None
 
+    def test_message_without_channel_is_ignored(self) -> None:
+        decoded = decode_frame(
+            _events_api({"type": "message", "user": "U1", "text": "x", "ts": "1.0"})
+        )
+        assert decoded.event is None
+
+    def test_reaction_without_item_is_ignored(self) -> None:
+        decoded = decode_frame(
+            _events_api({"type": "reaction_added", "user": "U1", "reaction": "eyes"})
+        )
+        assert decoded.event is None
+
+    def test_reaction_without_author_is_ignored(self) -> None:
+        decoded = decode_frame(
+            _events_api(
+                {
+                    "type": "reaction_added",
+                    "reaction": "eyes",
+                    "item": {"channel": "C1", "ts": "1.0"},
+                }
+            )
+        )
+        assert decoded.event is None
+
+    def test_reaction_without_shortcode_is_ignored(self) -> None:
+        decoded = decode_frame(
+            _events_api(
+                {
+                    "type": "reaction_added",
+                    "user": "U1",
+                    "item": {"channel": "C1", "ts": "1.0"},
+                }
+            )
+        )
+        assert decoded.event is None
+
     def test_malformed_payload_is_ignored_but_acked(self) -> None:
         decoded = decode_frame(
             {"type": "events_api", "envelope_id": "e2", "payload": "nope"}
         )
         assert decoded.envelope_id == "e2"
         assert decoded.event is None
+
+
+class TestDecodedFrameShape:
+    def test_disconnect_with_event_rejected(self) -> None:
+        event = InboundChatEvent(
+            kind=InboundEventKind.MENTION, channel="C1", user="U1", text="hi"
+        )
+        with pytest.raises(ValueError, match="disconnect frame cannot carry"):
+            DecodedFrame(envelope_id="e1", event=event, disconnect=True)
+
+    def test_event_without_envelope_rejected(self) -> None:
+        event = InboundChatEvent(
+            kind=InboundEventKind.MENTION, channel="C1", user="U1", text="hi"
+        )
+        with pytest.raises(ValueError, match="requires an envelope id"):
+            DecodedFrame(event=event)

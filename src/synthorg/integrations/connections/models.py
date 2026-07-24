@@ -23,6 +23,7 @@ from pydantic import (
 from synthorg.core.env_var_safety import validate_credential_env_var_name
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.repo_scope import validate_repo_scope_entry
 
 # Canonical database dialect set. Lives here (a leaf import for the whole
 # connections package) so both the database authenticator and the catalog
@@ -201,6 +202,17 @@ class Connection(BaseModel):
             The instance with ``metadata`` replaced by a deep copy.
         """
         object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        return self
+
+    @model_validator(mode="after")
+    def _validate_allowed_repos(self) -> Self:
+        """Reject an over-broad or malformed repo-scope entry at the source.
+
+        Returns:
+            The unchanged instance when every scope entry is well-formed.
+        """
+        for entry in self.allowed_repos:
+            validate_repo_scope_entry(str(entry))
         return self
 
 

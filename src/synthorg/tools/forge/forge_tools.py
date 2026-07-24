@@ -37,18 +37,34 @@ from synthorg.tools.forge._base import (
 from synthorg.tools.forge._runtime import ForgeToolDeps
 
 
-def _to_review_comment(arg: ForgeReviewCommentArg) -> ForgeReviewComment:
-    """Map an agent-supplied inline comment onto the domain model.
+def _guard_review_comments(
+    comments: tuple[ForgeReviewCommentArg, ...],
+) -> tuple[ToolExecutionResult | None, tuple[ForgeReviewComment, ...]]:
+    """Enforce the output-style policy on each inline review comment body.
+
+    An inline comment body is agent-authored prose bound for a public
+    forge, so it passes the same ``PR_BODY`` guard as every other forge
+    text field; a hard-rule violation is rejected before the review posts,
+    rather than reaching the forge unfiltered.
 
     Returns:
-        The vendor-neutral :class:`ForgeReviewComment`.
+        An ``(error, ())`` pair on the first hard block, else
+        ``(None, comments)`` with each body policy-approved.
     """
-    return ForgeReviewComment(
-        path=NotBlankStr(arg.path),
-        line=arg.line,
-        body=NotBlankStr(arg.body),
-        side=arg.side,
-    )
+    guarded: list[ForgeReviewComment] = []
+    for comment in comments:
+        guard = _guard_forge_text(title="", body=comment.body)
+        if guard.error is not None:
+            return guard.error, ()
+        guarded.append(
+            ForgeReviewComment(
+                path=NotBlankStr(comment.path),
+                line=comment.line,
+                body=NotBlankStr(guard.body),
+                side=comment.side,
+            )
+        )
+    return None, tuple(guarded)
 
 
 class _ForgeGuard(NamedTuple):
@@ -264,13 +280,16 @@ class ForgePullRequestTool(_BaseForgeTool):
             guard = _guard_forge_text(title="", body=args.body)
             if guard.error is not None:
                 return guard.error
+            comment_error, review_comments = _guard_review_comments(args.comments)
+            if comment_error is not None:
+                return comment_error
             review = await client.review_pull_request(
                 owner=owner,
                 repo=repo,
                 number=args.number,
                 decision=args.decision,
                 body=guard.body,
-                comments=tuple(_to_review_comment(c) for c in args.comments),
+                comments=review_comments,
             )
             return _json_result(review.model_dump(mode="json"))
         guard = _guard_forge_text(title=args.commit_title, body="", is_commit=True)

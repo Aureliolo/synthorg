@@ -34,8 +34,6 @@ SSRF guard: a server URL can arrive from a catalog installation, so
 _NPX_COMMANDS: Final[frozenset[str]] = frozenset({"npx", "npx.cmd", "pnpm", "bunx"})
 # npm dist-tags that float to whatever is newest: not a pin.
 _FLOATING_NPM_TAGS: Final[frozenset[str]] = frozenset({"latest", "next", "canary", ""})
-# npx flags that take no package operand (skipped when finding the spec).
-_NPX_FLAGS: Final[frozenset[str]] = frozenset({"-y", "--yes", "--"})
 
 
 def _npm_package_spec(command: str, args: tuple[str, ...]) -> str | None:
@@ -45,7 +43,9 @@ def _npm_package_spec(command: str, args: tuple[str, ...]) -> str | None:
         The package operand (e.g. ``@scope/pkg@2.1.0``), or ``None`` when
         the command is not an npx-style launcher.
     """
-    base = command.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    # Case-folded: Windows resolves ``NPX``/``Npx.cmd`` to the same launcher,
+    # so a case-varied command must not slip past the pin check.
+    base = command.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].lower()
     if base not in _NPX_COMMANDS:
         return None
     rest = list(args)
@@ -55,7 +55,9 @@ def _npm_package_spec(command: str, args: tuple[str, ...]) -> str | None:
     elif base == "pnpm":
         return None
     for arg in rest:
-        if arg in _NPX_FLAGS or arg.startswith("-"):
+        # Every npx flag (-y, --yes, --) starts with a dash; the package
+        # operand is the first non-flag argument.
+        if arg.startswith("-"):
             continue
         return arg
     return None
@@ -217,7 +219,8 @@ class MCPServerConfig(BaseModel):
         concrete pin closes that supply-chain gap at the model boundary.
 
         Returns:
-            Result of type ``Self``.
+            The unchanged model when the command is not npx-style or its
+            package is already pinned.
 
         Raises:
             ValueError: If the command runs an unpinned npm package.

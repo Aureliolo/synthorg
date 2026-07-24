@@ -10,6 +10,7 @@ layer tests.
 
 import base64
 import json
+from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, patch
 
@@ -30,6 +31,7 @@ from synthorg.integrations.connections.models import (
     ConnectionType,
 )
 from synthorg.integrations.errors import SecretRetrievalError
+from synthorg.tools.forge._base import _repo_in_scope
 from synthorg.tools.forge._runtime import ForgeToolDeps, ForgeToolsRuntime
 from synthorg.tools.forge.forge_tools import (
     ForgeCiTool,
@@ -502,6 +504,24 @@ class TestForgeRepoScope:
         assert result.is_error is False
 
 
+class TestRepoInScope:
+    """The scope predicate is deterministic and case-insensitive."""
+
+    def test_case_insensitive_exact_match(self) -> None:
+        # OS-independent, case-folded: a forge-resolved case variant of an
+        # in-scope repo must still be admitted (and never bypass the scope).
+        assert _repo_in_scope("Acme", "Proj-1", ("acme/proj-1",)) is True
+
+    def test_case_insensitive_glob_match(self) -> None:
+        assert _repo_in_scope("ACME", "anything", ("acme/*",)) is True
+
+    def test_empty_scope_denies(self) -> None:
+        assert _repo_in_scope("acme", "proj-1", ()) is False
+
+    def test_mismatch_denies(self) -> None:
+        assert _repo_in_scope("acme", "proj-1", ("other/*",)) is False
+
+
 class TestForgePushTool:
     @respx.mock
     async def test_create_branch_auto_approved(self) -> None:
@@ -574,6 +594,44 @@ class TestForgeInlineReviewAndCi:
         )
         assert result.is_error is False
         assert b'"new_position":4' in route.calls.last.request.content
+
+    @respx.mock
+    async def test_inline_comment_policy_violation_rejected_before_dispatch(
+        self,
+    ) -> None:
+        # An inline review-comment body is agent-authored prose bound for a
+        # public forge, so it passes the output-style guard like every other
+        # field. A blocked body must stop the review before any forge call.
+        route = respx.post(f"{_FJ}/repos/acme/proj-1/pulls/2/reviews").mock(
+            return_value=httpx.Response(200, json={})
+        )
+        bad_body = "policy-violating body"
+
+        def _fake_policy(text: str, _ctx: object) -> object | None:
+            if text == bad_body:
+                return SimpleNamespace(
+                    blocked=True, summary="blocked", rewritten_text=None
+                )
+            return None
+
+        tool = ForgePullRequestTool(
+            deps=_deps(conn=_connection(), autonomy=_auto_autonomy())
+        )
+        target = "synthorg.engine.output_style.evaluate_output_policy"
+        with patch(target, _fake_policy):
+            result = await tool.execute(
+                arguments={
+                    "action": "review",
+                    "owner": "acme",
+                    "repo": "proj-1",
+                    "number": 2,
+                    "decision": "comment",
+                    "body": "fine summary",
+                    "comments": [{"path": "a.py", "line": 4, "body": bad_body}],
+                }
+            )
+        assert result.is_error is True
+        assert not route.called
 
     async def test_ci_trigger_parks_as_write(self) -> None:
         # A CI trigger is a write: with no auto-approval it parks for a

@@ -30,14 +30,18 @@ _EVENT_APP_MENTION: Final[str] = "app_mention"
 _EVENT_MESSAGE: Final[str] = "message"
 _EVENT_REACTION_ADDED: Final[str] = "reaction_added"
 
-# ``message`` events with a subtype are edits/joins/system posts, not a
-# human reply; only a plain, human-authored message resumes a task.
+# Slack's channel_type for a direct message.
 _DIRECT_CHANNEL_TYPE: Final[str] = "im"
 
 
 @dataclass(frozen=True)
 class DecodedFrame:
     """The outcome of decoding one Socket-Mode frame.
+
+    Exactly one legal shape holds: nothing (hello), ``disconnect``, an
+    ack-only ``envelope_id``, or an ``envelope_id`` with an ``event``. The
+    post-init assertion rejects the self-contradicting combinations so a
+    future second producer cannot construct one silently.
 
     Attributes:
         envelope_id: Acknowledge this envelope when non-empty (every
@@ -50,6 +54,20 @@ class DecodedFrame:
     envelope_id: str = ""
     event: InboundChatEvent | None = None
     disconnect: bool = False
+
+    def __post_init__(self) -> None:
+        """Reject a self-contradicting frame shape.
+
+        Raises:
+            ValueError: When ``disconnect`` carries an event, or an event
+                arrives without its envelope id.
+        """
+        if self.disconnect and self.event is not None:
+            msg = "a disconnect frame cannot carry a routable event"
+            raise ValueError(msg)
+        if self.event is not None and not self.envelope_id:
+            msg = "a routable event requires an envelope id to acknowledge"
+            raise ValueError(msg)
 
 
 class _SlInner(BaseModel):  # lint-allow: frozen-extra-forbid -- slack extras
@@ -130,6 +148,8 @@ def _map_event(event: _SlEvent) -> InboundChatEvent | None:
     if event.type == _EVENT_APP_MENTION:
         return _text_event(event, InboundEventKind.MENTION)
     if event.type == _EVENT_MESSAGE:
+        # A message with a subtype is an edit/join/system post, not a
+        # human reply; only a plain, human-authored message resumes a task.
         if event.subtype:
             return None
         kind = (
@@ -147,9 +167,10 @@ def _text_event(event: _SlEvent, kind: InboundEventKind) -> InboundChatEvent | N
     """Build a text-reply event.
 
     Returns:
-        The event, or ``None`` when the message has no author.
+        The event, or ``None`` when the message has no author or channel
+        (an unroutable, unattributable frame).
     """
-    if not event.user:
+    if not event.user or not event.channel:
         return None
     return InboundChatEvent(
         kind=kind,
@@ -166,9 +187,15 @@ def _reaction_event(event: _SlEvent) -> InboundChatEvent | None:
     """Build a reaction event.
 
     Returns:
-        The event, or ``None`` when the reaction lacks an item or author.
+        The event, or ``None`` when the reaction lacks an item, author,
+        channel, or shortcode (nothing to correlate or decide on).
     """
-    if event.item is None or not event.user:
+    if (
+        event.item is None
+        or not event.user
+        or not event.item.channel
+        or not event.reaction
+    ):
         return None
     return InboundChatEvent(
         kind=InboundEventKind.REACTION,

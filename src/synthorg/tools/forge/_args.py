@@ -215,6 +215,12 @@ class ForgePushArgs(_ForgeArgsBase):
     creates or updates ``path`` on ``branch`` with a commit ``message``.
     Both mutate the remote, so the tool binds ``ActionType.VCS_PUSH`` and
     is governed by the git-access sub-constraint.
+
+    ``sha`` is optional and best-effort: pass the current blob sha to update
+    an existing file (some forges require it), omit it to create a new one.
+    Whether the target already exists is not knowable at args-construction
+    time, so the create/update distinction is not enforced here; the forge
+    is the authority and surfaces a conflict if the sha is wrong or missing.
     """
 
     action: Literal["create_branch", "write_file"]
