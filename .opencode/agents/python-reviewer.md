@@ -160,6 +160,10 @@ uv run python -m pytest tests/ -m unit -n 8
 uv run pre-commit run --all-files
 ```
 
+Two of these are not inert: `make typecheck` starts a resident daemon per
+worktree (`make typecheck-stop` reclaims it), and `uv run pre-commit run
+--all-files` runs auto-fixing hooks that rewrite files.
+
 Use `uv run python -m pytest`, never bare `pytest` (Windows path issue).
 
 ## Review Output Format

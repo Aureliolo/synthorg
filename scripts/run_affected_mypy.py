@@ -435,9 +435,18 @@ def _daemon_opted_out() -> bool:
 
 
 def _dmypy_result(
-    daemon: _Daemon, *args: str, quiet: bool = False
+    daemon: _Daemon,
+    *args: str,
+    quiet: bool = False,
+    timeout: int = _MYPY_TIMEOUT_SECONDS,
 ) -> subprocess.CompletedProcess[str] | None:
     """Run a dmypy subcommand, returning ``None`` if it hung and was killed.
+
+    Only ``run`` can legitimately take minutes, so it keeps the build-sized
+    default. The management subcommands pass a short *timeout*: ``stop``
+    exists to reclaim memory before a heavy build, and a wedged daemon that
+    made it block for the full build ceiling would defeat the point of
+    calling it.
 
     ``_MYPY_WORKERS`` is deliberately absent. ``--num-workers`` is accepted by
     the daemon's argument parser but its server forces ``num_workers = 0``
@@ -466,11 +475,11 @@ def _dmypy_result(
             env=_mypy_env(env),
             capture_output=quiet,
             text=quiet,
-            timeout=_MYPY_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired:
         print(
-            f"{daemon.label} daemon exceeded {_MYPY_TIMEOUT_SECONDS}s and was "
+            f"{daemon.label} daemon exceeded {timeout}s and was "
             f"killed; try: dmypy kill --status-file {daemon.status_file}",
             file=sys.stderr,
         )
@@ -537,7 +546,9 @@ def _daemon_running(daemon: _Daemon) -> bool:
     distinguishing text dmypy prints is surfaced so a wedged daemon does not
     stay invisible.
     """
-    result = _dmypy_result(daemon, "status", quiet=True)
+    result = _dmypy_result(
+        daemon, "status", quiet=True, timeout=_PROCESS_QUERY_TIMEOUT_SECONDS
+    )
     if result is None:
         return False
     if result.returncode == 0:
@@ -747,7 +758,9 @@ def _stop() -> int:
     for daemon in _ALL_DAEMONS:
         pid = _daemon_pid(daemon)
         rss = _process_rss_mb(pid) if pid is not None else None
-        result = _dmypy_result(daemon, "stop", quiet=True)
+        result = _dmypy_result(
+            daemon, "stop", quiet=True, timeout=_PROCESS_QUERY_TIMEOUT_SECONDS
+        )
         if result is not None and result.returncode == 0:
             reclaimed += rss or 0
             print(f"{daemon.label}: stopped")

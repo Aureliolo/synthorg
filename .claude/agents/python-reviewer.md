@@ -164,7 +164,7 @@ Do NOT flag the unparenthesized form as a syntax error. Do flag the parenthesize
 - Never skip flaky tests; mock `time.monotonic()` and `asyncio.sleep()` for timing-sensitive tests.
 - NEVER modify `tests/baselines/unit_timing.json` (PreToolUse hook enforced).
 
-## Diagnostic Commands (read-only)
+## Diagnostic Commands
 
 ```bash
 uv run ruff check src/ tests/
@@ -174,7 +174,13 @@ uv run python -m pytest tests/ -m unit -n 8
 uv run pre-commit run --all-files
 ```
 
-Bash tool guidance for this agent: read-only diagnostics only. Do NOT use Bash to write files. Do NOT use `cd` or `git -C` to the current working directory. Use `uv run python -m pytest`, never bare `pytest` (Windows path issue).
+Two of these are not inert, so reach for them only when the review actually needs
+that signal: `make typecheck` starts a resident daemon per worktree (`make
+typecheck-stop` reclaims it), and `pre-commit run --all-files` runs auto-fixing
+hooks that rewrite files.
+
+Bash tool guidance for this agent: diagnostics only, and you yourself never write
+files. Do NOT use Bash to write files. Do NOT use `cd` or `git -C` to the current working directory. Use `uv run python -m pytest`, never bare `pytest` (Windows path issue).
 
 ## Review Output Format
 

@@ -8,6 +8,7 @@ the private helpers are callable.
 
 import argparse
 import importlib.util
+import inspect
 import subprocess
 import sys
 from pathlib import Path
@@ -504,6 +505,40 @@ def test_stop_reports_success_when_no_daemon_is_running(
 
     assert _MODULE._stop() == 0
     assert "not running" in capsys.readouterr().out
+
+
+def test_management_subcommands_do_not_inherit_the_build_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``stop`` and ``status`` must use the short ceiling, not the build one.
+
+    ``stop`` exists to reclaim memory before a heavy build, so a wedged daemon
+    that made it block for the full build timeout would defeat the reason for
+    calling it. The sentinel default means a call site that passes no timeout
+    at all fails here rather than silently getting the build ceiling.
+    """
+    seen: list[tuple[str, int]] = []
+
+    def _record(
+        _daemon: object, *args: str, quiet: bool = False, timeout: int = -1
+    ) -> object:
+        seen.append((args[0], timeout))
+        return _completed(0)
+
+    monkeypatch.setattr(_MODULE, "_dmypy_result", _record)
+    monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: None)
+
+    _MODULE._stop()
+    _MODULE._daemon_running(_MODULE._MAIN_DAEMON)
+
+    assert {subcommand for subcommand, _ in seen} == {"stop", "status"}
+    assert all(timeout == _MODULE._PROCESS_QUERY_TIMEOUT_SECONDS for _, timeout in seen)
+
+
+def test_a_run_without_an_explicit_timeout_keeps_the_build_ceiling() -> None:
+    """The full-tree ``run`` legitimately takes minutes, so it keeps 1800s."""
+    default = inspect.signature(_MODULE._dmypy_result).parameters["timeout"].default
+    assert default == _MODULE._MYPY_TIMEOUT_SECONDS
 
 
 def test_main_skips_everything_when_no_python_changed(

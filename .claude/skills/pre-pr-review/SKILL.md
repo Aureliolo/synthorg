@@ -246,7 +246,7 @@ Run these sequentially, fixing as we go:
 If steps 10-12 fail, fix the Go code and re-run.
 
 **Failure handling:**
-- If mypy fails: fix the type errors, re-run mypy
+- If the type check fails: fix the type errors, re-run `make typecheck`
 - If pytest fails: fix failing tests, re-run pytest
 - If npm lint/type-check/test fails: fix the errors, re-run
 - If something can't be auto-fixed: present the error to the user via AskUserQuestion, ask how to proceed (fix now / skip check / abort)
