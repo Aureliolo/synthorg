@@ -696,11 +696,13 @@ jobs:
         run: uv run zensical build
 
       - name: Set up melange
-        # Local action (twin of setup-apko): a retrying, checksum-verified
-        # binary download plus bubblewrap, which melange's default runner
-        # needs to build apks. A transient release-CDN blip is absorbed by
-        # the retry budget; only a sustained outage fails the step.
-        # Renovate watches the binary version via the marker below.
+        # Local action: a retrying, checksum-verified binary download (twin
+        # of setup-apko) plus the sandbox prerequisites melange needs --
+        # bubblewrap with unprivileged userns permitted, static qemu for the
+        # emulated aarch64 leg, and the build toolchain. A transient
+        # release-CDN or mirror blip is absorbed by the retry budgets; only
+        # a sustained outage fails the step. Renovate watches the binary
+        # version via the marker below.
         uses: ./.github/actions/setup-melange
         with:
           # renovate: datasource=github-releases depName=chainguard-dev/melange
