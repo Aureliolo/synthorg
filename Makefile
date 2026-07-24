@@ -4,7 +4,26 @@
 # common workflows are one command. The Makefile is a convenience layer, not a
 # source of truth: every target maps to a command you can run directly.
 
-.PHONY: benchmark record-benchmark-scores loop-ab loop-ab-record
+.PHONY: benchmark record-benchmark-scores loop-ab loop-ab-record \
+	typecheck typecheck-warm typecheck-status typecheck-stop
+
+# Type-check the tree through the mypy daemon (seconds once warm, and the same
+# command the pre-push hook runs). `typecheck-warm` pays the one-time graph
+# build up front so the first push of a session is not the slow one; it blocks
+# for several minutes. A warm daemon holds ~2.5GB resident per worktree, so
+# `typecheck-stop` reclaims it when moving to another branch. `typecheck-status`
+# reports what is running and how much it costs.
+typecheck:
+	uv run python scripts/run_affected_mypy.py
+
+typecheck-warm:
+	uv run python scripts/run_affected_mypy.py --warm
+
+typecheck-status:
+	uv run python scripts/run_affected_mypy.py --status
+
+typecheck-stop:
+	uv run python scripts/run_affected_mypy.py --stop
 
 # Run the golden-company benchmark twice and emit scorecards: the reference
 # company at the COMPETENT profile (its executable brief passes its hidden

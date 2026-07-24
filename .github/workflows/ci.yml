@@ -437,9 +437,14 @@ jobs:
         # Whole-tree scope (mirrors run_affected_mypy.py's full-run fallback).
         # scripts/ is a second invocation: its flat layout clashes on bare vs
         # scripts.* names, so it needs MYPYPATH + --explicit-package-bases.
+        # --no-warn-unused-configs is not load-bearing here (cold mypy prints
+        # the unused-section note and still exits 0); it is carried so this
+        # invocation stays flag-identical to the local one in
+        # run_affected_mypy.py's _SCRIPTS_DAEMON, where a daemon recheck does
+        # count the note and exit 1.
         run: |
           uv run mypy --num-workers=4 src/ tests/ evals/ docker/ d2_fence.py
-          MYPYPATH=. uv run mypy --num-workers=4 --explicit-package-bases scripts/
+          MYPYPATH=. uv run mypy --num-workers=4 --explicit-package-bases --no-warn-unused-configs scripts/
 
   # ── Python: OpenAPI Liveness ──
   openapi-liveness:

@@ -92,7 +92,7 @@ Run these before pushing to ensure CI will pass:
 ```bash
 uv run ruff check .                                              # lint
 uv run ruff format --check .                                     # format check
-uv run mypy --num-workers=4 src/ tests/ evals/ docker/ d2_fence.py  # type check (strict)
+make typecheck                                                   # type check (strict, via the mypy daemon)
 ```
 
 Auto-fix issues:

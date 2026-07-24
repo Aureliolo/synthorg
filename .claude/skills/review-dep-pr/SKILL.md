@@ -488,7 +488,7 @@ Then wait for CI to go green on the refreshed head (`gh pr checks <number> --wat
 Use the **Improve and merge** mechanics below, with the adoption itself as the committed change: on the PR branch, make the exact edits the Phase 6 "Opt-in improvements to adopt" list specified (enable the new rule in the linter config, set the new flag, switch to the new recommended setting), then run the relevant local gate before pushing so you are not relying on remote CI to discover a self-inflicted break:
 - new ruff rule → `uv run ruff check . ` (and `--fix` if it has an autofix); fix or `# noqa`-justify any new findings in the same commit, never blanket-disable the rule you just enabled.
 - new eslint / typescript-eslint rule → `bash -c "cd web && npm run lint"` (the dashboard lint runs `--max-warnings 0`, so a new `warn`-level rule fails CI; either fix the findings or set the rule's level deliberately with a comment).
-- new type-check or security gate → the matching `uv run mypy ...` / audit command from `CLAUDE.md`.
+- new type-check or security gate → `make typecheck` (or the matching cold `uv run mypy ...` / audit command from `CLAUDE.md`).
 
 The approval rationale (Phase 8 "Approve with rationale") must name the capability adopted and the findings it surfaced, and the `Follow-ups:` line records any adoption deferred to a later PR. If enabling the rule surfaces a large backlog of findings that can't be cleanly resolved in this PR, stop and fall back to **"Merge now, adopt later"** rather than merging a half-applied rule.
 

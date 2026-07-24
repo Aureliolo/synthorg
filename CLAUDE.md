@@ -43,8 +43,12 @@ uv sync --group docs                                # docs toolchain (zensical +
 bash scripts/install_cli_tools.sh                   # one-time per-machine: golangci-lint + lychee + vale
 uv run ruff check . --fix                           # lint + auto-fix (whole tree)
 uv run ruff format .                                 # format (whole tree)
-uv run mypy --num-workers=4 src/ tests/ evals/ docker/ d2_fence.py             # strict type-check
-MYPYPATH=. uv run mypy --num-workers=4 --explicit-package-bases scripts/       # scripts/ (flat-dir name clash)
+make typecheck                                      # strict type-check via the mypy daemon, ~4s warm (same command the pre-push hook runs)
+make typecheck-warm                                 # build the daemon graph up front (blocks minutes, once per worktree)
+make typecheck-status                               # which daemons are up, and their resident memory
+make typecheck-stop                                 # stop this worktree's daemons (~2.5 GB back, ~4 GB if the scripts daemon is also warm)
+uv run mypy src/ tests/ evals/ docker/ d2_fence.py                             # cold equivalent; add --num-workers=N on POSIX only (WinError 233 on Windows)
+MYPYPATH=. uv run mypy --explicit-package-bases --no-warn-unused-configs scripts/   # scripts/ cold (flat-dir name clash; --num-workers=N also POSIX-only here)
 uv run python -m pytest tests/ -m unit                                              # -n 8 --dist=loadfile via pyproject addopts
 uv run python -m pytest tests/ -m integration
 uv run python -m pytest tests/ -m e2e

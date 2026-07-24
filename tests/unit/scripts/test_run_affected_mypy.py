@@ -1,0 +1,618 @@
+"""Unit tests for the daemon logic in ``scripts/run_affected_mypy.py``.
+
+Covers the ``scripts/`` daemon scoping rule, the daemon-verdict contract that
+decides between trusting dmypy and falling back to a cold run, the RSS reader
+behind ``--status``, and the daemon opt-out. Loads the script as a module so
+the private helpers are callable.
+"""
+
+import argparse
+import importlib.util
+import inspect
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, cast
+
+import pytest
+
+pytestmark = pytest.mark.unit
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_SCRIPT_PATH = _REPO_ROOT / "scripts" / "run_affected_mypy.py"
+
+
+def _load_script_module() -> object:
+    """Import the script as a module so private helpers are callable."""
+    spec = importlib.util.spec_from_file_location(
+        "_run_affected_mypy",
+        _SCRIPT_PATH,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# ``_MODULE`` is loaded once at import time and shared across all tests.
+# Isolation is preserved because every test mutates module attributes via
+# ``monkeypatch`` (auto-reverted at function teardown) rather than touching
+# them directly. The script is loaded dynamically so its private helpers have
+# no static type; ``cast(Any, ...)`` types the handle once here instead of an
+# ``# type: ignore[attr-defined]`` on every access site.
+_MODULE = cast(Any, _load_script_module())  # type: ignore[explicit-any]  # dynamically loaded hook module; attrs resolved by name
+
+
+@pytest.mark.parametrize(
+    ("changed", "expected"),
+    [
+        pytest.param(["src/synthorg/workers/worker.py"], False, id="leaf-src-module"),
+        pytest.param(
+            ["tests/unit/workers/test_worker.py"], False, id="leaf-test-module"
+        ),
+        pytest.param([], False, id="nothing-changed"),
+        pytest.param(["scripts/check_no_stubs.py"], True, id="a-script"),
+        pytest.param(["src/synthorg/core/types.py"], True, id="foundational-core"),
+        pytest.param(["src/synthorg/config/loader.py"], True, id="foundational-config"),
+        pytest.param(["tests/unit/conftest.py"], True, id="a-conftest"),
+    ],
+)
+def test_scripts_scope_rule(changed: list[str], expected: bool) -> None:
+    """Only changes that can reach ``scripts/`` pull in its daemon."""
+    assert _MODULE._scripts_in_scope(changed) is expected
+
+
+def test_scripts_scope_includes_everything_when_git_is_unreadable() -> None:
+    """An unknown diff resolves toward checking more, never less."""
+    assert _MODULE._scripts_in_scope(None) is True
+
+
+@pytest.mark.parametrize("code", [0, 1])
+def test_check_daemon_trusts_mypy_result_codes(
+    monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    """0 (clean) and 1 (type errors) are verdicts and pass straight through."""
+    monkeypatch.setattr(_MODULE, "_dmypy", lambda *a, **k: code)
+    assert _MODULE._check_daemon(_MODULE._MAIN_DAEMON) == code
+
+
+@pytest.mark.parametrize("code", [2, 130, -1])
+def test_check_daemon_reports_no_verdict_on_daemon_failure(
+    monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    """A persistently broken daemon yields no verdict, so the caller goes cold."""
+    monkeypatch.setattr(_MODULE, "_dmypy", lambda *a, **k: code)
+    assert _MODULE._check_daemon(_MODULE._MAIN_DAEMON) is None
+
+
+def test_check_daemon_retries_past_a_stale_status_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead daemon fails once then serves the replacement it just started."""
+    codes = iter([2, 0])
+    monkeypatch.setattr(_MODULE, "_dmypy", lambda *a, **k: next(codes))
+    assert _MODULE._check_daemon(_MODULE._MAIN_DAEMON) == 0
+
+
+def test_check_daemon_retry_preserves_a_real_type_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retrying must not mask type errors found on the second attempt."""
+    codes = iter([2, 1])
+    monkeypatch.setattr(_MODULE, "_dmypy", lambda *a, **k: next(codes))
+    assert _MODULE._check_daemon(_MODULE._MAIN_DAEMON) == 1
+
+
+def test_check_daemon_does_not_retry_a_clean_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A verdict on the first attempt must not cost a second full check."""
+    attempts = 0
+
+    def _count(*_args: object, **_kwargs: object) -> int:
+        nonlocal attempts
+        attempts += 1
+        return 0
+
+    monkeypatch.setattr(_MODULE, "_dmypy", _count)
+    assert _MODULE._check_daemon(_MODULE._MAIN_DAEMON) == 0
+    assert attempts == 1
+
+
+def test_check_daemon_gives_up_after_the_bounded_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fallback must not be delayed indefinitely by a broken daemon."""
+    attempts = 0
+
+    def _count(*_args: object, **_kwargs: object) -> int:
+        nonlocal attempts
+        attempts += 1
+        return 2
+
+    monkeypatch.setattr(_MODULE, "_dmypy", _count)
+    assert _MODULE._check_daemon(_MODULE._MAIN_DAEMON) is None
+    assert attempts == _MODULE._DAEMON_ATTEMPTS
+
+
+def test_daemon_pass_skips_cold_scripts_daemon_when_out_of_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A leaf change must not spend ~1.5GB starting the scripts daemon."""
+    checked: list[str] = []
+
+    def _fake_check(daemon: Any) -> int:  # type: ignore[explicit-any]  # module handle is untyped
+        checked.append(daemon.label)
+        return 0
+
+    monkeypatch.setattr(_MODULE, "_check_daemon", _fake_check)
+    monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: False)
+
+    assert _MODULE._run_daemon_pass(["src/synthorg/workers/worker.py"]) == 0
+    assert checked == ["main"]
+
+
+def test_daemon_pass_uses_warm_scripts_daemon_even_when_out_of_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Once it is already resident the extra coverage costs almost nothing."""
+    checked: list[str] = []
+
+    def _fake_check(daemon: Any) -> int:  # type: ignore[explicit-any]  # module handle is untyped
+        checked.append(daemon.label)
+        return 0
+
+    monkeypatch.setattr(_MODULE, "_check_daemon", _fake_check)
+    monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: True)
+
+    assert _MODULE._run_daemon_pass(["src/synthorg/workers/worker.py"]) == 0
+    assert checked == ["main", "scripts"]
+
+
+def test_daemon_pass_surfaces_worst_code_across_both_scopes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Type errors in ``scripts/`` alone must still fail the push."""
+    monkeypatch.setattr(
+        _MODULE,
+        "_check_daemon",
+        lambda daemon: 0 if daemon.label == _MODULE._MAIN_DAEMON.label else 1,
+    )
+
+    assert _MODULE._run_daemon_pass(["scripts/x.py"]) == 1
+
+
+def test_daemon_pass_falls_back_when_main_daemon_gives_no_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed main daemon must never be reported as a clean tree."""
+    monkeypatch.setattr(_MODULE, "_check_daemon", lambda _daemon: None)
+
+    assert _MODULE._run_daemon_pass(["scripts/x.py"]) is None
+
+
+def test_daemon_pass_falls_back_when_scripts_daemon_gives_no_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A clean main scope does not excuse an unanswered scripts scope."""
+    monkeypatch.setattr(
+        _MODULE,
+        "_check_daemon",
+        lambda daemon: 0 if daemon.label == _MODULE._MAIN_DAEMON.label else None,
+    )
+
+    assert _MODULE._run_daemon_pass(["scripts/x.py"]) is None
+
+
+def test_check_daemon_threads_the_daemon_scope_into_the_dmypy_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dropped path or flag would silently narrow what the gate checks."""
+    calls: list[tuple[object, ...]] = []
+
+    def _record(daemon: object, *args: str, **_kwargs: object) -> int:
+        calls.append((daemon, *args))
+        return 0
+
+    monkeypatch.setattr(_MODULE, "_dmypy", _record)
+    _MODULE._check_daemon(_MODULE._SCRIPTS_DAEMON)
+
+    assert calls == [
+        (
+            _MODULE._SCRIPTS_DAEMON,
+            "run",
+            "--",
+            *_MODULE._SCRIPTS_DAEMON.paths,
+            *_MODULE._SCRIPTS_DAEMON.extra,
+        )
+    ]
+
+
+def test_scripts_cold_and_daemon_paths_pass_identical_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Divergent flags would let the two paths disagree on the same tree."""
+    daemon_extra: list[str] = []
+    cold_extra: list[str] = []
+
+    def _record_daemon(_daemon: object, *args: str, **_kwargs: object) -> int:
+        daemon_extra.extend(args)
+        return 0
+
+    def _record_cold(
+        paths: list[str], *, env: object = None, extra: list[str] | None = None
+    ) -> int:
+        cold_extra.extend(paths)
+        cold_extra.extend(extra or [])
+        return 0
+
+    monkeypatch.setattr(_MODULE, "_dmypy", _record_daemon)
+    monkeypatch.setattr(_MODULE, "_invoke_mypy", _record_cold)
+
+    _MODULE._check_daemon(_MODULE._SCRIPTS_DAEMON)
+    _MODULE._run_scripts_mypy()
+
+    # The daemon call carries the "run --" preamble the cold call does not.
+    assert daemon_extra[:2] == ["run", "--"]
+    assert daemon_extra[2:] == cold_extra
+
+
+def test_daemons_do_not_share_a_status_file() -> None:
+    """Sharing one would restart the daemon on every alternating invocation."""
+    status_files = {daemon.status_file for daemon in _MODULE._ALL_DAEMONS}
+    assert len(status_files) == len(_MODULE._ALL_DAEMONS)
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        pytest.param(["tests/e2e/test_flow.py"], id="e2e"),
+        pytest.param(["tests/conformance/persistence/test_x.py"], id="conformance"),
+        pytest.param(["tests/benchmarks/test_perf.py"], id="benchmarks"),
+        pytest.param(["tests/evals/test_eval.py"], id="evals"),
+        pytest.param(["tests/baselines/helper.py"], id="baselines"),
+        pytest.param(["tests/shallow.py"], id="shallow-tests-file"),
+    ],
+)
+def test_unmapped_test_directories_widen_instead_of_vanishing(
+    changed: list[str],
+) -> None:
+    """A tests/ kind with no narrow mapping must never yield zero targets.
+
+    Classifying it "other" would leave the cold path with nothing to check and
+    let the gate exit 0 on an unexamined change.
+    """
+    _paths, run_all = _MODULE._affected_mypy_paths(changed)
+    assert run_all is True
+
+
+@pytest.mark.parametrize(
+    ("changed", "required"),
+    [
+        pytest.param(
+            ["src/synthorg/workers/worker.py"],
+            {"src/synthorg/workers", "tests/unit/workers"},
+            id="src-module-pulls-its-tests",
+        ),
+        pytest.param(
+            ["tests/unit/workers/test_worker.py"],
+            {"tests/unit/workers"},
+            id="test-module-alone",
+        ),
+    ],
+)
+def test_affected_paths_map_a_change_to_real_targets(
+    changed: list[str], required: set[str]
+) -> None:
+    """The cold path's target list is what actually gets type-checked.
+
+    Asserts the required targets are present rather than an exact list: a
+    module may also own integration tests, and gaining one should not fail
+    this.
+    """
+    paths, run_all = _MODULE._affected_mypy_paths(changed)
+    assert run_all is False
+    assert required <= set(paths)
+    assert all((_REPO_ROOT / path).exists() for path in paths)
+
+
+@pytest.mark.parametrize(
+    ("env_var", "value"),
+    [("SYNTHORG_NO_DMYPY", "1"), ("CI", "true")],
+)
+def test_daemon_opted_out(
+    monkeypatch: pytest.MonkeyPatch, env_var: str, value: str
+) -> None:
+    """Both the explicit opt-out and CI bypass the daemon."""
+    monkeypatch.delenv("SYNTHORG_NO_DMYPY", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.setenv(env_var, value)
+    assert _MODULE._daemon_opted_out() is True
+
+
+@pytest.mark.parametrize("value", ["", "0", "false", "FALSE", "no"])
+def test_falsey_env_values_do_not_opt_out(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """``CI=false`` means not in CI, so it must not disable the daemon."""
+    monkeypatch.delenv("SYNTHORG_NO_DMYPY", raising=False)
+    monkeypatch.setenv("CI", value)
+    assert _MODULE._daemon_opted_out() is False
+
+
+def test_daemon_not_opted_out_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A plain local push uses the daemon."""
+    monkeypatch.delenv("SYNTHORG_NO_DMYPY", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    assert _MODULE._daemon_opted_out() is False
+
+
+def _tasklist_row(memory_field: str) -> str:
+    """Build a ``tasklist /FO CSV /NH`` row carrying *memory_field*.
+
+    The thousands separator is locale-dependent and can be the CSV delimiter
+    itself, which is the case this row exists to pin down.
+    """
+    return f'"python.exe","1","Console","1","{memory_field}"\n'
+
+
+@pytest.mark.parametrize(
+    ("stdout", "expected"),
+    [
+        pytest.param(_tasklist_row("2,556,996 K"), 2497, id="comma"),
+        pytest.param(_tasklist_row("2.556.996 K"), 2497, id="dot"),
+        pytest.param(_tasklist_row("1 048 576 K"), 1024, id="space"),
+        # Escaped rather than literal: this repo bans ambiguous unicode in
+        # source, and it is the separator this machine's locale actually emits.
+        pytest.param(_tasklist_row("2\u2019556\u2019996 K"), 2497, id="apostrophe"),
+    ],
+)
+def test_process_rss_parses_windows_thousands_separators(
+    monkeypatch: pytest.MonkeyPatch, stdout: str, expected: int
+) -> None:
+    """``tasklist`` separates thousands per locale, so digits are all that count."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(
+        _MODULE.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout, ""),
+    )
+    assert _MODULE._process_rss_mb(1) == expected
+
+
+def test_process_rss_parses_posix_kilobytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``ps -o rss=`` reports bare kilobytes."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(
+        _MODULE.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(a, 0, "  2097152\n", ""),
+    )
+    assert _MODULE._process_rss_mb(1) == 2048
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout"),
+    [(1, ""), (0, ""), (0, "   \n")],
+)
+def test_process_rss_returns_none_when_unreadable(
+    monkeypatch: pytest.MonkeyPatch, returncode: int, stdout: str
+) -> None:
+    """A dead or unreadable process reports no size rather than a wrong one."""
+    monkeypatch.setattr(
+        _MODULE.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(a, returncode, stdout, ""),
+    )
+    assert _MODULE._process_rss_mb(1) is None
+
+
+def test_process_rss_survives_a_missing_reporting_binary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``--status`` must not crash where ``tasklist``/``ps`` is absent."""
+
+    message = "no such binary"
+
+    def _raise(*_args: object, **_kwargs: object) -> None:
+        raise OSError(message)
+
+    monkeypatch.setattr(_MODULE.subprocess, "run", _raise)
+    assert _MODULE._process_rss_mb(1) is None
+
+
+def test_daemon_pid_returns_none_for_a_missing_status_file(tmp_path: Path) -> None:
+    """A stopped daemon leaves no status file behind."""
+    daemon = _MODULE._MAIN_DAEMON._replace(status_file=tmp_path / "absent.json")
+    assert _MODULE._daemon_pid(daemon) is None
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param("{not json", id="not-json"),
+        pytest.param("null", id="valid-json-null"),
+        pytest.param("[]", id="valid-json-list"),
+        pytest.param('"a string"', id="valid-json-scalar"),
+        pytest.param("42", id="valid-json-number"),
+    ],
+)
+def test_daemon_pid_returns_none_for_an_unusable_status_file(
+    tmp_path: Path, content: str
+) -> None:
+    """Neither malformed JSON nor valid non-object JSON may crash the CLI.
+
+    Valid-but-not-an-object is the sharper case: it parses cleanly, so only an
+    explicit shape check stops ``.get`` raising AttributeError.
+    """
+    status_file = tmp_path / "unusable.json"
+    status_file.write_text(content, encoding="utf-8")
+    daemon = _MODULE._MAIN_DAEMON._replace(status_file=status_file)
+    assert _MODULE._daemon_pid(daemon) is None
+
+
+def test_daemon_pid_rejects_a_boolean_pid(tmp_path: Path) -> None:
+    """``bool`` subclasses ``int``, and a pid of ``True`` is not a pid."""
+    status_file = tmp_path / "bool.json"
+    status_file.write_text('{"pid": true}', encoding="utf-8")
+    daemon = _MODULE._MAIN_DAEMON._replace(status_file=status_file)
+    assert _MODULE._daemon_pid(daemon) is None
+
+
+def test_daemon_pid_reads_the_recorded_pid(tmp_path: Path) -> None:
+    """The pid is what lets ``--status`` report resident memory."""
+    status_file = tmp_path / "status.json"
+    status_file.write_text('{"pid": 4242, "connection_name": "x"}', encoding="utf-8")
+    daemon = _MODULE._MAIN_DAEMON._replace(status_file=status_file)
+    assert _MODULE._daemon_pid(daemon) == 4242
+
+
+def _completed(returncode: int, stdout: str = "", stderr: str = "") -> object:
+    """Build a dmypy CompletedProcess stand-in."""
+    return subprocess.CompletedProcess(["dmypy"], returncode, stdout, stderr)
+
+
+def test_stop_reports_failure_when_a_daemon_refuses_to_stop(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A busy daemon must not be reported as stopped, nor exit 0.
+
+    dmypy uses one exit code for "not running" and "running but wedged", so
+    only the message text separates them.
+    """
+    monkeypatch.setattr(
+        _MODULE,
+        "_dmypy_result",
+        lambda *_a, **_k: _completed(2, stderr="Daemon may be busy processing"),
+    )
+    monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: None)
+
+    assert _MODULE._stop() == 1
+    assert "stop FAILED" in capsys.readouterr().err
+
+
+def test_stop_reports_success_when_no_daemon_is_running(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Nothing to stop is a clean outcome, not a failure."""
+    monkeypatch.setattr(
+        _MODULE,
+        "_dmypy_result",
+        lambda *_a, **_k: _completed(2, stderr="No status file found"),
+    )
+    monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: None)
+
+    assert _MODULE._stop() == 0
+    assert "not running" in capsys.readouterr().out
+
+
+def test_management_subcommands_do_not_inherit_the_build_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``stop`` and ``status`` must use the short ceiling, not the build one.
+
+    ``stop`` exists to reclaim memory before a heavy build, so a wedged daemon
+    that made it block for the full build timeout would defeat the reason for
+    calling it. The sentinel default means a call site that passes no timeout
+    at all fails here rather than silently getting the build ceiling.
+    """
+    seen: list[tuple[str, int]] = []
+
+    def _record(
+        _daemon: object, *args: str, quiet: bool = False, timeout: int = -1
+    ) -> object:
+        seen.append((args[0], timeout))
+        return _completed(0)
+
+    monkeypatch.setattr(_MODULE, "_dmypy_result", _record)
+    monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: None)
+
+    _MODULE._stop()
+    _MODULE._daemon_running(_MODULE._MAIN_DAEMON)
+
+    assert {subcommand for subcommand, _ in seen} == {"stop", "status"}
+    assert all(timeout == _MODULE._PROCESS_QUERY_TIMEOUT_SECONDS for _, timeout in seen)
+
+
+def test_a_run_without_an_explicit_timeout_keeps_the_build_ceiling() -> None:
+    """The full-tree ``run`` legitimately takes minutes, so it keeps 1800s."""
+    default = inspect.signature(_MODULE._dmypy_result).parameters["timeout"].default
+    assert default == _MODULE._MYPY_TIMEOUT_SECONDS
+
+
+def test_main_skips_everything_when_no_python_changed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A docs-only push must not wake the daemon or pay a cold build."""
+    monkeypatch.setattr(_MODULE, "_parse_args", _no_flags)
+    monkeypatch.setattr(_MODULE, "_changed_python_files", list)
+    monkeypatch.setattr(_MODULE, "_run_daemon_pass", _unreachable)
+    monkeypatch.setattr(_MODULE, "_run_full", _unreachable)
+
+    assert _MODULE.main() == 0
+
+
+def test_main_returns_the_daemon_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A daemon verdict is authoritative and short-circuits the cold path."""
+    monkeypatch.setattr(_MODULE, "_parse_args", _no_flags)
+    monkeypatch.setattr(_MODULE, "_changed_python_files", lambda: ["src/x.py"])
+    monkeypatch.setattr(_MODULE, "_daemon_opted_out", lambda: False)
+    monkeypatch.setattr(_MODULE, "_run_daemon_pass", lambda _changed: 1)
+    monkeypatch.setattr(_MODULE, "_run_full", _unreachable)
+
+    assert _MODULE.main() == 1
+
+
+def test_main_runs_full_cold_when_the_diff_is_unreadable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unknown diff must widen to the full tree, never skip."""
+    monkeypatch.setattr(_MODULE, "_parse_args", _no_flags)
+    monkeypatch.setattr(_MODULE, "_changed_python_files", lambda: None)
+    monkeypatch.setattr(_MODULE, "_daemon_opted_out", lambda: True)
+    monkeypatch.setattr(_MODULE, "_run_full", lambda: 0)
+
+    assert _MODULE.main() == 0
+
+
+def test_main_falls_back_cold_when_the_daemon_gives_no_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The gate must re-derive an answer rather than report the daemon's silence."""
+    monkeypatch.setattr(_MODULE, "_parse_args", _no_flags)
+    monkeypatch.setattr(_MODULE, "_changed_python_files", lambda: None)
+    monkeypatch.setattr(_MODULE, "_daemon_opted_out", lambda: False)
+    monkeypatch.setattr(_MODULE, "_run_daemon_pass", lambda _changed: None)
+    monkeypatch.setattr(_MODULE, "_run_full", lambda: 1)
+
+    assert _MODULE.main() == 1
+
+
+@pytest.mark.parametrize("flag", ["warm", "stop", "status"])
+def test_main_dispatches_each_management_flag(
+    monkeypatch: pytest.MonkeyPatch, flag: str
+) -> None:
+    """Each subcommand runs instead of, never alongside, a type check."""
+    monkeypatch.setattr(
+        _MODULE,
+        "_parse_args",
+        lambda: argparse.Namespace(
+            warm=flag == "warm", stop=flag == "stop", status=flag == "status"
+        ),
+    )
+    monkeypatch.setattr(_MODULE, "_changed_python_files", _unreachable)
+    monkeypatch.setattr(_MODULE, f"_{flag}", lambda: 0)
+
+    assert _MODULE.main() == 0
+
+
+def _no_flags() -> argparse.Namespace:
+    """Return parsed args for a plain pre-push invocation."""
+    return argparse.Namespace(warm=False, stop=False, status=False)
+
+
+def _unreachable(*_args: object, **_kwargs: object) -> int:
+    """Fail loudly if a path the test forbids is taken anyway."""
+    message = "this code path should not have been reached"
+    raise AssertionError(message)
