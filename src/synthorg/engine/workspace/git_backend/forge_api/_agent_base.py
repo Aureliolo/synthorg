@@ -11,7 +11,7 @@ abstract and implemented per forge.
 
 import base64
 from abc import ABC, abstractmethod
-from typing import ClassVar
+from typing import ClassVar, Final
 from urllib.parse import quote
 
 import synthorg.engine.workspace.git_backend.forge_api._github_agent_parse as gh
@@ -47,6 +47,11 @@ from synthorg.observability.events.workspace import (
 )
 
 logger = get_logger(__name__)
+
+# GitHub and the Gitea family both cap a list page at 100 regardless of a
+# larger requested size, so a single request can never satisfy a scan
+# wider than that; the scan pages until the forge returns a short page.
+_MAX_PAGE_SIZE: Final[int] = 100
 
 
 class ForgeAgentBase(BaseForgeClient, ABC):
@@ -111,19 +116,29 @@ class ForgeAgentBase(BaseForgeClient, ABC):
         self, *, limit: int
     ) -> tuple[ForgeAccessibleRepo, ...]:
         action = "list accessible repos"
-        resp = await self._request(
-            "GET",
-            "/user/repos",
-            action=action,
-            params={self._LIST_PARAM: limit},
-        )
-        raise_for_forge_status(resp, action=action)
-        parsed = (
-            gh.parse_github(item, gh.GhRepoPerm, what="repo")
-            for item in _as_list(resp.json())
-        )
-        mapped = (gh.accessible_repo_from(model) for model in parsed)
-        return tuple(repo for repo in mapped if repo is not None)
+        collected: list[ForgeAccessibleRepo] = []
+        page = 1
+        while len(collected) < limit:
+            page_size = min(_MAX_PAGE_SIZE, limit - len(collected))
+            resp = await self._request(
+                "GET",
+                "/user/repos",
+                action=action,
+                params={self._LIST_PARAM: page_size, "page": page},
+            )
+            raise_for_forge_status(resp, action=action)
+            items = _as_list(resp.json())
+            if not items:
+                break
+            parsed = (
+                gh.parse_github(item, gh.GhRepoPerm, what="repo") for item in items
+            )
+            mapped = (gh.accessible_repo_from(model) for model in parsed)
+            collected.extend(repo for repo in mapped if repo is not None)
+            if len(items) < page_size:
+                break
+            page += 1
+        return tuple(collected[:limit])
 
     async def write_file(  # noqa: PLR0913 -- forge contents-API fields
         self,

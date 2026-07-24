@@ -34,10 +34,31 @@ SSRF guard: a server URL can arrive from a catalog installation, so
 _NPX_COMMANDS: Final[frozenset[str]] = frozenset({"npx", "npx.cmd", "pnpm", "bunx"})
 # npm dist-tags that float to whatever is newest: not a pin.
 _FLOATING_NPM_TAGS: Final[frozenset[str]] = frozenset({"latest", "next", "canary", ""})
+# ``npx`` options that name the package to install independently of the
+# command to run, so THEY carry the spec that must be pinned.
+_PACKAGE_OPTS: Final[frozenset[str]] = frozenset({"-p", "--package"})
+
+
+def _package_option_value(arg: str) -> str | None:
+    """Return the package named by a ``--package=<pkg>`` style argument.
+
+    Returns:
+        The package spec, or ``None`` when ``arg`` is not that form.
+    """
+    for opt in _PACKAGE_OPTS:
+        prefix = f"{opt}="
+        if arg.startswith(prefix):
+            return arg[len(prefix) :]
+    return None
 
 
 def _npm_package_spec(command: str, args: tuple[str, ...]) -> str | None:
     """Return the npm package spec an ``npx``-style command will run.
+
+    ``npx --package=foo bar`` installs ``foo`` and runs the ``bar`` binary
+    from it, so the package option (not the first positional) is what has
+    to be pinned; taking the positional would let an unpinned ``foo``
+    through unchecked.
 
     Returns:
         The package operand (e.g. ``@scope/pkg@2.1.0``), or ``None`` when
@@ -54,9 +75,18 @@ def _npm_package_spec(command: str, args: tuple[str, ...]) -> str | None:
         rest = rest[1:]
     elif base == "pnpm":
         return None
+    expect_package = False
     for arg in rest:
-        # Every npx flag (-y, --yes, --) starts with a dash; the package
-        # operand is the first non-flag argument.
+        if expect_package:
+            return arg
+        if arg in _PACKAGE_OPTS:
+            expect_package = True
+            continue
+        named = _package_option_value(arg)
+        if named is not None:
+            return named
+        # Every other npx flag (-y, --yes, --) starts with a dash; the
+        # package operand is the first non-flag argument.
         if arg.startswith("-"):
             continue
         return arg

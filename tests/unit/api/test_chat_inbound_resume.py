@@ -39,6 +39,7 @@ class _FakeStore:
         self._item = item
         self._save_pending = save_pending
         self.saved: ApprovalItem | None = None
+        self.restored: ApprovalItem | None = None
 
     async def get(self, _approval_id: str) -> ApprovalItem | None:
         return self._item
@@ -47,6 +48,10 @@ class _FakeStore:
         if not self._save_pending:
             return None
         self.saved = item
+        return item
+
+    async def save(self, item: ApprovalItem) -> ApprovalItem:
+        self.restored = item
         return item
 
 
@@ -120,6 +125,32 @@ class TestApprovalResumeDispatcher:
         assert result is True
         assert store.saved is not None
         assert store.saved.status is ApprovalStatus.REJECTED
+
+    async def test_dispatch_failure_restores_pending(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A failed resume must leave the approval decidable again.
+
+        The decision is persisted before the hand-off, so a dispatch that
+        blows up would otherwise strand the parked task: no longer
+        PENDING, so neither a redelivered event nor the dashboard could
+        act on it.
+        """
+        store = _FakeStore(_item())
+        _patch(monkeypatch, store)
+
+        async def _boom(*_args: object, **_kwargs: object) -> None:
+            msg = "resume routing down"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(resume_mod, "signal_resume_intent", _boom)
+        dispatcher = ApprovalResumeDispatcher(app_state=mock_of[AppState]())
+        result = await dispatcher.resume(
+            approval_id="ap-1", approved=True, decided_by="U1", decision_reason="go"
+        )
+        assert result is False
+        assert store.restored is not None
+        assert store.restored.status is ApprovalStatus.PENDING
 
     async def test_lost_pending_race_returns_false(
         self, monkeypatch: pytest.MonkeyPatch

@@ -58,6 +58,9 @@ _PROMPT_SINKS: Final[frozenset[str]] = frozenset(
     },
 )
 _FENCED_KWARG: Final[str] = "decision_reason"
+# The router's hand-off to the resume dispatcher. The fenced keyword must
+# ride on THIS call, not merely exist somewhere in the module.
+_RESUME_CALL: Final[str] = "resume"
 _MARKER: Final[str] = "lint-allow: chat-inbound-fenced"
 _ALLOW_RE: Final[re.Pattern[str]] = re.compile(
     r"#.*" + re.escape(_MARKER) + r"\s*--\s*\S"
@@ -115,16 +118,25 @@ def _prompt_sink_violations(repo_root: Path) -> list[str]:
 
 
 def _fenced_handoff_present(repo_root: Path) -> bool:
-    """Whether the router forwards text via ``decision_reason=``.
+    """Whether the router's resume dispatch forwards ``decision_reason=``.
+
+    Bound to the actual inbound-resume call (``...resume(...)``) rather
+    than to the keyword appearing anywhere in the module: a bare token
+    search is satisfied by dead code, so the fencing contract could be
+    dropped from the real dispatch while the gate stayed green.
 
     Returns:
-        ``True`` when a ``decision_reason=`` keyword argument appears in
-        the router module.
+        ``True`` when a call to ``resume(...)`` in the router passes the
+        ``decision_reason=`` keyword.
     """
     source, tree = read_and_parse(repo_root / _ROUTER_REL)
     _ = source
     for node in ast.walk(tree):
-        if isinstance(node, ast.keyword) and node.arg == _FENCED_KWARG:
+        if not isinstance(node, ast.Call):
+            continue
+        if _called_name(node) != _RESUME_CALL:
+            continue
+        if any(kw.arg == _FENCED_KWARG for kw in node.keywords):
             return True
     return False
 
@@ -138,8 +150,9 @@ def _check(repo_root: Path) -> list[str]:
     violations = _prompt_sink_violations(repo_root)
     if not _fenced_handoff_present(repo_root):
         violations.append(
-            f"{_ROUTER_REL}: the router must forward inbound text via a "
-            f"{_FENCED_KWARG}= keyword (the fenced resume sink)"
+            f"{_ROUTER_REL}: the router's {_RESUME_CALL}(...) dispatch must "
+            f"forward inbound text via a {_FENCED_KWARG}= keyword (the "
+            f"fenced resume sink)"
         )
     return violations
 

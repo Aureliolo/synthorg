@@ -182,6 +182,30 @@ class TestEventDecoding:
         )
         assert decoded.event is None
 
+    def test_event_without_envelope_id_is_dropped(self) -> None:
+        """An unackable event frame decodes inert instead of raising.
+
+        ``DecodedFrame`` refuses an event with no envelope to ack, and a
+        malformed frame from the socket must not take the consumer loop
+        down with it.
+        """
+        decoded = decode_frame(
+            {
+                "type": "events_api",
+                "payload": {
+                    "event": {
+                        "type": "app_mention",
+                        "user": "U1",
+                        "text": "hi",
+                        "ts": "1.0",
+                        "channel": "C1",
+                    }
+                },
+            }
+        )
+        assert decoded.event is None
+        assert decoded.envelope_id == ""
+
     def test_malformed_payload_is_ignored_but_acked(self) -> None:
         decoded = decode_frame(
             {"type": "events_api", "envelope_id": "e2", "payload": "nope"}

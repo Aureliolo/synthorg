@@ -10,10 +10,17 @@ and the whole forge family inherits it.
 This gate guards two regressions:
 
 1. The shared enforcement disappearing -- ``_BaseForgeTool`` must define a
-   ``_resolve_connection`` override that references ``ForgeRepoScopeError``.
+   ``_resolve_connection`` override whose body *reachably raises*
+   ``ForgeRepoScopeError``.
 2. A forge tool *bypassing* it -- any class under ``tools/forge/`` that
-   overrides ``_resolve_connection`` without referencing
-   ``ForgeRepoScopeError`` would skip the scope check.
+   overrides ``_resolve_connection`` must either delegate to
+   ``super()._resolve_connection(...)`` or re-enforce the scope itself
+   with its own reachable raise.
+
+Both checks are behavioural rather than token-based: a mere mention of
+``ForgeRepoScopeError`` (an ``except`` handler, an unused import, a
+docstring) leaves every repository admitted while satisfying a naive
+search, and a raise parked after an unconditional ``return`` never runs.
 
 Opt a genuine exception out with a trailing
 ``# lint-allow: forge-repo-scoped -- <reason>`` comment on the class's
@@ -39,16 +46,24 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _gate_source import (  # type: ignore[import-not-found]
         GateSourceError,
+        reachable_statements,
         read_and_parse,
+        statement_expressions,
     )
 else:
-    from scripts._gate_source import GateSourceError, read_and_parse
+    from scripts._gate_source import (
+        GateSourceError,
+        reachable_statements,
+        read_and_parse,
+        statement_expressions,
+    )
 
 _FORGE_REL: Final[str] = "src/synthorg/tools/forge"
 _BASE_REL: Final[str] = "src/synthorg/tools/forge/_base.py"
 _RESOLVE_FN: Final[str] = "_resolve_connection"
 _SCOPE_ERROR: Final[str] = "ForgeRepoScopeError"
 _BASE_CLASS: Final[str] = "_BaseForgeTool"
+_SUPER: Final[str] = "super"
 _MARKER: Final[str] = "lint-allow: forge-repo-scoped"
 _ALLOW_RE: Final[re.Pattern[str]] = re.compile(
     r"#.*" + re.escape(_MARKER) + r"\s*--\s*\S"
@@ -67,16 +82,62 @@ def _resolve_method(node: ast.ClassDef) -> ast.AsyncFunctionDef | None:
     return None
 
 
-def _references_scope_error(method: ast.AST) -> bool:
-    """Whether the method body references ``ForgeRepoScopeError``.
+def _exception_name(exc: ast.expr) -> str | None:
+    """Return the name of the exception a ``raise`` constructs.
 
     Returns:
-        ``True`` if the scope error name appears anywhere in the method.
+        The exception class name, or ``None`` for an unusual expression.
     """
-    return any(
-        isinstance(child, ast.Name) and child.id == _SCOPE_ERROR
-        for child in ast.walk(method)
-    )
+    node = exc.func if isinstance(exc, ast.Call) else exc
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Name):
+        return node.id
+    return None
+
+
+def _raises_scope_error(method: ast.AsyncFunctionDef) -> bool:
+    """Whether the method has a reachable ``raise ForgeRepoScopeError``.
+
+    A bare name reference is not enough: an ``except ForgeRepoScopeError``
+    handler, an unused import, or a docstring mention would all satisfy a
+    token search while the tool silently admitted every repository.
+
+    Returns:
+        ``True`` when a reachable statement raises the scope error.
+    """
+    for stmt in reachable_statements(method.body):
+        if (
+            isinstance(stmt, ast.Raise)
+            and stmt.exc is not None
+            and _exception_name(stmt.exc) == _SCOPE_ERROR
+        ):
+            return True
+    return False
+
+
+def _delegates_to_base(method: ast.AsyncFunctionDef) -> bool:
+    """Whether the override reaches the shared check via ``super()``.
+
+    Returns:
+        ``True`` when a reachable statement calls
+        ``super()._resolve_connection(...)``.
+    """
+    for stmt in reachable_statements(method.body):
+        for node in statement_expressions(stmt):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not isinstance(func, ast.Attribute) or func.attr != _RESOLVE_FN:
+                continue
+            base = func.value
+            if (
+                isinstance(base, ast.Call)
+                and isinstance(base.func, ast.Name)
+                and base.func.id == _SUPER
+            ):
+                return True
+    return False
 
 
 def _class_line_has_marker(source: str, node: ast.ClassDef) -> bool:
@@ -108,21 +169,23 @@ def _check(repo_root: Path) -> list[str]:
             method = _resolve_method(node)
             if method is None:
                 continue
-            if node.name == _BASE_CLASS and _references_scope_error(method):
-                base_ok = True
+            if node.name == _BASE_CLASS:
+                base_ok = _raises_scope_error(method)
                 continue
-            if _references_scope_error(method):
+            if _delegates_to_base(method) or _raises_scope_error(method):
                 continue
             if _class_line_has_marker(source, node):
                 continue
             violations.append(
                 f"{rel}:{node.lineno}: {node.name} overrides {_RESOLVE_FN} "
-                f"without referencing {_SCOPE_ERROR} (repo-scope bypass)"
+                f"without delegating to {_SUPER}().{_RESOLVE_FN} or raising "
+                f"{_SCOPE_ERROR} (repo-scope bypass)"
             )
     if not base_ok:
         violations.append(
-            f"{_BASE_REL}: {_BASE_CLASS} must override {_RESOLVE_FN} and raise "
-            f"{_SCOPE_ERROR} so forge tools stay repo-scoped (fail-closed)"
+            f"{_BASE_REL}: {_BASE_CLASS} must override {_RESOLVE_FN} with a "
+            f"reachable raise of {_SCOPE_ERROR} so forge tools stay "
+            f"repo-scoped (fail-closed)"
         )
     return violations
 

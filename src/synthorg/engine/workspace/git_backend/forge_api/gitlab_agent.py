@@ -56,6 +56,9 @@ from synthorg.observability.events.workspace import (
 logger = get_logger(__name__)
 
 _DRAFT_PREFIX: Final[str] = "Draft: "
+# GitLab caps a list page at 100 regardless of a larger requested size, so
+# a wider scan has to page until the API returns a short page.
+_MAX_PAGE_SIZE: Final[int] = 100
 
 
 def _gl_state(state: str) -> str:
@@ -172,19 +175,33 @@ class GitLabAgentForgeClient(GitLabForgeClient):
             The accessible repositories with the token's permission.
         """
         action = "list accessible repos"
-        resp = await self._request(
-            "GET",
-            "/projects",
-            action=action,
-            params={"membership": "true", "per_page": limit},
-        )
-        raise_for_forge_status(resp, action=action)
-        parsed = (
-            gl.parse_gitlab(item, gl.GlProject, what="project")
-            for item in _as_list(resp.json())
-        )
-        mapped = (gl.accessible_repo_from(model) for model in parsed)
-        return tuple(entry for entry in mapped if entry is not None)
+        collected: list[ForgeAccessibleRepo] = []
+        page = 1
+        while len(collected) < limit:
+            page_size = min(_MAX_PAGE_SIZE, limit - len(collected))
+            resp = await self._request(
+                "GET",
+                "/projects",
+                action=action,
+                params={
+                    "membership": "true",
+                    "per_page": page_size,
+                    "page": page,
+                },
+            )
+            raise_for_forge_status(resp, action=action)
+            items = _as_list(resp.json())
+            if not items:
+                break
+            parsed = (
+                gl.parse_gitlab(item, gl.GlProject, what="project") for item in items
+            )
+            mapped = (gl.accessible_repo_from(model) for model in parsed)
+            collected.extend(entry for entry in mapped if entry is not None)
+            if len(items) < page_size:
+                break
+            page += 1
+        return tuple(collected[:limit])
 
     async def create_branch(
         self,

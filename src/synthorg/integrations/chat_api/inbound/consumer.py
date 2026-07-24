@@ -90,6 +90,7 @@ class ChatInboundConsumer:
         "_reconnect_retry",
         "_router",
         "_task",
+        "_unrestartable",
     )
 
     def __init__(
@@ -108,6 +109,7 @@ class ChatInboundConsumer:
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- ctx
         self._task: asyncio.Task[None] | None = None
+        self._unrestartable = False
         self._reconnect_retry = GeneralRetryHandler(
             retryable=lambda exc: isinstance(exc, ChatApiError) and exc.retryable,
             max_attempts=_RECONNECT_MAX_ATTEMPTS,
@@ -122,8 +124,19 @@ class ChatInboundConsumer:
         self._config_resolver = resolver
 
     async def start(self) -> None:
-        """Start the inbound loop (idempotent)."""
+        """Start the inbound loop (idempotent).
+
+        Refuses to start once a stop has timed out: the previous loop task
+        may still be winding down, so spawning a new one would run two
+        Socket-Mode sessions against the same connection.
+        """
         async with self._lifecycle_lock:
+            if self._unrestartable:
+                logger.warning(
+                    CHAT_INBOUND_DISABLED,
+                    reason="unrestartable_after_stop_timeout",
+                )
+                return
             if self._task is None or self._task.done():
                 self._task = asyncio.create_task(self._run_loop())
 
@@ -136,6 +149,11 @@ class ChatInboundConsumer:
         shutdown budget elapsing), the loop task is cancelled before the
         cancellation propagates, so it can never outlive the consumer as an
         orphan.
+
+        A stop that exceeds its budget marks the consumer permanently
+        unrestartable and keeps the task reference: the loop may still be
+        running, so clearing it would let a later ``start()`` spawn a
+        duplicate session.
 
         Raises:
             asyncio.CancelledError: If ``stop()`` is cancelled by an outer
@@ -153,9 +171,11 @@ class ChatInboundConsumer:
             except TimeoutError:
                 # The task did not wind down within the budget; leave it
                 # cancelled (aiohttp bounds the socket close) so it stops
-                # accepting inbound events.
+                # accepting inbound events, and refuse to restart over it.
                 task.cancel()
+                self._unrestartable = True
                 logger.warning(CHAT_INBOUND_DISABLED, reason="stop_timeout")
+                return
             except asyncio.CancelledError:
                 # Either the loop task's own cancellation surfaced through
                 # the shield (expected), or our stop() was cancelled by an
@@ -165,8 +185,7 @@ class ChatInboundConsumer:
                 task.cancel()
                 if _stop_was_cancelled():
                     raise
-            finally:
-                self._task = None
+            self._task = None
 
     async def _run_loop(self) -> None:
         """Kill-switch-gated connect/stream/reconnect loop."""
@@ -314,6 +333,11 @@ class ChatInboundConsumer:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
+            logger.warning(
+                CHAT_INBOUND_DISABLED,
+                reason="connection_resolver_failed",
+                error_type=type(exc).__name__,
+            )
             return ""
 
 

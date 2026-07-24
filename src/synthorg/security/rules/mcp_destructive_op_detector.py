@@ -38,10 +38,12 @@ logger = get_logger(__name__)
 _RULE_NAME: Final[str] = "mcp_destructive_op_detector"
 
 # Verb tokens that read as destructive on an external service. Matched as
-# whole snake/kebab/space tokens (so ``delete`` fires on
-# ``delete_repository`` but not on ``deleted`` or ``undelete``).
+# whole snake/kebab/space/camelCase tokens (so ``delete`` fires on
+# ``delete_repository`` and ``deleteRepository`` but not on ``deleted`` or
+# ``undelete``).
 _DESTRUCTIVE_VERBS: Final[frozenset[str]] = frozenset(
     {
+        "replace",
         "delete",
         "destroy",
         "drop",
@@ -68,7 +70,12 @@ _CRITICAL_VERBS: Final[frozenset[str]] = frozenset(
     {"purge", "wipe", "destroy", "decommission", "deprovision", "drop"},
 )
 
-_TOKEN_SPLIT: Final[re.Pattern[str]] = re.compile(r"[^a-z0-9]+")
+# Splits on a separator run OR a camelCase boundary. The boundary arm must
+# see the original casing, so the split runs BEFORE lowercasing: folding
+# first would collapse ``deleteChannel`` into one unmatchable token.
+_TOKEN_SPLIT: Final[re.Pattern[str]] = re.compile(
+    r"(?<=[a-z0-9])(?=[A-Z])|[^A-Za-z0-9]+"
+)
 
 
 def _destructive_tokens(value: str) -> set[str]:
@@ -78,7 +85,7 @@ def _destructive_tokens(value: str) -> set[str]:
         The subset of :data:`_DESTRUCTIVE_VERBS` appearing as whole
         tokens in ``value`` (case-insensitive).
     """
-    tokens = set(_TOKEN_SPLIT.split(value.lower()))
+    tokens = {token.lower() for token in _TOKEN_SPLIT.split(value) if token}
     return tokens & _DESTRUCTIVE_VERBS
 
 

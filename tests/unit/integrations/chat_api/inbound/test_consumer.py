@@ -285,3 +285,38 @@ class TestLifecycle:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+
+    async def test_stop_timeout_makes_consumer_unrestartable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A start after a timed-out stop must not open a second session.
+
+        The abandoned task may still hold a live Socket-Mode connection,
+        so spawning a replacement would double-deliver every inbound
+        event (and double-resume the approvals behind them).
+        """
+        monkeypatch.setattr(consumer_mod, "_STOP_TIMEOUT_SECONDS", 0.05)
+        consumer = ChatInboundConsumer(
+            connection_catalog=_catalog({}),
+            router=_router(_RecordingDispatcher()),
+            config_resolver=_resolver(enabled=False),
+            clock=FakeClock(),
+        )
+
+        async def _stubborn() -> None:
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                await asyncio.sleep(3600)
+
+        task = asyncio.create_task(_stubborn())
+        await asyncio.sleep(0)
+        consumer._task = task
+        await consumer.stop()
+
+        await consumer.start()
+        assert consumer._task is task
+
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task

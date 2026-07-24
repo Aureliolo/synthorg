@@ -16,10 +16,11 @@ from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.errors import ConnectionNotFoundError
 
-# Bounded page size for the accessible-repo scan (a selection aid, not a
-# bulk export): high enough to cover a typical account, capped so a
-# malicious/broken forge cannot stream an unbounded page.
-_SCAN_LIMIT: Final[int] = 200
+# Upper bound on the accessible-repo scan. It matches the cap on how many
+# entries a connection's scope may hold, so every repository an operator
+# could select is actually offered by the picker; the client pages up to
+# this bound and stops, so a malicious/broken forge cannot stream forever.
+_SCAN_LIMIT: Final[int] = 1000
 _SCAN_TIMEOUT_SECONDS: Final[float] = 20.0
 
 

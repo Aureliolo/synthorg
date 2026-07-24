@@ -33,7 +33,7 @@ function PermissionBadge({ permission }: { permission: ForgeAccessibleRepo['perm
   return (
     <span
       className={cn(
-        'rounded-full bg-surface px-2 py-0.5 text-[0.625rem] font-medium uppercase tracking-wide',
+        'rounded-full bg-surface px-2 py-0.5 text-micro font-medium uppercase tracking-wide',
         permission === 'admin' && 'text-accent',
         permission === 'write' && 'text-text-secondary',
         permission === 'read' && 'text-text-muted',
@@ -66,7 +66,7 @@ function RepoRow({
       <Checkbox id={labelId} checked={checked} onCheckedChange={onToggle} aria-label={key} />
       <span className="flex-1 text-sm text-foreground">{key}</span>
       {repo.private && (
-        <span className="text-[0.625rem] uppercase tracking-wide text-text-muted">private</span>
+        <span className="text-micro uppercase tracking-wide text-text-muted">private</span>
       )}
       <PermissionBadge permission={repo.permission} />
     </label>

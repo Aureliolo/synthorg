@@ -116,6 +116,35 @@ class TestMCPServerConfigNpmPin:
                 name="s1", transport="stdio", command="npx", args=("-y", spec)
             )
 
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("--package", "pkg", "bin"),
+            ("-p", "pkg", "bin"),
+            ("--package=pkg", "bin"),
+        ],
+        ids=["long", "short", "inline"],
+    )
+    def test_package_option_is_the_pinned_spec(self, args: tuple[str, ...]) -> None:
+        # ``npx --package <pkg> <bin>`` resolves the PACKAGE, not the binary
+        # name that follows it, so the pin must be read off the option value.
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ("--package", "pkg@1.2.3", "bin"),
+            ("-p", "pkg@1.2.3", "bin"),
+            ("--package=pkg@1.2.3", "bin"),
+        ],
+        ids=["long", "short", "inline"],
+    )
+    def test_pinned_package_option_accepted(self, args: tuple[str, ...]) -> None:
+        # The unpinned trailing binary name must not be mistaken for a package.
+        cfg = MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
+        assert cfg.args == args
+
 
 class TestMCPServerConfigStdio:
     """Stdio transport validation."""

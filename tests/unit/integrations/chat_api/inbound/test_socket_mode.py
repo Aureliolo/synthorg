@@ -138,6 +138,18 @@ class TestStream:
             await _client(session).stream(on_event=_noop)
 
     @respx.mock
+    async def test_open_non_json_body_maps_to_chat_api_error(self) -> None:
+        # A proxy or captive portal can answer 200 with HTML; the decode
+        # failure must surface as a typed transport error, not a bare
+        # ValueError escaping the connect path.
+        respx.post(f"{_API}/apps.connections.open").mock(
+            return_value=httpx.Response(200, text="<html>proxy</html>"),
+        )
+        session = _FakeWsSession([])
+        with pytest.raises(ChatApiError):
+            await _client(session).stream(on_event=_noop)
+
+    @respx.mock
     async def test_open_generic_error_is_not_auth_error(self) -> None:
         # A non-auth ``ok=false`` code raises a plain ChatApiError, not the
         # auth subclass (which is reserved for the auth/scope codes).

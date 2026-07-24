@@ -148,6 +148,57 @@ class TestGitHubHands:
         assert repos[0].permission == "write"
 
     @respx.mock
+    async def test_list_accessible_repos_pages_past_the_page_cap(self) -> None:
+        """A scope wider than one page keeps paging until the limit.
+
+        The forge caps a page at 100 entries, so a single request would
+        silently truncate the operator's picker to the first 100
+        repositories and make the rest unselectable.
+        """
+
+        def _page(start: int, count: int) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "full_name": f"acme/proj-{index}",
+                        "private": False,
+                        "permissions": {"admin": False, "push": False, "pull": True},
+                    }
+                    for index in range(start, start + count)
+                ],
+            )
+
+        route = respx.get(f"{_GH}/user/repos").mock(
+            side_effect=[_page(0, 100), _page(100, 50)],
+        )
+        async with _github() as client:
+            repos = await client.list_accessible_repos(limit=150)
+        assert len(repos) == 150
+        assert route.call_count == 2
+        assert str(repos[-1].repo) == "proj-149"
+
+    @respx.mock
+    async def test_list_accessible_repos_stops_on_short_page(self) -> None:
+        """A page smaller than requested is the last one; stop asking."""
+        route = respx.get(f"{_GH}/user/repos").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "full_name": "acme/proj-1",
+                        "private": False,
+                        "permissions": {"admin": False, "push": False, "pull": True},
+                    }
+                ],
+            ),
+        )
+        async with _github() as client:
+            repos = await client.list_accessible_repos(limit=150)
+        assert len(repos) == 1
+        assert route.call_count == 1
+
+    @respx.mock
     async def test_review_with_inline_comments(self) -> None:
         route = respx.post(f"{_GH}/repos/acme/proj-1/pulls/7/reviews").mock(
             return_value=httpx.Response(
@@ -352,6 +403,29 @@ class TestGitLabHands:
         async with _gitlab() as client:
             repos = await client.list_accessible_repos(limit=20)
         assert repos[0].permission == "admin"
+
+    @respx.mock
+    async def test_list_accessible_repos_pages_past_the_page_cap(self) -> None:
+        def _page(start: int, count: int) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "path_with_namespace": f"acme/proj-{index}",
+                        "visibility": "private",
+                        "permissions": {"project_access": {"access_level": 30}},
+                    }
+                    for index in range(start, start + count)
+                ],
+            )
+
+        route = respx.get(f"{_GL}/projects").mock(
+            side_effect=[_page(0, 100), _page(100, 20)],
+        )
+        async with _gitlab() as client:
+            repos = await client.list_accessible_repos(limit=120)
+        assert len(repos) == 120
+        assert route.call_count == 2
 
     @respx.mock
     async def test_review_approves_and_notes(self) -> None:

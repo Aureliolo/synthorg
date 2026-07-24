@@ -297,7 +297,8 @@ class ConnectionsController(Controller):
             bool(data.sensitive) if "sensitive" in data.model_fields_set else _UNSET
         )
         # An explicit ``allowed_repos: []`` clears the scope (deny-all); an
-        # omitted field keeps the stored scope.
+        # omitted field keeps the stored scope. The request validator refuses
+        # an explicit null, so a set value is never None here.
         allowed_repos: tuple[str, ...] | _UnsetType = (
             tuple(str(r) for r in (data.allowed_repos or ()))
             if "allowed_repos" in data.model_fields_set

@@ -49,3 +49,11 @@ class TestUpdateAllowedReposSentinel:
     def test_overbroad_entry_rejected(self) -> None:
         with pytest.raises(ValidationError):
             UpdateConnectionRequest(allowed_repos=("*",))
+
+    def test_explicit_null_rejected(self) -> None:
+        # ``null`` is indistinguishable from omission once parsed, so a
+        # client sending it would silently mean "leave the scope alone"
+        # while believing it cleared the scope. Reject it at the boundary
+        # and make the caller send ``[]`` for deny-all.
+        with pytest.raises(ValidationError):
+            UpdateConnectionRequest.model_validate({"allowed_repos": None})

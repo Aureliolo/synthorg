@@ -22,8 +22,13 @@ Usage in a gate::
 """
 
 import ast
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
+from typing import Final
+
+_BLOCK_FIELDS: Final[frozenset[str]] = frozenset(
+    {"body", "orelse", "finalbody", "handlers"},
+)
 
 
 class GateSourceError(Exception):
@@ -119,6 +124,54 @@ def direct_body_nodes(
         ):
             continue
         stack.extend(ast.iter_child_nodes(node))
+
+
+def reachable_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
+    """Yield the statements of a block control flow can still reach.
+
+    A statement following an unconditional ``return`` / ``raise`` /
+    ``break`` / ``continue`` in the same block is dead, so an enforcement
+    step parked there never runs. A gate that asserts "this check is
+    present" must therefore ignore dead statements, or a single early
+    ``return`` silently disables the contract while the gate stays green.
+
+    Args:
+        body: The statement block to traverse.
+
+    Yields:
+        Each reachable statement, recursing into nested blocks.
+    """
+    for stmt in body:
+        yield stmt
+        for field in ("body", "orelse", "finalbody"):
+            nested = getattr(stmt, field, None)
+            if isinstance(nested, list):
+                yield from reachable_statements(nested)
+        for handler in getattr(stmt, "handlers", []):
+            yield from reachable_statements(handler.body)
+        if isinstance(stmt, ast.Return | ast.Raise | ast.Break | ast.Continue):
+            return
+
+
+def statement_expressions(stmt: ast.stmt) -> Iterator[ast.AST]:
+    """Yield the expression nodes a statement evaluates directly.
+
+    Nested blocks are skipped: :func:`reachable_statements` already walks
+    those, and re-walking them here would resurrect dead code.
+
+    Args:
+        stmt: The statement whose own expressions should be walked.
+
+    Yields:
+        Every expression node belonging to the statement itself.
+    """
+    for name, value in ast.iter_fields(stmt):
+        if name in _BLOCK_FIELDS:
+            continue
+        items = value if isinstance(value, list) else [value]
+        for item in items:
+            if isinstance(item, ast.AST):
+                yield from ast.walk(item)
 
 
 def reaching_alias_names(

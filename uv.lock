@@ -3886,7 +3886,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "aiodocker", specifier = "==0.27.0" },
-    { name = "aiohttp", specifier = "==3.14.1" },
+    { name = "aiohttp", specifier = "==3.14.3" },
     { name = "aiosqlite", specifier = "==0.22.1" },
     { name = "annotated-types", specifier = "==0.7.0" },
     { name = "argon2-cffi", specifier = "==25.1.0" },

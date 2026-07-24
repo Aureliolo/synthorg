@@ -136,6 +136,7 @@ class SlackSocketModeClient:
                 timeout=self._timeout,
             ) as client:
                 resp = await client.post(_OPEN_METHOD)
+            data = resp.json()
         except httpx.HTTPError as exc:
             logger.warning(
                 CHAT_API_REQUEST_FAILED,
@@ -145,7 +146,17 @@ class SlackSocketModeClient:
             )
             msg = "transport error opening the Slack Socket-Mode connection"
             raise ChatApiError(msg) from exc
-        return _url_from(resp.json())
+        except ValueError as exc:
+            # A non-JSON body would otherwise escape as a bare decode error,
+            # breaking the ChatApiError contract this method documents.
+            logger.warning(
+                CHAT_API_ENVELOPE_FAILED,
+                action="open socket mode",
+                slack_error="invalid_json",
+            )
+            msg = "Slack Socket-Mode open reply was not valid JSON"
+            raise ChatApiError(msg) from exc
+        return _url_from(data)
 
 
 def _url_from(data: object) -> str:

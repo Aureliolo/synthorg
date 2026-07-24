@@ -96,3 +96,31 @@ class TestMCPDestructiveOpDetector:
             arguments={"filter": "undelete_history"},
         )
         assert detector.evaluate(ctx) is None
+
+    @pytest.mark.parametrize(
+        "tool_name",
+        ["mcp_github_deleteRepository", "mcp_infra_purgeBucket"],
+        ids=["delete", "purge"],
+    )
+    def test_camel_case_tool_name_escalates(self, tool_name: str) -> None:
+        """An external server naming its tools in camelCase still escalates.
+
+        Lower-casing before splitting would fuse ``deleteRepository`` into
+        one unrecognised token, so a camelCase MCP server would bypass the
+        whole detector.
+        """
+        detector = MCPDestructiveOpDetector()
+        verdict = detector.evaluate(_ctx(tool_name=tool_name))
+        assert verdict is not None
+        assert verdict.verdict == SecurityVerdictType.ESCALATE
+
+    def test_replace_argument_escalates(self) -> None:
+        """Replacing upstream state destroys what was there before."""
+        detector = MCPDestructiveOpDetector()
+        ctx = _ctx(
+            tool_name="mcp_github_repos",
+            arguments={"action": "replace_branch_protection"},
+        )
+        verdict = detector.evaluate(ctx)
+        assert verdict is not None
+        assert verdict.verdict == SecurityVerdictType.ESCALATE

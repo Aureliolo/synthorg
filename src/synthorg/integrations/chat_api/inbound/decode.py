@@ -111,7 +111,13 @@ def decode_frame(frame: Mapping[str, object]) -> DecodedFrame:
         # interactive / slash_commands: ack so Slack stops re-sending, but
         # we do not act on them.
         return DecodedFrame(envelope_id=envelope)
-    return DecodedFrame(envelope_id=envelope, event=_event_from(frame))
+    event = _event_from(frame)
+    if event is not None and not envelope:
+        # Nothing to acknowledge the event with. Drop it like every other
+        # malformed-frame branch here rather than raising and forcing a
+        # socket reconnect over one bad vendor frame.
+        return DecodedFrame()
+    return DecodedFrame(envelope_id=envelope, event=event)
 
 
 def _event_from(frame: Mapping[str, object]) -> InboundChatEvent | None:

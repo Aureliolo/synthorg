@@ -232,6 +232,7 @@ CHAT_INBOUND_EVENT_ROUTED: Final[str] = "integrations.chat_inbound.event_routed"
 CHAT_INBOUND_EVENT_IGNORED: Final[str] = "integrations.chat_inbound.event_ignored"
 CHAT_INBOUND_DECODE_FAILED: Final[str] = "integrations.chat_inbound.decode_failed"
 CHAT_INBOUND_DISABLED: Final[str] = "integrations.chat_inbound.disabled"
+CHAT_INBOUND_RESUME_FAILED: Final[str] = "integrations.chat_inbound.resume_failed"
 
 # -- Deploy platform API client events -----------------------------------
 DEPLOY_API_DEPLOYMENT_TRIGGERED: Final[str] = (

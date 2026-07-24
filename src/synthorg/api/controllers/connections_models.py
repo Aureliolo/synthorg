@@ -235,12 +235,26 @@ class UpdateConnectionRequest(BaseModel):
     def _validate_allowed_repos(
         cls, v: tuple[str, ...] | None
     ) -> tuple[str, ...] | None:
-        """Reject an over-broad or malformed repo-scope entry at the boundary.
+        """Reject an over-broad, malformed, or null repo-scope value.
+
+        An explicit ``null`` is neither "omit to keep" nor "``[]`` to clear",
+        so it is refused rather than silently resolved to one of them (the
+        same stance ``sensitive`` takes). Omitting the field skips this
+        validator entirely and keeps the stored scope.
 
         Returns:
-            The validated scope tuple (or ``None`` to keep the stored scope).
+            The validated scope tuple.
+
+        Raises:
+            ValueError: When an explicit ``null`` is supplied.
         """
-        for entry in v or ():
+        if v is None:
+            msg = (
+                "allowed_repos must be a list of 'owner/repo' entries; "
+                "send [] to clear the scope or omit the field to keep it"
+            )
+            raise ValueError(msg)
+        for entry in v:
             validate_repo_scope_entry(str(entry))
         return v
 

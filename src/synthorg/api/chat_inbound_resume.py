@@ -17,9 +17,13 @@ from synthorg.api.controllers._approval_review_gate import signal_resume_intent
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalStatus
 from synthorg.approval.state import approval_store_of
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
-from synthorg.observability.events.integrations import CHAT_INBOUND_EVENT_ROUTED
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.integrations import (
+    CHAT_INBOUND_EVENT_ROUTED,
+    CHAT_INBOUND_RESUME_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -75,17 +79,34 @@ class ApprovalResumeDispatcher:
         # None and we do not double-resume.
         if await store.save_if_pending(updated) is None:
             return False
-        await signal_resume_intent(
-            self._app_state,
-            approval_id,
-            approved=approved,
-            decided_by=decider,
-            # Raw human text; signal_resume_intent -> build_resume_message
-            # fences it with wrap_untrusted(TAG_TASK_DATA, ...) before any
-            # LLM boundary (the same path the dashboard comment takes).
-            decision_reason=decision_reason,
-            task_id=item.task_id,
-        )
+        try:
+            await signal_resume_intent(
+                self._app_state,
+                approval_id,
+                approved=approved,
+                decided_by=decider,
+                # Raw human text; signal_resume_intent -> build_resume_message
+                # fences it with wrap_untrusted(TAG_TASK_DATA, ...) before any
+                # LLM boundary (the same path the dashboard comment takes).
+                decision_reason=decision_reason,
+                task_id=item.task_id,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # The decision landed but the resume dispatch did not, which
+            # would strand the parked task: the approval is no longer
+            # PENDING, so neither a redelivered event nor the dashboard
+            # could act on it. Restore it so it stays decidable, and report
+            # failure so the router keeps the thread correlation for a
+            # retry rather than discarding it.
+            await store.save(item)
+            logger.warning(
+                CHAT_INBOUND_RESUME_FAILED,
+                approval_id=approval_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False
         logger.info(
             CHAT_INBOUND_EVENT_ROUTED, approval_id=approval_id, approved=approved
         )
