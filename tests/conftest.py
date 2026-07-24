@@ -175,6 +175,28 @@ import synthorg.api.app  # noqa: E402, F401 -- graph prime, see comment above
 from synthorg.persistence import (  # noqa: E402 -- runs after typeguard hook install
     migrations,
 )
+from synthorg.tools._git_base import _GIT_DISCOVERY_VARS  # noqa: E402
+
+# Git honours ``GIT_DIR`` and friends over the ``cwd`` a subprocess is given,
+# and a pre-push hook exports them pointing at the real repo. Any test that
+# shells out to git would therefore act on THIS repository rather than on its
+# own tmp fixture, and the damage outlives the run: ``git init --bare`` under
+# an inherited ``GIT_DIR`` writes ``core.bare = true`` into the shared config,
+# which has no work tree, so the main checkout and every worktree stop working
+# at once.
+#
+# Stripped once here, at import, rather than per test: the variables are
+# inherited from the parent process and never change mid-run, so a per-test
+# fixture would be ~18k redundant setups AND would reorder every other
+# function-scoped finaliser in the suite (a root-level autouse fixture is
+# created first, so anything it requests is torn down last). Removing them
+# from the process environment also covers collection, session-scoped
+# fixtures and module import, which a per-test fixture cannot reach.
+# Each xdist worker imports this module, so each strips its own copy.
+# ``tests/unit/tools/git/conftest.py`` keeps its own copy for the env dict it
+# hands to subprocesses explicitly.
+for _git_discovery_var in _GIT_DISCOVERY_VARS:
+    os.environ.pop(_git_discovery_var, None)
 
 # ``socket.getfqdn()`` does a reverse-DNS lookup that on GHA Linux runners
 # without configured reverse-DNS can block for 10-30+ seconds on the first
