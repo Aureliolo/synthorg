@@ -1,1 +1,1 @@
-"""Inbound Slack Socket-Mode tests."""
+"""Inbound Socket-Mode tests."""

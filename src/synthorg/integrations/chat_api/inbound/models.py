@@ -13,6 +13,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from synthorg.core.types import NotBlankStr
+
 
 class InboundEventKind(StrEnum):
     """The inbound chat event kinds that can resume a task."""
@@ -34,8 +36,11 @@ class InboundChatEvent(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     kind: InboundEventKind
-    channel: str
-    user: str
+    # NotBlankStr, not str: a whitespace-only channel or user is truthy, so a
+    # plain emptiness check would admit one that can be neither correlated
+    # back to its thread nor attributed to a decider.
+    channel: NotBlankStr
+    user: NotBlankStr
     text: str = ""
     ts: str = ""
     thread_ts: str = ""
@@ -43,22 +48,19 @@ class InboundChatEvent(BaseModel):
 
     @model_validator(mode="after")
     def _validate_shape(self) -> Self:
-        """Enforce the cross-field invariants a routable event must hold.
+        """Enforce the cross-field invariant a routable event must hold.
 
-        A blank channel/user cannot be correlated or attributed, and the
-        ``reaction`` field is meaningful only for the REACTION kind, so both
-        become type-level guarantees rather than decoder-only discipline.
+        The ``reaction`` field is meaningful only for the REACTION kind, so
+        the agreement between them is a type-level guarantee rather than
+        decoder-only discipline.
 
         Returns:
             The unchanged event.
 
         Raises:
-            ValueError: When channel/user is blank, or the reaction field
-                and the REACTION kind disagree.
+            ValueError: When the reaction field and the REACTION kind
+                disagree.
         """
-        if not self.channel or not self.user:
-            msg = "an inbound chat event requires a non-blank channel and user"
-            raise ValueError(msg)
         if (self.kind is InboundEventKind.REACTION) != bool(self.reaction):
             msg = "reaction must be set iff the event kind is REACTION"
             raise ValueError(msg)

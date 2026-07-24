@@ -442,8 +442,12 @@ jobs:
             if [ "$status" -ne "$provision_exit" ]; then
               exit "$status"
             fi
-            echo "::warning::Postgres drift gate could not provision its container (attempt ${attempt}/3); retrying after backoff"
-            sleep $((attempt * 20))
+            # No warning or backoff on the last attempt: nothing follows it,
+            # and the sleep would burn a minute of the 15-minute budget.
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Postgres drift gate could not provision its container (attempt ${attempt}/3); retrying after backoff"
+              sleep $((attempt * 20))
+            fi
           done
           echo "::error::Postgres drift gate could not provision its container after 3 attempts" >&2
           exit 1

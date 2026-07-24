@@ -277,6 +277,23 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="chat_inbound_deciders",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Comma-separated Slack user IDs allowed to decide an approval from"
+            " a chat thread. Empty denies every inbound decision: reacting in a"
+            " channel is not authorisation on its own, so an operator names the"
+            " deciders explicitly. A reaction from anyone else is ignored."
+        ),
+        group="Chat Inbound",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
 # ── MCP server sandboxing ────────────────────────────────────────
 # A stdio MCP server is arbitrary third-party code; per ADR D16 every
 # execution-capable surface runs in a container. Enabled by default:

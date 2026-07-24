@@ -41,6 +41,7 @@ from synthorg.observability.events.tool import (
     TOOL_PERMISSION_DENIED,
     TOOL_SECURITY_DENIED,
     TOOL_SECURITY_ESCALATED,
+    TOOL_SECURITY_ESCALATION_UNATTRIBUTABLE,
 )
 from synthorg.observability.tracing import tool_span
 from synthorg.providers.cost_recording import cost_recording_scope
@@ -405,11 +406,10 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             # slip through unreviewed.
             if verdict.approval_id is None:
                 logger.error(
-                    TOOL_SECURITY_ESCALATED,
+                    TOOL_SECURITY_ESCALATION_UNATTRIBUTABLE,
                     tool_call_id=tool_call.id,
                     tool_name=tool_call.name,
                     reason=verdict.reason,
-                    severity="unattributable_escalation_denied",
                 )
                 return context, ToolResult(
                     tool_call_id=tool_call.id,

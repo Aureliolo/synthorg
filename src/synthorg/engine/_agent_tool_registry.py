@@ -47,8 +47,8 @@ def registry_with_forge_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
 
     Returns:
         A :class:`ToolRegistry` with ``forge_repo`` / ``forge_issue`` /
-        ``forge_pull_request`` / ``forge_ci`` appended when both
-        ``runtime`` and ``approval_store`` are wired; otherwise the
+        ``forge_pull_request`` / ``forge_push`` / ``forge_ci`` appended when
+        both ``runtime`` and ``approval_store`` are wired; otherwise the
         original registry unchanged.
     """
     if runtime is None or approval_store is None:

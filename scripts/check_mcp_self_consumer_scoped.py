@@ -36,13 +36,17 @@ if __package__ in {None, ""}:
     from _gate_source import (  # type: ignore[import-not-found]
         GateSourceError,
         direct_body_nodes,
+        reachable_statements,
         read_and_parse,
+        statement_expressions,
     )
 else:
     from scripts._gate_source import (
         GateSourceError,
         direct_body_nodes,
+        reachable_statements,
         read_and_parse,
+        statement_expressions,
     )
 
 _SELF_CONSUMER_REL: Final[str] = "src/synthorg/engine/mcp_self_consumer.py"
@@ -157,22 +161,29 @@ def _capability_argument(call: ast.Call) -> ast.expr | None:
 def _grant_feeds_scoper(tree: ast.Module) -> bool:
     """Whether the grant reaches a ``visible_tools(...)`` capability set.
 
+    Only reachable scoper calls count. Walking the whole function subtree
+    would let a dead branch satisfy the gate: a regression that moves the
+    live dispatch to an empty capability set while leaving a now-unreachable
+    call that still threads the grant through is exactly the "the grant no
+    longer feeds the live scoper call" case this gate exists to catch.
+
     Returns:
-        ``True`` when at least one scoper call selects tools from a
-        capability set derived from the per-agent grant.
+        ``True`` when at least one reachable scoper call selects tools from
+        a capability set derived from the per-agent grant.
     """
     for scope in ast.walk(tree):
         if not isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         bindings = _local_bindings(scope)
-        for node in ast.walk(scope):
-            if not isinstance(node, ast.Call):
-                continue
-            if _called_name(node) != _SCOPER_CALL:
-                continue
-            argument = _capability_argument(node)
-            if argument is not None and _reaches_grant(argument, bindings):
-                return True
+        for stmt in reachable_statements(scope.body):
+            for node in statement_expressions(stmt):
+                if not isinstance(node, ast.Call):
+                    continue
+                if _called_name(node) != _SCOPER_CALL:
+                    continue
+                argument = _capability_argument(node)
+                if argument is not None and _reaches_grant(argument, bindings):
+                    return True
     return False
 
 

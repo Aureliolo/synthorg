@@ -38,14 +38,16 @@ async def start_chat_inbound_consumer(
     if catalog is None or registry is None:
         return None
     try:
+        resolver = config_resolver_of(app_state)
         router = InboundResumeRouter(
             registry=registry,
             dispatcher=ApprovalResumeDispatcher(app_state),
+            config_resolver=resolver,
         )
         consumer = ChatInboundConsumer(
             connection_catalog=catalog,
             router=router,
-            config_resolver=config_resolver_of(app_state),
+            config_resolver=resolver,
         )
         await consumer.start()
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

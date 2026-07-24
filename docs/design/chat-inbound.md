@@ -102,16 +102,33 @@ to a logged no-op) because a run with no database cannot survive a crash
 anyway, and forfeiting recovery for one decision beats 500-ing a
 serviceable approval.
 
-## Authorization: explicit-token-only
+A dispatch that *fails* (rather than crashing the process) is rolled back
+on both decision paths: the approval is restored to its pre-decision
+status and the marker cleared, so the operator can retry immediately
+instead of hitting `ConflictError` until the next restart drains it.
+
+## Authorization: explicit-token-only, from a named decider
 
 An approval is consent, so it is **never** inferred from arbitrary human
 text. Only an explicit approve/reject **reaction** (`white_check_mark` /
 `x` ...) constitutes a decision; a plain text reply (mention / message /
-DM) resolves to no decision and is ignored. This closes the gap where any
-user who could post in the notified thread would approve a parked action
-(including a destructive one) merely by typing something: the Socket-Mode
-path now requires the same explicit affirmative signal the dashboard does,
-not a free-text reply.
+DM) resolves to no decision and is discarded outright, carrying nothing
+onward to the resumed agent. This closes the gap where any user who could
+post in the notified thread would approve a parked action (including a
+destructive one) merely by typing something: the Socket-Mode path now
+requires the same explicit affirmative signal the dashboard does, not a
+free-text reply.
+
+An explicit signal is still only half of authorisation. The thread
+correlation proves which approval an event answers, never that this human
+may answer it, so the reacting user must appear in
+`tools.chat_inbound_deciders` (comma-separated Slack user IDs). The check
+runs after the decision is resolved but **before any write**, and is
+fail-closed in every direction: an unlisted user, an unset allowlist, an
+unwired resolver, and a settings read that fails all deny the decision and
+leave the thread correlation in place so an authorised decider can still
+act. Without it, membership of the notified channel would be the whole
+authorisation model for a governed action.
 
 ## Kill-switch + resilience
 

@@ -71,6 +71,11 @@ class SlackNotificationSink:
         connection_name: Name of the bound ``SLACK`` connection.
         channel: Target channel id (or name) to post to.
         timeout_seconds: Per-request HTTP timeout. Must be positive.
+        thread_registry: Optional thread correlation. When wired, an
+            APPROVAL notification's posted message root is registered
+            against its approval id, so the inbound Socket-Mode consumer
+            can resolve a threaded human reply back to the parked task.
+            ``None`` leaves the sink send-only.
 
     The client is built lazily on the first send and reused; ``close()``
     releases it. Both lifecycle methods are idempotent under the

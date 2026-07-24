@@ -129,5 +129,61 @@ def build(config, scoper):
     assert "never reaches" in violations[0]
 
 
+def test_grant_only_in_a_dead_branch_flagged(tmp_path: Path) -> None:
+    """A scoper call parked after an unconditional return does not count.
+
+    This is the shape a regression takes in practice: the live dispatch is
+    switched to an empty capability set and the grant-threading call is left
+    behind, unreachable. Walking the whole function subtree would still find
+    it and pass the gate while every agent sees the whole sensitive surface.
+    """
+    body = """\
+def build(config, scoper):
+    def _provide(identity, access_level):
+        return scoper.visible_tools((), allowed=())
+        granted = identity.tools.mcp_capabilities
+        return scoper.visible_tools(granted, allowed=())
+
+    return _provide
+"""
+    violations = _MODULE._check(_make_tree(tmp_path, body))
+    assert len(violations) == 1
+    assert "never reaches" in violations[0]
+
+
+def test_grant_after_a_terminating_if_else_flagged(tmp_path: Path) -> None:
+    """An ``if``/``else`` whose both branches return also ends the block."""
+    body = """\
+def build(config, scoper):
+    def _provide(identity, access_level):
+        if access_level:
+            return scoper.visible_tools((), allowed=())
+        else:
+            return scoper.visible_tools((), allowed=())
+        granted = identity.tools.mcp_capabilities
+        return scoper.visible_tools(granted, allowed=())
+
+    return _provide
+"""
+    violations = _MODULE._check(_make_tree(tmp_path, body))
+    assert len(violations) == 1
+    assert "never reaches" in violations[0]
+
+
+def test_grant_in_a_live_if_branch_passes(tmp_path: Path) -> None:
+    """A branch is not dead merely because a sibling branch returns."""
+    body = """\
+def build(config, scoper):
+    def _provide(identity, access_level):
+        if not access_level:
+            return ()
+        granted = identity.tools.mcp_capabilities
+        return scoper.visible_tools(granted, allowed=())
+
+    return _provide
+"""
+    assert _MODULE._check(_make_tree(tmp_path, body)) == []
+
+
 def test_real_tree_is_clean() -> None:
     assert _MODULE._check(_REPO_ROOT) == []

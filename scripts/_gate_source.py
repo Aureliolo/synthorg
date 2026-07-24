@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Final
 
 _BLOCK_FIELDS: Final[frozenset[str]] = frozenset(
-    {"body", "orelse", "finalbody", "handlers"},
+    {"body", "orelse", "finalbody", "handlers", "cases"},
 )
 
 
@@ -126,6 +126,76 @@ def direct_body_nodes(
         stack.extend(ast.iter_child_nodes(node))
 
 
+def _is_catch_all_case(case: ast.match_case) -> bool:
+    """Whether a ``match`` case matches everything left, unguarded."""
+    if case.guard is not None:
+        return False
+    pattern = case.pattern
+    return isinstance(pattern, ast.MatchAs) and pattern.pattern is None
+
+
+def _terminates(stmt: ast.stmt) -> bool:
+    """Whether control flow can never continue past *stmt*.
+
+    Answered conservatively: when termination cannot be proven the answer
+    is ``False``. A wrong ``True`` would let :func:`reachable_statements`
+    drop a live enforcement statement and fail a gate that is actually
+    satisfied, which is loud and fixable. A wrong ``False`` would let a
+    DEAD enforcement statement satisfy a gate, which is a silent hole,
+    so the bias runs the other way.
+
+    Args:
+        stmt: The statement to classify.
+
+    Returns:
+        ``True`` only when every path through *stmt* leaves the block.
+    """
+    if isinstance(stmt, ast.Return | ast.Raise | ast.Break | ast.Continue):
+        return True
+    if isinstance(stmt, ast.If):
+        # Without an ``else`` the false branch falls straight through.
+        return (
+            bool(stmt.orelse)
+            and _block_terminates(stmt.body)
+            and _block_terminates(stmt.orelse)
+        )
+    if isinstance(stmt, ast.Try | ast.TryStar):
+        if _block_terminates(stmt.finalbody):
+            return True
+        # The no-exception path runs ``body`` then ``orelse``; each handled
+        # exception path runs one handler. Every one of them must leave.
+        normal_terminates = _block_terminates(stmt.body) or _block_terminates(
+            stmt.orelse
+        )
+        return normal_terminates and all(
+            _block_terminates(handler.body) for handler in stmt.handlers
+        )
+    if isinstance(stmt, ast.With | ast.AsyncWith):
+        return _block_terminates(stmt.body)
+    if isinstance(stmt, ast.Match):
+        return any(_is_catch_all_case(case) for case in stmt.cases) and all(
+            _block_terminates(case.body) for case in stmt.cases
+        )
+    if isinstance(stmt, ast.While):
+        # Only the ``while True:`` form with no escape hatch. Any ``break``
+        # anywhere below counts as an escape even when it binds to a nested
+        # loop, since resolving that binding is not worth the false-negative
+        # risk in a security gate.
+        constant_true = isinstance(stmt.test, ast.Constant) and bool(stmt.test.value)
+        has_break = any(
+            isinstance(node, ast.Break)
+            for child in stmt.body
+            for node in ast.walk(child)
+        )
+        return constant_true and not has_break and not stmt.orelse
+    return False
+
+
+def _block_terminates(body: Sequence[ast.stmt]) -> bool:
+    """Whether *body* leaves its enclosing block on every path."""
+    return any(_terminates(stmt) for stmt in body)
+
+
 def reachable_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
     """Yield the statements of a block control flow can still reach.
 
@@ -134,6 +204,10 @@ def reachable_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
     step parked there never runs. A gate that asserts "this check is
     present" must therefore ignore dead statements, or a single early
     ``return`` silently disables the contract while the gate stays green.
+
+    A compound statement counts too: an ``if`` whose every branch returns,
+    or a ``try`` whose ``finally`` raises, ends the block just as firmly as
+    a bare ``return``. :func:`_terminates` decides that, conservatively.
 
     Nested ``def`` / ``async def`` / ``class`` bodies are NOT traversed,
     matching :func:`direct_body_nodes`: a statement inside an inner helper
@@ -157,7 +231,9 @@ def reachable_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
                     yield from reachable_statements(nested)
             for handler in getattr(stmt, "handlers", []):
                 yield from reachable_statements(handler.body)
-        if isinstance(stmt, ast.Return | ast.Raise | ast.Break | ast.Continue):
+            for case in getattr(stmt, "cases", []):
+                yield from reachable_statements(case.body)
+        if _terminates(stmt):
             return
 
 

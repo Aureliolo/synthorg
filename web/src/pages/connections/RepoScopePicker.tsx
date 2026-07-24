@@ -73,6 +73,43 @@ function RepoRow({
   )
 }
 
+/**
+ * A repository that is in scope but absent from the latest scan. Rendered so
+ * the scope stays revocable: without a row it could not be unticked here, and
+ * a scope entry left behind reactivates the moment token access returns.
+ */
+function UnscannedRepoRow({
+  scopeKey,
+  unreachable,
+  onRemove,
+}: {
+  scopeKey: string
+  unreachable: boolean
+  onRemove: () => void
+}) {
+  const labelId = `repo-scope-unscanned-${scopeKey}`
+  return (
+    <label
+      htmlFor={labelId}
+      className={cn(
+        'flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card p-3',
+        'transition-colors hover:bg-card-hover',
+      )}
+    >
+      <Checkbox
+        id={labelId}
+        checked
+        onCheckedChange={onRemove}
+        aria-label={`Remove ${scopeKey} from scope`}
+      />
+      <span className="flex-1 text-sm text-foreground">{scopeKey}</span>
+      {unreachable && (
+        <span className="text-micro uppercase tracking-wide text-warning">not reachable</span>
+      )}
+    </label>
+  )
+}
+
 function ScanResults({
   scan,
   selected,
@@ -105,12 +142,45 @@ function ScanResults({
   )
 }
 
+function UnscannedScope({
+  scan,
+  selected,
+  onRemove,
+}: {
+  scan: ScanState
+  selected: readonly string[]
+  onRemove: (key: string) => void
+}) {
+  const scanned =
+    scan.status === 'loaded' ? new Set(scan.repos.map(repoKey)) : new Set<string>()
+  const unscanned = selected.filter((key) => !scanned.has(key))
+  if (unscanned.length === 0) return null
+  return (
+    <div className="flex flex-col gap-2">
+      {unscanned.map((key) => (
+        <UnscannedRepoRow
+          key={key}
+          scopeKey={key}
+          unreachable={scan.status === 'loaded'}
+          onRemove={() => {
+            onRemove(key)
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
 /**
  * Discovery-assisted least-privilege repository scope. Scans the forge
  * connection's token for reachable repositories and lets the operator tick the
  * ones the agent may act on; an empty selection denies every repository
  * (fail-closed). The scan is a live read against the forge (never persisted),
  * so it is deferred behind an explicit button rather than run on mount.
+ *
+ * Every in-scope repository is rendered whether or not the scan returned it,
+ * so the scope is always revocable: one the token can no longer see would
+ * otherwise be stuck in scope and would reactivate if access came back.
  */
 export function RepoScopePicker({ connectionName, selected, onChange }: RepoScopePickerProps) {
   const [scan, setScan] = useState<ScanState>({ status: 'idle' })
@@ -134,6 +204,13 @@ export function RepoScopePicker({ connectionName, selected, onChange }: RepoScop
     [selected, onChange],
   )
 
+  const remove = useCallback(
+    (key: string) => {
+      toggle(key, false)
+    },
+    [toggle],
+  )
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
@@ -154,6 +231,7 @@ export function RepoScopePicker({ connectionName, selected, onChange }: RepoScop
       </p>
 
       <ScanResults scan={scan} selected={selected} onToggle={toggle} />
+      <UnscannedScope scan={scan} selected={selected} onRemove={remove} />
 
       {selected.length > 0 && (
         <p className="text-xs text-text-secondary">

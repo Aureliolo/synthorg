@@ -46,6 +46,7 @@ from synthorg.observability.events.api import (
     API_APPROVAL_PUBLISH_FAILED,
 )
 from synthorg.observability.events.approval_gate import (
+    APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_STATUS_TRANSITIONED,
 )
 from synthorg.observability.events.security import (
@@ -322,6 +323,9 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         ForbiddenError: If the decider is the original executing agent
             (self-review preflight fails).
         NotFoundError: If the associated task no longer exists.
+        Exception: Re-raised unchanged when the resume dispatch fails, after
+            the approval has been restored to its pre-decision status so the
+            operator can retry immediately.
     """
     await _run_review_gate_preflight(
         app_state,
@@ -331,6 +335,20 @@ async def _save_decision_and_notify(  # noqa: PLR0913
     )
 
     store = require_service(app_state.slice(ApprovalStateSlice).store, "Approval Store")
+    # The pre-decision row, kept so a failed resume dispatch can put the
+    # approval back where an operator can decide it again. Rebuilt from
+    # ``updated`` rather than re-read: a re-read could observe a concurrent
+    # write, and ``save_if_pending`` below already proves this call is the
+    # first writer, so the fields this function decided are the only ones
+    # that differ from what was persisted.
+    pending_snapshot = updated.model_copy(
+        update={
+            "status": previous_status,
+            "decided_at": None,
+            "decided_by": None,
+            "decision_reason": None,
+        },
+    )
     # Recorded BEFORE the decision write: a crash after the decision but
     # before ``signal_resume_intent`` below would otherwise strand the parked
     # task with nothing left PENDING for anyone to act on.
@@ -370,13 +388,31 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         approved=approved,
         decided_by=decided_by,
     )
-    await signal_resume_intent(
-        app_state,
-        approval_id,
-        approved=approved,
-        decided_by=decided_by,
-        decision_reason=decision_reason,
-        task_id=saved.task_id,
-    )
+    try:
+        await signal_resume_intent(
+            app_state,
+            approval_id,
+            approved=approved,
+            decided_by=decided_by,
+            decision_reason=decision_reason,
+            task_id=saved.task_id,
+        )
+    except Exception as exc:
+        reraise_critical(exc)
+        # Mirrors ApprovalResumeDispatcher.resume(): the decision landed but
+        # the dispatch did not, so without a rollback the approval is stuck
+        # decided. Every dashboard retry would then hit ConflictError until
+        # the next process restart's drain picked the marker up, stranding an
+        # operator's decision on a transient downstream failure. Restoring it
+        # to PENDING makes the retry available immediately.
+        await store.save(pending_snapshot)
+        await clear_resume_intent(app_state, approval_id)
+        logger.warning(
+            APPROVAL_GATE_RESUME_FAILED,
+            approval_id=approval_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise
     await clear_resume_intent(app_state, approval_id)
     return response

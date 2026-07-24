@@ -1,6 +1,7 @@
 """Tests for the inbound resume router."""
 
 from dataclasses import dataclass, field
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -10,6 +11,8 @@ from synthorg.integrations.chat_api.inbound.models import (
 )
 from synthorg.integrations.chat_api.inbound.registry import InboundThreadRegistry
 from synthorg.integrations.chat_api.inbound.router import InboundResumeRouter
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared.mock_of import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -40,11 +43,26 @@ class _FakeDispatcher:
         return self.outcome
 
 
+def _resolver(deciders: str = "U1") -> ConfigResolver:
+    """Resolver whose decider allowlist is *deciders*."""
+    resolver: ConfigResolver = mock_of[ConfigResolver](
+        get_str=AsyncMock(spec=ConfigResolver.get_str, return_value=deciders),
+    )
+    return resolver
+
+
 def _router(
     dispatcher: _FakeDispatcher,
+    *,
+    config_resolver: ConfigResolver | None = None,
 ) -> tuple[InboundResumeRouter, InboundThreadRegistry]:
     registry = InboundThreadRegistry()
-    return InboundResumeRouter(registry=registry, dispatcher=dispatcher), registry
+    router = InboundResumeRouter(
+        registry=registry,
+        dispatcher=dispatcher,
+        config_resolver=config_resolver if config_resolver is not None else _resolver(),
+    )
+    return router, registry
 
 
 def _reply(text: str = "go ahead", *, thread_ts: str = "100.1") -> InboundChatEvent:
@@ -129,6 +147,60 @@ class TestRouting:
     async def test_correlation_kept_when_resume_declined(self) -> None:
         dispatcher = _FakeDispatcher(outcome=False)
         router, registry = _router(dispatcher)
+        registry.register(channel="C1", thread_ts="100.1", approval_id="ap-1")
+        await router.route(_reaction("white_check_mark"))
+        assert registry.resolve(channel="C1", thread_ts="100.1") == "ap-1"
+
+
+class TestDeciderAuthorisation:
+    """Being able to react in the channel is not authorisation to decide."""
+
+    async def test_unlisted_user_cannot_decide(self) -> None:
+        dispatcher = _FakeDispatcher()
+        router, registry = _router(dispatcher, config_resolver=_resolver("U-other"))
+        registry.register(channel="C1", thread_ts="100.1", approval_id="ap-1")
+        await router.route(_reaction("white_check_mark"))
+        assert dispatcher.calls == []
+
+    async def test_unset_allowlist_denies_every_decision(self) -> None:
+        # Fail-closed: an operator names the deciders before chat can decide.
+        dispatcher = _FakeDispatcher()
+        router, registry = _router(dispatcher, config_resolver=_resolver(""))
+        registry.register(channel="C1", thread_ts="100.1", approval_id="ap-1")
+        await router.route(_reaction("white_check_mark"))
+        assert dispatcher.calls == []
+
+    async def test_unwired_resolver_denies_every_decision(self) -> None:
+        dispatcher = _FakeDispatcher()
+        registry = InboundThreadRegistry()
+        router = InboundResumeRouter(registry=registry, dispatcher=dispatcher)
+        registry.register(channel="C1", thread_ts="100.1", approval_id="ap-1")
+        await router.route(_reaction("white_check_mark"))
+        assert dispatcher.calls == []
+
+    async def test_resolver_failure_denies_every_decision(self) -> None:
+        dispatcher = _FakeDispatcher()
+        resolver: ConfigResolver = mock_of[ConfigResolver](
+            get_str=AsyncMock(spec=ConfigResolver.get_str, side_effect=RuntimeError()),
+        )
+        router, registry = _router(dispatcher, config_resolver=resolver)
+        registry.register(channel="C1", thread_ts="100.1", approval_id="ap-1")
+        await router.route(_reaction("white_check_mark"))
+        assert dispatcher.calls == []
+
+    async def test_listed_user_among_several_can_decide(self) -> None:
+        dispatcher = _FakeDispatcher()
+        router, registry = _router(
+            dispatcher, config_resolver=_resolver(" U-a , U1 ,U-b ")
+        )
+        registry.register(channel="C1", thread_ts="100.1", approval_id="ap-1")
+        await router.route(_reaction("white_check_mark"))
+        assert dispatcher.calls[0]["decided_by"] == "U1"
+
+    async def test_correlation_kept_when_decider_unauthorised(self) -> None:
+        # A later reaction from an authorised decider must still resolve.
+        dispatcher = _FakeDispatcher()
+        router, registry = _router(dispatcher, config_resolver=_resolver("U-other"))
         registry.register(channel="C1", thread_ts="100.1", approval_id="ap-1")
         await router.route(_reaction("white_check_mark"))
         assert registry.resolve(channel="C1", thread_ts="100.1") == "ap-1"

@@ -608,7 +608,20 @@ class GitLabAgentForgeClient(GitLabForgeClient):
 
         Returns:
             The merge outcome (merged flag + resulting commit sha).
+
+        Raises:
+            FeatureNotImplementedError: When ``method`` is ``"rebase"``.
+                GitLab's merge endpoint takes only ``squash``; rebasing is a
+                separate asynchronous ``/rebase`` call. Accepting ``rebase``
+                here would silently produce a merge commit instead, so the
+                caller is told rather than quietly given the wrong history.
         """
+        if method == "rebase":
+            msg = (
+                "GitLab merge requests cannot be rebase-merged through the "
+                "merge endpoint; use 'merge' or 'squash'"
+            )
+            raise FeatureNotImplementedError(msg)
         action = f"merge merge request {owner}/{repo}!{number}"
         payload: dict[str, object] = {"squash": method == "squash"}
         if commit_title:

@@ -27,7 +27,7 @@ const meta = {
     },
   },
   args: {
-    connectionName: 'primary-github',
+    connectionName: 'primary-forge',
     selected: [],
     onChange: fn(),
   },

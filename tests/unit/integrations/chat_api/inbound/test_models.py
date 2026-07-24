@@ -27,13 +27,17 @@ class TestInboundChatEvent:
         )
         assert event.reaction == "white_check_mark"
 
-    def test_blank_channel_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="channel and user"):
-            InboundChatEvent(kind=InboundEventKind.MESSAGE, channel="", user="U1")
+    @pytest.mark.parametrize("channel", ["", "   "], ids=["empty", "whitespace"])
+    def test_blank_channel_rejected(self, channel: str) -> None:
+        with pytest.raises(ValidationError):
+            InboundChatEvent(kind=InboundEventKind.MESSAGE, channel=channel, user="U1")
 
-    def test_blank_user_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="channel and user"):
-            InboundChatEvent(kind=InboundEventKind.MESSAGE, channel="C1", user="")
+    @pytest.mark.parametrize("user", ["", "   "], ids=["empty", "whitespace"])
+    def test_blank_user_rejected(self, user: str) -> None:
+        # Whitespace-only is truthy, so a plain emptiness check would let an
+        # unattributable decider through.
+        with pytest.raises(ValidationError):
+            InboundChatEvent(kind=InboundEventKind.MESSAGE, channel="C1", user=user)
 
     def test_reaction_on_non_reaction_kind_rejected(self) -> None:
         with pytest.raises(ValidationError, match="reaction must be set iff"):

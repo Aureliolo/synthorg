@@ -70,7 +70,18 @@ class TestUpdateCandidateRepoScope:
 
     @pytest.mark.parametrize(
         "entry",
-        ["*", "*/*", "*/repo", "acme", "a/b/c", "ac*/repo", "acme/pr..oj"],
+        [
+            "*",
+            "*/*",
+            "*/repo",
+            "acme",
+            "a/b/c",
+            "ac*/repo",
+            "acme/pr..oj",
+            "acme/[ab]",
+            "acme/[!x]",
+            "ac[me]/repo",
+        ],
         ids=[
             "bare_glob",
             "both_glob",
@@ -79,6 +90,9 @@ class TestUpdateCandidateRepoScope:
             "multi_slash",
             "partial_glob_owner",
             "traversal",
+            "fnmatch_character_class",
+            "fnmatch_negated_class",
+            "fnmatch_class_on_owner",
         ],
     )
     def test_overbroad_entry_rejected(self, entry: str) -> None:

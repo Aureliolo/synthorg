@@ -30,16 +30,26 @@ _API = "https://slack.com/api"
 
 
 def _resolver(
-    *, enabled: bool = True, connection: str = "slack-conn", raise_on_bool: bool = False
+    *,
+    enabled: bool = True,
+    connection: str = "slack-conn",
+    raise_on_bool: bool = False,
+    deciders: str = "U1",
 ) -> ConfigResolver:
     get_bool = AsyncMock(spec=ConfigResolver.get_bool)
     if raise_on_bool:
         get_bool.side_effect = RuntimeError("settings down")
     else:
         get_bool.return_value = enabled
+
+    # Key-aware: the consumer reads the bound connection while the router
+    # reads the decider allowlist off the same resolver.
+    async def _get_str(_namespace: str, key: str) -> str:
+        return deciders if key == "chat_inbound_deciders" else connection
+
     resolver: ConfigResolver = mock_of[ConfigResolver](
         get_bool=get_bool,
-        get_str=AsyncMock(spec=ConfigResolver.get_str, return_value=connection),
+        get_str=AsyncMock(spec=ConfigResolver.get_str, side_effect=_get_str),
     )
     return resolver
 
@@ -85,10 +95,18 @@ class _RecordingDispatcher:
         return True
 
 
-def _router(dispatcher: _RecordingDispatcher) -> InboundResumeRouter:
+def _router(
+    dispatcher: _RecordingDispatcher,
+    *,
+    config_resolver: ConfigResolver | None = None,
+) -> InboundResumeRouter:
     registry = InboundThreadRegistry()
     registry.register(channel="C1", thread_ts="1.0", approval_id="ap-1")
-    return InboundResumeRouter(registry=registry, dispatcher=dispatcher)
+    return InboundResumeRouter(
+        registry=registry,
+        dispatcher=dispatcher,
+        config_resolver=config_resolver if config_resolver is not None else _resolver(),
+    )
 
 
 def _consumer(

@@ -215,19 +215,21 @@ async def _dump_postgres_schema(revisions_path: Path) -> str:
         raise SystemExit(msg) from exc
 
     pg = PostgresContainer(_POSTGRES_TESTCONTAINER_IMAGE)
-    # Started outside a ``with`` so the catch covers provisioning ONLY.
-    # Wrapping the whole block would also swallow a migration or pg_dump
-    # failure into the retryable exit code, which would let a real defect
-    # be retried away as a registry blip.
+    # Inside the cleanup-owning try so a start that fails AFTER Docker
+    # created the container still reaches ``stop()``; a leaked container
+    # would otherwise accumulate across the caller's provisioning retries.
+    # The catch stays scoped to ``start()`` alone: widening it would fold a
+    # migration or pg_dump failure into the retryable exit code and let a
+    # real defect be retried away as a registry blip.
     try:
-        pg.start()
-    except Exception as exc:
-        msg = (
-            f"could not start the Postgres throwaway container "
-            f"({type(exc).__name__}): {exc}"
-        )
-        raise SchemaDriftProvisionError(msg) from exc
-    try:
+        try:
+            pg.start()
+        except Exception as exc:
+            msg = (
+                f"could not start the Postgres throwaway container "
+                f"({type(exc).__name__}): {exc}"
+            )
+            raise SchemaDriftProvisionError(msg) from exc
         host = pg.get_container_host_ip()
         port = pg.get_exposed_port(_POSTGRES_DEFAULT_PORT)
         user = pg.username

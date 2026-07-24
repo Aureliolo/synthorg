@@ -10,6 +10,7 @@ parameters so the builder owns their domain-event routing.
 
 import asyncio
 from collections.abc import Callable
+from typing import Final
 
 from synthorg import __version__
 from synthorg.api.bus_bridge import MessageBusBridge
@@ -91,6 +92,15 @@ from synthorg.tools.state import ToolsStateSlice, tool_invocation_tracker_of
 from synthorg.workers.state import RuntimeStateSlice
 
 logger = get_logger(__name__)
+
+_CONSUMER_RESTART_STOP_SECONDS: Final[float] = 15.0
+"""Budget for stopping a prior inbound consumer before restarting it.
+
+Exceeds ``ChatInboundConsumer``'s own 10s shield so an ordinary graceful
+Socket-Mode close completes, while still bounding a genuinely hung stop
+rather than blocking startup indefinitely. On expiry the restart is
+skipped, never forced.
+"""
 
 
 async def _start_runtime_background_services(
@@ -704,14 +714,29 @@ async def _run_startup(  # noqa: PLR0913
     # Inbound Slack Socket-Mode consumer. Idempotent: stop a prior instance
     # before starting a fresh one so consumers do not accumulate on lifespan
     # re-entry. Inert until the operator enables it and binds a connection.
+    prior_consumer_stopped = True
     if tasks.chat_inbound_consumer is not None:
-        await _try_stop(
+        prior_consumer_stopped = await _try_stop(
             tasks.chat_inbound_consumer.stop(),
             API_APP_STARTUP,
             "Failed to stop prior chat inbound consumer before restart",
+            timeout=_CONSUMER_RESTART_STOP_SECONDS,
+            service="chat_inbound_consumer",
         )
         tasks.chat_inbound_consumer = None
-    tasks.chat_inbound_consumer = await start_chat_inbound_consumer(app_state)
+    if prior_consumer_stopped:
+        tasks.chat_inbound_consumer = await start_chat_inbound_consumer(app_state)
+    else:
+        # The prior loop task still owns the Socket-Mode session, and dropping
+        # the reference does not reclaim it. Starting a fresh consumer would
+        # open a second session against the same connection, which is what the
+        # consumer's own ``_unrestartable`` guard prevents for a reused
+        # instance but cannot prevent when the orchestrator replaces it.
+        logger.warning(
+            API_APP_STARTUP,
+            detail="chat_inbound_consumer_restart_skipped",
+            service="chat_inbound_consumer",
+        )
     # Idempotent: stop any prior health prober instance before starting a new
     # one so probers do not accumulate when the shared app re-enters lifespan.
     if tasks.health_prober is not None:

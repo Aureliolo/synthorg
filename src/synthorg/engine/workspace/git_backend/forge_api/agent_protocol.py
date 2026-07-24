@@ -81,7 +81,10 @@ class ForgeAgentApiClient(Protocol):
 
         Used to populate the operator's repo-scope selection: the caller
         presents these and persists the chosen subset as the connection's
-        allowed repositories. ``limit`` bounds the page size.
+        allowed repositories. ``limit`` caps the TOTAL number of
+        repositories returned, so a truncated result is not the full
+        accessible set; how many requests it takes to reach that cap is an
+        implementation detail.
         """
         ...
 

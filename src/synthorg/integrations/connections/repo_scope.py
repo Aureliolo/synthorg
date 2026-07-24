@@ -9,8 +9,14 @@ repository, and a no-slash / multi-slash entry is not a valid identifier.
 
 from typing import Final
 
-# Characters that must never appear in a repo-scope segment.
-_SCOPE_FORBIDDEN: Final[frozenset[str]] = frozenset({"\\", "?", "#", "@", "%", " "})
+# Characters that must never appear in a repo-scope segment. ``[`` / ``]``
+# are here because the downstream check is ``fnmatch``: a character class
+# such as ``acme/[ab]`` carries no ``*``, so every other rule below passes
+# it, yet it expands to several repositories from one entry. The trailing
+# ``/*`` glob must stay the only way an entry widens.
+_SCOPE_FORBIDDEN: Final[frozenset[str]] = frozenset(
+    {"\\", "?", "#", "@", "%", " ", "[", "]"}
+)
 _SCOPE_CONTROL_THRESHOLD: Final[int] = 0x20
 # A scope entry is exactly ``owner/repo`` (owner + repo = two segments).
 _SCOPE_ENTRY_SEGMENTS: Final[int] = 2

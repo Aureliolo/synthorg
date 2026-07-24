@@ -319,11 +319,15 @@ async def _run_shutdown(  # noqa: PLR0913
         )
         tasks.webhook_cleanup_task = None
     if tasks.chat_inbound_consumer is not None:
+        # Draining budget, not the quick one: ``stop()`` shields its loop task
+        # for its own 10s so the Socket-Mode WebSocket closes gracefully. A 2s
+        # outer bound would cancel that on any ordinary shutdown and report a
+        # timeout for a consumer that was not hung at all.
         await _try_stop(
             tasks.chat_inbound_consumer.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop chat inbound consumer",
-            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            timeout=_DRAINING_SERVICE_STOP_SHUTDOWN_SECONDS,
             service="chat_inbound_consumer",
         )
         tasks.chat_inbound_consumer = None
