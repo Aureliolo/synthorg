@@ -23,6 +23,7 @@ from synthorg.api.mcp_gateway.controller import (
     _require_enabled,
     _resolve_actor,
     _resolve_deploy_settings,
+    _resolve_publish_settings,
 )
 from synthorg.api.state import AppState
 from synthorg.core.agent import (
@@ -158,14 +159,64 @@ async def test_resolve_deploy_settings_carries_the_kill_switch_off() -> None:
     assert settings.targets == frozenset()
 
 
+async def test_resolve_publish_settings_parses_the_bundle() -> None:
+    resolver = mock_of[ConfigResolver]()
+    resolver.get_bool.return_value = True
+    resolver.get_str.return_value = "prod-images"
+    resolver.get_float.return_value = 60.0
+    # Key the two byte caps distinctly so a cross-wired read would be caught.
+    caps = {
+        "publish_tools_max_manifest_bytes": 4_000_000,
+        "publish_tools_max_image_bytes": 2_000_000_000,
+    }
+    resolver.get_int.side_effect = lambda _ns, key: caps[key]
+    settings = await _resolve_publish_settings(cast("ConfigResolver", resolver))
+    assert settings.enabled is True
+    assert settings.targets == frozenset({"prod-images"})
+    assert settings.timeout_seconds == 60.0
+    assert settings.max_manifest_bytes == 4_000_000
+    assert settings.max_image_bytes == 2_000_000_000
+
+
 def _context_app_state(
-    *, deploy_enabled: bool, targets: str = "prod", registry: object | None = None
+    *,
+    deploy_enabled: bool,
+    publish_enabled: bool | None = None,
+    targets: str = "prod",
+    publish_targets: str = "prod-images",
+    registry: object | None = None,
 ) -> AppState:
     resolver = mock_of[ConfigResolver]()
-    resolver.get_bool.return_value = deploy_enabled
-    resolver.get_str.return_value = targets
-    resolver.get_float.return_value = 45.0
-    resolver.get_int.return_value = 10000
+    # Every setting is keyed so the context build cannot silently source a
+    # publish field from a deploy key (or vice versa) and pass unnoticed.
+    bools = {
+        "deploy_tools_enabled": deploy_enabled,
+        "publish_tools_enabled": deploy_enabled
+        if publish_enabled is None
+        else publish_enabled,
+    }
+    strs = {
+        "forge_tools_connection": "forge-conn",
+        "chat_tools_connection": "chat-conn",
+        "deploy_tools_targets": targets,
+        "publish_tools_targets": publish_targets,
+    }
+    floats = {
+        "forge_tools_timeout_seconds": 30.0,
+        "chat_tools_timeout_seconds": 30.0,
+        "deploy_tools_timeout_seconds": 45.0,
+        "publish_tools_timeout_seconds": 60.0,
+    }
+    ints = {
+        "forge_tools_max_read_chars": 5000,
+        "deploy_tools_max_log_chars": 10000,
+        "publish_tools_max_manifest_bytes": 4_000_000,
+        "publish_tools_max_image_bytes": 2_000_000_000,
+    }
+    resolver.get_bool.side_effect = lambda _ns, key: bools[key]
+    resolver.get_str.side_effect = lambda _ns, key: strs[key]
+    resolver.get_float.side_effect = lambda _ns, key: floats[key]
+    resolver.get_int.side_effect = lambda _ns, key: ints[key]
     return make_app_state(
         config_resolver=cast("ConfigResolver", resolver),
         connection_catalog=mock_of[ConnectionCatalog](),
@@ -179,24 +230,42 @@ class TestBuildContext:
     """The wiring that decides what a run's tools can see and reach."""
 
     async def test_deploy_settings_reach_the_tool_context(self) -> None:
-        ctx, enabled = await _build_context(
+        ctx, kill = await _build_context(
             _context_app_state(deploy_enabled=True, targets="prod, staging"),
             agent_id="agent-1",
             task_id="task-1",
         )
-        assert enabled is True
+        assert kill.deploy_enabled is True
         assert ctx.deploy_targets == frozenset({"prod", "staging"})
         assert ctx.deploy_timeout_seconds == 45.0
         assert ctx.deploy_max_log_chars == 10000
 
+    async def test_publish_settings_reach_the_tool_context(self) -> None:
+        ctx, kill = await _build_context(
+            _context_app_state(
+                deploy_enabled=True,
+                targets="prod, staging",
+                publish_targets="prod-images, staging-images",
+            ),
+            agent_id="agent-1",
+            task_id="task-1",
+        )
+        assert kill.publish_enabled is True
+        # Sourced from the publish keys, distinct from the deploy targets.
+        assert ctx.publish_targets == frozenset({"prod-images", "staging-images"})
+        assert ctx.deploy_targets == frozenset({"prod", "staging"})
+        assert ctx.publish_timeout_seconds == 60.0
+        assert ctx.workspace_root.is_dir()
+
     async def test_kill_switch_off_is_reported_to_the_caller(self) -> None:
         """The allowlist stays populated; only the switch denies the tools."""
-        ctx, enabled = await _build_context(
+        ctx, kill = await _build_context(
             _context_app_state(deploy_enabled=False),
             agent_id="agent-1",
             task_id="task-1",
         )
-        assert enabled is False
+        assert kill.deploy_enabled is False
+        assert kill.publish_enabled is False
         assert ctx.deploy_targets == frozenset({"prod"})
 
     async def test_actor_is_none_without_a_registry(self) -> None:

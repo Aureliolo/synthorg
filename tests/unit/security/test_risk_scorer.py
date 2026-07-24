@@ -192,6 +192,7 @@ class TestDefaultRiskScorer:
         scorer = DefaultRiskScorer()
         critical_types = [
             ActionType.DEPLOY_PRODUCTION,
+            ActionType.PUBLISH_PRODUCTION,
             ActionType.DB_ADMIN,
             ActionType.ORG_FIRE,
         ]
@@ -205,6 +206,7 @@ class TestDefaultRiskScorer:
         scorer = DefaultRiskScorer()
         high_types = [
             ActionType.DEPLOY_STAGING,
+            ActionType.PUBLISH_STAGING,
             ActionType.DB_MUTATE,
             ActionType.CODE_DELETE,
             ActionType.VCS_PUSH,

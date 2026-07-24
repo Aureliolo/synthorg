@@ -93,10 +93,17 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
             level=AutonomyLevel.SEMI,
             description=(
                 "Semi-autonomous -- code, test, docs, vcs auto-approved; "
-                "deploy, org, budget require human approval"
+                "deploy, publish, org, budget require human approval"
             ),
             auto_approve=("code", "test", "docs", "vcs", "comms:internal", "db:query"),
-            human_approval=("deploy", "org", "budget", "comms:external", "tool"),
+            human_approval=(
+                "deploy",
+                "publish",
+                "org",
+                "budget",
+                "comms:external",
+                "tool",
+            ),
             security_agent=True,
         ),
         AutonomyLevel.SUPERVISED: AutonomyPreset(
@@ -117,6 +124,7 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
                 "vcs:push",
                 "vcs:branch",
                 "deploy",
+                "publish",
                 "comms",
                 "budget",
                 "org",

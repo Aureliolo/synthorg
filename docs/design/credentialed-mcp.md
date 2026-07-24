@@ -2,7 +2,7 @@
 
 The credentialed-MCP server is a streamable-HTTP MCP endpoint mounted on
 the Litestar API app that exposes a scoped, governed subset of the
-credential-holding tools (forge / chat / deploy, with connections and
+credential-holding tools (forge / chat / deploy / publish, with connections and
 remote-git following the same pattern) to an embedded coding harness. It is the
 second governance boundary behind the embedded [OpenHands loop](openhands-loop.md);
 the first is the [LLM gateway](llm-gateway.md).
@@ -34,10 +34,14 @@ tuple, each carrying a capability tag:
 - **chat** (`chat:read` / `chat:write`): messages, directory.
 - **deploy** (`deploy:read` / `deploy:write`): `deploy_run` observes
   deployments (state, list, logs); `deploy_release` triggers one.
+- **publish** (`publish:read` / `publish:write`): `publish_inspect` lists tags
+  and reads a manifest's digest/media-type/size; `publish_push` publishes an
+  image to a tag.
 
 Each tool wraps the existing governed implementation
 (`tools/forge/forge_tools.py`, `tools/chat/chat_tools.py`,
-`tools/deploy/deploy_tools.py`) rather than re-implementing it.
+`tools/deploy/deploy_tools.py`, `tools/publish/publish_tools.py`) rather than
+re-implementing it.
 
 ### Risk classification
 
@@ -48,6 +52,7 @@ Not every write is destructive, and the distinction is load-bearing:
 | forge | repo, CI | issue, pull request | no |
 | chat | directory | messages | no |
 | deploy | `deploy_run` | `deploy_release` | **yes** |
+| publish | `publish_inspect` | `publish_push` | **yes** |
 
 Opening an issue adds something reversible. A release **replaces what is
 currently serving**, so `deploy_release` alone carries `_DESTRUCTIVE`, the
@@ -112,6 +117,68 @@ When a target is missing or half-configured the tools raise
 `DeploySetupRequiredError` naming what a person must supply, distinct from
 a plain not-found. That distinction is what lets the organisation *raise
 the need* with a human instead of reporting an opaque failure.
+
+## Publish family
+
+Publishing a container image is a different capability from a deploy: a
+registry push has no deploy status and no deploy logs, and push and run have
+different blast radii that real pipelines govern separately. The publish family
+mirrors the structure of the deploy family over the same host-side governance,
+so an organisation can push a built image under the same approval gate, action
+signature, SecOps screen, egress pin and SEC-1 fencing.
+
+`publish_push` is destructive: a push overwrites what a tag points at, so it
+carries `_DESTRUCTIVE`, the confirm + reason + actor guardrail, and a
+`publish:staging` / `publish:production` action type rather than the shared
+`comms:external`. `publish_inspect` stays a read (capability-scoped,
+SecOps-screened, egress-pinned, SEC-1 fenced) so an agent can verify the tags
+it just published without parking an approval.
+
+### Registry targets
+
+Like deploy, publish is **not** bound to one connection: an organisation
+publishes to several registries, so `target` is a per-call argument resolved
+against the operator's `publish_tools_targets` allowlist. An unlisted target is
+refused **before any credential is brokered**. Each target is one
+`ConnectionType.REGISTRY` connection whose `metadata` declares its provider
+preset, the bound repository, the release channel, and the default publish
+method. The channel (`staging` / `production`) lives on the record rather than
+in the arguments on purpose: it decides the action type, so an agent able to
+assert it could route a production push through a staging autonomy grant. An
+absent or unrecognised channel resolves to `production`, so a mislabelled target
+is over-gated rather than treated as throwaway.
+
+One generic OCI Distribution Spec v2 client speaks to every OCI-compliant
+registry (GHCR, Docker Hub, Quay, Harbor, GitLab, Artifact Registry); the auth
+differences are handled by the bearer-token challenge flow, not vendor
+branches. The client is pinned to the connection `base_url` with every path
+defined in code. The one place a request could otherwise leave that origin is
+the OCI token exchange (a registry names a `realm` to fetch a token from): the
+realm host is validated against the registry host plus an optional
+operator-declared `auth_host`, HTTPS only, so the brokered credential never
+reaches an unapproved host.
+
+### Publish methods
+
+The build happens outside this family (the forge CI capability, or the agent
+building in its own sandbox); the publish family then puts the image on the
+registry via a pluggable `PublishStrategy` selected per call or from the
+target's default (`auto` resolves from the inputs):
+
+- `workspace_push`: the agent built an OCI image layout in its run workspace;
+  the host-side tool reads it from the workspace mount (never through the MCP
+  command body, which the gateway caps at 4 MiB) and uploads its blobs +
+  manifest with brokered credentials. The layout is agent-controlled input, so
+  it is path-guarded against the workspace root, size-capped, and every blob is
+  verified against its declared digest before upload.
+- `digest_promote`: repoint the destination tag at an existing immutable source
+  digest already in the target repository (manifest read by digest, then PUT by
+  tag). No image bytes move; this is the "CI already pushed the blobs, now
+  promote the tag" route.
+
+A missing or half-configured registry raises `PublishSetupRequiredError` naming
+what a person must supply, distinct from a plain not-found, so the organisation
+can raise the need with a human.
 
 ## Scoping (per actor)
 
@@ -178,13 +245,16 @@ comma-separated default capability grant), and `credentialed_mcp_base_url`
 `/mcp`). It reuses the existing forge/chat connection, timeout, and
 read-limit settings, and the deploy family adds `deploy_tools_enabled`,
 `deploy_tools_targets`, `deploy_tools_timeout_seconds` and
-`deploy_tools_max_log_chars`.
+`deploy_tools_max_log_chars`. The publish family adds `publish_tools_enabled`,
+`publish_tools_targets`, `publish_tools_timeout_seconds`,
+`publish_tools_max_manifest_bytes` and `publish_tools_max_image_bytes`.
 
 Both the enable toggle and any *widening* of
 `credentialed_mcp_capabilities` (a broader grant, e.g. `"" -> "*"` or
 adding a `:write`) open a credentialed egress path, so they route through
 the confirm+reason+actor guardrail in `settings/write_governance.py`.
-`deploy_tools_enabled` and `deploy_tools_targets` are guarded the same
+`deploy_tools_enabled` and `deploy_tools_targets`, and likewise
+`publish_tools_enabled` and `publish_tools_targets`, are guarded the same
 way: adding a target does not merely widen a permission, it makes a real
 production destination reachable.
 
@@ -196,7 +266,8 @@ the gateway controller. The controller resolves its per-call context
 timeouts, security pre-check) from `app_state` at request time, so
 `tools.*` toggles take effect on the next request with no restart. All
 collaborators already exist on `app_state` (connection catalog via the
-integrations slice, `approval_store_of`, `app_state.clock`); no new state
+integrations slice, `approval_store_of`, `app_state.clock`, and
+`agent_workspace_root_of` for the publish workspace push); no new state
 slice is introduced.
 
 ## Convention gate

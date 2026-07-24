@@ -101,6 +101,14 @@ CHAT_TOOL_CONNECTION_FAILED: Final[str] = "tool.chat.connection_failed"
 DEPLOY_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.deploy.credential_failed"
 DEPLOY_TOOL_CONNECTION_FAILED: Final[str] = "tool.deploy.connection_failed"
 DEPLOY_TOOL_RELEASE_REQUESTED: Final[str] = "tool.deploy.release_requested"
+PUBLISH_TOOL_CREDENTIAL_FAILED: Final[str] = "tool.publish.credential_failed"
+PUBLISH_TOOL_CONNECTION_FAILED: Final[str] = "tool.publish.connection_failed"
+PUBLISH_TOOL_PUSH_REQUESTED: Final[str] = "tool.publish.push_requested"
+# A publish strategy rejected the agent-supplied image source (a bad digest,
+# an oversized layout, an unsupported shape): high-signal for an operator
+# auditing a failed or abusive push.
+PUBLISH_TOOL_SOURCE_INVALID: Final[str] = "tool.publish.source_invalid"
+PUBLISH_TOOL_PUBLISHED: Final[str] = "tool.publish.published"
 # Shared across every governed-connection family: a destructive call
 # rejected by the confirm+reason+actor guardrail before the approval gate.
 GOVERNED_TOOL_GUARDRAIL_REJECTED: Final[str] = "tool.governed.guardrail_rejected"

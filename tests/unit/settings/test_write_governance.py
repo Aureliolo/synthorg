@@ -276,6 +276,10 @@ async def test_mcp_sandbox_strengthening_or_unguarded_is_unguarded(
         ("deploy_tools_enabled", None, "true"),  # first write of on
         ("deploy_tools_targets", "prod", "prod,staging"),  # add a target
         ("deploy_tools_targets", None, "prod"),  # first target added
+        ("publish_tools_enabled", "false", "true"),  # enable publish
+        ("publish_tools_enabled", None, "true"),  # first write of on
+        ("publish_tools_targets", "prod", "prod,staging"),  # add a registry
+        ("publish_tools_targets", None, "prod"),  # first registry added
     ],
 )
 async def test_deploy_widening_without_confirmation_rejected(
@@ -295,6 +299,8 @@ async def test_deploy_widening_without_confirmation_rejected(
     [
         ("deploy_tools_enabled", "false", "true"),
         ("deploy_tools_targets", "prod", "prod,staging"),
+        ("publish_tools_enabled", "false", "true"),
+        ("publish_tools_targets", "prod", "prod,staging"),
     ],
 )
 async def test_deploy_widening_with_confirmation_allowed(
@@ -313,6 +319,8 @@ async def test_deploy_widening_with_confirmation_allowed(
         ("deploy_tools_enabled", "true", "false"),  # disabling = strengthen
         ("deploy_tools_targets", "prod,staging", "prod"),  # removing a target
         ("deploy_tools_targets", "prod", "prod"),  # unchanged = no widening
+        ("publish_tools_enabled", "true", "false"),  # disabling publish
+        ("publish_tools_targets", "prod,staging", "prod"),  # removing a registry
     ],
 )
 async def test_deploy_narrowing_or_disabling_is_unguarded(

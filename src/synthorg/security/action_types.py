@@ -27,6 +27,7 @@ class ActionTypeCategory(StrEnum):
     DOCS = "docs"
     VCS = "vcs"
     DEPLOY = "deploy"
+    PUBLISH = "publish"
     COMMS = "comms"
     BUDGET = "budget"
     ORG = "org"

@@ -294,6 +294,7 @@ export const CONNECTION_TYPE_VALUES = [
     'llm_provider',
     'tunnel',
     'deploy',
+    'registry',
 ] as const
 export type ConnectionType = (typeof CONNECTION_TYPE_VALUES)[number]
 

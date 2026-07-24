@@ -19,6 +19,11 @@ from synthorg.api.mcp_gateway.tools import CREDENTIALED_TOOLS, visible_tool_name
 _DEPLOY_TOOL_NAMES: Final[tuple[str, ...]] = tuple(
     tool.name for tool in CREDENTIALED_TOOLS if tool.capability.startswith("deploy:")
 )
+# The publish family, keyed off its own capability domain so a future publish
+# tool is gated by the kill switch automatically.
+_PUBLISH_TOOL_NAMES: Final[tuple[str, ...]] = tuple(
+    tool.name for tool in CREDENTIALED_TOOLS if tool.capability.startswith("publish:")
+)
 
 
 def deploy_denials(*, deploy_enabled: bool) -> tuple[str, ...]:
@@ -36,6 +41,23 @@ def deploy_denials(*, deploy_enabled: bool) -> tuple[str, ...]:
         An empty tuple when enabled; every deploy tool name when disabled.
     """
     return () if deploy_enabled else _DEPLOY_TOOL_NAMES
+
+
+def publish_denials(*, publish_enabled: bool) -> tuple[str, ...]:
+    """Return the publish tool names to deny when the family is disabled.
+
+    Mirrors :func:`deploy_denials`: ``publish_tools_enabled`` is a
+    defence-in-depth kill switch, so a disabled family denies every publish
+    tool from both discovery and dispatch regardless of the capability grant.
+
+    Args:
+        publish_enabled: Whether the publish tool family is enabled this
+            request.
+
+    Returns:
+        An empty tuple when enabled; every publish tool name when disabled.
+    """
+    return () if publish_enabled else _PUBLISH_TOOL_NAMES
 
 
 def tool_schemas(
@@ -73,4 +95,4 @@ def tool_schemas(
     ]
 
 
-__all__ = ["deploy_denials", "tool_schemas"]
+__all__ = ["deploy_denials", "publish_denials", "tool_schemas"]

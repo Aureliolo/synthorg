@@ -108,6 +108,20 @@ _CREDENTIALED_MCP_CAPABILITIES_KEY: Final[str] = "credentialed_mcp_capabilities"
 # capability or adding a target widens real blast radius, not just permission.
 _DEPLOY_TOOLS_ENABLED_KEY: Final[str] = "deploy_tools_enabled"
 _DEPLOY_TOOLS_TARGETS_KEY: Final[str] = "deploy_tools_targets"
+# Publish reaches an external registry that serves running images, so enabling
+# the capability or adding a target widens real blast radius, not just
+# permission.
+_PUBLISH_TOOLS_ENABLED_KEY: Final[str] = "publish_tools_enabled"
+_PUBLISH_TOOLS_TARGETS_KEY: Final[str] = "publish_tools_targets"
+# Each destructive, externally-reaching tool family guards its enable + target
+# keys identically, so they share the weakening check rather than repeating a
+# per-family branch that would grow with every new family.
+_TOOL_FAMILY_ENABLED_KEYS: Final[frozenset[str]] = frozenset(
+    {_DEPLOY_TOOLS_ENABLED_KEY, _PUBLISH_TOOLS_ENABLED_KEY}
+)
+_TOOL_FAMILY_TARGETS_KEYS: Final[frozenset[str]] = frozenset(
+    {_DEPLOY_TOOLS_TARGETS_KEY, _PUBLISH_TOOLS_TARGETS_KEY}
+)
 _MCP_SANDBOX_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
     {
         _MCP_SANDBOX_ENABLED_KEY,
@@ -117,6 +131,8 @@ _MCP_SANDBOX_GUARDED_KEYS: Final[frozenset[str]] = frozenset(
         _CREDENTIALED_MCP_CAPABILITIES_KEY,
         _DEPLOY_TOOLS_ENABLED_KEY,
         _DEPLOY_TOOLS_TARGETS_KEY,
+        _PUBLISH_TOOLS_ENABLED_KEY,
+        _PUBLISH_TOOLS_TARGETS_KEY,
     }
 )
 _MCP_SANDBOX_ENABLED_DEFAULT: Final[str] = "true"
@@ -182,13 +198,13 @@ def _is_mcp_sandbox_weakening(key: str, *, current: str | None, new: str) -> boo
         return currently_off and compare_ci(new, "true")
     if key == _CREDENTIALED_MCP_CAPABILITIES_KEY:
         return _is_capability_widening(current, new)
-    if key == _DEPLOY_TOOLS_ENABLED_KEY:
+    if key in _TOOL_FAMILY_ENABLED_KEYS:
         # Default is "false" (off); enabling exposes a destructive,
-        # externally-reaching capability.
+        # externally-reaching capability (a deploy release, a registry push).
         currently_off = current is None or not compare_ci(current, "true")
         return currently_off and compare_ci(new, "true")
-    if key == _DEPLOY_TOOLS_TARGETS_KEY:
-        # Adding a target makes a real deploy destination reachable. Reuses
+    if key in _TOOL_FAMILY_TARGETS_KEYS:
+        # Adding a target makes a real external destination reachable. Reuses
         # the capability-widening set difference: the shape (comma-separated
         # grant list, additions guarded, removals free) is identical.
         return _is_capability_widening(current, new)

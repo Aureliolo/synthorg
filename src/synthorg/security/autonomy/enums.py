@@ -50,6 +50,8 @@ class ActionType(StrEnum):
     VCS_BRANCH = "vcs:branch"
     DEPLOY_STAGING = "deploy:staging"
     DEPLOY_PRODUCTION = "deploy:production"
+    PUBLISH_STAGING = "publish:staging"
+    PUBLISH_PRODUCTION = "publish:production"
     COMMS_INTERNAL = "comms:internal"
     COMMS_EXTERNAL = "comms:external"
     BUDGET_SPEND = "budget:spend"

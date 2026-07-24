@@ -71,6 +71,12 @@ class ConnectionType(StrEnum):
     # the environment is read from here and never from an agent argument,
     # so naming a production target cannot dodge production gating.
     DEPLOY = "deploy"
+    # A container image registry a synthetic org publishes an image to. The
+    # record's ``metadata`` carries the registry provider preset, the bound
+    # repository, the release channel, and the default publish method. The
+    # channel is read from here and never from an agent argument, so naming a
+    # production registry target cannot dodge production gating.
+    REGISTRY = "registry"
 
 
 class AuthMethod(StrEnum):
