@@ -12252,10 +12252,7 @@ export type components = {
         };
         /** ManualSubtaskSpec */
         readonly ManualSubtaskSpec: {
-            /**
-             * @description Verifiable criteria that define done for this subtask
-             * @default []
-             */
+            /** @description Verifiable criteria that define done for this subtask */
             readonly acceptance_criteria: readonly string[];
             /**
              * @description Labels of subtasks this one depends on

@@ -8,6 +8,11 @@
 -- successor for this lineage, capping a runaway replan chain. A human replan
 -- resets it to 0: a human decision is not a runaway.
 
+-- Widen the status CHECK without a blocking full-table re-validation: ADD the
+-- new constraint NOT VALID (skips the up-front scan, taking only a brief lock),
+-- then VALIDATE it separately under a weaker SHARE UPDATE EXCLUSIVE lock that
+-- does not block concurrent writes. The widening only adds allowed values, so
+-- every existing row already satisfies it and VALIDATE cannot fail.
 ALTER TABLE plans DROP CONSTRAINT plans_status_check;
 ALTER TABLE plans
 ADD CONSTRAINT plans_status_check
@@ -15,7 +20,8 @@ CHECK (status IN (
     'planning', 'draft', 'pending_review', 'approved', 'executing',
     'integrating', 'evaluating', 'completed', 'rejected', 'superseded',
     'failed'
-));
+)) NOT VALID;
+ALTER TABLE plans VALIDATE CONSTRAINT plans_status_check;
 
 ALTER TABLE plans
 ADD COLUMN replan_generation INTEGER NOT NULL DEFAULT 0

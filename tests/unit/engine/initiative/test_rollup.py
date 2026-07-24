@@ -29,7 +29,15 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult, TaskStateChanged
 from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.protocol import PersistenceBackend
-from tests._shared import FakeClock, as_uuid, mock_of, sid
+from tests._shared import (
+    FakeClock,
+    as_uuid,
+    mock_of,
+    sid,
+)
+from tests._shared import (
+    RecordingReplanTrigger as _RecordingReplanTrigger,
+)
 from tests.unit.api.fakes_backend import FakePersistenceBackend
 
 pytestmark = pytest.mark.unit
@@ -143,28 +151,6 @@ class _RecordingRetroCapture:
     def schedule(self, *, plan: Plan, project: Project) -> None:
         del plan
         self.fired.append(str(project.id))
-
-    async def drain(self, *, timeout_sec: float) -> None:
-        self.drained.append(timeout_sec)
-
-
-class _RecordingReplanTrigger:
-    """A replan trigger that records the stalls it was fired for."""
-
-    def __init__(self) -> None:
-        self.fired: list[tuple[str, StallReason]] = []
-        self.details: list[str | None] = []
-        self.drained: list[float] = []
-
-    def schedule(
-        self,
-        *,
-        plan: Plan,
-        reason: StallReason,
-        detail: str | None = None,
-    ) -> None:
-        self.fired.append((str(plan.id), reason))
-        self.details.append(detail)
 
     async def drain(self, *, timeout_sec: float) -> None:
         self.drained.append(timeout_sec)

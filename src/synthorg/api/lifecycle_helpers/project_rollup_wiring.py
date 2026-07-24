@@ -61,9 +61,6 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
             build_replan_trigger,
         )
         from synthorg.api.services.plan_service import PlanService  # noqa: PLC0415
-        from synthorg.engine.initiative.rollup import (  # noqa: PLC0415
-            ProjectRollupService,
-        )
 
         plan_writer = PlanService(repo=persistence.plans, clock=app_state.clock)
         replan_trigger = build_replan_trigger(app_state, persistence)

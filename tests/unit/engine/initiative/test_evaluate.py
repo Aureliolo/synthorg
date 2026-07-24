@@ -29,7 +29,15 @@ from synthorg.engine.initiative.evaluate_models import (
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import FakeClock, as_uuid, mock_of, sid
+from tests._shared import (
+    FakeClock,
+    as_uuid,
+    mock_of,
+    sid,
+)
+from tests._shared import (
+    RecordingReplanTrigger as _RecordingReplanTrigger,
+)
 from tests.unit.api.fakes_backend import FakePersistenceBackend
 
 pytestmark = pytest.mark.unit
@@ -38,27 +46,6 @@ _LEAD_ID = as_uuid("evaluate-lead")
 _PLAN_ID = "evaluate-plan"
 _PROJECT = "evaluate-proj"
 _CRITERIA = (NotBlankStr("the game is playable"),)
-
-
-class _RecordingReplanTrigger:
-    """A replan trigger that records the gaps it was fired for."""
-
-    def __init__(self) -> None:
-        self.fired: list[tuple[str, StallReason]] = []
-        self.details: list[str | None] = []
-
-    def schedule(
-        self,
-        *,
-        plan: Plan,
-        reason: StallReason,
-        detail: str | None = None,
-    ) -> None:
-        self.fired.append((str(plan.id), reason))
-        self.details.append(detail)
-
-    async def drain(self, *, timeout_sec: float) -> None:
-        del timeout_sec
 
 
 class _RecordingReconcile:
@@ -154,10 +141,14 @@ async def _seed(  # noqa: PLR0913 -- keyword-only collaborator injection
     if project is not None:
         await backend.projects.save(project)
     clock = FakeClock()
+
+    def selector(_identity: AgentIdentity) -> CompletionProvider:
+        return provider  # type: ignore[return-value]
+
     service = EvaluationStageService(
         persistence=backend,
         agent_registry=mock_of[AgentRegistryService](get=AsyncMock(return_value=lead)),
-        provider_selector=lambda _identity: provider,  # type: ignore[arg-type, return-value]
+        provider_selector=selector,
         default_provider=provider,
         plan_status_writer=PlanService(repo=backend.plans, clock=clock),
         replan_trigger=replan_trigger,

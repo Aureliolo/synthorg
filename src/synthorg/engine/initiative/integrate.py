@@ -190,6 +190,13 @@ class IntegrationStageService:
                 reason="objective_task_missing",
             )
             return
+        # Idempotency rests on the deterministic ``integration_task_id`` plus
+        # this get-then-resume: a redelivered observer event finds the minted
+        # row and re-hands it rather than dispatching a second job. This is
+        # sufficient because a single in-process ``TaskEngine`` owns the plan's
+        # writes; there is no second concurrent writer of this row to race the
+        # insert against. A move to a multi-writer, shared-database topology
+        # would need an atomic insert-only claim here instead.
         existing = await self._persistence.tasks.get(
             integration_task_id(fresh, attempt)
         )

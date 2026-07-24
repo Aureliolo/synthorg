@@ -599,6 +599,7 @@ class ProjectRollupService:
             the write stayed contended for the whole retry budget.
         """
         current = plan
+        explicit_target = target
         for attempt in range(1, MAX_WRITE_ATTEMPTS + 1):
             try:
                 return await self._walk_plan_to(current, target)
@@ -622,8 +623,19 @@ class ProjectRollupService:
                     # The winner finished the plan; its state is authoritative
                     # and the project reconcile below runs against it.
                     return refreshed
-                items = await collect_item_progress(self._persistence, refreshed)
-                target = derive_plan_status(items, current=refreshed.status)
+                if (
+                    explicit_target is PlanStatus.EVALUATING
+                    and refreshed.status is PlanStatus.INTEGRATING
+                ):
+                    # ``derive_plan_status`` never emits EVALUATING, so
+                    # re-deriving here would collapse an explicit
+                    # INTEGRATING -> EVALUATING write back to INTEGRATING and
+                    # skip the evaluate stage. The winner left the plan at
+                    # INTEGRATING, so the caller's tail target is still legal.
+                    target = PlanStatus.EVALUATING
+                else:
+                    items = await collect_item_progress(self._persistence, refreshed)
+                    target = derive_plan_status(items, current=refreshed.status)
                 if target is refreshed.status:
                     return refreshed
                 current = refreshed

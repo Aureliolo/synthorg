@@ -542,8 +542,8 @@
     },
     "src/synthorg/engine/initiative/rollup.py": {
       "cap": 600,
-      "loc": 582,
-      "ratio": 0.97,
+      "loc": 589,
+      "ratio": 0.982,
       "tier": "service"
     },
     "src/synthorg/engine/loop_helpers.py": {
@@ -1705,7 +1705,7 @@
     "synthorg.meta.toolsmith.models": 21,
     "synthorg.notifications.dispatcher": 23,
     "synthorg.notifications.models": 24,
-    "synthorg.observability": 1934,
+    "synthorg.observability": 1935,
     "synthorg.observability.background_tasks": 30,
     "synthorg.observability.events.api": 234,
     "synthorg.observability.events.approval_gate": 27,
@@ -1832,7 +1832,7 @@
     },
     "synthorg.engine.initiative.rollup:ProjectRollupService": {
       "lcom4": 1,
-      "loc": 475
+      "loc": 482
     },
     "synthorg.engine.pipeline.service:DefaultWorkPipeline": {
       "lcom4": 1,

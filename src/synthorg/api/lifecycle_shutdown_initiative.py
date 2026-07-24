@@ -21,14 +21,21 @@ Extracted from the shutdown runner so that runner stays a readable teardown
 order rather than a list of per-tail drain blocks.
 """
 
+import asyncio
 from collections.abc import Callable, Coroutine
 from typing import Final
 
 from synthorg.api.lifecycle import _try_stop
 from synthorg.api.state import AppState
-from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
+from synthorg.core.lifecycle_constants import (
+    DEFAULT_DRAIN_TIMEOUT_SECONDS,
+    INITIATIVE_TAIL_TOTAL_DRAIN_BUDGET_SECONDS,
+)
 from synthorg.engine.initiative.rollup import ProjectRollupService
+from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_SHUTDOWN
+
+logger = get_logger(__name__)
 
 #: Outer backstop past each drain's own internal deadline, so the inner
 #: mechanism (which logs its pending count) always fires first.
@@ -89,12 +96,27 @@ async def drain_initiative_tails(app_state: AppState) -> None:
     rollup = app_state.slice(EngineStateSlice).project_rollup_service
     if rollup is None:
         return
-    for _pass in range(_DRAIN_PASSES):
-        for factory, message, service in _drain_plan(rollup):
-            await _try_stop(
-                factory(),
-                API_APP_SHUTDOWN,
-                message,
-                timeout=DEFAULT_DRAIN_TIMEOUT_SECONDS + _GRACE_SECONDS,
-                service=service,
-            )
+    # The tails drain in series over two passes; an overall deadline caps the
+    # whole sequence so a run of slow tails cannot cumulatively overrun the
+    # server's graceful-shutdown window, even though each drain is also bounded
+    # on its own. Abandoning here is the intended best-effort shutdown outcome.
+    try:
+        async with asyncio.timeout(INITIATIVE_TAIL_TOTAL_DRAIN_BUDGET_SECONDS):
+            for _pass in range(_DRAIN_PASSES):
+                for factory, message, service in _drain_plan(rollup):
+                    await _try_stop(
+                        factory(),
+                        API_APP_SHUTDOWN,
+                        message,
+                        timeout=DEFAULT_DRAIN_TIMEOUT_SECONDS + _GRACE_SECONDS,
+                        service=service,
+                    )
+    except TimeoutError:
+        logger.warning(
+            API_APP_SHUTDOWN,
+            service="initiative_tail_drain",
+            note=(
+                "overall initiative-tail drain budget exhausted; abandoning "
+                "remaining drains to stay within the graceful-shutdown window"
+            ),
+        )

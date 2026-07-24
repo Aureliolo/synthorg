@@ -145,17 +145,25 @@ async def replan_initiative(
     # ``except Exception`` handler: the successor would survive with the
     # predecessor never superseded, which is the two-live-plans state this
     # ordering exists to prevent.
-    try:
-        await asyncio.shield(
-            _retire_predecessor(
-                app_state,
-                service,
-                existing,
-                successor,
-                requested_by=requested_by,
-            )
+    retire = asyncio.ensure_future(
+        _retire_predecessor(
+            app_state,
+            service,
+            existing,
+            successor,
+            requested_by=requested_by,
         )
+    )
+    try:
+        await asyncio.shield(retire)
     except BaseException:
+        # The shield let *retire* keep running after our cancellation. Wait
+        # for it to settle before compensating so the retire write cannot
+        # overlap the rollback write on the same rows (a late repoint landing
+        # after the successor is deleted would strand ``project.plan_id``).
+        # ``asyncio.wait`` does not cancel the task; shielding it stops our own
+        # cancellation from skipping the wait.
+        await asyncio.shield(asyncio.wait({retire}))
         await asyncio.shield(_rollback_successor(app_state, existing, successor))
         raise
     await _cancel_retired_work(app_state, existing, requested_by=requested_by)

@@ -110,7 +110,10 @@ class StageRunner:
             # observer and is contracted never to raise into it
             reraise_critical(exc)
             self._inflight.discard(key)
+            # ``bounded`` never started, so it never reached ``await work``;
+            # close both so the inner work coroutine is not left un-awaited.
             bounded.close()
+            work.close()
             logger.warning(
                 self._failed_event,
                 reason="spawn_failed",

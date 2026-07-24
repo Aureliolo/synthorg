@@ -143,12 +143,18 @@ class TestLifecycleCoverage:
 class TestTransitionPath:
     """Multi-hop pathing used to advance a plan to a rolled-up status."""
 
-    def test_path_from_approved_to_completed_routes_through_the_tail(self) -> None:
-        assert transition_path(PlanStatus.APPROVED, PlanStatus.COMPLETED) == (
+    def test_completed_is_never_a_walked_target(self) -> None:
+        """Delivery is the evaluate stage's verdict, not a generic hop; a
+        caller cannot walk APPROVED through the tail to COMPLETED."""
+        assert transition_path(PlanStatus.APPROVED, PlanStatus.COMPLETED) is None
+        assert transition_path(PlanStatus.EVALUATING, PlanStatus.COMPLETED) is None
+
+    def test_path_to_the_tail_still_routes(self) -> None:
+        """The intermediate tail hops the rollup relies on are unaffected."""
+        assert transition_path(PlanStatus.APPROVED, PlanStatus.EVALUATING) == (
             PlanStatus.EXECUTING,
             PlanStatus.INTEGRATING,
             PlanStatus.EVALUATING,
-            PlanStatus.COMPLETED,
         )
 
     def test_path_to_same_status_is_empty(self) -> None:

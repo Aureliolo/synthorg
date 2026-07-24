@@ -23,7 +23,15 @@ from synthorg.engine.initiative.completion import StallReason
 from synthorg.engine.initiative.evaluate import EvaluationStageService
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.protocol import CompletionProvider
-from tests._shared import FakeClock, as_uuid, mock_of, sid
+from tests._shared import (
+    FakeClock,
+    as_uuid,
+    mock_of,
+    sid,
+)
+from tests._shared import (
+    RecordingReplanTrigger as _RecordingReplanTrigger,
+)
 from tests._shared.scripted_provider import (
     ScriptedProvider,
     build_tool_call_response,
@@ -37,27 +45,6 @@ _LEAD_ID = as_uuid("evaluate-lead")
 _PLAN_ID = "evaluate-plan"
 _PROJECT = "evaluate-proj"
 _CRITERIA = (NotBlankStr("the game is playable"), NotBlankStr("it saves scores"))
-
-
-class _RecordingReplanTrigger:
-    """A replan trigger that records the gaps it was fired for."""
-
-    def __init__(self) -> None:
-        self.fired: list[tuple[str, StallReason]] = []
-        self.details: list[str | None] = []
-
-    def schedule(
-        self,
-        *,
-        plan: Plan,
-        reason: StallReason,
-        detail: str | None = None,
-    ) -> None:
-        self.fired.append((str(plan.id), reason))
-        self.details.append(detail)
-
-    async def drain(self, *, timeout_sec: float) -> None:
-        del timeout_sec
 
 
 def _lead() -> AgentIdentity:

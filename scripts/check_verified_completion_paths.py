@@ -183,9 +183,14 @@ def _check_derivation_never_completes(root: Path) -> list[str]:
     parsed = _read(root, rel)
     if parsed is None:
         return [f"{rel}: unreadable; the derivation invariant is unchecked"]
+    seen = False
     for node in ast.walk(parsed[1]):
-        if not isinstance(node, ast.FunctionDef) or node.name != "derive_plan_status":
+        if (
+            not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            or node.name != "derive_plan_status"
+        ):
             continue
+        seen = True
         for inner in ast.walk(node):
             if (
                 isinstance(inner, ast.Attribute)
@@ -199,6 +204,12 @@ def _check_derivation_never_completes(root: Path) -> list[str]:
                     "derives, so a COMPLETED branch here is a second delivery "
                     "path that skips the evaluate stage's verdict."
                 ]
+    if not seen:
+        return [
+            f"{rel}: derive_plan_status not found; the derivation invariant is "
+            "unchecked. Point the gate at its new home rather than leaving it "
+            "silently satisfied."
+        ]
     return []
 
 
@@ -239,8 +250,9 @@ def _check_plan_completion_writers(root: Path) -> list[str]:
                 for arg in arguments
             ):
                 continue
-            line = lines[node.lineno - 1] if node.lineno <= len(lines) else ""
-            if _SUPPRESSION_RE.search(line):
+            end = node.end_lineno or node.lineno
+            span = "\n".join(lines[node.lineno - 1 : min(end, len(lines))])
+            if _SUPPRESSION_RE.search(span):
                 continue
             messages.append(
                 f"{rel}:{node.lineno}: writes PlanStatus.COMPLETED through "

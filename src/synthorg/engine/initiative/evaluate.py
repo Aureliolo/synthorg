@@ -165,6 +165,15 @@ class EvaluationStageService:
         # EVALUATING schedules one, and each is a paid LLM session, so a plan
         # whose verdict never lands must stop costing money rather than
         # re-judging on every passing task event.
+        #
+        # Deliberately per-process, not persisted. The runaway this guards is a
+        # tight re-judge loop within one lifetime; a restart (or a genuine
+        # rework that reopens the plan through the regression edge and lands it
+        # back at EVALUATING) is a natural reset point that a persisted
+        # monotonic counter would instead starve of any fresh judgement. Spend
+        # is bounded regardless by the per-session cost ceiling, and an
+        # exhausted plan parks fail-closed at EVALUATING for a human rather than
+        # completing on a missing verdict.
         self._attempts: dict[str, int] = {}
 
     def schedule(self, *, plan: Plan) -> None:

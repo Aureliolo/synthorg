@@ -117,7 +117,7 @@ class ManualSubtaskSpec(BaseModel):
         description="Deliverables this subtask must produce (at least one)",
     )
     acceptance_criteria: tuple[NotBlankStr, ...] = Field(
-        default=(),
+        min_length=1,
         max_length=_MAX_CRITERIA_PER_SUBTASK,
         description="Verifiable criteria that define done for this subtask",
     )

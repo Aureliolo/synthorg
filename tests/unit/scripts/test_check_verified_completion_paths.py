@@ -69,6 +69,14 @@ VALID_TRANSITIONS: dict[ProjectStatus, frozenset[ProjectStatus]] = {
 }
 """
 
+_CLEAN_PLAN_TRANSITIONS_UNANNOTATED = """
+VALID_TRANSITIONS = {
+    PlanStatus.EXECUTING: frozenset({PlanStatus.INTEGRATING}),
+    PlanStatus.INTEGRATING: frozenset({PlanStatus.EVALUATING}),
+    PlanStatus.EVALUATING: frozenset({PlanStatus.COMPLETED}),
+}
+"""
+
 _CLEAN_DERIVATION = """
 def derive_plan_status(items, *, current):
     return PlanStatus.INTEGRATING
@@ -178,6 +186,16 @@ class TestStateMachines:
 
         assert any("unreadable" in m for m in messages)
 
+    def test_an_unannotated_table_is_read(self, repo: Path) -> None:
+        """A bare ``VALID_TRANSITIONS = {...}`` (no annotation) still parses."""
+        _write(
+            repo,
+            "src/synthorg/core/plan_transitions.py",
+            _CLEAN_PLAN_TRANSITIONS_UNANNOTATED,
+        )
+
+        assert _check_state_machines(repo) == []
+
 
 class TestDerivation:
     """The rollup's derivation cannot produce delivery."""
@@ -198,6 +216,31 @@ class TestDerivation:
         messages = _check_derivation_never_completes(repo)
 
         assert any("second delivery path" in m for m in messages)
+
+    def test_an_async_completed_branch_is_caught(self, repo: Path) -> None:
+        """A renamed-to-async derivation is scanned like a sync one."""
+        _write(
+            repo,
+            "src/synthorg/engine/initiative/completion.py",
+            "async def derive_plan_status(items, *, current):\n"
+            "    return PlanStatus.COMPLETED\n",
+        )
+
+        messages = _check_derivation_never_completes(repo)
+
+        assert any("second delivery path" in m for m in messages)
+
+    def test_a_missing_derivation_is_caught(self, repo: Path) -> None:
+        """A removed or renamed derivation disarms the invariant, so it fails."""
+        _write(
+            repo,
+            "src/synthorg/engine/initiative/completion.py",
+            "def summarise_progress(items):\n    return items\n",
+        )
+
+        messages = _check_derivation_never_completes(repo)
+
+        assert any("not found" in m for m in messages)
 
 
 class TestCompletionWriters:
@@ -232,6 +275,18 @@ class TestCompletionWriters:
             "src/synthorg/engine/initiative/sneaky.py",
             "await writer.sync_status(plan, PlanStatus.COMPLETED)"
             "  # lint-allow: verified-completion -- a stated reason\n",
+        )
+
+        assert _check_plan_completion_writers(repo) == []
+
+    def test_a_multiline_justified_opt_out_is_honoured(self, repo: Path) -> None:
+        """The docstring sanctions a marker on the call's closing-paren line."""
+        _write(
+            repo,
+            "src/synthorg/engine/initiative/sneaky.py",
+            "await writer.sync_status(\n"
+            "    plan, PlanStatus.COMPLETED\n"
+            ")  # lint-allow: verified-completion -- a stated reason\n",
         )
 
         assert _check_plan_completion_writers(repo) == []

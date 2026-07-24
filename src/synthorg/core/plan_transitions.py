@@ -130,6 +130,9 @@ def transition_path(
         ``()`` when already at *target*; a tuple of intermediate statuses
         ending in *target* (each hop individually valid) when a lifecycle path
         exists; or ``None`` when *target* is unreachable from *current* (e.g.
-        *current* is terminal).
+        *current* is terminal) or is COMPLETED (delivery is the evaluate
+        stage's verdict, never a walked hop).
     """
+    if target is PlanStatus.COMPLETED:
+        return None
     return _MACHINE.path_to(current, target)
