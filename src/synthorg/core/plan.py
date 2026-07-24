@@ -89,6 +89,46 @@ def validate_decision_options(
         raise ValueError(msg)
 
 
+def validate_expected_artifacts(
+    *,
+    entity_id: str,
+    kind: PlanItemKind,
+    expected_artifacts: tuple[NotBlankStr, ...],
+) -> None:
+    """Enforce that a WORK unit declares a deliverable and a DECISION does not.
+
+    The two fail-loud zero-artifact guards (the loop's ``NO_OP``
+    reclassification and the post-execution transition) both key off the
+    dispatched task's ``artifacts_expected``, so a WORK unit declaring none
+    disarms both and a chat-text-only run reaches review as a silent success.
+    Requiring one deliverable per WORK unit arms them structurally, mirroring
+    the non-empty ``acceptance_criteria`` invariant beside it.
+
+    A ``DECISION`` never dispatches, so a deliverable on one means the unit was
+    typed wrong: the coverage map would expect an artifact no task will produce.
+
+    Args:
+        entity_id: Identifier of the plan item / subtask, for the message.
+        kind: Whether the unit is executed work or a recorded decision.
+        expected_artifacts: The declared deliverables.
+
+    Raises:
+        ValueError: When a WORK unit declares no deliverable, or a DECISION
+            declares one.
+    """
+    if kind is PlanItemKind.WORK:
+        if not expected_artifacts:
+            msg = (
+                f"{entity_id!r} is WORK and must declare at least one expected "
+                "artifact, so the zero-artifact guard engages when it runs"
+            )
+            raise ValueError(msg)
+        return
+    if expected_artifacts:
+        msg = f"{entity_id!r} is a DECISION and declares expected artifacts"
+        raise ValueError(msg)
+
+
 class PlanItem(BaseModel):
     """A single unit of work within a plan: reviewable, ownable, verifiable.
 
@@ -99,8 +139,9 @@ class PlanItem(BaseModel):
         dependencies: IDs of items this one depends on (the plan DAG).
         owner: Role or agent that owns this item, or ``None`` when unassigned.
         acceptance_criteria: Per-item criteria that define "done" for it.
-        expected_artifacts: Deliverables this item must produce (feeds the
-            fail-loud zero-artifact guard once the item runs).
+        expected_artifacts: Deliverables this item must produce; non-empty for
+            a WORK item (it arms the fail-loud zero-artifact guard once the
+            item runs) and empty for a DECISION, which never dispatches.
         required_skills: Skill IDs the routing scorer matches against.
         required_tags: Tags for multi-faceted routing match.
         estimated_complexity: Complexity estimate for routing.
@@ -126,7 +167,7 @@ class PlanItem(BaseModel):
     )
     expected_artifacts: tuple[NotBlankStr, ...] = Field(
         default=(),
-        description="Deliverables this item must produce",
+        description="Deliverables this item must produce (non-empty for WORK)",
     )
     required_skills: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -175,12 +216,14 @@ class PlanItem(BaseModel):
         Dependencies must be unique and must not include the item itself.
 
         Returns:
-            ``self`` unchanged when the id is a canonical UUID and the
-            dependency list is free of self-references and duplicates.
+            ``self`` unchanged when the id is a canonical UUID, the dependency
+            list is free of self-references and duplicates, and the option /
+            deliverable shape matches the item kind.
 
         Raises:
             ValueError: When the id is not a canonical UUID, the item depends
-                on itself, or a dependency is listed more than once.
+                on itself, a dependency is listed more than once, or the
+                option / expected-artifact shape contradicts the kind.
         """
         try:
             canonical = str(UUID(self.id))
@@ -198,6 +241,11 @@ class PlanItem(BaseModel):
             msg = f"Plan item {self.id!r} has duplicate dependencies: {dupes}"
             raise ValueError(msg)
         self._validate_decision()
+        validate_expected_artifacts(
+            entity_id=self.id,
+            kind=self.kind,
+            expected_artifacts=self.expected_artifacts,
+        )
         return self
 
     def _validate_decision(self) -> None:
@@ -286,6 +334,7 @@ class Plan(BaseModel):
         open_questions: Unresolved questions the owner surfaced for the human.
         assumptions: Assumptions the plan rests on.
         version_history: Snapshots of prior submitted versions, for diffing.
+        replan_generation: How many auto-replans deep this plan's lineage is.
         version: Revision number, bumped on each operator edit / re-plan.
         created_at: Creation timestamp (tz-aware UTC).
         updated_at: Last-revision timestamp (tz-aware UTC).
@@ -346,6 +395,12 @@ class Plan(BaseModel):
         max_length=MAX_PLAN_VERSION_HISTORY,
         description="Snapshots of prior submitted versions, for diffing "
         f"(oldest dropped past {MAX_PLAN_VERSION_HISTORY})",
+    )
+    replan_generation: int = Field(
+        default=0,
+        ge=0,
+        description="How many auto-replans deep this plan's lineage is; a human "
+        "replan resets it, so only an unattended chain is capped",
     )
     version: int = Field(
         default=1,

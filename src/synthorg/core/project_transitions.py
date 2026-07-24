@@ -4,10 +4,18 @@
 Defines the valid state transitions for an initiative::
 
     PLANNING -> ACTIVE | CANCELLED
-    ACTIVE -> COMPLETED | ON_HOLD | CANCELLED
+    ACTIVE -> INTEGRATING | ON_HOLD | CANCELLED
+    INTEGRATING -> EVALUATING | ACTIVE | ON_HOLD | CANCELLED
+    EVALUATING -> COMPLETED | ACTIVE | ON_HOLD | CANCELLED
     ON_HOLD -> ACTIVE | CANCELLED
 
 COMPLETED and CANCELLED are terminal.
+
+An initiative reaches COMPLETED only from EVALUATING, mirroring its plan: work
+that was individually verified has not been shown to assemble into a working
+whole, so the integrate and evaluate stages sit between building and delivery
+rather than being skippable. The back-edges to ACTIVE carry a regression,
+where a tail stage sends items back for rework.
 
 There is deliberately no failure status. Nothing downstream can honestly derive
 that an initiative is dead: a completion-oracle REJECT routes a task back to
@@ -19,7 +27,9 @@ the project's progress view rather than as a lifecycle state.
 
 ON_HOLD has no direct hop to COMPLETED: an operator who paused an initiative
 must resume it before the rollup can finish it, so work cannot complete out
-from under a deliberate hold.
+from under a deliberate hold. Resuming returns to ACTIVE, from which the tail
+is re-derived, rather than dropping the operator back into a half-finished
+stage whose gate has already run.
 """
 
 from typing import Final
@@ -35,7 +45,23 @@ VALID_TRANSITIONS: dict[ProjectStatus, frozenset[ProjectStatus]] = {
     ProjectStatus.PLANNING: frozenset({ProjectStatus.ACTIVE, ProjectStatus.CANCELLED}),
     ProjectStatus.ACTIVE: frozenset(
         {
+            ProjectStatus.INTEGRATING,
+            ProjectStatus.ON_HOLD,
+            ProjectStatus.CANCELLED,
+        }
+    ),
+    ProjectStatus.INTEGRATING: frozenset(
+        {
+            ProjectStatus.EVALUATING,
+            ProjectStatus.ACTIVE,
+            ProjectStatus.ON_HOLD,
+            ProjectStatus.CANCELLED,
+        }
+    ),
+    ProjectStatus.EVALUATING: frozenset(
+        {
             ProjectStatus.COMPLETED,
+            ProjectStatus.ACTIVE,
             ProjectStatus.ON_HOLD,
             ProjectStatus.CANCELLED,
         }

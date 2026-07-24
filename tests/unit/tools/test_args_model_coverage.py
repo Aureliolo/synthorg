@@ -56,6 +56,10 @@ _ALLOWLIST: frozenset[str] = frozenset(
         # A typed args model would reject the retry-friendly partial submissions
         # the parser accepts and lets the lead correct and resubmit.
         "synthorg.engine.initiative.retro_session.SubmitRetrospectiveTool",
+        # Terminal submit tool for the evaluate stage, for the same reason: its
+        # parser rejects an incomplete verdict back into the session with the
+        # specific gap named, which a schema-level rejection could not do.
+        "synthorg.engine.initiative.evaluate_session.SubmitEvaluationTool",
     }
 )
 

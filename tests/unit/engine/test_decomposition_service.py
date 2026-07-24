@@ -47,6 +47,7 @@ def _make_plan(
                 title="Setup",
                 description="Initialize environment",
                 required_skills=("python",),
+                expected_artifacts=("src/setup.py",),
             ),
             SubtaskDefinition(
                 id=sid("sub-2"),
@@ -54,6 +55,7 @@ def _make_plan(
                 description="Build the feature",
                 dependencies=(sid("sub-1"),),
                 required_skills=("python", "sql"),
+                expected_artifacts=("src/feature.py",),
             ),
             SubtaskDefinition(
                 id=sid("sub-3"),
@@ -61,6 +63,7 @@ def _make_plan(
                 description="Write tests",
                 dependencies=(sid("sub-2"),),
                 required_skills=("python", "testing"),
+                expected_artifacts=("tests/test_feature.py",),
             ),
         ),
     )
@@ -144,6 +147,7 @@ class TestDecompositionService:
                     id="plain-label",
                     title="Child",
                     description="Child task",
+                    expected_artifacts=("src/child.py",),
                 ),
             ),
         )
@@ -171,6 +175,7 @@ class TestDecompositionService:
                     id=non_canonical,
                     title="Child",
                     description="Child task",
+                    expected_artifacts=("src/child.py",),
                 ),
             ),
         )
@@ -214,7 +219,10 @@ class TestDecompositionService:
             parent_task_id=str(task.id),
             subtasks=(
                 SubtaskDefinition(
-                    id=sid("sub-1"), title="Child", description="Child task"
+                    id=sid("sub-1"),
+                    title="Child",
+                    description="Child task",
+                    expected_artifacts=("src/child.py",),
                 ),
             ),
         )
@@ -264,7 +272,12 @@ class TestDecompositionService:
         plan = DecompositionPlan(
             parent_task_id=str(task.id),
             subtasks=(
-                SubtaskDefinition(id=sid("sub-1"), title="A", description="Desc A"),
+                SubtaskDefinition(
+                    id=sid("sub-1"),
+                    title="A",
+                    description="Desc A",
+                    expected_artifacts=("src/a.py",),
+                ),
             ),
             task_structure=TaskStructure.PARALLEL,
         )
@@ -292,12 +305,14 @@ class TestDecompositionService:
                     title="A",
                     description="Desc A",
                     dependencies=(sid("sub-2"),),
+                    expected_artifacts=("src/a.py",),
                 ),
                 SubtaskDefinition(
                     id=sid("sub-2"),
                     title="B",
                     description="Desc B",
                     dependencies=(sid("sub-1"),),
+                    expected_artifacts=("src/b.py",),
                 ),
             ),
         )
@@ -332,6 +347,7 @@ class TestDecompositionService:
                     title="Simple Child",
                     description="Simple subtask",
                     estimated_complexity=Complexity.SIMPLE,
+                    expected_artifacts=("src/simple.py",),
                 ),
             ),
         )

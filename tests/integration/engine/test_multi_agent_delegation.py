@@ -10,6 +10,8 @@ Validates the full multi-agent pipeline end-to-end:
 
 from collections.abc import AsyncIterator, Mapping
 from datetime import date
+from typing import override
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -28,6 +30,8 @@ from synthorg.core.company import Company, CompanyConfig
 from synthorg.core.company_departments import Department, Team
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.delegation_types import DelegationRequest
+from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Complexity, TaskStatus, TaskStructure, TaskType
@@ -60,6 +64,7 @@ from synthorg.engine.parallel_models import (
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.models import (
     ChatMessage,
@@ -67,30 +72,37 @@ from synthorg.providers.models import (
     CompletionResponse,
     StreamChunk,
     TokenUsage,
+    ToolCall,
     ToolDefinition,
 )
-from tests._shared import as_uuid, coerce_id, sid
+from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.registry import ToolRegistry
+from tests._shared import as_uuid, coerce_id, mock_of, sid
 
 pytestmark = pytest.mark.integration
 # ── Mock Provider ──────────────────────────────────────────────────
 
 
 class _DeterministicProvider:
-    """Mock provider that returns canned responses per task_id.
+    """Mock provider that replays a canned turn sequence per task_id.
 
-    Identifies the task by searching messages for task_id patterns.
+    Identifies the task by searching messages for task_id patterns, then
+    returns that task's next scripted turn. A work task runs a tool before
+    answering, so the sequence is per-task rather than a single response.
     For ``fail_for`` task_ids, raises ``RuntimeError`` to simulate
     provider/execution failure.
     """
 
     def __init__(
         self,
-        responses: dict[str, CompletionResponse],
+        responses: dict[str, tuple[CompletionResponse, ...]],
         *,
         fail_for: frozenset[str] = frozenset(),
     ) -> None:
         self._responses = responses
         self._fail_for = fail_for
+        self._turn: dict[str, int] = {}
 
     def _extract_task_id(
         self,
@@ -124,7 +136,10 @@ class _DeterministicProvider:
             raise RuntimeError(msg)
 
         if task_id is not None and task_id in self._responses:
-            return self._responses[task_id]
+            turns = self._responses[task_id]
+            index = min(self._turn.get(task_id, 0), len(turns) - 1)
+            self._turn[task_id] = index + 1
+            return turns[index]
 
         # Fallback: return a generic completion
         return CompletionResponse(
@@ -325,6 +340,7 @@ def _build_pipeline(
                         id=sid("placeholder-sub"),
                         title="Placeholder",
                         description="Replaced per-test",
+                        expected_artifacts=("src/placeholder.py",),
                     ),
                 ),
             ),
@@ -381,6 +397,90 @@ def _make_response(
     )
 
 
+class _WriteArtifactTool(BaseTool):
+    """Stands in for the hands a worker uses to produce its deliverable."""
+
+    @override
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
+        """Acknowledge the written deliverable.
+
+        Returns:
+            A success result naming the path the worker claimed to write.
+        """
+        return ToolExecutionResult(content=f"wrote {arguments.get('path')}")
+
+
+def _worker_tools() -> ToolRegistry:
+    """The single tool a routed worker uses to produce its deliverable.
+
+    Returns:
+        A registry holding the ``write_artifact`` tool.
+    """
+    return ToolRegistry(
+        [
+            _WriteArtifactTool(
+                name="write_artifact",
+                description="Write the subtask's deliverable to the workspace.",
+                category=ToolCategory.FILE_SYSTEM,
+                parameters_schema={
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+            ),
+        ]
+    )
+
+
+def _work_run(path: str, summary: str) -> tuple[CompletionResponse, ...]:
+    """Script a work run: produce the deliverable, then report.
+
+    Every routed subtask declares an expected artifact, so a run that called
+    no tool would terminate ``NO_OP`` by the fail-loud zero-artifact rule.
+    The scripted turns therefore model a genuine worker: a tool call that
+    produces the deliverable, then the closing summary.
+
+    Returns:
+        The turn sequence the deterministic provider replays for the task.
+    """
+    return (
+        CompletionResponse(
+            content=None,
+            finish_reason=FinishReason.TOOL_USE,
+            tool_calls=(
+                ToolCall(
+                    id=f"call-{path}",
+                    name="write_artifact",
+                    arguments={"path": path},
+                ),
+            ),
+            usage=TokenUsage(input_tokens=50, output_tokens=20, cost=0.005),
+            model="test-small-001",
+        ),
+        _make_response(summary),
+    )
+
+
+def _project_repo_for(project_id: str) -> ProjectRepository:
+    """A project repository resolving *project_id* to an open project.
+
+    A work task validates its project before running, so the engine needs a
+    repository; an empty team admits any assignee.
+
+    Returns:
+        A typed repository double returning the project.
+    """
+    project = Project(
+        id=as_uuid(project_id),
+        name="Main project",
+        status=ProjectStatus.ACTIVE,
+    )
+    repo: ProjectRepository = mock_of[ProjectRepository](
+        get=AsyncMock(return_value=project)
+    )
+    return repo
+
+
 # ── Test Scenarios ─────────────────────────────────────────────────
 
 
@@ -422,6 +522,7 @@ class TestHappyPathDecomposeRouteExecute:
                 estimated_complexity=Complexity.MEDIUM,
                 required_skills=("python", "api-design"),
                 required_role="Backend Developer",
+                expected_artifacts=("src/api/endpoints.py",),
             ),
             SubtaskDefinition(
                 id=sid("subtask-ui"),
@@ -430,6 +531,7 @@ class TestHappyPathDecomposeRouteExecute:
                 estimated_complexity=Complexity.MEDIUM,
                 required_skills=("typescript", "react"),
                 required_role="Frontend Developer",
+                expected_artifacts=("src/ui/components.tsx",),
             ),
         )
         decomp_svc = _make_decomposition_service(
@@ -481,15 +583,19 @@ class TestHappyPathDecomposeRouteExecute:
         # 6. Execute via ParallelExecutor
         provider = _DeterministicProvider(
             responses={
-                "subtask-api": _make_response(
-                    "API endpoints implemented.",
+                "subtask-api": _work_run(
+                    "src/api/endpoints.py", "API endpoints implemented."
                 ),
-                "subtask-ui": _make_response(
-                    "UI components built.",
+                "subtask-ui": _work_run(
+                    "src/ui/components.tsx", "UI components built."
                 ),
             },
         )
-        engine = AgentEngine(provider=provider)
+        engine = AgentEngine(
+            provider=provider,
+            tool_registry=_worker_tools(),
+            project_repo=_project_repo_for("proj-main"),
+        )
         executor = ParallelExecutor(engine=engine)
 
         group = ParallelExecutionGroup(
@@ -566,6 +672,7 @@ class TestPartialFailure:
                 description="[subtask-api-fail] Implement API endpoints",
                 estimated_complexity=Complexity.MEDIUM,
                 required_skills=("python",),
+                expected_artifacts=("src/api/endpoints.py",),
             ),
             SubtaskDefinition(
                 id=sid("subtask-ui-ok"),
@@ -573,6 +680,7 @@ class TestPartialFailure:
                 description="[subtask-ui-ok] Implement React components",
                 estimated_complexity=Complexity.MEDIUM,
                 required_skills=("typescript",),
+                expected_artifacts=("src/ui/components.tsx",),
             ),
         )
         decomp_svc = _make_decomposition_service(
@@ -605,11 +713,15 @@ class TestPartialFailure:
         # Execute with backend failing
         provider = _DeterministicProvider(
             responses={
-                "subtask-ui-ok": _make_response("UI built."),
+                "subtask-ui-ok": _work_run("src/ui/components.tsx", "UI built."),
             },
             fail_for=frozenset({"subtask-api-fail"}),
         )
-        engine = AgentEngine(provider=provider)
+        engine = AgentEngine(
+            provider=provider,
+            tool_registry=_worker_tools(),
+            project_repo=_project_repo_for("proj-main"),
+        )
         executor = ParallelExecutor(engine=engine)
 
         group = ParallelExecutionGroup(
@@ -777,20 +889,13 @@ class TestParallelExecutionConcurrency:
             )
             tasks.append(t)
 
+        # These tasks are built directly rather than decomposed, so they declare
+        # no artifacts: the scenario measures concurrency, not deliverables.
         provider = _DeterministicProvider(
             responses={
-                "subtask-api": _make_response(
-                    "API done.",
-                    cost=0.003,
-                ),
-                "subtask-ui": _make_response(
-                    "UI done.",
-                    cost=0.004,
-                ),
-                "subtask-test": _make_response(
-                    "Tests done.",
-                    cost=0.002,
-                ),
+                "subtask-api": (_make_response("API done.", cost=0.003),),
+                "subtask-ui": (_make_response("UI done.", cost=0.004),),
+                "subtask-test": (_make_response("Tests done.", cost=0.002),),
             },
         )
         engine = AgentEngine(provider=provider)

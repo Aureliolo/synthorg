@@ -39,7 +39,7 @@ from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
 )
-from tests._shared import FakeClock, mock_of, sid
+from tests._shared import FakeClock, coerce_id, mock_of, sid
 from tests.unit.engine.conftest import (
     build_run_result,
     make_assignment_agent,
@@ -51,6 +51,36 @@ from tests.unit.engine.conftest import (
 )
 
 # ── Helpers ─────────────────────────────────────────────────────
+
+
+def _status_engine(
+    statuses: dict[str, TaskStatus],
+    *,
+    parent_id: str = "parent-1",
+) -> AsyncMock:
+    """A task engine resolving each subtask label to its persisted status.
+
+    The rollup phase reads persisted status rather than the dispatch outcome,
+    so a coordination test states what the store holds for each subtask.
+
+    Returns:
+        A task-engine double whose ``get_task`` serves those rows.
+    """
+    rows = {
+        coerce_id(label): make_assignment_task(
+            id=label,
+            status=status,
+            assigned_to="alice" if status is not TaskStatus.CREATED else None,
+        )
+        for label, status in statuses.items()
+    }
+    rows[coerce_id(parent_id)] = make_assignment_task(id=parent_id)
+    engine = AsyncMock()
+    engine.get_task.side_effect = rows.get
+    engine.submit.return_value = TaskMutationResult(
+        request_id="r", success=True, version=1
+    )
+    return engine
 
 
 def _make_coordinator(  # noqa: PLR0913
@@ -132,6 +162,12 @@ class TestMultiAgentCoordinator:
                     ],
                 ),
             ],
+            task_engine=_status_engine(
+                {
+                    "sub-a": TaskStatus.COMPLETED,
+                    "sub-b": TaskStatus.COMPLETED,
+                }
+            ),
         )
 
         ctx = CoordinationContext(
@@ -319,6 +355,12 @@ class TestMultiAgentCoordinator:
                 # Wave 1 succeeds
                 make_exec_result("wave-1", [("sub-b", agent_id_b)], all_succeed=True),
             ],
+            task_engine=_status_engine(
+                {
+                    "sub-a": TaskStatus.FAILED,
+                    "sub-b": TaskStatus.COMPLETED,
+                }
+            ),
         )
 
         ctx = CoordinationContext(
@@ -349,11 +391,11 @@ class TestMultiAgentCoordinator:
         routing = make_routing([("sub-a", "alice")])
         agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
 
-        task_engine = AsyncMock()
         # The parent is freshly CREATED, so the coordinator walks the
         # full lifecycle (CREATED -> ASSIGNED -> IN_PROGRESS ->
-        # IN_REVIEW -> COMPLETED) to reach the COMPLETED rollup status.
-        task_engine.get_task.return_value = make_assignment_task(id="parent-1")
+        # IN_REVIEW -> COMPLETED) to reach the COMPLETED rollup status,
+        # which the persisted (gate-passed) subtask status derives.
+        task_engine = _status_engine({"sub-a": TaskStatus.COMPLETED})
         task_engine.submit.return_value = TaskMutationResult(
             request_id="req-1",
             success=True,
@@ -459,6 +501,12 @@ class TestMultiAgentCoordinator:
             decomp_result=decomp,
             routing_result=routing,
             exec_results=[exec_result],
+            task_engine=_status_engine(
+                {
+                    "sub-a": TaskStatus.COMPLETED,
+                    "sub-b": TaskStatus.FAILED,
+                }
+            ),
         )
 
         ctx = CoordinationContext(
@@ -711,6 +759,7 @@ class TestMultiAgentCoordinator:
             decomposition_service=decomp_service,
             routing_service=routing_service,
             parallel_executor=executor,
+            task_engine=_status_engine({"sub-a": TaskStatus.COMPLETED}),
         )
 
         ctx = CoordinationContext(
@@ -833,6 +882,8 @@ class TestMultiAgentCoordinator:
                 # Wave 0 fails -- should stop before wave 1
                 make_exec_result("wave-0", [("sub-a", agent_id)], all_succeed=False),
             ],
+            # sub-b never reached the engine, so it has no persisted row.
+            task_engine=_status_engine({"sub-a": TaskStatus.FAILED}),
         )
 
         ctx = CoordinationContext(
@@ -870,6 +921,8 @@ class TestMultiAgentCoordinator:
             exec_results=[
                 make_exec_result("wave-0", [("sub-a", agent_id)]),
             ],
+            # sub-b was unroutable, so it has no persisted row.
+            task_engine=_status_engine({"sub-a": TaskStatus.COMPLETED}),
         )
 
         ctx = CoordinationContext(

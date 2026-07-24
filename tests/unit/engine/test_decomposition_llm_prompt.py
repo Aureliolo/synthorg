@@ -374,8 +374,9 @@ class TestParseToolCallResponse:
     def test_optional_fields_use_defaults(self) -> None:
         """Missing optional fields use sensible defaults.
 
-        ``acceptance_criteria`` is not optional (every item must define done),
-        so it is supplied; the genuinely optional fields still default.
+        ``acceptance_criteria`` and ``expected_artifacts`` are not optional for
+        a work item (it must define done and name a deliverable), so both are
+        supplied; the genuinely optional fields still default.
         """
         args: dict[str, object] = {
             "subtasks": [
@@ -384,6 +385,7 @@ class TestParseToolCallResponse:
                     "title": "Only subtask",
                     "description": "Minimal fields",
                     "acceptance_criteria": ["it works"],
+                    "expected_artifacts": ["src/only.py"],
                 }
             ],
         }
@@ -395,10 +397,31 @@ class TestParseToolCallResponse:
         assert plan.subtasks[0].stakes is Stakes.NORMAL
         assert plan.subtasks[0].required_skills == ()
         assert plan.subtasks[0].required_role is None
-        assert plan.subtasks[0].expected_artifacts == ()
+        assert plan.subtasks[0].expected_artifacts == ("src/only.py",)
         assert plan.subtasks[0].acceptance_criteria == ("it works",)
         assert plan.task_structure is TaskStructure.SEQUENTIAL
         assert plan.coordination_topology is CoordinationTopology.AUTO
+
+    def test_missing_expected_artifacts_raises(self) -> None:
+        """A work subtask with no expected_artifacts is rejected, not defaulted.
+
+        The zero-artifact guard on the dispatched task keys off this list, so an
+        empty one silently disarms it; the parse fails with a correctable error
+        the planning session can resubmit against instead.
+        """
+        args: dict[str, object] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Only subtask",
+                    "description": "No deliverable named",
+                    "acceptance_criteria": ["it works"],
+                }
+            ],
+        }
+        response = _make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="expected artifact"):
+            parse_tool_call_response(response, "task-1")
 
     def test_missing_acceptance_criteria_raises(self) -> None:
         """A subtask with no acceptance_criteria is rejected, not defaulted.
@@ -462,6 +485,7 @@ class TestParseToolCallResponse:
                     "title": "Build board renderer",
                     "description": "Render the Tetris grid",
                     "acceptance_criteria": ["grid renders 10x20"],
+                    "expected_artifacts": ["src/board.tsx"],
                     "satisfies": ["Playable board", "Score tracking"],
                 }
             ],
@@ -479,6 +503,7 @@ class TestParseToolCallResponse:
                     "title": "Support task",
                     "description": "Housekeeping",
                     "acceptance_criteria": ["tidy"],
+                    "expected_artifacts": ["docs/housekeeping.md"],
                 }
             ],
         }
@@ -528,6 +553,7 @@ class TestParseToolCallResponse:
                     "title": "Build",
                     "description": "Do it",
                     "acceptance_criteria": ["done"],
+                    "expected_artifacts": ["src/build.py"],
                     "kind": "mystery",
                 }
             ],
@@ -545,6 +571,7 @@ class TestParseToolCallResponse:
                     "title": "Build",
                     "description": "Do it",
                     "acceptance_criteria": ["done"],
+                    "expected_artifacts": ["src/build.py"],
                 }
             ],
             "open_questions": ["Which backend?"],
@@ -616,6 +643,7 @@ class TestParseToolCallResponse:
                     "description": "Do it",
                     "dependencies": ["ghost-subtask"],
                     "acceptance_criteria": ["done"],
+                    "expected_artifacts": ["src/only.py"],
                 },
             ],
         }

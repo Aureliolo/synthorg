@@ -12,7 +12,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.plan import PlanOption, validate_decision_options
+from synthorg.core.plan import (
+    PlanOption,
+    validate_decision_options,
+    validate_expected_artifacts,
+)
 from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task_enums import (
     Complexity,
@@ -141,6 +145,11 @@ class PlanItemPayload(BaseModel):
             kind=self.kind,
             options=self.options,
             chosen_option_id=self.chosen_option_id,
+        )
+        validate_expected_artifacts(
+            entity_id=self.id,
+            kind=self.kind,
+            expected_artifacts=self.expected_artifacts,
         )
         return self
 

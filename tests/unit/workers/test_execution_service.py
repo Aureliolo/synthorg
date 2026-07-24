@@ -54,7 +54,7 @@ from synthorg.workers.execution_service import (
     LifecycleAdvancingExecutionService,
     NoProviderExecutionService,
 )
-from tests._shared import StubWorkPipeline, mock_of, task_from_work_item
+from tests._shared import StubWorkPipeline, as_uuid, mock_of, task_from_work_item
 from tests._shared.scripted_provider import make_e2e_identity, make_e2e_task
 
 pytestmark = pytest.mark.unit
@@ -798,6 +798,71 @@ class TestDispatchResume:
                 decided_by="admin",
                 decision_reason=None,
             )
+
+
+class TestLifecycleBaselineCompletionFence:
+    """The oracle-less baseline never completes plan-linked work."""
+
+    @staticmethod
+    def _service(task: object) -> LifecycleAdvancingExecutionService:
+        return LifecycleAdvancingExecutionService(
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(return_value=task),
+                transition_task=AsyncMock(
+                    side_effect=AssertionError("no transition expected"),
+                ),
+            ),
+        )
+
+    @staticmethod
+    async def _advance(service: LifecycleAdvancingExecutionService) -> object:
+        return await service.execute_once(
+            task_id=str(as_uuid("task-1")),
+            previous_status=None,
+            new_status=TaskStatus.IN_REVIEW.value,
+            idempotency_key="key-1",
+            requested_by="worker-1",
+        )
+
+    async def test_plan_linked_task_stops_at_in_review(self) -> None:
+        """A plan-linked IN_REVIEW task is returned unchanged, not completed.
+
+        Initiative completion is derived from persisted task status, and that
+        derivation is only honest because COMPLETED means the review gate's
+        oracle chain passed. This baseline runs no oracle, so it must leave
+        the verdict to the gate.
+        """
+        task = make_e2e_task(identity=make_e2e_identity()).model_copy(
+            update={"status": TaskStatus.IN_REVIEW, "plan_id": as_uuid("plan-1")},
+        )
+        service = self._service(task)
+
+        with capture_logs() as logs:
+            result = await self._advance(service)
+
+        assert result is task
+        assert [
+            entry
+            for entry in logs
+            if entry.get("reason") == "plan_linked_needs_review_gate"
+        ]
+
+    async def test_unplanned_task_still_completes(self) -> None:
+        """A directly filed task keeps the baseline's full happy path."""
+        task = make_e2e_task(identity=make_e2e_identity()).model_copy(
+            update={"status": TaskStatus.IN_REVIEW}
+        )
+        completed = task.model_copy(update={"status": TaskStatus.COMPLETED})
+        service = LifecycleAdvancingExecutionService(
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(return_value=task),
+                transition_task=AsyncMock(return_value=(completed, 2)),
+            ),
+        )
+
+        result = await self._advance(service)
+
+        assert result is completed
 
 
 class TestSandboxOwnerRelease:

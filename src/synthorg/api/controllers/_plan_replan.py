@@ -92,6 +92,7 @@ async def replan_initiative(
     *,
     revision: RevisionInputs,
     requested_by: str,
+    replan_generation: int = 0,
 ) -> Plan:
     """Retire *existing* and open the revision that replaces it.
 
@@ -100,6 +101,10 @@ async def replan_initiative(
         existing: The dispatched plan being revised.
         revision: The revised items and optional structure overrides.
         requested_by: Identity recorded on every write.
+        replan_generation: Generation stamped on the successor. Zero for a
+            human replan (a human decision is not a runaway); the automatic
+            trigger passes the predecessor's generation plus one so an
+            unattended chain stays capped.
 
     Returns:
         The successor plan, awaiting review.
@@ -122,6 +127,7 @@ async def replan_initiative(
         items=revision.items,
         task_structure=revision.task_structure,
         coordination_topology=revision.coordination_topology,
+        replan_generation=replan_generation,
     )
     # Repoint the project, then retire the old revision. Both are reversible
     # (the link by relinking, the supersede because a failed sync_status is

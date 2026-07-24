@@ -82,19 +82,34 @@ rather than merely unwritten.
 stateDiagram-v2
     [*] --> PLANNING
     PLANNING --> ACTIVE: plan approved and dispatched
-    ACTIVE --> COMPLETED: plan completed
+    ACTIVE --> INTEGRATING: every plan item done
+    INTEGRATING --> EVALUATING: assembly job passed its gate
+    EVALUATING --> COMPLETED: every success criterion met
+    INTEGRATING --> ACTIVE: an item regressed
+    EVALUATING --> ACTIVE: an item regressed
     ACTIVE --> ON_HOLD: operator pauses
     ON_HOLD --> ACTIVE: operator resumes
     PLANNING --> CANCELLED
     ACTIVE --> CANCELLED
-    ON_HOLD --> CANCELLED
     COMPLETED --> [*]
     CANCELLED --> [*]
 ```
 
+The project mirrors its plan's tail stage by stage, so the cockpit distinguishes
+an initiative still building from one whose pieces are being assembled, and both
+from one awaiting a verdict. `INTEGRATING` and `EVALUATING` also carry the
+`ON_HOLD` and `CANCELLED` edges (omitted above for readability).
+
+**`ACTIVE -> COMPLETED` does not exist**, and neither does the plan's
+`EXECUTING -> COMPLETED`. Delivery has exactly one predecessor, which is what
+makes the tail structural rather than a convention: see
+[Initiative Tail](initiative-tail.md).
+
 `ON_HOLD` has no direct hop to `COMPLETED`: an operator who paused an initiative
-must resume it before the rollup can finish it, so work never completes out from
-under a deliberate hold.
+must resume it before it can finish, so work never completes out from under a
+deliberate hold. Resuming returns to `ACTIVE`, from which the tail is
+re-derived, rather than dropping the operator back into a half-finished stage
+whose gate has already run.
 
 ### There is no failed project
 
@@ -124,10 +139,15 @@ kind is WORK      ->  its dispatched task reached COMPLETED
 kind is DECISION  ->  an option has been chosen
 ```
 
-A plan is `COMPLETED` when it has items and every one is done. A project is
-`COMPLETED` when the plan it is executing is. An itemless plan never
-self-completes: it has delivered nothing, so "every item is done" being
-vacuously true must not read as success.
+Every item being done is **the start of the tail, not the end of the plan**. A
+set of individually-verified pieces has not been shown to work together, so the
+plan moves to `INTEGRATING` and delivery becomes the evaluate stage's verdict.
+An itemless plan never self-advances: it has delivered nothing, so "every item
+is done" being vacuously true must not read as progress.
+
+A project is `COMPLETED` when the plan it is executing is, and nothing in the
+rollup can write `COMPLETED` onto a plan. See
+[Initiative Tail](initiative-tail.md).
 
 Decision items are included deliberately. They never dispatch as tasks
 (`decomposition_from_plan` strips them before dispatch), but an unresolved
@@ -145,24 +165,27 @@ oracle, completion-oracle peer review, output policy, red team, vision).
 Requiring `COMPLETED` therefore inherits every one of those gates without the
 rollup making a single oracle call.
 
-This is a property of which writers are wired, not a structural guarantee of
-the status field, and the distinction matters for anyone reasoning about how
-strong the guarantee is. Two other paths reach `COMPLETED` without the oracle
-chain: `LifecycleAdvancingExecutionService`
-(`workers/execution_service/_lifecycle.py`), the lifecycle-only baseline the
-app self-constructs when no agent runtime is installed, and the coordination
-parent rollup below. Both are legitimate in their own context; neither should
-drive an initiative whose completion is meant to be verified. Requiring
-`COMPLETED` is the strongest signal available to a derivation that makes no
-oracle call of its own.
+This used to be a property of which writers were wired rather than a structural
+guarantee, because two paths reached `COMPLETED` without the oracle chain. Both
+are now fenced:
 
-The contrast is load-bearing. The coordination-level parent rollup
-(`engine/coordination/parent_rollup.py`) derives subtask status from
-`DispatchResult` outcomes, which report execution success *before* verification:
-a task parked in `IN_REVIEW` awaiting the oracle counts as completed there. That
-is correct for advancing a parent task within one coordination run, and wrong for
-deciding whether an initiative delivered. The initiative rollup does not reuse
-it.
+- `LifecycleAdvancingExecutionService`
+  (`workers/execution_service/_lifecycle.py`), the lifecycle-only baseline the
+  app self-constructs when no agent runtime is installed, refuses to advance a
+  **plan-linked** task out of `IN_REVIEW`. Stopping there is honest for a boot
+  with no runtime to verify anything; jumping to `COMPLETED` was a lie. A
+  directly filed task keeps the baseline's full happy path.
+- The coordination parent rollup (`engine/coordination/parent_rollup.py`) reads
+  each subtask's **persisted status** rather than the `DispatchResult` outcomes
+  it used to derive from. Those outcomes report execution success *before*
+  verification, so a task parked in `IN_REVIEW` awaiting the oracle counted as
+  completed. Immediately after `coordinate()` most subtasks are therefore
+  `IN_REVIEW` and the parent stays `IN_PROGRESS`; the initiative rollup
+  re-derives the parent on every later task event, so it lands its terminal
+  status once the gate has ruled on each child.
+
+The objective task itself is held open for exactly as long as its plan is: every
+item passing its own gate does not deliver the objective, the tail does.
 
 ## Rollup
 
@@ -189,12 +212,21 @@ Writes are version-guarded (`expected_version`) with a bounded retry, and a
 per-plan in-process lock serialises same-process recomputes. A losing write
 re-reads and recomputes rather than clobbering the winner.
 
-On the edge a project first reaches `COMPLETED` (and only that transition, never
-a recompute over an already-terminal project), the rollup fires the SHIP-time
-retrospective capture, so finished work feeds a retrospective back into org and
-agent memory. That tail is detached, bounded, and best-effort: it never blocks
-or fails the rollup. See the "Retrospective Capture on SHIP" section of
-[memory-learning.md](memory-learning.md) for the capture pipeline.
+The rollup also fires the loop's detached tails, each best-effort and each
+unable to block or fail it:
+
+- **Integrate and evaluate**, while the plan reads as `INTEGRATING` or
+  `EVALUATING`. Both stages are idempotent, so firing on every recompute rather
+  than on an edge is safe and needs no "already started" flag to keep in step
+  with reality. An unwired stage parks the plan visibly instead of completing
+  it. See [Initiative Tail](initiative-tail.md).
+- **Auto-replan**, while the plan reads as stalled: outstanding items exist and
+  none of them can advance without a new decision.
+- **The SHIP retrospective**, on the edge a project first reaches `COMPLETED`
+  (and only that transition, never a recompute over an already-terminal
+  project), so finished work feeds a retrospective back into org and agent
+  memory. See the "Retrospective Capture on SHIP" section of
+  [memory-learning.md](memory-learning.md) for the capture pipeline.
 
 ## Where linkage is written
 

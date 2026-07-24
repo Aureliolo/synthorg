@@ -151,6 +151,11 @@ mandatory_rules:
     header: Fail-Loud Execution
     gate: scripts/check_no_engine_worker_swallow.py
 
+  - id: claude-md::verified-initiative-completion
+    file: CLAUDE.md
+    header: Verified Initiative Completion
+    gate: scripts/check_verified_completion_paths.py
+
   - id: claude-md::cost-attribution-purpose
     file: CLAUDE.md
     header: Cost Attribution Purpose

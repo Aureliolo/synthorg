@@ -12,6 +12,8 @@ function draft(overrides: Partial<SubtaskDraft> = {}): SubtaskDraft {
     title: 'Design',
     description: 'Design it.',
     dependencies: '',
+    acceptanceCriteria: 'the design is reviewed',
+    expectedArtifacts: 'docs/design.md',
     ...overrides,
   }
 }

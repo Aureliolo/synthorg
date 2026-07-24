@@ -10,7 +10,11 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.plan import PlanOption, validate_decision_options
+from synthorg.core.plan import (
+    PlanOption,
+    validate_decision_options,
+    validate_expected_artifacts,
+)
 from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task import Task
 from synthorg.core.task_enums import (
@@ -39,10 +43,13 @@ class SubtaskDefinition(BaseModel):
             matched-skill tags cover every required tag.  Empty tuple
             disables the tag-match tier.
         required_role: Optional role name for routing.
-        expected_artifacts: Deliverables this subtask must produce.  When
-            non-empty, these project onto the dispatched task's
-            ``artifacts_expected`` and arm the fail-loud zero-artifact guard,
-            so the subtask cannot terminate a success having produced nothing.
+        expected_artifacts: Deliverables this subtask must produce.  These
+            project onto the dispatched task's ``artifacts_expected`` and arm
+            the fail-loud zero-artifact guard, so the subtask cannot terminate
+            a success having produced nothing.  A subtask that reaches a
+            :class:`DecompositionPlan` must declare one (see that model's
+            validator); the field stays optional here because the routing
+            scorer also builds a bare, never-dispatched proxy definition.
         acceptance_criteria: Per-subtask criteria that define "done" for it.
     """
 
@@ -121,7 +128,8 @@ class DecompositionPlan(BaseModel):
     """Plan describing how a parent task is decomposed into subtasks.
 
     Validates subtask collection integrity at construction:
-    non-empty, unique IDs, valid dependency references.
+    non-empty, unique IDs, valid dependency references, and a declared
+    deliverable per WORK subtask.
     Cycle detection is handled by ``DependencyGraph.validate()``
     in the service layer.
 
@@ -161,13 +169,21 @@ class DecompositionPlan(BaseModel):
     def _validate_subtasks(self) -> Self:
         """Validate subtask collection integrity.
 
+        The deliverable invariant lives here rather than on
+        :class:`SubtaskDefinition` because a plan is precisely the set of
+        subtasks that will be dispatched, whereas a bare definition is also
+        built as a throwaway scoring proxy by the routing layer, which has no
+        deliverable to declare.
+
         Returns:
             ``self`` unchanged when subtasks are non-empty, IDs are
-            unique, and every dependency points to a known subtask.
+            unique, every dependency points to a known subtask, and every
+            WORK subtask declares a deliverable.
 
         Raises:
-            ValueError: When ``subtasks`` is empty, ids duplicate, or
-                a subtask depends on an unknown id.
+            ValueError: When ``subtasks`` is empty, ids duplicate, a subtask
+                depends on an unknown id, or a subtask's declared deliverables
+                contradict its kind.
         """
         if not self.subtasks:
             msg = "subtasks must contain at least one entry"
@@ -189,6 +205,11 @@ class DecompositionPlan(BaseModel):
                     f"Subtask {subtask.id!r} references unknown dependencies: {missing}"
                 )
                 raise ValueError(msg)
+            validate_expected_artifacts(
+                entity_id=subtask.id,
+                kind=subtask.kind,
+                expected_artifacts=subtask.expected_artifacts,
+            )
 
         return self
 

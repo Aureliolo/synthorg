@@ -531,12 +531,16 @@ def make_subtask(
     key that the production decomposition service turns into a child
     ``Task`` PK (``Task(id=UUID(subtask_def.id))``), so a readable label
     like ``"sub-a"`` must resolve to a valid UUID string.
+
+    A deliverable is declared because a WORK subtask reaching a
+    ``DecompositionPlan`` must carry one.
     """
     return SubtaskDefinition(
         id=coerce_id(subtask_id),
         title=f"Subtask {subtask_id}",
         description=f"Description for {subtask_id}",
         dependencies=tuple(coerce_id(d) for d in dependencies),
+        expected_artifacts=(f"src/{subtask_id}.py",),
     )
 
 

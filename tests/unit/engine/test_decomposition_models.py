@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from synthorg.core.plan import PlanOption
+from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task_enums import (
     Complexity,
     CoordinationTopology,
@@ -23,6 +25,24 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
     SubtaskStatusRollup,
 )
+
+
+def _sub(
+    subtask_id: str,
+    *,
+    title: str = "A",
+    description: str = "A desc",
+    dependencies: tuple[str, ...] = (),
+) -> SubtaskDefinition:
+    """A WORK subtask carrying the deliverable a dispatchable plan requires."""
+    return SubtaskDefinition(
+        id=subtask_id,
+        title=title,
+        description=description,
+        dependencies=dependencies,
+        expected_artifacts=(f"src/{subtask_id}.py",),
+    )
+
 
 # ---------------------------------------------------------------------------
 # SubtaskDefinition
@@ -96,9 +116,9 @@ class TestDecompositionPlan:
         plan = DecompositionPlan(
             parent_task_id="task-1",
             subtasks=(
-                SubtaskDefinition(id="sub-1", title="First", description="First step"),
-                SubtaskDefinition(
-                    id="sub-2",
+                _sub("sub-1", title="First", description="First step"),
+                _sub(
+                    "sub-2",
                     title="Second",
                     description="Second step",
                     dependencies=("sub-1",),
@@ -126,8 +146,8 @@ class TestDecompositionPlan:
             DecompositionPlan(
                 parent_task_id="task-1",
                 subtasks=(
-                    SubtaskDefinition(id="sub-1", title="A", description="A desc"),
-                    SubtaskDefinition(id="sub-1", title="B", description="B desc"),
+                    _sub("sub-1"),
+                    _sub("sub-1", title="B", description="B desc"),
                 ),
             )
 
@@ -137,14 +157,7 @@ class TestDecompositionPlan:
         with pytest.raises(ValueError, match="unknown dependencies"):
             DecompositionPlan(
                 parent_task_id="task-1",
-                subtasks=(
-                    SubtaskDefinition(
-                        id="sub-1",
-                        title="A",
-                        description="A desc",
-                        dependencies=("sub-99",),
-                    ),
-                ),
+                subtasks=(_sub("sub-1", dependencies=("sub-99",)),),
             )
 
     @pytest.mark.unit
@@ -154,21 +167,77 @@ class TestDecompositionPlan:
         plan = DecompositionPlan(
             parent_task_id="task-1",
             subtasks=(
-                SubtaskDefinition(
-                    id="sub-1",
-                    title="A",
-                    description="A desc",
-                    dependencies=("sub-2",),
-                ),
-                SubtaskDefinition(
-                    id="sub-2",
-                    title="B",
-                    description="B desc",
-                    dependencies=("sub-1",),
-                ),
+                _sub("sub-1", dependencies=("sub-2",)),
+                _sub("sub-2", title="B", description="B desc", dependencies=("sub-1",)),
             ),
         )
         assert len(plan.subtasks) == 2
+
+    @pytest.mark.unit
+    def test_work_subtask_without_artifacts_rejected(self) -> None:
+        """A dispatchable WORK subtask must declare a deliverable."""
+        with pytest.raises(ValueError, match="must declare at least one expected"):
+            DecompositionPlan(
+                parent_task_id="task-1",
+                subtasks=(
+                    SubtaskDefinition(id="sub-1", title="A", description="A desc"),
+                ),
+            )
+
+    @pytest.mark.unit
+    def test_decision_subtask_with_artifacts_rejected(self) -> None:
+        """A decision records a choice, so it never declares a deliverable."""
+        with pytest.raises(ValueError, match=r"DECISION .* declares expected"):
+            DecompositionPlan(
+                parent_task_id="task-1",
+                subtasks=(
+                    SubtaskDefinition(
+                        id="sub-1",
+                        title="Pick a stack",
+                        description="React or Svelte",
+                        kind=PlanItemKind.DECISION,
+                        options=(
+                            PlanOption(
+                                id="react",
+                                title="React",
+                                summary="Mature ecosystem",
+                                recommended=True,
+                            ),
+                            PlanOption(
+                                id="svelte", title="Svelte", summary="Smaller bundle"
+                            ),
+                        ),
+                        expected_artifacts=("src/app.tsx",),
+                    ),
+                ),
+            )
+
+    @pytest.mark.unit
+    def test_decision_subtask_without_artifacts_accepted(self) -> None:
+        """A well-formed decision subtask needs no deliverable."""
+        plan = DecompositionPlan(
+            parent_task_id="task-1",
+            subtasks=(
+                SubtaskDefinition(
+                    id="sub-1",
+                    title="Pick a stack",
+                    description="React or Svelte",
+                    kind=PlanItemKind.DECISION,
+                    options=(
+                        PlanOption(
+                            id="react",
+                            title="React",
+                            summary="Mature ecosystem",
+                            recommended=True,
+                        ),
+                        PlanOption(
+                            id="svelte", title="Svelte", summary="Smaller bundle"
+                        ),
+                    ),
+                ),
+            ),
+        )
+        assert plan.subtasks[0].expected_artifacts == ()
 
 
 # ---------------------------------------------------------------------------
@@ -199,9 +268,7 @@ class TestDecompositionResult:
         """DecompositionResult holds plan, tasks, and edges."""
         plan = DecompositionPlan(
             parent_task_id=str(sample_task_with_criteria.id),
-            subtasks=(
-                SubtaskDefinition(id=sid("sub-1"), title="A", description="A desc"),
-            ),
+            subtasks=(_sub(sid("sub-1")),),
         )
         child_task = _make_result_task("sub-1")
         result = DecompositionResult(
@@ -219,8 +286,8 @@ class TestDecompositionResult:
         plan = DecompositionPlan(
             parent_task_id="task-1",
             subtasks=(
-                SubtaskDefinition(id="sub-1", title="A", description="A desc"),
-                SubtaskDefinition(id="sub-2", title="B", description="B desc"),
+                _sub("sub-1"),
+                _sub("sub-2", title="B", description="B desc"),
             ),
         )
         with pytest.raises(ValueError, match="does not match plan subtask count"):
@@ -236,8 +303,8 @@ class TestDecompositionResult:
         plan = DecompositionPlan(
             parent_task_id="task-1",
             subtasks=(
-                SubtaskDefinition(id=sid("sub-1"), title="A", description="A desc"),
-                SubtaskDefinition(id=sid("sub-2"), title="B", description="B desc"),
+                _sub(sid("sub-1")),
+                _sub(sid("sub-2"), title="B", description="B desc"),
             ),
         )
         with pytest.raises(
@@ -258,9 +325,7 @@ class TestDecompositionResult:
         """Result rejects edges referencing unknown task IDs."""
         plan = DecompositionPlan(
             parent_task_id="task-1",
-            subtasks=(
-                SubtaskDefinition(id=sid("sub-1"), title="A", description="A desc"),
-            ),
+            subtasks=(_sub(sid("sub-1")),),
         )
         with pytest.raises(ValueError, match="unknown task IDs"):
             DecompositionResult(

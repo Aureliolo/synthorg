@@ -103,6 +103,7 @@ def _preview() -> DecompositionResult:
                 id=sid("sub-1"),
                 title="Slice",
                 description="Deliver the slice",
+                expected_artifacts=("src/slice.py",),
             ),
         ),
     )

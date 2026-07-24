@@ -20,6 +20,14 @@ export interface SubtaskDraft {
   description: string
   /** Comma-separated dependency labels, parsed on submit. */
   dependencies: string
+  /** One acceptance criterion per line, parsed on submit. */
+  acceptanceCriteria: string
+  /**
+   * One expected deliverable per line, parsed on submit. Required: a work
+   * unit that declares no deliverable disarms the zero-artifact guard, so
+   * the backend rejects it.
+   */
+  expectedArtifacts: string
 }
 
 function emptyDraft(): SubtaskDraft {
@@ -31,6 +39,8 @@ function emptyDraft(): SubtaskDraft {
     title: '',
     description: '',
     dependencies: '',
+    acceptanceCriteria: '',
+    expectedArtifacts: '',
   }
 }
 
@@ -41,6 +51,13 @@ function parseDependencies(raw: string): readonly string[] {
     .filter((token) => token.length > 0)
 }
 
+function parseLines(raw: string): readonly string[] {
+  return raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+}
+
 function toRequest(drafts: readonly SubtaskDraft[]): ManualDecomposeRequest {
   return {
     subtasks: drafts.map((draft) => ({
@@ -48,6 +65,8 @@ function toRequest(drafts: readonly SubtaskDraft[]): ManualDecomposeRequest {
       title: draft.title.trim(),
       description: draft.description.trim(),
       dependencies: parseDependencies(draft.dependencies),
+      acceptance_criteria: parseLines(draft.acceptanceCriteria),
+      expected_artifacts: parseLines(draft.expectedArtifacts),
       estimated_complexity: 'medium',
       stakes: 'normal',
       required_skills: [],

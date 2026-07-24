@@ -18,6 +18,7 @@ from synthorg.api.lifecycle_runner_support import (
     _LifecycleTasks,
     drain_simulation_background_tasks,
 )
+from synthorg.api.lifecycle_shutdown_initiative import drain_initiative_tails
 from synthorg.api.state import _ENTRY_TASK_DRAIN_GRACE_SECONDS, AppState
 from synthorg.backup.service import BackupService
 from synthorg.communication.bus_protocol import MessageBus
@@ -222,23 +223,10 @@ async def _run_shutdown(  # noqa: PLR0913
         timeout=_SIMULATION_TASK_DRAIN_OUTER_SECONDS,
         service="simulation_task_drain",
     )
-    # Drain the SHIP-retrospective capture tail BEFORE the memory backends it
-    # writes to are disconnected below, so an in-flight retrospective is not
-    # stranded mid-write (or leaked as a pending task) at SIGTERM. No-op when
-    # the rollup service or its retro tail is unwired.
-    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
-
-    _rollup_service = app_state.slice(EngineStateSlice).project_rollup_service
-    if _rollup_service is not None:
-        await _try_stop(
-            _rollup_service.drain_retro_capture(
-                timeout_sec=DEFAULT_DRAIN_TIMEOUT_SECONDS
-            ),
-            API_APP_SHUTDOWN,
-            "Failed to drain in-flight retrospective capture tasks",
-            timeout=DEFAULT_DRAIN_TIMEOUT_SECONDS + _DRAIN_OUTER_GRACE_SECONDS,
-            service="ship_retro_capture_drain",
-        )
+    # Drain the initiative loop's detached tails BEFORE the stores they write
+    # to are disconnected below, so nothing is stranded mid-write (or leaked as
+    # a pending task) at SIGTERM.
+    await drain_initiative_tails(app_state)
     # Stop the consolidation driver before the backend it maintains, so a
     # tick in flight cannot outlive the store it writes to.
     consolidation_scheduler = app_state.slice(MemoryStateSlice).consolidation_scheduler

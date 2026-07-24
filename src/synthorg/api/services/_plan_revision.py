@@ -121,7 +121,7 @@ def extended_history(plan: Plan) -> tuple[PlanVersionSnapshot, ...]:
     return (*plan.version_history, snapshot(plan))[-MAX_PLAN_VERSION_HISTORY:]
 
 
-def build_successor(
+def build_successor(  # noqa: PLR0913 -- keyword-only successor provenance
     existing: Plan,
     *,
     items: tuple[PlanItem, ...],
@@ -131,6 +131,7 @@ def build_successor(
     # a model-field annotation and typeguard rejects it on a parameter. The
     # Plan model validates tz-awareness when it builds.
     now: datetime,
+    replan_generation: int = 0,
 ) -> Plan:
     """Build the revision that replaces a dispatched plan.
 
@@ -138,6 +139,10 @@ def build_successor(
     with the items its tasks were built from. The successor re-enters review
     because its items carry no approval, and it inherits the objective and
     framing so the initiative keeps its identity across the revision.
+
+    The generation defaults to zero because the default caller is a human, and
+    a human decision is never a runaway; only the automatic trigger carries the
+    predecessor's generation forward so an unattended chain stays capped.
 
     Returns:
         The unsaved successor plan, awaiting review.
@@ -162,6 +167,7 @@ def build_successor(
         assumptions=existing.assumptions,
         objective_criteria=existing.objective_criteria,
         version_history=extended_history(existing),
+        replan_generation=replan_generation,
         created_at=now,
         updated_at=now,
     )

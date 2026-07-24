@@ -68,6 +68,7 @@ def _durable_plan(parent_label: str) -> Plan:
             title=NotBlankStr(f"Subtask {n}"),
             description=NotBlankStr(f"Do part {n}"),
             acceptance_criteria=(NotBlankStr(f"part {n} done"),),
+            expected_artifacts=(NotBlankStr(f"src/part_{n}.py"),),
         )
         for n, sub_id in enumerate(_SUB_IDS)
     )

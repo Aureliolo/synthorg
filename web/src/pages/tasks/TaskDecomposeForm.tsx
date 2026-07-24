@@ -64,6 +64,28 @@ function SubtaskRow({ index, draft, canRemove, onChange, onRemove }: SubtaskRowP
           onChange(index, { description: value })
         }}
       />
+      <div className="grid gap-grid-gap sm:grid-cols-2">
+        <InputField
+          label="Acceptance criteria"
+          multiline
+          rows={2}
+          value={draft.acceptanceCriteria}
+          hint="One per line; what makes this subtask done."
+          onValueChange={(value) => {
+            onChange(index, { acceptanceCriteria: value })
+          }}
+        />
+        <InputField
+          label="Expected deliverables"
+          multiline
+          rows={2}
+          value={draft.expectedArtifacts}
+          hint="One per line; a subtask that declares none is rejected."
+          onValueChange={(value) => {
+            onChange(index, { expectedArtifacts: value })
+          }}
+        />
+      </div>
     </div>
   )
 }

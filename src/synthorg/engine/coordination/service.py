@@ -198,6 +198,20 @@ class MultiAgentCoordinator:
         # historical default) when no provider is supplied.
         self._default_topology_provider = default_topology_provider
 
+    @property
+    def decomposition_service(self) -> DecompositionService:
+        """The planner this coordinator decomposes objectives with.
+
+        Exposed so a caller that needs a plan rather than a coordinated run
+        (the auto-replan trigger, which re-decomposes a stalled objective)
+        reuses the same wired planner instead of constructing a second one
+        that could drift from it.
+
+        Returns:
+            The wired :class:`DecompositionService`.
+        """
+        return self._decomposition_service
+
     def _enforce_delegation_rounds(self, context: CoordinationContext) -> None:
         """Guard against runaway recursive delegation before coordinating.
 
@@ -462,11 +476,11 @@ class MultiAgentCoordinator:
             phases.extend(dispatch_result.phases)
 
             # Rollup
-            rollup = compute_status_rollup(
+            rollup = await compute_status_rollup(
                 decomposition_service=self._decomposition_service,
+                task_engine=self._task_engine,
                 clock=self._clock,
                 context=context,
-                dispatch_result=dispatch_result,
                 decomp_result=decomp_result,
                 phases=phases,
             )

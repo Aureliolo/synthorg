@@ -21,6 +21,7 @@ def _item(label: str, *, dependencies: tuple[str, ...] = ()) -> PlanItem:
         description=NotBlankStr(f"Description for {label}"),
         dependencies=tuple(NotBlankStr(d) for d in dependencies),
         acceptance_criteria=(NotBlankStr(f"{label} is done"),),
+        expected_artifacts=(NotBlankStr(f"src/{label}.py"),),
     )
 
 
@@ -61,7 +62,23 @@ class TestPlanItemInvariants:
                 title=NotBlankStr("X"),
                 description=NotBlankStr("Y"),
                 acceptance_criteria=(),
+                expected_artifacts=(NotBlankStr("src/x.py"),),
             )
+
+    def test_rejects_work_item_without_expected_artifacts(self) -> None:
+        # The zero-artifact guard in the loop and the post-execution transition
+        # both key off the dispatched task's artifacts_expected, so a WORK item
+        # that declares none disarms both.
+        with pytest.raises(ValueError, match="must declare at least one expected"):
+            PlanItem(
+                id=NotBlankStr(sid("a")),
+                title=NotBlankStr("X"),
+                description=NotBlankStr("Y"),
+                acceptance_criteria=(NotBlankStr("done"),),
+            )
+
+    def test_accepts_work_item_with_expected_artifacts(self) -> None:
+        assert _item("a").expected_artifacts == ("src/a.py",)
 
     def test_rejects_self_dependency(self) -> None:
         with pytest.raises(ValueError, match="cannot depend on itself"):
@@ -113,6 +130,22 @@ class TestDecisionItem:
                 title=NotBlankStr("X"),
                 description=NotBlankStr("Y"),
                 acceptance_criteria=(NotBlankStr("done"),),
+                expected_artifacts=(NotBlankStr("src/x.py"),),
+                options=(_opt("o1", recommended=True), _opt("o2")),
+            )
+
+    def test_decision_rejects_expected_artifacts(self) -> None:
+        # A decision records a choice; claiming a deliverable means the item was
+        # typed wrong, and the coverage map would then expect an artifact no
+        # dispatched task will ever produce.
+        with pytest.raises(ValueError, match=r"DECISION .* declares expected"):
+            PlanItem(
+                id=NotBlankStr(sid("a")),
+                title=NotBlankStr("Decide"),
+                description=NotBlankStr("Choice"),
+                acceptance_criteria=(NotBlankStr("decision recorded"),),
+                expected_artifacts=(NotBlankStr("src/x.py"),),
+                kind=PlanItemKind.DECISION,
                 options=(_opt("o1", recommended=True), _opt("o2")),
             )
 

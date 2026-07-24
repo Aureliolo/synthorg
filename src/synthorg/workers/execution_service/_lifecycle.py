@@ -33,6 +33,21 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _needs_review_gate(task: Task) -> bool:
+    """Whether *task* may only leave ``IN_REVIEW`` through the review gate.
+
+    A plan-linked task is the unit an initiative's completion is derived
+    from, and that derivation is only honest because reaching ``COMPLETED``
+    means the review gate's oracle chain passed. This baseline runs no
+    oracle, so it must not mint that verdict: it stops at ``IN_REVIEW`` and
+    leaves the decision to whoever can actually make it.
+
+    Returns:
+        ``True`` when the task was dispatched by a plan.
+    """
+    return task.plan_id is not None
+
+
 class LifecycleAdvancingExecutionService:
     """Lifecycle-only :class:`WorkerExecutionService` baseline.
 
@@ -41,6 +56,10 @@ class LifecycleAdvancingExecutionService:
     current state unchanged otherwise. No LLM, no tools: a claim
     arrives, the service rolls the lifecycle forward, the worker sees a
     terminal-or-not response and acks accordingly.
+
+    Running no oracle, it stops a plan-linked task at ``IN_REVIEW`` rather
+    than completing it, so an initiative can never derive completion from
+    work this baseline merely walked forward.
 
     This is what the dispatcher + queue + worker integration tests pin,
     and the fallback the ``AppState.worker_execution_service`` property
@@ -67,9 +86,10 @@ class LifecycleAdvancingExecutionService:
         """Walk the task one step forward through the lifecycle.
 
         ``ASSIGNED`` -> ``IN_PROGRESS`` -> ``IN_REVIEW`` -> ``COMPLETED``
-        is the canonical happy path. Tasks in any other status are
-        returned unchanged; the worker maps that into a retry so the
-        next dispatch picks up the new state.
+        is the canonical happy path, and the last hop is withheld from a
+        plan-linked task (see :func:`_needs_review_gate`). Tasks in any
+        other status are returned unchanged; the worker maps that into a
+        retry so the next dispatch picks up the new state.
 
         Returns:
             The task after one lifecycle step (unchanged when it is
@@ -99,13 +119,17 @@ class LifecycleAdvancingExecutionService:
             new_status=new_status,
             idempotency_key=idempotency_key,
         )
-        target = self._next_status(current_status)
+        target = self._next_status(task)
         if target is None:
             logger.info(
                 WORKERS_EXECUTION_SERVICE_NO_OP,
                 task_id=task_id,
                 current_status=current_status.value,
-                reason="not_in_executable_status",
+                reason=(
+                    "plan_linked_needs_review_gate"
+                    if _needs_review_gate(task)
+                    else "not_in_executable_status"
+                ),
             )
             return task
         advanced, _ = await self._task_engine.transition_task(
@@ -123,18 +147,19 @@ class LifecycleAdvancingExecutionService:
         return advanced
 
     @staticmethod
-    def _next_status(current: TaskStatus) -> TaskStatus | None:
+    def _next_status(task: Task) -> TaskStatus | None:
         """Return the next baseline transition target for the lifecycle.
 
-        Returns ``None`` for statuses outside the executable window;
-        the worker maps that into a retry so any subsequent dispatch
-        picks up the new state.
+        Returns ``None`` for statuses outside the executable window, and for
+        the ``IN_REVIEW`` step of a plan-linked task (see
+        :func:`_needs_review_gate`); the worker maps that into a retry so any
+        subsequent dispatch picks up the new state.
         """
-        if current == TaskStatus.ASSIGNED:
+        if task.status == TaskStatus.ASSIGNED:
             return TaskStatus.IN_PROGRESS
-        if current == TaskStatus.IN_PROGRESS:
+        if task.status == TaskStatus.IN_PROGRESS:
             return TaskStatus.IN_REVIEW
-        if current == TaskStatus.IN_REVIEW:
+        if task.status == TaskStatus.IN_REVIEW and not _needs_review_gate(task):
             return TaskStatus.COMPLETED
         return None
 

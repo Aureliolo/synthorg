@@ -346,20 +346,25 @@ class Task(BaseModel):
 
     @model_validator(mode="after")
     def _validate_plan_linkage(self) -> Self:
-        """Ensure the plan linkage fields are set together or not at all.
+        """Ensure a task implementing a plan item names the plan it came from.
 
-        Dispatch stamps both; a directly filed task carries neither. A task
-        holding one without the other drops silently out of the initiative
-        rollup's item index instead of failing, so it is rejected here.
+        Dispatch stamps both; a directly filed task carries neither. An item
+        id without a plan id drops silently out of the initiative rollup's item
+        index instead of failing, so it is rejected here.
+
+        The reverse is legitimate and load-bearing: a plan owns work that
+        implements no single item (the tail's integration job), which must
+        belong to the initiative for teardown and queries while staying
+        invisible to every derivation over plan items.
 
         Returns:
             The validated instance (Pydantic ``model_validator`` contract).
 
         Raises:
-            ValueError: If exactly one of the two linkage fields is set.
+            ValueError: If ``plan_item_id`` is set without ``plan_id``.
         """
-        if (self.plan_id is None) != (self.plan_item_id is None):
-            msg = "plan_id and plan_item_id must be set together"
+        if self.plan_id is None and self.plan_item_id is not None:
+            msg = "plan_item_id requires the plan_id it belongs to"
             raise ValueError(msg)
         return self
 

@@ -11,9 +11,10 @@ one.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.plan import Plan
+from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.project import Project
+from synthorg.engine.initiative.completion import StallReason
 
 
 @runtime_checkable
@@ -37,6 +38,92 @@ class PlanStatusWriter(Protocol):
         Returns:
             The persisted plan carrying the new status.
         """
+        ...
+
+
+@runtime_checkable
+class InitiativeReplanPort(Protocol):
+    """Retire a plan and open its successor, as the replan trigger needs it.
+
+    Structurally satisfied by the adapter the API wiring builds over
+    ``api.controllers._plan_replan.replan_initiative``, which owns the
+    compensated ordering across the plan service, the project repository, and
+    the task engine. The engine states what it needs and the API supplies it,
+    so there is one re-plan path whether a human or the org asked for it.
+    """
+
+    async def replan(
+        self,
+        existing: Plan,
+        *,
+        items: tuple[PlanItem, ...],
+        requested_by: str,
+        replan_generation: int,
+    ) -> Plan:
+        """Open the successor that replaces *existing*.
+
+        Returns:
+            The persisted successor, awaiting review.
+        """
+        ...
+
+
+@runtime_checkable
+class ReplanTriggerPort(Protocol):
+    """The stalled-initiative replan trigger, as the rollup needs it.
+
+    Structurally satisfied by
+    ``engine.initiative.replan_trigger.ReplanTriggerService``. The rollup calls
+    this on the edge a plan first reads as stalled. Like the retro trigger it
+    must not block or raise: the call schedules detached work and returns.
+    """
+
+    def schedule(self, *, plan: Plan, reason: StallReason) -> None:
+        """Schedule a replan for a plan that can no longer advance."""
+        ...
+
+    async def drain(self, *, timeout_sec: float) -> None:
+        """Await outstanding replans at shutdown, bounded by *timeout_sec*."""
+        ...
+
+
+@runtime_checkable
+class IntegrationPort(Protocol):
+    """The INTEGRATE stage, as the rollup needs it.
+
+    Structurally satisfied by
+    ``engine.initiative.integrate.IntegrationStageService``. The rollup calls
+    this while a plan reads as INTEGRATING; the stage itself is idempotent (its
+    task id is derived from the plan id), so a repeated call is a no-op. It
+    must not block or raise: the call schedules detached work and returns.
+    """
+
+    def schedule(self, *, plan: Plan) -> None:
+        """Schedule the assembly job for a plan that entered INTEGRATING."""
+        ...
+
+    async def drain(self, *, timeout_sec: float) -> None:
+        """Await outstanding dispatches at shutdown, bounded by *timeout_sec*."""
+        ...
+
+
+@runtime_checkable
+class EvaluationPort(Protocol):
+    """The EVALUATE stage, as the rollup needs it.
+
+    Structurally satisfied by
+    ``engine.initiative.evaluate.EvaluationStageService``. The rollup calls
+    this while a plan reads as EVALUATING; the stage collapses duplicates
+    itself and completes the plan through the audited write path when its
+    verdict passes. It must not block or raise.
+    """
+
+    def schedule(self, *, plan: Plan) -> None:
+        """Schedule the judgement for a plan that entered EVALUATING."""
+        ...
+
+    async def drain(self, *, timeout_sec: float) -> None:
+        """Await outstanding judgements at shutdown, bounded by *timeout_sec*."""
         ...
 
 

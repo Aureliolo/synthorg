@@ -28,6 +28,7 @@ def _work_item(label: str) -> PlanItem:
         title=NotBlankStr(f"Build {label}"),
         description=NotBlankStr(f"Work for {label}"),
         acceptance_criteria=(NotBlankStr("done"),),
+        expected_artifacts=(NotBlankStr(f"src/{label}.py"),),
     )
 
 

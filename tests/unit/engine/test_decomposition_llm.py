@@ -82,6 +82,7 @@ def _valid_plan_args(
             "estimated_complexity": "medium",
             "required_skills": ["python"],
             "acceptance_criteria": [f"step {i} verified"],
+            "expected_artifacts": [f"src/step_{i}.py"],
         }
         for i in range(subtask_count)
     ]

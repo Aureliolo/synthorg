@@ -356,6 +356,11 @@ class DefaultWorkPipeline:
             # the resulting plan runs.
             if work_item.plan_required:
                 verdict = RoutingVerdict.SPLITTABLE
+            # The mirror: an integration brief is one accountable assembly job.
+            # Splitting it would hand the pieces back to separate agents, which
+            # is exactly the state the stage exists to end.
+            elif work_item.leaf_required:
+                verdict = RoutingVerdict.LEAF
             outcome = await self._execute_selected_path(
                 work_item, task, agents, verdict, phases, owner
             )

@@ -700,6 +700,8 @@ export const PLAN_STATUS_VALUES = [
     'pending_review',
     'approved',
     'executing',
+    'integrating',
+    'evaluating',
     'completed',
     'rejected',
     'superseded',
@@ -741,6 +743,8 @@ export type Priority = (typeof PRIORITY_VALUES)[number]
 export const PROJECT_STATUS_VALUES = [
     'planning',
     'active',
+    'integrating',
+    'evaluating',
     'on_hold',
     'completed',
     'cancelled',

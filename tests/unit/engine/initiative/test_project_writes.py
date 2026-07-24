@@ -141,7 +141,7 @@ class TestAdvance:
     """Walking a project to its derived status."""
 
     async def test_a_single_hop_writes_once(self) -> None:
-        backend = await _seed(ProjectStatus.ACTIVE)
+        backend = await _seed(ProjectStatus.EVALUATING)
 
         advanced = await advance_project_status(
             backend.projects,
@@ -157,7 +157,7 @@ class TestAdvance:
         """The state machine rejects PLANNING -> COMPLETED as a single hop.
 
         Writing the endpoint directly would persist exactly that transition, so
-        the walk must go through ACTIVE and record both hops.
+        the walk must go through ACTIVE and the tail, recording every hop.
         """
         backend = await _seed(ProjectStatus.PLANNING)
 
@@ -169,8 +169,9 @@ class TestAdvance:
 
         assert advanced is not None
         assert advanced.status is ProjectStatus.COMPLETED
-        # One version bump per hop: PLANNING -> ACTIVE -> COMPLETED.
-        assert advanced.version == 3
+        # One version bump per hop: PLANNING, ACTIVE, INTEGRATING, EVALUATING,
+        # COMPLETED.
+        assert advanced.version == 5
 
     async def test_already_at_target_is_a_no_op(self) -> None:
         backend = await _seed(ProjectStatus.COMPLETED)
@@ -216,7 +217,13 @@ class TestAdvance:
         repo = mock_of[ProjectRepository](
             get=AsyncMock(return_value=stored),
             update=AsyncMock(
-                side_effect=[PersistenceVersionConflictError("raced"), None, None]
+                side_effect=[
+                    PersistenceVersionConflictError("raced"),
+                    None,
+                    None,
+                    None,
+                    None,
+                ]
             ),
         )
 
@@ -227,8 +234,8 @@ class TestAdvance:
         )
 
         assert advanced is not None
-        # The lost first hop is retried, then both hops land.
-        assert repo.update.await_count == 3
+        # The lost first hop is retried, then all four hops land.
+        assert repo.update.await_count == 5
         assert repo.get.await_count == 2
 
     async def test_sustained_contention_gives_up(self) -> None:

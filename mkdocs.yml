@@ -178,6 +178,7 @@ nav:
       - Output-Style Policy: design/output-style-policy.md
       - Plan Review: design/plan-review.md
       - Project Lifecycle: design/project-lifecycle.md
+      - Initiative Tail: design/initiative-tail.md
       - Distributed Runtime: design/distributed-runtime.md
       - Memory: design/memory.md
       - Memory Organizational: design/memory-organizational.md

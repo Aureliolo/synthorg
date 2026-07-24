@@ -2582,7 +2582,8 @@ CREATE TABLE plans (
     status TEXT NOT NULL DEFAULT 'draft'
     CHECK (status IN (
         'planning', 'draft', 'pending_review', 'approved', 'executing',
-        'completed', 'rejected', 'superseded', 'failed'
+        'integrating', 'evaluating', 'completed', 'rejected', 'superseded',
+        'failed'
     )),
     failure_reason TEXT CHECK (failure_reason IS NULL OR LENGTH(TRIM(failure_reason)) > 0),
     forecast_id TEXT,
@@ -2591,6 +2592,7 @@ CREATE TABLE plans (
     assumptions TEXT NOT NULL DEFAULT '[]',
     objective_criteria TEXT NOT NULL DEFAULT '[]',
     version_history TEXT NOT NULL DEFAULT '[]',
+    replan_generation INTEGER NOT NULL DEFAULT 0 CHECK (replan_generation >= 0),
     version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,

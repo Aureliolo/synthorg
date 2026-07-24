@@ -43,6 +43,7 @@ def _plan(
                 description=NotBlankStr("Set up the game board grid"),
                 estimated_complexity=Complexity.MEDIUM,
                 acceptance_criteria=(NotBlankStr("board grid renders"),),
+                expected_artifacts=(NotBlankStr("src/board.py"),),
                 satisfies=(NotBlankStr("A playable board"),),
             ),
             PlanItem(
@@ -52,6 +53,7 @@ def _plan(
                 dependencies=(NotBlankStr(sid("item-1")),),
                 owner=NotBlankStr("engineering"),
                 acceptance_criteria=(NotBlankStr("pieces drop and rotate"),),
+                expected_artifacts=(NotBlankStr("src/movement.py"),),
             ),
         ),
         task_structure=TaskStructure.SEQUENTIAL,

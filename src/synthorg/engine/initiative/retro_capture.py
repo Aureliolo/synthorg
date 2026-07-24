@@ -22,17 +22,19 @@ recomputing the same completion concurrently.
 """
 
 import asyncio
-from functools import cmp_to_key
 from typing import Final
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.authority import compare_authority
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.plan import Plan
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.initiative.lead import (
+    resolve_initiative_lead,
+    resolve_lead_provider,
+)
 from synthorg.engine.initiative.retro_session import (
     RetroDistiller,
     RetroSessionConfig,
@@ -58,7 +60,6 @@ from synthorg.observability.events.retrospective import (
     RETRO_CAPTURE_STARTED,
     RETRO_CAPTURE_WRITE_INCOMPLETE,
 )
-from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.protocol import CompletionProvider, ProviderSelector
 from synthorg.settings.resolver import ConfigResolver
 
@@ -409,28 +410,11 @@ class ShipRetroCaptureService:
     async def _resolve_lead(self, project: Project) -> AgentIdentity | None:
         """Resolve the retrospective's author for *project*.
 
-        The lead is the natural author; when a project somehow carries no lead,
-        the most senior team member stands in, so an owned initiative always
-        has an accountable author for its retrospective.
-
         Returns:
             The lead identity, a senior team stand-in, or ``None`` when neither
             can be resolved.
         """
-        if project.lead is not None:
-            lead = await self._registry.get(project.lead)
-            if lead is not None:
-                return lead
-        if not project.team:
-            return None
-        members = await self._registry.get_by_ids(project.team)
-        if not members:
-            return None
-        authority_key = cmp_to_key(compare_authority)
-        return max(
-            members.values(),
-            key=lambda a: (authority_key(a.role), str(a.id)),
-        )
+        return await resolve_initiative_lead(self._registry, project)
 
     def _resolve_provider(self, lead: AgentIdentity) -> CompletionProvider | None:
         """Resolve the completion client the session runs on.
@@ -439,12 +423,9 @@ class ShipRetroCaptureService:
             The lead's bound provider, the explicit system default when that is
             unregistered, or ``None`` when neither resolves.
         """
-        try:
-            return self._provider_selector(lead)
-        except DriverNotRegisteredError:
-            logger.debug(
-                RETRO_CAPTURE_SKIPPED,
-                lead_id=str(lead.id),
-                reason="lead_provider_unregistered_using_default",
-            )
-            return self._default_provider
+        return resolve_lead_provider(
+            self._provider_selector,
+            lead,
+            default_provider=self._default_provider,
+            skipped_event=RETRO_CAPTURE_SKIPPED,
+        )

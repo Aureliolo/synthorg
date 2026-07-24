@@ -704,6 +704,7 @@ reindex
 reinit
 relocations
 replan
+replanned
 replanning
 replans
 replayable

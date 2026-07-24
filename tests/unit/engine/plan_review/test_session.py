@@ -56,6 +56,7 @@ def _plan() -> DecompositionResult:
                 stakes=Stakes.NORMAL,
                 required_role="Backend Developer",
                 acceptance_criteria=(NotBlankStr("renders"),),
+                expected_artifacts=(NotBlankStr("src/board.py"),),
             ),
         ),
         task_structure=TaskStructure.PARALLEL,

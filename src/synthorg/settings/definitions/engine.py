@@ -1137,3 +1137,138 @@ _r.register(
         ),
     )
 )
+
+# ── Initiative tail: auto-replan ─────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="auto_replan_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Let an initiative that can no longer advance replan itself. Fires"
+            " when every outstanding plan item is dead (failed, rejected,"
+            " cancelled, blocked, suspended, or interrupted) and none can move"
+            " on its own; work awaiting a human is never treated as a stall."
+            " The successor lands in review, so the operator still decides."
+            " Off leaves a stalled initiative hanging until someone notices."
+            " Read live per fire, so a change applies without a restart."
+        ),
+        group="Initiative Tail",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="auto_replan_max_generations",
+        type=SettingType.INTEGER,
+        default="2",
+        description=(
+            "How many times one initiative may replan itself before it is"
+            " parked for a human. A successor opened automatically carries its"
+            " predecessor's generation plus one; a human replan resets it, so"
+            " only an unattended chain is capped. 0 disables the automatic"
+            " replan entirely."
+        ),
+        group="Initiative Tail",
+        min_value=0,
+        max_value=10,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="auto_replan_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="600.0",
+        description=(
+            "Wall-clock ceiling on one automatic re-plan, which re-decomposes"
+            " the objective through the planning strategy. A hung planning"
+            " session is abandoned at this point rather than occupying a"
+            " background slot; the stall persists and the next rollup event"
+            " re-fires the trigger."
+        ),
+        group="Initiative Tail",
+        level=SettingLevel.ADVANCED,
+        min_value=30.0,
+        max_value=3600.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="integration_stage_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="1800.0",
+        description=(
+            "Wall-clock ceiling on minting and dispatching one integration"
+            " job. This bounds the dispatch, not the assembly work itself,"
+            " which runs as an ordinary task under the pipeline's own budgets."
+        ),
+        group="Initiative Tail",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=7200.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="evaluation_session_max_turns",
+        type=SettingType.INTEGER,
+        default="10",
+        description=(
+            "Turn cap for the session that scores a delivered initiative"
+            " against its objective's success criteria. The lead reads the"
+            " workspace and checks each criterion before submitting a verdict,"
+            " so it needs more turns than a single-shot judgement."
+        ),
+        group="Initiative Tail",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=50,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="evaluation_session_cost_ceiling",
+        type=SettingType.FLOAT,
+        default="1.0",
+        description=(
+            "Per-session spend ceiling (base currency) for the evaluation"
+            " session; it halts once accumulated cost reaches this. A halted"
+            " session submits no verdict, and the initiative stays parked"
+            " rather than completing."
+        ),
+        group="Initiative Tail",
+        level=SettingLevel.ADVANCED,
+        min_value=0.01,
+        max_value=100.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="evaluation_session_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="300.0",
+        description=(
+            "Wall-clock ceiling for one evaluation. A backstop to the session's"
+            " own turn and cost caps: a hung judgement is abandoned rather than"
+            " occupying a background slot, and the initiative stays at"
+            " evaluating until the next event re-fires the stage."
+        ),
+        group="Initiative Tail",
+        level=SettingLevel.ADVANCED,
+        min_value=30.0,
+        max_value=3600.0,
+    )
+)
