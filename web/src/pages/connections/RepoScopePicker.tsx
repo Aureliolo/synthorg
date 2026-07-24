@@ -157,7 +157,7 @@ export function RepoScopePicker({ connectionName, selected, onChange }: RepoScop
 
       {selected.length > 0 && (
         <p className="text-xs text-text-secondary">
-          {selected.length} repositor{selected.length === 1 ? 'y' : 'ies'} in scope:{' '}
+          {selected.length} {selected.length === 1 ? 'repository' : 'repositories'} in scope:{' '}
           {selected.join(', ')}
         </p>
       )}
