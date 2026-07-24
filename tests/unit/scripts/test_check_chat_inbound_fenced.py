@@ -56,13 +56,14 @@ def _make_tree(tmp_path: Path, files: dict[str, str]) -> Path:
 
 
 _ROUTER_OK = """\
-async def route(event, dispatcher):
-    return await dispatcher.resume(
-        approval_id=event.approval_id,
-        approved=True,
-        decided_by=event.user,
-        decision_reason=event.text,
-    )
+class InboundResumeRouter:
+    async def route(self, event):
+        return await self._dispatcher.resume(
+            approval_id=event.approval_id,
+            approved=True,
+            decided_by=event.user,
+            decision_reason=event.text,
+        )
 """
 
 
@@ -78,13 +79,14 @@ def test_decision_reason_on_unrelated_call_flagged(tmp_path: Path) -> None:
     dispatch itself forwards nothing and the fencing contract is gone.
     """
     router = """\
-async def route(event, dispatcher):
-    _audit(decision_reason=event.text)
-    return await dispatcher.resume(
-        approval_id=event.approval_id,
-        approved=True,
-        decided_by=event.user,
-    )
+class InboundResumeRouter:
+    async def route(self, event):
+        _audit(decision_reason=event.text)
+        return await self._dispatcher.resume(
+            approval_id=event.approval_id,
+            approved=True,
+            decided_by=event.user,
+        )
 """
     root = _make_tree(tmp_path, {"router.py": router})
     violations = _MODULE._check(root)
@@ -95,8 +97,73 @@ async def route(event, dispatcher):
 def test_dead_resume_call_does_not_satisfy_the_gate(tmp_path: Path) -> None:
     """A fenced dispatch parked after an early return never runs."""
     router = """\
+class InboundResumeRouter:
+    async def route(self, event):
+        return await self._dispatcher.publish(event)
+        return await self._dispatcher.resume(
+            approval_id=event.approval_id,
+            approved=True,
+            decided_by=event.user,
+            decision_reason=event.text,
+        )
+"""
+    root = _make_tree(tmp_path, {"router.py": router})
+    assert len(_MODULE._check(root)) == 1
+
+
+def test_fenced_helper_does_not_vouch_for_the_entrypoint(tmp_path: Path) -> None:
+    """Only the router entrypoint's own dispatch counts.
+
+    A helper carrying the fenced keyword satisfies a module-wide search
+    while ``route`` hands the text over unfenced, which is exactly the
+    substitution the binding exists to refuse.
+    """
+    router = """\
+class InboundResumeRouter:
+    async def route(self, event):
+        return await self._dispatcher.resume(
+            approval_id=event.approval_id,
+            approved=True,
+            decided_by=event.user,
+            raw_text=event.text,
+        )
+
+    async def _unused(self, event):
+        return await self._dispatcher.resume(
+            approval_id=event.approval_id,
+            approved=True,
+            decided_by=event.user,
+            decision_reason=event.text,
+        )
+"""
+    root = _make_tree(tmp_path, {"router.py": router})
+    assert len(_MODULE._check(root)) == 1
+
+
+def test_resume_on_another_object_does_not_satisfy_the_gate(tmp_path: Path) -> None:
+    """The hand-off must ride on the router's own dispatcher.
+
+    A ``resume(...)`` on some other collaborator does not carry inbound
+    text to the fenced resume machinery, so it cannot stand in for it.
+    """
+    router = """\
+class InboundResumeRouter:
+    async def route(self, event):
+        await self._registry.resume(decision_reason=event.text)
+        return await self._dispatcher.resume(
+            approval_id=event.approval_id,
+            approved=True,
+            decided_by=event.user,
+        )
+"""
+    root = _make_tree(tmp_path, {"router.py": router})
+    assert len(_MODULE._check(root)) == 1
+
+
+def test_missing_router_class_flagged(tmp_path: Path) -> None:
+    """A renamed or deleted router entrypoint fails closed."""
+    router = """\
 async def route(event, dispatcher):
-    return await dispatcher.publish(event)
     return await dispatcher.resume(
         approval_id=event.approval_id,
         approved=True,
@@ -125,8 +192,9 @@ def test_prompt_sink_in_a_nested_module_flagged(tmp_path: Path) -> None:
 
 def test_router_without_resume_dispatch_flagged(tmp_path: Path) -> None:
     router = """\
-async def route(event, dispatcher):
-    return await dispatcher.publish(event)
+class InboundResumeRouter:
+    async def route(self, event):
+        return await self._dispatcher.publish(event)
 """
     root = _make_tree(tmp_path, {"router.py": router})
     assert len(_MODULE._check(root)) == 1

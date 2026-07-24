@@ -16,6 +16,7 @@ from synthorg.api.state import _ENTRY_TASK_DRAIN_GRACE_SECONDS, AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.client.state import client_simulation_state_of, has_simulation_runtime
 from synthorg.communication.state import CommunicationStateSlice
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.chat_api.inbound.consumer import ChatInboundConsumer
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import (
@@ -542,3 +543,27 @@ async def _wire_approval_gate(
         service="approval_gate",
         has_parked_context_repo=parked_repo is not None,
     )
+
+
+async def _drain_resume_intents(app_state: AppState) -> None:
+    """Finish any approval resume the previous process died part-way through.
+
+    Non-fatal: a drain fault leaves every marker in place for the next
+    startup to retry, which is a strictly better outcome than refusing to
+    boot over a recovery step. The individual re-dispatches are already
+    isolated inside the drain, so reaching here means the enumeration
+    itself failed.
+    """
+    from synthorg.api.resume_intent_outbox import ResumeIntentDrain  # noqa: PLC0415
+
+    try:
+        await ResumeIntentDrain(app_state).drain()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            phase="resume_intent_drain",
+            severity="non_fatal",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )

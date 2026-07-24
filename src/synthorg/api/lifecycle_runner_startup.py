@@ -45,6 +45,7 @@ from synthorg.api.lifecycle_helpers.ticket_cleanup import (
     _ticket_cleanup_loop,
 )
 from synthorg.api.lifecycle_runner_support import (
+    _drain_resume_intents,
     _LifecycleTasks,
     _wire_approval_gate,
     _wire_task_activity_observer,
@@ -623,6 +624,10 @@ async def _run_startup(  # noqa: PLR0913
             reraise_critical(exc)
     await _apply_bridge_config(app_state, effective_config)
     await _apply_security_timeout_interval(app_state, approval_timeout_scheduler)
+    # After the approval gate and the worker execution service are wired,
+    # since the re-dispatch routes through both. Finishes any approval the
+    # previous process decided but died before resuming.
+    await _drain_resume_intents(app_state)
 
     # Rebind the live ``MessageBusBridge`` to the now-wired resolver.
     # ``create_app`` captures the resolver eagerly when the bridge is

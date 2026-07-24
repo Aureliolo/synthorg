@@ -11,12 +11,12 @@ is rather than as an argv walker.
 
 from typing import Final
 
+from synthorg.core.npm_version import is_exact_npm_version
+
 # Commands that resolve+run an npm package on the fly. A hand-authored
 # stdio server using one MUST pin an explicit version so a reconnect can
 # never silently pull a newer (and un-reviewed) package version.
 _NPX_COMMANDS: Final[frozenset[str]] = frozenset({"npx", "npx.cmd", "pnpm", "bunx"})
-# npm dist-tags that float to whatever is newest: not a pin.
-_FLOATING_NPM_TAGS: Final[frozenset[str]] = frozenset({"latest", "next", "canary", ""})
 # ``npx`` options that name the package to install independently of the
 # command to run, so THEY carry the spec that must be pinned.
 _PACKAGE_OPTS: Final[frozenset[str]] = frozenset({"-p", "--package"})
@@ -76,6 +76,13 @@ def npm_package_specs(command: str, args: tuple[str, ...]) -> tuple[str, ...]:
 def _package_operands(rest: list[str]) -> tuple[list[str], str | None]:
     """Split arguments into explicit package operands and the positional.
 
+    Scanning stops at the first bare argument: npx's own options end
+    there and everything after is forwarded to the spawned binary, so
+    ``npx pkg@1.2.3 --package=floating`` passes ``--package=floating`` to
+    ``pkg`` rather than installing a second package. Reading past the
+    positional would both miss the real package and reject a launcher
+    over an argument npx never interprets.
+
     Returns:
         Every ``--package`` operand, and the first bare argument (the
         package only when no ``--package`` was given).
@@ -113,8 +120,8 @@ def _package_operands(rest: list[str]) -> tuple[list[str], str | None]:
         # package operand is the first non-flag argument.
         if arg.startswith("-"):
             continue
-        if positional is None:
-            positional = arg
+        positional = arg
+        break
     return named, positional
 
 
@@ -133,11 +140,24 @@ def npm_spec_is_pinned(spec: str) -> bool:
     """Whether an npm package spec carries an explicit, non-floating pin.
 
     Returns:
-        ``True`` when the spec ends in ``@<version>`` with a concrete
-        (non-floating-tag) version.
+        ``True`` when the spec ends in ``@<version>`` with an exact semver
+        version; ``False`` for a dist-tag, a range, or a bare name.
     """
     remainder = spec.removeprefix("@")
     if "@" not in remainder:
         return False
-    version = remainder.rsplit("@", 1)[1]
-    return version.lower() not in _FLOATING_NPM_TAGS
+    return is_exact_npm_version(remainder.rsplit("@", 1)[1])
+
+
+def npm_spec_name(spec: str) -> str:
+    """Return the package name of *spec*, without its version selector.
+
+    The leading ``@`` of a scoped package is not a version separator, so
+    only a later ``@`` splits the name from the selector.
+
+    Returns:
+        The package name (e.g. ``@scope/pkg`` for ``@scope/pkg@latest``).
+    """
+    scope = "@" if spec.startswith("@") else ""
+    remainder = spec.removeprefix("@")
+    return scope + remainder.rsplit("@", 1)[0] if "@" in remainder else spec

@@ -73,6 +73,7 @@ from tests.unit.api.fakes import (
     FakeProjectRepository,
     FakeProjectWorkspaceRepository,
     FakeRedTeamReportArchiveRepository,
+    FakeResumeIntentRepository,
     FakeSettingsRepository,
     FakeTaskMetricRepository,
     FakeTaskRepository,
@@ -797,6 +798,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._task_metrics = FakeTaskMetricRepository()
         self._collaboration_metrics = FakeCollaborationMetricRepository()
         self._parked_contexts = FakeParkedContextRepository()
+        self._resume_intents = FakeResumeIntentRepository()
         self._audit_entries = FakeAuditRepository()
         self._provider_audit_events = _FakeProviderAuditRepo()
         self._preset_overrides = _FakePresetOverrideRepo()
@@ -1040,6 +1042,11 @@ class FakePersistenceBackend(PersistenceBackend):
     @property
     def parked_contexts(self) -> FakeParkedContextRepository:
         return self._parked_contexts
+
+    @override
+    @property
+    def resume_intents(self) -> FakeResumeIntentRepository:
+        return self._resume_intents
 
     @override
     @property

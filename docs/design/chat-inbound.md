@@ -57,7 +57,50 @@ free of any engine/approval import.
    (`save_if_pending`, so a concurrent dashboard decision or a duplicate
    event cannot double-resume) and hands off to `signal_resume_intent` (the
    same internal entrypoint the dashboard approve/reject endpoint uses),
-   which resumes the parked task through the existing routing.
+   which resumes the parked task through the existing routing. Both writes
+   are bracketed by the resume-intent outbox (see below) so a process death
+   between them cannot strand the parked task.
+
+## Crash recovery: the resume-intent outbox
+
+Deciding an approval is two writes that cannot be merged into one. The
+decision lands on the `ApprovalItem`, moving it off `PENDING`; only then
+does `signal_resume_intent` wake the parked task. A process death between
+them strands that task forever: nothing is `PENDING`, so neither a
+redelivered Socket-Mode event nor the dashboard can act on it, and no
+sweep notices.
+
+`api/resume_intent_outbox.py` closes that window. Both decision paths (the
+dashboard endpoint and this dispatcher) call `record_resume_intent` before
+the decision write and `clear_resume_intent` once the resume settles, and
+`ResumeIntentDrain` resolves whatever survives at the next startup:
+
+| Approval state at drain | Action |
+| --- | --- |
+| Absent, or still `PENDING` | Discard the marker: the decision never landed, so the approval is still decidable and re-dispatching would invent consent |
+| Decided BEFORE the marker was recorded | Discard: the marker was written by a caller that went on to lose `save_if_pending`, so the resume behind it already completed |
+| `APPROVED` / `REJECTED`, decided at or after the marker | Re-dispatch `signal_resume_intent`, then clear |
+| Re-dispatch raises | **Keep** the marker: the task is still parked, so the next startup retries |
+
+Three properties make that table safe under a race, where one caller wins
+`save_if_pending` and the other does not:
+
+- **Recording is insert-if-absent**, never an insert-or-replace, so the
+  earliest marker (the one that actually brackets the winner's decision)
+  keeps its timestamp and the loser cannot mask it with a later one.
+- **Only the winner clears.** A loser returning 409 leaves the marker
+  alone, because a concurrent winner may own an in-flight resume behind
+  it; the recorded-after-decision row above is what retires a marker no
+  one owns.
+- **The marker holds only `approval_id` and `recorded_at`**, never a copy
+  of the decision. The approval row stays the system of record, so the
+  drain reads `status` / `decided_by` / `decision_reason` from there and
+  the two can never disagree.
+
+Recording is best-effort (a `None` backend, or an outbox fault, degrades
+to a logged no-op) because a run with no database cannot survive a crash
+anyway, and forfeiting recovery for one decision beats 500-ing a
+serviceable approval.
 
 ## Authorization: explicit-token-only
 
@@ -90,5 +133,9 @@ path the dashboard approval comment takes, so there is one fencing site,
 not two. (Under explicit-token-only the reason is a fixed string rather
 than raw human text, but the fenced hand-off remains the single escape
 path.) The `check_chat_inbound_fenced.py` gate enforces this structurally:
-no inbound module may call an LLM-completion chokepoint, and the router must
-keep the `decision_reason=` hand-off.
+no inbound module may call an LLM-completion chokepoint, and
+`InboundResumeRouter.route` must keep the `decision_reason=` keyword on its
+own reachable `self._dispatcher.resume(...)` call. Binding the check to that
+one call is what makes it load-bearing: a `decision_reason=` sitting on a
+helper, on a different collaborator, or after an early return would satisfy
+a module-wide search while the real hand-off shipped the text unfenced.

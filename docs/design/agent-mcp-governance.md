@@ -67,10 +67,18 @@ tools with no config change.
 
 `MCPServerConfig._validate_npm_pin` rejects an unpinned npm package at the
 model boundary: an `npx` / `pnpm dlx` / `bunx` command must run a package
-spec ending in a concrete `@<version>` (a floating tag such as `latest` /
-`next` / `canary` is not a pin). Non-npx commands (node, python, docker)
-are exempt. The stdio sandbox's `NPM_CONFIG_IGNORE_SCRIPTS=true` blocks
-the install-script RCE vector independently, but does not stop an unpinned
+spec ending in an exact `@<version>`. Only `MAJOR.MINOR.PATCH` (with
+optional pre-release/build metadata) names one immutable artifact, so a
+dist-tag (`latest` / `next` / `canary`), a range (`^1.2.3` / `~1.2.3` /
+`>=1.2.3`), a partial version (`1` / `1.2`), and a wildcard (`1.x` / `*`)
+are all refused: each still re-resolves at spawn time. `npx` reads its own
+options only up to the first positional, so a `--package` after it is an
+argument forwarded to the spawned binary, not a second install.
+`CatalogEntry.npm_version` applies the same rule through the shared
+`core.npm_version.is_exact_npm_version`, so the curated and hand-authored
+paths cannot drift apart. Non-npx commands (node, python, docker) are
+exempt. The stdio sandbox's `NPM_CONFIG_IGNORE_SCRIPTS=true` blocks the
+install-script RCE vector independently, but does not stop an unpinned
 package resolving a newer version, so the pin is a distinct control.
 
 `check_mcp_server_config_pinned.py` guards the validator against removal.

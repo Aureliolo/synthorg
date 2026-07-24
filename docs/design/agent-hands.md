@@ -88,9 +88,13 @@ guessing globs:
    round-tripped on SQLite and Postgres.
 
 The `check_forge_repo_scoped.py` convention gate guards the enforcement:
-`_BaseForgeTool._resolve_connection` must raise `ForgeRepoScopeError`, and
-no forge tool may override `_resolve_connection` without re-enforcing scope
-(opt out per-class with `# lint-allow: forge-repo-scoped -- <reason>`).
+`_BaseForgeTool._resolve_connection` **in `tools/forge/_base.py`** must
+raise `ForgeRepoScopeError` from a reachable statement, and no forge tool may override
+`_resolve_connection` without re-enforcing scope (opt out per-class with
+`# lint-allow: forge-repo-scoped -- <reason>`). The base check is bound to
+that path, so a class merely named `_BaseForgeTool` in another forge module
+cannot stand in for the real enforcement site; elsewhere the name carries no
+privilege and such a class is checked as an ordinary tool.
 
 ## Governance summary
 

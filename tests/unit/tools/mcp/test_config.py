@@ -191,6 +191,81 @@ class TestMCPServerConfigNpmPin:
         cfg = MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
         assert cfg.args == args
 
+    @pytest.mark.parametrize(
+        "version",
+        ["^1.2.3", "~1.2.3", ">=1.2.3", "1.2.x", "1.x", "*", "1.2", "1"],
+        ids=[
+            "caret",
+            "tilde",
+            "gte",
+            "patch_wild",
+            "minor_wild",
+            "star",
+            "minor",
+            "major",
+        ],
+    )
+    def test_version_range_rejected(self, version: str) -> None:
+        # A range still resolves to whatever is newest that satisfies it, so
+        # a reconnect can pull an un-reviewed release exactly as `@latest`
+        # would. Only an immutable exact version counts as a pin.
+        with pytest.raises(ValidationError, match="must be pinned"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-y", f"pkg@{version}"),
+            )
+
+    @pytest.mark.parametrize(
+        "version",
+        ["1.2.3", "1.2.3-beta.1", "1.2.3+build.5", "1.2.3-rc.1+exp.sha.5114f85"],
+        ids=["release", "prerelease", "build", "prerelease_build"],
+    )
+    def test_exact_semver_accepted(self, version: str) -> None:
+        # Prerelease and build metadata still name one immutable artifact.
+        spec = f"pkg@{version}"
+        cfg = MCPServerConfig(
+            name="s1", transport="stdio", command="npx", args=("-y", spec)
+        )
+        assert cfg.args == ("-y", spec)
+
+    def test_package_flag_after_positional_is_forwarded(self) -> None:
+        # npx's own options end at the first positional: `--package=floating`
+        # here is an argument to `pkg`, not a second install. Reading past the
+        # positional would reject a valid launcher AND lose the real package.
+        args = ("pkg@1.2.3", "--package=floating")
+        cfg = MCPServerConfig(name="s1", transport="stdio", command="npx", args=args)
+        assert cfg.args == args
+
+    def test_unpinned_positional_still_rejected_before_forwarded_flags(self) -> None:
+        with pytest.raises(ValidationError, match="'pkg'"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("pkg", "--package=safe@1.0.0"),
+            )
+
+    def test_error_example_uses_the_package_name(self) -> None:
+        # Appending to the offending spec would suggest 'pkg@latest@1.2.3'.
+        with pytest.raises(ValidationError, match=r"e\.g\. 'pkg@1\.2\.3'"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-y", "pkg@latest"),
+            )
+
+    def test_error_example_keeps_the_scope_of_a_scoped_package(self) -> None:
+        with pytest.raises(ValidationError, match=r"e\.g\. '@scope/pkg@1\.2\.3'"):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="npx",
+                args=("-y", "@scope/pkg@^1.0.0"),
+            )
+
 
 class TestMCPServerConfigStdio:
     """Stdio transport validation."""

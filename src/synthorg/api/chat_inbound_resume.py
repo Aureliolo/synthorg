@@ -14,6 +14,10 @@ engine/approval import.
 from datetime import UTC, datetime
 
 from synthorg.api.controllers._approval_review_gate import signal_resume_intent
+from synthorg.api.resume_intent_outbox import (
+    clear_resume_intent,
+    record_resume_intent,
+)
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalStatus
 from synthorg.approval.state import approval_store_of
@@ -74,10 +78,19 @@ class ApprovalResumeDispatcher:
                 "decision_reason": NotBlankStr(decision_reason),
             },
         )
+        # Recorded BEFORE the decision write: a crash after the decision but
+        # before the resume dispatch would otherwise strand the parked task
+        # with nothing left PENDING for anyone to act on.
+        await record_resume_intent(self._app_state, approval_id)
         # Atomic first-writer-wins: if a concurrent dashboard decision or a
         # second inbound event already moved it off PENDING, this returns
         # None and we do not double-resume.
         if await store.save_if_pending(updated) is None:
+            # The marker is left alone: a concurrent winner may own an
+            # in-flight resume behind it, and clearing here would delete
+            # that safety net. A marker this call recorded and nobody else
+            # owns is discarded by the drain's recorded-after-decision
+            # check instead.
             return False
         try:
             await signal_resume_intent(
@@ -100,6 +113,7 @@ class ApprovalResumeDispatcher:
             # failure so the router keeps the thread correlation for a
             # retry rather than discarding it.
             await store.save(item)
+            await clear_resume_intent(self._app_state, approval_id)
             logger.warning(
                 CHAT_INBOUND_RESUME_FAILED,
                 approval_id=approval_id,
@@ -107,6 +121,7 @@ class ApprovalResumeDispatcher:
                 error=safe_error_description(exc),
             )
             return False
+        await clear_resume_intent(self._app_state, approval_id)
         logger.info(
             CHAT_INBOUND_EVENT_ROUTED, approval_id=approval_id, approved=approved
         )

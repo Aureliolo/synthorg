@@ -212,6 +212,18 @@ CREATE INDEX idx_pc_approval_id ON parked_contexts (approval_id);
 CREATE INDEX idx_parked_contexts_agent_parked_at
 ON parked_contexts (agent_id, parked_at DESC);
 
+-- ── Resume intents ────────────────────────────────────────────
+-- Crash-recovery marker for the two-write approval decision: written
+-- before the decision lands on the approval and cleared once the resume
+-- has dispatched, so a row surviving a restart means "this approval's
+-- parked task may never have been woken". Keyed by approval_id (one
+-- in-flight resume per approval); the decision itself is NOT copied
+-- here, the approval row stays the system of record.
+CREATE TABLE resume_intents (
+    approval_id TEXT NOT NULL PRIMARY KEY,
+    recorded_at TIMESTAMPTZ NOT NULL
+);
+
 -- ── Audit entries ─────────────────────────────────────────────
 -- Composite (id, timestamp) primary key for TimescaleDB compatibility
 -- (see ``cost_records`` above for the rationale).

@@ -6,10 +6,9 @@ at runtime via the configured ``SecretBackend``.
 """
 
 import copy
-import re
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Final, Literal, Self
+from typing import Literal, Self
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -21,6 +20,7 @@ from pydantic import (
 )
 
 from synthorg.core.env_var_safety import validate_credential_env_var_name
+from synthorg.core.npm_version import is_exact_npm_version
 from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.repo_scope import validate_repo_scope_entry
@@ -29,13 +29,6 @@ from synthorg.integrations.connections.repo_scope import validate_repo_scope_ent
 # connections package) so both the database authenticator and the catalog
 # entry validate against one source rather than drifting copies.
 VALID_DIALECTS: frozenset[str] = frozenset({"postgres", "mysql", "sqlite", "mariadb"})
-
-# An exact published version (MAJOR.MINOR.PATCH with optional pre-release/build),
-# NOT an npm dist-tag (``latest``) or a semver range (``^1.0.0`` / ``~1`` / ``1.x``).
-# A range or tag still resolves to a mutable version at launch, defeating the pin.
-_EXACT_NPM_VERSION: Final[re.Pattern[str]] = re.compile(
-    r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
-)
 
 # Per-connection webhook-receipt retention window in days. Tri-state:
 #   None    -- fall back to the global
@@ -564,9 +557,7 @@ class CatalogEntry(BaseModel):
                 f"(npm_package {self.npm_package!r} would resolve 'latest')"
             )
             raise ValueError(msg)
-        if self.npm_version is not None and not _EXACT_NPM_VERSION.fullmatch(
-            self.npm_version
-        ):
+        if self.npm_version is not None and not is_exact_npm_version(self.npm_version):
             msg = (
                 f"Catalog entry {self.id!r}: npm_version {self.npm_version!r} must "
                 f"be an exact published version (e.g. '1.2.3'), not a dist-tag or "

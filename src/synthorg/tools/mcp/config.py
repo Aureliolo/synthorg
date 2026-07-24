@@ -19,7 +19,7 @@ from synthorg.observability.events.mcp import (
     MCP_CONFIG_VALIDATION_FAILED,
 )
 from synthorg.observability.redaction import safe_error_description
-from synthorg.tools.mcp._npm_pin import unpinned_npm_packages
+from synthorg.tools.mcp._npm_pin import npm_spec_name, unpinned_npm_packages
 
 logger = get_logger(__name__)
 
@@ -165,11 +165,13 @@ class MCPServerConfig(BaseModel):
         """Reject an ``npx``-launched stdio server with an unpinned package.
 
         The catalog installer pins every package to ``@<version>``, but a
-        hand-authored ``MCPServerConfig`` bypasses that path. An unpinned
-        (or ``@latest``) package resolves to whatever is newest on every
-        reconnect, so an un-reviewed version could start running under the
-        agent's tools without any change to the config. Requiring a
-        concrete pin closes that supply-chain gap at the model boundary.
+        hand-authored ``MCPServerConfig`` bypasses that path. Anything
+        short of an exact version -- a bare name, a dist-tag such as
+        ``@latest``, or a range such as ``@^1.2.3`` -- resolves to whatever
+        is newest on every reconnect, so an un-reviewed version could start
+        running under the agent's tools without any change to the config.
+        Requiring an exact pin closes that supply-chain gap at the model
+        boundary.
 
         Returns:
             The unchanged model when the command is not npx-style or its
@@ -184,10 +186,12 @@ class MCPServerConfig(BaseModel):
         if not unpinned:
             return self
         rendered = ", ".join(repr(spec) for spec in unpinned)
+        # The example is built from the package NAME, not the offending
+        # spec: appending to 'pkg@latest' would suggest 'pkg@latest@1.2.3'.
         msg = (
             f"Server {self.name!r}: npm package(s) {rendered} must be pinned to "
-            f"an explicit version (e.g. '{unpinned[0]}@1.2.3'), not "
-            f"floating/unpinned"
+            f"an exact version (e.g. '{npm_spec_name(unpinned[0])}@1.2.3'), not "
+            f"a dist-tag or version range"
         )
         logger.warning(
             MCP_CONFIG_VALIDATION_FAILED,

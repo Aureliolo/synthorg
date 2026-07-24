@@ -26,6 +26,10 @@ from synthorg.api.controllers.approvals._shared import (
     ApprovalResponse,
     to_response_without_context,
 )
+from synthorg.api.resume_intent_outbox import (
+    clear_resume_intent,
+    record_resume_intent,
+)
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.approval.enums import ApprovalStatus
@@ -327,8 +331,16 @@ async def _save_decision_and_notify(  # noqa: PLR0913
     )
 
     store = require_service(app_state.slice(ApprovalStateSlice).store, "Approval Store")
+    # Recorded BEFORE the decision write: a crash after the decision but
+    # before ``signal_resume_intent`` below would otherwise strand the parked
+    # task with nothing left PENDING for anyone to act on.
+    await record_resume_intent(app_state, approval_id)
     saved = await store.save_if_pending(updated)
     if saved is None:
+        # The marker is left alone: a concurrent winner may own an in-flight
+        # resume behind it, and clearing here would delete that safety net.
+        # A marker this call recorded and nobody else owns is discarded by
+        # the drain's recorded-after-decision check instead.
         msg = "Approval is no longer pending (already decided or expired)"
         logger.warning(
             API_APPROVAL_CONFLICT,
@@ -359,4 +371,5 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         decision_reason=decision_reason,
         task_id=saved.task_id,
     )
+    await clear_resume_intent(app_state, approval_id)
     return response

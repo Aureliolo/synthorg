@@ -174,6 +174,9 @@ from synthorg.persistence.postgres.refresh_repo import (
 from synthorg.persistence.postgres.research_run_repo import (
     PostgresResearchRunRepository,
 )
+from synthorg.persistence.postgres.resume_intent_repo import (
+    PostgresResumeIntentRepository,
+)
 from synthorg.persistence.postgres.risk_override_repo import (
     PostgresRiskOverrideRepository,
 )
@@ -250,6 +253,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._task_metrics = None
         self._collaboration_metrics = None
         self._parked_contexts = None
+        self._resume_intents = None
         self._audit_entries = None
         self._provider_audit_events = None
         self._preset_overrides = None
@@ -344,6 +348,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
 
         # Operational + security repositories.
         self._parked_contexts = PostgresParkedContextRepository(pool)
+        self._resume_intents = PostgresResumeIntentRepository(pool)
         self._audit_entries = PostgresAuditRepository(pool)
         self._provider_audit_events = PostgresProviderAuditRepo(pool)
         self._preset_overrides = PostgresPresetOverrideRepo(pool)

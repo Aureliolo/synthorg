@@ -137,6 +137,7 @@ from synthorg.persistence.red_team_report_protocol import (
     RedTeamReportArchiveRepository,
 )
 from synthorg.persistence.research_protocol import ResearchRunRepository
+from synthorg.persistence.resume_intent_protocol import ResumeIntentRepository
 from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
 from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.persistence.settings_protocol import SettingsRepository
@@ -182,6 +183,7 @@ class _BackendRepositoryAccessors:
     _task_metrics: TaskMetricRepository | None
     _collaboration_metrics: CollaborationMetricRepository | None
     _parked_contexts: ParkedContextRepository | None
+    _resume_intents: ResumeIntentRepository | None
     _audit_entries: AuditRepository | None
     _provider_audit_events: ProviderAuditRepo | None
     _preset_overrides: PresetOverrideRepo | None
@@ -317,6 +319,11 @@ class _BackendRepositoryAccessors:
     def parked_contexts(self) -> ParkedContextRepository:
         """Repository for ParkedContext persistence."""
         return self._require_connected(self._parked_contexts, "parked_contexts")
+
+    @property
+    def resume_intents(self) -> ResumeIntentRepository:
+        """Repository for in-flight approval resume intents."""
+        return self._require_connected(self._resume_intents, "resume_intents")
 
     @property
     def audit_entries(self) -> AuditRepository:

@@ -28,6 +28,7 @@ from synthorg.core.plan_comment import PlanItemComment
 from synthorg.core.project import Project
 from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.project_workspace import ProjectWorkspace
+from synthorg.core.resume_intent import ResumeIntent
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
@@ -393,6 +394,31 @@ class FakeParkedContextRepository:
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
         return self._contexts.pop(entity_id, None) is not None
+
+
+class FakeResumeIntentRepository:
+    """In-memory approval resume-intent outbox for tests."""
+
+    def __init__(self) -> None:
+        self._intents: dict[str, ResumeIntent] = {}
+
+    async def save(self, entity: ResumeIntent) -> None:
+        self._intents[entity.approval_id] = entity
+
+    async def get(self, entity_id: NotBlankStr) -> ResumeIntent | None:
+        return self._intents.get(entity_id)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ResumeIntent, ...]:
+        ordered = [self._intents[key] for key in sorted(self._intents)]
+        return tuple(ordered[offset : offset + limit])
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._intents.pop(entity_id, None) is not None
 
 
 class FakeAuditRepository:

@@ -239,5 +239,42 @@ class ForgePushTool(_BaseForgeTool):  # lint-allow: forge-repo-scoped
     assert len(_MODULE._check(root)) == 1
 
 
+def test_decoy_base_elsewhere_cannot_vouch_for_the_missing_real_one(
+    tmp_path: Path,
+) -> None:
+    """Only ``_base.py`` can satisfy the shared-enforcement check.
+
+    A same-named class in another forge module would otherwise let the
+    real base drop its scope check while the gate stayed green.
+    """
+    root = _make_tree(
+        tmp_path,
+        {
+            "_base.py": "class _BaseForgeTool(GovernedConnectionTool):\n    pass\n",
+            "decoy.py": _BASE_OK,
+        },
+    )
+    violations = _MODULE._check(root)
+    assert any("must override" in v for v in violations)
+
+
+def test_decoy_base_elsewhere_is_checked_as_an_ordinary_tool(tmp_path: Path) -> None:
+    """Outside ``_base.py`` the name carries no privilege.
+
+    A class called ``_BaseForgeTool`` in another module is just a tool
+    overriding ``_resolve_connection``, so a bypass in it is flagged
+    rather than being read as the shared enforcement site.
+    """
+    decoy_bypass = """\
+class _BaseForgeTool(GovernedConnectionTool):
+    async def _resolve_connection(self, args):
+        return await self._catalog.get(self._connection)
+"""
+    root = _make_tree(tmp_path, {"_base.py": _BASE_OK, "decoy.py": decoy_bypass})
+    violations = _MODULE._check(root)
+    assert len(violations) == 1
+    assert "decoy.py" in violations[0]
+
+
 def test_real_tree_is_clean() -> None:
     assert _MODULE._check(_REPO_ROOT) == []

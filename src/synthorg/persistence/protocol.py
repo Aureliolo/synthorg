@@ -161,6 +161,9 @@ from synthorg.persistence.red_team_report_protocol import (
 from synthorg.persistence.research_protocol import (
     ResearchRunRepository,
 )
+from synthorg.persistence.resume_intent_protocol import (
+    ResumeIntentRepository,
+)
 from synthorg.persistence.risk_override_protocol import (
     RiskOverrideRepository,
 )
@@ -230,6 +233,7 @@ class PersistenceBackend(Protocol):
         task_metrics: Repository for TaskMetricRecord persistence.
         collaboration_metrics: Repository for CollaborationMetricRecord persistence.
         parked_contexts: Repository for ParkedContext persistence.
+        resume_intents: Repository for in-flight approval resume intents.
         audit_entries: Repository for AuditEntry persistence.
         users: Repository for User persistence.
         api_keys: Repository for ApiKey persistence.
@@ -433,6 +437,11 @@ class PersistenceBackend(Protocol):
     @property
     def parked_contexts(self) -> ParkedContextRepository:
         """Repository for ParkedContext persistence."""
+        ...
+
+    @property
+    def resume_intents(self) -> ResumeIntentRepository:
+        """Repository for in-flight approval resume intents."""
         ...
 
     @property

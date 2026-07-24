@@ -56,17 +56,29 @@ class _FakeStore:
 
 
 def _patch(
-    monkeypatch: pytest.MonkeyPatch, store: _FakeStore
+    monkeypatch: pytest.MonkeyPatch,
+    store: _FakeStore,
+    outbox: list[str] | None = None,
 ) -> list[dict[str, object]]:
     calls: list[dict[str, object]] = []
+    trail = outbox if outbox is not None else []
 
     async def _fake_signal(
         app_state: object, approval_id: str, **kwargs: object
     ) -> None:
+        trail.append("dispatch")
         calls.append({"approval_id": approval_id, **kwargs})
+
+    async def _fake_record(_app_state: object, _approval_id: str) -> None:
+        trail.append("record")
+
+    async def _fake_clear(_app_state: object, _approval_id: str) -> None:
+        trail.append("clear")
 
     monkeypatch.setattr(resume_mod, "approval_store_of", lambda _s: store)
     monkeypatch.setattr(resume_mod, "signal_resume_intent", _fake_signal)
+    monkeypatch.setattr(resume_mod, "record_resume_intent", _fake_record)
+    monkeypatch.setattr(resume_mod, "clear_resume_intent", _fake_clear)
     return calls
 
 
@@ -163,3 +175,64 @@ class TestApprovalResumeDispatcher:
         )
         assert result is False
         assert calls == []
+
+
+class TestApprovalResumeDispatcherOutbox:
+    """The crash-recovery marker brackets the decision at this call site."""
+
+    async def test_marker_is_recorded_before_the_decision_write(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Recording after the decision would leave the very window the
+        # marker exists to close: decided, unresumed, and unrecoverable.
+        trail: list[str] = []
+        _patch(monkeypatch, _FakeStore(_item()), trail)
+        dispatcher = ApprovalResumeDispatcher(app_state=mock_of[AppState]())
+        await dispatcher.resume(
+            approval_id="ap-1", approved=True, decided_by="U1", decision_reason="go"
+        )
+        assert trail == ["record", "dispatch", "clear"]
+
+    async def test_marker_is_left_alone_when_the_pending_race_is_lost(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A concurrent winner may own an in-flight resume behind that
+        # marker; clearing it here would delete the winner's safety net.
+        # The drain retires an unowned marker on its own.
+        trail: list[str] = []
+        _patch(monkeypatch, _FakeStore(_item(), save_pending=False), trail)
+        dispatcher = ApprovalResumeDispatcher(app_state=mock_of[AppState]())
+        await dispatcher.resume(
+            approval_id="ap-1", approved=True, decided_by="U1", decision_reason="go"
+        )
+        assert trail == ["record"]
+
+    async def test_marker_is_cleared_when_the_dispatch_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The approval is rolled back to PENDING on this path, so the
+        # marker has nothing left to recover.
+        trail: list[str] = []
+        _patch(monkeypatch, _FakeStore(_item()), trail)
+
+        async def _boom(*_args: object, **_kwargs: object) -> None:
+            msg = "resume routing down"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(resume_mod, "signal_resume_intent", _boom)
+        dispatcher = ApprovalResumeDispatcher(app_state=mock_of[AppState]())
+        await dispatcher.resume(
+            approval_id="ap-1", approved=True, decided_by="U1", decision_reason="go"
+        )
+        assert trail == ["record", "clear"]
+
+    async def test_no_marker_when_the_approval_is_not_pending(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        trail: list[str] = []
+        _patch(monkeypatch, _FakeStore(_item(ApprovalStatus.APPROVED)), trail)
+        dispatcher = ApprovalResumeDispatcher(app_state=mock_of[AppState]())
+        await dispatcher.resume(
+            approval_id="ap-1", approved=True, decided_by="U1", decision_reason="go"
+        )
+        assert trail == []

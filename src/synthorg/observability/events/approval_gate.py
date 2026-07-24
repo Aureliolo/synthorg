@@ -56,6 +56,32 @@ APPROVAL_GATE_PLAN_TASK_TRANSITION_FAILED: Final[str] = (
 APPROVAL_GATE_PLAN_DECISION_RECORD_FAILED: Final[str] = (
     "approval_gate.plan.decision_record_failed"
 )
+# Resume-intent outbox: the crash-recovery marker written around the
+# two-write approval decision, and the startup drain that finishes any
+# resume the previous process died mid-way through. RECORD/CLEAR failures
+# are non-fatal (the decision itself is unaffected), so they log at
+# WARNING and are kept distinct from the drain's own outcomes.
+APPROVAL_GATE_RESUME_INTENT_RECORD_FAILED: Final[str] = (
+    "approval_gate.resume_intent.record_failed"
+)
+APPROVAL_GATE_RESUME_INTENT_CLEAR_FAILED: Final[str] = (
+    "approval_gate.resume_intent.clear_failed"
+)
+APPROVAL_GATE_RESUME_INTENT_DRAIN_STARTED: Final[str] = (
+    "approval_gate.resume_intent.drain_started"
+)
+APPROVAL_GATE_RESUME_INTENT_DRAIN_COMPLETED: Final[str] = (
+    "approval_gate.resume_intent.drain_completed"
+)
+APPROVAL_GATE_RESUME_INTENT_REDISPATCHED: Final[str] = (
+    "approval_gate.resume_intent.redispatched"
+)
+APPROVAL_GATE_RESUME_INTENT_DISCARDED: Final[str] = (
+    "approval_gate.resume_intent.discarded"
+)
+APPROVAL_GATE_RESUME_INTENT_REDISPATCH_FAILED: Final[str] = (
+    "approval_gate.resume_intent.redispatch_failed"
+)
 APPROVAL_GATE_TASK_NOT_FOUND: Final[str] = "approval_gate.task.not_found"
 APPROVAL_GATE_TASK_UNASSIGNED: Final[str] = "approval_gate.task.unassigned"
 APPROVAL_GATE_NOTIFICATION_FAILED: Final[str] = "approval_gate.notification.failed"

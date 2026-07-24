@@ -9,9 +9,11 @@ and the whole forge family inherits it.
 
 This gate guards two regressions:
 
-1. The shared enforcement disappearing -- ``_BaseForgeTool`` must define a
-   ``_resolve_connection`` override whose body *reachably raises*
-   ``ForgeRepoScopeError``.
+1. The shared enforcement disappearing -- ``_BaseForgeTool`` **in
+   ``tools/forge/_base.py``** must define a ``_resolve_connection``
+   override whose body *reachably raises* ``ForgeRepoScopeError``. Only
+   that file can satisfy the check, so a same-named class elsewhere
+   cannot stand in for the real base.
 2. A forge tool *bypassing* it -- any class under ``tools/forge/`` that
    overrides ``_resolve_connection`` must either delegate to
    ``super()._resolve_connection(...)`` or re-enforce the scope itself
@@ -177,7 +179,12 @@ def _check(repo_root: Path) -> list[str]:
             method = _resolve_method(node)
             if method is None:
                 continue
-            if node.name == _BASE_CLASS:
+            # Bound to the real enforcement site: a class merely NAMED
+            # _BaseForgeTool in another forge module would otherwise be able
+            # to vouch for (or, scanned later, revoke) the shared check.
+            # Elsewhere the name carries no privilege, so such a class falls
+            # through to the bypass check below like any other tool.
+            if node.name == _BASE_CLASS and rel == _BASE_REL:
                 base_ok = _raises_scope_error(method)
                 continue
             if _delegates_to_base(method) or _raises_scope_error(method):
