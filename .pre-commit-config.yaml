@@ -501,7 +501,7 @@ repos:
         stages: [pre-push]
 
       - id: mypy
-        name: mypy type-check (affected modules)
+        name: mypy type-check (daemon full-tree; cold affected-module fallback)
         entry: uv run python scripts/run_affected_mypy.py
         language: system
         files: ^(src/|tests/|scripts/).*\.py$

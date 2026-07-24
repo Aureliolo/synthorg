@@ -179,7 +179,7 @@ Run these sequentially, fixing as we go:
 4. **Type-check:**
 
    ```bash
-   uv run mypy --num-workers=4 src/ tests/
+   make typecheck
    ```
 
 5. **Test (unit suite ONLY):**

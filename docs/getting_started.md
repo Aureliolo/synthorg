@@ -111,8 +111,8 @@ uv run ruff check .
 # Format check (no changes, just verify)
 uv run ruff format --check .
 
-# Type check
-uv run mypy --num-workers=4 src/ tests/ evals/ docker/ d2_fence.py
+# Type check (uses the mypy daemon; seconds once warm)
+make typecheck
 
 # Tests with coverage
 uv run python -m pytest tests/ --ignore=tests/benchmarks/ --cov=synthorg --cov-fail-under=80
