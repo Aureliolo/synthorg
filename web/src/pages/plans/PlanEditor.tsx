@@ -137,6 +137,35 @@ interface RowProps {
   onRemove: (index: number) => void
 }
 
+interface GradingProps {
+  index: number
+  draft: DraftItem
+  onChange: (index: number, patch: Partial<DraftItem>) => void
+}
+
+function ItemGradingFields({ index, draft, onChange }: GradingProps) {
+  return (
+    <div className="grid grid-cols-2 gap-grid-gap">
+      <SelectField
+        label="Complexity"
+        options={COMPLEXITY_OPTIONS}
+        value={draft.complexity}
+        onChange={(value) => {
+          if (isComplexity(value)) onChange(index, { complexity: value })
+        }}
+      />
+      <SelectField
+        label="Stakes"
+        options={STAKES_OPTIONS}
+        value={draft.stakes}
+        onChange={(value) => {
+          if (isStakes(value)) onChange(index, { stakes: value })
+        }}
+      />
+    </div>
+  )
+}
+
 function PlanEditorRow({ index, draft, canRemove, onChange, onRemove }: RowProps) {
   return (
     <div className="space-y-3 rounded-md border border-border p-card">
@@ -201,24 +230,7 @@ function PlanEditorRow({ index, draft, canRemove, onChange, onRemove }: RowProps
         maxLength={TITLE_MAX}
         onValueChange={(value) => onChange(index, { owner: value })}
       />
-      <div className="grid grid-cols-2 gap-grid-gap">
-        <SelectField
-          label="Complexity"
-          options={COMPLEXITY_OPTIONS}
-          value={draft.complexity}
-          onChange={(value) => {
-            if (isComplexity(value)) onChange(index, { complexity: value })
-          }}
-        />
-        <SelectField
-          label="Stakes"
-          options={STAKES_OPTIONS}
-          value={draft.stakes}
-          onChange={(value) => {
-            if (isStakes(value)) onChange(index, { stakes: value })
-          }}
-        />
-      </div>
+      <ItemGradingFields index={index} draft={draft} onChange={onChange} />
     </div>
   )
 }
