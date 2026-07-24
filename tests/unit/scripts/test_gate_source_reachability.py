@@ -302,6 +302,19 @@ def f():
 """
         assert _reaches_trailing_call(source) is True
 
+    def test_while_true_else_is_skipped(self) -> None:
+        # ``while True:`` can only leave via ``break``, which skips the
+        # ``else``, so the ``else`` is dead regardless of the break.
+        source = f"""\
+def f():
+    while True:
+        break
+    else:
+        marker("{_TRAILING_MARKER}")
+    return None
+"""
+        assert _reaches_trailing_call(source) is False
+
 
 class TestNestedScopes:
     """A nested ``def`` body belongs to that helper, not this scope."""

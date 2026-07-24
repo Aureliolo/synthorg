@@ -214,10 +214,11 @@ def _live_child_blocks(stmt: ast.stmt) -> Iterator[Sequence[ast.stmt]]:
     """Yield the sub-blocks of *stmt* control flow can actually enter.
 
     A statically dead branch is omitted: the body of ``if False:`` / the
-    ``else`` of ``if True:`` / the body of ``while False:`` never runs, so a
-    scoper call parked there must not satisfy a gate the live path no longer
-    honours. A nested ``def`` / ``class`` owns its own control flow and is
-    not descended into (matching :func:`direct_body_nodes`).
+    ``else`` of ``if True:`` / the body of ``while False:`` / the ``else`` of
+    ``while True:`` never runs, so a scoper call parked there must not satisfy
+    a gate the live path no longer honours. A nested ``def`` / ``class`` owns
+    its own control flow and is not descended into (matching
+    :func:`direct_body_nodes`).
 
     Args:
         stmt: The statement whose reachable sub-blocks to yield.
@@ -235,11 +236,15 @@ def _live_child_blocks(stmt: ast.stmt) -> Iterator[Sequence[ast.stmt]]:
             yield stmt.orelse
         return
     if isinstance(stmt, ast.While):
-        # ``orelse`` runs on normal completion, including immediately when
-        # the test is a constant false, so it stays reachable regardless.
-        if _const_bool(stmt.test) is not False:
+        # ``orelse`` runs on normal completion: immediately when the test is a
+        # constant false, and never for ``while True:`` (which can only leave
+        # via ``break``, skipping the ``else``), so it needs the same
+        # constant-test gating as ``if``.
+        cond = _const_bool(stmt.test)
+        if cond is not False:
             yield stmt.body
-        yield stmt.orelse
+        if cond is not True:
+            yield stmt.orelse
         return
     for field in ("body", "orelse", "finalbody"):
         block = getattr(stmt, field, None)
@@ -265,11 +270,11 @@ def reachable_statements(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
     a bare ``return``. :func:`_terminates` decides that, conservatively.
 
     A statically dead branch is skipped entirely: the body of ``if False:``
-    or ``while False:``, or the ``else`` of ``if True:``, is never entered,
-    so :func:`_live_child_blocks` omits it and a call parked there cannot
-    satisfy a gate. Nested ``def`` / ``async def`` / ``class`` bodies are
-    likewise NOT traversed, matching :func:`direct_body_nodes`: a statement
-    inside an inner helper belongs to that helper's control flow.
+    or ``while False:``, or the ``else`` of ``if True:`` or ``while True:``,
+    is never entered, so :func:`_live_child_blocks` omits it and a call parked
+    there cannot satisfy a gate. Nested ``def`` / ``async def`` / ``class``
+    bodies are likewise NOT traversed, matching :func:`direct_body_nodes`: a
+    statement inside an inner helper belongs to that helper's control flow.
 
     Args:
         body: The statement block to traverse.
