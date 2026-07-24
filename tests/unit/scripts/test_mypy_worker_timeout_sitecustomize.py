@@ -11,7 +11,6 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Any, cast
 
 import pytest
 
@@ -36,19 +35,25 @@ def _exec_hook() -> ModuleType:
 
 
 def test_widens_both_worker_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Both ceilings must move: mypy aborts if either side gives up first."""
-    fake_defaults = ModuleType("mypy.defaults")
+    """Both ceilings must move: mypy aborts if either side gives up first.
+
+    Patches the attributes on the real ``mypy.defaults`` rather than swapping a
+    stand-in into ``sys.modules``: ``import mypy.defaults as x`` binds through
+    an attribute lookup on the parent package, so a ``sys.modules`` entry is
+    bypassed whenever ``mypy`` was already imported by another test. monkeypatch
+    restores both attributes at teardown.
+    """
+    import mypy.defaults as real_defaults
+
     original = 1
-    fake_defaults.WORKER_CONNECTION_TIMEOUT = original  # type: ignore[attr-defined]
-    fake_defaults.WORKER_START_TIMEOUT = original  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "mypy.defaults", fake_defaults)
+    monkeypatch.setattr(real_defaults, "WORKER_CONNECTION_TIMEOUT", original)
+    monkeypatch.setattr(real_defaults, "WORKER_START_TIMEOUT", original)
 
     module = _exec_hook()
 
-    widened = cast(Any, fake_defaults)  # type: ignore[explicit-any]  # stand-in module has no static attrs
     expected = module._WORKER_IPC_TIMEOUT_SECONDS
-    assert expected == widened.WORKER_CONNECTION_TIMEOUT
-    assert expected == widened.WORKER_START_TIMEOUT
+    assert expected == real_defaults.WORKER_CONNECTION_TIMEOUT
+    assert expected == real_defaults.WORKER_START_TIMEOUT
     assert expected > original
 
 
