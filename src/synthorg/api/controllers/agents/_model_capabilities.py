@@ -8,11 +8,16 @@ being persisted onto :class:`~synthorg.config.agent_schema.AgentConfig`,
 which round-trips through the settings write/read cycle.
 
 :class:`AgentConfigResponse` lists the agent fields it puts on the wire
-explicitly rather than subclassing ``AgentConfig``. Two things follow from that: a field
-added to the persisted schema reaches the wire only when someone adds it here
-too, and a response can never be mistaken for a persistable ``AgentConfig`` by
-a type-checker. The same reasoning produced
+explicitly rather than subclassing ``AgentConfig``. Two things follow from
+that: a field added to the persisted schema reaches the wire only when someone
+adds it here too, and a response can never be mistaken for a persistable
+``AgentConfig`` by a type-checker. The same reasoning produced
 :class:`~synthorg.providers.management._provider_responses.ProviderResponse`.
+
+``model_capabilities`` is ``None`` for two unrelated reasons, so
+``model_capability_status`` names which one applies. Collapsing them would make
+a settings-store outage indistinguishable from a stale binding, and the
+dashboard would report every agent in the org as pointing at a deleted model.
 """
 
 from collections.abc import Mapping, Sequence
@@ -28,7 +33,12 @@ from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_AGENT_MODEL_BINDING_UNRESOLVED
+from synthorg.observability.events.api import (
+    API_AGENT_CAPABILITIES_UNAVAILABLE,
+    API_AGENT_MODEL_BINDING_UNRESOLVED,
+)
+from synthorg.settings.errors import SettingsError
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -42,6 +52,13 @@ _TOOL_CALL_VERIFICATION: Mapping[bool | None, ToolCallVerification] = {
     True: "verified",
     False: "failed",
 }
+
+# Why a null ``model_capabilities`` carries no capabilities. A consumer that
+# reads the null alone cannot tell an agent pointing at a deleted model from a
+# whole org whose provider config momentarily could not be read.
+type ModelCapabilityStatus = Literal[
+    "resolved", "unresolved", "provider_config_unavailable"
+]
 
 
 class AgentModelCapabilities(BaseModel):
@@ -158,7 +175,16 @@ class AgentConfigResponse(BaseModel):
         default=None,
         description=(
             "Capabilities of the assigned model; None when the agent's model "
-            "is not in any configured provider (unassigned or stale binding)"
+            "is not in any configured provider (unassigned or stale binding) "
+            "or when provider configuration could not be read"
+        ),
+    )
+    model_capability_status: ModelCapabilityStatus = Field(
+        default="unresolved",
+        description=(
+            "Why model_capabilities is null: 'unresolved' = the binding names "
+            "nothing configured, 'provider_config_unavailable' = provider "
+            "configuration could not be read so no binding was resolvable"
         ),
     )
 
@@ -220,9 +246,41 @@ def _resolve_capabilities(
     return AgentModelCapabilities.from_metadata(metadata)
 
 
+async def providers_for_capabilities(
+    resolver: ConfigResolver,
+) -> Mapping[str, ProviderConfig] | None:
+    """Read provider config for the capability projection, tolerating failure.
+
+    Model capabilities are derived display data layered onto operations that
+    have their own result. On a mutation path the write has already committed
+    by the time they are resolved, so letting a settings-store failure
+    propagate would report a successful create or reorder as an error and
+    invite a duplicate retry; on a read path it would fail a whole payload the
+    caller asked for other reasons.
+
+    An empty mapping and ``None`` are different answers: ``{}`` means no
+    provider is configured, ``None`` means the question could not be asked.
+    Only the latter makes an unresolved binding meaningless.
+
+    Args:
+        resolver: Config resolver to read provider configuration through.
+
+    Returns:
+        Configured providers, or ``None`` when they cannot be read.
+    """
+    try:
+        return await resolver.get_provider_configs()
+    except SettingsError as exc:
+        logger.warning(
+            API_AGENT_CAPABILITIES_UNAVAILABLE,
+            error_type=type(exc).__name__,
+        )
+        return None
+
+
 def with_model_capabilities(
     agents: Sequence[AgentConfig],
-    providers: Mapping[str, ProviderConfig],
+    providers: Mapping[str, ProviderConfig] | None,
 ) -> tuple[AgentConfigResponse, ...]:
     """Project agents onto the wire with their assigned-model capabilities.
 
@@ -231,31 +289,74 @@ def with_model_capabilities(
     all-false summary, so the dashboard can distinguish "no capabilities"
     from "not resolvable".
 
+    A ``None`` *providers* means provider configuration could not be read, so
+    no binding is resolvable and every agent reports
+    ``provider_config_unavailable``. That case skips the per-agent unresolved
+    warning: the bindings are not known to be broken, and logging one line per
+    agent would bury the single settings failure that actually happened.
+
     Args:
         agents: Agent configurations to project.
-        providers: Configured providers keyed by name.
+        providers: Configured providers keyed by name, or ``None`` when
+            provider configuration could not be read.
 
     Returns:
         One response model per agent, in the input order.
     """
-    index = _metadata_index(providers)
-    return tuple(
-        AgentConfigResponse(
-            id=agent.id,
-            name=agent.name,
-            role=agent.role,
-            department=agent.department,
-            personality_preset=agent.personality_preset,
-            personality=agent.personality,
-            model=agent.model,
-            memory=agent.memory,
-            tools=agent.tools,
-            authority=agent.authority,
-            autonomy_level=agent.autonomy_level,
-            strategic_output_mode=agent.strategic_output_mode,
-            tier=agent.tier,
-            model_requirement=agent.model_requirement,
-            model_capabilities=_resolve_capabilities(agent, index),
+    if providers is None:
+        return tuple(
+            _response(
+                agent,
+                capabilities=None,
+                status="provider_config_unavailable",
+            )
+            for agent in agents
         )
-        for agent in agents
+    index = _metadata_index(providers)
+    responses: list[AgentConfigResponse] = []
+    for agent in agents:
+        capabilities = _resolve_capabilities(agent, index)
+        responses.append(
+            _response(
+                agent,
+                capabilities=capabilities,
+                status="resolved" if capabilities is not None else "unresolved",
+            )
+        )
+    return tuple(responses)
+
+
+def _response(
+    agent: AgentConfig,
+    *,
+    capabilities: AgentModelCapabilities | None,
+    status: ModelCapabilityStatus,
+) -> AgentConfigResponse:
+    """Build one wire response for *agent*.
+
+    Args:
+        agent: Agent configuration to project.
+        capabilities: Resolved capability summary, if any.
+        status: Why *capabilities* is or is not populated.
+
+    Returns:
+        The agent as the API returns it.
+    """
+    return AgentConfigResponse(
+        id=agent.id,
+        name=agent.name,
+        role=agent.role,
+        department=agent.department,
+        personality_preset=agent.personality_preset,
+        personality=agent.personality,
+        model=agent.model,
+        memory=agent.memory,
+        tools=agent.tools,
+        authority=agent.authority,
+        autonomy_level=agent.autonomy_level,
+        strategic_output_mode=agent.strategic_output_mode,
+        tier=agent.tier,
+        model_requirement=agent.model_requirement,
+        model_capabilities=capabilities,
+        model_capability_status=status,
     )

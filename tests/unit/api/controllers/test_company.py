@@ -7,9 +7,11 @@ import pytest
 from litestar import Litestar
 
 from synthorg.config.schema import RootConfig
-from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.errors import SettingNotFoundError, SettingsError
 from synthorg.settings.registry import get_registry
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
+from synthorg.settings.state import config_resolver_of
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import (
     FakeMessageBus,
@@ -57,6 +59,35 @@ class TestCompanyController:
         body = resp.json()
         assert body["success"] is True
         assert body["data"]["company_name"] == "test-company"
+
+    async def test_get_company_survives_unreadable_provider_config(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Provider config is fetched only for the derived capability
+        # projection, concurrently with the fields the caller actually asked
+        # for. A settings failure there must not cancel its siblings and sink
+        # the whole payload.
+        resolver = config_resolver_of(async_test_client.app.state.app_state)
+        monkeypatch.setattr(
+            resolver,
+            "get_provider_configs",
+            AsyncMock(
+                spec=ConfigResolver.get_provider_configs,
+                side_effect=SettingsError(),
+            ),
+        )
+
+        resp = await async_test_client.get("/api/v1/company", headers=_HEADERS)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["company_name"] == "test-company"
+        assert all(
+            a["model_capability_status"] == "provider_config_unavailable"
+            for a in body["data"]["agents"]
+        )
 
     async def test_list_departments(self, async_test_client: LoopAsyncClient) -> None:
         resp = await async_test_client.get(

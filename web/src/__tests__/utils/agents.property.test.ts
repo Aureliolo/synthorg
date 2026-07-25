@@ -1,6 +1,7 @@
 import * as fc from 'fast-check'
 import {
   agentCapabilities,
+  agentCapabilitiesUnavailable,
   agentCapabilitiesUnverified,
   agentModelBindingUnresolved,
   agentToolCallsFailed,
@@ -94,6 +95,12 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
     }),
     { nil: null },
   ),
+  // Only meaningful when capabilities are null; the map below re-derives it
+  // so the generator can never emit a pair the backend would not produce.
+  model_capability_status: fc.constantFrom(
+    'unresolved' as const,
+    'provider_config_unavailable' as const,
+  ),
   hiring_date: fc.integer({ min: 1735689600000, max: 1767225600000 }).map(
     (ms) => new Date(ms).toISOString(),
   ),
@@ -106,9 +113,17 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
     'id', 'name', 'role', 'department', 'personality', 'model',
     'memory', 'tools', 'authority', 'autonomy_level', 'strategic_output_mode',
     'personality_preset', 'tier', 'model_requirement', 'model_capabilities',
-    'hiring_date',
+    'model_capability_status', 'hiring_date',
   ],
-})
+}).map((agent) => ({
+  ...agent,
+  // The wire invariant: status is 'resolved' exactly when capabilities are
+  // present, so the two null reasons only ever apply to a null.
+  model_capability_status:
+    agent.model_capabilities !== null
+      ? ('resolved' as const)
+      : agent.model_capability_status,
+}))
 
 const arbWindowMetrics: fc.Arbitrary<WindowMetrics> = fc.nat({ max: 100 }).chain((dataPointCount) =>
   fc.nat({ max: dataPointCount }).map((tasksCompleted) => ({
@@ -183,11 +198,35 @@ describe('model capability accessor properties', () => {
     // fires, so the card can never confuse it with a measured verdict.
     fc.assert(
       fc.property(arbAgent, (agent) => {
-        if (agent.model_capabilities !== null) return
+        if (agent.model_capability_status !== 'unresolved') return
         expect(agentModelBindingUnresolved(agent)).toBe(true)
+        expect(agentCapabilitiesUnavailable(agent)).toBe(false)
         expect(agentToolCallsFailed(agent)).toBe(false)
         expect(agentCapabilitiesUnverified(agent)).toBe(false)
         expect(agentCapabilities(agent)).toEqual([])
+      }),
+    )
+  })
+
+  it('never blames the binding when provider config is unavailable', () => {
+    // Both states null the capabilities, so a card that inferred from the
+    // null alone would report the whole org as stale during an outage.
+    fc.assert(
+      fc.property(arbAgent, (agent) => {
+        if (agent.model_capability_status !== 'provider_config_unavailable') return
+        expect(agentCapabilitiesUnavailable(agent)).toBe(true)
+        expect(agentModelBindingUnresolved(agent)).toBe(false)
+        expect(agentCapabilities(agent)).toEqual([])
+      }),
+    )
+  })
+
+  it('marks the binding unresolved for exactly the null capabilities', () => {
+    fc.assert(
+      fc.property(arbAgent, (agent) => {
+        const anyNullState =
+          agentModelBindingUnresolved(agent) || agentCapabilitiesUnavailable(agent)
+        expect(anyNullState).toBe(agent.model_capabilities === null)
       }),
     )
   })

@@ -14,6 +14,7 @@ from synthorg.api.channels import CHANNEL_DEPARTMENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
 from synthorg.api.controllers.agents._model_capabilities import (
     AgentConfigResponse,
+    providers_for_capabilities,
     with_model_capabilities,
 )
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -277,7 +278,10 @@ class DepartmentController(Controller):
             name,
             data,
         )
-        providers = await config_resolver_of(app_state).get_provider_configs()
+        # Read before announcing, best-effort: the reorder has already
+        # committed, so a settings failure here must neither fail the response
+        # the caller is owed nor skip the event subscribers need to resync.
+        providers = await providers_for_capabilities(config_resolver_of(app_state))
         publish_ws_event(
             request,
             WsEventType.AGENTS_REORDERED,

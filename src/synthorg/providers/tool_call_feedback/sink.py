@@ -103,7 +103,11 @@ async def emit_tool_call_outcome(
     model: str,
     outcome: ToolCallOutcome,
 ) -> None:
-    """Emit one tool-call outcome to the installed sink (no-op if unset).
+    """Emit one tool-call outcome to the installed sink.
+
+    A failure is always attributed in the log, even with no sink installed:
+    turning the feedback loop off disables scoring, not an operator's ability
+    to find out why a task came back empty. Only the sink write is skipped.
 
     Args:
         provider: SynthOrg provider registry key.
@@ -111,8 +115,6 @@ async def emit_tool_call_outcome(
         outcome: The observed :class:`ToolCallOutcome`.
     """
     sink = _sink
-    if sink is None:
-        return
     if outcome is ToolCallOutcome.FAILURE:
         # Correlation, not attribution: the sink deliberately scores by
         # (provider, model) alone, but without this line a task that produced
@@ -128,6 +130,11 @@ async def emit_tool_call_outcome(
             agent_id=context.agent_id if context is not None else None,
             task_id=context.task_id if context is not None else None,
         )
+    # Only the scoring half is gated on the sink. The line above is an
+    # operator's sole trace from an empty deliverable back to the model that
+    # could not call tools, and that question outlives the feedback loop.
+    if sink is None:
+        return
     try:
         await sink.record(provider=provider, model=model, outcome=outcome)
     except Exception as exc:  # noqa: BLE001 -- the sink is awaited in the provider hot path; a raising sink must never break or mask the provider call

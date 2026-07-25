@@ -120,6 +120,9 @@ class TestListAgentsCapabilities:
         (listed,) = result.data
         assert listed.name == "Ada"
         assert listed.model_capabilities is None
+        # Reported as an outage, never as a broken binding: the dashboard
+        # branches on this to avoid accusing every agent of a stale model.
+        assert listed.model_capability_status == "provider_config_unavailable"
 
 
 class TestGetAgentCapabilities:
@@ -136,3 +139,4 @@ class TestGetAgentCapabilities:
 
         assert result.data is not None
         assert result.data.model_capabilities is None
+        assert result.data.model_capability_status == "provider_config_unavailable"

@@ -26,6 +26,7 @@ const mockAgent: AgentConfig = {
   tier: null,
   model_requirement: null,
   model_capabilities: null,
+  model_capability_status: 'unresolved',
   hiring_date: '2026-03-01T00:00:00Z',
 }
 

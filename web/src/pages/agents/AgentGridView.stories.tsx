@@ -36,6 +36,7 @@ function makeAgent(overrides: Partial<AgentConfig>): AgentConfig {
     tier: null,
     model_requirement: null,
     model_capabilities: null,
+    model_capability_status: 'unresolved',
     hiring_date: '2026-01-15T00:00:00Z',
     ...overrides,
   }

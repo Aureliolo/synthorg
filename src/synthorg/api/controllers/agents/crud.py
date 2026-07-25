@@ -14,6 +14,7 @@ from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
 from synthorg.api.controllers.agents._model_capabilities import (
     AgentConfigResponse,
+    providers_for_capabilities,
     with_model_capabilities,
 )
 from synthorg.api.controllers.agents._shared import _DEFAULT_LIMIT, _config_agent_by_id
@@ -42,9 +43,7 @@ from synthorg.observability.events.api import (
     AGENT_DELETED_AUDIT,
     AGENT_DELETION_REQUESTED,
     AGENT_IDENTITY_MODIFIED,
-    API_AGENT_CAPABILITIES_UNAVAILABLE,
 )
-from synthorg.settings.errors import SettingsError
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -52,30 +51,16 @@ logger = get_logger(__name__)
 
 async def _providers_for_capabilities(
     app_state: AppState,
-) -> Mapping[str, ProviderConfig]:
+) -> Mapping[str, ProviderConfig] | None:
     """Read provider config for the capability projection, tolerating failure.
-
-    Model capabilities are derived display data. On the mutation paths the
-    write has already committed by the time they are resolved, so letting a
-    settings-store failure propagate would report a successful create or
-    update as an error and invite a duplicate retry. Degrading to an empty
-    mapping instead yields ``model_capabilities=None``, a state the response
-    schema already models.
 
     Args:
         app_state: Application state carrying the config resolver.
 
     Returns:
-        Configured providers, or an empty mapping when they cannot be read.
+        Configured providers, or ``None`` when they cannot be read.
     """
-    try:
-        return await config_resolver_of(app_state).get_provider_configs()
-    except SettingsError as exc:
-        logger.warning(
-            API_AGENT_CAPABILITIES_UNAVAILABLE,
-            error_type=type(exc).__name__,
-        )
-        return {}
+    return await providers_for_capabilities(config_resolver_of(app_state))
 
 
 class AgentCrudController(Controller):

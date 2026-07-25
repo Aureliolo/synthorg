@@ -100,9 +100,23 @@ export function agentCapabilities(agent: DashboardAgentConfig): readonly string[
  * model: a stale or deleted model, not a healthy one that happens to have no
  * extra capabilities. Those two states look identical in every other accessor,
  * so the card needs this one to tell them apart.
+ *
+ * Reads the status rather than testing ``model_capabilities === null``: the
+ * backend also nulls capabilities when provider configuration cannot be read,
+ * and inferring from the null alone would accuse every agent in the org of a
+ * broken binding during a settings outage.
  */
 export function agentModelBindingUnresolved(agent: DashboardAgentConfig): boolean {
-  return agent.model_capabilities === null
+  return agent.model_capability_status === 'unresolved'
+}
+
+/**
+ * True when provider configuration could not be read, so no agent's model
+ * capabilities could be resolved. An org-wide outage, not a fault of this
+ * agent's binding, which may well be fine.
+ */
+export function agentCapabilitiesUnavailable(agent: DashboardAgentConfig): boolean {
+  return agent.model_capability_status === 'provider_config_unavailable'
 }
 
 /**

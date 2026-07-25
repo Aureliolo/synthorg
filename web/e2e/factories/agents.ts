@@ -19,6 +19,8 @@ export interface MockAgent {
   /** Raw model requirement dict, mirroring ``AgentConfig.model_requirement``. */
   model_requirement: Record<string, unknown>
   model_capabilities: Record<string, unknown> | null
+  /** Why ``model_capabilities`` is or is not populated. */
+  model_capability_status: 'resolved' | 'unresolved' | 'provider_config_unavailable'
   personality_preset: string | null
   tier: 'large' | 'medium' | 'small' | null
 }
@@ -40,6 +42,7 @@ export function makeAgent(overrides: Partial<MockAgent> = {}): MockAgent {
       tool_calling: 'unverified',
       metadata_source: 'probe',
     },
+    model_capability_status: 'resolved',
     personality_preset: 'balanced',
     tier: 'medium',
     ...overrides,

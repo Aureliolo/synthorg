@@ -22,6 +22,7 @@ from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 from typing import Final
 
+from synthorg.config.model_metadata import is_tool_capable
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
@@ -75,24 +76,20 @@ def passes_hard_filters(
             reason="embedding_model_not_chat_capable",
         )
         return False
-    if meta.tool_calls_verified is False:
-        logger.debug(
-            TEMPLATE_MODEL_MATCH_SKIPPED,
-            model=model.id,
-            reason="tool_calls_runtime_failed",
-        )
-        return False
     unknown = meta.metadata_source == "unknown"
-    # A runtime-proven tool caller is authoritative over stale discovery
-    # metadata: ``tool_calls_verified is True`` re-admits a model whose
-    # ``supports_tools`` flag is a false negative, so it is never permanently
-    # unassignable.
-    tools_supported = meta.tool_calls_verified is True or meta.supports_tools
-    if not unknown and not tools_supported:
+    # Delegated rather than restated: is_tool_capable owns the tri-state rule
+    # (runtime failure is authoritative, a proven call re-admits a false
+    # negative supports_tools, unknown metadata is admitted optimistically),
+    # and a second hand-maintained copy here would drift on the next edit.
+    if not is_tool_capable(meta):
         logger.debug(
             TEMPLATE_MODEL_MATCH_SKIPPED,
             model=model.id,
-            reason="tool_calling_unsupported",
+            reason=(
+                "tool_calls_runtime_failed"
+                if meta.tool_calls_verified is False
+                else "tool_calling_unsupported"
+            ),
         )
         return False
     required_checks = (

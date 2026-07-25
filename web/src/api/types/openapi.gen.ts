@@ -6228,8 +6228,14 @@ export type components = {
                     readonly [key: string]: unknown;
                 } | string | boolean | number | null;
             };
-            /** @description Capabilities of the assigned model; None when the agent's model is not in any configured provider (unassigned or stale binding) */
+            /** @description Capabilities of the assigned model; None when the agent's model is not in any configured provider (unassigned or stale binding) or when provider configuration could not be read */
             readonly model_capabilities: components["schemas"]["AgentModelCapabilities"] | null;
+            /**
+             * @description Why model_capabilities is null: 'unresolved' = the binding names nothing configured, 'provider_config_unavailable' = provider configuration could not be read so no binding was resolvable
+             * @default unresolved
+             * @enum {string}
+             */
+            readonly model_capability_status: "resolved" | "unresolved" | "provider_config_unavailable";
             /** @description Raw model requirement dict from the setup wizard */
             readonly model_requirement: {
                 readonly [key: string]: readonly unknown[] | {

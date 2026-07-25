@@ -1,5 +1,6 @@
 """Tests for resolving an agent's assigned-model capabilities for the API."""
 
+import logging
 from typing import Final
 
 import pytest
@@ -12,6 +13,7 @@ from synthorg.api.controllers.agents._model_capabilities import (
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
+from synthorg.observability.events.api import API_AGENT_MODEL_BINDING_UNRESOLVED
 from synthorg.providers.enums import AuthType
 
 _PROVIDER: Final[str] = "test-provider"
@@ -96,17 +98,51 @@ class TestWithModelCapabilities:
         providers = _provider(_model("test-large-001"))
         (enriched,) = with_model_capabilities(agents, providers)
         assert enriched.model_capabilities is None
+        assert enriched.model_capability_status == "unresolved"
 
     def test_unknown_provider_yields_none(self) -> None:
         agents = [_agent("Ada", provider="retired-provider")]
         providers = _provider(_model("test-large-001"))
         (enriched,) = with_model_capabilities(agents, providers)
         assert enriched.model_capabilities is None
+        assert enriched.model_capability_status == "unresolved"
 
     def test_unassigned_agent_yields_none(self) -> None:
         agents = [_agent("Ada", provider="", model_id="")]
         (enriched,) = with_model_capabilities(agents, _provider())
         assert enriched.model_capabilities is None
+        assert enriched.model_capability_status == "unresolved"
+
+    def test_resolved_binding_reports_resolved_status(self) -> None:
+        providers = _provider(_model("test-large-001"))
+        (enriched,) = with_model_capabilities([_agent("Ada")], providers)
+        assert enriched.model_capability_status == "resolved"
+
+    def test_unreadable_provider_config_is_distinct_from_unresolved(self) -> None:
+        # The two null cases must stay tellable apart: an org-wide settings
+        # failure is not evidence that any one agent's binding is stale.
+        agents = [_agent("Ada"), _agent("Grace")]
+        enriched = with_model_capabilities(agents, None)
+        assert [a.model_capability_status for a in enriched] == [
+            "provider_config_unavailable",
+            "provider_config_unavailable",
+        ]
+        assert all(a.model_capabilities is None for a in enriched)
+
+    def test_unreadable_provider_config_does_not_log_per_agent(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # One settings failure must not be buried under a warning per agent.
+        agents = [_agent(name) for name in ("Ada", "Grace", "Edsger")]
+        with caplog.at_level(logging.WARNING):
+            with_model_capabilities(agents, None)
+        assert API_AGENT_MODEL_BINDING_UNRESOLVED not in caplog.text
+
+    def test_no_providers_configured_is_unresolved_not_unavailable(self) -> None:
+        # An empty mapping is a real answer ("nothing configured"); only None
+        # means the question could not be asked.
+        (enriched,) = with_model_capabilities([_agent("Ada")], {})
+        assert enriched.model_capability_status == "unresolved"
 
     def test_malformed_binding_yields_none(self) -> None:
         # A non-string binding degrades rather than raising: the roster must

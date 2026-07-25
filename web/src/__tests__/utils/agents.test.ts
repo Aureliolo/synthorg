@@ -1,5 +1,6 @@
 import {
   agentCapabilities,
+  agentCapabilitiesUnavailable,
   agentCapabilitiesUnverified,
   agentModelBindingUnresolved,
   agentToolCallsFailed,
@@ -63,6 +64,7 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     tier: null,
     model_requirement: null,
     model_capabilities: null,
+    model_capability_status: 'unresolved',
     hiring_date: '2026-01-15T00:00:00Z',
     ...overrides,
   }
@@ -182,17 +184,63 @@ describe('agentCapabilities', () => {
 
 describe('agentModelBindingUnresolved', () => {
   it('is true when the agent names a model no provider offers', () => {
-    expect(agentModelBindingUnresolved(makeAgent({ model_capabilities: null }))).toBe(
-      true,
-    )
+    expect(
+      agentModelBindingUnresolved(
+        makeAgent({ model_capabilities: null, model_capability_status: 'unresolved' }),
+      ),
+    ).toBe(true)
   })
 
   it('is false for a healthy model that simply has no extra capabilities', () => {
     // The distinction this function exists for: without it, a stale binding
     // and a plain chat model are indistinguishable on the card.
-    expect(agentModelBindingUnresolved(makeAgent({ model_capabilities: caps() }))).toBe(
-      false,
-    )
+    expect(
+      agentModelBindingUnresolved(
+        makeAgent({ model_capabilities: caps(), model_capability_status: 'resolved' }),
+      ),
+    ).toBe(false)
+  })
+
+  it('is false when provider config could not be read', () => {
+    // Both states null the capabilities. Reading the null alone would accuse
+    // every agent in the org of a stale binding during a settings outage.
+    expect(
+      agentModelBindingUnresolved(
+        makeAgent({
+          model_capabilities: null,
+          model_capability_status: 'provider_config_unavailable',
+        }),
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('agentCapabilitiesUnavailable', () => {
+  it('is true when provider config could not be read', () => {
+    expect(
+      agentCapabilitiesUnavailable(
+        makeAgent({
+          model_capabilities: null,
+          model_capability_status: 'provider_config_unavailable',
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it('is false for a genuinely unresolved binding', () => {
+    expect(
+      agentCapabilitiesUnavailable(
+        makeAgent({ model_capabilities: null, model_capability_status: 'unresolved' }),
+      ),
+    ).toBe(false)
+  })
+
+  it('is false when capabilities resolved', () => {
+    expect(
+      agentCapabilitiesUnavailable(
+        makeAgent({ model_capabilities: caps(), model_capability_status: 'resolved' }),
+      ),
+    ).toBe(false)
   })
 })
 

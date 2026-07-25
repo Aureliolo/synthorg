@@ -58,10 +58,22 @@ incapable" are opposite facts that a truthiness check would conflate:
 | `verified` | A real tool call succeeded. |
 | `failed` | Repeated runtime failures proved the model cannot call tools. |
 
-`model_capabilities` is `null` when the agent's `(provider, model_id)` binding matches no
-configured model: an unassigned agent, or a stale binding left by a removed model. The
-dashboard renders that as its own state, because a missing model would otherwise look
-identical to a healthy model that simply has no reasoning or vision.
+`model_capabilities` is `null` for two unrelated reasons, so `model_capability_status` names
+which one applies. Without it a consumer reading the null alone cannot tell one agent
+pointing at a deleted model from an entire org whose provider config momentarily could not
+be read, and the dashboard would report the whole roster as broken during a settings outage.
+
+| Value | Meaning |
+|---|---|
+| `resolved` | The binding resolved; `model_capabilities` is populated. |
+| `unresolved` | The binding matches no configured model: unassigned, or stale after a removed model. |
+| `provider_config_unavailable` | Provider config could not be read, so no binding was resolvable. Says nothing about this agent's binding. |
+
+Reading provider config is best-effort on every endpoint that projects capabilities
+(`providers_for_capabilities`). Capabilities are derived display data layered onto an
+operation with its own result: on a mutation the write has already committed by the time
+they resolve, so a settings failure must not report a successful create or reorder as an
+error and invite a duplicate retry.
 
 The agent `id` is a stable UUID derived deterministically from the agent name
 (`stable_agent_id(name)` = `uuid5(namespace, name)` in `core.types`). The config layer and the

@@ -13,6 +13,7 @@ from synthorg.api.channels import (
     publish_ws_event,
 )
 from synthorg.api.controllers.agents._model_capabilities import (
+    providers_for_capabilities,
     with_model_capabilities,
 )
 from synthorg.api.dto import ApiResponse
@@ -65,7 +66,11 @@ class CompanyController(Controller):
                 t_name = tg.create_task(resolver.get_str("company", "company_name"))
                 t_agents = tg.create_task(resolver.get_agents())
                 t_depts = tg.create_task(resolver.get_departments())
-                t_providers = tg.create_task(resolver.get_provider_configs())
+                # Best-effort inside the group on purpose: provider config is
+                # only needed for the derived capability projection, so a
+                # settings failure there must not cancel the siblings that
+                # carry the payload the caller actually asked for.
+                t_providers = tg.create_task(providers_for_capabilities(resolver))
         except ExceptionGroup as eg:
             logger.warning(
                 SETTINGS_FETCH_FAILED,

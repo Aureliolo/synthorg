@@ -1,7 +1,12 @@
 """Tests for department mutation endpoints (POST, PATCH, DELETE departments)."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 
+from synthorg.settings.errors import SettingsError
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.state import config_resolver_of
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
@@ -201,3 +206,40 @@ class TestReorderAgents:
         assert resp.status_code == 201
         names = [a["name"] for a in resp.json()["data"]]
         assert names == ["bob", "alice"]
+
+    async def test_reorder_survives_unreadable_provider_config(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # The reorder has already committed when provider config is read for
+        # the capability projection, so a settings failure there must not turn
+        # a successful write into a 500 the caller would retry.
+        await async_test_client.post("/api/v1/departments", json={"name": "eng"})
+        for name in ("alice", "bob"):
+            await async_test_client.post(
+                "/api/v1/agents",
+                json={"name": name, "role": "dev", "department": "eng"},
+            )
+        resolver = config_resolver_of(async_test_client.app.state.app_state)
+        monkeypatch.setattr(
+            resolver,
+            "get_provider_configs",
+            AsyncMock(
+                spec=ConfigResolver.get_provider_configs,
+                side_effect=SettingsError(),
+            ),
+        )
+
+        resp = await async_test_client.post(
+            "/api/v1/departments/eng/reorder-agents",
+            json={"agent_names": ["bob", "alice"]},
+        )
+
+        assert resp.status_code == 201
+        agents = resp.json()["data"]
+        assert [a["name"] for a in agents] == ["bob", "alice"]
+        assert all(
+            a["model_capability_status"] == "provider_config_unavailable"
+            for a in agents
+        )
