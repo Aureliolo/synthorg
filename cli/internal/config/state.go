@@ -566,6 +566,15 @@ func readState(safeDir string) (State, error) {
 	path := StatePath(safeDir)
 	data, err := os.ReadFile(path) //nolint:gosec // G304: path is the state file under the SecurePath-cleaned data dir
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// A missing config is the normal pre-init state, not a
+			// failure, and every caller re-inspects this with errors.Is
+			// before deciding what it means. Returned unwrapped because
+			// formatting a message here would allocate on the path taken
+			// by every command run before `synthorg init`, for a string
+			// nothing ever reads.
+			return State{}, err
+		}
 		return State{}, fmt.Errorf("%w %s: %w", ErrReading, path, err)
 	}
 	s := DefaultState()

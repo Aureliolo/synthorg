@@ -129,9 +129,9 @@ func TestCoerceEnumFields(t *testing.T) {
 			t.Parallel()
 			s := DefaultState()
 			tt.apply(&s, removed)
-			got, coercions := Coerce(s)
-			if tt.read(got) != tt.wantFallback {
-				t.Errorf("%s = %q, want %q", tt.field, tt.read(got), tt.wantFallback)
+			s, coercions := Coerce(s)
+			if tt.read(s) != tt.wantFallback {
+				t.Errorf("%s = %q, want %q", tt.field, tt.read(s), tt.wantFallback)
 			}
 			if len(coercions) != 1 {
 				t.Fatalf("coercions = %d, want exactly 1: %+v", len(coercions), coercions)
@@ -155,9 +155,9 @@ func TestCoerceEnumFields(t *testing.T) {
 			t.Parallel()
 			s := DefaultState()
 			tt.apply(&s, tt.valid)
-			got, coercions := Coerce(s)
-			if tt.read(got) != tt.valid {
-				t.Errorf("%s = %q, want %q (unchanged)", tt.field, tt.read(got), tt.valid)
+			s, coercions := Coerce(s)
+			if tt.read(s) != tt.valid {
+				t.Errorf("%s = %q, want %q (unchanged)", tt.field, tt.read(s), tt.valid)
 			}
 			if len(coercions) != 0 {
 				t.Errorf("coercions = %+v, want none", coercions)
@@ -168,10 +168,10 @@ func TestCoerceEnumFields(t *testing.T) {
 			t.Parallel()
 			s := DefaultState()
 			tt.apply(&s, "")
-			got, coercions := Coerce(s)
+			s, coercions := Coerce(s)
 			if tt.emptyIsSafe {
-				if tt.read(got) != "" {
-					t.Errorf("%s = %q, want %q (still unset)", tt.field, tt.read(got), "")
+				if tt.read(s) != "" {
+					t.Errorf("%s = %q, want %q (still unset)", tt.field, tt.read(s), "")
 				}
 				if len(coercions) != 0 {
 					t.Errorf("coercions = %+v, want none", coercions)
@@ -181,8 +181,8 @@ func TestCoerceEnumFields(t *testing.T) {
 			// Not emptyIsSafe: an explicitly empty value would reach the
 			// compose file verbatim, so it is repaired like any other
 			// unusable value.
-			if tt.read(got) != tt.wantFallback {
-				t.Errorf("%s = %q, want %q", tt.field, tt.read(got), tt.wantFallback)
+			if tt.read(s) != tt.wantFallback {
+				t.Errorf("%s = %q, want %q", tt.field, tt.read(s), tt.wantFallback)
 			}
 			if len(coercions) != 1 {
 				t.Fatalf("coercions = %+v, want exactly 1", coercions)
@@ -224,14 +224,14 @@ func TestNonCoercibleEnumsAreNotCoerced(t *testing.T) {
 			t.Parallel()
 			s := DefaultState()
 			tt.apply(&s, removed)
-			got, coercions := Coerce(s)
-			if tt.read(got) != removed {
-				t.Errorf("%s = %q, want it left at %q", tt.name, tt.read(got), removed)
+			s, coercions := Coerce(s)
+			if tt.read(s) != removed {
+				t.Errorf("%s = %q, want it left at %q", tt.name, tt.read(s), removed)
 			}
 			if len(coercions) != 0 {
 				t.Errorf("coercions = %+v, want none: this field must not be defaulted", coercions)
 			}
-			if err := got.Validate(); err == nil {
+			if err := s.Validate(); err == nil {
 				t.Error("Validate must still reject the unrecognised value")
 			}
 		})
@@ -388,7 +388,7 @@ func TestCoerceBoundsTheRejectedValue(t *testing.T) {
 
 	s := DefaultState()
 	s.Channel = strings.Repeat("x", rejectedValueLimit*10)
-	_, coercions := Coerce(s)
+	s, coercions := Coerce(s)
 	if len(coercions) != 1 {
 		t.Fatalf("coercions = %+v, want 1", coercions)
 	}

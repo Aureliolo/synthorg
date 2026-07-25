@@ -133,85 +133,102 @@ var nonCoercibleEnums = []nonCoercibleEnum{
 //
 // TestEveryAllowlistIsClassified fails when an allowlist is added to
 // neither list.
-var enumFields = []enumField{
-	{
-		// Not emptyIsSafe despite Validate treating it as optional:
-		// ParamsFromState defaults it, but a direct State.BusBackend read
-		// would still see "".
+// One definition per coercible field. Coerce references these directly
+// and enumFields collects them, so a field is described exactly once.
+var (
+	// Not emptyIsSafe despite Validate treating it as optional:
+	// ParamsFromState defaults it, but a direct State.BusBackend read
+	// would still see "".
+	enumBusBackend = enumField{
 		name:     "bus_backend",
 		accessor: func(s *State) *string { return &s.BusBackend },
 		valid:    IsValidBusBackend,
 		fallback: func() string { return DefaultState().BusBackend },
 		options:  BusBackendNames,
-	},
-	{
+	}
+	enumChannel = enumField{
 		name:        "channel",
 		accessor:    func(s *State) *string { return &s.Channel },
 		valid:       IsValidChannel,
 		fallback:    emptyFallback,
 		emptyIsSafe: true,
 		options:     ChannelNames,
-	},
-	{
-		// See emptyIsSafe's doc: compose interpolates this one raw.
+	}
+	// See emptyIsSafe's doc: compose interpolates this one raw.
+	enumLogLevel = enumField{
 		name:     "log_level",
 		accessor: func(s *State) *string { return &s.LogLevel },
 		valid:    IsValidLogLevel,
 		fallback: func() string { return DefaultState().LogLevel },
 		options:  LogLevelNames,
-	},
-	{
+	}
+	enumColor = enumField{
 		name:        "color",
 		accessor:    func(s *State) *string { return &s.Color },
 		valid:       IsValidColorMode,
 		fallback:    emptyFallback,
 		emptyIsSafe: true,
 		options:     ColorModeNames,
-	},
-	{
+	}
+	enumOutput = enumField{
 		name:        "output",
 		accessor:    func(s *State) *string { return &s.Output },
 		valid:       IsValidOutputMode,
 		fallback:    emptyFallback,
 		emptyIsSafe: true,
 		options:     OutputModeNames,
-	},
-	{
+	}
+	enumTimestamps = enumField{
 		name:        "timestamps",
 		accessor:    func(s *State) *string { return &s.Timestamps },
 		valid:       IsValidTimestampMode,
 		fallback:    emptyFallback,
 		emptyIsSafe: true,
 		options:     TimestampModeNames,
-	},
-	{
+	}
+	enumHints = enumField{
 		name:        "hints",
 		accessor:    func(s *State) *string { return &s.Hints },
 		valid:       IsValidHintsMode,
 		fallback:    emptyFallback,
 		emptyIsSafe: true,
 		options:     HintsModeNames,
-	},
-	{
+	}
+	enumChangelogView = enumField{
 		name:        "changelog_view",
 		accessor:    func(s *State) *string { return &s.ChangelogView },
 		valid:       IsValidChangelogView,
 		fallback:    emptyFallback,
 		emptyIsSafe: true,
 		options:     ChangelogViewNames,
-	},
-	{
-		// validateFineTuning rejects an unrecognised variant whether or
-		// not fine-tuning is switched on, so a dropped variant is the same
-		// brick as a dropped backend. Coercible because the variant only
-		// selects which image a feature pulls, not where data lives.
+	}
+	// validateFineTuning rejects an unrecognised variant whether or not
+	// fine-tuning is switched on, so a dropped variant is the same brick
+	// as a dropped backend. Coercible because the variant only selects
+	// which image a feature pulls, not where data lives.
+	enumFineTuningVariant = enumField{
 		name:        "fine_tuning_variant",
 		accessor:    func(s *State) *string { return &s.FineTuningVariant },
 		valid:       isValidFineTuneVariant,
 		fallback:    emptyFallback,
 		emptyIsSafe: true,
 		options:     FineTuneVariantNames,
-	},
+	}
+)
+
+// enumFields is the coercion inventory. Coerce does NOT range over it (see
+// its doc for why); it exists so the classification gate and the tests can
+// reason about the whole set.
+var enumFields = []enumField{
+	enumBusBackend,
+	enumChannel,
+	enumLogLevel,
+	enumColor,
+	enumOutput,
+	enumTimestamps,
+	enumHints,
+	enumChangelogView,
+	enumFineTuningVariant,
 }
 
 // truncateRejected bounds an arbitrary on-disk value before it is echoed
@@ -236,27 +253,48 @@ func truncateRejected(value string) string {
 //
 // Coercion is deliberately limited to fields whose default is a repair
 // rather than a change of behaviour; see nonCoercibleEnums.
+//
+// The field list is written out rather than looped over enumFields, even
+// though the two must agree. Ranging the table means calling its accessor
+// func value, and an indirect call forces the compiler onto its worst-case
+// summary: the State would be heap-allocated on EVERY load, repair or not,
+// because it cannot see the returned pointer stays local. `&s.Field` into
+// a direct call that only reads and writes through it does not escape.
+// TestCoerceRepairsEveryTableRow fails if a row is added to enumFields
+// without a line here.
 func Coerce(s State) (State, []Coercion) {
 	var applied []Coercion
-	for _, f := range enumFields {
-		field := f.accessor(&s)
-		value := *field
-		if f.emptyIsSafe && value == "" {
-			// Already "use the default": nothing was configured, so there
-			// is nothing to report.
-			continue
-		}
-		if f.valid(value) {
-			continue
-		}
-		fallback := f.fallback()
-		*field = fallback
-		applied = append(applied, Coercion{
-			Field:    f.name,
-			Rejected: truncateRejected(value),
-			Applied:  fallback,
-			Allowed:  f.options(),
-		})
-	}
+	coerceField(&applied, &s.BusBackend, enumBusBackend)
+	coerceField(&applied, &s.Channel, enumChannel)
+	coerceField(&applied, &s.LogLevel, enumLogLevel)
+	coerceField(&applied, &s.Color, enumColor)
+	coerceField(&applied, &s.Output, enumOutput)
+	coerceField(&applied, &s.Timestamps, enumTimestamps)
+	coerceField(&applied, &s.Hints, enumHints)
+	coerceField(&applied, &s.ChangelogView, enumChangelogView)
+	coerceField(&applied, &s.FineTuningVariant, enumFineTuningVariant)
 	return s, applied
+}
+
+// coerceField repairs one field in place, appending a Coercion when it
+// had to. It never retains the pointer, which is what keeps the caller's
+// State on the stack.
+func coerceField(applied *[]Coercion, field *string, f enumField) {
+	value := *field
+	if f.emptyIsSafe && value == "" {
+		// Already "use the default": nothing was configured, so there is
+		// nothing to report.
+		return
+	}
+	if f.valid(value) {
+		return
+	}
+	fallback := f.fallback()
+	*field = fallback
+	*applied = append(*applied, Coercion{
+		Field:    f.name,
+		Rejected: truncateRejected(value),
+		Applied:  fallback,
+		Allowed:  f.options(),
+	})
 }
