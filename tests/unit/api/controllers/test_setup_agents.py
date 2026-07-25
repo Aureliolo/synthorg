@@ -172,7 +172,7 @@ class TestMatchAndAssignModels:
                 agent_index=0,
                 provider_name="test-provider",
                 model_id="test-large-001",
-                tier=cast("ModelTier", "large"),
+                tier="large",
                 score=1.0,
             )
         ]
