@@ -8,7 +8,10 @@ import type { listModelRecommendations } from '@/api/endpoints/recommendations'
 const meta = {
   title: 'Pages/ModelRecommendationsPage',
   component: ModelRecommendationsPage,
-  parameters: { layout: 'fullscreen', msw: { handlers: recommendationsHandlers } },
+  parameters: { layout: 'fullscreen' },
+  beforeEach({ msw }) {
+    msw.use(...recommendationsHandlers)
+  },
   decorators: [(Story) => <div className="mx-auto max-w-4xl p-6"><Story /></div>],
 } satisfies Meta<typeof ModelRecommendationsPage>
 
@@ -18,14 +21,9 @@ type Story = StoryObj<typeof meta>
 export const WithRecommendations: Story = {}
 
 export const Empty: Story = {
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('/api/v1/providers/model-refresh/recommendations', () =>
-          HttpResponse.json(successFor<typeof listModelRecommendations>([])),
-        ),
-        ...recommendationsHandlers,
-      ],
-    },
-  },
+  beforeEach({ msw }) {
+    msw.use(http.get('/api/v1/providers/model-refresh/recommendations', () =>
+      HttpResponse.json(successFor<typeof listModelRecommendations>([])),
+    ), ...recommendationsHandlers)
+  }
 }

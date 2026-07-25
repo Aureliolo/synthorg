@@ -8,8 +8,8 @@ const meta = {
   title: 'Pages/Connections/ConnectionFormModal',
   component: ConnectionFormModal,
   tags: ['autodocs'],
-  parameters: {
-    msw: { handlers: connectionsList },
+  beforeEach({ msw }) {
+    msw.use(...connectionsList)
   },
   args: {
     open: true,

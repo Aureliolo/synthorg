@@ -239,7 +239,7 @@ function SpendBurnBody({
             axisLine={false}
             tickLine={false}
             tickFormatter={(v: number) => formatCurrency(v, currency)}
-            width={64}
+            width="auto"
           />
           <Tooltip content={<ChartTooltipContent currency={currency} />} />
 

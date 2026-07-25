@@ -36,28 +36,28 @@ const mockPacks: readonly PackInfoResponse[] = [
 const meta = {
   title: 'OrgEdit/PackSelectionDialog',
   component: PackSelectionDialog,
-  parameters: {
-    a11y: { test: 'error' },
-    msw: {
-      handlers: [
-        http.get('*/template-packs', () =>
-          HttpResponse.json({ success: true, data: mockPacks, error: null, error_detail: null }),
-        ),
-        http.post('*/template-packs/apply', () =>
-          HttpResponse.json({
-            success: true,
-            data: { pack_name: 'security-team', agents_added: 2, departments_added: 1 },
-            error: null,
-            error_detail: null,
-          }),
-        ),
-      ],
-    },
+
+  beforeEach({ msw }) {
+    msw.use(http.get('*/template-packs', () =>
+      HttpResponse.json({ success: true, data: mockPacks, error: null, error_detail: null }),
+    ), http.post('*/template-packs/apply', () =>
+      HttpResponse.json({
+        success: true,
+        data: { pack_name: 'security-team', agents_added: 2, departments_added: 1 },
+        error: null,
+        error_detail: null,
+      }),
+    ))
   },
+
+  parameters: {
+    a11y: { test: 'error' }
+  },
+
   args: {
     open: true,
     onOpenChange: () => {},
-  },
+  }
 } satisfies Meta<typeof PackSelectionDialog>
 
 export default meta
@@ -70,43 +70,31 @@ export const Closed: Story = {
 }
 
 export const Empty: Story = {
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('*/template-packs', () =>
-          HttpResponse.json({ success: true, data: [], error: null, error_detail: null }),
-        ),
-      ],
-    },
-  },
+  beforeEach({ msw }) {
+    msw.use(http.get('*/template-packs', () =>
+      HttpResponse.json({ success: true, data: [], error: null, error_detail: null }),
+    ))
+  }
 }
 
 export const Loading: Story = {
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('*/template-packs', async () => {
-          await new Promise(() => {})
-          return HttpResponse.json({ success: true, data: [], error: null, error_detail: null })
-        }),
-      ],
-    },
-  },
+  beforeEach({ msw }) {
+    msw.use(http.get('*/template-packs', async () => {
+      await new Promise(() => {})
+      return HttpResponse.json({ success: true, data: [], error: null, error_detail: null })
+    }))
+  }
 }
 
 export const Error: Story = {
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('*/template-packs', () =>
-          HttpResponse.json(
-            { success: false, data: null, error: 'Failed to load packs', error_detail: null },
-            { status: 500 },
-          ),
-        ),
-      ],
-    },
-  },
+  beforeEach({ msw }) {
+    msw.use(http.get('*/template-packs', () =>
+      HttpResponse.json(
+        { success: false, data: null, error: 'Failed to load packs', error_detail: null },
+        { status: 500 },
+      ),
+    ))
+  }
 }
 
 export const Disabled: Story = {

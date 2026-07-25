@@ -7,8 +7,8 @@ const meta = {
   title: 'Pages/Connections/TunnelCard',
   component: TunnelCard,
   tags: ['autodocs'],
-  parameters: {
-    msw: { handlers: tunnelHandlers },
+  beforeEach({ msw }) {
+    msw.use(...tunnelHandlers)
   },
   decorators: [
     (Story) => (

@@ -25,12 +25,15 @@ const meta = {
   title: 'Pages/McpCatalog/McpInstallWizard',
   component: McpInstallWizard,
   tags: ['autodocs'],
-  parameters: {
-    msw: { handlers: [...connectionsList, ...mcpCatalogHandlers] },
+
+  beforeEach({ msw }) {
+    msw.use(...connectionsList, ...mcpCatalogHandlers)
   },
+
   args: {
     onRequestCreateConnection: fn(),
   },
+
   decorators: [
     (Story) => {
       useMcpCatalogStore.setState({ entries: [searchEntry] })
@@ -57,7 +60,7 @@ const meta = {
       })
       return <Story />
     },
-  ],
+  ]
 } satisfies Meta<typeof McpInstallWizard>
 
 export default meta

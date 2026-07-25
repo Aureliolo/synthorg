@@ -128,7 +128,7 @@ function ChartBody({ chartData, ceiling }: { chartData: readonly ChartDatum[]; c
             tick={{ fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' }}
             axisLine={false}
             tickLine={false}
-            width={40}
+            width="auto"
           />
           <Tooltip content={<ChartTooltipContent />} />
           <ReferenceLine

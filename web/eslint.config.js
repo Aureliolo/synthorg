@@ -38,6 +38,20 @@ export default tseslint.config(
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    settings: {
+      // ``useRequestIdRefs`` returns a ``useRef`` result directly, so a call to
+      // it IS a ref. Declaring it here is what lets the ref-aware rules
+      // (react-x/refs, react-x/immutability, react-x/set-state-in-effect,
+      // react-naming-convention/ref-name, react-debug/is-from-ref) see through
+      // the wrapper; without it they treat the call as an opaque value and
+      // silently skip every check. The pattern is a regex, anchored so it
+      // cannot match an unrelated hook that merely returns an object
+      // containing a ref -- those are not ref calls and listing them would
+      // produce false positives.
+      'react-x': {
+        additionalRefHooks: '^useRequestIdRefs$',
+      },
+    },
   },
   {
     files: ['**/*.ts', '**/*.tsx'],

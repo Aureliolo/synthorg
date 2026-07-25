@@ -161,10 +161,8 @@ describe('motion presets', () => {
   })
 
   describe('reduced motion', () => {
-    const originalMatchMedia = window.matchMedia
-
     afterEach(() => {
-      window.matchMedia = originalMatchMedia
+      vi.restoreAllMocks()
     })
 
     it('reducedMotionInstant has zero duration', () => {
@@ -172,12 +170,16 @@ describe('motion presets', () => {
     })
 
     it('prefersReducedMotion returns false when no preference set', () => {
-      window.matchMedia = vi.fn().mockReturnValue({ matches: false })
+      vi.spyOn(window, 'matchMedia').mockReturnValue({
+        matches: false,
+      } as unknown as MediaQueryList)
       expect(prefersReducedMotion()).toBe(false)
     })
 
     it('prefersReducedMotion returns true when reduced motion preferred', () => {
-      window.matchMedia = vi.fn().mockReturnValue({ matches: true })
+      vi.spyOn(window, 'matchMedia').mockReturnValue({
+        matches: true,
+      } as unknown as MediaQueryList)
       expect(prefersReducedMotion()).toBe(true)
     })
   })

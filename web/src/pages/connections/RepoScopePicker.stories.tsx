@@ -15,22 +15,20 @@ const meta = {
   title: 'Pages/Connections/RepoScopePicker',
   component: RepoScopePicker,
   tags: ['autodocs'],
-  parameters: {
-    msw: {
-      handlers: [
-        scanHandler([
-          { owner: 'acme', repo: 'web-app', permission: 'admin', private: true },
-          { owner: 'acme', repo: 'api-service', permission: 'write', private: false },
-          { owner: 'acme', repo: 'docs-site', permission: 'read', private: false },
-        ]),
-      ],
-    },
+
+  beforeEach({ msw }) {
+    msw.use(scanHandler([
+      { owner: 'acme', repo: 'web-app', permission: 'admin', private: true },
+      { owner: 'acme', repo: 'api-service', permission: 'write', private: false },
+      { owner: 'acme', repo: 'docs-site', permission: 'read', private: false },
+    ]))
   },
+
   args: {
     connectionName: 'primary-forge',
     selected: [],
     onChange: fn(),
-  },
+  }
 } satisfies Meta<typeof RepoScopePicker>
 
 export default meta
@@ -57,19 +55,15 @@ export const WithStaleSelection: Story = {
 }
 
 export const NoReachableRepos: Story = {
-  parameters: {
-    msw: { handlers: [scanHandler([])] },
-  },
+  beforeEach({ msw }) {
+    msw.use(scanHandler([]))
+  }
 }
 
 export const ScanFails: Story = {
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('/api/v1/connections/:name/accessible-repos', () =>
-          HttpResponse.json({ error: { message: 'Token lacks repo scope' } }, { status: 403 }),
-        ),
-      ],
-    },
-  },
+  beforeEach({ msw }) {
+    msw.use(http.get('/api/v1/connections/:name/accessible-repos', () =>
+      HttpResponse.json({ error: { message: 'Token lacks repo scope' } }, { status: 403 }),
+    ))
+  }
 }
