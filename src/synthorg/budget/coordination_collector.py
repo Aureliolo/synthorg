@@ -279,7 +279,7 @@ class CoordinationMetricsCollector:
             metrics_computed=0,
         )
 
-    def _record_baseline(  # noqa: PLR0913
+    def _record_baseline(  # noqa: PLR0913, PLR0917
         self,
         agent_id: str,
         task_id: str,

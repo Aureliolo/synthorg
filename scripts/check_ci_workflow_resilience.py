@@ -148,8 +148,10 @@ def _check_job_timeout(job_name: str, job: dict[str, object]) -> list[str]:
         return []
     if _TIMEOUT_KEY not in job:
         return [
-            f"job '{job_name}': no {_TIMEOUT_KEY} (inherits the 6-hour default;"
-            " a hung network call holds a runner for hours)"
+            (
+                f"job '{job_name}': no {_TIMEOUT_KEY} (inherits the 6-hour default;"
+                " a hung network call holds a runner for hours)"
+            )
         ]
     return []
 

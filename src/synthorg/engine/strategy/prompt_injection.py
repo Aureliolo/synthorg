@@ -110,8 +110,10 @@ def build_strategic_prompt_sections(
     principles_text: str | None = None
     if principles:
         lines = [
-            "These anti-trendslop rules govern your strategic analysis. "
-            "Violations of critical principles must be explicitly justified."
+            (
+                "These anti-trendslop rules govern your strategic analysis. "
+                "Violations of critical principles must be explicitly justified."
+            )
         ]
         has_untrusted = False
         for i, p in enumerate(principles, 1):

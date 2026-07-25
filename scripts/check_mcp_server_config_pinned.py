@@ -182,8 +182,10 @@ def _check(repo_root: Path) -> list[str]:
             ):
                 return _enforcement_violations(stmt)
     return [
-        f"{_CONFIG_REL}: {_MODEL} must keep the {_VALIDATOR} {_DECORATOR} that "
-        f"rejects an unpinned npm package (npx supply-chain pin)"
+        (
+            f"{_CONFIG_REL}: {_MODEL} must keep the {_VALIDATOR} {_DECORATOR} that "
+            f"rejects an unpinned npm package (npx supply-chain pin)"
+        )
     ]
 
 

@@ -376,8 +376,10 @@ def _render_item(index: int, subtask: SubtaskDefinition) -> list[str]:
     owner = subtask.required_role or "UNASSIGNED"
     lines = [
         f"{index}. [{subtask.id}] {subtask.title} ({subtask.kind.value})",
-        f"   owner: {owner} | stakes: {subtask.stakes.value}"
-        f" | complexity: {subtask.estimated_complexity.value}",
+        (
+            f"   owner: {owner} | stakes: {subtask.stakes.value}"
+            f" | complexity: {subtask.estimated_complexity.value}"
+        ),
         f"   {subtask.description}",
     ]
     if subtask.dependencies:

@@ -640,7 +640,7 @@ class DockerSandboxExecMixin:
     # Command execution via docker exec
     # ------------------------------------------------------------------
 
-    async def _open_exec(  # noqa: PLR0913
+    async def _open_exec(  # noqa: PLR0913, PLR0917
         self,
         docker: aiodocker.Docker,
         handle: ContainerHandle,

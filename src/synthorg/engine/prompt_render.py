@@ -375,7 +375,7 @@ def render_with_trimming(  # noqa: PLR0913
     )
 
 
-def render_and_estimate(  # noqa: PLR0913
+def render_and_estimate(  # noqa: PLR0913, PLR0917
     template_str: str,
     agent: AgentIdentity,
     role: Role | None,

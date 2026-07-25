@@ -147,7 +147,7 @@ class ProjectBrainController(Controller):
     tags = ("project_brain",)
 
     @get(guards=[require_read_access])
-    async def list_entries(  # noqa: PLR0913 -- endpoint takes a query param per filter
+    async def list_entries(  # noqa: PLR0913, PLR0917 -- endpoint takes a query param per filter
         self,
         state: State,
         project_id: PathId,

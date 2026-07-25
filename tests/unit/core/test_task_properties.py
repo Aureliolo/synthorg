@@ -47,7 +47,7 @@ class TestTaskRoundtripProperties:
         complexity=_complexities,
         budget=st.floats(min_value=0.0, max_value=1000.0, allow_nan=False),
     )
-    def test_model_dump_validate_roundtrip(  # noqa: PLR0913 -- one param per drawn strategy
+    def test_model_dump_validate_roundtrip(  # noqa: PLR0913, PLR0917 -- one param per drawn strategy
         self,
         title: str,
         description: str,

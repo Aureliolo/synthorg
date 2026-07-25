@@ -94,8 +94,10 @@ def format_snapshot(snapshot: OrgSignalSnapshot) -> str:
         ]
     else:
         lines = [
-            "Performance metrics: no measured data yet "
-            "(no active agents in the trailing window).",
+            (
+                "Performance metrics: no measured data yet "
+                "(no active agents in the trailing window)."
+            ),
         ]
     lines.extend(
         [

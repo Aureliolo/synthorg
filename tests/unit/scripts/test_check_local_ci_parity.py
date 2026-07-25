@@ -140,8 +140,10 @@ def _write_ci(root: Path, skip: str, *, both_stages: bool = True) -> None:
     wf_dir = root / ".github" / "workflows"
     wf_dir.mkdir(parents=True, exist_ok=True)
     steps = [
-        "      - name: pre-commit stage\n"
-        "        run: uv run pre-commit run --all-files --hook-stage pre-commit\n"
+        (
+            "      - name: pre-commit stage\n"
+            "        run: uv run pre-commit run --all-files --hook-stage pre-commit\n"
+        )
     ]
     if both_stages:
         steps.append(

@@ -471,9 +471,11 @@ def detect_coordination_failures(
                     severity=ErrorSeverity.HIGH,
                     description="Tool execution error detected",
                     evidence=(
-                        f"Message {i}: tool_call_id="
-                        f"'{msg.tool_result.tool_call_id}' "
-                        f"returned error",
+                        (
+                            f"Message {i}: tool_call_id="
+                            f"'{msg.tool_result.tool_call_id}' "
+                            f"returned error"
+                        ),
                     ),
                     turn_range=(i, i),
                 )

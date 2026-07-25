@@ -209,7 +209,7 @@ async def invoke_checkpoint_callback(
         )
 
 
-async def call_planner(  # noqa: PLR0913
+async def call_planner(  # noqa: PLR0913, PLR0917
     ctx: AgentContext,
     provider: CompletionProvider,
     model: str,

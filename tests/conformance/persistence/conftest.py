@@ -143,7 +143,7 @@ def _acquire_shared_postgres(state_file: Path) -> JsonDict:
     ``skip_reason``, peers reraise it via ``pytest.skip`` so every
     worker surfaces the same cause.
     """
-    from testcontainers.postgres import PostgresContainer
+    from testcontainers.community.postgres import PostgresContainer
 
     if state_file.exists():
         try:

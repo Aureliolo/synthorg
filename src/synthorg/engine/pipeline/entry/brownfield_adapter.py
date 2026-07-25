@@ -88,10 +88,14 @@ class BrownfieldEntryAdapter:
             requested_by=request.requested_by,
             task_type=TaskType.ANALYSIS,
             acceptance_criteria=(
-                "A CODEBASE_ANALYSIS living document assessing architecture "
-                "and health is produced.",
-                "The assessment is grounded in the structure map's modules "
-                "and dependencies.",
+                (
+                    "A CODEBASE_ANALYSIS living document assessing architecture "
+                    "and health is produced."
+                ),
+                (
+                    "The assessment is grounded in the structure map's modules "
+                    "and dependencies."
+                ),
             ),
         )
         return await self._work_pipeline.run(work_item)

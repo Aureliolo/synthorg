@@ -475,7 +475,7 @@ def _check_task_limit(
     return False
 
 
-def _check_monthly_limit(  # noqa: PLR0913
+def _check_monthly_limit(  # noqa: PLR0913, PLR0917
     running_cost: float,
     monthly_budget: float,
     monthly_baseline: float,

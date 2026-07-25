@@ -122,7 +122,7 @@ class PlanController(Controller):
     tags = ("plans",)
 
     @get(guards=[require_read_access])
-    async def list_plans(  # noqa: PLR0913 -- pagination + three orthogonal filters
+    async def list_plans(  # noqa: PLR0913, PLR0917 -- pagination + three orthogonal filters
         self,
         state: State,
         cursor: CursorParam = None,

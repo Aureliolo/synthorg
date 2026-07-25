@@ -116,7 +116,7 @@ class ContextDependentDispatcher:
 
         return self._build_result(all_waves, all_workspaces, merge_results, all_phases)
 
-    async def _setup_wave(  # noqa: PLR0913
+    async def _setup_wave(  # noqa: PLR0913, PLR0917
         self,
         wave_idx: int,
         group: ParallelExecutionGroup,
@@ -214,7 +214,7 @@ class ContextDependentDispatcher:
         rebuilt = rebuild_group_with_workspaces(group, wave_workspaces)
         return wave_workspaces, rebuilt
 
-    async def _execute_wave(  # noqa: PLR0913
+    async def _execute_wave(  # noqa: PLR0913, PLR0917
         self,
         wave_idx: int,
         group: ParallelExecutionGroup,

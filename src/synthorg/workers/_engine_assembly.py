@@ -475,7 +475,7 @@ def _build_compaction_callback(
     )
 
 
-async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
+async def _construct_agent_engine(  # noqa: PLR0913, PLR0917 -- boot collaborators threaded in
     app_state: AppState,
     provider: CompletionProvider,
     registry: ProviderRegistry,

@@ -72,7 +72,7 @@ def _unique_relationships(
     return tuple(result)
 
 
-def _build_entity_definition(  # noqa: PLR0913
+def _build_entity_definition(  # noqa: PLR0913, PLR0917
     name: str,
     tier: EntityTier,
     source: EntitySource,

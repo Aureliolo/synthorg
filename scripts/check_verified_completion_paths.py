@@ -199,16 +199,20 @@ def _check_derivation_never_completes(root: Path) -> list[str]:
                 and inner.value.id == "PlanStatus"
             ):
                 return [
-                    f"{rel}:{inner.lineno}: derive_plan_status names "
-                    "PlanStatus.COMPLETED. The rollup writes whatever this "
-                    "derives, so a COMPLETED branch here is a second delivery "
-                    "path that skips the evaluate stage's verdict."
+                    (
+                        f"{rel}:{inner.lineno}: derive_plan_status names "
+                        "PlanStatus.COMPLETED. The rollup writes whatever this "
+                        "derives, so a COMPLETED branch here is a second delivery "
+                        "path that skips the evaluate stage's verdict."
+                    )
                 ]
     if not seen:
         return [
-            f"{rel}: derive_plan_status not found; the derivation invariant is "
-            "unchecked. Point the gate at its new home rather than leaving it "
-            "silently satisfied."
+            (
+                f"{rel}: derive_plan_status not found; the derivation invariant is "
+                "unchecked. Point the gate at its new home rather than leaving it "
+                "silently satisfied."
+            )
         ]
     return []
 

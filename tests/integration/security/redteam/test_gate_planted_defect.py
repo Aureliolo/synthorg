@@ -118,8 +118,10 @@ def _build_planted_report(
                     "by acceptance criterion 2."
                 ),
                 evidence=(
-                    "Acceptance criterion: 'Service exposes a password reset "
-                    "endpoint that emails the user.'",
+                    (
+                        "Acceptance criterion: 'Service exposes a password reset "
+                        "endpoint that emails the user.'"
+                    ),
                     "Deliverable describes only the login endpoint.",
                 ),
                 suggested_fix=(
@@ -135,8 +137,10 @@ def _build_planted_report(
                     "without a source."
                 ),
                 evidence=(
-                    "Sentence: 'Revenue grew 47% last quarter compared to the "
-                    "prior period.'",
+                    (
+                        "Sentence: 'Revenue grew 47% last quarter compared to the "
+                        "prior period.'"
+                    ),
                 ),
                 suggested_fix=(
                     "Cite the originating finance report or remove the claim."

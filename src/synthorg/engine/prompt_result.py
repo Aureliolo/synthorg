@@ -78,7 +78,7 @@ class SystemPrompt(BaseModel):
         return self
 
 
-def build_prompt_result(  # noqa: PLR0913
+def build_prompt_result(  # noqa: PLR0913, PLR0917
     content: str,
     estimated: int,
     task: Task | None,

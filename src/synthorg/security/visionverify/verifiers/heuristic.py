@@ -133,9 +133,11 @@ class HeuristicVisionVerifier:
         if distance <= expectation.tolerance:
             return None
         evidence = (
-            f"expected dominant colour rgb{expectation.expected_rgb}, "
-            f"measured rgb{measured} (normalised distance {distance:.3f} "
-            f"exceeds tolerance {expectation.tolerance:.3f})",
+            (
+                f"expected dominant colour rgb{expectation.expected_rgb}, "
+                f"measured rgb{measured} (normalised distance {distance:.3f} "
+                f"exceeds tolerance {expectation.tolerance:.3f})"
+            ),
         )
         return VisionFinding(
             category=VisionFindingCategory.REQUIREMENTS_MISMATCH,

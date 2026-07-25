@@ -284,7 +284,7 @@ def _reset_if_tasks_dead(
             return
 
 
-async def _safe_startup(  # noqa: PLR0913
+async def _safe_startup(  # noqa: PLR0913, PLR0917
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,

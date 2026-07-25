@@ -26,18 +26,30 @@ _TITLE_TEMPLATES: tuple[str, ...] = (
 )
 
 _DESCRIPTION_TEMPLATES: tuple[str, ...] = (
-    "Design and implement a new feature in the {domain} area that "
-    "delivers measurable value to end users.",
-    "Refactor existing {domain} code to improve maintainability, "
-    "readability, and test coverage.",
-    "Add automated test coverage for the {domain} component, "
-    "covering happy paths and critical edge cases.",
-    "Write developer-facing documentation for the {domain} API, "
-    "including examples and a migration guide.",
-    "Diagnose and fix a reported bug in the {domain} subsystem "
-    "with a regression test to prevent recurrence.",
-    "Investigate reported performance issues in {domain} and "
-    "propose a plan to address the root cause.",
+    (
+        "Design and implement a new feature in the {domain} area that "
+        "delivers measurable value to end users."
+    ),
+    (
+        "Refactor existing {domain} code to improve maintainability, "
+        "readability, and test coverage."
+    ),
+    (
+        "Add automated test coverage for the {domain} component, "
+        "covering happy paths and critical edge cases."
+    ),
+    (
+        "Write developer-facing documentation for the {domain} API, "
+        "including examples and a migration guide."
+    ),
+    (
+        "Diagnose and fix a reported bug in the {domain} subsystem "
+        "with a regression test to prevent recurrence."
+    ),
+    (
+        "Investigate reported performance issues in {domain} and "
+        "propose a plan to address the root cause."
+    ),
 )
 
 _CRITERIA_POOL: tuple[str, ...] = (

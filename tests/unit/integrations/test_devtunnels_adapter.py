@@ -171,9 +171,11 @@ class TestDeviceLogin:
         _patch_binary(monkeypatch, present=True)
         fake = FakePopen(
             stdout_lines=[
-                "To sign in, use a web browser to open the page"
-                " https://github.com/login/device and enter the code"
-                " ABCD-1234 to authenticate.\n",
+                (
+                    "To sign in, use a web browser to open the page"
+                    " https://github.com/login/device and enter the code"
+                    " ABCD-1234 to authenticate.\n"
+                ),
             ],
         )
         envs = _patch_spawn(monkeypatch, fake)
@@ -191,8 +193,10 @@ class TestDeviceLogin:
         _patch_binary(monkeypatch, present=True)
         fake = FakePopen(
             stdout_lines=[
-                "Browse to https://github.com/login/device"
-                " and enter the code: 783E-3CEF\n",
+                (
+                    "Browse to https://github.com/login/device"
+                    " and enter the code: 783E-3CEF\n"
+                ),
             ],
         )
         _patch_spawn(monkeypatch, fake)
@@ -227,8 +231,10 @@ class TestDeviceLogin:
         _patch_binary(monkeypatch, present=True)
         fake = FakePopen(
             stdout_lines=[
-                "open https://github.com/login/device and enter the code"
-                " ABCD-1234 to authenticate.\n",
+                (
+                    "open https://github.com/login/device and enter the code"
+                    " ABCD-1234 to authenticate.\n"
+                ),
             ],
             hang_until_kill=True,
         )

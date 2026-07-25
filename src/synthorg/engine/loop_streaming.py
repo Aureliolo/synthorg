@@ -332,7 +332,7 @@ async def _drain_stream(  # noqa: PLR0913
     return None
 
 
-async def stream_provider(  # noqa: PLR0913
+async def stream_provider(  # noqa: PLR0913, PLR0917
     ctx: AgentContext,
     provider: CompletionProvider,
     model_id: str,
@@ -462,7 +462,7 @@ def fold_interrupt_usage(
     return _fold_usage(ctx, interrupted.partial_usage)
 
 
-async def run_provider_turn(  # noqa: PLR0913
+async def run_provider_turn(  # noqa: PLR0913, PLR0917
     ctx: AgentContext,
     provider: CompletionProvider,
     model_id: str,

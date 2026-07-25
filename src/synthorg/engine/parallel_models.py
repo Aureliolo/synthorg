@@ -249,7 +249,7 @@ class ParallelExecutionResult(BaseModel):
             outcomes; ``None`` when outcomes mix currencies (the
             mismatch already logged on first resolution).
         """
-        cached: CurrencyCode | None | object = self.__dict__.get(
+        cached: CurrencyCode | object | None = self.__dict__.get(
             "_currency_cache",
             _CURRENCY_UNSET,
         )

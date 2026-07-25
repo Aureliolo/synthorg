@@ -292,8 +292,10 @@ def _scan_backend(
         return [backend_err]
     if not backend_props:
         return [
-            f"{rel}:0: concrete backend class {backend_class_name!r} not found "
-            "in module; the gate has nothing to compare against."
+            (
+                f"{rel}:0: concrete backend class {backend_class_name!r} not found "
+                "in module; the gate has nothing to compare against."
+            )
         ]
 
     surface, issues = _merge_accessor_surface(

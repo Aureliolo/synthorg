@@ -368,8 +368,10 @@ def test_parse_worker_crashes_extracts_worker_test_pairs() -> None:
     assert crashes == (
         (
             "gw0",
-            "tests/unit/api/auth/test_postgres_session_store.py"
-            "::test_enforce_session_limit_revokes_oldest[2-2]",
+            (
+                "tests/unit/api/auth/test_postgres_session_store.py"
+                "::test_enforce_session_limit_revokes_oldest[2-2]"
+            ),
         ),
         (
             "gw1",
@@ -422,8 +424,10 @@ def test_classify_regression_when_returncode_zero_with_crashes() -> None:
     assert outcome.kind == "regression"
     assert outcome.exit_code == 1
     assert outcome.crashed_tests == (
-        "tests/unit/api/auth/test_postgres_session_store.py"
-        "::test_enforce_session_limit_revokes_oldest[2-2]",
+        (
+            "tests/unit/api/auth/test_postgres_session_store.py"
+            "::test_enforce_session_limit_revokes_oldest[2-2]"
+        ),
     )
 
 
@@ -456,8 +460,10 @@ def test_classify_regression_when_failure_alongside_crash() -> None:
     )
     # The crashed test is filtered out of failed_tests but still surfaced.
     assert outcome.crashed_tests == (
-        "tests/unit/api/auth/test_postgres_session_store.py"
-        "::test_enforce_session_limit_revokes_oldest[2-2]",
+        (
+            "tests/unit/api/auth/test_postgres_session_store.py"
+            "::test_enforce_session_limit_revokes_oldest[2-2]"
+        ),
     )
 
 
@@ -473,8 +479,10 @@ def test_classify_regression_when_distinct_crashes_only() -> None:
     assert outcome.kind == "regression"
     assert outcome.exit_code == 1
     assert outcome.crashed_tests == (
-        "tests/unit/api/auth/test_postgres_session_store.py"
-        "::test_enforce_session_limit_revokes_oldest[2-2]",
+        (
+            "tests/unit/api/auth/test_postgres_session_store.py"
+            "::test_enforce_session_limit_revokes_oldest[2-2]"
+        ),
         "tests/unit/api/controllers/test_meetings.py::test_completed[2-2]",
     )
 
@@ -616,8 +624,10 @@ def test_classify_regression_when_single_crash_blocks() -> None:
     assert outcome.kind == "regression"
     assert outcome.exit_code == 1
     assert outcome.crashed_tests == (
-        "tests/unit/api/auth/test_postgres_session_store.py"
-        "::test_enforce_session_limit_revokes_oldest[2-2]",
+        (
+            "tests/unit/api/auth/test_postgres_session_store.py"
+            "::test_enforce_session_limit_revokes_oldest[2-2]"
+        ),
     )
 
 

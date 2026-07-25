@@ -439,7 +439,7 @@ def _is_claims_provider_value(
     return scope is not None and expr.id in proven.get(scope, set())
 
 
-def _call_arg_carries_provider(  # noqa: PLR0913 -- threads the shared analysis state
+def _call_arg_carries_provider(  # noqa: PLR0913, PLR0917 -- threads the shared analysis state
     call: ast.Call,
     index: int,
     enclosing: _EnclosingMap,

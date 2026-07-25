@@ -223,7 +223,7 @@ def _build_text_summary(
     )
 
 
-def _finalise(  # noqa: PLR0913 -- segments + estimator + summary threaded in
+def _finalise(  # noqa: PLR0913, PLR0917 -- segments + estimator + summary threaded in
     ctx: AgentContext,
     head: tuple[ChatMessage, ...],
     archivable: tuple[ChatMessage, ...],

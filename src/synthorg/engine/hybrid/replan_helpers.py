@@ -163,7 +163,7 @@ def _parse_replan_decision(content: str) -> bool:
     return False
 
 
-async def run_progress_summary(  # noqa: PLR0913
+async def run_progress_summary(  # noqa: PLR0913, PLR0917
     config: HybridLoopConfig,
     checkpoint_callback: CheckpointCallback | None,
     ctx: AgentContext,
@@ -272,7 +272,7 @@ async def run_progress_summary(  # noqa: PLR0913
     return ctx, should_replan
 
 
-async def attempt_replan(  # noqa: PLR0913
+async def attempt_replan(  # noqa: PLR0913, PLR0917
     config: HybridLoopConfig,
     ctx: AgentContext,
     provider: CompletionProvider,
@@ -377,7 +377,7 @@ async def attempt_replan(  # noqa: PLR0913
     return ctx, new_plan, replans_used
 
 
-async def do_replan(  # noqa: PLR0913
+async def do_replan(  # noqa: PLR0913, PLR0917
     config: HybridLoopConfig,
     ctx: AgentContext,
     provider: CompletionProvider,

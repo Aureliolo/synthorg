@@ -50,7 +50,7 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
     # Populated on the concrete ``PlanExecuteLoop`` in ``__init__``.
     _config: PlanExecuteConfig
 
-    async def _run_planning_phase(  # noqa: PLR0913
+    async def _run_planning_phase(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -81,7 +81,7 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
             turns,
         )
 
-    async def _attempt_replan(  # noqa: PLR0913
+    async def _attempt_replan(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -201,7 +201,7 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
         )
         return ctx, plan
 
-    async def _replan(  # noqa: PLR0913
+    async def _replan(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -267,7 +267,7 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
         )
         return ctx, plan
 
-    async def _call_planner(  # noqa: PLR0913
+    async def _call_planner(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,

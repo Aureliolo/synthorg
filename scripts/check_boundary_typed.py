@@ -326,9 +326,11 @@ def _check_boundary(
     abs_path = REPO_ROOT / rel_path
     if not abs_path.is_file():
         return [
-            f"{rel_path}: registered boundary file is missing "
-            f"(expected function {qualname!r} for boundary "
-            f"{boundary_label!r})"
+            (
+                f"{rel_path}: registered boundary file is missing "
+                f"(expected function {qualname!r} for boundary "
+                f"{boundary_label!r})"
+            )
         ]
     source = abs_path.read_text(encoding="utf-8")
     try:
@@ -340,8 +342,10 @@ def _check_boundary(
     func = _function_node(tree, class_name, function_name)
     if func is None:
         return [
-            f"{rel_path}: registered boundary function "
-            f"{qualname!r} not found (boundary {boundary_label!r})"
+            (
+                f"{rel_path}: registered boundary function "
+                f"{qualname!r} not found (boundary {boundary_label!r})"
+            )
         ]
 
     imports = _build_import_map(tree)
@@ -353,11 +357,13 @@ def _check_boundary(
         return []
 
     return [
-        f"{rel_path}:{func.lineno}: function {qualname!r} no longer "
-        f"calls parse_typed; the {boundary_label!r} boundary contract is "
-        "broken. Either route the inbound payload through "
-        "synthorg.core.boundary.parse_typed, or add a "
-        f'"# {_OPT_OUT_MARKER} -- <reason>" marker on the def line.'
+        (
+            f"{rel_path}:{func.lineno}: function {qualname!r} no longer "
+            f"calls parse_typed; the {boundary_label!r} boundary contract is "
+            "broken. Either route the inbound payload through "
+            "synthorg.core.boundary.parse_typed, or add a "
+            f'"# {_OPT_OUT_MARKER} -- <reason>" marker on the def line.'
+        )
     ]
 
 

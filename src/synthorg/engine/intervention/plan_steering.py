@@ -39,7 +39,7 @@ logger = get_logger(__name__)
 class _PlannerCall(Protocol):
     """The loop's ``_call_planner`` bound method."""
 
-    async def __call__(  # noqa: PLR0913
+    async def __call__(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,

@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def registry_with_forge_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
+def registry_with_forge_tools(  # noqa: PLR0913, PLR0917 -- run-scoped wiring inputs
     tool_registry: ToolRegistry,
     runtime: ForgeToolsRuntime | None,
     approval_store: ApprovalStoreProtocol | None,
@@ -89,7 +89,7 @@ def registry_with_forge_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
     return ToolRegistry([*existing, *forge_tools])
 
 
-def registry_with_chat_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
+def registry_with_chat_tools(  # noqa: PLR0913, PLR0917 -- run-scoped wiring inputs
     tool_registry: ToolRegistry,
     runtime: ChatToolsRuntime | None,
     approval_store: ApprovalStoreProtocol | None,
@@ -136,7 +136,7 @@ def registry_with_chat_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
     return ToolRegistry([*existing, *chat_tools])
 
 
-def registry_with_delegate_tool(  # noqa: PLR0913 -- run-scoped wiring inputs
+def registry_with_delegate_tool(  # noqa: PLR0913, PLR0917 -- run-scoped wiring inputs
     tool_registry: ToolRegistry,
     runner: SubAgentRunner | None,
     config_resolver: ConfigResolver | None,

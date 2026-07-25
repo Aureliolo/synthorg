@@ -397,7 +397,7 @@ class DefaultWorkPipeline:
         await self._try_generate_narrative(work_item, task)
         return result
 
-    async def _execute_selected_path(  # noqa: PLR0913 -- one routed dispatch fan-out
+    async def _execute_selected_path(  # noqa: PLR0913, PLR0917 -- one routed dispatch fan-out
         self,
         work_item: WorkItem,
         task: Task,

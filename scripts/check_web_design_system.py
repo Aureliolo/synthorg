@@ -525,8 +525,10 @@ def check_missing_story(file_path: Path, project_root: Path) -> list[str]:
     if story_path.exists():
         return []
     return [
-        f"  {rel_path}: New component without Storybook story "
-        f"-- create `{story_path.name}` alongside it."
+        (
+            f"  {rel_path}: New component without Storybook story "
+            f"-- create `{story_path.name}` alongside it."
+        )
     ]
 
 
@@ -543,8 +545,10 @@ def _check_status_dot(content: str, content_lower: str, rel_path: Path) -> list[
             and "status-badge" not in content_lower
         ):
             return [
-                f"  {rel_path}: Inline status dot pattern detected "
-                f"-- use `<StatusBadge>` from `@/components/ui/status-badge` instead."
+                (
+                    f"  {rel_path}: Inline status dot pattern detected "
+                    f"-- use `<StatusBadge>` from `@/components/ui/status-badge` instead."
+                )
             ]
     return []
 
@@ -564,9 +568,11 @@ def _check_avatar(content: str, rel_path: Path) -> list[str]:
     )
     if re.search(pattern, content) and not has_avatar_import:
         return [
-            f"  {rel_path}: Possible inline avatar/initials circle detected "
-            f"-- consider using `<Avatar>` from `@/components/ui/avatar` "
-            f"or ignore if not applicable."
+            (
+                f"  {rel_path}: Possible inline avatar/initials circle detected "
+                f"-- consider using `<Avatar>` from `@/components/ui/avatar` "
+                f"or ignore if not applicable."
+            )
         ]
     return []
 
@@ -584,8 +590,10 @@ def _check_metric(content: str, content_lower: str, rel_path: Path) -> list[str]
             and "metric-card" not in content_lower
         ):
             return [
-                f"  {rel_path}: Inline metric display pattern detected "
-                f"-- use `<MetricCard>` from `@/components/ui/metric-card` instead."
+                (
+                    f"  {rel_path}: Inline metric display pattern detected "
+                    f"-- use `<MetricCard>` from `@/components/ui/metric-card` instead."
+                )
             ]
     return []
 

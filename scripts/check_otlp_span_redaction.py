@@ -109,9 +109,11 @@ class _Finder(ast.NodeVisitor):
                 (
                     node.lineno,
                     node.col_offset,
-                    f"{_FORBIDDEN_METHOD}() forbidden in production code; "
-                    "use scrubbed exception.type/exception.message attributes "
-                    "(see docs/reference/sec-prompt-safety.md)",
+                    (
+                        f"{_FORBIDDEN_METHOD}() forbidden in production code; "
+                        "use scrubbed exception.type/exception.message attributes "
+                        "(see docs/reference/sec-prompt-safety.md)"
+                    ),
                 )
             )
         # ``record_exception=True`` / ``set_status_on_exception=True``
@@ -126,9 +128,11 @@ class _Finder(ast.NodeVisitor):
                     (
                         kw.lineno,
                         kw.col_offset,
-                        f"{kw.arg}=True re-enables the OTel SDK's "
-                        "auto-exception handler; set to False and write "
-                        "scrubbed attributes manually",
+                        (
+                            f"{kw.arg}=True re-enables the OTel SDK's "
+                            "auto-exception handler; set to False and write "
+                            "scrubbed attributes manually"
+                        ),
                     )
                 )
         self.generic_visit(node)

@@ -148,8 +148,10 @@ class CloudflareQuickTunnelAdapter:
             return True, "cloudflared will be downloaded on first start."
         return (
             False,
-            "cloudflared is not installed and automatic download is disabled;"
-            " install it and ensure it is on PATH.",
+            (
+                "cloudflared is not installed and automatic download is disabled;"
+                " install it and ensure it is on PATH."
+            ),
         )
 
     async def credential_configured(self) -> bool:

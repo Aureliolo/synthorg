@@ -210,7 +210,7 @@ def real_template_packs() -> TemplatePackFacadeService:
 
 
 @pytest.fixture
-def fake_app_state(  # noqa: PLR0913
+def fake_app_state(  # noqa: PLR0913, PLR0917
     fake_settings: AsyncMock,
     fake_providers: AsyncMock,
     fake_backup: AsyncMock,

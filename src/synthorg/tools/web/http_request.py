@@ -127,7 +127,7 @@ class HttpRequestTool(BaseWebTool):
             url, method, headers, body, timeout, validation
         )
 
-    async def _perform_request(  # noqa: PLR0913
+    async def _perform_request(  # noqa: PLR0913, PLR0917
         self,
         url: str,
         method: str,

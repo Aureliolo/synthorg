@@ -131,7 +131,7 @@ def _compute_window_costs(
     return tuple(costs)
 
 
-def _detect_spike_anomaly(  # noqa: PLR0913
+def _detect_spike_anomaly(  # noqa: PLR0913, PLR0917
     agent_id: str,
     window_costs: tuple[float, ...],
     now: datetime,

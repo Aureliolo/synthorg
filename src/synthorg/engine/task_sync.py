@@ -94,7 +94,7 @@ async def transition_task_if_needed(
     return ctx
 
 
-async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collaborators
+async def apply_post_execution_transitions(  # noqa: PLR0913, PLR0917 -- post-exec collaborators
     execution_result: ExecutionResult,
     agent_id: str,
     task_id: str,
@@ -275,7 +275,7 @@ async def _transition_and_sync(  # noqa: PLR0913
     return ctx, synced
 
 
-async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
+async def _transition_to_review(  # noqa: PLR0913, PLR0917 -- post-exec collaborators
     execution_result: ExecutionResult,
     ctx: AgentContext,
     agent_id: str,
@@ -349,7 +349,7 @@ async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
     return execution_result.model_copy(update={"context": ctx})
 
 
-async def _transition_to_failed(  # noqa: PLR0913 -- post-exec collaborators
+async def _transition_to_failed(  # noqa: PLR0913, PLR0917 -- post-exec collaborators
     execution_result: ExecutionResult,
     ctx: AgentContext,
     agent_id: str,

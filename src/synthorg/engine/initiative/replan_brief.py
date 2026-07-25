@@ -107,10 +107,12 @@ def build_replan_brief(
         report.extend(f"- {criterion}" for criterion in plan.objective_criteria)
     return "\n".join(
         [
-            "The previous plan for this objective stopped making progress and "
-            "is being replaced. Plan the remaining work from where the "
-            "organisation actually is: keep what was delivered, and find "
-            "another way to the rest.",
+            (
+                "The previous plan for this objective stopped making progress and "
+                "is being replaced. Plan the remaining work from where the "
+                "organisation actually is: keep what was delivered, and find "
+                "another way to the rest."
+            ),
             f"Stall: {reason.value}. {_REASON_GUIDANCE[reason]}",
             wrap_untrusted(TAG_TASK_DATA, "\n".join(report)),
         ]

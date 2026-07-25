@@ -102,7 +102,7 @@ class CoordinationMetricsController(Controller):
             per_op_rate_limit_from_policy("coordination.metrics_query", key="user"),
         ],
     )
-    async def list_coordination_metrics(  # noqa: PLR0913
+    async def list_coordination_metrics(  # noqa: PLR0913, PLR0917
         self,
         state: State,
         task_id: Annotated[

@@ -318,7 +318,7 @@ def _build_violation_for_hardcoded_none(
     )
 
 
-def _detect_violation(  # noqa: PLR0913 -- caches passed in to avoid quadratic re-reads
+def _detect_violation(  # noqa: PLR0913, PLR0917 -- caches passed in to avoid quadratic re-reads
     setting: SettingRecord,
     ghosts: list[GhostService],
     settings_by_yaml: dict[str, SettingRecord],

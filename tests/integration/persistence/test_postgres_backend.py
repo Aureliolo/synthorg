@@ -23,6 +23,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.persistence.config import PostgresConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from tests._shared import as_uuid, sid
+from tests._shared.postgres_proxy import PostgresContainerProxy
 from tests.unit.persistence.conftest import make_message, make_task
 
 
@@ -126,12 +127,10 @@ class TestConcurrentWrites:
 class TestPoolExhaustion:
     async def test_small_pool_under_load(
         self,
-        postgres_container: object,
+        postgres_container: PostgresContainerProxy,
     ) -> None:
         """Pool with pool_max_size=2 handles queued requests cleanly."""
-        from testcontainers.postgres import PostgresContainer
-
-        container: PostgresContainer = postgres_container
+        container = postgres_container
         db_name = f"pool_test_{uuid4().hex}"
 
         admin_conninfo = psycopg.conninfo.make_conninfo(

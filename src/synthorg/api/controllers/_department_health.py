@@ -419,7 +419,7 @@ def _build_degraded_health(
     )
 
 
-def _build_health_from_data(  # noqa: PLR0913
+def _build_health_from_data(  # noqa: PLR0913, PLR0917
     dept_name: str,
     agent_count: int,
     active_count: int,

@@ -415,7 +415,7 @@ class MeetingOrchestrator:
             return False
         return True
 
-    async def _execute_protocol(  # noqa: PLR0913
+    async def _execute_protocol(  # noqa: PLR0913, PLR0917
         self,
         protocol: MeetingProtocol,
         meeting_id: str,
@@ -476,7 +476,7 @@ class MeetingOrchestrator:
                 exc,
             )
 
-    def _make_failure_record(  # noqa: PLR0913
+    def _make_failure_record(  # noqa: PLR0913, PLR0917
         self,
         meeting_id: str,
         meeting_type_name: str,
