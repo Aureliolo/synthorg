@@ -16,22 +16,22 @@ dependencies = [
     "aiodocker==0.27.0",
     "aiohttp==3.14.3",
     "aiosqlite==0.22.1",
-    "annotated-types==0.7.0",
+    "annotated-types==0.8.0",
     "argon2-cffi==25.1.0",
     "cryptography==49.0.0",
-    "faker==40.31.0",
+    "faker==40.36.0",
     "httpcore==1.0.9",
     "httpx==0.28.1",
     "jinja2==3.1.6",
     "jsonschema==4.26.0",
-    "litellm==1.91.2",
+    "litellm==1.91.4",
     "cedarpy==4.8.7",
     "lxml==6.1.1",
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.24.0",
     "mcp==1.28.1",
     "mmh3==5.2.1",
     "packaging==26.2",
-    "prometheus-client==0.25.0",
+    "prometheus-client==0.26.0",
     "pydantic==2.13.4",
     "pyjwt[crypto]==2.13.0",
     "pyngrok==8.1.2",
@@ -60,9 +60,9 @@ build-backend = "hatchling.build"
 # PyPI (CUDA bundled, ~2.5 GB) or the PyTorch CPU index (~200 MB) via
 # [tool.uv.sources] below. The two extras are declared mutually exclusive in
 # [tool.uv] via its `conflicts = [...]` setting so uv locks them independently.
-fine-tune-gpu = ["torch==2.13.0", "sentence-transformers==5.6.0"]
-fine-tune-cpu = ["torch==2.13.0", "sentence-transformers==5.6.0"]
-telemetry = ["logfire==4.37.0"]
+fine-tune-gpu = ["torch==2.13.0", "sentence-transformers==5.6.1"]
+fine-tune-cpu = ["torch==2.13.0", "sentence-transformers==5.6.1"]
+telemetry = ["logfire==4.39.0"]
 # Distributed runtime: first distributed MessageBus backend + task queue workers.
 # Opt in with `pip install synthorg[distributed]`. See docs/design/distributed-runtime.md.
 distributed = ["nats-py==2.15.0"]
@@ -74,7 +74,7 @@ postgres = ["psycopg[binary]==3.3.4", "psycopg_pool==3.3.1"]
 knowledge = [
     "pdfplumber==0.11.10",
     "tree-sitter==0.26.0",
-    "tree-sitter-language-pack==1.12.5",
+    "tree-sitter-language-pack==1.13.3",
 ]
 
 [tool.hatch.version]
@@ -108,21 +108,21 @@ test = [
     "pytest-split==0.11.0",
     "polyfactory==3.3.0",
     "respx==0.23.1",
-    "hypothesis==6.156.6",
+    "hypothesis==6.161.2",
     # Distributed runtime: dev envs always have these so mypy can type-check
     # bus/nats.py and workers/ without needing the optional extra installed.
     # Runtime users opt in via `pip install synthorg[distributed]`.
     "nats-py==2.15.0",
     "psycopg[binary]==3.3.4",
     "psycopg_pool==3.3.1",
-    "testcontainers[postgres]==4.14.2",
+    "testcontainers[postgres]==4.15.0",
     # Knowledge substrate: integration tests ingest a mixed PDF + repo +
     # ticket corpus end-to-end, so the tree-sitter AST chunker and the
     # pdfplumber loader must be installed alongside the test runner.
     # Runtime users opt in via `pip install synthorg[knowledge]`.
     "pdfplumber==0.11.10",
     "tree-sitter==0.26.0",
-    "tree-sitter-language-pack==1.12.5",
+    "tree-sitter-language-pack==1.13.3",
 ]
 docs = [
     "zensical==0.0.51",
@@ -137,21 +137,21 @@ docs = [
 ]
 fine-tune-gpu = [
     "torch==2.13.0",
-    "sentence-transformers==5.6.0",
+    "sentence-transformers==5.6.1",
 ]
 fine-tune-cpu = [
     "torch==2.13.0",
-    "sentence-transformers==5.6.0",
+    "sentence-transformers==5.6.1",
 ]
 dev = [
     "commitizen==4.16.5",
     "mypy==2.3.0",
-    "pre-commit==4.6.0",
+    "pre-commit==4.6.1",
     "pip-audit==2.10.1",
-    "pre-commit-uv==4.2.2",
-    "ruff==0.15.22",
-    "sqlglot==30.12.0",
-    "types-pyyaml==6.0.12.20260518",
+    "pre-commit-uv==4.3.0",
+    "ruff==0.16.0",
+    "sqlglot==30.13.0",
+    "types-pyyaml==6.0.12.20260724",
     "types-defusedxml==0.7.0.20260504",
     # Second type-checker. Runs as a CI artefact via
     # .github/workflows/pyright.yml (continue-on-error: true). No
