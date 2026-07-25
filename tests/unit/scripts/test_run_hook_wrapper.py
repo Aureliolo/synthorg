@@ -160,6 +160,10 @@ def test_an_over_budget_run_says_so_loudly(hook_repo: Path) -> None:
     assert result.returncode == 0
     assert "OVER BUDGET" in result.stderr
     assert "gate-scope defect" in result.stderr
+    # The banner is teed, not just printed: stderr scrolls away in a busy
+    # terminal, so the durable log is where the overrun is read back later.
+    log = (_log_dir(hook_repo) / "pre-push-last.log").read_text(encoding="utf-8")
+    assert "OVER BUDGET" in log
 
 
 @_BASH_AVAILABLE

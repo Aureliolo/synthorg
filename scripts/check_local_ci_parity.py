@@ -303,9 +303,13 @@ def _skip_agreement_problems(
     skip_sets = {skip for _, skip in invocations}
     if len(skip_sets) <= 1:
         return []
+    # Sorted twice over: a set iterates in hash order, so without the outer
+    # sort the same disagreement reads differently from one process to the
+    # next, and a diagnostic that changes shape is one nobody can diff.
+    rendered = sorted(sorted(skip) for skip in skip_sets)
     return [
         f"{_CI_WORKFLOW}: the all-files invocations disagree on SKIP "
-        f"({[sorted(s) for s in skip_sets]}). Use one shared SKIP (job-level "
+        f"({rendered}). Use one shared SKIP (job-level "
         "env) so coverage is identical at every stage."
     ]
 

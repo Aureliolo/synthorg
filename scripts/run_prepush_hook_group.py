@@ -224,6 +224,12 @@ def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
             # configured scope, which is the cost this runner exists to
             # avoid, so skip it outright.
             return _Result(tool.name, 0, "", 0.0, skipped=True)
+        # The ``--`` the hook passes is consumed by argparse as its own
+        # positional separator, so it never reaches the tool. Re-emit it
+        # here or the protection the hook config documents -- a path
+        # beginning with a dash cannot be read as an option -- is not
+        # actually in force anywhere.
+        argv.append("--")
         argv.extend(matched)
     # Windows ships ``npm`` as ``npm.cmd``; CreateProcess will not resolve
     # the bare name, and ``shell=True`` would hand the shell a path list

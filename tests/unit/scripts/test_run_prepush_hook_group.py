@@ -346,6 +346,16 @@ class TestFilenameRouting:
         assert "web/package.json" not in eslint
         assert "web/src/styles.css" not in eslint
 
+    def test_paths_reach_the_tool_behind_an_option_separator(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The hook config's own ``--`` is consumed by argparse, so unless the
+        # runner re-emits one, a path beginning with a dash reaches the tool
+        # as an option and the documented protection is fiction.
+        recorder = _Recorder()
+        _run(monkeypatch, ["web-checks", "web/src/api/client.ts"], recorder)
+        assert recorder.argv_for("eslint")[-2:] == ["--", "web/src/api/client.ts"]
+
     @pytest.mark.parametrize(
         "unlintable",
         [
