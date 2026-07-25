@@ -64,17 +64,24 @@ func runStop(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("detecting docker: %w", err)
 	}
 
-	state, err := config.Load(opts.DataDir)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
+
+	// Tolerant load, as wipe and uninstall use. Stopping a running stack
+	// must not depend on the config being valid: the fields that legitimately
+	// fail a strict load are the data-location backends, and refusing over
+	// one would leave an operator with containers running and no in-CLI way
+	// to stop them. Nothing here needs a validated config -- the compose
+	// file already exists and carries the topology.
+	state, loadErr := config.LoadForTeardown(opts.DataDir)
+	if loadErr != nil {
+		errOut.Warn(fmt.Sprintf("Could not fully load config (%v); continuing stop with what could be read.", loadErr))
 	}
 
 	safeDir, err := safeStateDir(state)
 	if err != nil {
 		return fmt.Errorf("resolving data directory: %w", err)
 	}
-	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 	// Hold the lifecycle lock across the `compose down` so a concurrent start
 	// or update-restart cannot bring the stack back up mid-stop.
 	lock, err := runlock.Acquire(ctx, safeDir)
