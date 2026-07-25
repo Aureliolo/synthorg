@@ -4,6 +4,15 @@
 # Both backend and web images build with context: . (repo root).
 # Backend needs: pyproject.toml, uv.lock, src/
 # Web needs: web/
+#
+# PATTERN SEMANTICS, and the reason most lines below carry `**/`:
+# Docker's ignore patterns do not cross `/` on their own, unlike
+# .gitignore's. A bare `__pycache__/` matches ONLY the repository root, so
+# every nested cache still enters the build context. That is how a
+# developer's typeguard-instrumented test bytecode ended up inside the
+# backend image alongside the build's own. Anything that must be excluded
+# at any depth needs the `**/` prefix; a pattern naming a specific
+# top-level directory (`docker/`, `scripts/`, `web/dist/`) does not.
 
 # Git
 .git/
@@ -22,10 +31,14 @@ docker/
 # Tests
 tests/
 
-# Documentation -- re-included for docs builder stage in web Dockerfile
+# Documentation. No image build reads it: the docs site is a host-side
+# zensical build whose output melange picks up from _site/, outside any
+# Docker context. `*.md` is separately load-bearing -- the backend and
+# fine-tune builds deliberately keep README.md out of the context and
+# `RUN touch README.md` an empty one, because hatchling requires the file
+# to exist but nothing needs its contents.
 docs/
 *.md
-!docs/
 
 # Documentation build output (Zensical)
 _site/
@@ -33,66 +46,72 @@ _site/
 # Astro landing page (not needed by any Docker build)
 site/
 
+# Benchmark harness and generated project data (host-side tooling only)
+evals/
+data/
+
 # Virtual environments
-.venv/
-venv/
+**/.venv/
+**/venv/
 
 # Python caches
-__pycache__/
-*.py[cod]
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
+**/__pycache__/
+**/*.py[cod]
+**/.mypy_cache/
+**/.ruff_cache/
+**/.pytest_cache/
 
 # Hypothesis test database
-.hypothesis/
+**/.hypothesis/
 
 # Coverage
-htmlcov/
-coverage.xml
-.coverage
-.coverage.*
+**/htmlcov/
+**/coverage.xml
+**/.coverage
+**/.coverage.*
 
-# Databases
-*.db
-*.sqlite3
+# Databases, including SQLite's write-ahead log and shared-memory siblings
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.sqlite
+**/*.sqlite3
 
-# Environment files
-.env
-.env.*
+# Environment files. A local .env holds provider API keys, MASTER_KEY and
+# POSTGRES_PASSWORD; the whole context is uploaded to the daemon, so these
+# must be excluded at every depth rather than only at the root.
+**/.env
+**/.env.*
 
 # IDE
-.idea/
-.vscode/
+**/.idea/
+**/.vscode/
 
 # CI/build utility scripts (not needed in Docker builds).
-# Two files are allowlisted because the Dockerfile invokes them at
-# build time:
-#   * export_openapi.py    -- emits the OpenAPI schema baked into the image.
-#   * embed_logfire_token.py -- rewrites the embedded telemetry token
-#     when LOGFIRE_PROJECT_TOKEN is supplied as a --build-arg (#1666 A-3).
+# embed_logfire_token.py is allowlisted because the backend Dockerfile
+# copies and runs it, rewriting the embedded telemetry token when
+# LOGFIRE_PROJECT_TOKEN is supplied as a --build-arg.
 scripts/
-!scripts/export_openapi.py
 !scripts/embed_logfire_token.py
 
 # CLI (Go binary, not needed in Docker builds)
 cli/
 
-# Claude Code config
+# Agent tooling config
 .claude/
+.opencode/
 
 # Logs
-logs/
-*.log
+**/logs/
+**/*.log
 
 # OS files
-Thumbs.db
-.DS_Store
+**/Thumbs.db
+**/.DS_Store
 
 # Web dashboard build artifacts and test infrastructure
-web/node_modules/
+**/node_modules/
 web/dist/
-web/.env
 web/__tests__/
 web/vitest.config.*
 

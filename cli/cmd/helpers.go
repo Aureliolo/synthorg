@@ -6,7 +6,30 @@ import (
 	"net/url"
 	"os/exec"
 	"runtime"
+
+	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 )
+
+// loadForInspection reads config for a command that must keep working on
+// a config the strict loader refuses. `doctor` and the `config` inspection
+// subcommands are registered as recovery commands precisely so a broken
+// file cannot lock the operator out of the tools that diagnose and repair
+// it; loading strictly in the command body would undo that, because the
+// recovery fallback in setupGlobalOpts only covers the tunables load.
+//
+// The advisory error is surfaced as a warning, never returned: these
+// commands report on a broken config, they do not run the stack on one.
+func loadForInspection(dataDir string, errOut *ui.UI) config.State {
+	state, advisory := config.LoadTolerant(dataDir)
+	if advisory != nil {
+		errOut.Warn(fmt.Sprintf(
+			"Config could not be fully resolved: %v. Reporting on what could be read.",
+			advisory,
+		))
+	}
+	return state
+}
 
 // boolToYesNo converts a bool to "yes"/"no" for display.
 func boolToYesNo(b bool) string {

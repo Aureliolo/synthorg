@@ -151,7 +151,7 @@ The probe endpoints (`/api/v1/healthz`, `/api/v1/readyz`) are unauthenticated so
 - **Base image**: Wolfi apko-composed distroless (no shell, continuously scanned)
 - **Build**: 2-stage (builder -> apko runtime) for minimal attack surface
 - **User**: UID 65532 (distroless non-root)
-- **Health check**: `GET /api/v1/readyz` (10s interval, 5s timeout, 3 retries, 30s start period)
+- **Health check**: `GET /api/v1/healthz` (10s interval, 5s timeout, 3 retries, 600s start period, 5s start interval), declared in `docker/backend/Dockerfile` and never overridden at the compose layer. Liveness, not readiness: the only consumer is the `depends_on: service_healthy` gate in Compose that holds `web` back until the API answers, and probing `/readyz` would tie the dashboard availability to Postgres and NATS health. The start period covers the whole cold boot, because uvicorn runs the entire ASGI lifespan (persistence connect, migrations, service wiring) before it binds the listening socket, so nothing answers until boot completes. It is derived from measurement (`scripts/measure_backend_boot.sh`) and CI fails a build whose boot grows into its headroom.
 - **Entry point**: `uvicorn synthorg.api.app:create_app --factory --no-access-log`
 
 ### Web

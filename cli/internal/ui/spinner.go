@@ -19,11 +19,32 @@ const spinnerInterval = 80 * time.Millisecond
 // Spinner renders an animated inline spinner on a terminal.
 // Non-TTY writers get a static status line instead.
 type Spinner struct {
-	ui        *UI
+	ui *UI
+	// mu guards msg, which Update mutates from the caller's goroutine
+	// while run reads it from the animation goroutine.
+	mu        sync.Mutex
 	msg       string
 	done      chan struct{}
 	closeOnce sync.Once
 	wg        sync.WaitGroup
+}
+
+// Update replaces the spinner's message mid-run, so a long wait can report
+// progress instead of animating silently. A no-op once the spinner has
+// been stopped. On a non-TTY writer, where the message was printed as a
+// static line, the update is dropped rather than emitting a second line
+// per tick.
+func (s *Spinner) Update(msg string) {
+	s.mu.Lock()
+	s.msg = stripControl(msg)
+	s.mu.Unlock()
+}
+
+// message returns the current message under lock.
+func (s *Spinner) message() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.msg
 }
 
 // StartSpinner begins an animated spinner with the given message.
@@ -65,7 +86,7 @@ func (s *Spinner) run() {
 		case <-ticker.C:
 			_, _ = fmt.Fprintf(s.ui.w, "\r\033[K%s %s",
 				s.ui.brand.Render(spinnerFrames[frame]),
-				s.ui.bold.Render(s.msg))
+				s.ui.bold.Render(s.message()))
 			frame = (frame + 1) % len(spinnerFrames)
 		}
 	}

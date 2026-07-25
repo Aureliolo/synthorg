@@ -70,7 +70,59 @@ RUN if [ -n "$LOGFIRE_PROJECT_TOKEN" ]; then \
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
     uv sync --frozen --no-dev --extra postgres --extra distributed --extra telemetry
 
-RUN find /app/src -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+# Ship the application's bytecode, and only the build's own.
+#
+# Importing a .py compiles it to bytecode first; CPython normally caches
+# that in __pycache__ so later imports skip the compile. This runtime
+# cannot: PYTHONDONTWRITEBYTECODE=1 is set below and compose mounts the
+# container read_only. So a container shipped without cached bytecode
+# recompiles all of /app/src on every start and discards the result.
+# Measured A/B on identical source in this image at --cpus 2, importing
+# synthorg.api.app: 31.6s without cached bytecode, 20.4s with, i.e. 11.2s
+# (35%) of every boot. The venv's third-party bytecode already ships via
+# UV_COMPILE_BYTECODE=1; this brings the application in line with it.
+#
+# The strip runs FIRST and is load-bearing, not redundant with
+# .dockerignore: any __pycache__ that reached the build context carries
+# the *developer's* bytecode, including typeguard-instrumented variants
+# from a local test run. Discarding it and recompiling from source is what
+# makes the shipped bytecode a product of the build rather than of
+# whichever machine ran it.
+#
+# Neither the strip failure nor the compile failure may be swallowed, and
+# -f is not optional. Without --force, compileall skips a file whose
+# existing pyc header (magic + mtime) already matches the source, so a
+# contaminated pyc that survived a failed strip would be kept rather than
+# replaced: the two together are what make the guarantee above hold, and
+# either one alone leaves a hole.
+#
+# unchecked-hash skips import-time validation entirely rather than
+# checking mtime+size, so a COPY that resets mtimes cannot invalidate the
+# cache: the interpreter never looks at either. That is sound only because
+# the image is immutable, which is also why -f above matters. It embeds no
+# timestamps, so the artefact stays reproducible.
+#
+# CONSTRAINT that follows from it: nothing may bind-mount over /app/src.
+# The interpreter never validates these pyc against their source, so a dev
+# bind-mount would run the BAKED bytecode while the developer edited files
+# that had no effect. Compose mounts the container read_only and does not
+# mount source; a future live-reload setup must use a different image or
+# set PYTHONPYCACHEPREFIX, not mount over this tree.
+#
+# -j 0 parallelises across os.process_cpu_count(), which honours CPU
+# affinity but NOT a cgroup CFS quota, so a quota-limited builder may
+# oversubscribe. Harmless here: this is a build step on a CI runner, not
+# the latency-sensitive runtime path.
+#
+# Do NOT add -OO here: Litestar derives OpenAPI descriptions from handler
+# docstrings, so stripping them would silently change the published schema.
+#
+# The builder's CPython minor must match the runtime's: a pyc records the
+# writing version's magic number and the interpreter silently ignores a
+# mismatch, recompiling everything with no error. Pinned by
+# tests/unit/test_backend_image_bytecode.py against apko.lock.json.
+RUN find /app/src -type d -name __pycache__ -exec rm -rf {} + \
+    && python -m compileall -q -f -j 0 --invalidation-mode unchecked-hash /app/src
 
 # Strip cached wheels only. Keep *.dist-info so Syft and other SBOM tooling
 # can detect actual installed Python packages (not just declared dependencies).
@@ -143,11 +195,55 @@ ENV PATH="/app/.venv/bin:$PATH" \
 USER 65532
 EXPOSE 3001
 
-# Liveness, not readiness: a container HEALTHCHECK gates process restart,
-# so it must probe /healthz (always 200 while the event loop is
-# responsive). Probing /readyz would restart the container whenever a
-# dependency is transiently unready -- readiness gates traffic, not restart.
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=30s \
+# Liveness, not readiness. The Docker daemon never restarts an unhealthy
+# container (restart policies react to process exit; health-driven restart
+# is a Swarm / Kubernetes behaviour, and neither runs here), so this status
+# has exactly one load-bearing consumer: compose's `depends_on:
+# service_healthy` gate that holds `web` back until the API is up. Probing
+# /readyz would tie the dashboard's availability to Postgres and NATS
+# health, taking the UI down on a transient dependency blip. /healthz
+# answers 200 whenever the event loop is responsive, which is the question
+# that gate is actually asking.
+#
+# The budget is derived from measurement, not guessed. uvicorn runs the
+# whole ASGI lifespan (persistence connect, migrations, service wiring)
+# BEFORE it binds the listening socket, so every probe until boot completes
+# fails with a connection refused -- the start period has to cover the
+# entire cold boot, not just the interpreter start.
+#
+# Measured on a fresh install (new volumes, so every migration applies),
+# container start -> first passing probe. Both figures are point-in-time
+# and will drift; scripts/measure_backend_boot.sh reproduces them.
+#   43.7s  full stack, warm image cache, this image's compiled bytecode
+#   238s   HISTORICAL: cold image cache and NO compiled bytecode, several
+#          services contending for the same 2 CPUs. A build can no longer
+#          produce a bytecode-less image (the compileall step above fails
+#          the build), so this is retained as the safety margin rather
+#          than as a state a current image can reach.
+#
+# start-period = 600s is ~2.5x that historical worst case. It costs nothing
+# on a healthy boot: the first passing probe ends the start period
+# immediately, which is what start-interval is for. It only bounds how long
+# a genuinely hung boot is tolerated. A crashed process is detected by
+# compose straight away and never waits this out.
+#
+# start-interval (Docker 25+) probes during the start period instead of
+# inheriting the 10s steady-state interval. It stays at Docker's own 5s
+# default rather than going lower: each probe forks a fresh interpreter
+# costing 0.5-0.9s under boot contention, so a 2s cadence would spend
+# 25-45% of one of the two available cores competing with the boot it is
+# measuring. At 5s, detection latency is irrelevant against a 43.7s floor.
+# An older daemon has no such field, drops it on decode, and falls back to
+# --interval, so this stays compatible with the 20.10 run floor the CLI
+# warns on.
+#
+# timeout = 5s gives 5x headroom over the measured 0.9s worst probe and
+# keeps worst-case detection of a WEDGED probe at retries x (interval +
+# timeout) = 45s. Docker never overlaps probes for one container, so
+# interval == timeout would not be a hazard either; 5s is simply what the
+# measurement supports. interval and retries are unchanged: they govern
+# steady-state liveness, which was never the failure.
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=600s --start-interval=5s \
     CMD ["/app/.venv/bin/python", "-c", "import json,urllib.request,sys,os; port=os.environ.get('UVICORN_PORT','3001'); r=urllib.request.urlopen(f'http://127.0.0.1:{port}/api/v1/healthz'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='ok' else 1)"]
 
 ENTRYPOINT []

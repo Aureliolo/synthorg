@@ -41,7 +41,7 @@ func BenchmarkGenerateFullStack(b *testing.B) {
 		PostgresPassword:   "test-postgres-password-32-chars-min",
 		MemoryBackend:      "sqlvector",
 		BusBackend:         "nats",
-		NatsClientPort:     3003,
+		NATSClientPort:     3003,
 		Sandbox:            true,
 		FineTuning:         true,
 		FineTuningVariant:  "cpu",

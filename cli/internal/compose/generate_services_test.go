@@ -73,7 +73,7 @@ func TestGenerateDataInitOwnership(t *testing.T) {
 				ImageTag:           "latest",
 				BackendPort:        3001,
 				WebPort:            3000,
-				NatsClientPort:     tc.natsClientPort,
+				NATSClientPort:     tc.natsClientPort,
 				LogLevel:           "info",
 				PersistenceBackend: tc.persistenceBackend,
 				MemoryBackend:      "sqlvector",

@@ -155,7 +155,7 @@ func buildState(a setupAnswers) (config.State, error) {
 		PersistenceBackend: a.persistenceBackend,
 		MemoryBackend:      a.memoryBackend,
 		BusBackend:         r.busBackend,
-		NatsClientPort:     config.DefaultState().NatsClientPort,
+		NATSClientPort:     config.DefaultState().NATSClientPort,
 		PostgresPort:       r.postgresPort,
 		PostgresPassword:   r.postgresPassword,
 		TelemetryOptIn:     a.telemetryOptIn,
@@ -172,6 +172,18 @@ func writeInitFiles(state config.State) (string, error) {
 		return "", err
 	}
 	state.DataDir = safeDir // normalize before persisting
+	// Fail closed before anything is written. The secrets carried forward
+	// from a previous install reach here unvalidated by design (the
+	// re-init loader must be able to read a config the strict loader
+	// refuses), so this is the boundary that stops a malformed one being
+	// persisted behind a "SynthOrg initialized" banner and bricking every
+	// subsequent command.
+	if err := state.Validate(); err != nil {
+		return "", fmt.Errorf(
+			"refusing to write a config that cannot be loaded back: %w. %s",
+			err, irreplaceableSecretsAdvice,
+		)
+	}
 	if err := os.MkdirAll(safeDir, 0o700); err != nil {
 		return "", fmt.Errorf("creating data directory: %w", err)
 	}

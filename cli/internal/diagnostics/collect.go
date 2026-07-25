@@ -33,20 +33,23 @@ type ContainerDetail struct {
 
 // Report contains collected diagnostic information.
 type Report struct {
-	Timestamp      string   `json:"timestamp"`
-	OS             string   `json:"os"`
-	Arch           string   `json:"arch"`
-	CLIVersion     string   `json:"cli_version"`
-	CLICommit      string   `json:"cli_commit"`
-	DockerVersion  string   `json:"docker_version,omitempty"`
-	ComposeVersion string   `json:"compose_version,omitempty"`
-	HealthStatus   string   `json:"health_status,omitempty"`
-	HealthBody     string   `json:"health_body,omitempty"`
-	ContainerPS    string   `json:"container_ps,omitempty"`
-	RecentLogs     string   `json:"recent_logs,omitempty"`
-	ConfigRedacted string   `json:"config_redacted,omitempty"`
-	DiskInfo       string   `json:"disk_info,omitempty"`
-	Errors         []string `json:"errors,omitempty"`
+	Timestamp      string `json:"timestamp"`
+	OS             string `json:"os"`
+	Arch           string `json:"arch"`
+	CLIVersion     string `json:"cli_version"`
+	CLICommit      string `json:"cli_commit"`
+	DockerVersion  string `json:"docker_version,omitempty"`
+	ComposeVersion string `json:"compose_version,omitempty"`
+	HealthStatus   string `json:"health_status,omitempty"`
+	HealthBody     string `json:"health_body,omitempty"`
+	ContainerPS    string `json:"container_ps,omitempty"`
+	RecentLogs     string `json:"recent_logs,omitempty"`
+	ConfigRedacted string `json:"config_redacted,omitempty"`
+	// ConfigCoercions describes persisted settings the running binary did
+	// not recognise and replaced with defaults at load time.
+	ConfigCoercions []string `json:"config_coercions,omitempty"`
+	DiskInfo        string   `json:"disk_info,omitempty"`
+	Errors          []string `json:"errors,omitempty"`
 
 	ComposeFileExists bool              `json:"compose_file_exists"`
 	ComposeFileValid  *bool             `json:"compose_file_valid,omitempty"`
@@ -164,8 +167,21 @@ func collectConfig(r *Report, state config.State) {
 	if redacted.CursorSecret != "" {
 		redacted.CursorSecret = "[REDACTED]"
 	}
-	if b, err := json.MarshalIndent(redacted, "", "  "); err == nil { //nolint:gosec // G117: every secret-bearing State field (JWTSecret, SettingsKey, MasterKey, PostgresPassword, CursorSecret) is replaced with [REDACTED] above before marshalling
+	b, err := json.MarshalIndent(redacted, "", "  ") //nolint:gosec // G117: every secret-bearing State field (JWTSecret, SettingsKey, MasterKey, PostgresPassword, CursorSecret) is replaced with [REDACTED] above before marshalling
+	if err != nil {
+		// Every sibling collector records its failure here. Leaving this
+		// one silent would render an empty config section that reads as
+		// "nothing configured" rather than "could not be read".
+		r.Errors = append(r.Errors, fmt.Sprintf("config: could not render config for the report: %v", err))
+	} else {
 		r.ConfigRedacted = string(b)
+	}
+	// Coercions are absent from ConfigRedacted by construction (they carry
+	// json:"-" so they never round-trip through the config file), so the
+	// report has to carry them separately or the operator sees the coerced
+	// value with no sign that it is not what they configured.
+	for _, c := range state.Coerced {
+		r.ConfigCoercions = append(r.ConfigCoercions, c.String())
 	}
 }
 
@@ -199,6 +215,10 @@ func (r Report) FormatText() string {
 	r.formatComposeSection(&b)
 	r.formatInfraSection(&b)
 	fmt.Fprintf(&b, "--- Config (redacted) ---\n%s\n\n", r.ConfigRedacted)
+	if len(r.ConfigCoercions) != 0 {
+		fmt.Fprintf(&b, "--- Config (settings replaced at load time) ---\n%s\n\n",
+			strings.Join(r.ConfigCoercions, "\n"))
+	}
 	fmt.Fprintf(&b, "--- Disk ---\n%s\n\n", r.DiskInfo)
 	formatList(&b, "Errors", r.Errors)
 

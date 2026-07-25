@@ -293,10 +293,7 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("checking config file: %w", err)
 	}
 
-	state, err := config.Load(safeDir)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
+	state := loadForInspection(safeDir, ui.NewUIWithOptions(cmd.ErrOrStderr(), GetGlobalOpts(cmd.Context()).UIOptions()))
 
 	out.KeyValue("Config file", statePath)
 	printConfigFields(out, state)
@@ -468,11 +465,17 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		pairs = append(pairs, configPair{key: args[i], value: args[i+1]})
 	}
 
+	// Strict on purpose, unlike the inspection subcommands. `set` writes
+	// the whole state back, so loading leniently would persist whatever
+	// made the file invalid: a load-time substitution would become the
+	// operator's real value, and a field the strict loader rejects
+	// (persistence_backend, memory_backend) would be written through
+	// unchanged behind a success message. Reading a broken config is what
+	// `config show` and `doctor` are for.
+	//
 	// On a pre-init state (no config file) Load returns DefaultState, so a
-	// fresh `config set` works; applyConfigPairs then provisions the master
-	// key before the final Validate. An existing-but-invalid config is
-	// already rejected earlier by the PersistentPreRunE tunables load
-	// (deliberate fail-fast), so a lenient load here would be dead code.
+	// fresh `config set` still works; applyConfigPairs then provisions the
+	// master key before the final Validate.
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)

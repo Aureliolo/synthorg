@@ -116,10 +116,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
-	state, err := config.Load(opts.DataDir)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
+	state := loadForInspection(opts.DataDir, errOut)
 
 	out.Step("Collecting diagnostics...")
 	report := diagnostics.Collect(ctx, state)
@@ -225,6 +222,7 @@ func filterReportByDoctorChecks(r diagnostics.Report) diagnostics.Report {
 	}
 	if !doctorCheckEnabled("config") {
 		filtered.ConfigRedacted = ""
+		filtered.ConfigCoercions = nil
 	}
 	if !doctorCheckEnabled("disk") {
 		filtered.DiskInfo = ""
@@ -521,11 +519,27 @@ func doctorComposeError(r diagnostics.Report) (string, bool) {
 func collectDoctorWarnings(r diagnostics.Report) []string {
 	// Upper bound: at most one "no containers" + one per ContainerSummary
 	// + one per ImageStatus + one compose-validity warning.
-	warnings := make([]string, 0, 2+len(r.ContainerSummary)+len(r.ImageStatus))
+	warnings := make([]string, 0, 2+len(r.ContainerSummary)+len(r.ImageStatus)+len(r.ConfigCoercions))
 	warnings = append(warnings, doctorNoContainersWarning(r)...)
 	warnings = append(warnings, doctorContainerStartingWarnings(r)...)
 	warnings = append(warnings, doctorImageStatusWarnings(r)...)
 	warnings = append(warnings, doctorComposeValidityWarning(r)...)
+	warnings = append(warnings, doctorConfigCoercionWarnings(r)...)
+	return warnings
+}
+
+// doctorConfigCoercionWarnings surfaces every persisted setting the
+// running binary did not recognise. This belongs in the verdict, not only
+// in the Config section: the stack is running against a value the operator
+// never chose, which is exactly the class of drift doctor exists to catch.
+func doctorConfigCoercionWarnings(r diagnostics.Report) []string {
+	if !doctorCheckEnabled("config") {
+		return nil
+	}
+	warnings := make([]string, 0, len(r.ConfigCoercions))
+	for _, c := range r.ConfigCoercions {
+		warnings = append(warnings, "config "+c)
+	}
 	return warnings
 }
 
@@ -733,6 +747,9 @@ func renderDoctorConfig(out *ui.UI, state config.State) {
 	out.KeyValue("Log level", state.LogLevel)
 	out.KeyValue("JWT secret", maskSecret(state.JWTSecret))
 	out.KeyValue("Settings key", maskSecret(state.SettingsKey))
+	for _, c := range state.Coerced {
+		out.KeyValue("Unrecognised", c.String())
+	}
 }
 
 func renderDoctorDisk(out *ui.UI, r diagnostics.Report) {

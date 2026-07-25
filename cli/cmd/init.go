@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -100,7 +99,7 @@ func runInitInteractive(cmd *cobra.Command, out *ui.UI) error {
 		return fmt.Errorf("building state from TUI: %w", err)
 	}
 	if result.natsPort > 0 {
-		state.NatsClientPort = result.natsPort
+		state.NATSClientPort = result.natsPort
 	}
 
 	if err := reuseExistingStateForInteractive(cmd, &state, result); err != nil {
@@ -194,7 +193,7 @@ func buildSummaryFromState(state config.State) summaryData {
 	}
 	if state.BusBackend == "nats" {
 		d.busMode = "nats"
-		d.busPort = strconv.Itoa(state.NatsClientPort)
+		d.busPort = strconv.Itoa(state.NATSClientPort)
 	} else {
 		d.busMode = "internal"
 	}
@@ -228,18 +227,9 @@ func hintAfterInit(out *ui.UI, state config.State) {
 // or --yes), and preserves the settings key in state. Returns false if
 // declined.
 func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bool, error) {
-	oldState, loadErr := config.Load(state.DataDir)
-	if errors.Is(loadErr, config.ErrMissingMasterKey) {
-		// Recovery path: encrypt_secrets is on but no master_key was
-		// ever generated on disk. Re-read via the permissive variant so
-		// reinit can carry forward the rest of the state; the new key
-		// (already generated on `state`) is preserved through the
-		// normal reinit-Yes / reinit-Interactive flows below.
-		oldState, loadErr = config.LoadAllowMissingMasterKey(state.DataDir)
-	}
+	oldState, loadErr := config.LoadForReinit(state.DataDir)
 	if loadErr != nil {
-		return false, fmt.Errorf("existing config at %s is unreadable: %w (delete it manually to force a fresh init)",
-			config.StatePath(state.DataDir), loadErr)
+		return false, unreadableExistingConfigError(config.StatePath(state.DataDir), loadErr)
 	}
 	if opts.Yes {
 		return applyReinitYes(cmd, state, oldState)
@@ -265,28 +255,14 @@ func applyReinitYes(cmd *cobra.Command, state *config.State, oldState config.Sta
 // keep the existing settings key, then preserve master key + cursor
 // secret + Postgres settings.
 func applyReinitInteractive(cmd *cobra.Command, state *config.State, oldState config.State, opts *GlobalOpts) (bool, error) {
-	kept, err := confirmReinit(cmd, oldState, opts)
-	if err != nil {
+	proceed, err := confirmReinit(cmd, oldState, opts)
+	if err != nil || !proceed {
 		return false, err
 	}
-	if kept == nil {
-		return false, nil
-	}
-	if *kept != "" {
-		state.SettingsKey = *kept
-	}
-	// Preserve the secret-storage master key so existing ciphertext
-	// stays decryptable after re-init. Regenerating would orphan every
-	// stored connection secret.
-	if oldState.MasterKey != "" {
-		state.MasterKey = oldState.MasterKey
-	}
-	// Preserve the pagination cursor secret. Rotating it invalidates
-	// every outstanding cursor token across every restart (same hazard
-	// as MasterKey).
-	if oldState.CursorSecret != "" {
-		state.CursorSecret = oldState.CursorSecret
-	}
+	// Secrets carry forward on exactly the same terms as the --yes path,
+	// so route them through the one helper rather than restating the
+	// rules here and letting the two drift.
+	copyPreservedSecrets(state, oldState)
 	if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
 		return false, err
 	}
@@ -323,7 +299,7 @@ func preservePostgresFromOldState(
 		state.PostgresPort = 0
 		return nil
 	}
-	if oldState.PostgresPassword != "" {
+	if strings.TrimSpace(oldState.PostgresPassword) != "" {
 		state.PostgresPassword = oldState.PostgresPassword
 	}
 	if oldState.PostgresPort != 0 && !cmd.Flags().Changed("postgres-port") {
@@ -348,10 +324,11 @@ func preservePostgresFromOldState(
 	return nil
 }
 
-// confirmReinit prompts the user to confirm overwriting existing config.
-// Returns a pointer to the existing settings key to preserve, or nil if the
-// user declined. An empty string means no key existed to preserve.
-func confirmReinit(cmd *cobra.Command, oldState config.State, opts *GlobalOpts) (*string, error) {
+// confirmReinit prompts the user to confirm overwriting existing config,
+// reporting whether they agreed. Which secrets survive is not a decision
+// this prompt makes: it is a yes/no confirmation, and copyPreservedSecrets
+// owns the carry-forward rules for every secret alike.
+func confirmReinit(cmd *cobra.Command, oldState config.State, opts *GlobalOpts) (bool, error) {
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 	errOut.Warn("Existing config at " + config.StatePath(oldState.DataDir) + " will be overwritten.")
 	errOut.Warn("A new JWT secret will be generated -- running containers will need a restart.")
@@ -363,13 +340,9 @@ func confirmReinit(cmd *cobra.Command, oldState config.State, opts *GlobalOpts) 
 		huh.NewConfirm().Title("Overwrite existing configuration?").Value(&proceed),
 	))
 	if err := form.Run(); err != nil {
-		return nil, err
+		return false, err
 	}
-	if !proceed {
-		return nil, nil
-	}
-	key := oldState.SettingsKey
-	return &key, nil
+	return proceed, nil
 }
 
 // setupAnswers holds raw form input before validation.

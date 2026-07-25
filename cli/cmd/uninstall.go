@@ -194,6 +194,8 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, 
 		downArgs = append(downArgs, "-v")
 	}
 
+	reportContainersBeforeTeardown(ctx, info, dataDir, out)
+
 	sp := out.StartSpinner("Stopping containers...")
 	if err := composeRunQuiet(ctx, info, dataDir, downArgs...); err != nil {
 		// A compose file that vanished mid-teardown, or any docker "no

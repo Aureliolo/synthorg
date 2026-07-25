@@ -46,7 +46,14 @@ COPY --chown=10003:10003 src/ src/
 RUN --mount=type=cache,target=/home/fine-tune/.cache/uv,uid=10003,gid=10003 \
     uv sync --frozen --no-dev --group "${FINE_TUNE_EXTRA}"
 
-RUN find /app/src -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+# Same contract as docker/backend/Dockerfile: strip whatever bytecode the
+# build context carried, then compile our own. This image is spawned as a
+# one-shot container per pipeline stage and sets PYTHONDONTWRITEBYTECODE=1,
+# so without this every stage launch recompiles all of /app/src and throws
+# the result away. See the backend Dockerfile for the measured cost and for
+# why -f and the un-swallowed strip are both required.
+RUN find /app/src -type d -name __pycache__ -exec rm -rf {} + \
+    && python -m compileall -q -f -j 0 --invalidation-mode unchecked-hash /app/src
 RUN find /app/.venv -type d -name 'wheels' -exec rm -rf {} + 2>/dev/null || true
 
 # Point venv Python symlink at Wolfi's path (/usr/bin/python).

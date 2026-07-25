@@ -1,10 +1,15 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/diagnostics"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 )
 
 func TestClassifyDoctor(t *testing.T) {
@@ -233,6 +238,141 @@ func TestClassifyDoctor(t *testing.T) {
 				if !found {
 					t.Errorf("classifyDoctor() issues %v missing expected substring %q", gotIssues, want)
 				}
+			}
+		})
+	}
+}
+
+// TestDoctorReportsConfigCoercions covers the diagnosis half of the
+// config-recovery story: when the running binary does not recognise a
+// persisted setting it substitutes a default, and doctor has to say so.
+// Without this the operator sees a stack running on values they never
+// chose, with the on-disk file still showing the originals.
+func TestDoctorReportsConfigCoercions(t *testing.T) {
+	// Rendered through Coercion.String() rather than restated, so a change
+	// to the operator-facing wording cannot leave doctor asserting text no
+	// command ever emits.
+	coercion := config.Coercion{
+		Field:    "channel",
+		Rejected: "nightly",
+		Applied:  "stable",
+		Allowed:  "dev, stable",
+	}.String()
+	base := diagnostics.Report{
+		HealthStatus:      "200",
+		ComposeFileExists: true,
+		ContainerSummary:  []diagnostics.ContainerDetail{{Name: "backend", Health: "healthy"}},
+		ConfigCoercions:   []string{coercion},
+	}
+
+	t.Run("surfaced as a warning by default", func(t *testing.T) {
+		defer func(saved string) { doctorChecks = saved }(doctorChecks)
+		doctorChecks = ""
+
+		status, issues := classifyDoctor(base)
+		if status != doctorWarnings {
+			t.Errorf("status = %v, want %v", status, doctorWarnings)
+		}
+		var matched int
+		for _, issue := range issues {
+			if issue == "config "+coercion {
+				matched++
+			}
+		}
+		if matched != 1 {
+			t.Errorf("issues = %v, want exactly one reading %q", issues, "config "+coercion)
+		}
+	})
+
+	t.Run("suppressed when the config category is scoped out", func(t *testing.T) {
+		defer func(saved string) { doctorChecks = saved }(doctorChecks)
+		// --checks containers deliberately excludes config, so a config
+		// finding must not leak into the verdict.
+		doctorChecks = "containers"
+
+		filtered := filterReportByDoctorChecks(base)
+		if len(filtered.ConfigCoercions) != 0 {
+			t.Errorf("ConfigCoercions = %v, want none when config is excluded", filtered.ConfigCoercions)
+		}
+		for _, issue := range collectDoctorWarnings(filtered) {
+			if strings.Contains(issue, coercion) {
+				t.Errorf("config finding leaked into an excluded category: %q", issue)
+			}
+		}
+	})
+}
+
+// TestLoadForInspectionSurvivesAConfigTheStrictLoaderRefuses pins the
+// recovery route for the diagnostic commands. Registering doctor and
+// `config show` as recovery commands only exempts the tunables load in
+// setupGlobalOpts; each command body reads config again, and a strict read
+// there would make the tools that diagnose a broken install inert on
+// exactly the installs that need them.
+func TestLoadForInspectionSurvivesAConfigTheStrictLoaderRefuses(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// mutate breaks the config in a way Coerce deliberately does not
+		// repair, so the strict loader genuinely refuses it.
+		mutate func(map[string]any)
+		// assert checks the field the operator needs to see reported.
+		assert func(*testing.T, config.State)
+	}{
+		{
+			name:   "a backend selecting where data lives",
+			mutate: func(m map[string]any) { m["memory_backend"] = "mem0" },
+			assert: func(t *testing.T, s config.State) {
+				if s.MemoryBackend != "mem0" {
+					t.Errorf("MemoryBackend = %q, want the on-disk value reported as-is", s.MemoryBackend)
+				}
+			},
+		},
+		{
+			name:   "an out-of-range port",
+			mutate: func(m map[string]any) { m["nats_client_port"] = 999999 },
+			assert: func(t *testing.T, s config.State) {
+				if s.NATSClientPort != 999999 {
+					t.Errorf("NATSClientPort = %d, want the on-disk value reported as-is", s.NATSClientPort)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			body := map[string]any{
+				"data_dir":            dir,
+				"backend_port":        3001,
+				"web_port":            3000,
+				"persistence_backend": "sqlite",
+				"memory_backend":      "sqlvector",
+				"encrypt_secrets":     false,
+			}
+			tt.mutate(body)
+			raw, err := json.Marshal(body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(config.StatePath(dir), raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := config.Load(dir); err == nil {
+				t.Fatal("fixture is not broken: the strict loader accepted it")
+			}
+
+			var stderr bytes.Buffer
+			state := loadForInspection(dir, ui.NewUIWithOptions(&stderr, ui.Options{Plain: true}))
+
+			if state.BackendPort != 3001 {
+				t.Errorf("BackendPort = %d, want the readable fields intact", state.BackendPort)
+			}
+			tt.assert(t, state)
+			if stderr.Len() == 0 {
+				t.Error("a config that cannot be fully resolved must be reported, not silently degraded")
 			}
 		})
 	}

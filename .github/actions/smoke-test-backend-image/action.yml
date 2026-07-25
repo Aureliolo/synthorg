@@ -1,11 +1,17 @@
 name: 'Smoke-test backend container image'
 description: |
-  Run a backend container image and verify it serves a 200 response
-  on its API liveness endpoint. Catches:
+  Run a backend container image, verify it serves a 200 response on its
+  API liveness endpoint, and fail if it took long enough to erode the
+  health budget the image ships. Catches:
     - image builds green but crashes at startup (missing migration,
       env mismatch, library regression, broken entrypoint)
     - 404 on the wrong probe URL (e.g. `/healthz` vs the actual
       `/api/v1/healthz` mount point)
+    - a cold boot that has grown toward the container's own
+      HEALTHCHECK start period, which is the failure mode that makes a
+      first `synthorg start` abort: compose gates `web` on the
+      backend's health, so a boot that outlasts the budget takes the
+      whole stack down with it
 
   This composite action is the single source of truth for the
   backend image smoke test. It runs at build time in `docker.yml`
@@ -39,23 +45,95 @@ inputs:
     description: 'HTTP path to probe. default: /api/v1/healthz (Litestar liveness, mounted under /api/v1).'
     required: false
     default: '/api/v1/healthz'
-  deadline-seconds:
-    description: 'Total deadline for the probe to return 200. default: 120'
+  dockerfile:
+    description: |
+      Dockerfile whose HEALTHCHECK `--start-period` defines the boot
+      budget this run is measured against. Parsed rather than
+      duplicated so the budget has exactly one definition and the two
+      cannot drift apart.
     required: false
-    default: '120'
+    default: 'docker/backend/Dockerfile'
+  budget-fraction:
+    description: |
+      Percentage of the image's health start period the boot is
+      allowed to consume before this step fails. The start period is
+      sized with several multiples of headroom over the measured cold
+      boot deliberately, so a boot spending a large share of it has
+      already lost that headroom -- failing here is what turns "the
+      budget still holds" into something CI checks rather than
+      something a comment asserts. default: 25.
+    required: false
+    default: '25'
+  deadline-seconds:
+    description: |
+      Explicit total deadline for the probe to return 200, overriding
+      the value derived from `dockerfile` and `budget-fraction`. Leave
+      empty (the default) so the deadline stays coupled to the shipped
+      budget: a hardcoded number here can contradict the Dockerfile,
+      and whichever is wrong, the operator learns it in production.
+    required: false
+    default: ''
+  cpus:
+    description: |
+      CPU limit for the container, mirroring the `cpus` the generated
+      compose file applies to the backend service. Without it the
+      runner measures an unconstrained boot, and a regression that
+      only bites under the shipped limit passes CI. default: 2.
+    required: false
+    default: '2'
+  memory:
+    description: 'Memory limit, mirroring the compose backend limit. default: 4g.'
+    required: false
+    default: '4g'
   attempt-timeout-seconds:
     description: |
       Per-attempt curl timeout. Without this, default curl behaviour
       can wait up to the OS TCP-connect timeout (~75s on Linux),
-      which would let a single hung request blow past
-      `deadline-seconds`. Each attempt is bounded by this value.
-      default: 5.
+      which would let a single hung request blow past the deadline.
+      Each attempt is bounded by this value. default: 5.
     required: false
     default: '5'
 
 runs:
   using: 'composite'
   steps:
+    - name: Derive the boot deadline from the image's health budget
+      id: budget
+      shell: bash
+      env:
+        DOCKERFILE: ${{ inputs.dockerfile }}
+        BUDGET_FRACTION: ${{ inputs.budget-fraction }}
+        DEADLINE_OVERRIDE: ${{ inputs.deadline-seconds }}
+      run: |
+        set -euo pipefail
+
+        if [ ! -f "$DOCKERFILE" ]; then
+          echo "::error::$DOCKERFILE not found; cannot determine the boot budget"
+          exit 1
+        fi
+        # sed rather than grep -P: the pattern is simple enough not to
+        # need PCRE, and this stays portable to a non-GNU grep.
+        START_PERIOD=$(sed -n 's/.*--start-period=\([0-9][0-9]*\)s.*/\1/p' "$DOCKERFILE" | head -1)
+        if [ -z "$START_PERIOD" ]; then
+          echo "::error::no HEALTHCHECK --start-period=<N>s found in $DOCKERFILE"
+          echo "::error::the boot guard is derived from it, so it cannot be dropped silently"
+          exit 1
+        fi
+
+        if [ -n "$DEADLINE_OVERRIDE" ]; then
+          DEADLINE="$DEADLINE_OVERRIDE"
+          echo "Deadline ${DEADLINE}s (explicit override; health budget is ${START_PERIOD}s)"
+        else
+          DEADLINE=$((START_PERIOD * BUDGET_FRACTION / 100))
+          echo "Health budget ${START_PERIOD}s (from $DOCKERFILE), boot deadline ${DEADLINE}s (${BUDGET_FRACTION}% of it)"
+        fi
+        if [ "$DEADLINE" -le 0 ]; then
+          echo "::error::derived deadline is ${DEADLINE}s; check budget-fraction=${BUDGET_FRACTION}"
+          exit 1
+        fi
+        echo "start-period=$START_PERIOD" >> "$GITHUB_OUTPUT"
+        echo "deadline=$DEADLINE" >> "$GITHUB_OUTPUT"
+
     - name: Run image and probe liveness
       shell: bash
       env:
@@ -63,7 +141,10 @@ runs:
         HOST_PORT: ${{ inputs.host-port }}
         CONTAINER_PORT: ${{ inputs.container-port }}
         PROBE_PATH: ${{ inputs.path }}
-        DEADLINE: ${{ inputs.deadline-seconds }}
+        DEADLINE: ${{ steps.budget.outputs.deadline }}
+        START_PERIOD: ${{ steps.budget.outputs.start-period }}
+        CPUS: ${{ inputs.cpus }}
+        MEMORY: ${{ inputs.memory }}
         ATTEMPT_TIMEOUT: ${{ inputs.attempt-timeout-seconds }}
       run: |
         set -euo pipefail
@@ -72,6 +153,11 @@ runs:
         # The image's setup wizard falls back to ephemeral SQLite when
         # no DATABASE_URL is provided -- sufficient for a liveness
         # smoke without provisioning external state.
+        #
+        # --cpus / --memory mirror the limits the generated compose
+        # file puts on the backend service. Boot here is CPU-bound
+        # (interpreter start plus the import graph), so measuring it
+        # unconstrained would measure a machine no user runs.
         #
         # SYNTHORG_PAGINATION_CURSOR_SECRET: final-tag images bake
         # DEPLOYMENT_ENV=prod, and the prod-strict guard in
@@ -86,6 +172,7 @@ runs:
         # forensic trail. We `docker rm -f` explicitly in the trap
         # AFTER the logs are dumped so the postmortem still works.
         CID=$(docker run -d -p "${HOST_PORT}:${CONTAINER_PORT}" \
+          --cpus "$CPUS" --memory "$MEMORY" \
           -e SYNTHORG_PAGINATION_CURSOR_SECRET=smoke-test-not-a-real-cursor-secret \
           "$IMAGE")
         # Always dump the last 50 lines of container logs on exit so
@@ -102,20 +189,26 @@ runs:
         # `--max-time` bounds the total time of each attempt (connect +
         # transfer) so a single hung request cannot push past the
         # overall deadline. Without it, default curl waits ~75s on the
-        # Linux TCP-connect timeout, which would burn most of a 120s
+        # Linux TCP-connect timeout, which would burn most of the
         # deadline on the first stuck attempt alone.
+        started=$SECONDS
         deadline=$((SECONDS + DEADLINE))
         while [ "$SECONDS" -lt "$deadline" ]; do
           attempt_code=$(curl -s -o /dev/null -w '%{http_code}' \
             --max-time "$ATTEMPT_TIMEOUT" \
             "$PROBE_URL" 2>/dev/null || echo "conn-refused")
           if [ "$attempt_code" = "200" ]; then
-            echo "$PROBE_URL returned 200 after ${SECONDS}s"
+            boot=$((SECONDS - started))
+            echo "$PROBE_URL returned 200 after ${boot}s" \
+                 "($((boot * 100 / START_PERIOD))% of the ${START_PERIOD}s health budget)"
             exit 0
           fi
-          echo "  attempt at ${SECONDS}s: ${attempt_code}"
+          echo "  attempt at $((SECONDS - started))s: ${attempt_code}"
           sleep 3
         done
 
-        echo "::error::$PROBE_URL did not return 200 within ${DEADLINE}s"
+        echo "::error::$PROBE_URL did not return 200 within ${DEADLINE}s."
+        echo "::error::That is ${DEADLINE}s of the image's ${START_PERIOD}s HEALTHCHECK start period." \
+             "Either the image no longer boots, or its cold boot has grown into the budget's headroom;" \
+             "re-measure with scripts/measure_backend_boot.sh before changing either number."
         exit 1
