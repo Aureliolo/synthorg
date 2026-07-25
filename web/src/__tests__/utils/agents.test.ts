@@ -1,7 +1,8 @@
 import {
   agentCapabilities,
   agentCapabilitiesUnverified,
-  agentToolCallsVerified,
+  agentModelBindingUnresolved,
+  agentToolCallsFailed,
   filterAgents,
   sortAgents,
   toRuntimeStatus,
@@ -149,6 +150,18 @@ describe('toRuntimeStatus', () => {
 
 // ── model capabilities ─────────────────────────────────────
 
+type Caps = NonNullable<AgentConfig['model_capabilities']>
+
+function caps(overrides: Partial<Caps> = {}): Caps {
+  return {
+    supports_reasoning: false,
+    supports_vision: false,
+    tool_calling: 'unverified',
+    metadata_source: 'probe',
+    ...overrides,
+  }
+}
+
 describe('agentCapabilities', () => {
   it('returns nothing when the model binding does not resolve', () => {
     expect(agentCapabilities(makeAgent({ model_capabilities: null }))).toEqual([])
@@ -156,67 +169,72 @@ describe('agentCapabilities', () => {
 
   it('reports the capabilities the assigned model actually has', () => {
     const agent = makeAgent({
-      model_capabilities: {
-        supports_reasoning: true,
-        supports_vision: true,
-        tool_calls_verified: null,
-        metadata_source: 'probe',
-      },
+      model_capabilities: caps({ supports_reasoning: true, supports_vision: true }),
     })
     expect(agentCapabilities(agent)).toEqual(['reasoning', 'vision'])
   })
 
   it('never reports tool calling, which the matcher requires of every agent', () => {
-    const agent = makeAgent({
-      model_capabilities: {
-        supports_reasoning: false,
-        supports_vision: false,
-        tool_calls_verified: true,
-        metadata_source: 'probe',
-      },
-    })
+    const agent = makeAgent({ model_capabilities: caps({ tool_calling: 'verified' }) })
     expect(agentCapabilities(agent)).toEqual([])
   })
 })
 
-describe('agentToolCallsVerified', () => {
-  it('surfaces a runtime-proven tool-calling failure', () => {
-    const agent = makeAgent({
-      model_capabilities: {
-        supports_reasoning: false,
-        supports_vision: false,
-        tool_calls_verified: false,
-        metadata_source: 'probe',
-      },
-    })
-    expect(agentToolCallsVerified(agent)).toBe(false)
+describe('agentModelBindingUnresolved', () => {
+  it('is true when the agent names a model no provider offers', () => {
+    expect(agentModelBindingUnresolved(makeAgent({ model_capabilities: null }))).toBe(
+      true,
+    )
   })
 
-  it('is null when the model binding does not resolve', () => {
-    expect(agentToolCallsVerified(makeAgent({ model_capabilities: null }))).toBeNull()
+  it('is false for a healthy model that simply has no extra capabilities', () => {
+    // The distinction this function exists for: without it, a stale binding
+    // and a plain chat model are indistinguishable on the card.
+    expect(agentModelBindingUnresolved(makeAgent({ model_capabilities: caps() }))).toBe(
+      false,
+    )
+  })
+})
+
+describe('agentToolCallsFailed', () => {
+  it('is true only when runtime proved the model cannot call tools', () => {
+    const agent = makeAgent({ model_capabilities: caps({ tool_calling: 'failed' }) })
+    expect(agentToolCallsFailed(agent)).toBe(true)
+  })
+
+  it('is false when tool calling was never observed', () => {
+    // "never tried" is not a fault and must not raise a warning badge.
+    const agent = makeAgent({ model_capabilities: caps({ tool_calling: 'unverified' }) })
+    expect(agentToolCallsFailed(agent)).toBe(false)
+  })
+
+  it('is false when a real tool call has succeeded', () => {
+    const agent = makeAgent({ model_capabilities: caps({ tool_calling: 'verified' }) })
+    expect(agentToolCallsFailed(agent)).toBe(false)
+  })
+
+  it('is false when the model binding does not resolve', () => {
+    expect(agentToolCallsFailed(makeAgent({ model_capabilities: null }))).toBe(false)
   })
 })
 
 describe('agentCapabilitiesUnverified', () => {
-  it('is true only for an un-probed model', () => {
-    const unknown = makeAgent({
-      model_capabilities: {
-        supports_reasoning: false,
-        supports_vision: false,
-        tool_calls_verified: null,
-        metadata_source: 'unknown',
-      },
-    })
-    const probed = makeAgent({
-      model_capabilities: {
-        supports_reasoning: false,
-        supports_vision: false,
-        tool_calls_verified: null,
-        metadata_source: 'probe',
-      },
-    })
-    expect(agentCapabilitiesUnverified(unknown)).toBe(true)
-    expect(agentCapabilitiesUnverified(probed)).toBe(false)
+  it('is true for an un-probed model', () => {
+    const agent = makeAgent({ model_capabilities: caps({ metadata_source: 'unknown' }) })
+    expect(agentCapabilitiesUnverified(agent)).toBe(true)
+  })
+
+  it('is false for a probed model', () => {
+    expect(agentCapabilitiesUnverified(makeAgent({ model_capabilities: caps() }))).toBe(
+      false,
+    )
+  })
+
+  it('is false when the model binding does not resolve', () => {
+    // An unresolved binding is its own state, not an unverified measurement.
+    expect(
+      agentCapabilitiesUnverified(makeAgent({ model_capabilities: null })),
+    ).toBe(false)
   })
 })
 

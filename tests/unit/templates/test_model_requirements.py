@@ -25,8 +25,8 @@ class TestModelRequirement:
         assert req.family is None
         assert req.model_pattern is None
 
-    def test_no_legacy_fields(self) -> None:
-        """The removed tier-string and capabilities-tuple axes are gone."""
+    def test_rejects_tier_and_capabilities_fields(self) -> None:
+        """A model is selected by capability and priority, not a tier string."""
         assert "tier" not in ModelRequirement.model_fields
         assert "capabilities" not in ModelRequirement.model_fields
 
@@ -109,8 +109,8 @@ class TestParseModelRequirement:
         assert req.priority == "balanced"
         assert req.min_context == 0
 
-    def test_dict_rejects_retired_requires_tools(self) -> None:
-        """Tool calling is a floor, so a template may no longer request it."""
+    def test_dict_rejects_requires_tools_field(self) -> None:
+        """Tool calling is a floor, so a template cannot request it as a flag."""
         with pytest.raises(ValidationError):
             parse_model_requirement({"requires_tools": True})
 
@@ -126,7 +126,7 @@ class TestParseModelRequirement:
         assert req.family == "example-large"
         assert req.model_pattern == "example-*"
 
-    def test_dict_rejects_legacy_tier(self) -> None:
+    def test_dict_rejects_tier_field(self) -> None:
         with pytest.raises(ValidationError):
             parse_model_requirement({"tier": "large"})
 
@@ -162,6 +162,17 @@ class TestModelAffinity:
         expected_priority: str,
     ) -> None:
         assert MODEL_AFFINITY[preset]["priority"] == expected_priority
+
+    def test_every_affinity_profile_resolves(self) -> None:
+        """Every preset's affinity dict is a valid ``ModelRequirement``.
+
+        ``AffinityValue`` is ``str | int | bool``, so the type system alone
+        would let a key the requirement no longer accepts sit in a preset
+        until whichever agent uses it happens to resolve. Resolving all of
+        them here catches that for any retired key, not just one.
+        """
+        for name in MODEL_AFFINITY:
+            assert resolve_model_requirement(name) is not None, name
 
     def test_no_preset_declares_tool_calling(self) -> None:
         """Tool calling is a matcher floor, never a personality affinity."""

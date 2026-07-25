@@ -25,8 +25,10 @@ from typing import Protocol, runtime_checkable
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
+    PROVIDER_TOOL_CALL_FAILURE_ATTRIBUTED,
     PROVIDER_TOOL_CALL_FEEDBACK_RECORD_FAILED,
 )
+from synthorg.providers.cost_recording import current_cost_context
 
 logger = get_logger(__name__)
 
@@ -111,6 +113,21 @@ async def emit_tool_call_outcome(
     sink = _sink
     if sink is None:
         return
+    if outcome is ToolCallOutcome.FAILURE:
+        # Correlation, not attribution: the sink deliberately scores by
+        # (provider, model) alone, but without this line a task that produced
+        # nothing gives an operator no way back to "the model it was given
+        # cannot call tools". The agent/task identity is read from the ambient
+        # cost scope rather than threaded through the provider signature,
+        # which would couple every driver to agent identity.
+        context = current_cost_context()
+        logger.info(
+            PROVIDER_TOOL_CALL_FAILURE_ATTRIBUTED,
+            provider=provider,
+            model=model,
+            agent_id=context.agent_id if context is not None else None,
+            task_id=context.task_id if context is not None else None,
+        )
     try:
         await sink.record(provider=provider, model=model, outcome=outcome)
     except Exception as exc:  # noqa: BLE001 -- the sink is awaited in the provider hot path; a raising sink must never break or mask the provider call

@@ -45,10 +45,10 @@ def passes_hard_filters(
     every agent rather than only for those that asked for it.
 
     Optimistic: a capability is a hard fail only when the model is *known* to
-    lack it (``litellm`` / ``probe`` metadata with the flag False). A model with
-    ``unknown`` metadata is allowed through -- most modern models support
-    tools/reasoning, and excluding every un-probed cloud model would leave
-    agents unassigned.
+    lack it, meaning any metadata source other than ``unknown`` reported the
+    flag False. A model with ``unknown`` metadata is allowed through -- most
+    modern models support tools/reasoning, and excluding every un-probed cloud
+    model would leave agents unassigned.
 
     Runtime tool-call feedback overrides the discovery-time claim in both
     directions: ``tool_calls_verified is False`` excludes a model that has
@@ -79,7 +79,7 @@ def passes_hard_filters(
         logger.debug(
             TEMPLATE_MODEL_MATCH_SKIPPED,
             model=model.id,
-            reason="tool_calls_runtime_unverified",
+            reason="tool_calls_runtime_failed",
         )
         return False
     unknown = meta.metadata_source == "unknown"

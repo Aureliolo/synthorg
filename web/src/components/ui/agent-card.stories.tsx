@@ -117,8 +117,20 @@ export const ToolCallingUnavailable: Story = {
     model: 'example-small-001',
     tier: 'small',
     capabilities: ['reasoning'],
-    toolCallsVerified: false,
+    toolCallsFailed: true,
     timestamp: '8m ago',
+  },
+}
+
+export const ModelBindingUnresolved: Story = {
+  args: {
+    name: 'Grete Hermann',
+    role: 'Data Engineer',
+    department: 'Data Analytics',
+    status: 'active',
+    model: 'example-removed-001',
+    modelBindingUnresolved: true,
+    timestamp: '10m ago',
   },
 }
 

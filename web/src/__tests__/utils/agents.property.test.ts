@@ -1,5 +1,9 @@
 import * as fc from 'fast-check'
 import {
+  agentCapabilities,
+  agentCapabilitiesUnverified,
+  agentModelBindingUnresolved,
+  agentToolCallsFailed,
   filterAgents,
   sortAgents,
   toRuntimeStatus,
@@ -76,7 +80,11 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
     fc.record({
       supports_reasoning: fc.boolean(),
       supports_vision: fc.boolean(),
-      tool_calls_verified: fc.constantFrom(true, false, null),
+      tool_calling: fc.constantFrom(
+        'unverified' as const,
+        'verified' as const,
+        'failed' as const,
+      ),
       metadata_source: fc.constantFrom(
         'litellm' as const,
         'preset' as const,
@@ -146,6 +154,64 @@ const arbPerformance: fc.Arbitrary<AgentPerformanceSummary> = fc.nat({ max: 1000
 })
 
 // ── Properties ─────────────────────────────────────────────
+
+describe('model capability accessor properties', () => {
+  it('only ever reports reasoning and vision, never tool calling', () => {
+    fc.assert(
+      fc.property(arbAgent, (agent) => {
+        const labels = agentCapabilities(agent)
+        expect(labels.every((l) => l === 'reasoning' || l === 'vision')).toBe(true)
+        expect(new Set(labels).size).toBe(labels.length)
+      }),
+    )
+  })
+
+  it('reports exactly the capabilities the resolved model declares', () => {
+    fc.assert(
+      fc.property(arbAgent, (agent) => {
+        const caps = agent.model_capabilities
+        const labels = agentCapabilities(agent)
+        expect(labels.includes('reasoning')).toBe(caps?.supports_reasoning === true)
+        expect(labels.includes('vision')).toBe(caps?.supports_vision === true)
+      }),
+    )
+  })
+
+  it('treats an unresolved binding as exactly one distinct state', () => {
+    // The three accessors must disagree about a null binding in exactly one
+    // way: unresolved is true, and neither of the two model-level faults
+    // fires, so the card can never confuse it with a measured verdict.
+    fc.assert(
+      fc.property(arbAgent, (agent) => {
+        if (agent.model_capabilities !== null) return
+        expect(agentModelBindingUnresolved(agent)).toBe(true)
+        expect(agentToolCallsFailed(agent)).toBe(false)
+        expect(agentCapabilitiesUnverified(agent)).toBe(false)
+        expect(agentCapabilities(agent)).toEqual([])
+      }),
+    )
+  })
+
+  it('raises the tool-calling fault only on an explicit runtime failure', () => {
+    fc.assert(
+      fc.property(arbAgent, (agent) => {
+        expect(agentToolCallsFailed(agent)).toBe(
+          agent.model_capabilities?.tool_calling === 'failed',
+        )
+      }),
+    )
+  })
+
+  it('calls capabilities unverified only for an un-probed resolved model', () => {
+    fc.assert(
+      fc.property(arbAgent, (agent) => {
+        expect(agentCapabilitiesUnverified(agent)).toBe(
+          agent.model_capabilities?.metadata_source === 'unknown',
+        )
+      }),
+    )
+  })
+})
 
 describe('toRuntimeStatus properties', () => {
   it('always produces a valid runtime status', () => {

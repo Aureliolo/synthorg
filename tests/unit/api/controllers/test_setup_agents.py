@@ -8,10 +8,13 @@ import pytest
 from synthorg.api.controllers.setup_agents import (
     build_agent_config,
     expand_template_agents,
-    match_and_assign_models,
 )
+from synthorg.api.controllers.setup_model_assignment import match_and_assign_models
 from synthorg.api.controllers.setup_models import SetupAgentRequest
-from synthorg.core.domain_errors import ValidationError
+from synthorg.core.domain_errors import (
+    ProviderTierCoverageInsufficientError,
+    ValidationError,
+)
 from synthorg.core.types import ModelTier
 from synthorg.templates.loader import load_template
 from synthorg.templates.model_matcher import ModelMatch
@@ -160,3 +163,42 @@ class TestMatchAndAssignModels:
         assert model["provider"] == "test-provider"
         assert model["model_id"] == model_id
         assert model["model_tier"] == tier
+
+    @patch("synthorg.templates.model_matcher.match_all_agents")
+    def test_partial_assignment_is_allowed(self, mock_match: MagicMock) -> None:
+        """One unmatched agent is reported but does not block setup."""
+        mock_match.return_value = [
+            ModelMatch(
+                agent_index=0,
+                provider_name="test-provider",
+                model_id="test-large-001",
+                tier=cast("ModelTier", "large"),
+                score=1.0,
+            )
+        ]
+        agents: list[JsonDict] = [{"name": "Agent-0"}, {"name": "Agent-1"}]
+
+        result: list[JsonDict] = match_and_assign_models(agents, {})
+
+        assert len(result) == 2
+        assert result[1].get("model") is None
+
+    @patch("synthorg.templates.model_matcher.match_all_agents")
+    def test_wholly_unassigned_roster_is_refused(self, mock_match: MagicMock) -> None:
+        """A roster where nothing matched cannot do work, so setup fails loud.
+
+        The pre-flight provider gate only rejects an empty catalogue, so a
+        catalogue whose models all fail the capability floors reaches here.
+        """
+        mock_match.return_value = []
+        agents: list[JsonDict] = [{"name": "Agent-0"}, {"name": "Agent-1"}]
+
+        with pytest.raises(ProviderTierCoverageInsufficientError):
+            match_and_assign_models(agents, {})
+
+    @patch("synthorg.templates.model_matcher.match_all_agents")
+    def test_empty_roster_is_not_starvation(self, mock_match: MagicMock) -> None:
+        """No agents to assign is not the same as no model for any agent."""
+        mock_match.return_value = []
+
+        assert match_and_assign_models([], {}) == []

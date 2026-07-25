@@ -2,6 +2,7 @@
 """Agent configuration listing and CRUD mutations at /agents."""
 
 import json
+from collections.abc import Mapping
 
 from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State
@@ -35,15 +36,46 @@ from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     AGENT_DELETED_AUDIT,
     AGENT_DELETION_REQUESTED,
     AGENT_IDENTITY_MODIFIED,
+    API_AGENT_CAPABILITIES_UNAVAILABLE,
 )
+from synthorg.settings.errors import SettingsError
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
+
+
+async def _providers_for_capabilities(
+    app_state: AppState,
+) -> Mapping[str, ProviderConfig]:
+    """Read provider config for the capability projection, tolerating failure.
+
+    Model capabilities are derived display data. On the mutation paths the
+    write has already committed by the time they are resolved, so letting a
+    settings-store failure propagate would report a successful create or
+    update as an error and invite a duplicate retry. Degrading to an empty
+    mapping instead yields ``model_capabilities=None``, a state the response
+    schema already models.
+
+    Args:
+        app_state: Application state carrying the config resolver.
+
+    Returns:
+        Configured providers, or an empty mapping when they cannot be read.
+    """
+    try:
+        return await config_resolver_of(app_state).get_provider_configs()
+    except SettingsError as exc:
+        logger.warning(
+            API_AGENT_CAPABILITIES_UNAVAILABLE,
+            error_type=type(exc).__name__,
+        )
+        return {}
 
 
 class AgentCrudController(Controller):
@@ -71,18 +103,18 @@ class AgentCrudController(Controller):
             Paginated agent configurations.
         """
         app_state: AppState = state.app_state
-        resolver = config_resolver_of(app_state)
-        agents = await resolver.get_agents()
+        agents = await config_resolver_of(app_state).get_agents()
         # Paginate first, then resolve capabilities for the page only: the
         # provider index is built per request and a small-page client should
-        # not pay for the whole roster.
+        # not pay for the whole roster. Pagination also rejects a tampered
+        # cursor before the provider read, so a 400 costs nothing extra.
         page, meta = paginate_cursor(
             agents,
             limit=limit,
             cursor=cursor,
             secret=cursor_secret_of(app_state),
         )
-        providers = await resolver.get_provider_configs()
+        providers = await _providers_for_capabilities(app_state)
         return PaginatedResponse(
             data=with_model_capabilities(page, providers),
             pagination=meta,
@@ -108,7 +140,7 @@ class AgentCrudController(Controller):
         """
         app_state: AppState = state.app_state
         found = await _config_agent_by_id(app_state, agent_id)
-        providers = await config_resolver_of(app_state).get_provider_configs()
+        providers = await _providers_for_capabilities(app_state)
         return ApiResponse(data=with_model_capabilities([found], providers)[0])
 
     @post(
@@ -137,7 +169,7 @@ class AgentCrudController(Controller):
         """
         app_state: AppState = state.app_state
         agent = await org_mutation_service_of(app_state).create_agent(data)
-        providers = await config_resolver_of(app_state).get_provider_configs()
+        providers = await _providers_for_capabilities(app_state)
         publish_ws_event(
             request,
             WsEventType.AGENT_CREATED,
@@ -199,6 +231,10 @@ class AgentCrudController(Controller):
             fields_changed=tuple(sorted(data.model_fields_set)),
             actor=get_authenticated_user_id(),
         )
+        # Resolve capabilities before announcing the change: publishing is
+        # fire-and-forget and cannot be retracted, so a failure after it would
+        # leave subscribers told while the requester sees an error.
+        providers = await _providers_for_capabilities(app_state)
         publish_ws_event(
             request,
             WsEventType.AGENT_UPDATED,
@@ -216,7 +252,6 @@ class AgentCrudController(Controller):
             ),
             "",
         )
-        providers = await config_resolver_of(app_state).get_provider_configs()
         return Response(
             content=ApiResponse(data=with_model_capabilities([updated], providers)[0]),
             headers={"ETag": new_etag},

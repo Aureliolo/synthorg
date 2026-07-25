@@ -2,7 +2,6 @@ import { apiClient, paginateAll, unwrap, unwrapPaginated, type PaginatedResult }
 import type { VersionDiffResponse } from './version-history'
 import type {
   ActiveAgentSummary,
-  AgentConfig,
   AgentHealthResponse,
   AgentIdentity,
   AgentIdentityDiff,
@@ -47,8 +46,8 @@ export async function listActiveAgents(): Promise<readonly ActiveAgentSummary[]>
 export async function updateAgentModel(
   agentId: string,
   data: { model_provider: string; model_id: string },
-): Promise<AgentConfig> {
-  const response = await apiClient.patch<ApiResponse<AgentConfig>>(
+): Promise<DashboardAgentConfig> {
+  const response = await apiClient.patch<ApiResponse<DashboardAgentConfig>>(
     `/agents/${encodeURIComponent(agentId)}`,
     data,
   )

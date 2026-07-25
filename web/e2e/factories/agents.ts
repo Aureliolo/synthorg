@@ -37,7 +37,7 @@ export function makeAgent(overrides: Partial<MockAgent> = {}): MockAgent {
     model_capabilities: {
       supports_reasoning: true,
       supports_vision: false,
-      tool_calls_verified: null,
+      tool_calling: 'unverified',
       metadata_source: 'probe',
     },
     personality_preset: 'balanced',

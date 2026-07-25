@@ -9,7 +9,7 @@ Every agent is a composition of **immutable config** (identity, personality, ski
 
 ## Agent Identity Card
 
-Every agent has a comprehensive identity. At the design level, agent data splits into two
+Every agent has a comprehensive identity. At the design level, agent data splits into three
 layers:
 
 Config (immutable)
@@ -21,6 +21,47 @@ Runtime state (mutable-via-copy)
 :   Current status, active task, conversation history, and execution metrics. Evolves during
     agent operation. Represented as Pydantic models using `model_copy(update=...)` for state
     transitions, never mutated in place.
+
+Resolved provider view (never persisted)
+:   What the agent's assigned model can actually do. Belongs to the provider, not the agent,
+    so it is resolved per request at the API boundary and never written to agent config.
+    See [Model capabilities on the wire](#model-capabilities-on-the-wire).
+
+### Model capabilities on the wire
+
+Two model-related fields ride on an agent, and they point in opposite directions:
+
+`model_requirement` (input, config layer)
+:   What the *role* demanded of a model when the matcher chose one: `priority`,
+    `min_context`, `requires_vision`, `requires_reasoning`, and optionally a `family` or
+    `model_pattern`. Persisted, round-trips through settings. Tool calling is deliberately
+    absent, because the matcher applies it as a floor to every agent rather than as a
+    per-role option.
+
+`model_capabilities` (output, resolved per request)
+:   What the *assigned model* can actually do, projected by
+    `api/controllers/agents/_model_capabilities.py` from the provider's `ModelMetadata`:
+    `supports_reasoning`, `supports_vision`, `tool_calling`, and `metadata_source`.
+
+`AgentConfigResponse` re-declares the agent fields it exposes rather than inheriting from
+`AgentConfig`, so a field added to the persisted schema reaches the wire only when someone
+adds it here too, and a response can never be handed to a persistence path typed for
+`AgentConfig`. The provider-level counterpart is `GET /providers/{name}/models` (see
+[Providers](providers.md)); this is the agent-facing projection of the same metadata.
+
+`tool_calling` is a named state rather than a boolean because "never observed" and "proven
+incapable" are opposite facts that a truthiness check would conflate:
+
+| Value | Meaning |
+|---|---|
+| `unverified` | No tool call has been observed yet. Not a fault. |
+| `verified` | A real tool call succeeded. |
+| `failed` | Repeated runtime failures proved the model cannot call tools. |
+
+`model_capabilities` is `null` when the agent's `(provider, model_id)` binding matches no
+configured model: an unassigned agent, or a stale binding left by a removed model. The
+dashboard renders that as its own state, because a missing model would otherwise look
+identical to a healthy model that simply has no reasoning or vision.
 
 The agent `id` is a stable UUID derived deterministically from the agent name
 (`stable_agent_id(name)` = `uuid5(namespace, name)` in `core.types`). The config layer and the

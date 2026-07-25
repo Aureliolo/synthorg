@@ -16,6 +16,7 @@ from synthorg.templates.model_matcher import (
     match_model,
 )
 from synthorg.templates.model_matcher_config import ModelMatcherConfig, derive_tier
+from synthorg.templates.model_matcher_tiering import passes_hard_filters
 from synthorg.templates.model_requirements import ModelRequirement
 
 _CFG = ModelMatcherConfig()
@@ -27,6 +28,11 @@ def _make_model(  # noqa: PLR0913 -- keyword-only test factory
     max_context: int = 200_000,
     cost_input: float = 0.01,
     latency_ms: int | None = None,
+    # Deliberately the opposite of ``ModelMetadata.supports_tools``'s
+    # conservative production default: tool calling is an unconditional match
+    # floor, so a tool-less default would exclude every fixture and couple
+    # unrelated vision/family/priority tests to tool-calling behaviour. Tests
+    # that exercise the floor pass ``tools=False`` explicitly.
     tools: bool = True,
     tool_calls_verified: bool | None = None,
     vision: bool = False,
@@ -92,29 +98,57 @@ class TestHardFilters:
         assert model is not None
         assert model.id == "seer"
 
-    def test_tool_calling_floor_excludes_non_tools(self) -> None:
-        # Tool calling is a floor, not an opt-in: a requirement that never
-        # mentions tools still rejects a model known to lack them.
+    @pytest.mark.parametrize(
+        ("tools", "verified", "source", "admitted"),
+        [
+            pytest.param(False, None, "litellm", False, id="known-incapable"),
+            pytest.param(True, None, "litellm", True, id="known-capable"),
+            pytest.param(False, None, "unknown", True, id="unprobed-optimism"),
+            pytest.param(
+                True, False, "unknown", False, id="runtime-failed-beats-optimism"
+            ),
+            pytest.param(
+                True, False, "litellm", False, id="runtime-failed-beats-claim"
+            ),
+            pytest.param(False, True, "litellm", True, id="runtime-proven-beats-stale"),
+            pytest.param(True, True, "litellm", True, id="runtime-proven-and-claimed"),
+        ],
+    )
+    def test_tool_calling_floor_decision_matrix(
+        self,
+        tools: bool,
+        verified: bool | None,
+        source: MetadataSource,
+        admitted: bool,
+    ) -> None:
+        # Tool calling is a floor, not an opt-in, so a bare requirement that
+        # never mentions tools still drives every one of these outcomes.
+        # Asserted against the filter itself rather than through match_model:
+        # a selection result would only prove exclusion by way of the scorer's
+        # tie-break, which is unrelated machinery that could change.
+        candidate = _make_model(
+            "candidate", tools=tools, tool_calls_verified=verified, source=source
+        )
+        assert passes_hard_filters(candidate, ModelRequirement()) is admitted
+
+    def test_tool_calling_floor_excludes_non_tools_leaving_capable_sibling(
+        self,
+    ) -> None:
+        # The floor is a hard exclusion, not a scoring preference: the plain
+        # model is removed from the pool, not merely out-ranked.
+        plain = _make_model("plain", tools=False)
+        caller = _make_model("caller", tools=True)
+        assert passes_hard_filters(plain, ModelRequirement()) is False
+        model, _ = match_model(ModelRequirement(), (plain, caller))
+        assert model is not None
+        assert model.id == "caller"
+
+    def test_tool_calling_floor_leaves_agent_unmatched_when_pool_empties(self) -> None:
         model, score = match_model(
             ModelRequirement(), (_make_model("plain", tools=False),)
         )
         assert model is None
         assert score == 0.0
-
-    def test_tool_calling_floor_prefers_tool_capable_sibling(self) -> None:
-        plain = _make_model("plain", tools=False)
-        caller = _make_model("caller", tools=True)
-        model, _ = match_model(ModelRequirement(), (plain, caller))
-        assert model is not None
-        assert model.id == "caller"
-
-    def test_tool_calling_floor_optimistic_for_unknown_metadata(self) -> None:
-        # An un-probed model is admitted rather than excluded: most modern
-        # models call tools, and pessimism would strand every cloud model.
-        unprobed = _make_model("unprobed", tools=False, source="unknown")
-        model, _ = match_model(ModelRequirement(), (unprobed,))
-        assert model is not None
-        assert model.id == "unprobed"
 
     def test_embedding_model_never_assigned_to_chat_agent(self) -> None:
         # An embedding model produces vectors, not chat completions, so it is
@@ -131,67 +165,18 @@ class TestHardFilters:
         assert model is not None
         assert model.id == "chat"
 
-    def test_runtime_unverified_tools_hard_fail_overrides_optimism(self) -> None:
-        # tool_calls_verified=False is authoritative: even an unknown-source
-        # model (normally optimistically allowed) is excluded once runtime
-        # proved it cannot call tools.
-        downgraded = _make_model(
-            "downgraded",
-            tools=True,
-            tool_calls_verified=False,
-            source="unknown",
-        )
-        model, score = match_model(ModelRequirement(), (downgraded,))
-        assert model is None
-        assert score == 0.0
-
-    def test_runtime_verified_true_passes_tools_filter(self) -> None:
-        proven = _make_model(
-            "proven", tools=True, tool_calls_verified=True, source="litellm"
-        )
-        model, _ = match_model(ModelRequirement(), (proven,))
-        assert model is not None
-        assert model.id == "proven"
-
-    def test_runtime_unverified_tools_excludes_every_agent(self) -> None:
-        # There are no tool-free roles: a model runtime-proven incapable is
-        # excluded even for a requirement that declares no capability at all.
+    def test_runtime_failed_model_excluded_for_every_agent(self) -> None:
+        # No role is exempt: a model runtime-proven incapable is dropped from
+        # the pool even for a requirement declaring no capability at all, and
+        # a healthy sibling is what the agent gets instead.
         downgraded = _make_model(
             "downgraded", tools=True, tool_calls_verified=False, source="unknown"
         )
         chat = _make_model("chat")
+        assert passes_hard_filters(downgraded, ModelRequirement()) is False
         model, _ = match_model(ModelRequirement(), (downgraded, chat))
         assert model is not None
         assert model.id == "chat"
-
-    def test_runtime_unverified_none_keeps_optimistic_tools_path(self) -> None:
-        # tool_calls_verified=None means "never observed": the load-bearing
-        # optimistic path. Even an unknown-source model is still accepted
-        # until runtime proves it cannot call tools (only an explicit False
-        # downgrades it).
-        candidate = _make_model(
-            "candidate",
-            tools=True,
-            tool_calls_verified=None,
-            source="unknown",
-        )
-        model, _ = match_model(ModelRequirement(), (candidate,))
-        assert model is not None
-        assert model.id == "candidate"
-
-    def test_runtime_verified_true_overrides_stale_supports_tools(self) -> None:
-        # A runtime-proven tool caller is authoritative: even with a stale
-        # supports_tools=False false negative from a non-unknown source, the
-        # model stays assignable.
-        proven = _make_model(
-            "proven",
-            tools=False,
-            tool_calls_verified=True,
-            source="litellm",
-        )
-        model, _ = match_model(ModelRequirement(), (proven,))
-        assert model is not None
-        assert model.id == "proven"
 
     def test_reasoning_requirement_honoured(self) -> None:
         thinker = _make_model("thinker", reasoning=True)

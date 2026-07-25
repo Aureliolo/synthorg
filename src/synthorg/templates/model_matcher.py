@@ -538,7 +538,11 @@ def _match_agent(
 
     provider = ctx.owner.get(id(model)) if model is not None else None
     if model is None or provider is None:
-        logger.debug(
+        # WARNING, not DEBUG: an agent with no model does no work at all, and
+        # the tool-calling floor applies to every agent, so one misconfigured
+        # provider catalogue can starve a whole roster at once. That has to be
+        # visible at a level operators actually collect.
+        logger.warning(
             TEMPLATE_MODEL_MATCH_FAILED,
             agent_index=idx,
             reason="no_compliant_model",

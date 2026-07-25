@@ -6196,73 +6196,6 @@ export type components = {
             /** @description Turns recorded so far */
             readonly turn_count: number;
         };
-        /** AgentConfig */
-        readonly AgentConfig: {
-            /** @description Raw authority config */
-            readonly authority: {
-                readonly [key: string]: readonly unknown[] | {
-                    readonly [key: string]: unknown;
-                } | string | boolean | number | null;
-            };
-            /**
-             * @description Per-agent autonomy level override; None inherits the default.
-             * @enum {string|null}
-             */
-            readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
-            /** @description Department name */
-            readonly department: string;
-            /**
-             * Format: uuid
-             * @description Stable agent id, derived deterministically from the name.
-             */
-            readonly id: string;
-            /** @description Raw memory config */
-            readonly memory: {
-                readonly [key: string]: readonly unknown[] | {
-                    readonly [key: string]: unknown;
-                } | string | boolean | number | null;
-            };
-            /** @description Raw model config */
-            readonly model: {
-                readonly [key: string]: readonly unknown[] | {
-                    readonly [key: string]: unknown;
-                } | string | boolean | number | null;
-            };
-            /** @description Raw model requirement dict from the setup wizard; kept raw to avoid a config -> templates import cycle. */
-            readonly model_requirement: {
-                readonly [key: string]: readonly unknown[] | {
-                    readonly [key: string]: unknown;
-                } | string | boolean | number | null;
-            } | null;
-            /** @description Agent display name */
-            readonly name: string;
-            /** @description Raw personality config */
-            readonly personality: {
-                readonly [key: string]: readonly unknown[] | {
-                    readonly [key: string]: unknown;
-                } | string | boolean | number | null;
-            };
-            /** @description Named personality preset; round-trips from template setup. */
-            readonly personality_preset: string | null;
-            /** @description Role name */
-            readonly role: string;
-            /**
-             * @description Per-agent strategic output mode override. None inherits the company strategy config default.
-             * @enum {string|null}
-             */
-            readonly strategic_output_mode: "option_expander" | "advisor" | "decision_maker" | "context_dependent" | null;
-            /**
-             * @description Resolved model tier from the setup wizard; round-trips.
-             * @enum {null|string}
-             */
-            readonly tier: "large" | "medium" | "small" | null;
-            /** @description Raw tools config */
-            readonly tools: {
-                readonly [key: string]: readonly unknown[] | {
-                    readonly [key: string]: unknown;
-                } | string | boolean | number | null;
-            };
-        };
         /** AgentConfigResponse */
         readonly AgentConfigResponse: {
             /** @description Raw authority config */
@@ -6272,7 +6205,7 @@ export type components = {
                 } | string | boolean | number | null;
             };
             /**
-             * @description Per-agent autonomy level override; None inherits the default.
+             * @description Per-agent autonomy level override
              * @enum {string|null}
              */
             readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
@@ -6280,7 +6213,7 @@ export type components = {
             readonly department: string;
             /**
              * Format: uuid
-             * @description Stable agent id, derived deterministically from the name.
+             * @description Stable agent id, derived from the name
              */
             readonly id: string;
             /** @description Raw memory config */
@@ -6297,7 +6230,7 @@ export type components = {
             };
             /** @description Capabilities of the assigned model; None when the agent's model is not in any configured provider (unassigned or stale binding) */
             readonly model_capabilities: components["schemas"]["AgentModelCapabilities"] | null;
-            /** @description Raw model requirement dict from the setup wizard; kept raw to avoid a config -> templates import cycle. */
+            /** @description Raw model requirement dict from the setup wizard */
             readonly model_requirement: {
                 readonly [key: string]: readonly unknown[] | {
                     readonly [key: string]: unknown;
@@ -6311,17 +6244,17 @@ export type components = {
                     readonly [key: string]: unknown;
                 } | string | boolean | number | null;
             };
-            /** @description Named personality preset; round-trips from template setup. */
+            /** @description Named personality preset */
             readonly personality_preset: string | null;
             /** @description Role name */
             readonly role: string;
             /**
-             * @description Per-agent strategic output mode override. None inherits the company strategy config default.
+             * @description Per-agent strategic output mode override
              * @enum {string|null}
              */
             readonly strategic_output_mode: "option_expander" | "advisor" | "decision_maker" | "context_dependent" | null;
             /**
-             * @description Resolved model tier from the setup wizard; round-trips.
+             * @description Resolved model tier from the setup wizard
              * @enum {null|string}
              */
             readonly tier: "large" | "medium" | "small" | null;
@@ -6447,8 +6380,12 @@ export type components = {
              * @default false
              */
             readonly supports_vision: boolean;
-            /** @description Runtime tool-calling truth (None = never observed) */
-            readonly tool_calls_verified: boolean | null;
+            /**
+             * @description Runtime tool-calling verdict
+             * @default unverified
+             * @enum {string}
+             */
+            readonly tool_calling: "unverified" | "verified" | "failed";
         };
         /** AgentPerformanceSummary */
         readonly AgentPerformanceSummary: {
@@ -7739,9 +7676,9 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[tuple[AgentConfig, ...]] */
-        readonly "ApiResponse_tuple_AgentConfig_..._": {
-            readonly data: readonly components["schemas"]["AgentConfig"][] | null;
+        /** ApiResponse[tuple[AgentConfigResponse, ...]] */
+        readonly "ApiResponse_tuple_AgentConfigResponse_..._": {
+            readonly data: readonly components["schemas"]["AgentConfigResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -23944,7 +23881,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_AgentConfig_..._"];
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_AgentConfigResponse_..._"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

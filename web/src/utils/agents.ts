@@ -79,10 +79,10 @@ export function agentTraits(agent: DashboardAgentConfig): readonly string[] {
  * What the agent's assigned model can actually do, as resolved by the
  * backend from the provider's capability metadata.
  *
- * Tool calling is deliberately absent: the matcher enforces it as a floor for
- * every agent, so a "tools" pill would be constant and say nothing. A model
- * that failed tool calling at runtime surfaces through
- * ``agentToolCallsVerified`` instead.
+ * Tool calling carries no label here. The matcher only ever assigns a model
+ * it believes can call tools, so a positive label would read the same for
+ * every agent that has one. The case where that guarantee goes stale is a
+ * runtime failure, reported by ``agentToolCallsFailed``.
  *
  * Unresolvable binding or a plain chat model -> [].
  */
@@ -96,19 +96,28 @@ export function agentCapabilities(agent: DashboardAgentConfig): readonly string[
 }
 
 /**
- * The assigned model's runtime tool-calling verdict: ``false`` means repeated
- * runtime failures proved it cannot call tools. ``null`` when unobserved or
- * when the model binding does not resolve.
+ * True when the agent's ``(provider, model_id)`` binding matches no configured
+ * model: a stale or deleted model, not a healthy one that happens to have no
+ * extra capabilities. Those two states look identical in every other accessor,
+ * so the card needs this one to tell them apart.
  */
-export function agentToolCallsVerified(
-  agent: DashboardAgentConfig,
-): boolean | null {
-  return agent.model_capabilities?.tool_calls_verified ?? null
+export function agentModelBindingUnresolved(agent: DashboardAgentConfig): boolean {
+  return agent.model_capabilities === null
+}
+
+/**
+ * True when runtime tool calls proved the assigned model cannot make them.
+ * Distinct from "never observed", which is not a fault.
+ */
+export function agentToolCallsFailed(agent: DashboardAgentConfig): boolean {
+  return agent.model_capabilities?.tool_calling === 'failed'
 }
 
 /**
  * True when the assigned model's capabilities were never measured, so the
- * card can say "unverified" rather than implying the model has none.
+ * card can say "unverified" rather than implying the model has none. A model
+ * binding that does not resolve at all is a different state; see
+ * ``agentModelBindingUnresolved``.
  */
 export function agentCapabilitiesUnverified(agent: DashboardAgentConfig): boolean {
   return agent.model_capabilities?.metadata_source === 'unknown'

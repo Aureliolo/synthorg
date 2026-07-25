@@ -47,12 +47,15 @@ SETUP_PROVIDER_NOT_FOUND: Final[str] = "setup.agent.provider_not_found"
 # Model not found in provider during agent creation
 SETUP_MODEL_NOT_FOUND: Final[str] = "setup.agent.model_not_found"
 
-# Tier matcher could not assign a per-tier model and fell back to the
-# first available model. Logged at DEBUG because fallback IS the
-# documented contract for tier-mismatch and the wizard provider gate
-# now blocks the "no models at all" case where this would actually
-# matter.
+# An agent finished matching with no model assigned. Logged at WARNING:
+# the capability floors apply to every agent, so a catalogue the provider
+# gate accepts (it only rejects an empty one) can still leave agents unable
+# to do any work, and an unassigned agent is never business as usual.
 SETUP_MODEL_FALLBACK_USED: Final[str] = "setup.agent.model_fallback_used"
+
+# Roster-level summary of the above: how many agents ended up unassigned out
+# of how many, so one line answers "is this one odd role or the whole org".
+SETUP_MODEL_ASSIGNMENT_INCOMPLETE: Final[str] = "setup.agent.assignment_incomplete"
 
 # Wizard rejected a provider that could not surface a tier-classifiable
 # model set. The matcher's _MIN_TIER_SIZE = 3 floor requires at least
