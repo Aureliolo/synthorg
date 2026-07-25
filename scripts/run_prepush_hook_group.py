@@ -27,17 +27,29 @@ scope, exactly as it did as a standalone hook.
 Usage:
     python scripts/run_prepush_hook_group.py <group> [--] [FILE ...]
 
+Concurrency: the runner parallelises the tools within one group, so the
+hook must declare ``require_serial: true``. Without it pre-commit partitions
+the matched files and runs the hook once per chunk in parallel, multiplying
+this runner's own fan-out by however many chunks it chose; a 22-file web
+push was measured spawning six concurrent groups, i.e. eighteen Node
+processes, which exhausted memory and killed tools mid-parse.
+
 Exit codes:
     0 -- every tool in the group passed.
     1 -- at least one tool failed; EVERY failing tool's output is printed,
-         since the run never stops at the first failure.
+         since the run never stops at the first failure. A failure that is
+         the gate's fault rather than the tree's (timed out, could not
+         start, crashed) is labelled as such in the report, because the two
+         call for completely different responses.
     2 -- unknown group name, or a group whose declaration is malformed.
 """
 
 import argparse
 import contextlib
+import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -59,6 +71,58 @@ _EXIT_NOT_FOUND: Final[int] = 127
 # ``_prepush_scope.py``, ``_MYPY_TIMEOUT_SECONDS`` in ``run_affected_mypy.py``,
 # the pytest watchdog in ``run_affected_tests.py``).
 _TOOL_TIMEOUT_SECONDS: Final[int] = 180
+# Distinct from _EXIT_NOT_FOUND so the report separates "wedged and killed"
+# from "could not start" and from a tool's own non-zero finding. A crash or a
+# timeout is a defect in the gate; a finding is a defect in the tree, and a
+# developer should not have to read the log to tell which they are looking at.
+_EXIT_TIMED_OUT: Final[int] = 124
+# 128 + SIGABRT: how a Node process that aborts on a failed heap allocation
+# reports itself. Not a lint result, so the report must not read like one.
+_EXIT_ABORTED: Final[int] = 134
+# Highest value a POSIX wait status can carry. Windows passes an NTSTATUS
+# straight through, so anything above this is a crash code (0xC0000409 for a
+# stack-buffer overrun, 0xC0000005 for an access violation), never a tool's
+# own chosen exit.
+_MAX_WAIT_STATUS: Final[int] = 255
+# Once the tree is dead the pipes are closed, so the follow-up drain returns
+# at once. It is still bounded: this function exists because an unbounded
+# drain is exactly the bug, and trading one hang for another would be absurd.
+_DRAIN_TIMEOUT_SECONDS: Final[int] = 10
+_TREE_KILL_TIMEOUT_SECONDS: Final[int] = 30
+
+
+def _terminate_tree(process: subprocess.Popen[str]) -> None:
+    """Kill a timed-out tool and everything it spawned.
+
+    ``Popen.kill`` signals only the direct child, which is not enough here.
+    ``npm --prefix web run <script>`` expands to ``node -> cmd.exe -> node``
+    on Windows, so killing npm leaves the real tool alive holding the
+    inherited stdout write-end; the drain that follows a timeout then never
+    sees EOF and the push hangs without bound despite the timeout firing.
+    Observed in the wild as a 180s budget overrunning to 1034s, released only
+    by killing the grandchildren by hand.
+    """
+    if sys.platform == "win32":
+        # /T covers the tree, /F skips the graceful request a wedged Node
+        # process will not answer anyway.
+        taskkill = shutil.which("taskkill")
+        if taskkill is not None:
+            with contextlib.suppress(OSError, subprocess.SubprocessError):
+                subprocess.run(
+                    [taskkill, "/T", "/F", "/PID", str(process.pid)],
+                    check=False,
+                    capture_output=True,
+                    timeout=_TREE_KILL_TIMEOUT_SECONDS,
+                )
+    else:
+        # The child leads its own process group (``start_new_session`` at
+        # spawn), so one signal reaches every descendant.
+        with contextlib.suppress(OSError):
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    # Belt and braces: if the tree kill above could not run, at least the
+    # direct child must not survive this function.
+    with contextlib.suppress(OSError):
+        process.kill()
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,25 +309,44 @@ def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
     argv[0] = resolved
     started = time.monotonic()  # lint-allow: clock-seam -- gate script, no DI
     try:
-        completed = subprocess.run(
+        # Popen rather than ``subprocess.run(timeout=...)``: run's timeout path
+        # kills only the direct child and then drains the pipes unbounded, so a
+        # surviving grandchild holds the push open forever. See _terminate_tree.
+        with subprocess.Popen(
             argv,
             cwd=_REPO_ROOT,
-            check=False,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=_TOOL_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired:
-        # lint-allow: clock-seam -- gate script, no DI
-        return _Result(
-            tool.name,
-            _EXIT_NOT_FOUND,
-            f"timed out after {_TOOL_TIMEOUT_SECONDS}s; the push must not "
-            "wait on a wedged tool, so this reads as a failure.",
-            time.monotonic() - started,
-        )
+            # POSIX: give the child its own process group so one killpg
+            # reaches every descendant. Windows gets the tree via taskkill /T.
+            start_new_session=sys.platform != "win32",
+        ) as process:
+            try:
+                stdout, stderr = process.communicate(timeout=_TOOL_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                _terminate_tree(process)
+                # Keep whatever the tool emitted before wedging: it is often
+                # the only clue to why. Bounded, because the whole point here
+                # is that a drain must never be able to block the push.
+                try:
+                    stdout, stderr = process.communicate(timeout=_DRAIN_TIMEOUT_SECONDS)
+                except subprocess.TimeoutExpired:
+                    stdout, stderr = "", ""
+                partial = (stdout + stderr).rstrip()
+                detail = f"\nOutput before it wedged:\n{partial}" if partial else ""
+                # lint-allow: clock-seam -- gate script, no DI
+                return _Result(
+                    tool.name,
+                    _EXIT_TIMED_OUT,
+                    f"timed out after {_TOOL_TIMEOUT_SECONDS}s and was killed "
+                    f"with its process tree; the push must not wait on a "
+                    f"wedged tool, so this reads as a failure.{detail}",
+                    time.monotonic() - started,
+                )
+            returncode = process.returncode
     except OSError as exc:
         # lint-allow: clock-seam -- gate script, no DI
         return _Result(
@@ -276,10 +359,33 @@ def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
     elapsed = time.monotonic() - started
     return _Result(
         tool.name,
-        completed.returncode,
-        completed.stdout + completed.stderr,
+        returncode,
+        stdout + stderr,
         elapsed,
     )
+
+
+def _verdict(result: _Result) -> str:
+    """Label a failure the reader cannot classify from the exit code alone.
+
+    A tool that crashed or was killed says nothing about the tree, but the
+    report renders it identically to a genuine finding, so a developer reads
+    the whole log to work out which of the two they are looking at. Windows
+    surfaces an abort as a status code far outside the 0-255 range (0xC0000409
+    for a stack-buffer overrun, 0xC0000005 for an access violation) and Node's
+    own OOM abort arrives as 134; none of those are a lint result.
+
+    Returns:
+        A short parenthetical suffix, or the empty string for an ordinary
+        non-zero exit that the tool itself chose.
+    """
+    if result.returncode == _EXIT_TIMED_OUT:
+        return ", GATE DEFECT: wedged and killed, not a finding"
+    if result.returncode == _EXIT_NOT_FOUND:
+        return ", GATE DEFECT: could not start, not a finding"
+    if result.returncode == _EXIT_ABORTED or result.returncode > _MAX_WAIT_STATUS:
+        return ", GATE DEFECT: crashed (likely out of memory), not a finding"
+    return ""
 
 
 def _run_group(tools: tuple[_Tool, ...], filenames: Sequence[str]) -> list[_Result]:
@@ -329,7 +435,7 @@ def main() -> int:
     for result in failures:
         # Only a failing tool's output is worth the noise; a passing tool
         # reports its duration so a slowdown is visible on a green run.
-        print(f"\n--- {result.name} (exit {result.returncode}) ---")
+        print(f"\n--- {result.name} (exit {result.returncode}{_verdict(result)}) ---")
         print(result.output.rstrip())
     timings = ", ".join(result.render() for result in results)
     print(f"\n{args.group}: {timings} -- {total:.1f}s wall-clock")

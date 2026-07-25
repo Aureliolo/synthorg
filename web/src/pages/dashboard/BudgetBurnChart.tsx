@@ -196,7 +196,7 @@ function BurnChartBody({
             axisLine={false}
             tickLine={false}
             tickFormatter={(v: number) => formatCurrencyCompact(v, currency)}
-            width={48}
+            width="auto"
           />
           <Tooltip content={<ChartTooltipContent currency={currency} />} />
 

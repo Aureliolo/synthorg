@@ -26,8 +26,8 @@ const meta = {
   title: 'Pages/OAuthApps/OauthAppCard',
   component: OauthAppCard,
   tags: ['autodocs'],
-  parameters: {
-    msw: { handlers: connectionsList },
+  beforeEach({ msw }) {
+    msw.use(...connectionsList)
   },
   args: {
     connection: baseConnection,

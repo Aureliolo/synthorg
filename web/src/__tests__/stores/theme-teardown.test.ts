@@ -19,15 +19,13 @@ describe('useThemeStore teardown', () => {
   let addCalls: number
   let removeCalls: number
   let attachedListeners: Set<Listener>
-  let originalMatchMedia: typeof window.matchMedia
 
   beforeEach(() => {
     addCalls = 0
     removeCalls = 0
     attachedListeners = new Set()
 
-    originalMatchMedia = window.matchMedia
-    window.matchMedia = vi.fn((query: string) => {
+    vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
       const mql = {
         matches: false,
         media: query,
@@ -49,7 +47,7 @@ describe('useThemeStore teardown', () => {
   })
 
   afterEach(() => {
-    window.matchMedia = originalMatchMedia
+    vi.restoreAllMocks()
   })
 
   it('exposes a teardown() that is callable and idempotent', () => {

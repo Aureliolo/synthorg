@@ -586,6 +586,15 @@ repos:
         # The union of the three tools' interests; the runner re-filters
         # per tool, so ESLint never receives the JSON only knip cares about.
         files: ^web/.*\.(ts|tsx|json)$
+        # One invocation for the whole matched set. Without this pre-commit
+        # partitions the files and runs the hook once per chunk IN PARALLEL,
+        # and each invocation starts all three Node tools: a 22-file web push
+        # was observed spawning six concurrent groups, so eighteen Node
+        # processes competed for memory and knip/eslint died mid-parse on
+        # heap-allocation failures. The runner already parallelises the three
+        # tools itself, which is the concurrency this group wants; pre-commit
+        # adding a second, unbounded dimension on top is what broke it.
+        require_serial: true
         stages: [pre-push]
 
       - id: list-pagination

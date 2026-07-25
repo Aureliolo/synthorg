@@ -70,9 +70,13 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Populated: Story = {
-  parameters: { msw: { handlers: breakdownHandler(POPULATED) } },
+  beforeEach({ msw }) {
+    msw.use(...breakdownHandler(POPULATED))
+  },
 }
 
 export const Empty: Story = {
-  parameters: { msw: { handlers: breakdownHandler({ rows: [] }) } },
+  beforeEach({ msw }) {
+    msw.use(...breakdownHandler({ rows: [] }))
+  },
 }

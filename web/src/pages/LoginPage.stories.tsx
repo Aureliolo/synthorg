@@ -26,14 +26,14 @@ type Story = StoryObj<typeof meta>
 
 /** Default login form. API returns setup-complete status. */
 export const DefaultLogin: Story = {
-  parameters: {
-    msw: { handlers: [...setupStatusComplete, ...authLoginSuccess] },
-  },
+  beforeEach({ msw }) {
+    msw.use(...setupStatusComplete, ...authLoginSuccess)
+  }
 }
 
 /** Admin creation form. API returns needs-admin status. */
 export const AdminCreation: Story = {
-  parameters: {
-    msw: { handlers: [...setupStatusNeedsAdmin, ...authSetupSuccess] },
-  },
+  beforeEach({ msw }) {
+    msw.use(...setupStatusNeedsAdmin, ...authSetupSuccess)
+  }
 }

@@ -6,6 +6,7 @@ export default defineMain({
   addons: [
     '@storybook/addon-docs',
     '@storybook/addon-a11y',
+    'msw-storybook-addon',
   ],
   features: {
     changeDetection: true,

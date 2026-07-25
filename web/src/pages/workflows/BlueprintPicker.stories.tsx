@@ -28,25 +28,26 @@ const MOCK_BLUEPRINTS = [
 const meta = {
   title: 'Pages/Workflows/BlueprintPicker',
   component: BlueprintPicker,
+
   args: {
     selectedBlueprint: null,
     onSelect: () => {},
   },
-  parameters: {
-    a11y: { test: 'error' },
-    msw: {
-      handlers: [
-        http.get('*/api/v1/workflows/blueprints', () =>
-          HttpResponse.json({
-            data: MOCK_BLUEPRINTS,
-            error: null,
-            error_detail: null,
-            success: true,
-          }),
-        ),
-      ],
-    },
+
+  beforeEach({ msw }) {
+    msw.use(http.get('*/api/v1/workflows/blueprints', () =>
+      HttpResponse.json({
+        data: MOCK_BLUEPRINTS,
+        error: null,
+        error_detail: null,
+        success: true,
+      }),
+    ))
   },
+
+  parameters: {
+    a11y: { test: 'error' }
+  }
 } satisfies Meta<typeof BlueprintPicker>
 
 export default meta
@@ -55,21 +56,17 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {}
 
 export const Loading: Story = {
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('*/api/v1/workflows/blueprints', async () => {
-          await delay('infinite')
-          return HttpResponse.json({
-            data: [],
-            error: null,
-            error_detail: null,
-            success: true,
-          })
-        }),
-      ],
-    },
-  },
+  beforeEach({ msw }) {
+    msw.use(http.get('*/api/v1/workflows/blueprints', async () => {
+      await delay('infinite')
+      return HttpResponse.json({
+        data: [],
+        error: null,
+        error_detail: null,
+        success: true,
+      })
+    }))
+  }
 }
 
 export const Selected: Story = {
@@ -79,30 +76,22 @@ export const Selected: Story = {
 }
 
 export const Empty: Story = {
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('*/api/v1/workflows/blueprints', () =>
-          HttpResponse.json({
-            data: [],
-            error: null,
-            error_detail: null,
-            success: true,
-          }),
-        ),
-      ],
-    },
-  },
+  beforeEach({ msw }) {
+    msw.use(http.get('*/api/v1/workflows/blueprints', () =>
+      HttpResponse.json({
+        data: [],
+        error: null,
+        error_detail: null,
+        success: true,
+      }),
+    ))
+  }
 }
 
 export const Error: Story = {
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('*/api/v1/workflows/blueprints', () =>
-          new HttpResponse(null, { status: 500 }),
-        ),
-      ],
-    },
-  },
+  beforeEach({ msw }) {
+    msw.use(http.get('*/api/v1/workflows/blueprints', () =>
+      new HttpResponse(null, { status: 500 }),
+    ))
+  }
 }

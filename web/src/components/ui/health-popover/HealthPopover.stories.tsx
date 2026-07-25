@@ -34,84 +34,72 @@ export const AllSystemsOk: Story = {
   args: {
     children: <Button size="sm">All systems normal</Button>,
   },
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('/api/v1/health', () =>
-          HttpResponse.json(successFor<typeof getHealthDetail>(BASE_PAYLOAD)),
-        ),
-      ],
-    },
-  },
+
+  beforeEach({ msw }) {
+    msw.use(http.get('/api/v1/health', () =>
+      HttpResponse.json(successFor<typeof getHealthDetail>(BASE_PAYLOAD)),
+    ))
+  }
 }
 
 export const Degraded: Story = {
   args: {
     children: <Button size="sm">System degraded</Button>,
   },
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('/api/v1/health', () =>
-          HttpResponse.json(
-            successFor<typeof getHealthDetail>({
-              ...BASE_PAYLOAD,
-              status: 'unavailable',
-              message_bus: false,
-            }),
-          ),
-        ),
-      ],
-    },
-  },
+
+  beforeEach({ msw }) {
+    msw.use(http.get('/api/v1/health', () =>
+      HttpResponse.json(
+        successFor<typeof getHealthDetail>({
+          ...BASE_PAYLOAD,
+          status: 'unavailable',
+          message_bus: false,
+        }),
+      ),
+    ))
+  }
 }
 
 export const Down: Story = {
   args: {
     children: <Button size="sm">System down</Button>,
   },
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('/api/v1/health', () =>
-          HttpResponse.json(
-            successFor<typeof getHealthDetail>({
-              ...BASE_PAYLOAD,
-              status: 'unavailable',
-              persistence: false,
-              message_bus: false,
-            }),
-          ),
-        ),
-      ],
-    },
-  },
+
+  beforeEach({ msw }) {
+    msw.use(http.get('/api/v1/health', () =>
+      HttpResponse.json(
+        successFor<typeof getHealthDetail>({
+          ...BASE_PAYLOAD,
+          status: 'unavailable',
+          persistence: false,
+          message_bus: false,
+        }),
+      ),
+    ))
+  }
 }
 
 export const LoadError: Story = {
   args: {
     children: <Button size="sm">Health unavailable</Button>,
   },
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('/api/v1/health', () =>
-          HttpResponse.json(
-            apiError('Service unavailable: dependency probe failed.', {
-              error_code: ErrorCode.SERVICE_UNAVAILABLE,
-              error_category: ErrorCategory.INTERNAL,
-              retryable: true,
-              retry_after: 30,
-              instance: '/storybook',
-              title: 'Service unavailable',
-              type: 'about:blank',
-            }),
-            { status: 503 },
-          ),
-        ),
-      ],
-    },
-  },
+
+  beforeEach({ msw }) {
+    msw.use(http.get('/api/v1/health', () =>
+      HttpResponse.json(
+        apiError('Service unavailable: dependency probe failed.', {
+          error_code: ErrorCode.SERVICE_UNAVAILABLE,
+          error_category: ErrorCategory.INTERNAL,
+          retryable: true,
+          retry_after: 30,
+          instance: '/storybook',
+          title: 'Service unavailable',
+          type: 'about:blank',
+        }),
+        { status: 503 },
+      ),
+    ))
+  }
 }
 
 // 3 seconds: long enough for Chromatic to capture the loading skeleton,
@@ -123,16 +111,13 @@ export const Loading: Story = {
   args: {
     children: <Button size="sm">Fetching health...</Button>,
   },
-  parameters: {
-    msw: {
-      handlers: [
-        http.get('/api/v1/health', async () => {
-          await new Promise((resolve) => { setTimeout(resolve, LOADING_STORY_DELAY_MS) })
-          return HttpResponse.json(successFor<typeof getHealthDetail>(BASE_PAYLOAD))
-        }),
-      ],
-    },
-  },
+
+  beforeEach({ msw }) {
+    msw.use(http.get('/api/v1/health', async () => {
+      await new Promise((resolve) => { setTimeout(resolve, LOADING_STORY_DELAY_MS) })
+      return HttpResponse.json(successFor<typeof getHealthDetail>(BASE_PAYLOAD))
+    }))
+  }
 }
 
 // Hover: HealthPopover opens on click (via Base UI Popover), not hover.

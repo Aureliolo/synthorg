@@ -27,55 +27,39 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const NoOverride: Story = {
-  parameters: {
-    msw: {
-      handlers: [
-        http.get(API_BASE + '/override', () =>
-          HttpResponse.json({ success: false, error: 'Not found' }, { status: 404 }),
-        ),
-      ],
-    },
-  },
+  beforeEach({ msw }) {
+    msw.use(http.get(API_BASE + '/override', () =>
+      HttpResponse.json({ success: false, error: 'Not found' }, { status: 404 }),
+    ))
+  }
 }
 
 export const ActiveOverride: Story = {
-  parameters: {
-    msw: {
-      handlers: [
-        http.get(API_BASE + '/override', () =>
-          HttpResponse.json({ success: true, data: activeOverride }),
-        ),
-      ],
-    },
-  },
+  beforeEach({ msw }) {
+    msw.use(http.get(API_BASE + '/override', () =>
+      HttpResponse.json({ success: true, data: activeOverride }),
+    ))
+  }
 }
 
 export const WithExpiration: Story = {
-  parameters: {
-    msw: {
-      handlers: [
-        http.get(API_BASE + '/override', () =>
-          HttpResponse.json({
-            success: true,
-            data: { ...activeOverride, expires_at: '2026-03-22T12:00:00Z' },
-          }),
-        ),
-      ],
-    },
-  },
+  beforeEach({ msw }) {
+    msw.use(http.get(API_BASE + '/override', () =>
+      HttpResponse.json({
+        success: true,
+        data: { ...activeOverride, expires_at: '2026-03-22T12:00:00Z' },
+      }),
+    ))
+  }
 }
 
 export const Error: Story = {
-  parameters: {
-    msw: {
-      handlers: [
-        http.get(API_BASE + '/override', () =>
-          HttpResponse.json(
-            { success: false, error: 'Internal server error' },
-            { status: 500 },
-          ),
-        ),
-      ],
-    },
-  },
+  beforeEach({ msw }) {
+    msw.use(http.get(API_BASE + '/override', () =>
+      HttpResponse.json(
+        { success: false, error: 'Internal server error' },
+        { status: 500 },
+      ),
+    ))
+  }
 }
