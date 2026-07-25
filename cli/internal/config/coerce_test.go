@@ -238,8 +238,12 @@ func TestNonCoercibleEnumsAreNotCoerced(t *testing.T) {
 	}
 }
 
-// allowlistDecl matches an enum allowlist declaration in state.go.
-var allowlistDecl = regexp.MustCompile(`(?m)^var (valid[A-Za-z]+)\s*=\s*map\[string\]bool`)
+// allowlistDecl matches an enum allowlist declaration in state.go, at
+// top level or inside a grouped `var (...)` block. The grouped form is
+// the one worth allowing for explicitly: state.go already uses grouped
+// blocks elsewhere, so anchoring to a line starting with `var ` would let
+// the next allowlist land in one and slip past the whole check.
+var allowlistDecl = regexp.MustCompile(`(?m)^\s*(?:var\s+)?(valid[A-Za-z]+)\s*=\s*map\[string\]bool`)
 
 // stateSourcePath locates state.go relative to this test file rather than
 // the caller's working directory.
@@ -492,6 +496,46 @@ func TestLoadTolerantSurvivesANonCoercibleEnum(t *testing.T) {
 	}
 	if state.BackendPort != 3001 {
 		t.Errorf("BackendPort = %d, want the rest of the config readable", state.BackendPort)
+	}
+}
+
+// TestLoadTolerantReportsEveryProblemAtOnce covers the compound case a
+// diagnostic exists for. A config can hold both an unusable data_dir and
+// an unrelated invariant breach; reporting only the first sends the
+// operator round the loop again for the second.
+func TestLoadTolerantReportsEveryProblemAtOnce(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	raw, err := json.Marshal(map[string]any{
+		"data_dir":            filepath.Join("relative", "synthorg"),
+		"backend_port":        3001,
+		"web_port":            3000,
+		"nats_client_port":    999999,
+		"persistence_backend": "sqlite",
+		"memory_backend":      "sqlvector",
+		"encrypt_secrets":     false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(StatePath(tmp), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	state, advisory := LoadTolerant(tmp)
+	if advisory == nil {
+		t.Fatal("expected an advisory error")
+	}
+	for _, want := range []string{"data_dir", "nats_client_port"} {
+		if !strings.Contains(advisory.Error(), want) {
+			t.Errorf("advisory must report %s, got: %v", want, advisory)
+		}
+	}
+	// The command still has to be able to run: an unusable persisted
+	// data_dir falls back to the one the caller asked for.
+	if state.DataDir != tmp {
+		t.Errorf("DataDir = %q, want the caller's %q", state.DataDir, tmp)
 	}
 }
 

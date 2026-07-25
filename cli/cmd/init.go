@@ -255,20 +255,14 @@ func applyReinitYes(cmd *cobra.Command, state *config.State, oldState config.Sta
 // keep the existing settings key, then preserve master key + cursor
 // secret + Postgres settings.
 func applyReinitInteractive(cmd *cobra.Command, state *config.State, oldState config.State, opts *GlobalOpts) (bool, error) {
-	kept, err := confirmReinit(cmd, oldState, opts)
-	if err != nil {
+	proceed, err := confirmReinit(cmd, oldState, opts)
+	if err != nil || !proceed {
 		return false, err
 	}
-	if kept == nil {
-		return false, nil
-	}
-	// The prompt decides the settings key; the remaining secrets carry
-	// forward on the same terms as the --yes path, so route them through
-	// the one helper rather than restating the rules.
+	// Secrets carry forward on exactly the same terms as the --yes path,
+	// so route them through the one helper rather than restating the
+	// rules here and letting the two drift.
 	copyPreservedSecrets(state, oldState)
-	if strings.TrimSpace(*kept) != "" {
-		state.SettingsKey = *kept
-	}
 	if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
 		return false, err
 	}
@@ -330,10 +324,11 @@ func preservePostgresFromOldState(
 	return nil
 }
 
-// confirmReinit prompts the user to confirm overwriting existing config.
-// Returns a pointer to the existing settings key to preserve, or nil if the
-// user declined. An empty string means no key existed to preserve.
-func confirmReinit(cmd *cobra.Command, oldState config.State, opts *GlobalOpts) (*string, error) {
+// confirmReinit prompts the user to confirm overwriting existing config,
+// reporting whether they agreed. Which secrets survive is not a decision
+// this prompt makes: it is a yes/no confirmation, and copyPreservedSecrets
+// owns the carry-forward rules for every secret alike.
+func confirmReinit(cmd *cobra.Command, oldState config.State, opts *GlobalOpts) (bool, error) {
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 	errOut.Warn("Existing config at " + config.StatePath(oldState.DataDir) + " will be overwritten.")
 	errOut.Warn("A new JWT secret will be generated -- running containers will need a restart.")
@@ -345,13 +340,9 @@ func confirmReinit(cmd *cobra.Command, oldState config.State, opts *GlobalOpts) 
 		huh.NewConfirm().Title("Overwrite existing configuration?").Value(&proceed),
 	))
 	if err := form.Run(); err != nil {
-		return nil, err
+		return false, err
 	}
-	if !proceed {
-		return nil, nil
-	}
-	key := oldState.SettingsKey
-	return &key, nil
+	return proceed, nil
 }
 
 // setupAnswers holds raw form input before validation.

@@ -456,8 +456,11 @@ func LoadTolerant(dataDir string) (State, error) {
 	if dirErr != nil {
 		// An unusable persisted data_dir must not stop a diagnostic
 		// either: fall back to the caller-supplied dir and report it.
+		// Joined with the advisory rather than replacing it: a config can
+		// hold both a rejected data_dir and an unrelated invariant breach,
+		// and doctor exists to report all of what is wrong at once.
 		s.DataDir = safeDir
-		return s, dirErr
+		return s, errors.Join(dirErr, advisory)
 	}
 	return resolved, advisory
 }

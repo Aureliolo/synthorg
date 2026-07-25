@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"encoding/json"
+	"maps"
 	"strings"
 	"testing"
+	"text/template"
 	"time"
 	"unicode/utf8"
 )
@@ -496,25 +498,123 @@ func withHealth(c containerInspect, status string) containerInspect {
 	return c
 }
 
-// TestInspectFormatProjectsOnlyTheReadFields keeps secrets out of CLI
-// memory. `{{json .}}` would materialise the whole container config,
-// including every value in Config.Env: master key, settings key, JWT
-// secret and the Postgres DSN.
-func TestInspectFormatProjectsOnlyTheReadFields(t *testing.T) {
+// dockerTemplateFuncs is the FuncMap `docker inspect --format` exposes,
+// on top of text/template's builtins: docker/cli's `basicFunctions`.
+// Nothing else is available. Sprig helpers in particular are NOT --
+// `dict` reads as though it should work and fails to parse instead.
+//
+// Only the signatures matter here; the test asserts the template parses
+// and produces decodable output, not what these return.
+var dockerTemplateFuncs = template.FuncMap{
+	"json":     func(any) string { return "null" },
+	"split":    strings.Split,
+	"join":     strings.Join,
+	"title":    strings.ToTitle,
+	"lower":    strings.ToLower,
+	"upper":    strings.ToUpper,
+	"pad":      func(s string, _ int) string { return s },
+	"truncate": func(s string, _ int) string { return s },
+	"println":  func(any) string { return "" },
+}
+
+// TestInspectFormatUsesOnlyDockerTemplateFunctions is the guard that a
+// pure string-contents assertion cannot be.
+//
+// `docker inspect --format` fails on an unknown function at PARSE time, so
+// a format string referencing one never returns data: the command errors,
+// inspectComposeContainers reports a failure, and every diagnostic built
+// on it degrades to silence. That failure is invisible to any test that
+// only greps the format string, and invisible in normal use because the
+// diagnostics only run when something has ALREADY gone wrong.
+func TestInspectFormatUsesOnlyDockerTemplateFunctions(t *testing.T) {
 	t.Parallel()
 
-	if strings.Contains(inspectFormat, "json .}}") {
-		t.Error("inspect must project named fields, not the whole container")
+	if _, err := template.New("inspect").Funcs(dockerTemplateFuncs).Parse(inspectFormat); err != nil {
+		t.Fatalf(
+			"inspectFormat does not parse against Docker's template functions: %v\n"+
+				"Docker exposes only json/split/join/title/lower/upper/pad/truncate/println; "+
+				"a Sprig helper such as `dict` fails here exactly as it would at runtime.",
+			err,
+		)
 	}
-	for _, forbidden := range []string{".Config.Env", ".Config)", ".Config }"} {
-		if strings.Contains(inspectFormat, forbidden) {
-			t.Errorf("inspect format must not pull %s", forbidden)
-		}
+}
+
+// TestInspectFormatRoundTripsAContainer executes the format over a
+// docker-shaped payload and decodes the result, so the projection is
+// pinned to what summarise actually reads rather than to the literal text
+// of the template.
+func TestInspectFormatRoundTripsAContainer(t *testing.T) {
+	t.Parallel()
+
+	// Shaped like `docker inspect` output, including a secret-bearing
+	// Config.Env the projection must not carry.
+	const secret = "MASTER_KEY=must-not-appear-in-cli-memory"
+	source := map[string]any{
+		"Name":         "/stack-backend-1",
+		"RestartCount": 7,
+		"State": map[string]any{
+			"Status":    "running",
+			"ExitCode":  0,
+			"StartedAt": "2026-07-25T09:21:00Z",
+			"OOMKilled": false,
+			"Health": map[string]any{
+				"Status":        "starting",
+				"FailingStreak": 2,
+				"Log":           []map[string]any{{"ExitCode": 1, "Output": "connection refused"}},
+			},
+		},
+		"Config": map[string]any{
+			"Env":         []string{secret},
+			"Healthcheck": map[string]any{"StartPeriod": int64(600_000_000_000)},
+		},
 	}
-	// Everything summarise reads has to survive the projection.
-	for _, required := range []string{".Name", ".RestartCount", ".State", ".Config.Healthcheck"} {
-		if !strings.Contains(inspectFormat, required) {
-			t.Errorf("inspect format must project %s", required)
+
+	// A real `json` implementation, unlike the parse-only stub above.
+	funcs := template.FuncMap{}
+	maps.Copy(funcs, dockerTemplateFuncs)
+	funcs["json"] = func(v any) string {
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal %v: %v", v, err)
 		}
+		return string(encoded)
+	}
+
+	tmpl, err := template.New("inspect").Funcs(funcs).Parse(inspectFormat)
+	if err != nil {
+		t.Fatalf("parse inspectFormat: %v", err)
+	}
+	var rendered strings.Builder
+	if err := tmpl.Execute(&rendered, source); err != nil {
+		t.Fatalf("execute inspectFormat: %v", err)
+	}
+
+	if strings.Contains(rendered.String(), secret) {
+		t.Errorf("projection pulled Config.Env into CLI memory:\n%s", rendered.String())
+	}
+
+	found, skipped := parseInspectLines(rendered.String())
+	if skipped != 0 || len(found) != 1 {
+		t.Fatalf("rendered output did not decode: %d found, %d skipped\n%s",
+			len(found), skipped, rendered.String())
+	}
+	got := found[0]
+	if got.Name != "/stack-backend-1" {
+		t.Errorf("Name = %q", got.Name)
+	}
+	if got.RestartCount != 7 {
+		t.Errorf("RestartCount = %d, want 7", got.RestartCount)
+	}
+	if got.State.Health == nil || got.State.Health.Status != "starting" {
+		t.Errorf("health did not survive the projection: %+v", got.State.Health)
+	}
+	if got.State.StartedAt != "2026-07-25T09:21:00Z" {
+		t.Errorf("StartedAt = %q", got.State.StartedAt)
+	}
+	if got.startPeriod() != 600*time.Second {
+		t.Errorf("startPeriod = %v, want 10m0s", got.startPeriod())
+	}
+	if probe := got.lastProbe(); probe != "connection refused" {
+		t.Errorf("lastProbe = %q", probe)
 	}
 }

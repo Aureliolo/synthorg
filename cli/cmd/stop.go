@@ -106,7 +106,10 @@ func runStop(cmd *cobra.Command, _ []string) error {
 	sp := out.StartSpinner("Stopping containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, downArgs...); err != nil {
 		sp.Error("Failed to stop containers")
-		reportStartFailure(ctx, info, safeDir, errOut)
+		// Deliberately NOT reportStartFailure: its hint tells the operator
+		// to re-run `synthorg start` or watch the stack come up, which is
+		// the opposite of what someone whose stop just failed wants, and
+		// the pre-teardown report above already listed the containers.
 		return fmt.Errorf("stopping containers: %w", err)
 	}
 	sp.Success("SynthOrg stopped")

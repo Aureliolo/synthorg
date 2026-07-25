@@ -22,8 +22,10 @@ import (
 // the last probe actually said.
 
 // probeOutputLimit caps how much of a health probe's captured output is
-// echoed. A failing probe in this image prints a full Python traceback;
-// the first lines carry the cause and the rest is stack frames.
+// echoed, after lastProbe has already reduced it to its final line. Both
+// probes in this stack put the useful part last: a Python traceback ends
+// with the exception, and wget ends with the HTTP status. The cap is for
+// the pathological case of a single very long line.
 const probeOutputLimit = 400
 
 // containerInspect is the subset of `docker inspect` this diagnostic reads.
@@ -168,11 +170,18 @@ var containerIDPattern = regexp.MustCompile(`^[0-9a-f]{12,64}$`)
 // would materialise the whole container config, including every secret in
 // Config.Env (master key, settings key, JWT secret, Postgres DSN), into
 // CLI memory for no reason.
-const inspectFormat = `{{json (dict ` +
-	`"Name" .Name ` +
-	`"RestartCount" .RestartCount ` +
-	`"State" .State ` +
-	`"Config" (dict "Healthcheck" .Config.Healthcheck))}}`
+//
+// The object is assembled from literal text plus `json` calls rather than
+// with a map-building helper: `docker inspect --format` exposes only
+// Docker's own small FuncMap (json, split, join, title, lower, upper, pad,
+// truncate, println) on top of text/template's builtins. Anything else --
+// `dict` in particular, which comes from Sprig and reads as though it
+// should work -- fails to PARSE, so the command errors out and every
+// diagnostic here silently degrades to nothing.
+const inspectFormat = `{"Name":{{json .Name}},` +
+	`"RestartCount":{{json .RestartCount}},` +
+	`"State":{{json .State}},` +
+	`"Config":{"Healthcheck":{{json .Config.Healthcheck}}}}`
 
 // composeContainerIDs extracts the container IDs from `compose ps --quiet`
 // output, discarding everything else. Anything that is not an ID is
@@ -315,9 +324,13 @@ func composeUpTick(
 	inspectCtx, cancel := context.WithTimeout(ctx, GetGlobalOpts(ctx).Tunables.StatusDockerTimeout)
 	defer cancel()
 	containers, err := inspectComposeContainers(inspectCtx, info, safeDir)
-	if err != nil {
+	if err != nil && len(containers) == 0 {
 		return base, nil
 	}
+	// A partial result is still usable, and discarding it would defeat
+	// the abort below: one container the daemon described in a way this
+	// binary cannot decode would leave a crash loop undetected, and the
+	// dependency wait has no other terminal condition.
 
 	if looping := crashLoopingContainer(containers); looping != nil {
 		return base, fmt.Errorf(
