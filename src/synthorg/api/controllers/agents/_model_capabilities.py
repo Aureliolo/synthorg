@@ -7,7 +7,7 @@ re-probed. It is therefore resolved at the response boundary instead of
 being persisted onto :class:`~synthorg.config.agent_schema.AgentConfig`,
 which round-trips through the settings write/read cycle.
 
-:class:`AgentConfigResponse` re-declares the agent fields it puts on the wire
+:class:`AgentConfigResponse` redeclares the agent fields it puts on the wire
 rather than subclassing ``AgentConfig``. Two things follow from that: a field
 added to the persisted schema reaches the wire only when someone adds it here
 too, and a response can never be mistaken for a persistable ``AgentConfig`` by
