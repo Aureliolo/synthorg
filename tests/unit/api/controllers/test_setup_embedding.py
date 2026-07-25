@@ -136,6 +136,28 @@ class TestPickModelRef:
         assert pick_decomposition_model_ref([]) is None
         assert pick_model_ref_for_tier([{"tier": "small"}], "small") is None
 
+    def test_half_bound_agent_does_not_end_the_scan(self) -> None:
+        """A provider with no model id yields no ref, so it must not win.
+
+        Stopping there would report "no bound model" while a fully bound
+        agent sits later in the roster.
+        """
+        agents: list[dict[str, object]] = [
+            {"tier": "small", "model": {"provider": "p1", "model_id": ""}},
+            {"tier": "small", "model": {"provider": "p2", "model_id": "real-model"}},
+        ]
+
+        assert pick_model_ref_for_tier(agents, "small") == _bound("p2", "real-model")
+        assert pick_decomposition_model_ref(agents) == _bound("p2", "real-model")
+
+    def test_model_id_without_a_provider_does_not_end_the_scan(self) -> None:
+        agents: list[dict[str, object]] = [
+            {"tier": "large", "model": {"provider": "", "model_id": "orphan"}},
+            {"tier": "large", "model": {"provider": "p3", "model_id": "bound"}},
+        ]
+
+        assert pick_model_ref_for_tier(agents, "large") == _bound("p3", "bound")
+
 
 @pytest.mark.unit
 class TestSetModelIfBlank:

@@ -15,12 +15,16 @@ import pytest
 from synthorg.api.dto_providers import UpdateProviderRequest
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.probe_protocol import ProviderProbeRequester
+from synthorg.settings.service import SettingsService
 from tests._shared import mock_of
 
 from .conftest import make_create_request
 
 #: Configured mock, typed loosely for the unittest.mock API.
 _Configured = Any  # type: ignore[explicit-any]
+
+#: Outer bound for the hanging-probe test; the setting under test is far lower.
+_HANG_GUARD_SECONDS = 5.0
 
 
 def _requester() -> _Configured:
@@ -88,6 +92,37 @@ class TestProbeOnMutation:
     ) -> None:
         """The prober is wired on startup, after this service is constructed."""
         result = await service.create_provider(make_create_request())
+
+        assert result.driver == "litellm"
+
+    async def test_a_hanging_probe_does_not_hold_the_mutation_open(
+        self,
+        service: ProviderManagementService,
+        settings_service: SettingsService,
+    ) -> None:
+        """A mistyped host must not stall the save for the probe's own timeout.
+
+        The probe is awaited on the request, so its budget is what bounds the
+        POST; exceeding it costs only the immediate health reading.
+        """
+        # The setting's own floor, so this also pins that an operator cannot
+        # configure the budget away entirely.
+        await settings_service.set("api", "post_mutation_probe_timeout_seconds", "0.1")
+        requester = _requester()
+
+        async def _never_returns(name: str) -> None:
+            del name
+            await asyncio.Event().wait()
+
+        requester.probe_provider.side_effect = _never_returns
+        service.set_probe_requester(requester)
+
+        # Comfortably above the 0.1s budget, far below any hang: this fails
+        # loudly if the timeout is ever removed rather than waiting it out.
+        result = await asyncio.wait_for(
+            service.create_provider(make_create_request()),
+            timeout=_HANG_GUARD_SECONDS,
+        )
 
         assert result.driver == "litellm"
 

@@ -1725,10 +1725,10 @@ jobs:
       # screenshot specs (e2e/visual) need committed per-platform baselines
       # and are out of scope for this gate.
       - name: Run Playwright flow specs
-        # --retries 2 is the standard Playwright CI setting: it retries only on
-        # failure (transient browser-startup / rendering-timing flakes) and does
-        # not mask a stable assertion mismatch, so a real regression still fails.
-        run: npx playwright test e2e/flows --project=desktop-chromium --retries 2
+        # No --retries here: the count lives in web/playwright.config.ts, which
+        # already applies 2 under CI. A CLI flag would silently override it and
+        # leave the config value dead.
+        run: npx playwright test e2e/flows --project=desktop-chromium
         working-directory: web
       - name: Upload Playwright report
         if: failure()

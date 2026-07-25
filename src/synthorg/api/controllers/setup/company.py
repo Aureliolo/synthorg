@@ -161,10 +161,19 @@ class SetupCompanyController(Controller):
             SetupModelCandidate(provider=provider, model_id=model_id)
             for provider, model_id in provider_models
         )
+        # Recommendations come from the persisted roster, candidates from the
+        # live provider configs, so an agent still assigned a since-removed
+        # provider or model would prefill a ref absent from the options. The
+        # picker preselects by string identity, so that renders as an empty
+        # select holding an invisible value; offer no recommendation instead.
+        offered = frozenset(candidate.ref for candidate in candidates)
+
+        def _offered(ref: str | None) -> str | None:
+            return ref if ref in offered else None
 
         return ApiResponse(
             data=SetupModelRecommendationsResponse(
-                decomposition_recommended=capable,
+                decomposition_recommended=_offered(capable),
                 model_ref_candidates=candidates,
                 embedding_recommended=selection.model_id if selection else None,
                 embedding_recommended_dims=(
@@ -174,12 +183,12 @@ class SetupCompanyController(Controller):
                 # Research reuses the capable-model heuristic (its own setting,
                 # not the decomposition model). Each per-feature model is
                 # recommended at its declared tier from the single tier policy.
-                research_recommended=capable,
-                cos_recommended=_for(PromptPurposeId.COS_CHAT),
-                propose_recommended=_for(PromptPurposeId.COS_PROPOSE),
-                routing_recommended=_for(PromptPurposeId.COS_ROUTING),
-                narrative_recommended=_for(PromptPurposeId.COS_NARRATIVE),
-                charter_recommended=_for(PromptPurposeId.CHARTER_INTERVIEW),
+                research_recommended=_offered(capable),
+                cos_recommended=_offered(_for(PromptPurposeId.COS_CHAT)),
+                propose_recommended=_offered(_for(PromptPurposeId.COS_PROPOSE)),
+                routing_recommended=_offered(_for(PromptPurposeId.COS_ROUTING)),
+                narrative_recommended=_offered(_for(PromptPurposeId.COS_NARRATIVE)),
+                charter_recommended=_offered(_for(PromptPurposeId.CHARTER_INTERVIEW)),
             )
         )
 

@@ -876,6 +876,27 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.API,
+        key="post_mutation_probe_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="3.0",
+        description=(
+            "Ceiling on the health probe that runs when a provider is created"
+            " or re-pointed. The probe is awaited on the request, so an"
+            " operator who mistypes a host would otherwise wait out the full"
+            " probe timeout before the save responds. Exceeding this budget"
+            " leaves the provider UNKNOWN until the next periodic sweep --"
+            " the save itself still succeeds. Resolved per mutation, so a"
+            " change applies without a restart."
+        ),
+        group="Providers",
+        level=SettingLevel.ADVANCED,
+        min_value=0.1,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
         key="webhook_receipt_cleanup_enabled",
         type=SettingType.BOOLEAN,
         default="true",

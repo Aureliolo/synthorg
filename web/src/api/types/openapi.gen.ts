@@ -16657,7 +16657,7 @@ export type components = {
              *     canonical form, which the ``MODEL_REF`` validator accepts verbatim.
              *
              *     Returns:
-             *         The serialized model reference.
+             *         The serialised model reference.
              */
             readonly ref: string;
         };

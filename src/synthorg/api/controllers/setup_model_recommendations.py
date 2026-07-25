@@ -42,7 +42,7 @@ class SetupModelCandidate(BaseModel):
         canonical form, which the ``MODEL_REF`` validator accepts verbatim.
 
         Returns:
-            The serialized model reference.
+            The serialised model reference.
         """
         return serialize_model_ref(
             ModelRef(provider=self.provider, model_id=self.model_id)
@@ -59,7 +59,7 @@ class SetupModelRecommendationsResponse(BaseModel):
     Every per-feature model setting is a ``SettingType.MODEL_REF``, which
     rejects a provider-less value at write time, so both the recommendation and
     the candidate list for those pickers are provider-bound: the
-    ``*_recommended`` fields carry a serialized ref matching one candidate's
+    ``*_recommended`` fields carry a serialised ref matching one candidate's
     ``ref``. The embedding pair is the sole exception -- ``memory.embedder_model``
     is a plain ``SettingType.STRING``, so it stays a bare model id on both sides.
 

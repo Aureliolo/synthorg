@@ -191,6 +191,22 @@ def _agent_model(agent: dict[str, object]) -> dict[str, object] | None:
     return None
 
 
+def _is_bound_model(model: dict[str, object]) -> bool:
+    """Whether an assignment names both a provider and a model id.
+
+    Returns:
+        True when both halves are present and non-blank.
+    """
+    provider = model.get("provider")
+    model_id = model.get("model_id")
+    return bool(
+        isinstance(provider, str)
+        and provider.strip()
+        and isinstance(model_id, str)
+        and model_id.strip()
+    )
+
+
 def _agent_model_ref(agent: dict[str, object]) -> str | None:
     """Return an agent's model as a bound ``{provider, model_id}`` MODEL_REF.
 
@@ -200,21 +216,17 @@ def _agent_model_ref(agent: dict[str, object]) -> str | None:
     non-blank on the agent's assignment.
 
     Returns:
-        A serialized bound model reference, or ``None``.
+        A serialised bound model reference, or ``None``.
     """
     model = _agent_model(agent)
-    if model is None:
+    if model is None or not _is_bound_model(model):
         return None
-    provider = model.get("provider")
-    model_id = model.get("model_id")
-    if (
-        isinstance(provider, str)
-        and provider.strip()
-        and isinstance(model_id, str)
-        and model_id.strip()
-    ):
-        return serialize_model_ref(ModelRef(provider=provider, model_id=model_id))
-    return None
+    return serialize_model_ref(
+        ModelRef(
+            provider=str(model["provider"]),
+            model_id=str(model["model_id"]),
+        )
+    )
 
 
 def _first_agent_with_model(
@@ -228,9 +240,9 @@ def _first_agent_with_model(
     Args:
         agents: Roster agent dicts to search.
         tier: Preferred tier; matched agents are considered first.
-        require_provider: When ``True``, skip agents whose model carries no
-            bound provider, so a ref-returning caller does not stop at a
-            provider-less agent when a later agent has a bound assignment.
+        require_provider: When ``True``, skip agents whose model is not fully
+            bound, so a ref-returning caller does not stop at an unusable
+            agent when a later agent has a complete assignment.
 
     Returns:
         The chosen agent dict, or ``None`` when none carries a (bound) model.
@@ -241,8 +253,10 @@ def _first_agent_with_model(
             model = _agent_model(agent)
             if model is None:
                 continue
-            provider = model.get("provider")
-            if not require_provider or (isinstance(provider, str) and provider.strip()):
+            # Both halves, matching what ``_agent_model_ref`` demands: an agent
+            # with a provider but no model id yields no ref, so accepting it
+            # here would end the scan on a value the caller cannot use.
+            if not require_provider or _is_bound_model(model):
                 return agent
     return None
 
@@ -255,7 +269,7 @@ def pick_model_ref_for_tier(agents: list[dict[str, object]], tier: str) -> str |
     assignment.
 
     Returns:
-        A serialized bound model reference, or ``None`` when no agent carries
+        A serialised bound model reference, or ``None`` when no agent carries
         a bound (provider + model) assignment.
     """
     agent = _first_agent_with_model(agents, tier=tier, require_provider=True)
@@ -266,7 +280,7 @@ def pick_decomposition_model_ref(agents: list[dict[str, object]]) -> str | None:
     """Choose a bound ``{provider, model_id}`` ref for the decomposition model.
 
     Returns:
-        A serialized bound model reference, or ``None`` when no agent carries a
+        A serialised bound model reference, or ``None`` when no agent carries a
         bound assignment.
     """
     agent = _first_agent_with_model(agents, tier="large", require_provider=True)

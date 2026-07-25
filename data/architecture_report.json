@@ -158,14 +158,14 @@
     },
     "src/synthorg/api/controllers/setup/_embedder_setup.py": {
       "cap": 500,
-      "loc": 422,
-      "ratio": 0.844,
+      "loc": 430,
+      "ratio": 0.86,
       "tier": "code"
     },
     "src/synthorg/api/controllers/setup/company.py": {
       "cap": 400,
-      "loc": 329,
-      "ratio": 0.823,
+      "loc": 332,
+      "ratio": 0.83,
       "tier": "controller"
     },
     "src/synthorg/api/controllers/setup_models.py": {
@@ -1400,8 +1400,8 @@
     },
     "src/synthorg/providers/management/service.py": {
       "cap": 1100,
-      "loc": 987,
-      "ratio": 0.897,
+      "loc": 995,
+      "ratio": 0.905,
       "tier": "complex_service"
     },
     "src/synthorg/providers/models.py": {
@@ -1940,7 +1940,7 @@
     },
     "synthorg.providers.management.service:ProviderManagementService": {
       "lcom4": 2,
-      "loc": 759
+      "loc": 767
     },
     "synthorg.settings.dispatcher:SettingsChangeDispatcher": {
       "lcom4": 1,

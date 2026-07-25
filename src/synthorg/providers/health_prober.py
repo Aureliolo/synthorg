@@ -463,18 +463,6 @@ class ProviderHealthProber:
             if not target.eligible or await self._probed_within_interval(name):
                 continue
             eligible.append((name, config, target.validation))
-        # A cycle that probes nothing is otherwise indistinguishable from one
-        # that probed everything successfully, so record both counts: an empty
-        # provider map (the state before the first provider is configured)
-        # would otherwise iterate zero times and emit no trace at all. INFO,
-        # not DEBUG: the deployed default is ``info``, so a DEBUG heartbeat
-        # would leave that exact silence in place. One line per cycle at the
-        # default 1800s interval is a heartbeat, not noise.
-        logger.info(
-            PROVIDER_HEALTH_PROBER_CYCLE_COMPLETED,
-            provider_count=len(providers),
-            eligible_count=len(eligible),
-        )
         if eligible:
             async with asyncio.TaskGroup() as tg:
                 for name, config, validation in eligible:
@@ -486,6 +474,23 @@ class ProviderHealthProber:
                             validation=validation,
                         )
                     )
+        # A cycle that probes nothing is otherwise indistinguishable from one
+        # that probed everything successfully, so record both counts: an empty
+        # provider map (the state before the first provider is configured)
+        # would otherwise iterate zero times and emit no trace at all. INFO,
+        # not DEBUG: the deployed default is ``info``, so a DEBUG heartbeat
+        # would leave that exact silence in place. One line per cycle at the
+        # default 1800s interval is a heartbeat, not noise.
+        #
+        # After the group, so the event means what its name says: a group that
+        # raises leaves no completion line rather than one that already
+        # claimed success. Outside the ``if``, so a zero-provider sweep still
+        # reports.
+        logger.info(
+            PROVIDER_HEALTH_PROBER_CYCLE_COMPLETED,
+            provider_count=len(providers),
+            eligible_count=len(eligible),
+        )
 
     async def _safe_probe_one(
         self,

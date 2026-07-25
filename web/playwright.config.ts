@@ -7,7 +7,11 @@ export default defineConfig({
   outputDir: './test-results',
   fullyParallel: true,
   forbidOnly: isCI,
-  retries: isCI ? 1 : 0,
+  // Two on CI: retries fire only on failure (transient browser-startup and
+  // rendering-timing flakes) and cannot mask a stable assertion mismatch, so a
+  // real regression still fails. This is the single source of the count; the
+  // workflow must not pass --retries, which would silently override it.
+  retries: isCI ? 2 : 0,
   // Omitted off CI so Playwright keeps its own default (half the cores);
   // an explicit `undefined` is not the same thing under exactOptionalPropertyTypes.
   ...(isCI ? { workers: 1 } : {}),

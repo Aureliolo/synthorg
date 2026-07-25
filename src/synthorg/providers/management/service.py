@@ -360,6 +360,11 @@ class ProviderManagementService(
         provider is already persisted, so a probe failure must not turn a
         successful mutation into an error.
 
+        The probe is awaited on the request, so it carries its own deadline:
+        a mistyped host would otherwise hold the save open for the probe's own
+        connect timeout plus DNS. Timing out costs only the immediate health
+        reading, which the next sweep supplies anyway.
+
         Raises:
             asyncio.CancelledError: Propagated immediately so shutdown is not
                 swallowed by the best-effort handler below.
@@ -368,7 +373,11 @@ class ProviderManagementService(
         if requester is None:
             return
         try:
-            await requester.probe_provider(name)
+            budget = await self._config_resolver.get_float(
+                "api", "post_mutation_probe_timeout_seconds"
+            )
+            async with asyncio.timeout(budget):
+                await requester.probe_provider(name)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
