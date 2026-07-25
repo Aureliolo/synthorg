@@ -43,7 +43,7 @@ Two model-related fields ride on an agent, and they point in opposite directions
     `api/controllers/agents/_model_capabilities.py` from the provider's `ModelMetadata`:
     `supports_reasoning`, `supports_vision`, `tool_calling`, and `metadata_source`.
 
-`AgentConfigResponse` redeclares the agent fields it exposes rather than inheriting from
+`AgentConfigResponse` lists the agent fields it exposes explicitly rather than inheriting from
 `AgentConfig`, so a field added to the persisted schema reaches the wire only when someone
 adds it here too, and a response can never be handed to a persistence path typed for
 `AgentConfig`. The provider-level counterpart is `GET /providers/{name}/models` (see
