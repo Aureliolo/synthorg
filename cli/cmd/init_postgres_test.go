@@ -326,6 +326,15 @@ func TestPostgresLifecycle_InitGeneratesWritableState(t *testing.T) {
 // newReinitCmd builds a throwaway cobra.Command with the --postgres-port flag
 // registered so tests can drive handleReinit() through the real code path,
 // including cmd.Flags().Changed("postgres-port") checks.
+//
+// Only --postgres-port is registered, so Changed() is false for every other
+// init flag: a test asserting that an explicitly-passed --persistence-backend
+// wins would silently take the not-passed branch instead. Register the flag
+// under test here before relying on its Changed() value.
+//
+// pflag's IntVar writes through the pointer at REGISTRATION time, so calling
+// this mutates the package-level initPostgresPort. Callers must hold
+// snapshotInitFlags() and must not run in parallel.
 func newReinitCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "init"}
 	cmd.Flags().IntVar(&initPostgresPort, "postgres-port", 0, "")
@@ -340,8 +349,8 @@ func newReinitCmd() *cobra.Command {
 //   - when the user DOES pass --postgres-port with a different value (6543),
 //     the explicit flag must win and the persisted value must be discarded.
 //
-// The previous revision of this test only exercised buildState + writeInitFiles
-// + config.Load, which never reached the handleReinit flag-precedence path.
+// It drives handleReinit itself rather than buildState + writeInitFiles,
+// because the flag-precedence decision lives only on that path.
 func TestPostgresLifecycle_ReinitPreservesCustomPostgresPort(t *testing.T) {
 	defer snapshotInitFlags()()
 

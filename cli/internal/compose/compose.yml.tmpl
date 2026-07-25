@@ -253,7 +253,7 @@ services:
     image: {{.DHIRegistry}}/nats:{{.NATSImageTag}}{{if .NATSDigest}}@{{.NATSDigest}}{{end}}
     command: ["-c", "/etc/nats/nats.conf"]
     ports:
-      - "{{.NatsClientPort}}:4222"
+      - "{{.NATSClientPort}}:4222"
       # Uncomment to expose the NATS monitoring endpoint (/varz, /healthz,
       # server stats) to the host for debugging. It is UNAUTHENTICATED, so
       # leave it off by default; backend /api/v1/readyz is the supported

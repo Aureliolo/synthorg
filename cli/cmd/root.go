@@ -120,8 +120,9 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 		// way to repair a broken config without hand-editing the file
 		// they would normally fix via the CLI.
 		if isRecoveryCommand(cmd) {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-				"Warning: tunable resolution failed (%v); continuing with defaults for recovery command.\n", err)
+			ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions()).Warn(fmt.Sprintf(
+				"Tunable resolution failed (%v); continuing with defaults so this "+
+					"command can still repair the install.", err))
 			opts.Tunables = config.DefaultTunables()
 		} else {
 			return err
@@ -209,45 +210,55 @@ func applyTunables(cmd *cobra.Command, opts *GlobalOpts) error {
 
 	if tun.CustomRegistry {
 		opts.SkipVerify = true
-		// Safety-critical warnings ignore --quiet / --json. The operator
-		// opted into a custom registry by setting the override, and the
-		// trust model demands a durable audit trail: a silent skip here
-		// would let a scripted pipeline pull unsigned images without any
-		// record. Write the warning with minimal UI options (no colour,
-		// no spinners) so scripts that parse stderr still see it.
-		warnOpts := opts.UIOptions()
-		warnOpts.Quiet = false
-		warnOpts.JSON = false
-		warnOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), warnOpts)
-		warnOut.Warn(
-			"Custom registry detected (registry_host/image_repo_prefix/dhi_registry/" +
-				"postgres_image_tag/nats_image_tag differs from default). Image signature " +
-				"and SLSA provenance verification are DISABLED -- you are responsible for " +
-				"the trust of this deployment. Unset the override or run " +
-				"'synthorg config unset <key>' to restore verification.")
+		warnCustomRegistry(cmd, opts)
 	}
 	return nil
 }
 
-// warnCoercedConfigFields reports every persisted enum value this binary
-// did not recognise and replaced at load time (see config.Coerce).
+// unsuppressibleWarner returns a UI that writes to stderr regardless of
+// --quiet / --json. Reserved for warnings whose whole value is that they
+// cannot be lost: a scripted pipeline that never sees them would deploy
+// against unverified images or unchosen settings with no record either way.
+// Colour and spinners stay off so a script parsing stderr still reads them.
+func unsuppressibleWarner(cmd *cobra.Command, opts *GlobalOpts) *ui.UI {
+	warnOpts := opts.UIOptions()
+	warnOpts.Quiet = false
+	warnOpts.JSON = false
+	return ui.NewUIWithOptions(cmd.ErrOrStderr(), warnOpts)
+}
+
+// warnCustomRegistry records that image verification has been turned off.
+// The operator opted into a custom registry by setting the override, and
+// the trust model demands a durable audit trail of the consequence.
+func warnCustomRegistry(cmd *cobra.Command, opts *GlobalOpts) {
+	unsuppressibleWarner(cmd, opts).Warn(
+		"Custom registry detected (registry_host/image_repo_prefix/dhi_registry/" +
+			"postgres_image_tag/nats_image_tag differs from default). Image signature " +
+			"and SLSA provenance verification are DISABLED -- you are responsible for " +
+			"the trust of this deployment. Unset the override or run " +
+			"'synthorg config unset <key>' to restore verification.")
+}
+
+// warnCoercedConfigFields reports every persisted setting this binary
+// could not use as written and replaced at load time (see config.Coerce).
 //
 // Ignores --quiet / --json for the same reason the custom-registry warning
 // does: the stack is running with a value the operator did not choose, and
 // a scripted pipeline that never sees that would silently deploy against
-// the wrong backend. The warning stops on its own once any command
+// the wrong setting. The warning stops on its own once any command
 // persists state, because Save writes the coerced value through.
 func warnCoercedConfigFields(cmd *cobra.Command, opts *GlobalOpts, state config.State) {
 	if len(state.Coerced) == 0 {
 		return
 	}
-	warnOpts := opts.UIOptions()
-	warnOpts.Quiet = false
-	warnOpts.JSON = false
-	warnOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), warnOpts)
+	// "could not use as written" rather than "does not recognise": a
+	// coercion also covers a setting left empty that has no usable empty
+	// form, and calling that unrecognised would read as a CLI bug.
+	warnOut := unsuppressibleWarner(cmd, opts)
 	warnOut.Warn(fmt.Sprintf(
-		"%s holds settings this version does not recognise; the defaults below are in effect. "+
-			"Run 'synthorg config set <key> <value>' to choose explicitly.",
+		"%s holds settings this version could not use as written; the substitutions "+
+			"below are in effect. Run 'synthorg config set <key> <value>' to choose "+
+			"explicitly.",
 		config.StatePath(state.DataDir),
 	))
 	for _, c := range state.Coerced {

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
@@ -12,12 +13,21 @@ import (
 // the per-function complexity budget.
 
 // irreplaceableSecretsAdvice is appended to any error about a config file
-// the CLI could not read. config.json is the ONLY copy of these four
-// values: master_key decrypts every stored connection secret, settings_key
-// decrypts the settings store, cursor_secret signs outstanding pagination
-// tokens, and postgres_password is the credential for an existing volume.
-// None can be regenerated, so no message may send the operator to delete
-// the file without saying what has to come out of it first.
+// the CLI could not read or write. config.json is the ONLY copy of these
+// four values: master_key decrypts every stored connection secret,
+// settings_key decrypts the settings store, cursor_secret signs
+// outstanding pagination tokens, and postgres_password is the credential
+// for an existing volume. None can be regenerated, so no message may send
+// the operator to delete the file without saying what has to come out of
+// it first.
+//
+// Deliberately full prose inside the error value rather than a HintError
+// emitted at print time, which is the shape the surrounding code otherwise
+// prefers. Every hint tier is suppressed by --quiet, and an operator
+// scripting `synthorg init -q` who then deleted the file on the strength
+// of a bare "could not be read" would lose every stored secret
+// permanently. The stylistic cost of a capitalised sentence in an error
+// string is worth an instruction that cannot be silenced.
 const irreplaceableSecretsAdvice = "It holds secrets that cannot be regenerated: copy master_key, " +
 	"settings_key, cursor_secret and postgres_password out of it before replacing it. " +
 	"Deleting it makes every stored connection secret permanently undecryptable and " +
@@ -58,14 +68,19 @@ func reuseExistingStateForInteractive(cmd *cobra.Command, state *config.State, r
 // from oldState into state when present. Regenerating these would
 // orphan stored ciphertext or invalidate outstanding pagination cursor
 // tokens, so init always preserves them across re-init.
+//
+// Presence is tested with TrimSpace, matching every validator in the
+// config package. A whitespace-only persisted value is not a secret worth
+// carrying, and treating it as one would clobber the freshly generated
+// key with something Validate then rejects.
 func copyPreservedSecrets(state *config.State, oldState config.State) {
-	if oldState.SettingsKey != "" {
+	if strings.TrimSpace(oldState.SettingsKey) != "" {
 		state.SettingsKey = oldState.SettingsKey
 	}
-	if oldState.MasterKey != "" {
+	if strings.TrimSpace(oldState.MasterKey) != "" {
 		state.MasterKey = oldState.MasterKey
 	}
-	if oldState.CursorSecret != "" {
+	if strings.TrimSpace(oldState.CursorSecret) != "" {
 		state.CursorSecret = oldState.CursorSecret
 	}
 }

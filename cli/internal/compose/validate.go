@@ -128,11 +128,11 @@ func validateDistributed(p Params) error {
 	if !p.DistributedEnabled() {
 		return nil
 	}
-	if p.NatsClientPort < 1 || p.NatsClientPort > 65535 {
-		return fmt.Errorf("invalid nats client port %d: must be 1-65535", p.NatsClientPort)
+	if p.NATSClientPort < 1 || p.NATSClientPort > 65535 {
+		return fmt.Errorf("invalid nats client port %d: must be 1-65535", p.NATSClientPort)
 	}
-	if p.NatsClientPort == p.BackendPort || p.NatsClientPort == p.WebPort {
-		return fmt.Errorf("nats client port %d collides with another service port", p.NatsClientPort)
+	if p.NATSClientPort == p.BackendPort || p.NATSClientPort == p.WebPort {
+		return fmt.Errorf("nats client port %d collides with another service port", p.NATSClientPort)
 	}
 	return nil
 }
@@ -147,8 +147,8 @@ func validatePostgresParams(p Params) error {
 	if p.PostgresPort == p.BackendPort || p.PostgresPort == p.WebPort {
 		return fmt.Errorf("postgres port %d collides with another service port", p.PostgresPort)
 	}
-	if p.DistributedEnabled() && p.PostgresPort == p.NatsClientPort {
-		return fmt.Errorf("postgres port %d collides with nats client port %d", p.PostgresPort, p.NatsClientPort)
+	if p.DistributedEnabled() && p.PostgresPort == p.NATSClientPort {
+		return fmt.Errorf("postgres port %d collides with nats client port %d", p.PostgresPort, p.NATSClientPort)
 	}
 	if strings.TrimSpace(p.PostgresPassword) == "" {
 		return fmt.Errorf("postgres password is required when persistence backend is postgres")

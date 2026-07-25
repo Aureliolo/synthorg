@@ -99,7 +99,7 @@ func runInitInteractive(cmd *cobra.Command, out *ui.UI) error {
 		return fmt.Errorf("building state from TUI: %w", err)
 	}
 	if result.natsPort > 0 {
-		state.NatsClientPort = result.natsPort
+		state.NATSClientPort = result.natsPort
 	}
 
 	if err := reuseExistingStateForInteractive(cmd, &state, result); err != nil {
@@ -193,7 +193,7 @@ func buildSummaryFromState(state config.State) summaryData {
 	}
 	if state.BusBackend == "nats" {
 		d.busMode = "nats"
-		d.busPort = strconv.Itoa(state.NatsClientPort)
+		d.busPort = strconv.Itoa(state.NATSClientPort)
 	} else {
 		d.busMode = "internal"
 	}
@@ -262,20 +262,12 @@ func applyReinitInteractive(cmd *cobra.Command, state *config.State, oldState co
 	if kept == nil {
 		return false, nil
 	}
-	if *kept != "" {
+	// The prompt decides the settings key; the remaining secrets carry
+	// forward on the same terms as the --yes path, so route them through
+	// the one helper rather than restating the rules.
+	copyPreservedSecrets(state, oldState)
+	if strings.TrimSpace(*kept) != "" {
 		state.SettingsKey = *kept
-	}
-	// Preserve the secret-storage master key so existing ciphertext
-	// stays decryptable after re-init. Regenerating would orphan every
-	// stored connection secret.
-	if oldState.MasterKey != "" {
-		state.MasterKey = oldState.MasterKey
-	}
-	// Preserve the pagination cursor secret. Rotating it invalidates
-	// every outstanding cursor token across every restart (same hazard
-	// as MasterKey).
-	if oldState.CursorSecret != "" {
-		state.CursorSecret = oldState.CursorSecret
 	}
 	if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
 		return false, err
@@ -313,7 +305,7 @@ func preservePostgresFromOldState(
 		state.PostgresPort = 0
 		return nil
 	}
-	if oldState.PostgresPassword != "" {
+	if strings.TrimSpace(oldState.PostgresPassword) != "" {
 		state.PostgresPassword = oldState.PostgresPassword
 	}
 	if oldState.PostgresPort != 0 && !cmd.Flags().Changed("postgres-port") {

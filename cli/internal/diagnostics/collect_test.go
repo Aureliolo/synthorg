@@ -492,3 +492,69 @@ func TestDiagnosticImageRefPriority(t *testing.T) {
 }
 
 func ptrBool(v bool) *bool { return &v }
+
+// TestCollectConfigCarriesCoercionsAndRedactsSecrets covers the two things
+// the config section of a doctor report must get right at once.
+//
+// Coercions cannot ride in ConfigRedacted: they carry `json:"-"` so they
+// never round-trip through the config file, which is deliberate (a
+// read-only command must not rewrite the operator's value) but means the
+// report would otherwise show the substituted value with no sign it is not
+// what they configured. And the report is written to disk, so every secret
+// has to be gone from it whatever else happens.
+func TestCollectConfigCarriesCoercionsAndRedactsSecrets(t *testing.T) {
+	t.Parallel()
+
+	const password = "the-postgres-password-nobody-should-see"
+	state := config.DefaultState()
+	state.JWTSecret = "jwt-secret-value"
+	state.SettingsKey = "settings-key-value"
+	state.MasterKey = "master-key-value"
+	state.PostgresPassword = password
+	state.CursorSecret = "cursor-secret-value"
+	state.Coerced = []config.Coercion{
+		{Field: "channel", Rejected: "nightly", Applied: "stable", Allowed: "dev, stable"},
+	}
+
+	var r Report
+	collectConfig(&r, state)
+
+	if len(r.ConfigCoercions) != 1 {
+		t.Fatalf("ConfigCoercions = %v, want the one coercion", r.ConfigCoercions)
+	}
+	if r.ConfigCoercions[0] != state.Coerced[0].String() {
+		t.Errorf("ConfigCoercions[0] = %q, want %q", r.ConfigCoercions[0], state.Coerced[0].String())
+	}
+	for _, secret := range []string{
+		password, "jwt-secret-value", "settings-key-value",
+		"master-key-value", "cursor-secret-value",
+	} {
+		if strings.Contains(r.ConfigRedacted, secret) {
+			t.Errorf("secret %q survived redaction into the on-disk report", secret)
+		}
+	}
+	if !strings.Contains(r.ConfigRedacted, "[REDACTED]") {
+		t.Error("redacted config must show the secrets were present, not omit the fields")
+	}
+}
+
+// TestFormatTextCoercionSection pins that a coercion reaches the rendered
+// report, and that a clean config produces no section at all: an empty
+// heading reads as a finding the operator then has to rule out.
+func TestFormatTextCoercionSection(t *testing.T) {
+	t.Parallel()
+
+	coercion := config.Coercion{
+		Field: "hints", Rejected: "sometimes", Applied: "", Allowed: "always, auto, never",
+	}.String()
+
+	withCoercion := Report{ConfigCoercions: []string{coercion}}.FormatText()
+	if !strings.Contains(withCoercion, coercion) {
+		t.Errorf("report must carry the coercion verbatim:\n%s", withCoercion)
+	}
+
+	clean := Report{}.FormatText()
+	if strings.Contains(clean, "replaced at load time") {
+		t.Errorf("a clean config must produce no coercion section:\n%s", clean)
+	}
+}

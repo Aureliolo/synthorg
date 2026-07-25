@@ -593,7 +593,11 @@ jobs:
       # The image is already loaded into the local Docker daemon
       # by build-scan-image (it builds with `outputs: type=docker,
       # dest=...` and re-loads); we run it in the same job, no
-      # registry pull. Probes /api/v1/healthz with a 120s deadline.
+      # registry pull. It probes /api/v1/healthz under the same CPU
+      # and memory limits compose applies, against a deadline derived
+      # from the image's own HEALTHCHECK start period -- so a cold
+      # boot that grows into the health budget's headroom fails here
+      # rather than on a user's first `synthorg start`.
       - name: Smoke-test backend image
         uses: ./.github/actions/smoke-test-backend-image
         with:

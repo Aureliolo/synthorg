@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -48,6 +49,22 @@ func writeLegacyConfig(t *testing.T, dir string) {
 	}
 }
 
+// recoveryAnswers is the answer set a re-init of the writeLegacyConfig
+// install collects: same topology, current defaults for the enums.
+func recoveryAnswers(dir string) setupAnswers {
+	return setupAnswers{
+		dir:                dir,
+		backendPortStr:     "3001",
+		webPortStr:         "3000",
+		logLevel:           "info",
+		persistenceBackend: "postgres",
+		memoryBackend:      config.DefaultState().MemoryBackend,
+		busBackend:         "internal",
+		postgresPort:       3002,
+		encryptSecrets:     true,
+	}
+}
+
 func assertSecretsPreserved(t *testing.T, s config.State) {
 	t.Helper()
 	for _, c := range []struct{ name, got, want string }{
@@ -73,17 +90,7 @@ func TestReinitRecoversConfigWithRemovedEnumValue(t *testing.T) {
 	dir := t.TempDir()
 	writeLegacyConfig(t, dir)
 
-	newState, err := buildState(setupAnswers{
-		dir:                dir,
-		backendPortStr:     "3001",
-		webPortStr:         "3000",
-		logLevel:           "info",
-		persistenceBackend: "postgres",
-		memoryBackend:      config.DefaultState().MemoryBackend,
-		busBackend:         "internal",
-		postgresPort:       3002,
-		encryptSecrets:     true,
-	})
+	newState, err := buildState(recoveryAnswers(dir))
 	if err != nil {
 		t.Fatalf("buildState: %v", err)
 	}
@@ -147,17 +154,7 @@ func TestReinitRecoversConfigFailingValidation(t *testing.T) {
 		t.Fatal("expected strict Load to reject the invalid config")
 	}
 
-	newState, err := buildState(setupAnswers{
-		dir:                dir,
-		backendPortStr:     "3001",
-		webPortStr:         "3000",
-		logLevel:           "info",
-		persistenceBackend: "postgres",
-		memoryBackend:      config.DefaultState().MemoryBackend,
-		busBackend:         "internal",
-		postgresPort:       3002,
-		encryptSecrets:     true,
-	})
+	newState, err := buildState(recoveryAnswers(dir))
 	if err != nil {
 		t.Fatalf("buildState: %v", err)
 	}
@@ -176,7 +173,10 @@ func TestReinitRecoversConfigFailingValidation(t *testing.T) {
 // steer an operator into deleting the only copy of their master key. The
 // message must name every secret that has to come out of the file first.
 func TestUnreadableConfigErrorNamesTheSecrets(t *testing.T) {
-	t.Parallel()
+	// Not parallel: newReinitCmd registers flags whose pflag *Var calls
+	// write the package-level init* variables at registration time, so two
+	// concurrent tests calling it race on shared state.
+	defer snapshotInitFlags()()
 
 	dir := t.TempDir()
 	if err := os.WriteFile(config.StatePath(dir), []byte("{not json"), 0o600); err != nil {
@@ -202,5 +202,89 @@ func TestUnreadableConfigErrorNamesTheSecrets(t *testing.T) {
 		if strings.Contains(msg, destructive) {
 			t.Errorf("error message must not advise %q; got: %s", destructive, msg)
 		}
+	}
+}
+
+// TestWriteInitFilesRefusesAConfigItCannotLoadBack closes the hole the
+// tolerant re-init loader opens. Skipping validation is what lets init read
+// a broken config, but the secrets it carries forward arrive unvalidated,
+// so without a check at the write boundary a malformed master key would be
+// persisted behind a success banner and brick every later command with no
+// way back.
+func TestWriteInitFilesRefusesAConfigItCannotLoadBack(t *testing.T) {
+	defer snapshotInitFlags()()
+
+	dir := t.TempDir()
+	state, err := buildState(recoveryAnswers(dir))
+	if err != nil {
+		t.Fatalf("buildState: %v", err)
+	}
+	// A Fernet key is 32 url-safe-base64 bytes; this is the shape a
+	// hand-edited or truncated config carries forward.
+	state.MasterKey = "not-a-fernet-key"
+
+	if _, err := writeInitFiles(state); err == nil {
+		t.Fatal("writeInitFiles must refuse a state that Validate rejects")
+	} else {
+		for _, secret := range []string{"master_key", "settings_key", "cursor_secret", "postgres_password"} {
+			if !strings.Contains(err.Error(), secret) {
+				t.Errorf("refusal must still name %s; got: %v", secret, err)
+			}
+		}
+	}
+
+	// Nothing may be left behind: a half-written install is the state an
+	// operator cannot reason about.
+	if _, err := os.Stat(config.StatePath(dir)); !os.IsNotExist(err) {
+		t.Errorf("config.json must not exist after a refused write, stat err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "compose.yml")); !os.IsNotExist(err) {
+		t.Errorf("compose.yml must not exist after a refused write, stat err = %v", err)
+	}
+}
+
+// TestReinitRecoversWhenPersistedDataDirIsUnusable covers the field that
+// cannot be repaired by re-reading it: a data_dir that fails SecurePath.
+// Refusing over it would strand the install exactly the way this whole
+// change exists to prevent, and it is pointless besides -- init overwrites
+// data_dir with the caller's --data-dir. Reachable in practice: a POSIX
+// absolute path persisted by one machine is not absolute on Windows.
+func TestReinitRecoversWhenPersistedDataDirIsUnusable(t *testing.T) {
+	defer snapshotInitFlags()()
+
+	dir := t.TempDir()
+	writeLegacyConfig(t, dir)
+
+	var body map[string]any
+	raw, err := os.ReadFile(config.StatePath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	body["data_dir"] = filepath.Join("relative", "synthorg")
+	patched, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.StatePath(dir), patched, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	newState, err := buildState(recoveryAnswers(dir))
+	if err != nil {
+		t.Fatalf("buildState: %v", err)
+	}
+	proceed, err := handleReinit(newReinitCmd(), &newState, &GlobalOpts{DataDir: mustAbs(t, dir), Yes: true})
+	if err != nil {
+		t.Fatalf("handleReinit must tolerate an unusable persisted data_dir, got %v", err)
+	}
+	if !proceed {
+		t.Fatal("handleReinit refused to proceed")
+	}
+	assertSecretsPreserved(t, newState)
+	if newState.DataDir != mustAbs(t, dir) {
+		t.Errorf("DataDir = %q, want the caller's --data-dir %q", newState.DataDir, mustAbs(t, dir))
 	}
 }

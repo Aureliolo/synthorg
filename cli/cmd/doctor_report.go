@@ -46,10 +46,7 @@ func runDoctorReport(cmd *cobra.Command, _ []string) error {
 	opts := GetGlobalOpts(ctx)
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
-	state, err := config.Load(opts.DataDir)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
+	state := loadForInspection(opts.DataDir, ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions()))
 
 	out.Step("Collecting diagnostics...")
 	report := diagnostics.Collect(ctx, state)

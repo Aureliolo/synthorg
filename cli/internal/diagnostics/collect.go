@@ -167,7 +167,13 @@ func collectConfig(r *Report, state config.State) {
 	if redacted.CursorSecret != "" {
 		redacted.CursorSecret = "[REDACTED]"
 	}
-	if b, err := json.MarshalIndent(redacted, "", "  "); err == nil { //nolint:gosec // G117: every secret-bearing State field (JWTSecret, SettingsKey, MasterKey, PostgresPassword, CursorSecret) is replaced with [REDACTED] above before marshalling
+	b, err := json.MarshalIndent(redacted, "", "  ") //nolint:gosec // G117: every secret-bearing State field (JWTSecret, SettingsKey, MasterKey, PostgresPassword, CursorSecret) is replaced with [REDACTED] above before marshalling
+	if err != nil {
+		// Every sibling collector records its failure here. Leaving this
+		// one silent would render an empty config section that reads as
+		// "nothing configured" rather than "could not be read".
+		r.Errors = append(r.Errors, fmt.Sprintf("config: could not render config for the report: %v", err))
+	} else {
 		r.ConfigRedacted = string(b)
 	}
 	// Coercions are absent from ConfigRedacted by construction (they carry
@@ -210,7 +216,7 @@ func (r Report) FormatText() string {
 	r.formatInfraSection(&b)
 	fmt.Fprintf(&b, "--- Config (redacted) ---\n%s\n\n", r.ConfigRedacted)
 	if len(r.ConfigCoercions) != 0 {
-		fmt.Fprintf(&b, "--- Config (unrecognised settings) ---\n%s\n\n",
+		fmt.Fprintf(&b, "--- Config (settings replaced at load time) ---\n%s\n\n",
 			strings.Join(r.ConfigCoercions, "\n"))
 	}
 	fmt.Fprintf(&b, "--- Disk ---\n%s\n\n", r.DiskInfo)

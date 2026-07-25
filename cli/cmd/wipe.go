@@ -243,6 +243,8 @@ func (wc *wipeContext) stopAndPrune() error {
 	if !wipeKeepImages {
 		downArgs = append(downArgs, "--rmi", "all")
 	}
+	reportContainersBeforeTeardown(wc.ctx, wc.info, wc.safeDir, wc.out)
+
 	sp := wc.out.StartSpinner("Stopping containers and removing volumes...")
 	if err := composeRunQuiet(wc.ctx, wc.info, wc.safeDir, downArgs...); err != nil {
 		// A compose file that vanished between the stat and the down call,

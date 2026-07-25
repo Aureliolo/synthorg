@@ -68,7 +68,7 @@ type State struct {
 	PersistenceBackend string            `json:"persistence_backend"`
 	MemoryBackend      string            `json:"memory_backend"`
 	BusBackend         string            `json:"bus_backend"`
-	NatsClientPort     int               `json:"nats_client_port,omitempty"`
+	NATSClientPort     int               `json:"nats_client_port,omitempty"`
 	PostgresPort       int               `json:"postgres_port,omitempty"`
 	PostgresPassword   string            `json:"postgres_password,omitempty"`
 	AutoCleanup        bool              `json:"auto_cleanup"`
@@ -297,7 +297,7 @@ func DefaultState() State {
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "sqlvector",
 		BusBackend:         "internal",
-		NatsClientPort:     3003,
+		NATSClientPort:     3003,
 		PostgresPort:       3002,
 		EncryptSecrets:     true,
 	}
@@ -392,10 +392,74 @@ func Load(dataDir string) (State, error) {
 	}
 	s, coerced := Coerce(s)
 	if err := s.Validate(); err != nil {
+		// Report the coercions alongside the failure. Dropping them here
+		// would leave an operator whose config has BOTH a stale enum and
+		// an unrelated invariant breach with no hint that a second field
+		// was also rewritten during the same load.
+		if len(coerced) != 0 {
+			return State{}, fmt.Errorf(
+				"config %s: %w (also replaced unrecognised values: %s)",
+				StatePath(safeDir), err, joinCoercions(coerced),
+			)
+		}
 		return State{}, fmt.Errorf("config %s: %w", StatePath(safeDir), err)
 	}
 	s.Coerced = coerced
 	return canonicaliseDataDir(s, safeDir)
+}
+
+// joinCoercions renders a coercion list for a single-line error message.
+func joinCoercions(coerced []Coercion) string {
+	rendered := make([]string, 0, len(coerced))
+	for _, c := range coerced {
+		rendered = append(rendered, c.String())
+	}
+	return strings.Join(rendered, "; ")
+}
+
+// LoadTolerant reads State for the commands that must stay usable on a
+// config the strict loader refuses: `doctor`, which exists to diagnose the
+// breakage, and the `config` inspection subcommands, which are how an
+// operator repairs it by hand.
+//
+// It NEVER runs Validate, for the same reason LoadForTeardown does not: a
+// command whose whole purpose is to report or repair a broken file cannot
+// be gated on that file being valid. Coercion still runs, so the returned
+// State is safe to render, and State.Coerced tells the caller what was
+// substituted. The returned error is ADVISORY: it reports why the config
+// could not be fully resolved, and callers MUST proceed regardless.
+//
+// Note this is NOT a way to run the stack on an invalid config. Only
+// read-only inspection paths use it; `start` keeps the strict Load so a
+// config that would bring up the wrong stack still fails closed.
+func LoadTolerant(dataDir string) (State, error) {
+	safeDir, err := SecurePath(dataDir)
+	if err != nil {
+		return State{}, err
+	}
+	seeded := DefaultState()
+	seeded.DataDir = safeDir
+	s, readErr := readState(safeDir)
+	if readErr != nil {
+		if errors.Is(readErr, os.ErrNotExist) {
+			seeded.Sandbox = false
+			return seeded, nil
+		}
+		return seeded, readErr
+	}
+	s, coerced := Coerce(s)
+	s.Coerced = coerced
+	// Surface the validation failure as advisory so `doctor` can report
+	// it, without letting it stop the command.
+	advisory := s.Validate()
+	resolved, dirErr := canonicaliseDataDir(s, safeDir)
+	if dirErr != nil {
+		// An unusable persisted data_dir must not stop a diagnostic
+		// either: fall back to the caller-supplied dir and report it.
+		s.DataDir = safeDir
+		return s, dirErr
+	}
+	return resolved, advisory
 }
 
 // LoadForReinit reads State for the `synthorg init` re-init path. Like
@@ -405,12 +469,17 @@ func Load(dataDir string) (State, error) {
 // only thing re-init takes from the old file is the secrets it must carry
 // forward, and those parse fine whatever else is wrong.
 //
-// It differs from LoadForTeardown in one way: a missing, unreadable, or
-// unparseable file IS a hard error here. Teardown can delete an install it
-// could not parse, but re-init cannot silently proceed without
-// master_key / settings_key / cursor_secret / postgres_password -- doing so
-// would orphan every stored ciphertext and lock the CLI out of an existing
-// Postgres volume.
+// It differs from LoadForTeardown in exactly one way: a missing,
+// unreadable, or unparseable file IS a hard error here. Teardown can
+// delete an install it could not parse, but re-init cannot silently
+// proceed without master_key / settings_key / cursor_secret /
+// postgres_password -- doing so would orphan every stored ciphertext and
+// lock the CLI out of an existing Postgres volume.
+//
+// A persisted data_dir that fails SecurePath is NOT fatal, matching
+// teardown: init is about to overwrite that field with the caller's
+// --data-dir anyway, so refusing over it would block the repair while the
+// secrets sat readable on disk.
 func LoadForReinit(dataDir string) (State, error) {
 	safeDir, err := SecurePath(dataDir)
 	if err != nil {
@@ -423,7 +492,12 @@ func LoadForReinit(dataDir string) (State, error) {
 	// Deliberately NO Validate and NO Coerce: every field is about to be
 	// replaced by the answers this init run collected, so the only thing
 	// that matters is that the secrets came through.
-	return canonicaliseDataDir(s, safeDir)
+	resolved, dirErr := canonicaliseDataDir(s, safeDir)
+	if dirErr != nil {
+		s.DataDir = safeDir
+		return s, nil
+	}
+	return resolved, nil
 }
 
 // LoadForTeardown reads State on a best-effort basis for destroy paths

@@ -95,9 +95,18 @@ func runStop(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	// Record what was running BEFORE tearing it down. `compose down` sends
+	// SIGTERM then SIGKILL, which produces exit 137 -- the same code an
+	// OOM kill produces. Without this line the only trace of an
+	// operator-initiated stop is a container that vanished, and a later
+	// investigation into "why did the backend die with 137" has nothing to
+	// distinguish the two.
+	reportContainersBeforeTeardown(ctx, info, safeDir, out)
+
 	sp := out.StartSpinner("Stopping containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, downArgs...); err != nil {
 		sp.Error("Failed to stop containers")
+		reportStartFailure(ctx, info, safeDir, errOut)
 		return fmt.Errorf("stopping containers: %w", err)
 	}
 	sp.Success("SynthOrg stopped")

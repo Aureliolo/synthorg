@@ -362,7 +362,7 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 		return err
 	}
 	sp := out.StartSpinner("Starting containers...")
-	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
+	if err := composeUpWithProgress(ctx, info, safeDir, sp); err != nil {
 		sp.Error("Failed to start containers")
 		reportStartFailure(ctx, info, safeDir, errOut)
 		return fmt.Errorf("starting containers: %w", err)
@@ -488,30 +488,18 @@ func pullStartAndWait(ctx context.Context, cmd *cobra.Command, info docker.Info,
 		return err
 	}
 	sp := out.StartSpinner("Starting containers...")
-	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
+	if err := composeUpWithProgress(ctx, info, safeDir, sp); err != nil {
 		sp.Error("Failed to start containers")
 		reportStartFailure(ctx, info, safeDir, errOut)
 		return fmt.Errorf("starting containers: %w", err)
 	}
 	sp.Success("Containers started")
 
-	sp = out.StartSpinner("Waiting for backend to become healthy...")
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
-	tun := GetGlobalOpts(ctx).Tunables
-	healthTimeout := tun.HealthWaitTimeout
+	healthTimeout := GetGlobalOpts(ctx).Tunables.HealthWaitTimeout
 	if healthTimeout <= 0 {
 		healthTimeout = config.DefaultHealthWaitTimeout
 	}
-	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, tun.HealthPollInterval, tun.HealthInitialDelay); err != nil {
-		sp.Error("Health check failed")
-		errOut.HintError("Run 'synthorg doctor' for diagnostics.")
-		return fmt.Errorf("health check did not pass: %w", err)
-	}
-	sp.Success("Backend healthy")
-	if state.PersistenceBackend == "postgres" {
-		out.Step("Postgres migrations checked/applied during backend startup")
-	}
-	return nil
+	return waitForBackendHealthy(ctx, info, safeDir, state, out, errOut, healthTimeout)
 }
 
 // composeServiceNames returns the compose service names that need pulling

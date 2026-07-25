@@ -71,7 +71,7 @@ type Params struct {
 	ImageTag           string
 	BackendPort        int
 	WebPort            int
-	NatsClientPort     int
+	NATSClientPort     int
 	LogLevel           string
 	JWTSecret          string
 	SettingsKey        string
@@ -144,7 +144,7 @@ func ParamsFromState(s config.State) (Params, error) {
 	if busBackend == "" {
 		busBackend = "internal"
 	}
-	natsPort := s.NatsClientPort
+	natsPort := s.NATSClientPort
 	if natsPort == 0 {
 		natsPort = 3003
 	}
@@ -183,7 +183,7 @@ func ParamsFromState(s config.State) (Params, error) {
 		ImageTag:              s.ImageTag,
 		BackendPort:           s.BackendPort,
 		WebPort:               s.WebPort,
-		NatsClientPort:        natsPort,
+		NATSClientPort:        natsPort,
 		LogLevel:              s.LogLevel,
 		JWTSecret:             s.JWTSecret,
 		SettingsKey:           s.SettingsKey,

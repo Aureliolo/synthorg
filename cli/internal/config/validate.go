@@ -32,8 +32,8 @@ func validatePorts(s State) error {
 	if s.WebPort < 1 || s.WebPort > 65535 {
 		return fmt.Errorf("invalid web_port %d: must be 1-65535", s.WebPort)
 	}
-	if s.NatsClientPort != 0 && (s.NatsClientPort < 1 || s.NatsClientPort > 65535) {
-		return fmt.Errorf("invalid nats_client_port %d: must be 1-65535", s.NatsClientPort)
+	if s.NATSClientPort != 0 && (s.NATSClientPort < 1 || s.NATSClientPort > 65535) {
+		return fmt.Errorf("invalid nats_client_port %d: must be 1-65535", s.NATSClientPort)
 	}
 	return nil
 }

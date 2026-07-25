@@ -22,6 +22,14 @@ On-demand reference for `synthorg config` operators. The short summary in `cli/C
 
 `set` and `import` apply all pairs atomically: if any key or value is invalid, nothing is written. Both also auto-generate the Fernet `master_key` when `encrypt_secrets` is true and none exists (exactly as `init` does on save), so config can be pre-seeded before `synthorg init`. The `import` file format is one `key=value` per line; blank lines and `#` comments are ignored and surrounding whitespace is trimmed.
 
+### Reading a setting this binary does not recognise
+
+`show`, `get` and `list` report the value **in effect**, which is not always the value on disk. A closed-set field holding something this release no longer accepts (typically after an upgrade dropped an option) is replaced with the default at load time so that a stale value cannot lock you out of the commands that repair it. Every substitution is announced on stderr on each invocation, naming the field, the rejected value and what is now in effect, and `synthorg doctor` lists them under its config section.
+
+The file itself is left untouched, so the original value is still there to read: a substitution is a fact about one load, not a rewrite of your configuration. Any command that persists state writes the substituted value through, at which point the warning stops on its own. `set` is unaffected and stays strict, so a typo is still refused at the point of entry.
+
+The exceptions are `persistence_backend` and `memory_backend`. Those select where your data lives, and defaulting them would silently point the stack at a different (empty) database, so an unrecognised value there fails the load instead. `doctor` and `config show` still read the file and report it; fix the value with `synthorg config set` or re-run `synthorg init`, which preserves every secret.
+
 ## Settable keys (full inventory)
 
 `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_start_after_wipe`, `auto_update_cli`, `backend_port`, `changelog_view`, `channel`, `color`, `docker_sock`, `fine_tuning`, `fine_tuning_variant`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `telemetry_opt_in`, `timestamps`, `web_port`.

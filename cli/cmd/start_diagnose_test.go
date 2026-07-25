@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // mustInspect decodes a docker-inspect payload the way the real code path
@@ -173,5 +174,347 @@ func TestLastProbeTruncatesRunawayOutput(t *testing.T) {
 	}
 	if !strings.HasSuffix(got, "...") {
 		t.Errorf("truncated output must be marked as such, got tail %q", got[max(0, len(got)-8):])
+	}
+}
+
+// TestLastProbeTruncatesOnARuneBoundary pins the cut against multi-byte
+// output. The limit is a byte count, so a probe carrying a non-ASCII path
+// or quote can put a rune across it; emitting the broken half would put
+// invalid UTF-8 on the terminal at the exact moment the operator is trying
+// to read a failure.
+func TestLastProbeTruncatesOnARuneBoundary(t *testing.T) {
+	t.Parallel()
+
+	// Three bytes per rune, so the boundary lands mid-rune for two out of
+	// every three limits regardless of what probeOutputLimit is set to.
+	long := strings.Repeat("éè", probeOutputLimit)
+	payload := `{"State": {"Health": {"Log": [{"ExitCode": 1, "Output": "` + long + `"}]}}}`
+	got := mustInspect(t, payload).lastProbe()
+	if !utf8.ValidString(got) {
+		t.Errorf("truncation produced invalid UTF-8: %q", got)
+	}
+	if !strings.HasSuffix(got, "...") {
+		t.Errorf("truncated output must be marked as such, got %q", got)
+	}
+}
+
+// TestSummariseWithoutAUsableStartTimeClaimsNoRemainingBudget covers the
+// combination that would otherwise read as a lie: a container reporting
+// health "starting" whose StartedAt the daemon did not supply. With
+// elapsed time unknown there is no honest remaining figure, and printing
+// the full grace period would tell an operator to keep waiting on a
+// container that has been stuck for minutes.
+func TestSummariseWithoutAUsableStartTimeClaimsNoRemainingBudget(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 25, 9, 25, 0, 0, time.UTC)
+	payload := `{
+		"Name": "/coldboot-backend-1",
+		"State": {"Status": "running", "Health": {"Status": "starting", "Log": []}},
+		"Config": {"Healthcheck": {"StartPeriod": 600000000000}}
+	}`
+	got := mustInspect(t, payload).summarise(now)
+	if !strings.Contains(got, "health starting") {
+		t.Errorf("summary must still report the health status, got: %s", got)
+	}
+	for _, absent := range []string{"start period", "left"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("summary must not claim %q without a usable start time\ngot: %s", absent, got)
+		}
+	}
+}
+
+// TestComposeContainerIDsRejectsNonIDTokens is a security boundary, not a
+// tidiness one. ComposeExecOutput merges stderr into stdout, and compose
+// writes routine warnings there, so `compose ps --quiet` output cannot be
+// treated as a bare ID list: every token here becomes argv for `docker
+// inspect`, where one beginning with `-` is parsed as a Docker persistent
+// flag and `-H` retargets the daemon entirely.
+func TestComposeContainerIDsRejectsNonIDTokens(t *testing.T) {
+	t.Parallel()
+
+	const shortID = "0123456789ab"
+	longID := strings.Repeat("0123456789abcdef", 4)
+
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{
+			name: "plain id list",
+			raw:  shortID + "\n" + longID + "\n",
+			want: []string{shortID, longID},
+		},
+		{
+			name: "compose warning on stderr is discarded",
+			raw:  "WARN[0000] Found orphan containers ([foo]) for this project\n" + shortID + "\n",
+			want: []string{shortID},
+		},
+		{
+			name: "a flag-shaped token is discarded",
+			raw:  "-H tcp://attacker:2375\n" + shortID + "\n",
+			want: []string{shortID},
+		},
+		{
+			name: "an over-length or non-hex token is discarded",
+			raw:  strings.Repeat("f", 65) + " nothexadecimal " + shortID,
+			want: []string{shortID},
+		},
+		{
+			name: "no ids at all",
+			raw:  "WARN[0000] the \"version\" attribute is obsolete\n",
+			want: []string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := composeContainerIDs(tt.raw)
+			if len(got) != len(tt.want) {
+				t.Fatalf("ids = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("ids[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestParseInspectLinesDegradesPerLine pins the degradation contract: one
+// container the daemon described in a way this binary cannot decode must
+// cost exactly that one container, not the whole diagnostic. The skipped
+// count is what lets the caller say so rather than presenting a short
+// report as a complete one.
+func TestParseInspectLinesDegradesPerLine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		raw         string
+		wantNames   []string
+		wantSkipped int
+	}{
+		{
+			name:      "well-formed lines",
+			raw:       `{"Name": "/a"}` + "\n" + `{"Name": "/b"}`,
+			wantNames: []string{"/a", "/b"},
+		},
+		{
+			name:        "a malformed line costs only its own container",
+			raw:         `{"Name": "/a"}` + "\n" + `{not json` + "\n" + `{"Name": "/c"}`,
+			wantNames:   []string{"/a", "/c"},
+			wantSkipped: 1,
+		},
+		{
+			name:      "blank lines are not containers",
+			raw:       "\n\n" + `{"Name": "/a"}` + "\n   \n",
+			wantNames: []string{"/a"},
+		},
+		{
+			name: "empty output",
+			raw:  "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			found, skipped := parseInspectLines(tt.raw)
+			if skipped != tt.wantSkipped {
+				t.Errorf("skipped = %d, want %d", skipped, tt.wantSkipped)
+			}
+			if len(found) != len(tt.wantNames) {
+				t.Fatalf("found %d containers, want %d", len(found), len(tt.wantNames))
+			}
+			for i, want := range tt.wantNames {
+				if found[i].Name != want {
+					t.Errorf("found[%d].Name = %q, want %q", i, found[i].Name, want)
+				}
+			}
+		})
+	}
+}
+
+// TestCrashLoopDetection covers the one failure compose's dependency wait
+// cannot end on its own. A restart resets the health start period, so a
+// container failing faster than that period reports "starting" forever and
+// never goes unhealthy; `compose up -d` would block on it indefinitely
+// while the operator watched a spinner. The restart count is what
+// separates that from the slow cold boot this budget exists to allow.
+func TestCrashLoopDetection(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		containers []containerInspect
+		wantName   string
+	}{
+		{
+			name:       "no containers yet",
+			containers: nil,
+		},
+		{
+			name: "a slow boot is not a crash loop",
+			containers: []containerInspect{
+				withHealth(inspectFixture("/stack-backend-1", 0), "starting"),
+			},
+		},
+		{
+			name: "one restart is recoverable, not a loop",
+			containers: []containerInspect{
+				withHealth(inspectFixture("/stack-backend-1", crashLoopRestartThreshold-1), "starting"),
+			},
+		},
+		{
+			name: "repeated restarts without health is a loop",
+			containers: []containerInspect{
+				withHealth(inspectFixture("/stack-backend-1", crashLoopRestartThreshold), "starting"),
+			},
+			wantName: "/stack-backend-1",
+		},
+		{
+			name: "restarts after reaching healthy are a different problem",
+			containers: []containerInspect{
+				withHealth(inspectFixture("/stack-backend-1", 9), "healthy"),
+			},
+		},
+		{
+			// A container with no healthcheck at all still counts: it can
+			// never report healthy, so restarts are the only signal there is.
+			name: "a container without a healthcheck still counts",
+			containers: []containerInspect{
+				inspectFixture("/stack-nats-1", crashLoopRestartThreshold+3),
+			},
+			wantName: "/stack-nats-1",
+		},
+		{
+			name: "the looping container is picked out of a healthy stack",
+			containers: []containerInspect{
+				withHealth(inspectFixture("/stack-postgres-1", 0), "healthy"),
+				withHealth(inspectFixture("/stack-backend-1", crashLoopRestartThreshold), "starting"),
+			},
+			wantName: "/stack-backend-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := crashLoopingContainer(tt.containers)
+			if tt.wantName == "" {
+				if got != nil {
+					t.Errorf("got %q, want no crash loop reported", got.Name)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("no crash loop reported, want %q", tt.wantName)
+			}
+			if got.Name != tt.wantName {
+				t.Errorf("reported %q, want %q", got.Name, tt.wantName)
+			}
+		})
+	}
+}
+
+// TestStartFailureHint covers the advice that answers the reported
+// problem. Compose reports "container ... is unhealthy" for a container
+// that has not failed at all, and the operator's correct move differs
+// completely between the two cases this distinguishes.
+func TestStartFailureHint(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		containers []containerInspect
+		wantSaid   string
+		wantSilent bool
+	}{
+		{
+			name:       "nothing to say about an empty stack",
+			containers: nil,
+			wantSilent: true,
+		},
+		{
+			name: "a still-starting container means wait",
+			containers: []containerInspect{
+				withHealth(inspectFixture("/stack-backend-1", 0), "starting"),
+			},
+			wantSaid: "has not finished booting",
+		},
+		{
+			// The same "starting" status, opposite advice: waiting cannot
+			// help a container that restarts before its budget elapses.
+			name: "a crash loop takes precedence over the wait advice",
+			containers: []containerInspect{
+				withHealth(inspectFixture("/stack-backend-1", crashLoopRestartThreshold), "starting"),
+			},
+			wantSaid: "Waiting will not help",
+		},
+		{
+			// A container that exited is neither: the summary line already
+			// carries the exit code, and inventing advice would be guessing.
+			name: "an exited container gets no invented advice",
+			containers: []containerInspect{
+				inspectFixture("/stack-backend-1", 0),
+			},
+			wantSilent: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := startFailureHint(tt.containers)
+			if tt.wantSilent {
+				if got != "" {
+					t.Errorf("hint = %q, want none", got)
+				}
+				return
+			}
+			if !strings.Contains(got, tt.wantSaid) {
+				t.Errorf("hint = %q, want it to say %q", got, tt.wantSaid)
+			}
+		})
+	}
+}
+
+// inspectFixture builds a container inspect record with a restart count.
+func inspectFixture(name string, restarts int) containerInspect {
+	var c containerInspect
+	c.Name = name
+	c.RestartCount = restarts
+	c.State.Status = "running"
+	return c
+}
+
+// withHealth attaches a health status to a fixture.
+func withHealth(c containerInspect, status string) containerInspect {
+	c.State.Health = &containerHealth{Status: status}
+	return c
+}
+
+// TestInspectFormatProjectsOnlyTheReadFields keeps secrets out of CLI
+// memory. `{{json .}}` would materialise the whole container config,
+// including every value in Config.Env: master key, settings key, JWT
+// secret and the Postgres DSN.
+func TestInspectFormatProjectsOnlyTheReadFields(t *testing.T) {
+	t.Parallel()
+
+	if strings.Contains(inspectFormat, "json .}}") {
+		t.Error("inspect must project named fields, not the whole container")
+	}
+	for _, forbidden := range []string{".Config.Env", ".Config)", ".Config }"} {
+		if strings.Contains(inspectFormat, forbidden) {
+			t.Errorf("inspect format must not pull %s", forbidden)
+		}
+	}
+	// Everything summarise reads has to survive the projection.
+	for _, required := range []string{".Name", ".RestartCount", ".State", ".Config.Healthcheck"} {
+		if !strings.Contains(inspectFormat, required) {
+			t.Errorf("inspect format must project %s", required)
+		}
 	}
 }

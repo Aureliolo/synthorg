@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -462,80 +463,132 @@ func TestLoadInvalid(t *testing.T) {
 	}
 }
 
+// TestLoadRejectsInvalidBackends pins the deliberate exception to the
+// recovery contract. Every other closed-set field is coerced to its
+// default so a removed value cannot brick the CLI; these two are not,
+// because they select WHERE DATA LIVES. Defaulting persistence_backend
+// would have `start` regenerate compose without postgres and bring the
+// stack up against an empty SQLite database, which also re-arms the
+// unauthenticated first-run admin claim. Failing the load is the safe
+// outcome; LoadTolerant is how doctor still reports on it.
+//
+// Each fixture sets encrypt_secrets false deliberately: with it left on,
+// the missing master key fails validation first and this test would pass
+// without ever reaching the backend checks.
 func TestLoadRejectsInvalidBackends(t *testing.T) {
 	tests := []struct {
-		name    string
-		persist string
-		memory  string
+		name     string
+		persist  string
+		memory   string
+		wantMsgs []string
 	}{
-		{"empty persistence", "", "sqlvector"},
-		{"empty memory", "sqlite", ""},
-		{"unknown persistence", "mysql", "sqlvector"},
-		{"unknown memory", "sqlite", "redis"},
-		{"both empty", "", ""},
+		{"empty persistence", "", "sqlvector", []string{"persistence_backend"}},
+		{"empty memory", "sqlite", "", []string{"memory_backend"}},
+		{"unknown persistence", "a-store-that-was-removed", "sqlvector", []string{"persistence_backend"}},
+		{"unknown memory", "sqlite", "a-store-that-was-removed", []string{"memory_backend"}},
+		{"both empty", "", "", []string{"persistence_backend"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmp := t.TempDir()
-			raw, _ := json.Marshal(map[string]any{
+			raw, err := json.Marshal(map[string]any{
 				"data_dir":            tmp,
 				"image_tag":           "latest",
 				"backend_port":        3001,
 				"web_port":            3000,
 				"log_level":           "info",
+				"encrypt_secrets":     false,
 				"persistence_backend": tt.persist,
 				"memory_backend":      tt.memory,
 			})
+			if err != nil {
+				t.Fatal(err)
+			}
 			if err := os.WriteFile(filepath.Join(tmp, stateFileName), raw, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			_, err := Load(tmp)
+			_, err = Load(tmp)
 			if err == nil {
-				t.Errorf("expected validation error for persist=%q memory=%q", tt.persist, tt.memory)
+				t.Fatalf("expected validation error for persist=%q memory=%q", tt.persist, tt.memory)
+			}
+			for _, want := range tt.wantMsgs {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error must name %s, got: %v", want, err)
+				}
 			}
 		})
 	}
 }
 
-func TestIsValidChannel(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"stable", true},
-		{"dev", true},
-		{"", false},
-		{"nightly", false},
-		{"STABLE", false}, // case-sensitive
-		{"Dev", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := IsValidChannel(tt.input); got != tt.want {
-				t.Errorf("IsValidChannel(%q) = %v, want %v", tt.input, got, tt.want)
-			}
-		})
-	}
-}
+// TestEnumValidators covers every closed-set validator in one table.
+//
+// All are case-sensitive by design: a persisted value is compared against
+// its allowlist verbatim, never folded, so "STABLE" is as invalid as
+// "nightly" and both take the same coercion path. The empty string is
+// invalid for all of them; whether that is a coercion or a legitimate
+// "use the default" is decided by the enumFields table in coerce.go, not
+// here.
+func TestEnumValidators(t *testing.T) {
+	t.Parallel()
 
-func TestIsValidLogLevel(t *testing.T) {
 	tests := []struct {
-		input string
-		want  bool
+		name    string
+		fn      func(string) bool
+		valid   []string
+		invalid []string
 	}{
-		{"debug", true},
-		{"info", true},
-		{"warn", true},
-		{"error", true},
-		{"warning", false}, // "warn" not "warning"
-		{"", false},
-		{"trace", false},
-		{"WARN", false}, // case-sensitive
+		{
+			name:    "IsValidChannel",
+			fn:      IsValidChannel,
+			valid:   []string{"stable", "dev"},
+			invalid: []string{"", "nightly", "STABLE", "Dev"},
+		},
+		{
+			name:  "IsValidLogLevel",
+			fn:    IsValidLogLevel,
+			valid: []string{"debug", "info", "warn", "error"},
+			// "warning" is the near-miss worth pinning: it is the spelling
+			// most other tools accept, and this one does not.
+			invalid: []string{"", "warning", "trace", "WARN"},
+		},
+		{
+			name:    "IsValidColorMode",
+			fn:      IsValidColorMode,
+			valid:   []string{"always", "auto", "never"},
+			invalid: []string{"", "none", "Always", "AUTO", "NEVER"},
+		},
+		{
+			name:    "IsValidOutputMode",
+			fn:      IsValidOutputMode,
+			valid:   []string{"text", "json"},
+			invalid: []string{"", "yaml", "xml", "JSON", "TEXT"},
+		},
+		{
+			name:    "IsValidTimestampMode",
+			fn:      IsValidTimestampMode,
+			valid:   []string{"relative", "iso8601"},
+			invalid: []string{"", "unix", "rfc3339", "ISO8601", "Relative"},
+		},
+		{
+			name:    "IsValidHintsMode",
+			fn:      IsValidHintsMode,
+			valid:   []string{"always", "auto", "never"},
+			invalid: []string{"", "none", "Always", "NEVER"},
+		},
 	}
+
 	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := IsValidLogLevel(tt.input); got != tt.want {
-				t.Errorf("IsValidLogLevel(%q) = %v, want %v", tt.input, got, tt.want)
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			for _, in := range tt.valid {
+				if !tt.fn(in) {
+					t.Errorf("%s(%q) = false, want true", tt.name, in)
+				}
+			}
+			for _, in := range tt.invalid {
+				if tt.fn(in) {
+					t.Errorf("%s(%q) = true, want false", tt.name, in)
+				}
 			}
 		})
 	}
@@ -766,95 +819,6 @@ func FuzzIsValidBool(f *testing.F) {
 	})
 }
 
-func TestIsValidColorMode(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"always", true},
-		{"auto", true},
-		{"never", true},
-		{"", false},
-		{"Always", false},
-		{"AUTO", false},
-		{"NEVER", false},
-		{"none", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := IsValidColorMode(tt.input); got != tt.want {
-				t.Errorf("IsValidColorMode(%q) = %v, want %v", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIsValidOutputMode(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"text", true},
-		{"json", true},
-		{"", false},
-		{"JSON", false},
-		{"TEXT", false},
-		{"yaml", false},
-		{"xml", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := IsValidOutputMode(tt.input); got != tt.want {
-				t.Errorf("IsValidOutputMode(%q) = %v, want %v", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIsValidTimestampMode(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"relative", true},
-		{"iso8601", true},
-		{"", false},
-		{"ISO8601", false},
-		{"Relative", false},
-		{"unix", false},
-		{"rfc3339", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := IsValidTimestampMode(tt.input); got != tt.want {
-				t.Errorf("IsValidTimestampMode(%q) = %v, want %v", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIsValidHintsMode(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"always", true},
-		{"auto", true},
-		{"never", true},
-		{"", false},
-		{"Always", false},
-		{"NEVER", false},
-		{"none", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := IsValidHintsMode(tt.input); got != tt.want {
-				t.Errorf("IsValidHintsMode(%q) = %v, want %v", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestSaveLoadRoundTripNewFields(t *testing.T) {
 	tmp := t.TempDir()
 	original := State{
@@ -1050,64 +1014,49 @@ func TestValidate_FineTuningVariant(t *testing.T) {
 	base.EncryptSecrets = false
 	base.Sandbox = true
 
-	// Arch-independent: variant enum validation runs regardless of
-	// FineTuning or GOARCH, so exercise these on every runner.
-	archAgnostic := []struct {
+	type variantCase struct {
 		name       string
 		fineTuning bool
 		variant    string
 		wantErr    bool
-	}{
+	}
+	run := func(t *testing.T, cases []variantCase) {
+		t.Helper()
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				s := base
+				s.FineTuning = tc.fineTuning
+				s.FineTuningVariant = tc.variant
+				err := s.Validate()
+				if tc.wantErr && err == nil {
+					t.Errorf("Validate() returned nil, want error for variant=%q", tc.variant)
+				}
+				if !tc.wantErr && err != nil {
+					t.Errorf("Validate() = %v, want nil for variant=%q", err, tc.variant)
+				}
+			})
+		}
+	}
+
+	// Arch-independent: variant enum validation runs regardless of
+	// FineTuning or GOARCH, so exercise these on every runner.
+	run(t, []variantCase{
 		{"disabled+empty", false, "", false},
 		{"disabled+gpu-accepted", false, FineTuneVariantGPU, false},
 		{"disabled+cpu-accepted", false, FineTuneVariantCPU, false},
 		{"disabled+invalid-rejected", false, "invalid", true},
 		{"disabled+typo-rejected", false, "GPU", true},
-	}
-	for _, tc := range archAgnostic {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			s := base
-			s.FineTuning = tc.fineTuning
-			s.FineTuningVariant = tc.variant
-			err := s.Validate()
-			if tc.wantErr && err == nil {
-				t.Errorf("Validate() returned nil, want error for variant=%q", tc.variant)
-			}
-			if !tc.wantErr && err != nil {
-				t.Errorf("Validate() = %v, want nil for variant=%q", err, tc.variant)
-			}
-		})
-	}
+	})
 
 	if runtime.GOARCH != "amd64" {
 		t.Skip("fine_tuning=true cases require amd64 architecture")
 	}
-	amd64Only := []struct {
-		name       string
-		fineTuning bool
-		variant    string
-		wantErr    bool
-	}{
+	run(t, []variantCase{
 		{"enabled+empty-accepted", true, "", false},
 		{"enabled+gpu", true, FineTuneVariantGPU, false},
 		{"enabled+cpu", true, FineTuneVariantCPU, false},
 		{"enabled+invalid-rejected", true, "tpu", true},
 		{"enabled+typo-rejected", true, "GPU", true},
-	}
-	for _, tc := range amd64Only {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			s := base
-			s.FineTuning = tc.fineTuning
-			s.FineTuningVariant = tc.variant
-			err := s.Validate()
-			if tc.wantErr && err == nil {
-				t.Errorf("Validate() returned nil, want error for variant=%q", tc.variant)
-			}
-			if !tc.wantErr && err != nil {
-				t.Errorf("Validate() = %v, want nil for variant=%q", err, tc.variant)
-			}
-		})
-	}
+	})
 }
