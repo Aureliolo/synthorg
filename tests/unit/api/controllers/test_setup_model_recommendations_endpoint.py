@@ -20,6 +20,7 @@ from synthorg.api.controllers.setup_agents import get_existing_agents
 from synthorg.api.controllers.setup_model_recommendations import (
     SetupModelRecommendationsResponse,
 )
+from synthorg.api.dto import ApiResponse
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.service import SettingsService
 from tests._shared import make_app_state, mock_of
@@ -82,11 +83,17 @@ async def _recommendations(
     ):
         state = State()
         state.app_state = app_state
-        response = await SetupCompanyController.get_model_recommendations.fn(
+        # Annotated because ``handler.fn`` is typed as a bare callable, so the
+        # awaited result would otherwise be ``Any`` and every assertion below
+        # would type-check vacuously.
+        response: ApiResponse[
+            SetupModelRecommendationsResponse
+        ] = await SetupCompanyController.get_model_recommendations.fn(
             _controller(), state=state
         )
-    assert response.data is not None
-    return response.data
+    data = response.data
+    assert data is not None
+    return data
 
 
 class TestRecommendationsMatchCandidates:
