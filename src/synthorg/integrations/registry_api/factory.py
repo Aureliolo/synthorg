@@ -49,7 +49,7 @@ def _require_base_url(base_url: str) -> str:
     return base_url
 
 
-def _build_oci(  # noqa: PLR0913 -- connection facts threaded into one client
+def _build_oci(  # noqa: PLR0913, PLR0917 -- connection facts threaded into one client
     base_url: str,
     repository: NotBlankStr,
     username: str,

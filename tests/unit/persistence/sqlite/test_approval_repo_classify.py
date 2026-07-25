@@ -81,8 +81,10 @@ def test_foreign_key_violation_maps_to_23503() -> None:
     exc = _raise(
         (
             "CREATE TABLE parent (id INTEGER PRIMARY KEY)",
-            "CREATE TABLE child (id INTEGER PRIMARY KEY, "
-            "parent_id INTEGER REFERENCES parent(id))",
+            (
+                "CREATE TABLE child (id INTEGER PRIMARY KEY, "
+                "parent_id INTEGER REFERENCES parent(id))"
+            ),
         ),
         "INSERT INTO child (id, parent_id) VALUES (1, 999)",
     )

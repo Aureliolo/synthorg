@@ -434,7 +434,7 @@ def task_board_entry_adapter() -> TaskBoardEntryAdapter:
 
 
 @pytest.fixture(scope="session")
-def _shared_app(  # noqa: PLR0913
+def _shared_app(  # noqa: PLR0913, PLR0917
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     fake_task_engine: TaskEngine,
@@ -924,7 +924,7 @@ async def _async_shared_client(
 
 
 @pytest.fixture
-def _reset_services(  # noqa: PLR0913
+def _reset_services(  # noqa: PLR0913, PLR0917
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     cost_tracker: CostTracker,

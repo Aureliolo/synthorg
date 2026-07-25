@@ -183,7 +183,7 @@ def find_skipped_nodes(
     return skipped
 
 
-def process_conditional_node(  # noqa: PLR0913
+def process_conditional_node(  # noqa: PLR0913, PLR0917
     nid: str,
     node: WorkflowNode,
     ctx: dict[str, object],
@@ -422,7 +422,7 @@ async def process_task_node(  # noqa: PLR0913
     )
 
 
-def process_verification_node(  # noqa: PLR0913
+def process_verification_node(  # noqa: PLR0913, PLR0917
     nid: str,
     node: WorkflowNode,
     outgoing: dict[str, list[tuple[str, WorkflowEdgeType]]],

@@ -169,8 +169,10 @@ def _validate_change(
     """
     if change.operation not in _SUPPORTED_OPS:
         return [
-            f"Unknown operation {change.operation!r}; "
-            f"supported: {sorted(_SUPPORTED_OPS)}"
+            (
+                f"Unknown operation {change.operation!r}; "
+                f"supported: {sorted(_SUPPORTED_OPS)}"
+            )
         ]
     dispatch = {
         _OP_CREATE_ROLE: lambda: _validate_create_role(
@@ -258,8 +260,10 @@ def _validate_role_description(description: object) -> list[str]:
         return ["create_role: 'description' must not be blank"]
     if len(description) > _MAX_DESCRIPTION_CHARS:
         return [
-            f"create_role: 'description' exceeds {_MAX_DESCRIPTION_CHARS} "
-            f"chars (got {len(description)})"
+            (
+                f"create_role: 'description' exceeds {_MAX_DESCRIPTION_CHARS} "
+                f"chars (got {len(description)})"
+            )
         ]
     return []
 
@@ -335,8 +339,10 @@ def _validate_reports_to(value: object) -> list[str]:
         return ["create_role: 'reports_to' must not be blank"]
     if len(value) > _MAX_REPORTS_TO_CHARS:
         return [
-            f"create_role: 'reports_to' exceeds "
-            f"{_MAX_REPORTS_TO_CHARS} chars (got {len(value)})"
+            (
+                f"create_role: 'reports_to' exceeds "
+                f"{_MAX_REPORTS_TO_CHARS} chars (got {len(value)})"
+            )
         ]
     return []
 

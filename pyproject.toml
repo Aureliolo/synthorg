@@ -502,6 +502,14 @@ known-first-party = ["synthorg", "evals"]
 
 [tool.ruff.format]
 docstring-code-format = true
+# Markdown code blocks in docs/ are hand-aligned: field listings line their
+# trailing comments into a column, and several examples put four call shapes
+# side by side so the difference between them is the point. The formatter
+# collapses that alignment to a single space and re-wraps compact illustrative
+# snippets, costing more readability than the consistency buys. Python sources
+# carry no such alignment because the formatter already owns them, so this
+# exclusion is Markdown-only by design.
+exclude = ["*.md"]
 
 # ---------------------------------------------------------------------------
 # mypy: static type checker (strict mode)
@@ -589,10 +597,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "litestar.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "testcontainers.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

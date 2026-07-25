@@ -58,7 +58,7 @@ type SettingsDispatcherBuilder = Callable[
 """Callable that builds the SettingsChangeDispatcher during on-startup wiring."""
 
 
-async def auto_wire_settings(  # noqa: PLR0913
+async def auto_wire_settings(  # noqa: PLR0913, PLR0917
     persistence: PersistenceBackend,
     message_bus: MessageBus | None,
     effective_config: RootConfig,

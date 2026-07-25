@@ -197,16 +197,20 @@ def _check(repo_root: Path) -> list[str]:
     _source, tree = read_and_parse(path)
     if not _reads_per_agent_grant(tree):
         return [
-            f"{_SELF_CONSUMER_REL}: the bridge must read "
-            f"identity.{_OWNER_ATTR}.{_GRANT_ATTR} so ELEVATED agents are "
-            f"scoped per-agent, not handed the whole MCP surface"
+            (
+                f"{_SELF_CONSUMER_REL}: the bridge must read "
+                f"identity.{_OWNER_ATTR}.{_GRANT_ATTR} so ELEVATED agents are "
+                f"scoped per-agent, not handed the whole MCP surface"
+            )
         ]
     if not _grant_feeds_scoper(tree):
         return [
-            f"{_SELF_CONSUMER_REL}: identity.{_OWNER_ATTR}.{_GRANT_ATTR} is "
-            f"read but never reaches the capability set passed to "
-            f"{_SCOPER_CALL}(...), so per-agent scoping does not select the "
-            f"visible sensitive tools"
+            (
+                f"{_SELF_CONSUMER_REL}: identity.{_OWNER_ATTR}.{_GRANT_ATTR} is "
+                f"read but never reaches the capability set passed to "
+                f"{_SCOPER_CALL}(...), so per-agent scoping does not select the "
+                f"visible sensitive tools"
+            )
         ]
     return []
 

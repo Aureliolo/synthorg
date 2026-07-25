@@ -56,20 +56,30 @@ def _scan(source: str, tmp_path: Path, rel: str = "src/synthorg/x.py") -> list[s
         # math.fsum
         "import math\ndef f(records):\n    return math.fsum(r.cost for r in records)\n",
         # statistics.mean
-        "import statistics\n"
-        "def f(records):\n    return statistics.mean(r.cost for r in records)\n",
+        (
+            "import statistics\n"
+            "def f(records):\n    return statistics.mean(r.cost for r in records)\n"
+        ),
         # statistics.fmean
-        "import statistics\n"
-        "def f(records):\n    return statistics.fmean(r.cost for r in records)\n",
+        (
+            "import statistics\n"
+            "def f(records):\n    return statistics.fmean(r.cost for r in records)\n"
+        ),
         # bare-name fsum (e.g. from math import fsum)
-        "from math import fsum\n"
-        "def f(records):\n    return fsum(r.cost for r in records)\n",
+        (
+            "from math import fsum\n"
+            "def f(records):\n    return fsum(r.cost for r in records)\n"
+        ),
         # bare-name mean (e.g. from statistics import mean)
-        "from statistics import mean\n"
-        "def f(records):\n    return mean(r.cost for r in records)\n",
+        (
+            "from statistics import mean\n"
+            "def f(records):\n    return mean(r.cost for r in records)\n"
+        ),
         # bare-name fmean (e.g. from statistics import fmean)
-        "from statistics import fmean\n"
-        "def f(records):\n    return fmean(r.cost for r in records)\n",
+        (
+            "from statistics import fmean\n"
+            "def f(records):\n    return fmean(r.cost for r in records)\n"
+        ),
         # ListComp instead of GeneratorExp
         "def f(records):\n    return sum([r.cost for r in records])\n",
         # SetComp instead of GeneratorExp

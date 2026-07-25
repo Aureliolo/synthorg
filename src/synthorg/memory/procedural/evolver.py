@@ -256,7 +256,7 @@ class AutonomousSkillEvolver:
 
         return proposals, conflicts, supersessions, skipped_low_confidence
 
-    def _assemble_report(  # noqa: PLR0913
+    def _assemble_report(  # noqa: PLR0913, PLR0917
         self,
         cycle_id: str,
         window: timedelta,

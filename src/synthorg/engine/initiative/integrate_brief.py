@@ -52,13 +52,17 @@ def build_integration_brief(plan: Plan) -> str:
         report.extend(f"- {criterion}" for criterion in plan.objective_criteria)
     return "\n".join(
         [
-            "Every piece of this objective has been built and has passed its "
-            "own review. None of that shows they work together, which is what "
-            "this job is for.",
-            "Assemble the delivered work into one deliverable that actually "
-            "runs, fix whatever only shows up once the pieces meet, and prove "
-            "it end to end by running it. A run that produces no integrated "
-            "deliverable and no test evidence is not an integration.",
+            (
+                "Every piece of this objective has been built and has passed its "
+                "own review. None of that shows they work together, which is what "
+                "this job is for."
+            ),
+            (
+                "Assemble the delivered work into one deliverable that actually "
+                "runs, fix whatever only shows up once the pieces meet, and prove "
+                "it end to end by running it. A run that produces no integrated "
+                "deliverable and no test evidence is not an integration."
+            ),
             wrap_untrusted(TAG_TASK_DATA, "\n".join(report)),
         ]
     )

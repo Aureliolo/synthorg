@@ -337,9 +337,10 @@ def _resolve_route_template(scope: Scope) -> str:
     paths = getattr(handler, "paths", None)
     if not paths:
         return _UNMATCHED_ROUTE
-    # ``paths`` is a frozenset of route templates for the handler.
-    # Sort for determinism when a handler registers multiple paths.
-    template: str = sorted(paths)[0]
+    # ``paths`` is a frozenset of route templates for the handler; take the
+    # lexicographic minimum so a handler registering several paths always
+    # reports the same one.
+    template: str = min(paths)
     return template
 
 

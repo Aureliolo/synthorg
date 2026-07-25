@@ -281,11 +281,13 @@ def _stage_coverage_problems(
     if not missing_stages:
         return []
     return [
-        f"{_CI_WORKFLOW}: the all-files job runs stages "
-        f"{sorted(covered_stages)} but not {sorted(missing_stages)}. "
-        "Pre-push-only gates would have NO CI backstop. Add a "
-        f"'{_ALL_FILES_MARKER} --hook-stage <stage>' step for each "
-        "missing stage."
+        (
+            f"{_CI_WORKFLOW}: the all-files job runs stages "
+            f"{sorted(covered_stages)} but not {sorted(missing_stages)}. "
+            "Pre-push-only gates would have NO CI backstop. Add a "
+            f"'{_ALL_FILES_MARKER} --hook-stage <stage>' step for each "
+            "missing stage."
+        )
     ]
 
 
@@ -308,9 +310,11 @@ def _skip_agreement_problems(
     # next, and a diagnostic that changes shape is one nobody can diff.
     rendered = sorted(sorted(skip) for skip in skip_sets)
     return [
-        f"{_CI_WORKFLOW}: the all-files invocations disagree on SKIP "
-        f"({rendered}). Use one shared SKIP (job-level "
-        "env) so coverage is identical at every stage."
+        (
+            f"{_CI_WORKFLOW}: the all-files invocations disagree on SKIP "
+            f"({rendered}). Use one shared SKIP (job-level "
+            "env) so coverage is identical at every stage."
+        )
     ]
 
 
@@ -394,8 +398,10 @@ def _parity_violations(repo_root: Path) -> list[str]:
     if not invocations:
         # Nothing downstream can be judged without a mirror to judge against.
         return [
-            f"{_CI_WORKFLOW}: no '{_ALL_FILES_MARKER}' step found -- the hybrid "
-            "parity job is missing, so the Python gate set has no CI mirror."
+            (
+                f"{_CI_WORKFLOW}: no '{_ALL_FILES_MARKER}' step found -- the hybrid "
+                "parity job is missing, so the Python gate set has no CI mirror."
+            )
         ]
 
     skip_sets = {skip for _, skip in invocations}

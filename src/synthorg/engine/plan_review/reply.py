@@ -379,8 +379,10 @@ def _render_item(item: PlanItem) -> str:
     owner = item.owner or "UNASSIGNED"
     lines = [
         f"{item.title} ({item.kind.value})",
-        f"owner: {owner} | stakes: {item.stakes.value}"
-        f" | complexity: {item.estimated_complexity.value}",
+        (
+            f"owner: {owner} | stakes: {item.stakes.value}"
+            f" | complexity: {item.estimated_complexity.value}"
+        ),
         item.description,
     ]
     if item.acceptance_criteria:

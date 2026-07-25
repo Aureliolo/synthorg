@@ -268,10 +268,10 @@ class ConnectionsController(Controller):
         # when the field was omitted we forward ``_UNSET`` to keep the
         # catalog's existing value.  All four mutable fields use the
         # same semantic so client behaviour is uniform.
-        base_url: str | None | _UnsetType = (
+        base_url: str | _UnsetType | None = (
             data.base_url if "base_url" in data.model_fields_set else _UNSET
         )
-        metadata: dict[str, str] | None | _UnsetType
+        metadata: dict[str, str] | _UnsetType | None
         if "metadata" in data.model_fields_set:
             # Defensively deepcopy when provided; same reasoning as
             # ``create_connection`` (catalog briefly holds the mapping
@@ -281,12 +281,12 @@ class ConnectionsController(Controller):
             )
         else:
             metadata = _UNSET
-        health_check_enabled: bool | None | _UnsetType = (
+        health_check_enabled: bool | _UnsetType | None = (
             data.health_check_enabled
             if "health_check_enabled" in data.model_fields_set
             else _UNSET
         )
-        webhook_receipt_retention_days: int | None | _UnsetType = (
+        webhook_receipt_retention_days: int | _UnsetType | None = (
             data.webhook_receipt_retention_days
             if "webhook_receipt_retention_days" in data.model_fields_set
             else _UNSET

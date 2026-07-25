@@ -135,7 +135,7 @@ def apply_update(
     existing: ProviderConfig,
     request: UpdateProviderRequest,
     *,
-    connection_name: str | None | _Unset = _UNSET,
+    connection_name: str | _Unset | None = _UNSET,
 ) -> ProviderConfig:
     """Apply partial update fields to an existing config.
 

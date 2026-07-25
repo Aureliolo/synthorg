@@ -235,7 +235,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             streaming_enabled=streaming_enabled,
         )
 
-    async def _run_steps(  # noqa: PLR0913
+    async def _run_steps(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -419,7 +419,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
 
     # ── Step execution ──────────────────────────────────────────────
 
-    async def _execute_step(  # noqa: PLR0913
+    async def _execute_step(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,

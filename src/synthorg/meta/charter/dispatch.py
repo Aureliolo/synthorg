@@ -422,7 +422,7 @@ class CharterDispatcher:
             plan_required=True,
         )
 
-    async def _stamp_approved(  # noqa: PLR0913 -- dispatch provenance columns
+    async def _stamp_approved(  # noqa: PLR0913, PLR0917 -- dispatch provenance columns
         self,
         charter: ProjectCharter,
         forecast: Forecast,

@@ -437,7 +437,7 @@ _SETTINGS_NOT_FOUND: Final[_SettingsLookup] = _SettingsLookup.NOT_FOUND
 async def _lookup_dept_override_from_settings(
     app_state: AppState,
     department_name: NotBlankStr,
-) -> CeremonyPolicyConfig | None | _SettingsLookup:
+) -> CeremonyPolicyConfig | _SettingsLookup | None:
     """Try to find a department override in the settings service.
 
     Returns:

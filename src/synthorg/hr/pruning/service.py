@@ -621,7 +621,7 @@ class PruningService:
         return True
 
     @staticmethod
-    def _build_approval_item(  # noqa: PLR0913
+    def _build_approval_item(  # noqa: PLR0913, PLR0917
         approval_id: NotBlankStr,
         agent: AgentIdentity,
         evaluation: PruningEvaluation,

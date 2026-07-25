@@ -157,7 +157,7 @@ class TaskController(Controller):
     guards = [require_read_access]  # noqa: RUF012
 
     @get()
-    async def list_tasks(  # noqa: PLR0913
+    async def list_tasks(  # noqa: PLR0913, PLR0917
         self,
         state: State,
         status: Annotated[

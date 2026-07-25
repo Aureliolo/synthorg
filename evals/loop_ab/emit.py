@@ -198,8 +198,10 @@ def _recommendation_section(scoreboard: Scoreboard) -> list[str]:
     if recommendation.default_loop_type is None:
         lines.extend(
             [
-                "No loop cleared the correctness gate, so this scoreboard "
-                "supports no promotion. Leave the current settings in place.",
+                (
+                    "No loop cleared the correctness gate, so this scoreboard "
+                    "supports no promotion. Leave the current settings in place."
+                ),
                 "",
             ]
         )
@@ -212,8 +214,10 @@ def _recommendation_section(scoreboard: Scoreboard) -> list[str]:
             # markdown lint the hand-written design pages do.
             "```ini",
             f"engine.default_loop_type = {recommendation.default_loop_type}",
-            "engine.loop_complexity_overrides = "
-            f"{recommendation.loop_complexity_overrides}",
+            (
+                "engine.loop_complexity_overrides = "
+                f"{recommendation.loop_complexity_overrides}"
+            ),
             "```",
             "",
             "Evidence, per complexity bucket:",

@@ -114,7 +114,7 @@ async def notify_turn_observer(
         )
 
 
-async def call_provider(  # noqa: PLR0913
+async def call_provider(  # noqa: PLR0913, PLR0917
     ctx: AgentContext,
     provider: CompletionProvider,
     model_id: str,

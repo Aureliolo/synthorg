@@ -265,7 +265,7 @@ class HybridLoop:
 
     # -- Phase orchestration -----------------------------------------------
 
-    async def _run_planning_phase(  # noqa: PLR0913
+    async def _run_planning_phase(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -296,7 +296,7 @@ class HybridLoop:
             turns,
         )
 
-    async def _run_steps(  # noqa: PLR0913
+    async def _run_steps(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -498,7 +498,7 @@ class HybridLoop:
             return result
         return result.model_copy(update={"quality_signals": tuple(signals)})
 
-    async def _handle_completed_step(  # noqa: PLR0913
+    async def _handle_completed_step(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -574,7 +574,7 @@ class HybridLoop:
             should_replan=should_replan,
         )
 
-    async def _decide_replan_on_completion(  # noqa: PLR0913
+    async def _decide_replan_on_completion(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -642,7 +642,7 @@ class HybridLoop:
         )
         return ctx, plan, replans_used, True
 
-    async def _steering_replan_hybrid(  # noqa: PLR0913
+    async def _steering_replan_hybrid(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -690,7 +690,7 @@ class HybridLoop:
         )
         return ctx, new_plan, replans_used
 
-    def _build_final_result(  # noqa: PLR0913
+    def _build_final_result(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         plan: ExecutionPlan,
@@ -787,7 +787,7 @@ class HybridLoop:
 
     # -- Step execution ----------------------------------------------------
 
-    async def _execute_step(  # noqa: PLR0913
+    async def _execute_step(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -890,7 +890,7 @@ class HybridLoop:
         )
         return compacted if compacted is not None else ctx
 
-    async def _run_step_turn(  # noqa: PLR0913
+    async def _run_step_turn(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -999,7 +999,7 @@ class HybridLoop:
             shutdown_checker,
         )
 
-    async def _handle_step_tool_calls(  # noqa: PLR0913
+    async def _handle_step_tool_calls(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         tool_invoker: ToolInvokerProtocol | None,

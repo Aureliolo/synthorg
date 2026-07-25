@@ -38,7 +38,7 @@ from tests._shared.postgres_template import (
 )
 
 if TYPE_CHECKING:
-    from testcontainers.postgres import PostgresContainer
+    from testcontainers.community.postgres import PostgresContainer
 
 
 if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
@@ -186,7 +186,7 @@ def postgres_container(
     if not _docker_available():
         pytest.skip("Docker is required for postgres integration tests")
 
-    from testcontainers.postgres import PostgresContainer
+    from testcontainers.community.postgres import PostgresContainer
 
     container = PostgresContainer("postgres:18-alpine")
     container.start()
@@ -279,7 +279,7 @@ def timescaledb_container() -> Iterator[PostgresContainer]:
     if not _docker_available():
         pytest.skip("Docker is required for TimescaleDB integration tests")
 
-    from testcontainers.postgres import PostgresContainer
+    from testcontainers.community.postgres import PostgresContainer
 
     container = PostgresContainer(_TIMESCALEDB_IMAGE)
     container.start()

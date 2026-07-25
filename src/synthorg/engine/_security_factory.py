@@ -398,7 +398,7 @@ def registry_with_human_input_tools(  # noqa: PLR0913 -- run-scoped wiring input
     return registry
 
 
-def registry_with_external_api_tool(  # noqa: PLR0913 -- run-scoped wiring inputs
+def registry_with_external_api_tool(  # noqa: PLR0913, PLR0917 -- run-scoped wiring inputs
     tool_registry: ToolRegistry,
     runtime: ExternalApiRuntime | None,
     approval_store: ApprovalStoreProtocol | None,

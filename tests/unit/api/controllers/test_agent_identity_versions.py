@@ -181,7 +181,7 @@ class TestDiff:
             pytest.param(1, 99, 404, id="missing_to_version_returns_404"),
         ],
     )
-    async def test_diff_validation(  # noqa: PLR0913
+    async def test_diff_validation(  # noqa: PLR0913, PLR0917
         self,
         async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
@@ -435,7 +435,7 @@ class TestReadEndpointsOwnership:
             ),
         ],
     )
-    async def test_cross_entity_snapshot_rejected(  # noqa: PLR0913
+    async def test_cross_entity_snapshot_rejected(  # noqa: PLR0913, PLR0917
         self,
         async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,

@@ -473,8 +473,10 @@ class LLMRubricGrader:
             verdict = VerificationVerdict.REFER
             findings = (
                 *findings,
-                f"Confidence {confidence:.2f} below minimum "
-                f"{applied_min_conf:.2f}; downgraded to REFER.",
+                (
+                    f"Confidence {confidence:.2f} below minimum "
+                    f"{applied_min_conf:.2f}; downgraded to REFER."
+                ),
             )
         return per_criterion_grades, verdict, confidence, findings
 

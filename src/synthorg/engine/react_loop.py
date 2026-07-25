@@ -418,7 +418,7 @@ class ReactLoop:
             [],
         )
 
-    async def _process_turn_response(  # noqa: PLR0913
+    async def _process_turn_response(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         response: CompletionResponse,

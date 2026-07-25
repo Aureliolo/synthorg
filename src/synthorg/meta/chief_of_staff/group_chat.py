@@ -493,7 +493,7 @@ class GroupChatService:
             pending_invites=tuple(pending_invites),
         )
 
-    async def _maybe_park_invite(  # noqa: PLR0913 -- one invite's full context
+    async def _maybe_park_invite(  # noqa: PLR0913, PLR0917 -- one invite's full context
         self,
         conversation: Conversation,
         participant: ConversationParticipant,
@@ -525,7 +525,7 @@ class GroupChatService:
         if summary is not None:
             pending_invites.append(summary)
 
-    async def _dispatch_contribution(  # noqa: PLR0913 -- one contribution's full context
+    async def _dispatch_contribution(  # noqa: PLR0913, PLR0917 -- one contribution's full context
         self,
         conversation: Conversation,
         history: tuple[ConversationTurn, ...],

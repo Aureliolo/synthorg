@@ -125,7 +125,7 @@ class ToolPatternExtractor:
             # Deterministic source_agent_id: lexicographically smallest
             # contributing agent so the same aggregate maps to the same
             # provenance across runs.
-            representative = sorted(agents)[0]
+            representative = min(agents)
 
             items.append(
                 TrainingItem(

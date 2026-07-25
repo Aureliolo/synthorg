@@ -498,7 +498,7 @@ async def _trip_breaker_and_close(
         pass
 
 
-async def _on_event(  # noqa: PLR0913
+async def _on_event(  # noqa: PLR0913, PLR0917
     event_data: bytes,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],

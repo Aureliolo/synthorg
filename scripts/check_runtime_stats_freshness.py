@@ -150,8 +150,10 @@ def _check_age(committed: dict[str, object]) -> list[str]:
     age_days = (dt.datetime.now(dt.UTC) - parsed).days
     if age_days > _STALE_AFTER_DAYS:
         return [
-            f"data/runtime_stats.yaml last regenerated {raw_ts[:10]} "
-            f"({age_days}d > {_STALE_AFTER_DAYS}d).",
+            (
+                f"data/runtime_stats.yaml last regenerated {raw_ts[:10]} "
+                f"({age_days}d > {_STALE_AFTER_DAYS}d)."
+            ),
             _REMEDIATION,
         ]
     return []

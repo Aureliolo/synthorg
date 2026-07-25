@@ -182,8 +182,10 @@ class ReceiptValidator:
             return []
         if len(report.findings) != receipt.red_team.finding_count:
             return [
-                "red-team finding count mismatch "
-                f"(receipt {receipt.red_team.finding_count} != "
-                f"report {len(report.findings)})"
+                (
+                    "red-team finding count mismatch "
+                    f"(receipt {receipt.red_team.finding_count} != "
+                    f"report {len(report.findings)})"
+                )
             ]
         return []

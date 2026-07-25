@@ -107,7 +107,7 @@ class AuditController(Controller):
             per_op_rate_limit_from_policy("security.audit_query", key="user"),
         ],
     )
-    async def list_audit_entries(  # noqa: PLR0913
+    async def list_audit_entries(  # noqa: PLR0913, PLR0917
         self,
         state: State,
         agent_id: Annotated[

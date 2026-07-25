@@ -75,7 +75,7 @@ def _make_definition(  # noqa: PLR0913
     namespace: SettingNamespace = SettingNamespace.BUDGET,
     key: str = "total_monthly",
     setting_type: SettingType = SettingType.FLOAT,
-    default: str | None | object = _UNSET,
+    default: str | object | None = _UNSET,
     sensitive: bool = False,
     restart_required: bool = False,
     enum_values: tuple[str, ...] = (),
@@ -287,7 +287,7 @@ class TestValidation:
         ],
         ids=["non-float", "below-min", "above-max", "bad-enum", "bad-bool"],
     )
-    async def test_rejects_invalid_value(  # noqa: PLR0913
+    async def test_rejects_invalid_value(  # noqa: PLR0913, PLR0917
         self,
         mock_repo: AsyncMock,
         config: _FakeConfig,

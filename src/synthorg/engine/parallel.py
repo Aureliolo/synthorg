@@ -465,7 +465,7 @@ class ParallelExecutor:
             error=safe_error_description(exc),
         )
 
-    def _record_fatal_outcome(  # noqa: PLR0913
+    def _record_fatal_outcome(  # noqa: PLR0913, PLR0917
         self,
         exc: MemoryError | RecursionError,
         assignment: AgentAssignment,

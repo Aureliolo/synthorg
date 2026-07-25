@@ -341,7 +341,7 @@ class ProviderRegistry:
         return cls(drivers)
 
     @classmethod
-    def _build_cassette_registry(  # noqa: PLR0913 -- build modifiers, all internal
+    def _build_cassette_registry(  # noqa: PLR0913, PLR0917 -- build modifiers, all internal
         cls,
         providers: Mapping[str, ProviderConfig],
         defaults: dict[str, type[BaseCompletionProvider]],
@@ -450,7 +450,7 @@ def _apply_global_retry_default(
     )
 
 
-def _build_driver(  # noqa: PLR0913 -- build modifiers, all internal
+def _build_driver(  # noqa: PLR0913, PLR0917 -- build modifiers, all internal
     name: str,
     config: ProviderConfig,
     defaults: dict[str, type[BaseCompletionProvider]],

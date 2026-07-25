@@ -611,7 +611,7 @@ class AgentEngineErrorsMixin:
             )
             raise exc from None
 
-    async def _build_error_execution(  # noqa: PLR0913
+    async def _build_error_execution(  # noqa: PLR0913, PLR0917
         self,
         identity: AgentIdentity,
         task: Task,

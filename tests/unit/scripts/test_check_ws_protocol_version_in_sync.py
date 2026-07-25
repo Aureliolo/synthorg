@@ -38,9 +38,9 @@ def _ts_body(version: str = "3", size: str = "32_768") -> str:
 def _write_tree(
     tmp_root: Path,
     *,
-    models: str | None | object = _DEFAULT,
-    ws: str | None | object = _DEFAULT,
-    ts: str | None | object = _DEFAULT,
+    models: str | object | None = _DEFAULT,
+    ws: str | object | None = _DEFAULT,
+    ts: str | object | None = _DEFAULT,
 ) -> None:
     """Materialise the three source files the gate reads.
 

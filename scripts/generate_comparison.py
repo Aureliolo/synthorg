@@ -307,26 +307,34 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
         "  framework, platform, and research project.",
         "---",
         "",
-        "<!-- Generated from data/competitors.yaml"
-        " by scripts/generate_comparison.py --"
-        " do not edit directly -->",
+        (
+            "<!-- Generated from data/competitors.yaml"
+            " by scripts/generate_comparison.py --"
+            " do not edit directly -->"
+        ),
         "",
         "# Framework Comparison",
         "",
-        "How SynthOrg compares to agent orchestration frameworks,"
-        " platforms, and research projects.",
+        (
+            "How SynthOrg compares to agent orchestration frameworks,"
+            " platforms, and research projects."
+        ),
         "",
         f"Last updated: {last_updated}",
         "",
         "**Legend:**",
-        f"{SUPPORT_ICONS['full']} Full support"
-        f" | ~ Partial support"
-        f" | {SUPPORT_ICONS['none']} Not supported"
-        f" | {SUPPORT_ICONS['planned']} Planned",
+        (
+            f"{SUPPORT_ICONS['full']} Full support"
+            f" | ~ Partial support"
+            f" | {SUPPORT_ICONS['none']} Not supported"
+            f" | {SUPPORT_ICONS['planned']} Planned"
+        ),
         "",
         '!!! tip "Interactive Version"',
-        "    For a filterable, sortable version of this comparison,"
-        " visit the [interactive comparison page](https://synthorg.io/compare/).",
+        (
+            "    For a filterable, sortable version of this comparison,"
+            " visit the [interactive comparison page](https://synthorg.io/compare/)."
+        ),
         "",
     ]
 

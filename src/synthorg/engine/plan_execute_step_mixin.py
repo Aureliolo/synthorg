@@ -70,7 +70,7 @@ class PlanExecuteStepMixin:
     _checkpoint_callback: CheckpointCallback | None
     _steering_inbox: SteeringInbox | None
 
-    async def _run_step_turn(  # noqa: PLR0913
+    async def _run_step_turn(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         provider: CompletionProvider,
@@ -194,7 +194,7 @@ class PlanExecuteStepMixin:
             )
         return ctx, success
 
-    async def _handle_step_tool_calls(  # noqa: PLR0913
+    async def _handle_step_tool_calls(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         tool_invoker: ToolInvokerProtocol | None,
@@ -280,7 +280,7 @@ class PlanExecuteStepMixin:
         )
         return result.model_copy(update={"metadata": metadata})
 
-    def _build_final_result(  # noqa: PLR0913
+    def _build_final_result(  # noqa: PLR0913, PLR0917
         self,
         ctx: AgentContext,
         plan: ExecutionPlan,
