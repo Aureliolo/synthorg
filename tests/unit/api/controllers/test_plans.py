@@ -38,6 +38,7 @@ def _plan(
                 title=NotBlankStr("Scaffold"),
                 description=NotBlankStr("Set up the board"),
                 acceptance_criteria=(NotBlankStr("board scaffolded"),),
+                expected_artifacts=(NotBlankStr("src/board.py"),),
             ),
             PlanItem(
                 id=NotBlankStr(_I2),
@@ -45,6 +46,7 @@ def _plan(
                 description=NotBlankStr("Drop + rotate"),
                 dependencies=(NotBlankStr(_I1),),
                 acceptance_criteria=(NotBlankStr("pieces drop and rotate"),),
+                expected_artifacts=(NotBlankStr("src/movement.py"),),
             ),
         ),
         status=status,
@@ -150,6 +152,7 @@ class TestPlanController:
                         "description": "New scope for the board",
                         "owner": "engineering",
                         "acceptance_criteria": ["board scaffolded"],
+                        "expected_artifacts": ["src/board.py"],
                     },
                 ],
             },
@@ -182,6 +185,7 @@ class TestPlanController:
                     "title": "Slice",
                     "description": "One slice",
                     "acceptance_criteria": ["it runs"],
+                    "expected_artifacts": ["src/slice.py"],
                 }
             ]
         }
@@ -265,6 +269,31 @@ class TestPlanController:
         )
         assert resp.status_code == 400
 
+    async def test_edit_rejects_work_item_without_expected_artifacts(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        # A WORK item declaring no deliverable disarms the zero-artifact guard
+        # on the task it dispatches, so the edit is refused at the boundary.
+        await _seed(async_test_client, _plan())
+        plan_id = str(as_uuid("plan-001"))
+
+        resp = await async_test_client.patch(
+            f"/api/v1/plans/{plan_id}",
+            json={
+                "items": [
+                    {
+                        "id": _I1,
+                        "title": "Scaffold",
+                        "description": "Set up the board",
+                        "acceptance_criteria": ["board scaffolded"],
+                    },
+                ],
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
+        assert resp.json()["success"] is False
+
     async def test_edit_rejects_unresolvable_dependency(
         self, async_test_client: LoopAsyncClient
     ) -> None:
@@ -281,6 +310,7 @@ class TestPlanController:
                         "description": "Depends on a ghost",
                         "dependencies": [sid("ghost")],
                         "acceptance_criteria": ["done"],
+                        "expected_artifacts": ["src/broken.py"],
                     },
                 ],
             },
@@ -305,6 +335,7 @@ class TestPlanController:
                         "description": "depends on B",
                         "dependencies": [_I2],
                         "acceptance_criteria": ["a done"],
+                        "expected_artifacts": ["src/a.py"],
                     },
                     {
                         "id": _I2,
@@ -312,6 +343,7 @@ class TestPlanController:
                         "description": "depends on A",
                         "dependencies": [_I1],
                         "acceptance_criteria": ["b done"],
+                        "expected_artifacts": ["src/b.py"],
                     },
                 ],
             },
@@ -335,6 +367,7 @@ class TestPlanController:
                         "title": "X",
                         "description": "Y",
                         "acceptance_criteria": ["done"],
+                        "expected_artifacts": ["src/x.py"],
                     }
                 ]
             },
@@ -376,6 +409,7 @@ class TestPlanController:
                         "title": "X",
                         "description": "Y",
                         "acceptance_criteria": ["done"],
+                        "expected_artifacts": ["src/x.py"],
                     }
                 ]
             },
@@ -396,6 +430,7 @@ class TestPlanController:
                         "title": "X",
                         "description": "Y",
                         "acceptance_criteria": ["done"],
+                        "expected_artifacts": ["src/x.py"],
                     }
                 ]
             },

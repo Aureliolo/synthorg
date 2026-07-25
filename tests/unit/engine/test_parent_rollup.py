@@ -1,9 +1,11 @@
-"""Tests for the parent-rollup lifecycle walk and phase wrapper."""
+"""Tests for the parent-rollup status derivation, lifecycle walk, and wrapper."""
 
+from typing import override
 from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.task_transitions import transition_path
 from synthorg.engine.coordination.models import (
@@ -13,18 +15,57 @@ from synthorg.engine.coordination.models import (
 from synthorg.engine.coordination.parent_rollup import (
     COORDINATOR_ACTOR,
     advance_parent_to_rollup_status,
+    compute_status_rollup,
     run_update_parent_phase,
 )
-from synthorg.engine.decomposition.models import SubtaskStatusRollup
+from synthorg.engine.decomposition.classifier import TaskStructureClassifier
+from synthorg.engine.decomposition.models import (
+    DecompositionContext,
+    DecompositionPlan,
+    DecompositionResult,
+    SubtaskStatusRollup,
+)
+from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult
 from tests._shared import FakeClock, mock_of
 from tests.unit.engine.conftest import (
     make_assignment_agent,
     make_assignment_task,
+    make_decomposition,
+    make_subtask,
 )
 
 pytestmark = pytest.mark.unit
+
+
+class _StaticStrategy:
+    """Decomposition strategy returning a fixed plan."""
+
+    def __init__(self, plan: DecompositionPlan) -> None:
+        self._plan = plan
+
+    @override
+    def __repr__(self) -> str:
+        return "_StaticStrategy()"
+
+    async def decompose(
+        self, task: Task, context: DecompositionContext
+    ) -> DecompositionPlan:
+        """Return the fixed plan.
+
+        Returns:
+            The plan supplied at construction.
+        """
+        return self._plan
+
+    def get_strategy_name(self) -> str:
+        """Return the strategy name.
+
+        Returns:
+            The literal ``"static"``.
+        """
+        return "static"
 
 
 def _rollup(
@@ -64,7 +105,10 @@ class TestAdvanceParentToRollupStatus:
 
     async def test_empty_path_is_noop_success(self) -> None:
         """Parent already at the derived status: no submits, success."""
-        task_engine = mock_of[TaskEngine](submit=AsyncMock())
+        task_engine = mock_of[TaskEngine](
+            submit=AsyncMock(),
+            get_task=AsyncMock(return_value=None),
+        )
         rollup = _rollup(total=1, completed=1)  # derived COMPLETED
 
         outcome = await advance_parent_to_rollup_status(
@@ -81,7 +125,10 @@ class TestAdvanceParentToRollupStatus:
 
     async def test_no_valid_path_returns_failure(self) -> None:
         """Terminal parent that cannot reach the derived status."""
-        task_engine = mock_of[TaskEngine](submit=AsyncMock())
+        task_engine = mock_of[TaskEngine](
+            submit=AsyncMock(),
+            get_task=AsyncMock(return_value=None),
+        )
         rollup = _rollup(total=1, failed=1)  # derived FAILED
 
         outcome = await advance_parent_to_rollup_status(
@@ -103,6 +150,7 @@ class TestAdvanceParentToRollupStatus:
         assert expected is not None
         task_engine = mock_of[TaskEngine](
             submit=AsyncMock(return_value=_ok_result()),
+            get_task=AsyncMock(return_value=None),
         )
         rollup = _rollup(total=1, completed=1)  # derived COMPLETED
 
@@ -134,12 +182,18 @@ class TestAdvanceParentToRollupStatus:
                     _fail_result("transition not allowed"),
                 ],
             ),
+            # First read starts the walk (the parent really is CREATED); the
+            # second is the diagnostic re-read after the rejected hop, by
+            # which point two hops have landed.
             get_task=AsyncMock(
-                return_value=make_assignment_task(
-                    id="parent-1",
-                    status=TaskStatus.IN_PROGRESS,
-                    assigned_to="coordinator",
-                ),
+                side_effect=[
+                    make_assignment_task(id="parent-1", status=TaskStatus.CREATED),
+                    make_assignment_task(
+                        id="parent-1",
+                        status=TaskStatus.IN_PROGRESS,
+                        assigned_to="coordinator",
+                    ),
+                ],
             ),
         )
         rollup = _rollup(total=1, completed=1)  # derived COMPLETED
@@ -179,6 +233,126 @@ class TestAdvanceParentToRollupStatus:
         assert outcome.error is not None
         assert "rejected" in outcome.error
         assert "parent now" not in outcome.error
+
+
+class TestComputeStatusRollup:
+    """The rollup reads persisted status, never the dispatch outcome."""
+
+    def _decomposition(self) -> DecompositionResult:
+        subtasks = (make_subtask("sub-a"), make_subtask("sub-b"))
+        return make_decomposition(subtasks, parent_task_id="parent-1")
+
+    async def test_reads_persisted_status_not_run_outcome(self) -> None:
+        """A finished-but-unverified subtask counts as IN_REVIEW, not COMPLETED.
+
+        A run that returned successfully is not a run the review gate has
+        passed, so deriving the parent from the dispatch outcome would let it
+        complete on unverified work.
+        """
+        decomp = self._decomposition()
+        live = {
+            s.id: make_assignment_task(
+                id=s.id, status=TaskStatus.IN_REVIEW, assigned_to="alice"
+            )
+            for s in decomp.plan.subtasks
+        }
+        phases: list[CoordinationPhaseResult] = []
+
+        rollup = await compute_status_rollup(
+            decomposition_service=DecompositionService(
+                _StaticStrategy(decomp.plan), TaskStructureClassifier()
+            ),
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(side_effect=lambda tid: live[tid]),
+            ),
+            clock=FakeClock(),
+            context=CoordinationContext(
+                task=make_assignment_task(id="parent-1"),
+                available_agents=(make_assignment_agent("alice"),),
+            ),
+            decomp_result=decomp,
+            phases=phases,
+        )
+
+        assert rollup is not None
+        assert rollup.completed == 0
+        assert rollup.derived_parent_status is TaskStatus.IN_PROGRESS
+        assert phases[-1].success is True
+
+    async def test_missing_subtask_row_counts_as_blocked(self) -> None:
+        """A subtask that never reached the engine holds the total honest."""
+        decomp = self._decomposition()
+        phases: list[CoordinationPhaseResult] = []
+
+        rollup = await compute_status_rollup(
+            decomposition_service=DecompositionService(
+                _StaticStrategy(decomp.plan), TaskStructureClassifier()
+            ),
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(return_value=None),
+            ),
+            clock=FakeClock(),
+            context=CoordinationContext(
+                task=make_assignment_task(id="parent-1"),
+                available_agents=(make_assignment_agent("alice"),),
+            ),
+            decomp_result=decomp,
+            phases=phases,
+        )
+
+        assert rollup is not None
+        assert rollup.blocked == len(decomp.plan.subtasks)
+
+    async def test_verified_subtasks_complete_the_parent(self) -> None:
+        """Once every child has passed the gate, the parent derives COMPLETED."""
+        decomp = self._decomposition()
+        live = {
+            s.id: make_assignment_task(
+                id=s.id, status=TaskStatus.COMPLETED, assigned_to="alice"
+            )
+            for s in decomp.plan.subtasks
+        }
+        phases: list[CoordinationPhaseResult] = []
+
+        rollup = await compute_status_rollup(
+            decomposition_service=DecompositionService(
+                _StaticStrategy(decomp.plan), TaskStructureClassifier()
+            ),
+            task_engine=mock_of[TaskEngine](
+                get_task=AsyncMock(side_effect=lambda tid: live[tid]),
+            ),
+            clock=FakeClock(),
+            context=CoordinationContext(
+                task=make_assignment_task(id="parent-1"),
+                available_agents=(make_assignment_agent("alice"),),
+            ),
+            decomp_result=decomp,
+            phases=phases,
+        )
+
+        assert rollup is not None
+        assert rollup.derived_parent_status is TaskStatus.COMPLETED
+
+    async def test_no_task_engine_returns_none(self) -> None:
+        """No engine means no persisted status, so no rollup is invented."""
+        decomp = self._decomposition()
+        phases: list[CoordinationPhaseResult] = []
+
+        rollup = await compute_status_rollup(
+            decomposition_service=DecompositionService(
+                _StaticStrategy(decomp.plan), TaskStructureClassifier()
+            ),
+            task_engine=None,
+            clock=FakeClock(),
+            context=CoordinationContext(
+                task=make_assignment_task(id="parent-1"),
+                available_agents=(make_assignment_agent("alice"),),
+            ),
+            decomp_result=decomp,
+            phases=phases,
+        )
+
+        assert rollup is None
 
 
 class TestRunUpdateParentPhase:

@@ -102,6 +102,19 @@ def _item_from_subtask(subtask: SubtaskDefinition) -> PlanItem:
     )
 
 
+def items_from_decomposition(result: DecompositionResult) -> tuple[PlanItem, ...]:
+    """Project a decomposition's subtask tree onto durable plan items.
+
+    Split out from :func:`plan_from_decomposition` because a re-plan needs the
+    items alone: its successor keeps the retired plan's provenance and is built
+    by the plan service, not assembled here.
+
+    Returns:
+        One :class:`PlanItem` per subtask, in plan order.
+    """
+    return tuple(_item_from_subtask(subtask) for subtask in result.plan.subtasks)
+
+
 def plan_from_decomposition(
     result: DecompositionResult,
     provenance: PlanProvenance,
@@ -116,7 +129,7 @@ def plan_from_decomposition(
     Returns:
         A validated :class:`Plan` mirroring the decomposition's structure.
     """
-    items = tuple(_item_from_subtask(subtask) for subtask in result.plan.subtasks)
+    items = items_from_decomposition(result)
     return Plan(
         project=provenance.project,
         objective_id=provenance.objective_id,

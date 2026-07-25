@@ -60,12 +60,20 @@ def _task() -> Task:
 def _request() -> ManualDecomposeRequest:
     return ManualDecomposeRequest(
         subtasks=(
-            ManualSubtaskSpec(label="design", title="Design", description="Design it."),
+            ManualSubtaskSpec(
+                label="design",
+                title="Design",
+                description="Design it.",
+                acceptance_criteria=("the design is documented",),
+                expected_artifacts=("docs/design.md",),
+            ),
             ManualSubtaskSpec(
                 label="build",
                 title="Build",
                 description="Build it.",
                 dependencies=("design",),
+                acceptance_criteria=("the build compiles",),
+                expected_artifacts=("src/build.py",),
             ),
         ),
     )
@@ -103,6 +111,8 @@ async def test_decompose_rejects_unknown_dependency_label() -> None:
                 title="Build",
                 description="Build it.",
                 dependencies=("ghost",),
+                acceptance_criteria=("the build compiles",),
+                expected_artifacts=("src/build.py",),
             ),
         ),
     )
@@ -127,6 +137,8 @@ async def test_decompose_rejects_self_dependency_as_validation_error() -> None:
                 title="Build",
                 description="Build it.",
                 dependencies=("build",),
+                acceptance_criteria=("the build compiles",),
+                expected_artifacts=("src/build.py",),
             ),
         ),
     )

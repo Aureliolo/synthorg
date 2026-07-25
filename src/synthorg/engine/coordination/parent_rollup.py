@@ -11,16 +11,25 @@ before any terminal status; a fully-completed coordination must pass
 through IN_REVIEW before COMPLETED). A single blind transition would be
 rejected by the task state machine, so the shortest valid path is walked
 hop by hop.
+
+The subtask statuses this rollup derives from are read from persistence,
+never from the run outcomes the dispatcher returns: a run that finished is
+not a run that was verified. Immediately after ``coordinate()`` most
+subtasks are therefore ``IN_REVIEW`` and the parent stays ``IN_PROGRESS``;
+the initiative rollup re-derives it on every later task event, so the parent
+lands on its terminal status once the review gate has ruled on each child.
 """
 
+import asyncio
 from typing import TYPE_CHECKING, Final, NamedTuple
 from uuid import uuid4
 
 from synthorg.core.clock import Clock
+from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.task_transitions import transition_path
-from synthorg.engine.coordination.dispatcher_types import DispatchResult
 from synthorg.engine.coordination.models import (
     CoordinationContext,
     CoordinationPhaseResult,
@@ -50,6 +59,12 @@ logger = get_logger(__name__)
 # it through ASSIGNED (the parent is owned by the coordinating context,
 # not a single agent -- subtasks carry the real per-agent assignments).
 COORDINATOR_ACTOR: Final[str] = "coordinator"
+
+#: Serialises the two walkers of one parent task: coordination's one-shot
+#: advance and the initiative rollup's per-recompute one. Module-level because
+#: they are different objects with no shared owner, and the interleave they
+#: would otherwise produce is invisible to the engine's per-hop validation.
+_PARENT_WALK_LOCKS: Final[RefcountedLockMap[str]] = RefcountedLockMap()
 
 
 class ParentUpdateOutcome(NamedTuple):
@@ -133,6 +148,7 @@ async def advance_parent_to_rollup_status(
     task_id: str,
     current_status: TaskStatus,
     rollup: SubtaskStatusRollup,
+    target: TaskStatus | None = None,
 ) -> ParentUpdateOutcome:
     """Walk the parent task to ``rollup.derived_parent_status``.
 
@@ -151,17 +167,77 @@ async def advance_parent_to_rollup_status(
             caller, so the path starts from reality not a stale snapshot).
         rollup: The subtask status rollup; supplies the derived parent
             status and the completed/failed counts for the final reason.
+        target: Status to walk to instead of the rollup-derived one. Lets a
+            caller that knows more than the child counts hold the parent
+            short of terminal (an initiative whose items are all done is
+            still integrating), while the counts in the audit reason stay
+            the real ones.
+
+    Two callers walk the same parent: coordination's one-shot advance when
+    ``coordinate()`` returns, and the initiative rollup on every recompute.
+    Each hop is individually legal, so two interleaved walks would land the
+    parent on a status neither derived and the engine's own validation could
+    not see it. The whole walk therefore runs under a per-task lock shared by
+    both callers, and the path is re-derived from a read taken inside it so
+    the loser of the race plans against the winner's result rather than its
+    own stale snapshot.
 
     Returns:
         A :class:`ParentUpdateOutcome` describing success, the failure
         note (if any), and how many hops landed.
     """
-    target = rollup.derived_parent_status
-    path = transition_path(current_status, target)
+    async with _PARENT_WALK_LOCKS.acquire(task_id):
+        return await _walk_parent(
+            task_engine,
+            task_id=task_id,
+            current_status=await _live_status(task_engine, task_id, current_status),
+            rollup=rollup,
+            target=target,
+        )
+
+
+async def _live_status(
+    task_engine: TaskEngine,
+    task_id: str,
+    fallback: TaskStatus,
+) -> TaskStatus:
+    """Read the parent's status inside the walk lock.
+
+    Returns:
+        The persisted status, or *fallback* when the parent cannot be read
+        (the walk then fails on its first hop, which is where an unreadable
+        parent belongs).
+    """
+    try:
+        live = await task_engine.get_task(task_id)
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- staleness refresh only; the hops below
+        # still go through the engine's own transition validation
+        reraise_critical(exc)
+        return fallback
+    return fallback if live is None else live.status
+
+
+async def _walk_parent(
+    task_engine: TaskEngine,
+    *,
+    task_id: str,
+    current_status: TaskStatus,
+    rollup: SubtaskStatusRollup,
+    target: TaskStatus | None,
+) -> ParentUpdateOutcome:
+    """Submit each hop from *current_status* to the walk's target.
+
+    Returns:
+        A :class:`ParentUpdateOutcome` describing success, the failure note
+        (if any), and how many hops landed.
+    """
+    walk_to = target if target is not None else rollup.derived_parent_status
+    path = transition_path(current_status, walk_to)
     if path is None:
         note = (
             f"Parent status {current_status.value!r} cannot reach "
-            f"rollup status {target.value!r}: no valid lifecycle path "
+            f"rollup status {walk_to.value!r}: no valid lifecycle path "
             f"(parent already terminal or externally finalised)"
         )
         return ParentUpdateOutcome(success=False, error=note, hops_completed=0)
@@ -208,65 +284,84 @@ async def advance_parent_to_rollup_status(
     )
 
 
-def _collect_subtask_statuses(
-    dispatch_result: DispatchResult,
+async def _collect_subtask_statuses(
+    task_engine: TaskEngine,
     decomp_result: DecompositionResult,
 ) -> tuple[TaskStatus, ...]:
-    """Map execution outcomes to per-subtask statuses, including unexecuted.
+    """Read each subtask's persisted status, in plan order.
 
-    Walks the dispatch result waves and extracts a success/failure status
-    for each executed subtask. Subtasks missing from the waves (unroutable,
-    blocked by prerequisites, or skipped by fail-fast) are marked as BLOCKED
-    so the rollup statuses reflect the complete set of expected subtasks,
-    not only those that reached execution.
+    Deliberately *not* derived from the ``DispatchResult`` outcomes: those
+    report that a run finished, which is true well before it is verified. A
+    subtask that executed cleanly is normally ``IN_REVIEW`` at this point and
+    only reaches ``COMPLETED`` once the review gate's oracle chain passes, so
+    reading the outcome would let the parent complete on unverified work.
+    Reading persisted status makes this rollup compose with the gate exactly
+    as the initiative rollup does.
+
+    A subtask with no persisted row never reached the engine (unroutable,
+    blocked by a prerequisite, or skipped by fail-fast), so it counts as
+    ``BLOCKED`` rather than silently shrinking the total.
+
+    The reads are independent, and a decomposition may hold up to a hundred
+    subtasks, so they run concurrently rather than as a hundred sequential
+    round trips on the observer's critical path.
 
     Returns:
-        Tuple of ``TaskStatus`` values, one per expected subtask in plan
-        order: ``COMPLETED`` (executed successfully), ``FAILED`` (executed
-        but raised), or ``BLOCKED`` (never executed).
+        One ``TaskStatus`` per expected subtask, in plan order.
     """
-    statuses: list[TaskStatus] = []
-    for wave in dispatch_result.waves:
-        if wave.execution_result is None:
-            statuses.extend(TaskStatus.BLOCKED for _ in wave.subtask_ids)
-            continue
-        statuses.extend(
-            TaskStatus.COMPLETED if outcome.is_success else TaskStatus.FAILED
-            for outcome in wave.execution_result.outcomes
-        )
-    missing_count = len(decomp_result.plan.subtasks) - len(statuses)
-    if missing_count > 0:
-        statuses.extend(TaskStatus.BLOCKED for _ in range(missing_count))
-    return tuple(statuses)
+    async with asyncio.TaskGroup() as group:
+        reads = [
+            group.create_task(task_engine.get_task(subtask.id))
+            for subtask in decomp_result.plan.subtasks
+        ]
+    return tuple(_status_of(read.result()) for read in reads)
 
 
-def compute_status_rollup(  # noqa: PLR0913
+def _status_of(task: Task | None) -> TaskStatus:
+    """Return *task*'s status, or ``BLOCKED`` when it never reached the engine.
+
+    Returns:
+        The persisted status, or ``BLOCKED`` for a missing row.
+    """
+    return TaskStatus.BLOCKED if task is None else task.status
+
+
+async def compute_status_rollup(  # noqa: PLR0913
     *,
     decomposition_service: DecompositionService,
+    task_engine: TaskEngine | None,
     clock: Clock,
     context: CoordinationContext,
-    dispatch_result: DispatchResult,
     decomp_result: DecompositionResult,
     phases: list[CoordinationPhaseResult],
 ) -> SubtaskStatusRollup | None:
     """Compute and record the subtask status rollup phase.
 
-    Collects subtask execution outcomes, invokes the decomposition service
+    Reads each subtask's persisted status, invokes the decomposition service
     to compute the rollup, and owns all ``rollup`` phase bookkeeping:
     monotonic timing, structured logging (start/complete/failure events),
     and accumulation of the phase result.
 
     Returns:
-        ``SubtaskStatusRollup`` on success; ``None`` on failure. A failed
-        computation is recorded as a failed ``CoordinationPhaseResult`` in
-        the ``phases`` list and a WARNING log entry (so the phase list
+        ``SubtaskStatusRollup`` on success; ``None`` on failure or when no
+        task engine is wired (there is then no persisted status to read). A
+        failed computation is recorded as a failed ``CoordinationPhaseResult``
+        in the ``phases`` list and a WARNING log entry (so the phase list
         surfaces the failure point without re-raising).
     """
     start = clock.monotonic()
     phase_name = "rollup"
     logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
+    if task_engine is None:
+        logger.info(
+            COORDINATION_PHASE_COMPLETED,
+            phase=phase_name,
+            duration_seconds=0.0,
+            note="skipped: no task engine, no persisted status to roll up",
+        )
+        return None
     try:
-        statuses = _collect_subtask_statuses(dispatch_result, decomp_result)
+        statuses = await _collect_subtask_statuses(task_engine, decomp_result)
         rollup = decomposition_service.rollup_status(str(context.task.id), statuses)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- records rollup phase failure into phases list

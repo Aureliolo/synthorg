@@ -43,7 +43,7 @@ _COLUMNS = (
     "id, project, objective_id, objective_title, parent_task_id, items, "
     "task_structure, coordination_topology, status, failure_reason, forecast_id, "
     "review, open_questions, assumptions, objective_criteria, version_history, "
-    "version, created_at, updated_at"
+    "replan_generation, version, created_at, updated_at"
 )
 _COLUMN_NAMES = tuple(name.strip() for name in _COLUMNS.split(","))
 # Derive placeholders + SET clauses from the single column list so the arity can
@@ -120,6 +120,7 @@ class PostgresPlanRepository:
             Jsonb(list(plan.assumptions)),
             Jsonb(list(plan.objective_criteria)),
             Jsonb([snap.model_dump(mode="json") for snap in plan.version_history]),
+            plan.replan_generation,
             plan.version,
             plan.created_at,
             plan.updated_at,

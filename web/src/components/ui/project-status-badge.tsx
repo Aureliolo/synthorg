@@ -4,6 +4,8 @@ import type { ProjectStatus } from '@/api/types/enums'
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: 'Planning',
   active: 'Active',
+  integrating: 'Integrating',
+  evaluating: 'Evaluating',
   on_hold: 'On Hold',
   completed: 'Completed',
   cancelled: 'Cancelled',
@@ -12,6 +14,8 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
 const DOT_COLOR_CLASSES: Record<ProjectStatus, string> = {
   planning: 'bg-text-secondary',
   active: 'bg-accent',
+  integrating: 'bg-accent',
+  evaluating: 'bg-accent',
   on_hold: 'bg-warning',
   completed: 'bg-success',
   cancelled: 'bg-danger',
@@ -19,11 +23,18 @@ const DOT_COLOR_CLASSES: Record<ProjectStatus, string> = {
 
 export interface ProjectStatusBadgeProps {
   status: ProjectStatus
+  /**
+   * Defaults on. Three in-flight statuses (active, integrating, evaluating)
+   * share the `accent` tone, because the palette has one colour for "in
+   * flight" and inventing another would leave the design system, so the label
+   * is what tells them apart. Turn it off only where the surrounding text
+   * already names the status.
+   */
   showLabel?: boolean
   className?: string
 }
 
-export function ProjectStatusBadge({ status, showLabel = false, className }: ProjectStatusBadgeProps) {
+export function ProjectStatusBadge({ status, showLabel = true, className }: ProjectStatusBadgeProps) {
   const label = STATUS_LABELS[status]
 
   return (

@@ -31,7 +31,11 @@ from synthorg.engine.initiative.retro_models import (
     build_retrospective_tool,
 )
 from synthorg.engine.loop_protocol import BudgetChecker, ShutdownChecker
-from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.engine.prompt_safety import (
+    TAG_TASK_DATA,
+    TAG_TOOL_RESULT,
+    wrap_untrusted,
+)
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.retrospective import (
@@ -249,6 +253,11 @@ class RetroDistiller:
     def _build_context(self, lead: AgentIdentity, brief: str) -> AgentContext:
         """Build the lead-persona session context.
 
+        The directive declares ``<tool-result>`` because the session is
+        tool-capable: recalled memories arrive in later turns under that
+        fence, and a memory written by an earlier agent is exactly the kind
+        of content that must read as data rather than instruction.
+
         Returns:
             An :class:`AgentContext` carrying the lead persona and the fenced
             distillation brief.
@@ -257,7 +266,10 @@ class RetroDistiller:
         ctx = ctx.with_message(
             ChatMessage(
                 role=MessageRole.SYSTEM,
-                content=render_agent_system_prompt(lead),
+                content=render_agent_system_prompt(
+                    lead,
+                    fences=(TAG_TASK_DATA, TAG_TOOL_RESULT),
+                ),
             ),
         )
         return ctx.with_message(

@@ -3,7 +3,8 @@
 
 Constructs the :class:`ProjectRollupService` once the task engine and
 persistence exist, and registers it as a :class:`TaskEngine` observer so a
-task reaching a terminal status advances the plan and project behind it.
+task reaching a terminal status advances the plan, the project, and the
+objective task behind it.
 Best-effort and idempotent: a boot missing either dependency leaves the
 service unwired, and re-running after setup brings it online with no restart.
 A re-run after a successful wire is guarded by the state slice, so the observer
@@ -13,10 +14,12 @@ is not registered twice.
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.initiative.ports import RetroCapturePort
+from synthorg.engine.initiative.rollup import ProjectRollupService
 from synthorg.memory.org.protocol import OrgMemoryBackend
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 
@@ -32,12 +35,17 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
 
-    if app_state.slice(EngineStateSlice).project_rollup_service is not None:
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    existing = app_state.slice(EngineStateSlice).project_rollup_service
+    if existing is not None:
         # Already wired: never re-register the observer (register_observer
-        # appends unconditionally, so a re-run would double-fire it).
+        # appends unconditionally, so a re-run would double-fire it). The tail
+        # can still be missing, because the first wire happens before setup
+        # configures a provider, so attach whatever now resolves.
+        if persistence is not None and not existing.has_full_tail():
+            _attach_tail(app_state, persistence, existing)
         return
 
-    persistence = app_state.slice(PersistenceStateSlice).backend
     task_engine = app_state.slice(EngineStateSlice).task_engine
     if persistence is None or task_engine is None:
         logger.info(
@@ -47,18 +55,36 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
         )
         return
     try:
-        from synthorg.api.services.plan_service import PlanService  # noqa: PLC0415
-        from synthorg.engine.initiative.rollup import (  # noqa: PLC0415
-            ProjectRollupService,
+        from synthorg.api.lifecycle_helpers.initiative_tail_wiring import (  # noqa: PLC0415
+            build_evaluation_stage,
+            build_integration_stage,
+            build_replan_trigger,
         )
+        from synthorg.api.services.plan_service import PlanService  # noqa: PLC0415
 
+        plan_writer = PlanService(repo=persistence.plans, clock=app_state.clock)
+        replan_trigger = build_replan_trigger(app_state, persistence)
         service = ProjectRollupService(
             persistence=persistence,
-            plan_status_writer=PlanService(
-                repo=persistence.plans, clock=app_state.clock
-            ),
+            plan_status_writer=plan_writer,
             clock=app_state.clock,
+            task_engine=task_engine,
             ship_retro_capture=_build_ship_retro_capture(app_state),
+            replan_trigger=replan_trigger,
+            integration=build_integration_stage(app_state, persistence),
+        )
+        # Built after the rollup exists, because the evaluate stage needs to
+        # call back into it: its verdict writes a plan status while mutating no
+        # task, so nothing else would ever re-derive the project, the objective
+        # task, or the retrospective behind it.
+        service.attach_tail(
+            evaluation=lambda trigger: build_evaluation_stage(
+                app_state,
+                persistence,
+                plan_status_writer=plan_writer,
+                replan_trigger=trigger,
+                reconcile=service,
+            ),
         )
         # Register the observer BEFORE committing the service to state, so a
         # failure here leaves the service unwired and a re-run retries cleanly
@@ -79,6 +105,48 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
         )
         return
     logger.info(API_APP_STARTUP, service="project_rollup_service", note="wired")
+
+
+def _attach_tail(
+    app_state: AppState,
+    persistence: PersistenceBackend,
+    rollup: ProjectRollupService,
+) -> None:
+    """Bring the tail online on an already-wired rollup, best-effort."""
+    from synthorg.api.lifecycle_helpers.initiative_tail_wiring import (  # noqa: PLC0415
+        build_evaluation_stage,
+        build_integration_stage,
+        build_replan_trigger,
+    )
+    from synthorg.api.services.plan_service import PlanService  # noqa: PLC0415
+
+    try:
+        plan_writer = PlanService(repo=persistence.plans, clock=app_state.clock)
+        rollup.attach_tail(
+            replan_trigger=build_replan_trigger(app_state, persistence),
+            integration=build_integration_stage(app_state, persistence),
+            # A factory, not an instance: the stage captures the replan trigger
+            # for the life of the process, so it must be built against the one
+            # the rollup keeps rather than one this call built and it discarded.
+            evaluation=lambda trigger: build_evaluation_stage(
+                app_state,
+                persistence,
+                plan_status_writer=plan_writer,
+                replan_trigger=trigger,
+                reconcile=rollup,
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 -- best-effort wiring: log, continue
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="initiative_tail",
+            note="tail attach failed; the plan will park in the tail",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
+    logger.info(API_APP_STARTUP, service="initiative_tail", note="attached")
 
 
 def _build_ship_retro_capture(app_state: AppState) -> RetroCapturePort | None:

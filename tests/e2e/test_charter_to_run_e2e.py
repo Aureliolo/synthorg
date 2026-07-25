@@ -148,6 +148,7 @@ class _DecompositionAwareStrategy:
                                     "acceptance_criteria": [
                                         "The recall baseline is documented.",
                                     ],
+                                    "expected_artifacts": ["docs/recall-baseline.md"],
                                 },
                                 {
                                     "id": "sub-analysis",
@@ -157,6 +158,7 @@ class _DecompositionAwareStrategy:
                                     "acceptance_criteria": [
                                         "The retrieval design is chosen.",
                                     ],
+                                    "expected_artifacts": ["docs/retrieval-design.md"],
                                 },
                             ],
                         },

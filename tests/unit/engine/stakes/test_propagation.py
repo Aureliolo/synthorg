@@ -56,18 +56,21 @@ class TestDecompositionStakesPropagation:
                     title="Update changelog",
                     description="Tidy the docs wording",
                     estimated_complexity=Complexity.SIMPLE,
+                    expected_artifacts=("CHANGELOG.md",),
                 ),
                 SubtaskDefinition(
                     id=sid("high"),
                     title="Design the architecture",
                     description="Make the core architecture decision",
                     estimated_complexity=Complexity.COMPLEX,
+                    expected_artifacts=("docs/architecture.md",),
                 ),
                 SubtaskDefinition(
                     id=sid("critical"),
                     title="Production migration",
                     description="Run an irreversible production deployment",
                     estimated_complexity=Complexity.MEDIUM,
+                    expected_artifacts=("migrations/0001.sql",),
                 ),
             ),
         )
@@ -92,6 +95,7 @@ class TestDecompositionStakesPropagation:
                     title="Refactor the payment flow",
                     description="Touch the billing path",
                     estimated_complexity=Complexity.SIMPLE,
+                    expected_artifacts=("src/billing/flow.py",),
                 ),
             ),
         )

@@ -115,6 +115,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_state_slice_immutability.py` | push | `src/synthorg/` | full | no | `_state_slice_immutability_baseline.txt` | harden |
 | `check_strategy_protocol_injection.py` | push | `src/synthorg/` | full | no | `_strategy_protocol_injection_baseline.txt` | harden |
 | `check_timeout_interval_default_drift.py` | commit+push | boot-resolver + security defaults | full | no | none | harden |
+| `check_verified_completion_paths.py` | push | plan/project transitions + `src/synthorg/` | full | no | none | add |
 | `check_web_design_system.py` | PostToolUse | `web/src/` edits | n/a | n/a | none | harden |
 | `check_workflow_shell_git_commits.py` | commit+push | `.github/workflows/` | staged | yes | none | keep |
 | `check_workflow_tag_lifecycle.py` | commit+push | `.github/workflows/` | full | no | none | keep |

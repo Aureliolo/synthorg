@@ -32,6 +32,7 @@ approval. Dispatch repoints and activates the project as it does for any first
 plan, so approval and re-approval share one path.
 """
 
+import asyncio
 from collections import Counter
 from typing import Final
 
@@ -92,6 +93,7 @@ async def replan_initiative(
     *,
     revision: RevisionInputs,
     requested_by: str,
+    replan_generation: int = 0,
 ) -> Plan:
     """Retire *existing* and open the revision that replaces it.
 
@@ -100,6 +102,10 @@ async def replan_initiative(
         existing: The dispatched plan being revised.
         revision: The revised items and optional structure overrides.
         requested_by: Identity recorded on every write.
+        replan_generation: Generation stamped on the successor. Zero for a
+            human replan (a human decision is not a runaway); the automatic
+            trigger passes the predecessor's generation plus one so an
+            unattended chain stays capped.
 
     Returns:
         The successor plan, awaiting review.
@@ -122,6 +128,7 @@ async def replan_initiative(
         items=revision.items,
         task_structure=revision.task_structure,
         coordination_topology=revision.coordination_topology,
+        replan_generation=replan_generation,
     )
     # Repoint the project, then retire the old revision. Both are reversible
     # (the link by relinking, the supersede because a failed sync_status is
@@ -131,20 +138,33 @@ async def replan_initiative(
     # project already names the successor; the irreversible cancellation then
     # runs outside this block, where a partial failure leaves a coherent graph
     # (one live plan) rather than a project pointing at a dead one.
-    try:
-        await link_project_to_plan(
-            persistence_of(app_state).projects,
-            project_id=NotBlankStr(str(existing.project)),
-            plan_id=successor.id,
-        )
-        await service.sync_status(
+    #
+    # Shielded, and compensating on BaseException rather than Exception. The
+    # automatic replan trigger runs this under a wall-clock deadline, and a
+    # cancellation arriving mid-block would otherwise pass straight through an
+    # ``except Exception`` handler: the successor would survive with the
+    # predecessor never superseded, which is the two-live-plans state this
+    # ordering exists to prevent.
+    retire = asyncio.ensure_future(
+        _retire_predecessor(
+            app_state,
+            service,
             existing,
-            PlanStatus.SUPERSEDED,
+            successor,
             requested_by=requested_by,
-            reason=_REPLAN_REASON,
         )
-    except Exception:
-        await _rollback_successor(app_state, existing, successor)
+    )
+    try:
+        await asyncio.shield(retire)
+    except BaseException:
+        # The shield let *retire* keep running after our cancellation. Wait
+        # for it to settle before compensating so the retire write cannot
+        # overlap the rollback write on the same rows (a late repoint landing
+        # after the successor is deleted would strand ``project.plan_id``).
+        # ``asyncio.wait`` does not cancel the task; shielding it stops our own
+        # cancellation from skipping the wait.
+        await asyncio.shield(asyncio.wait({retire}))
+        await asyncio.shield(_rollback_successor(app_state, existing, successor))
         raise
     await _cancel_retired_work(app_state, existing, requested_by=requested_by)
     logger.info(
@@ -155,6 +175,28 @@ async def replan_initiative(
         requested_by=requested_by,
     )
     return successor
+
+
+async def _retire_predecessor(
+    app_state: AppState,
+    service: PlanService,
+    existing: Plan,
+    successor: Plan,
+    *,
+    requested_by: str,
+) -> None:
+    """Repoint the project at *successor*, then supersede *existing*."""
+    await link_project_to_plan(
+        persistence_of(app_state).projects,
+        project_id=NotBlankStr(str(existing.project)),
+        plan_id=successor.id,
+    )
+    await service.sync_status(
+        existing,
+        PlanStatus.SUPERSEDED,
+        requested_by=requested_by,
+        reason=_REPLAN_REASON,
+    )
 
 
 async def _rollback_successor(

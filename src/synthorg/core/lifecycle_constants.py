@@ -13,3 +13,10 @@ from typing import Final
 # chief-of-staff monitor, provider health prober) that each previously
 # inlined this value.
 DEFAULT_DRAIN_TIMEOUT_SECONDS: Final[float] = 30.0
+
+# Overall ceiling for draining every detached initiative tail at shutdown.
+# The tails drain in series over two passes, so summing their individual
+# 30s bounds would exceed a typical graceful-shutdown window; this caps the
+# whole sequence to fit inside it while still allowing one genuinely slow
+# tail to run its full per-drain budget.
+INITIATIVE_TAIL_TOTAL_DRAIN_BUDGET_SECONDS: Final[float] = 40.0

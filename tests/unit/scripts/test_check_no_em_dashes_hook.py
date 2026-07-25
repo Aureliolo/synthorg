@@ -11,18 +11,19 @@ test file -- the same trick is used in scripts/check_no_em_dashes.py).
 """
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+
+from tests._shared import resolve_bash
 
 pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SCRIPT = _REPO_ROOT / "scripts" / "check_no_em_dashes_hook.sh"
 
-_BASH = shutil.which("bash")
+_BASH = resolve_bash()
 _BASH_AVAILABLE = pytest.mark.skipif(_BASH is None, reason="bash not available")
 
 _EM_DASH = chr(0x2014)

@@ -10,6 +10,7 @@ are not scanned for the bare-mock convention they implement.
 """
 
 from tests._shared.app_state import make_app_state
+from tests._shared.bash import resolve_bash
 from tests._shared.benchmark import FIXTURE_SOURCE, FakeTierBenchmarkScoreProvider
 from tests._shared.build_app import build_test_app
 from tests._shared.capturing_logger import CapturingErrorLogger
@@ -20,6 +21,7 @@ from tests._shared.connection_catalog import (
 from tests._shared.coordination_wiring import wire_decomposition_model
 from tests._shared.fake_clock import FakeClock
 from tests._shared.ids import as_pk, as_uuid, coerce_id, sid
+from tests._shared.initiative_doubles import RecordingReplanTrigger
 from tests._shared.json_types import AsgiDict, JsonDict
 from tests._shared.loop_async_client import LoopAsyncClient
 from tests._shared.mock_of import mock_of
@@ -41,6 +43,7 @@ __all__ = [
     "InMemorySecretBackend",
     "JsonDict",
     "LoopAsyncClient",
+    "RecordingReplanTrigger",
     "StubWorkPipeline",
     "as_pk",
     "as_uuid",
@@ -51,6 +54,7 @@ __all__ = [
     "make_pipeline_result",
     "mock_of",
     "recall_request",
+    "resolve_bash",
     "sid",
     "task_from_work_item",
     "wire_decomposition_model",

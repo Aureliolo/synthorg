@@ -54,6 +54,7 @@ async def _seed_plan(client: LoopAsyncClient) -> None:
                     title=NotBlankStr("First slice"),
                     description=NotBlankStr("Build the first slice."),
                     acceptance_criteria=(NotBlankStr("It runs"),),
+                    expected_artifacts=(NotBlankStr("src/slice.py"),),
                 ),
             ),
             created_at=_T0,

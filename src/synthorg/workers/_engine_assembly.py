@@ -38,7 +38,11 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.memory_protocol import OrgFactRepository
-from synthorg.persistence.state import PersistenceStateSlice, code_execution_records_of
+from synthorg.persistence.state import (
+    PersistenceStateSlice,
+    code_execution_records_of,
+    project_repository_of,
+)
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
@@ -517,6 +521,11 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         agent_registry=agent_registry_of(app_state),
         cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
         task_engine=task_engine_of(app_state),
+        # Membership and per-project budget are validated against this repo
+        # before a run starts; a work task refuses to run without it, so the
+        # composition root hands it over rather than leaving the engine to
+        # discover it is missing at dispatch.
+        project_repo=project_repository_of(app_state),
         approval_store=require_service(
             app_state.slice(ApprovalStateSlice).store, "Approval Store"
         ),

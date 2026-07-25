@@ -50,7 +50,12 @@
         "build_conversational_actor",
         "build_operator_console",
         "build_chief_of_staff_narrator",
-        "ConversationalPlanDispatcher"
+        "ConversationalPlanDispatcher",
+        "IntegrationStageService",
+        "EvaluationStageService",
+        "ReplanTriggerService",
+        "InitiativeEvaluator",
+        "StageRunner"
       ],
       "mcp_tool_names": [],
       "name": "api_core",
@@ -1471,6 +1476,6 @@
       ]
     }
   ],
-  "generated_at": "2026-07-24T16:49:54.852436Z",
+  "generated_at": "2026-07-24T22:47:22.197592Z",
   "schema_version": 1
 }

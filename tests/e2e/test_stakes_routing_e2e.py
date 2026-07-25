@@ -147,6 +147,7 @@ class _MixedStakesStrategy:
                                     "acceptance_criteria": [
                                         "Log lines align consistently.",
                                     ],
+                                    "expected_artifacts": ["src/logging_format.py"],
                                 },
                                 {
                                     "id": "sub-critical",
@@ -159,6 +160,9 @@ class _MixedStakesStrategy:
                                     "required_skills": [_DATABASE_SKILL],
                                     "acceptance_criteria": [
                                         "The schema migrates without data loss.",
+                                    ],
+                                    "expected_artifacts": [
+                                        "migrations/0001_schema.sql"
                                     ],
                                 },
                             ],

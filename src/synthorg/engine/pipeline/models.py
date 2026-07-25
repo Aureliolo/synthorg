@@ -86,6 +86,9 @@ class WorkItem(BaseModel):
         plan_required: When set, the spine always decomposes this brief
             into a plan and never runs it as a single solo leaf, whatever
             the solo-vs-team router decides.
+        leaf_required: When set, the spine always runs this brief as a single
+            accountable solo task and never decomposes it, whatever the router
+            decides. The exact mirror of ``plan_required``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -154,6 +157,31 @@ class WorkItem(BaseModel):
             " which a single task is never a valid outcome."
         ),
     )
+    leaf_required: bool = Field(
+        default=False,
+        description=(
+            "When True the spine always runs this brief as one solo task"
+            " rather than decomposing it, regardless of the solo-vs-team"
+            " router. Set by the integration stage, whose whole point is one"
+            " accountable assembly job: splitting it would hand the pieces"
+            " back to separate agents, which is the state it exists to end."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_routing_forcing(self) -> Self:
+        """Reject a brief that demands both routing outcomes.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: When both forcing flags are set.
+        """
+        if self.plan_required and self.leaf_required:
+            msg = "A work item cannot require both a plan and a single leaf"
+            raise ValueError(msg)
+        return self
 
 
 class WorkPhaseResult(BaseModel):

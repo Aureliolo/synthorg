@@ -87,13 +87,23 @@ def build_decomposition_tool() -> ToolDefinition:
                 "items": {"type": "string"},
                 "description": "Skills needed for this subtask",
             },
+            # No minItems: a 'decision' item builds nothing and MUST declare
+            # an empty list, so a schema-level floor of one would make a
+            # decision item unsatisfiable and push a schema-enforcing provider
+            # into emitting artifacts the parser then rejects. The
+            # kind-dependent invariant is stated here and enforced by
+            # ``validate_expected_artifacts`` at parse time, where it can see
+            # the kind.
             "expected_artifacts": {
                 "type": "array",
                 "items": {"type": "string"},
                 "description": (
                     "Concrete deliverables this subtask must produce "
-                    "(file paths, docs, or test suites). Non-empty so the "
-                    "fail-loud zero-artifact guard engages when it runs."
+                    "(file paths, docs, or test suites). A 'work' item must "
+                    "list at least one and the plan is rejected without it, "
+                    "because the fail-loud zero-artifact guard engages off "
+                    "this list when the item runs. A 'decision' item builds "
+                    "nothing and must leave this empty."
                 ),
             },
             "acceptance_criteria": {
@@ -232,9 +242,12 @@ def build_system_message() -> ChatMessage:
         "that should be broken down further.\n"
         "- Calibrate stakes: most items are 'normal'. Reserve 'high'/'critical' "
         "for irreversible or high-blast-radius work, a handful, not most.\n"
-        "- For each item, list concrete expected_artifacts (file paths, docs, "
-        "or test suites) and verifiable acceptance_criteria that define when it "
-        "is done. Never leave these empty.\n"
+        "- For each work item, list concrete expected_artifacts (file paths, "
+        "docs, or test suites) and verifiable acceptance_criteria that define "
+        "when it is done. The plan is REJECTED if a work item declares no "
+        "artifact: an item that builds nothing cannot be checked, so if you "
+        "cannot name a deliverable the item is either a decision or it does "
+        "not belong in the plan. A decision item lists no artifacts.\n"
         "- Tag each item with the objective acceptance criteria it advances "
         "(satisfies, copied verbatim) so coverage is checkable. Between them, "
         "the items must cover every objective criterion.\n"

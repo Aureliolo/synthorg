@@ -43,6 +43,7 @@ def _plan(
                 description=NotBlankStr("Set up the game board grid"),
                 estimated_complexity=Complexity.MEDIUM,
                 acceptance_criteria=(NotBlankStr("board grid renders"),),
+                expected_artifacts=(NotBlankStr("src/board.py"),),
                 satisfies=(NotBlankStr("A playable board"),),
             ),
             PlanItem(
@@ -52,6 +53,7 @@ def _plan(
                 dependencies=(NotBlankStr(sid("item-1")),),
                 owner=NotBlankStr("engineering"),
                 acceptance_criteria=(NotBlankStr("pieces drop and rotate"),),
+                expected_artifacts=(NotBlankStr("src/movement.py"),),
             ),
         ),
         task_structure=TaskStructure.SEQUENTIAL,
@@ -81,6 +83,46 @@ class TestPlanRepository:
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         assert await backend.plans.get(NotBlankStr("ghost")) is None
+
+    @pytest.mark.parametrize(
+        "status",
+        [PlanStatus.INTEGRATING, PlanStatus.EVALUATING],
+        ids=lambda value: str(value.value),
+    )
+    async def test_a_tail_status_round_trips(
+        self, backend: PersistenceBackend, status: PlanStatus
+    ) -> None:
+        """Both backends CHECK the status literal, so the enum is not enough.
+
+        A typo in either migration's constraint would only surface the first
+        time an initiative reached the tail against a real database.
+        """
+        await backend.plans.save(_plan(status=status))
+
+        fetched = await backend.plans.get(NotBlankStr(sid("plan-001")))
+        assert fetched is not None
+        assert fetched.status is status
+
+    async def test_the_replan_generation_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The cap that stops a runaway replan chain reads this column."""
+        await backend.plans.save(
+            _plan().model_copy(update={"replan_generation": 3}),
+        )
+
+        fetched = await backend.plans.get(NotBlankStr(sid("plan-001")))
+        assert fetched is not None
+        assert fetched.replan_generation == 3
+
+    async def test_replan_generation_defaults_to_zero(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.plans.save(_plan())
+
+        fetched = await backend.plans.get(NotBlankStr(sid("plan-001")))
+        assert fetched is not None
+        assert fetched.replan_generation == 0
 
     async def test_save_upsert(self, backend: PersistenceBackend) -> None:
         plan = _plan()

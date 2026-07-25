@@ -3,7 +3,9 @@
 import pytest
 
 from synthorg.core.plan_enums import (
+    REPLANNABLE_STATUSES,
     REWORKABLE_STATUSES,
+    TAIL_STATUSES,
     TERMINAL_STATUSES,
     PlanStatus,
 )
@@ -31,12 +33,20 @@ class TestValidTransitions:
             (PlanStatus.PENDING_REVIEW, PlanStatus.REJECTED),
             # Execution: approval dispatches the plan, and its items roll up.
             (PlanStatus.APPROVED, PlanStatus.EXECUTING),
-            (PlanStatus.EXECUTING, PlanStatus.COMPLETED),
+            # The tail: every item done opens it, and only it delivers.
+            (PlanStatus.EXECUTING, PlanStatus.INTEGRATING),
+            (PlanStatus.INTEGRATING, PlanStatus.EVALUATING),
+            (PlanStatus.EVALUATING, PlanStatus.COMPLETED),
+            # A regressed item reopens the build from either tail stage.
+            (PlanStatus.INTEGRATING, PlanStatus.EXECUTING),
+            (PlanStatus.EVALUATING, PlanStatus.EXECUTING),
             # A replan retires the current revision at any live stage.
             (PlanStatus.DRAFT, PlanStatus.SUPERSEDED),
             (PlanStatus.PENDING_REVIEW, PlanStatus.SUPERSEDED),
             (PlanStatus.APPROVED, PlanStatus.SUPERSEDED),
             (PlanStatus.EXECUTING, PlanStatus.SUPERSEDED),
+            (PlanStatus.INTEGRATING, PlanStatus.SUPERSEDED),
+            (PlanStatus.EVALUATING, PlanStatus.SUPERSEDED),
             # Planning itself can break before a plan exists.
             (PlanStatus.PLANNING, PlanStatus.FAILED),
         ],
@@ -59,6 +69,11 @@ class TestInvalidTransitions:
             # Completion requires the work to have actually run.
             (PlanStatus.APPROVED, PlanStatus.COMPLETED),
             (PlanStatus.PENDING_REVIEW, PlanStatus.COMPLETED),
+            # The tail is unskippable: individually-verified items are not a
+            # delivered whole, so neither stage may be jumped over.
+            (PlanStatus.EXECUTING, PlanStatus.COMPLETED),
+            (PlanStatus.EXECUTING, PlanStatus.EVALUATING),
+            (PlanStatus.INTEGRATING, PlanStatus.COMPLETED),
             # A rejected plan is closed; a fresh plan is a new record.
             (PlanStatus.REJECTED, PlanStatus.DRAFT),
             (PlanStatus.REJECTED, PlanStatus.APPROVED),
@@ -104,6 +119,20 @@ class TestLifecycleCoverage:
         table_terminal = {s for s, t in VALID_TRANSITIONS.items() if not t}
         assert table_terminal == set(TERMINAL_STATUSES)
 
+    def test_completed_is_reachable_only_from_evaluating(self) -> None:
+        """The forcing property: delivery has exactly one predecessor."""
+        sources = {
+            source
+            for source, targets in VALID_TRANSITIONS.items()
+            if PlanStatus.COMPLETED in targets
+        }
+        assert sources == {PlanStatus.EVALUATING}
+
+    def test_the_tail_is_replannable(self) -> None:
+        """A failed integration or an unmet criterion is replanned, not edited."""
+        assert TAIL_STATUSES <= REPLANNABLE_STATUSES
+        assert TAIL_STATUSES.isdisjoint(REWORKABLE_STATUSES)
+
     def test_execution_statuses_are_not_reworkable(self) -> None:
         """An operator reworks a plan under review, never one mid-flight."""
         assert PlanStatus.EXECUTING not in REWORKABLE_STATUSES
@@ -114,10 +143,18 @@ class TestLifecycleCoverage:
 class TestTransitionPath:
     """Multi-hop pathing used to advance a plan to a rolled-up status."""
 
-    def test_path_from_approved_to_completed_routes_through_executing(self) -> None:
-        assert transition_path(PlanStatus.APPROVED, PlanStatus.COMPLETED) == (
+    def test_completed_is_never_a_walked_target(self) -> None:
+        """Delivery is the evaluate stage's verdict, not a generic hop; a
+        caller cannot walk APPROVED through the tail to COMPLETED."""
+        assert transition_path(PlanStatus.APPROVED, PlanStatus.COMPLETED) is None
+        assert transition_path(PlanStatus.EVALUATING, PlanStatus.COMPLETED) is None
+
+    def test_path_to_the_tail_still_routes(self) -> None:
+        """The intermediate tail hops the rollup relies on are unaffected."""
+        assert transition_path(PlanStatus.APPROVED, PlanStatus.EVALUATING) == (
             PlanStatus.EXECUTING,
-            PlanStatus.COMPLETED,
+            PlanStatus.INTEGRATING,
+            PlanStatus.EVALUATING,
         )
 
     def test_path_to_same_status_is_empty(self) -> None:

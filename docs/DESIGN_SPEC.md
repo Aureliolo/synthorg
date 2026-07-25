@@ -30,7 +30,8 @@ The design specification has been split into focused documentation pages for bet
 | [Mid-Flight Steering](design/mid-flight-steering.md) | In-run operator intervention | Steering directives (hint / redirect), steering store, adoption at safe execution boundaries, project-brain integration, agent-execution links |
 | [Verification & Quality](design/verification-quality.md) | Quality Pipeline | Verification stage, harness middleware, review pipeline, intake engine |
 | [Plan Review](design/plan-review.md) | Durable Plan Entity | First-class `Plan`/`PlanItem` model, `PlanStatus` lifecycle, `/plans` API, decomposition projection, review workspace, dispatch-on-approval |
-| [Project Lifecycle](design/project-lifecycle.md) | Initiative Graph | Project/plan/task linkage, `ProjectStatus` lifecycle (no failed state), completion rule, verification-derived rollup, progress + critical-path surface |
+| [Project Lifecycle](design/project-lifecycle.md) | Initiative Graph | Project/plan/task linkage, `ProjectStatus` lifecycle (no failed state, tail mirrored from the plan), completion rule, verification-derived rollup, progress + critical-path surface |
+| [Initiative Tail](design/initiative-tail.md) | Integrate + Evaluate | The stages between "every item done" and delivery: the gated assembly task, the evidenced per-criterion evaluation (fail-closed), the stalled-initiative auto-replan and its generation cap, degraded-boot parking |
 | [Memory](design/memory.md) | Memory | Memory types, backends, retrieval, embedding selection, consolidation |
 | [Memory Organisational](design/memory-organizational.md) | Shared Knowledge | Company-wide policies, ADRs, OrgMemoryBackend protocol, research directions |
 | [Memory Operational](design/memory-operational.md) | Operational Data Persistence | PersistenceBackend protocol, per-entity repositories, SQLite + Postgres, multi-tenancy, invariants |

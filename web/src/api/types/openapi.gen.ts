@@ -12252,6 +12252,8 @@ export type components = {
         };
         /** ManualSubtaskSpec */
         readonly ManualSubtaskSpec: {
+            /** @description Verifiable criteria that define done for this subtask */
+            readonly acceptance_criteria: readonly string[];
             /**
              * @description Labels of subtasks this one depends on
              * @default []
@@ -12260,6 +12262,8 @@ export type components = {
             /** @description Detailed subtask description */
             readonly description: string;
             readonly estimated_complexity?: components["schemas"]["Complexity"];
+            /** @description Deliverables this subtask must produce (at least one) */
+            readonly expected_artifacts: readonly string[];
             /** @description Caller-chosen subtask label (unique within the request) */
             readonly label: string;
             /** @description Optional role name for routing */
@@ -14201,6 +14205,11 @@ export type components = {
             readonly parent_task_id: string;
             /** @description Project the plan belongs to */
             readonly project: string;
+            /**
+             * @description How many auto-replans deep this plan's lineage is; a human replan resets it, so only an unattended chain is capped
+             * @default 0
+             */
+            readonly replan_generation: number;
             /** @description The consolidated stakeholder-panel review, once reviewed */
             readonly review: components["schemas"]["PlanReview"] | null;
             readonly status: components["schemas"]["PlanStatus"];
@@ -14252,7 +14261,7 @@ export type components = {
             readonly description: string;
             readonly estimated_complexity: components["schemas"]["Complexity"];
             /**
-             * @description Deliverables this item must produce
+             * @description Deliverables this item must produce (non-empty for WORK)
              * @default []
              */
             readonly expected_artifacts: readonly string[];
@@ -14464,10 +14473,19 @@ export type components = {
          *     the decomposer has not filled in yet, DRAFT while it is being shaped, and
          *     PENDING_REVIEW once it is parked for the operator's decision. APPROVED
          *     records the operator's yes and dispatches the plan; EXECUTING covers the
-         *     window where its items' tasks are in flight; COMPLETED is reached only once
-         *     every item is genuinely done (a WORK item's task has passed the review
-         *     gate, a DECISION item has a chosen option), so completion composes with the
-         *     verify gate rather than restating it.
+         *     window where its items' tasks are in flight.
+         *
+         *     Every item being done is the start of the tail, not the end of the plan.
+         *     INTEGRATING is where the verified pieces are assembled into one running
+         *     deliverable and checked end to end; EVALUATING is where that whole is
+         *     scored against the objective's success criteria. Only then is COMPLETED
+         *     reachable, and only from EVALUATING: a plan cannot jump from EXECUTING to
+         *     COMPLETED. The guard that makes that true is the transition table in
+         *     ``core/plan_transitions.py``, not this enum; a reader auditing the ordering
+         *     should look there (and at ``scripts/check_verified_completion_paths.py``,
+         *     which holds the forbidden edges out of the table). Either tail stage can
+         *     fall back to EXECUTING when an item regresses (integration findings routed
+         *     back as rework).
          *
          *     REJECTED, SUPERSEDED, COMPLETED, and FAILED are terminal; an operator
          *     rework or request-changes is only accepted while the plan is still under
@@ -14476,11 +14494,11 @@ export type components = {
          *     failed after it was filled), so a failed run always leaves a visible plan
          *     carrying its :attr:`Plan.failure_reason` rather than a silent orphan; a
          *     retry is a fresh plan. SUPERSEDED marks a plan retired by a re-plan, at any
-         *     stage up to and including execution.
+         *     stage up to and including the tail.
          * @default draft
          * @enum {string}
          */
-        readonly PlanStatus: "planning" | "draft" | "pending_review" | "approved" | "executing" | "completed" | "rejected" | "superseded" | "failed";
+        readonly PlanStatus: "planning" | "draft" | "pending_review" | "approved" | "executing" | "integrating" | "evaluating" | "completed" | "rejected" | "superseded" | "failed";
         /** PlanVersionSnapshot */
         readonly PlanVersionSnapshot: {
             /**
@@ -14871,7 +14889,7 @@ export type components = {
              * @description Status of the executing plan
              * @enum {string|null}
              */
-            readonly plan_status: "planning" | "draft" | "pending_review" | "approved" | "executing" | "completed" | "rejected" | "superseded" | "failed" | null;
+            readonly plan_status: "planning" | "draft" | "pending_review" | "approved" | "executing" | "integrating" | "evaluating" | "completed" | "rejected" | "superseded" | "failed" | null;
             /**
              * Format: uuid
              * @description Project identifier
@@ -14948,10 +14966,17 @@ export type components = {
         /**
          * ProjectStatus
          * @description Lifecycle status of a project.
+         *
+         *     ``ACTIVE`` covers the window where the plan's items are being built.
+         *     ``INTEGRATING`` and ``EVALUATING`` mirror the plan's tail stages so the
+         *     cockpit distinguishes an initiative that is still building from one whose
+         *     pieces are being assembled, and from one being scored against its
+         *     objective: showing all three as ACTIVE would hide the difference between
+         *     work in flight and work awaiting a verdict.
          * @default planning
          * @enum {string}
          */
-        readonly ProjectStatus: "planning" | "active" | "on_hold" | "completed" | "cancelled";
+        readonly ProjectStatus: "planning" | "active" | "integrating" | "evaluating" | "on_hold" | "completed" | "cancelled";
         /**
          * PromptClassAlertConfig
          * @description Per-prompt-purpose cost / latency alert thresholds.

@@ -4,10 +4,20 @@ from enum import StrEnum
 
 
 class ProjectStatus(StrEnum):
-    """Lifecycle status of a project."""
+    """Lifecycle status of a project.
+
+    ``ACTIVE`` covers the window where the plan's items are being built.
+    ``INTEGRATING`` and ``EVALUATING`` mirror the plan's tail stages so the
+    cockpit distinguishes an initiative that is still building from one whose
+    pieces are being assembled, and from one being scored against its
+    objective: showing all three as ACTIVE would hide the difference between
+    work in flight and work awaiting a verdict.
+    """
 
     PLANNING = "planning"
     ACTIVE = "active"
+    INTEGRATING = "integrating"
+    EVALUATING = "evaluating"
     ON_HOLD = "on_hold"
     COMPLETED = "completed"
     CANCELLED = "cancelled"

@@ -8,6 +8,8 @@ const STATUS_LABELS: Record<PlanStatus, string> = {
   pending_review: 'Pending review',
   approved: 'Approved',
   executing: 'Executing',
+  integrating: 'Integrating',
+  evaluating: 'Evaluating',
   completed: 'Completed',
   rejected: 'Rejected',
   superseded: 'Superseded',
@@ -20,6 +22,8 @@ const STATUS_TONES: Record<PlanStatus, StatusPillTone> = {
   pending_review: 'warning',
   approved: 'success',
   executing: 'accent',
+  integrating: 'accent',
+  evaluating: 'accent',
   completed: 'success',
   rejected: 'danger',
   superseded: 'text-secondary',
@@ -31,7 +35,10 @@ export interface PlanStatusBadgeProps {
   className?: string
 }
 
-/** Inline status pill for a plan's lifecycle state (draft → approved/rejected). */
+/**
+ * Inline status pill for a plan's lifecycle state, from draft through the
+ * tail: executing, then integrating, then evaluating, then completed.
+ */
 export function PlanStatusBadge({ status, className }: PlanStatusBadgeProps) {
   return (
     <StatusPill tone={STATUS_TONES[status]} className={className}>

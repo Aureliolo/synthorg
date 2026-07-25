@@ -51,7 +51,14 @@ def _make_plan(
     """Helper to create a plan with given structure."""
     return DecompositionPlan(
         parent_task_id=sid("task-topo-1"),
-        subtasks=(SubtaskDefinition(id="sub-1", title="A", description="A desc"),),
+        subtasks=(
+            SubtaskDefinition(
+                id="sub-1",
+                title="A",
+                description="A desc",
+                expected_artifacts=("src/a.py",),
+            ),
+        ),
         task_structure=structure,
     )
 

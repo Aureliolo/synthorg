@@ -12,11 +12,46 @@ interface SubtaskRowProps {
   onRemove: (index: number) => void
 }
 
+interface SubtaskDoneFieldsProps {
+  index: number
+  draft: SubtaskDraft
+  onChange: (index: number, patch: Partial<SubtaskDraft>) => void
+}
+
+function SubtaskDoneFields({ index, draft, onChange }: SubtaskDoneFieldsProps) {
+  return (
+    <div className="grid gap-grid-gap sm:grid-cols-2">
+      <InputField
+        label="Acceptance criteria"
+        multiline
+        rows={2}
+        required
+        value={draft.acceptanceCriteria}
+        hint="One per line; what makes this subtask done."
+        onValueChange={(value) => {
+          onChange(index, { acceptanceCriteria: value })
+        }}
+      />
+      <InputField
+        label="Expected deliverables"
+        multiline
+        rows={2}
+        required
+        value={draft.expectedArtifacts}
+        hint="One per line; a subtask that declares none is rejected."
+        onValueChange={(value) => {
+          onChange(index, { expectedArtifacts: value })
+        }}
+      />
+    </div>
+  )
+}
+
 function SubtaskRow({ index, draft, canRemove, onChange, onRemove }: SubtaskRowProps) {
   return (
     <div className="space-y-3 rounded-md border border-border p-card">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-foreground">Subtask {index + 1}</span>
+        <h3 className="text-sm font-medium text-foreground">Subtask {index + 1}</h3>
         {canRemove && (
           <Button
             variant="ghost"
@@ -50,6 +85,7 @@ function SubtaskRow({ index, draft, canRemove, onChange, onRemove }: SubtaskRowP
       </div>
       <InputField
         label="Title"
+        required
         value={draft.title}
         onValueChange={(value) => {
           onChange(index, { title: value })
@@ -59,11 +95,13 @@ function SubtaskRow({ index, draft, canRemove, onChange, onRemove }: SubtaskRowP
         label="Description"
         multiline
         rows={2}
+        required
         value={draft.description}
         onValueChange={(value) => {
           onChange(index, { description: value })
         }}
       />
+      <SubtaskDoneFields index={index} draft={draft} onChange={onChange} />
     </div>
   )
 }
@@ -71,6 +109,8 @@ function SubtaskRow({ index, draft, canRemove, onChange, onRemove }: SubtaskRowP
 export interface TaskDecomposeFormProps {
   drafts: readonly SubtaskDraft[]
   submitting: boolean
+  /** False while any subtask is missing a field the backend requires. */
+  canSubmit?: boolean
   onChange: (index: number, patch: Partial<SubtaskDraft>) => void
   onRemove: (index: number) => void
   onAdd: () => void
@@ -80,6 +120,7 @@ export interface TaskDecomposeFormProps {
 export function TaskDecomposeForm({
   drafts,
   submitting,
+  canSubmit = true,
   onChange,
   onRemove,
   onAdd,
@@ -107,7 +148,7 @@ export function TaskDecomposeForm({
             <Plus />
             Add subtask
           </Button>
-          <Button onClick={onSubmit} disabled={submitting}>
+          <Button onClick={onSubmit} disabled={submitting || !canSubmit}>
             <Workflow />
             {submitting ? 'Decomposing…' : 'Decompose'}
           </Button>

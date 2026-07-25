@@ -112,30 +112,35 @@ def _mixed_plan() -> DecompositionPlan:
             title="Update the changelog",
             description="Tidy wording in the docs",
             estimated_complexity=Complexity.SIMPLE,
+            expected_artifacts=("CHANGELOG.md",),
         ),
         SubtaskDefinition(
             id=sid("st-format"),
             title="Reformat helper module",
             description="Run the formatter over a utility file",
             estimated_complexity=Complexity.SIMPLE,
+            expected_artifacts=("src/helpers.py",),
         ),
         SubtaskDefinition(
             id=sid("st-feature"),
             title="Add a list endpoint",
             description="Implement a straightforward read endpoint",
             estimated_complexity=Complexity.MEDIUM,
+            expected_artifacts=("src/api/list_endpoint.py",),
         ),
         SubtaskDefinition(
             id=sid("st-arch"),
             title="Design the sharding architecture",
             description="Make the core architecture decision for sharding",
             estimated_complexity=Complexity.COMPLEX,
+            expected_artifacts=("docs/sharding.md",),
         ),
         SubtaskDefinition(
             id=sid("st-migrate"),
             title="Production data migration",
             description="Run an irreversible production migration",
             estimated_complexity=Complexity.MEDIUM,
+            expected_artifacts=("migrations/0001_shard.sql",),
         ),
     )
     return DecompositionPlan(parent_task_id=sid("brief-1"), subtasks=subtasks)

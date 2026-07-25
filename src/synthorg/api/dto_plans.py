@@ -12,7 +12,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.plan import PlanOption, validate_decision_options
+from synthorg.core.plan import (
+    PlanOption,
+    validate_decision_options,
+    validate_expected_artifacts,
+)
 from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.task_enums import (
     Complexity,
@@ -107,19 +111,21 @@ class PlanItemPayload(BaseModel):
 
     @model_validator(mode="after")
     def _validate_item(self) -> Self:
-        """Reject a non-UUID id or a self-referential / duplicated dependency.
+        """Reject a malformed item at the request boundary.
 
         Mirrors :class:`~synthorg.core.plan.PlanItem` so a malformed edit is
-        rejected at the request boundary (with field detail) rather than
-        surfacing later as a dispatch failure.
+        rejected here (with field detail) rather than surfacing later as a
+        dispatch failure.
 
         Returns:
-            ``self`` when the id is a canonical UUID and the dependency list is
-            free of self-references and duplicates.
+            ``self`` when the id is a canonical UUID, the dependency list is
+            free of self-references and duplicates, and the declared
+            deliverables match the item's kind.
 
         Raises:
             ValueError: When the id is not a canonical UUID, the item depends
-                on itself, or a dependency is listed more than once.
+                on itself, a dependency is listed more than once, or a WORK
+                item declares no deliverable (or a DECISION item declares one).
         """
         try:
             canonical = str(UUID(self.id))
@@ -141,6 +147,11 @@ class PlanItemPayload(BaseModel):
             kind=self.kind,
             options=self.options,
             chosen_option_id=self.chosen_option_id,
+        )
+        validate_expected_artifacts(
+            entity_id=self.id,
+            kind=self.kind,
+            expected_artifacts=self.expected_artifacts,
         )
         return self
 

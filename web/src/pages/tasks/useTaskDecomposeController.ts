@@ -3,7 +3,7 @@ import { decomposeTaskManually } from '@/api/endpoints/decomposition'
 import type { DecompositionResult, ManualDecomposeRequest } from '@/api/types'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getCrudErrorTitle } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('task-decompose')
@@ -20,6 +20,14 @@ export interface SubtaskDraft {
   description: string
   /** Comma-separated dependency labels, parsed on submit. */
   dependencies: string
+  /** One acceptance criterion per line, parsed on submit. */
+  acceptanceCriteria: string
+  /**
+   * One expected deliverable per line, parsed on submit. Required: a work
+   * unit that declares no deliverable disarms the zero-artifact guard, so
+   * the backend rejects it.
+   */
+  expectedArtifacts: string
 }
 
 function emptyDraft(): SubtaskDraft {
@@ -31,6 +39,8 @@ function emptyDraft(): SubtaskDraft {
     title: '',
     description: '',
     dependencies: '',
+    acceptanceCriteria: '',
+    expectedArtifacts: '',
   }
 }
 
@@ -41,6 +51,13 @@ function parseDependencies(raw: string): readonly string[] {
     .filter((token) => token.length > 0)
 }
 
+function parseLines(raw: string): readonly string[] {
+  return raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+}
+
 function toRequest(drafts: readonly SubtaskDraft[]): ManualDecomposeRequest {
   return {
     subtasks: drafts.map((draft) => ({
@@ -48,6 +65,8 @@ function toRequest(drafts: readonly SubtaskDraft[]): ManualDecomposeRequest {
       title: draft.title.trim(),
       description: draft.description.trim(),
       dependencies: parseDependencies(draft.dependencies),
+      acceptance_criteria: parseLines(draft.acceptanceCriteria),
+      expected_artifacts: parseLines(draft.expectedArtifacts),
       estimated_complexity: 'medium',
       stakes: 'normal',
       required_skills: [],
@@ -57,6 +76,17 @@ function toRequest(drafts: readonly SubtaskDraft[]): ManualDecomposeRequest {
     max_depth: DEFAULT_MAX_DEPTH,
     coordination_topology: 'auto',
   }
+}
+
+/** Whether a draft carries every field the backend requires of a subtask. */
+function isComplete(draft: SubtaskDraft): boolean {
+  return (
+    draft.label.trim() !== '' &&
+    draft.title.trim() !== '' &&
+    draft.description.trim() !== '' &&
+    parseLines(draft.acceptanceCriteria).length > 0 &&
+    parseLines(draft.expectedArtifacts).length > 0
+  )
 }
 
 /** Page-local controller for the manual task-decomposition form. */
@@ -98,7 +128,9 @@ export function useTaskDecomposeController(taskId: string | undefined) {
       useToastStore.getState().add({
         variant: 'error',
         title: getCrudErrorTitle(err, 'Decomposition failed').title,
-        description: 'Could not decompose the task. Check the plan and try again.',
+        // The backend detail names which subtask was rejected and why, which
+        // is exactly what the author needs to fix it.
+        description: getErrorMessage(err),
       })
     } finally {
       setSubmitting(false)
@@ -109,6 +141,9 @@ export function useTaskDecomposeController(taskId: string | undefined) {
     drafts,
     result,
     submitting,
+    // Gate the submit rather than letting a guaranteed 422 round-trip: a work
+    // subtask that declares no deliverable is rejected by the backend.
+    canSubmit: drafts.length > 0 && drafts.every(isComplete),
     addDraft,
     removeDraft,
     updateDraft,

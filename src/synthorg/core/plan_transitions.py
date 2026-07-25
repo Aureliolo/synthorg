@@ -7,20 +7,30 @@ Defines the valid state transitions for a durable plan::
     DRAFT -> PENDING_REVIEW | SUPERSEDED | FAILED
     PENDING_REVIEW -> DRAFT | APPROVED | REJECTED | SUPERSEDED | FAILED
     APPROVED -> EXECUTING | SUPERSEDED
-    EXECUTING -> COMPLETED | SUPERSEDED
+    EXECUTING -> INTEGRATING | SUPERSEDED
+    INTEGRATING -> EVALUATING | EXECUTING | SUPERSEDED
+    EVALUATING -> COMPLETED | EXECUTING | SUPERSEDED
 
 COMPLETED, REJECTED, SUPERSEDED, and FAILED are terminal.
 
 APPROVED is mid-lifecycle rather than terminal: the approval decision
 dispatches the plan, and EXECUTING covers the window where its items' tasks are
-in flight. COMPLETED is reached only once every item is genuinely done, which
-composes with the verify gate because a WORK item's task can only reach
-COMPLETED through the review gate's oracle chain.
+in flight. Every item being done ends EXECUTING, not the plan: the work is then
+INTEGRATING (assembled into one running deliverable and checked end to end) and
+EVALUATING (scored against the objective's success criteria).
+
+**COMPLETED is reachable only from EVALUATING.** There is deliberately no
+``EXECUTING -> COMPLETED`` edge: an initiative that delivered a pile of
+individually-verified pieces has not been shown to deliver a working whole, so
+the tail is enforced by the machine rather than by whichever service happens to
+be wired. The back-edges to EXECUTING carry a regression (integration findings
+routed back as rework) without a re-plan.
 
 SUPERSEDED is reachable from every live status: a re-plan can retire a plan at
-any stage, including mid-execution. FAILED covers a run that never reached a
-review decision (decomposition failed, or parking the approval failed), so it
-is reachable only from the pre-decision statuses.
+any stage, including from either tail stage, which is how a failed integration
+or an unmet success criterion is resolved. FAILED covers a run that never
+reached a review decision (decomposition failed, or parking the approval
+failed), so it is reachable only from the pre-decision statuses.
 """
 
 from typing import Final
@@ -60,7 +70,13 @@ VALID_TRANSITIONS: dict[PlanStatus, frozenset[PlanStatus]] = {
         }
     ),
     PlanStatus.APPROVED: frozenset({PlanStatus.EXECUTING, PlanStatus.SUPERSEDED}),
-    PlanStatus.EXECUTING: frozenset({PlanStatus.COMPLETED, PlanStatus.SUPERSEDED}),
+    PlanStatus.EXECUTING: frozenset({PlanStatus.INTEGRATING, PlanStatus.SUPERSEDED}),
+    PlanStatus.INTEGRATING: frozenset(
+        {PlanStatus.EVALUATING, PlanStatus.EXECUTING, PlanStatus.SUPERSEDED}
+    ),
+    PlanStatus.EVALUATING: frozenset(
+        {PlanStatus.COMPLETED, PlanStatus.EXECUTING, PlanStatus.SUPERSEDED}
+    ),
     PlanStatus.COMPLETED: frozenset(),  # terminal
     PlanStatus.REJECTED: frozenset(),  # terminal
     PlanStatus.SUPERSEDED: frozenset(),  # terminal
@@ -101,7 +117,10 @@ def transition_path(
     """Return the shortest valid hop sequence from *current* to *target*.
 
     Used by the rollup to advance a plan that is several valid hops away from
-    its derived status (e.g. APPROVED to COMPLETED via EXECUTING).
+    its derived status (e.g. APPROVED to INTEGRATING via EXECUTING, when a
+    plan's dispatch-time status write lost its race). COMPLETED is never a
+    target here: the evaluate stage writes it directly, as the single hop out
+    of EVALUATING that its verdict earns.
 
     Args:
         current: The current plan status.
@@ -111,6 +130,9 @@ def transition_path(
         ``()`` when already at *target*; a tuple of intermediate statuses
         ending in *target* (each hop individually valid) when a lifecycle path
         exists; or ``None`` when *target* is unreachable from *current* (e.g.
-        *current* is terminal).
+        *current* is terminal) or is COMPLETED (delivery is the evaluate
+        stage's verdict, never a walked hop).
     """
+    if target is PlanStatus.COMPLETED:
+        return None
     return _MACHINE.path_to(current, target)

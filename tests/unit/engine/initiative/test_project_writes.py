@@ -141,7 +141,7 @@ class TestAdvance:
     """Walking a project to its derived status."""
 
     async def test_a_single_hop_writes_once(self) -> None:
-        backend = await _seed(ProjectStatus.ACTIVE)
+        backend = await _seed(ProjectStatus.EVALUATING)
 
         advanced = await advance_project_status(
             backend.projects,
@@ -149,15 +149,16 @@ class TestAdvance:
             target=ProjectStatus.COMPLETED,
         )
 
-        assert advanced is not None
-        assert advanced.status is ProjectStatus.COMPLETED
-        assert advanced.version == 2
+        assert advanced.project is not None
+        assert advanced.project.status is ProjectStatus.COMPLETED
+        assert advanced.project.version == 2
+        assert advanced.before is ProjectStatus.EVALUATING
 
     async def test_a_multi_hop_target_lands_every_intermediate_status(self) -> None:
         """The state machine rejects PLANNING -> COMPLETED as a single hop.
 
         Writing the endpoint directly would persist exactly that transition, so
-        the walk must go through ACTIVE and record both hops.
+        the walk must go through ACTIVE and the tail, recording every hop.
         """
         backend = await _seed(ProjectStatus.PLANNING)
 
@@ -167,10 +168,12 @@ class TestAdvance:
             target=ProjectStatus.COMPLETED,
         )
 
-        assert advanced is not None
-        assert advanced.status is ProjectStatus.COMPLETED
-        # One version bump per hop: PLANNING -> ACTIVE -> COMPLETED.
-        assert advanced.version == 3
+        assert advanced.project is not None
+        assert advanced.project.status is ProjectStatus.COMPLETED
+        # One version bump per hop: PLANNING, ACTIVE, INTEGRATING, EVALUATING,
+        # COMPLETED.
+        assert advanced.project.version == 5
+        assert advanced.before is ProjectStatus.PLANNING
 
     async def test_already_at_target_is_a_no_op(self) -> None:
         backend = await _seed(ProjectStatus.COMPLETED)
@@ -181,8 +184,27 @@ class TestAdvance:
             target=ProjectStatus.COMPLETED,
         )
 
-        assert advanced is not None
-        assert advanced.version == 1
+        assert advanced.project is not None
+        assert advanced.project.version == 1
+
+    async def test_the_observed_status_is_reported_for_the_edge_test(self) -> None:
+        """A caller firing once on the edge into COMPLETED needs this read.
+
+        Its own read of the project can be overtaken between the two calls, so
+        the only status that can be trusted for the edge is the one the
+        winning write itself computed from.
+        """
+        backend = await _seed(ProjectStatus.ACTIVE)
+
+        advanced = await advance_project_status(
+            backend.projects,
+            project_id=NotBlankStr(sid(_PROJECT)),
+            target=ProjectStatus.COMPLETED,
+        )
+
+        assert advanced.before is ProjectStatus.ACTIVE
+        assert advanced.project is not None
+        assert advanced.project.status is ProjectStatus.COMPLETED
 
     async def test_an_unreachable_target_leaves_the_project_alone(self) -> None:
         """A cancelled project is terminal; the rollup defers to the operator."""
@@ -194,8 +216,8 @@ class TestAdvance:
             target=ProjectStatus.COMPLETED,
         )
 
-        assert advanced is not None
-        assert advanced.status is ProjectStatus.CANCELLED
+        assert advanced.project is not None
+        assert advanced.project.status is ProjectStatus.CANCELLED
         assert await _status(backend) is ProjectStatus.CANCELLED
 
     async def test_a_missing_project_reports_failure(self) -> None:
@@ -207,7 +229,8 @@ class TestAdvance:
             target=ProjectStatus.COMPLETED,
         )
 
-        assert advanced is None
+        assert advanced.project is None
+        assert advanced.before is None
 
     async def test_a_hop_that_loses_its_write_restarts_from_a_fresh_read(self) -> None:
         backend = await _seed(ProjectStatus.PLANNING)
@@ -216,7 +239,13 @@ class TestAdvance:
         repo = mock_of[ProjectRepository](
             get=AsyncMock(return_value=stored),
             update=AsyncMock(
-                side_effect=[PersistenceVersionConflictError("raced"), None, None]
+                side_effect=[
+                    PersistenceVersionConflictError("raced"),
+                    None,
+                    None,
+                    None,
+                    None,
+                ]
             ),
         )
 
@@ -226,9 +255,9 @@ class TestAdvance:
             target=ProjectStatus.COMPLETED,
         )
 
-        assert advanced is not None
-        # The lost first hop is retried, then both hops land.
-        assert repo.update.await_count == 3
+        assert advanced.project is not None
+        # The lost first hop is retried, then all four hops land.
+        assert repo.update.await_count == 5
         assert repo.get.await_count == 2
 
     async def test_sustained_contention_gives_up(self) -> None:
@@ -246,5 +275,5 @@ class TestAdvance:
             target=ProjectStatus.COMPLETED,
         )
 
-        assert advanced is None
+        assert advanced.project is None
         assert repo.update.await_count == MAX_WRITE_ATTEMPTS

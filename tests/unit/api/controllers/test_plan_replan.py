@@ -41,6 +41,7 @@ def _item(item_id: str, title: str) -> PlanItem:
         title=NotBlankStr(title),
         description=NotBlankStr("Do the thing"),
         acceptance_criteria=(NotBlankStr("it is done"),),
+        expected_artifacts=(NotBlankStr("src/thing.py"),),
     )
 
 

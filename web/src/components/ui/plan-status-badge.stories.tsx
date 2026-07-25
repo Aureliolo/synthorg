@@ -29,6 +29,22 @@ export const Approved: Story = {
   args: { status: 'approved' },
 }
 
+export const Executing: Story = {
+  args: { status: 'executing' },
+}
+
+export const Integrating: Story = {
+  args: { status: 'integrating' },
+}
+
+export const Evaluating: Story = {
+  args: { status: 'evaluating' },
+}
+
+export const Completed: Story = {
+  args: { status: 'completed' },
+}
+
 export const Rejected: Story = {
   args: { status: 'rejected' },
 }
@@ -51,6 +67,10 @@ export const AllStatuses: Story = {
           'draft',
           'pending_review',
           'approved',
+          'executing',
+          'integrating',
+          'evaluating',
+          'completed',
           'rejected',
           'superseded',
           'failed',

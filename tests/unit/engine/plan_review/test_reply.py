@@ -64,6 +64,7 @@ def _item(*, owner: str | None) -> PlanItem:
         description=NotBlankStr("Move billing to the new ledger."),
         owner=NotBlankStr(owner) if owner is not None else None,
         acceptance_criteria=(NotBlankStr("Ledger reconciles to the cent"),),
+        expected_artifacts=(NotBlankStr("src/billing/ledger.py"),),
     )
 
 

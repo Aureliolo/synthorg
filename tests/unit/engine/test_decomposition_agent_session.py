@@ -88,6 +88,7 @@ class _SentinelFallback(DecompositionStrategy):
                     id=sid("fallback-1"),
                     title="Fallback subtask",
                     description="Produced by the fallback strategy",
+                    expected_artifacts=("src/fallback.py",),
                 ),
             ),
         )

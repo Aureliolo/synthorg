@@ -19,6 +19,14 @@ export const Active: Story = {
   args: { status: 'active', showLabel: true },
 }
 
+export const Integrating: Story = {
+  args: { status: 'integrating', showLabel: true },
+}
+
+export const Evaluating: Story = {
+  args: { status: 'evaluating', showLabel: true },
+}
+
 export const OnHold: Story = {
   args: { status: 'on_hold', showLabel: true },
 }
@@ -39,7 +47,17 @@ export const AllStatuses: Story = {
   args: { status: 'planning', showLabel: true },
   render: () => (
     <div className="flex flex-wrap gap-4">
-      {(['planning', 'active', 'on_hold', 'completed', 'cancelled'] satisfies ProjectStatus[]).map((s) => (
+      {(
+        [
+          'planning',
+          'active',
+          'integrating',
+          'evaluating',
+          'on_hold',
+          'completed',
+          'cancelled',
+        ] satisfies ProjectStatus[]
+      ).map((s) => (
         <ProjectStatusBadge key={s} status={s} showLabel />
       ))}
     </div>

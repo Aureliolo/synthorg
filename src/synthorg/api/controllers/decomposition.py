@@ -54,6 +54,8 @@ _DEFAULT_MAX_SUBTASKS: Final[int] = 10
 _MAX_SUBTASKS_CAP: Final[int] = 100
 _DEFAULT_MAX_DEPTH: Final[int] = 3
 _MAX_DEPTH_CAP: Final[int] = 10
+_MAX_ARTIFACTS_PER_SUBTASK: Final[int] = 50
+_MAX_CRITERIA_PER_SUBTASK: Final[int] = 50
 
 
 class ManualSubtaskSpec(BaseModel):
@@ -69,6 +71,10 @@ class ManualSubtaskSpec(BaseModel):
         stakes: Stakes level for stakes-aware model routing.
         required_skills: Skill IDs needed for routing.
         required_role: Optional role name for routing.
+        expected_artifacts: Deliverables this subtask must produce; at least
+            one, so the dispatched task's fail-loud zero-artifact guard is
+            armed.
+        acceptance_criteria: Verifiable criteria that define done for it.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -104,6 +110,16 @@ class ManualSubtaskSpec(BaseModel):
     required_role: NotBlankStr | None = Field(
         default=None,
         description="Optional role name for routing",
+    )
+    expected_artifacts: tuple[NotBlankStr, ...] = Field(
+        min_length=1,
+        max_length=_MAX_ARTIFACTS_PER_SUBTASK,
+        description="Deliverables this subtask must produce (at least one)",
+    )
+    acceptance_criteria: tuple[NotBlankStr, ...] = Field(
+        min_length=1,
+        max_length=_MAX_CRITERIA_PER_SUBTASK,
+        description="Verifiable criteria that define done for this subtask",
     )
 
 
@@ -188,6 +204,8 @@ def _build_plan(
                     stakes=spec.stakes,
                     required_skills=spec.required_skills,
                     required_role=spec.required_role,
+                    expected_artifacts=spec.expected_artifacts,
+                    acceptance_criteria=spec.acceptance_criteria,
                 )
             )
         return DecompositionPlan(

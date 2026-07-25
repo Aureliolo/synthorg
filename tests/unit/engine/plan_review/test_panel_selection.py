@@ -46,6 +46,7 @@ def _plan(*owner_roles: str) -> DecompositionResult:
             stakes=Stakes.NORMAL,
             required_role=role,
             acceptance_criteria=(NotBlankStr("done"),),
+            expected_artifacts=(NotBlankStr(f"src/item_{index}.py"),),
         )
         for index, role in enumerate(owner_roles, start=1)
     )

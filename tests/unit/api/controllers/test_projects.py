@@ -458,6 +458,7 @@ class TestProjectController:
                     title=NotBlankStr("Scaffold"),
                     description=NotBlankStr("Set up the board"),
                     acceptance_criteria=(NotBlankStr("board scaffolded"),),
+                    expected_artifacts=(NotBlankStr("src/board.py"),),
                 ),
             ),
             status=PlanStatus.PENDING_REVIEW,
@@ -541,12 +542,14 @@ class TestProjectProgress:
                 title=NotBlankStr("Scaffold"),
                 description=NotBlankStr("Set it up"),
                 acceptance_criteria=(NotBlankStr("done"),),
+                expected_artifacts=(NotBlankStr("src/scaffold.py"),),
             ),
             PlanItem(
                 id=NotBlankStr(sid("item-b")),
                 title=NotBlankStr("Build"),
                 description=NotBlankStr("Build on the scaffold"),
                 acceptance_criteria=(NotBlankStr("done"),),
+                expected_artifacts=(NotBlankStr("src/build.py"),),
                 dependencies=(NotBlankStr(sid("item-a")),),
             ),
             PlanItem(
@@ -554,6 +557,7 @@ class TestProjectProgress:
                 title=NotBlankStr("Docs"),
                 description=NotBlankStr("Write them"),
                 acceptance_criteria=(NotBlankStr("done"),),
+                expected_artifacts=(NotBlankStr("docs/guide.md"),),
             ),
         )
         plan = Plan(

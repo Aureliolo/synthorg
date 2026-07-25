@@ -2476,7 +2476,8 @@ CREATE TABLE plans (
     status TEXT NOT NULL DEFAULT 'draft'
     CONSTRAINT plans_status_check CHECK (status IN (
         'planning', 'draft', 'pending_review', 'approved', 'executing',
-        'completed', 'rejected', 'superseded', 'failed'
+        'integrating', 'evaluating', 'completed', 'rejected', 'superseded',
+        'failed'
     )),
     forecast_id TEXT,
     review JSONB,
@@ -2489,6 +2490,8 @@ CREATE TABLE plans (
     updated_at TIMESTAMPTZ NOT NULL,
     failure_reason TEXT
     CHECK (failure_reason IS NULL OR CHAR_LENGTH(TRIM(failure_reason)) > 0),
+    replan_generation INTEGER NOT NULL DEFAULT 0
+    CHECK (replan_generation >= 0),
     -- failure_reason is present iff the plan is FAILED: a FAILED plan must carry
     -- a reason (so Plan Review always shows why), and no other status may carry
     -- one. Mirrors the Plan model validator as the persistence-level backstop.

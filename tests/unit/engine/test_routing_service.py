@@ -86,6 +86,7 @@ def _make_decomposition_result(
                 required_skills=("python", "sql"),
                 required_role="developer",
                 estimated_complexity=Complexity.MEDIUM,
+                expected_artifacts=("src/backend.py",),
             ),
             SubtaskDefinition(
                 id=sid("sub-2"),
@@ -95,6 +96,7 @@ def _make_decomposition_result(
                 required_role="frontend-developer",
                 estimated_complexity=Complexity.MEDIUM,
                 dependencies=(sid("sub-1"),),
+                expected_artifacts=("src/frontend.tsx",),
             ),
         ),
     )
@@ -205,6 +207,7 @@ class TestTaskRoutingService:
                     required_skills=("python",),
                     required_role="developer",
                     estimated_complexity=Complexity.MEDIUM,
+                    expected_artifacts=("src/python_work.py",),
                 ),
             ),
         )

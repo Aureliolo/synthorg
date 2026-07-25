@@ -12,10 +12,19 @@ class PlanStatus(StrEnum):
     the decomposer has not filled in yet, DRAFT while it is being shaped, and
     PENDING_REVIEW once it is parked for the operator's decision. APPROVED
     records the operator's yes and dispatches the plan; EXECUTING covers the
-    window where its items' tasks are in flight; COMPLETED is reached only once
-    every item is genuinely done (a WORK item's task has passed the review
-    gate, a DECISION item has a chosen option), so completion composes with the
-    verify gate rather than restating it.
+    window where its items' tasks are in flight.
+
+    Every item being done is the start of the tail, not the end of the plan.
+    INTEGRATING is where the verified pieces are assembled into one running
+    deliverable and checked end to end; EVALUATING is where that whole is
+    scored against the objective's success criteria. Only then is COMPLETED
+    reachable, and only from EVALUATING: a plan cannot jump from EXECUTING to
+    COMPLETED. The guard that makes that true is the transition table in
+    ``core/plan_transitions.py``, not this enum; a reader auditing the ordering
+    should look there (and at ``scripts/check_verified_completion_paths.py``,
+    which holds the forbidden edges out of the table). Either tail stage can
+    fall back to EXECUTING when an item regresses (integration findings routed
+    back as rework).
 
     REJECTED, SUPERSEDED, COMPLETED, and FAILED are terminal; an operator
     rework or request-changes is only accepted while the plan is still under
@@ -24,7 +33,7 @@ class PlanStatus(StrEnum):
     failed after it was filled), so a failed run always leaves a visible plan
     carrying its :attr:`Plan.failure_reason` rather than a silent orphan; a
     retry is a fresh plan. SUPERSEDED marks a plan retired by a re-plan, at any
-    stage up to and including execution.
+    stage up to and including the tail.
     """
 
     PLANNING = "planning"
@@ -32,6 +41,8 @@ class PlanStatus(StrEnum):
     PENDING_REVIEW = "pending_review"
     APPROVED = "approved"
     EXECUTING = "executing"
+    INTEGRATING = "integrating"
+    EVALUATING = "evaluating"
     COMPLETED = "completed"
     REJECTED = "rejected"
     SUPERSEDED = "superseded"
@@ -59,18 +70,26 @@ TERMINAL_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
     }
 )
 
-#: Statuses covering a dispatched plan whose work is in flight or delivered.
-#: A project is ACTIVE while its plan is here, and COMPLETED once the plan is.
-EXECUTION_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
-    {PlanStatus.EXECUTING, PlanStatus.COMPLETED}
+#: The tail stages between "every item is done" and delivery: assembling the
+#: verified pieces, then scoring the whole against the objective. Their own
+#: gates advance them, so a derivation over plan items leaves them untouched.
+TAIL_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
+    {PlanStatus.INTEGRATING, PlanStatus.EVALUATING}
 )
 
 #: Statuses a re-plan accepts. A dispatched plan cannot be edited in place (its
 #: items are already building), so revising it retires the current revision and
-#: opens a successor. A plan still under review is edited instead, and a
-#: terminal plan has nothing left to revise.
+#: opens a successor. The tail stages are included: a failed integration or an
+#: unmet success criterion is exactly the case a re-plan exists for. A plan
+#: still under review is edited instead, and a terminal plan has nothing left
+#: to revise.
 REPLANNABLE_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
-    {PlanStatus.APPROVED, PlanStatus.EXECUTING}
+    {
+        PlanStatus.APPROVED,
+        PlanStatus.EXECUTING,
+        PlanStatus.INTEGRATING,
+        PlanStatus.EVALUATING,
+    }
 )
 
 #: Statuses whose plan may carry an empty item list: the PLANNING shell has not

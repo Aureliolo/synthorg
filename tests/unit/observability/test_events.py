@@ -404,6 +404,9 @@ class TestEventConstants:
             # SHIP-time retrospective capture: distil / write / dedup events
             # for the objective retro that feeds org + agent memory.
             "retrospective",
+            # The initiative tail: assembly-job dispatch, evaluation verdict,
+            # and the stalled-initiative replan trigger.
+            "initiative",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

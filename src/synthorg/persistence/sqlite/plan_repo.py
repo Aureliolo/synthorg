@@ -46,7 +46,7 @@ _COLUMNS = (
     "id, project, objective_id, objective_title, parent_task_id, items, "
     "task_structure, coordination_topology, status, failure_reason, forecast_id, "
     "review, open_questions, assumptions, objective_criteria, version_history, "
-    "version, created_at, updated_at"
+    "replan_generation, version, created_at, updated_at"
 )
 
 _COLUMN_NAMES = tuple(_COLUMNS.split(", "))
@@ -131,6 +131,7 @@ class SQLitePlanRepository:
             json.dumps(list(plan.assumptions)),
             json.dumps(list(plan.objective_criteria)),
             json.dumps([snap.model_dump(mode="json") for snap in plan.version_history]),
+            plan.replan_generation,
             plan.version,
             format_iso_utc(plan.created_at),
             format_iso_utc(plan.updated_at),

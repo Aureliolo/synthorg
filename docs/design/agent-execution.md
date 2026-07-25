@@ -46,11 +46,16 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
 
 `TerminationReason`
 :   Enum: `COMPLETED`, `MAX_TURNS`, `BUDGET_EXHAUSTED`, `SHUTDOWN`, `STAGNATION`,
-    `ERROR`, `PARKED`, `CANCELLED`.  `max_turns` defaults to 20.  `CANCELLED`
-    fires when a per-task `TaskCancellationChecker` observes the task's terminal
-    status at a safe boundary (e.g. an operator superseded it via mid-flight
-    steering); the loop halts and the post-execution pipeline performs no
-    re-transition because the task is already terminal.
+    `ERROR`, `PARKED`, `CANCELLED`, `NO_OP`.  `max_turns` defaults to 20.
+    `CANCELLED` fires when a per-task `TaskCancellationChecker` observes the
+    task's terminal status at a safe boundary (e.g. an operator superseded it
+    via mid-flight steering); the loop halts and the post-execution pipeline
+    performs no re-transition because the task is already terminal.  `NO_OP` is
+    the fail-loud zero-artifact guard: a task declaring `artifacts_expected`
+    whose run produced none terminates here and the task goes `FAILED`, rather
+    than reaching review as though it had delivered. Every plan-dispatched
+    WORK item declares an artifact, so the guard is always armed for one (see
+    [Initiative Tail](initiative-tail.md)).
 
 `TurnRecord`
 :   Frozen per-turn stats (tokens, cost, tool calls, finish reason).

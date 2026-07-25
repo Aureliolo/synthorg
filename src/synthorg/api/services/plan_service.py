@@ -336,6 +336,7 @@ class PlanService:
         items: tuple[PlanItem, ...],
         task_structure: TaskStructure | None = None,
         coordination_topology: CoordinationTopology | None = None,
+        replan_generation: int = 0,
     ) -> Plan:
         """Create the revision that replaces a dispatched plan.
 
@@ -353,6 +354,9 @@ class PlanService:
             items: The revised domain items.
             task_structure: Optional override of the classified structure.
             coordination_topology: Optional override of the topology.
+            replan_generation: Generation to stamp on the successor. Left at
+                zero for a human replan; the automatic trigger passes the
+                predecessor's generation plus one so its chain stays capped.
 
         Returns:
             The persisted successor, awaiting review.
@@ -371,6 +375,7 @@ class PlanService:
                 task_structure=task_structure,
                 coordination_topology=coordination_topology,
                 now=self._clock.now(),
+                replan_generation=replan_generation,
             )
         except PydanticValidationError as exc:
             logger.warning(

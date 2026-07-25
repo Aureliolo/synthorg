@@ -82,6 +82,7 @@ def _decomposition() -> DecompositionResult:
                 title="A",
                 description="Board grid",
                 acceptance_criteria=(NotBlankStr("board renders"),),
+                expected_artifacts=(NotBlankStr("src/board.py"),),
             ),
             SubtaskDefinition(
                 id=sid("sub-2"),
@@ -89,6 +90,7 @@ def _decomposition() -> DecompositionResult:
                 description="Movement",
                 dependencies=(sid("sub-1"),),
                 acceptance_criteria=(NotBlankStr("pieces move"),),
+                expected_artifacts=(NotBlankStr("src/movement.py"),),
             ),
         ),
     )

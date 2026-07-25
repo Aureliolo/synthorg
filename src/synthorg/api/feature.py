@@ -72,6 +72,15 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_operator_console",
         "build_chief_of_staff_narrator",
         "ConversationalPlanDispatcher",
+        # The initiative tail. Claimed here rather than by the engine manifest
+        # because this is the feature that constructs it: the stages live in
+        # engine/initiative/, but nothing reaches them until
+        # lifecycle_helpers/initiative_tail_wiring builds them at startup.
+        "IntegrationStageService",
+        "EvaluationStageService",
+        "ReplanTriggerService",
+        "InitiativeEvaluator",
+        "StageRunner",
     ),
     depends_on=(),
 )

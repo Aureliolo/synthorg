@@ -19,7 +19,9 @@ function buildItem(overrides: Partial<PlanItem> = {}): PlanItem {
     dependencies: [],
     owner: null,
     acceptance_criteria: ['board grid renders'],
-    expected_artifacts: [],
+    // Non-empty: a work item declaring no deliverable is rejected by the
+    // backend, so an empty default would model a state the API cannot return.
+    expected_artifacts: ['web/src/game/board.tsx'],
     required_skills: [],
     required_tags: [],
     estimated_complexity: 'medium',
@@ -50,6 +52,7 @@ function buildPlan(overrides: Partial<Plan> = {}): Plan {
     assumptions: [],
     objective_criteria: [],
     version_history: [],
+    replan_generation: 0,
     version: 1,
     created_at: '2026-07-01T10:00:00Z',
     updated_at: '2026-07-01T10:00:00Z',

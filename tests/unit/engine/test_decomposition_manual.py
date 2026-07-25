@@ -38,6 +38,7 @@ def _make_plan(
             id=f"sub-{i}",
             title=f"Subtask {i}",
             description=f"Description {i}",
+            expected_artifacts=(f"src/sub_{i}.py",),
         )
         for i in range(subtask_count)
     )

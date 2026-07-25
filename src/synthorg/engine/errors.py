@@ -95,6 +95,14 @@ class RetrospectiveParseError(RetrospectiveError):
     """Raised when a submitted retrospective cannot be parsed."""
 
 
+class InitiativeEvaluationError(EngineError):
+    """Base exception for initiative-evaluation failures."""
+
+
+class InitiativeEvaluationParseError(InitiativeEvaluationError):
+    """Raised when a submitted evaluation cannot be parsed."""
+
+
 class PlanReviewError(EngineError):
     """Base exception for stakeholder plan-review failures."""
 

@@ -108,6 +108,7 @@ def _plan() -> Plan:
                 title=NotBlankStr("Add retries"),
                 description=NotBlankStr("retry logic"),
                 acceptance_criteria=(NotBlankStr("retries covered"),),
+                expected_artifacts=(NotBlankStr("src/retries.py"),),
                 kind=PlanItemKind.WORK,
             ),
         ),
