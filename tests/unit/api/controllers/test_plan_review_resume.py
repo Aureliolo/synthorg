@@ -203,14 +203,16 @@ class TestPlanReviewResume:
         # The durable plan's items are rebuilt into the dispatched subtask tree.
         dispatched_ids = {s.id for s in precomputed.plan.subtasks}
         assert dispatched_ids == set(_SUB_IDS)
-        # Each item's declared deliverable survives the rebuild onto its
+        # Each item's declared deliverable survives the rebuild onto its own
         # subtask, so the dispatched task's fail-loud zero-artifact guard stays
-        # armed rather than silently disarmed by a dropped mapping.
+        # armed rather than silently disarmed by a dropped or swapped mapping.
         assert {
-            artifact
+            subtask.id: tuple(subtask.expected_artifacts)
             for subtask in precomputed.plan.subtasks
-            for artifact in subtask.expected_artifacts
-        } == {NotBlankStr(f"src/part_{n}.py") for n in range(len(_SUB_IDS))}
+        } == {
+            subtask_id: (NotBlankStr(f"src/part_{n}.py"),)
+            for n, subtask_id in enumerate(_SUB_IDS)
+        }
         # Rebuilt child tasks are fresh CREATED work parented on the objective.
         assert all(t.status is TaskStatus.CREATED for t in precomputed.created_tasks)
         # Every dispatched task carries its plan linkage, so the rollup can
