@@ -16,7 +16,12 @@ import { useCollapsedState } from './sidebar-storage'
 
 const log = createLogger('Sidebar')
 
-const SIDEBAR_MODES_FORCING_COLLAPSED = new Set(['rail', 'compact'])
+// ``rail`` is the icon-only mode, so it pins the nav collapsed. ``compact`` and
+// ``persistent`` both keep labels visible and differ only in column width, so
+// they pin it expanded rather than inheriting the collapsible toggle's state
+// (neither renders that toggle, so an inherited value would be unreachable).
+const SIDEBAR_MODES_FORCING_COLLAPSED = new Set(['rail'])
+const SIDEBAR_MODES_FORCING_EXPANDED = new Set(['persistent', 'compact'])
 
 interface SidebarProps {
   /** Whether the overlay sidebar is visible (used at tablet breakpoints). */
@@ -32,7 +37,7 @@ function _computeEffectiveCollapsed(
 ): boolean {
   if (breakpoint === 'desktop-sm') return true
   if (SIDEBAR_MODES_FORCING_COLLAPSED.has(sidebarMode)) return true
-  if (sidebarMode === 'persistent') return false
+  if (SIDEBAR_MODES_FORCING_EXPANDED.has(sidebarMode)) return false
   return localCollapsed
 }
 

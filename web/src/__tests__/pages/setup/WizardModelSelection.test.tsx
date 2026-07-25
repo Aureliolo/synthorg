@@ -9,14 +9,26 @@ import { server } from '@/test-setup'
 import { useToastStore } from '@/stores/toast'
 import type { SettingNamespace } from '@/api/types/settings'
 
+const PROVIDER = 'test-provider'
+
+// Per-feature model settings are MODEL_REF: the picker selects, and writes
+// back, the serialized provider-bound reference rather than a bare model id.
+function ref(modelId: string): string {
+  return JSON.stringify({ provider: PROVIDER, model_id: modelId })
+}
+
+function candidate(modelId: string) {
+  return { provider: PROVIDER, model_id: modelId, ref: ref(modelId) }
+}
+
 const RECS = {
-  decomposition_recommended: 'large-model-001',
-  decomposition_candidates: ['large-model-001', 'small-model-001'],
+  decomposition_recommended: ref('large-model-001'),
+  decomposition_candidates: [candidate('large-model-001'), candidate('small-model-001')],
   embedding_recommended: 'embed-large-001',
   embedding_recommended_dims: 4096,
   embedding_candidates: ['embed-large-001', 'embed-small-001'],
-  research_recommended: 'large-model-001',
-  cos_recommended: 'small-model-001',
+  research_recommended: ref('large-model-001'),
+  cos_recommended: ref('small-model-001'),
 }
 
 function recommendationsHandler() {
@@ -57,18 +69,32 @@ describe('WizardModelSelection', () => {
     )
     expect(
       screen.getByLabelText<HTMLSelectElement>('Coordination model').value,
-    ).toBe('large-model-001')
+    ).toBe(ref('large-model-001'))
+    // Embedding is a plain string setting, so it stays a bare model id.
     expect(screen.getByLabelText<HTMLSelectElement>('Embedding model').value).toBe(
       'embed-large-001',
     )
     expect(screen.getByLabelText<HTMLSelectElement>('Research model').value).toBe(
-      'large-model-001',
+      ref('large-model-001'),
     )
     expect(
       screen.getByLabelText<HTMLSelectElement>('Chief of Staff model').value,
-    ).toBe('small-model-001')
+    ).toBe(ref('small-model-001'))
     // Embedding is labelled as powering memory + knowledge.
     expect(screen.getByText(/Powers memory \+ knowledge/)).toBeInTheDocument()
+  })
+
+  it('labels each candidate with its provider', async () => {
+    server.use(recommendationsHandler())
+    renderWithRouter(<WizardModelSelection researchEnabled={true} />)
+    await waitFor(() =>
+      expect(screen.getByLabelText('Coordination model')).toBeInTheDocument(),
+    )
+    // The same model id can be served by more than one provider, so the option
+    // text has to name the provider for the choice to be unambiguous.
+    expect(
+      screen.getAllByRole('option', { name: `large-model-001 (${PROVIDER})` }).length,
+    ).toBeGreaterThan(0)
   })
 
   it('hides the research model picker when research is disabled', async () => {
@@ -102,7 +128,7 @@ describe('WizardModelSelection', () => {
     await waitFor(() =>
       expect(
         screen.getByLabelText<HTMLSelectElement>('Coordination model').value,
-      ).toBe('large-model-001'),
+      ).toBe(ref('large-model-001')),
     )
   })
 
@@ -113,11 +139,11 @@ describe('WizardModelSelection', () => {
         HttpResponse.json(
           apiSuccess({
             ...RECS,
-            decomposition_recommended: 'large-model-001',
+            decomposition_recommended: ref('large-model-001'),
             decomposition_candidates: [
-              'large-model-001',
-              'small-model-001',
-              'medium-model-001',
+              candidate('large-model-001'),
+              candidate('small-model-001'),
+              candidate('medium-model-001'),
             ],
           }),
         ),
@@ -126,7 +152,7 @@ describe('WizardModelSelection', () => {
         const body = (await request.json()) as { value: string }
         // The older write (to small) fails immediately, so its catch runs well
         // before the newer write (to medium, delayed below) resolves.
-        if (body.value === 'small-model-001') {
+        if (body.value === ref('small-model-001')) {
           return new HttpResponse(null, { status: 500 })
         }
         await delay(30)
@@ -143,13 +169,13 @@ describe('WizardModelSelection', () => {
     )
     renderWithRouter(<WizardModelSelection researchEnabled={true} />)
     const select = await screen.findByLabelText<HTMLSelectElement>('Coordination model')
-    fireEvent.change(select, { target: { value: 'small-model-001' } }) // older write, fails now
-    fireEvent.change(select, { target: { value: 'medium-model-001' } }) // newer write, succeeds later
+    fireEvent.change(select, { target: { value: ref('small-model-001') } }) // older write, fails now
+    fireEvent.change(select, { target: { value: ref('medium-model-001') } }) // newer write, succeeds later
     // By the time the newer (delayed) write resolves, the older failure has long
     // since run its catch -- which must have suppressed BOTH the rollback and the
     // toast because a newer write superseded it.
     await waitFor(() => expect(newerSaveDone).toBe(true))
-    expect(select.value).toBe('medium-model-001')
+    expect(select.value).toBe(ref('medium-model-001'))
     expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
@@ -160,7 +186,7 @@ describe('WizardModelSelection', () => {
         HttpResponse.json(
           apiSuccess([
             buildSettingEntry({
-              value: 'small-model-001',
+              value: ref('small-model-001'),
               definition: { namespace: 'coordination', key: 'decomposition_model' },
             }),
           ]),
@@ -171,7 +197,34 @@ describe('WizardModelSelection', () => {
     await waitFor(() =>
       expect(
         screen.getByLabelText<HTMLSelectElement>('Coordination model').value,
-      ).toBe('small-model-001'),
+      ).toBe(ref('small-model-001')),
+    )
+  })
+
+  it('preselects a persisted ref written in the backend JSON spelling', async () => {
+    // ``json.dumps`` pads after ``:`` and ``,`` where ``JSON.stringify`` does
+    // not, so the same reference reaches the picker as two distinct strings
+    // depending on which side last wrote it. Both must preselect.
+    const spaced = '{"provider": "test-provider", "model_id": "small-model-001"}'
+    expect(spaced).not.toBe(ref('small-model-001'))
+    server.use(
+      recommendationsHandler(),
+      http.get('/api/v1/settings/coordination', () =>
+        HttpResponse.json(
+          apiSuccess([
+            buildSettingEntry({
+              value: spaced,
+              definition: { namespace: 'coordination', key: 'decomposition_model' },
+            }),
+          ]),
+        ),
+      ),
+    )
+    renderWithRouter(<WizardModelSelection researchEnabled={true} />)
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText<HTMLSelectElement>('Coordination model').value,
+      ).toBe(ref('small-model-001')),
     )
   })
 
@@ -183,14 +236,35 @@ describe('WizardModelSelection', () => {
       expect(screen.getByLabelText('Research model')).toBeInTheDocument(),
     )
     fireEvent.change(screen.getByLabelText('Research model'), {
-      target: { value: 'small-model-001' },
+      target: { value: ref('small-model-001') },
     })
     await waitFor(() =>
       expect(calls).toContainEqual({
         namespace: 'research',
         key: 'model',
-        value: 'small-model-001',
+        value: ref('small-model-001'),
       }),
     )
+  })
+
+  it('writes a provider-bound reference, never a bare model id', async () => {
+    server.use(recommendationsHandler())
+    const { calls } = capturePut()
+    renderWithRouter(<WizardModelSelection researchEnabled={true} />)
+    await waitFor(() =>
+      expect(screen.getByLabelText('Concern-routing model')).toBeInTheDocument(),
+    )
+    fireEvent.change(screen.getByLabelText('Concern-routing model'), {
+      target: { value: ref('small-model-001') },
+    })
+    // The MODEL_REF validator rejects any value that is not canonical
+    // {provider, model_id} JSON, so a bare id here is a saved-setting failure.
+    await waitFor(() => expect(calls).toHaveLength(1))
+    const written = calls[0]
+    expect(written).toBeDefined()
+    expect(JSON.parse(written?.value ?? '')).toEqual({
+      provider: PROVIDER,
+      model_id: 'small-model-001',
+    })
   })
 })

@@ -16644,12 +16644,18 @@ export type components = {
             /** @constant */
             readonly setup_complete: true;
         };
+        /** SetupModelCandidate */
+        readonly SetupModelCandidate: {
+            readonly model_id: string;
+            readonly provider: string;
+            readonly ref: string;
+        };
         /** SetupModelRecommendationsResponse */
         readonly SetupModelRecommendationsResponse: {
             readonly charter_recommended: string | null;
             readonly cos_recommended: string | null;
             /** @default [] */
-            readonly decomposition_candidates: readonly string[];
+            readonly decomposition_candidates: readonly components["schemas"]["SetupModelCandidate"][];
             readonly decomposition_recommended: string | null;
             /** @default [] */
             readonly embedding_candidates: readonly string[];

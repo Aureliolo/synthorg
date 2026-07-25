@@ -206,12 +206,17 @@ describe('Sidebar', () => {
       expect(screen.queryByTitle('Expand sidebar')).not.toBeInTheDocument()
     })
 
-    it('is always collapsed in compact mode (no collapse toggle)', () => {
+    it('is always expanded in compact mode, at its own width (no collapse toggle)', () => {
       useThemeStore.getState().setSidebarMode('compact')
       setup()
 
-      expect(screen.getByText('S')).toBeInTheDocument()
-      expect(screen.queryByText('SynthOrg')).not.toBeInTheDocument()
+      // Compact keeps labels: it is a narrower expanded column, not a rail.
+      // Hiding them would leave a 180px column rendering centred icons only.
+      expect(screen.getByText('SynthOrg')).toBeInTheDocument()
+      expect(screen.queryByText('S')).not.toBeInTheDocument()
+      expect(document.querySelector('aside')?.className).toContain(
+        'var(--so-sidebar-compact)',
+      )
 
       expect(screen.queryByTitle('Collapse sidebar')).not.toBeInTheDocument()
       expect(screen.queryByTitle('Expand sidebar')).not.toBeInTheDocument()
@@ -223,6 +228,10 @@ describe('Sidebar', () => {
 
       expect(screen.getByText('SynthOrg')).toBeInTheDocument()
       expect(screen.queryByText('S')).not.toBeInTheDocument()
+      // Persistent is the full-width twin of compact.
+      expect(document.querySelector('aside')?.className).toContain(
+        'var(--so-sidebar-expanded)',
+      )
 
       expect(screen.queryByTitle('Collapse sidebar')).not.toBeInTheDocument()
       expect(screen.queryByTitle('Expand sidebar')).not.toBeInTheDocument()

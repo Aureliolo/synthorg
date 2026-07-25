@@ -1,6 +1,12 @@
 import { useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import { useThemeStore } from '@/stores/theme'
+import {
+  ANIMATION_PRESETS,
+  COLOR_PALETTES,
+  DENSITIES,
+  SIDEBAR_MODES,
+  useThemeStore,
+} from '@/stores/theme'
 import type {
   AnimationPreset,
   ColorPalette,
@@ -61,34 +67,68 @@ function OptionGroup<V extends string>({
   )
 }
 
-const PALETTE_OPTIONS: readonly { value: ColorPalette; label: string; description: string }[] = [
-  { value: 'warm-ops', label: 'Warm Ops', description: 'Warm soft blue accent. The default.' },
-  { value: 'ice-station', label: 'Ice Station', description: 'Cool emerald green tones.' },
-  { value: 'stealth', label: 'Stealth', description: 'Muted purple, low contrast.' },
-  { value: 'signal', label: 'Signal', description: 'Warm orange, high energy.' },
-  { value: 'neon', label: 'Neon', description: 'Vibrant cyan, deep blacks.' },
-]
+interface OptionMeta {
+  label: string
+  description: string
+}
 
-const DENSITY_OPTIONS: readonly { value: Density; label: string; description: string }[] = [
-  { value: 'dense', label: 'Dense', description: '12px padding, tight gaps. For power users.' },
-  { value: 'balanced', label: 'Balanced', description: '16px padding. Recommended for most users.' },
-  { value: 'medium', label: 'Medium', description: '16px padding with roomier gaps.' },
-  { value: 'sparse', label: 'Sparse', description: '20px padding, relaxed layout.' },
-]
+// Each axis is described by a total ``Record`` over its union and rendered in
+// the order of the store's exported tuple, so a mode added to the store is a
+// type error here rather than an option silently missing from the wizard.
+function optionsFor<V extends string>(
+  values: readonly V[],
+  meta: Record<V, OptionMeta>,
+): readonly { value: V; label: string; description: string }[] {
+  return values.map((value) => ({ value, ...meta[value] }))
+}
 
-const ANIMATION_OPTIONS: readonly { value: AnimationPreset; label: string; description: string }[] = [
-  { value: 'minimal', label: 'Minimal', description: 'Quick fades only, no movement.' },
-  { value: 'status-driven', label: 'Status-driven', description: 'Only changed elements animate; the rest stay put.' },
-  { value: 'spring', label: 'Spring', description: 'Playful spring physics, bouncy feedback.' },
-  { value: 'instant', label: 'Instant', description: 'No animations at all. Maximum performance.' },
-]
+const PALETTE_META: Record<ColorPalette, OptionMeta> = {
+  'warm-ops': { label: 'Warm Ops', description: 'Warm soft blue accent. The default.' },
+  'ice-station': { label: 'Ice Station', description: 'Cool emerald green tones.' },
+  stealth: { label: 'Stealth', description: 'Muted purple, low contrast.' },
+  signal: { label: 'Signal', description: 'Warm orange, high energy.' },
+  neon: { label: 'Neon', description: 'Vibrant cyan, deep blacks.' },
+}
 
-const SIDEBAR_OPTIONS: readonly { value: SidebarMode; label: string; description: string }[] = [
-  { value: 'rail', label: 'Rail', description: 'Always visible with icons and labels (220px).' },
-  { value: 'collapsible', label: 'Collapsible', description: 'Expands and collapses, remembers your preference.' },
-  { value: 'hidden', label: 'Hidden', description: 'Hamburger toggle only, full-width content.' },
-  { value: 'compact', label: 'Compact', description: 'Icons prominent, text secondary (56px).' },
-]
+const DENSITY_META: Record<Density, OptionMeta> = {
+  dense: { label: 'Dense', description: '12px padding, tight gaps. For power users.' },
+  balanced: { label: 'Balanced', description: '16px padding. Recommended for most users.' },
+  medium: { label: 'Medium', description: '16px padding with roomier gaps.' },
+  sparse: { label: 'Sparse', description: '20px padding, relaxed layout.' },
+}
+
+const ANIMATION_META: Record<AnimationPreset, OptionMeta> = {
+  minimal: { label: 'Minimal', description: 'Quick fades only, no movement.' },
+  spring: { label: 'Spring', description: 'Playful spring physics, bouncy feedback.' },
+  instant: { label: 'Instant', description: 'No animations at all. Maximum performance.' },
+  'status-driven': {
+    label: 'Status-driven',
+    description: 'Only changed elements animate; the rest stay put.',
+  },
+  aggressive: {
+    label: 'Aggressive',
+    description: 'Motion on every transition, at full strength.',
+  },
+}
+
+const SIDEBAR_META: Record<SidebarMode, OptionMeta> = {
+  rail: { label: 'Rail', description: 'Icons only in a 56px rail; labels on hover.' },
+  collapsible: {
+    label: 'Collapsible',
+    description: 'Toggles between 220px and a 56px rail, remembering your choice.',
+  },
+  hidden: { label: 'Hidden', description: 'No sidebar; full-width content with a menu toggle.' },
+  persistent: {
+    label: 'Persistent',
+    description: 'Always expanded at 220px with labels, no collapse toggle.',
+  },
+  compact: { label: 'Compact', description: 'Icons with labels in a tighter 180px column.' },
+}
+
+const PALETTE_OPTIONS = optionsFor(COLOR_PALETTES, PALETTE_META)
+const DENSITY_OPTIONS = optionsFor(DENSITIES, DENSITY_META)
+const ANIMATION_OPTIONS = optionsFor(ANIMATION_PRESETS, ANIMATION_META)
+const SIDEBAR_OPTIONS = optionsFor(SIDEBAR_MODES, SIDEBAR_META)
 
 export function ThemeStep() {
   const colorPalette = useThemeStore((s) => s.colorPalette)

@@ -376,34 +376,51 @@ async def _set_model_if_blank(
     )
 
 
-async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
-    """Extract model IDs from provider configs for embedding selection.
+async def collect_provider_models(
+    app_state: AppState,
+) -> tuple[tuple[str, str], ...]:
+    """Extract ``(provider, model id)`` pairs from every configured provider.
 
-    Best-effort: returns an empty tuple if config resolver is not
+    The provider-bound source both catalogue reads share. A MODEL_REF picker
+    needs the pair rather than the bare id, because the same model id can be
+    served by more than one provider and a provider-less assignment is
+    rejected at write time.
+
+    Best-effort: returns an empty tuple if the config resolver is not
     available or provider configs cannot be read for a non-critical
-    reason; interpreter-critical errors propagate via
-    ``reraise_critical``.
+    reason; interpreter-critical errors propagate via ``reraise_critical``.
 
     Returns:
-        Tuple of the declared element types.
+        Tuple of ``(provider_name, model_id)`` pairs.
     """
     if app_state.slice(SettingsStateSlice).config_resolver is None:
         return ()
     try:
         configs = await config_resolver_of(app_state).get_provider_configs()
-        ids: list[str] = [
-            str(model.id) for pc in configs.values() for model in pc.models
-        ]
-        return tuple(ids)
+        return tuple(
+            (name, str(model.id)) for name, pc in configs.items() for model in pc.models
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             SETUP_MODEL_ID_COLLECTION_ERROR,
-            check="collect_model_ids",
+            check="collect_provider_models",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return ()
+
+
+async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
+    """Extract model IDs from provider configs for embedding selection.
+
+    The bare-id projection of :func:`collect_provider_models`, for the
+    embedding picker and ranking helpers whose setting is a plain string.
+
+    Returns:
+        Tuple of model ids across all configured providers.
+    """
+    return tuple(model_id for _, model_id in await collect_provider_models(app_state))
 
 
 async def auto_select_embedder(

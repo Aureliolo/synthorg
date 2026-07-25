@@ -19,11 +19,11 @@ from synthorg.api.controllers.setup._embedder_setup import (
     auto_create_template_agents as _auto_create_template_agents,
 )
 from synthorg.api.controllers.setup._embedder_setup import (
-    collect_model_ids as _collect_model_ids,
+    collect_provider_models as _collect_provider_models,
 )
 from synthorg.api.controllers.setup._embedder_setup import (
-    pick_decomposition_model,
-    pick_model_for_tier,
+    pick_decomposition_model_ref,
+    pick_model_ref_for_tier,
 )
 from synthorg.api.controllers.setup._posture_seeding import (
     seed_posture_settings as _seed_posture_settings,
@@ -53,11 +53,14 @@ from synthorg.api.controllers.setup_agents import (
     get_existing_agents,
     normalize_description,
 )
+from synthorg.api.controllers.setup_model_recommendations import (
+    SetupModelCandidate,
+    SetupModelRecommendationsResponse,
+)
 from synthorg.api.controllers.setup_models import (
     SetupAgentSummary,
     SetupCompanyRequest,
     SetupCompanyResponse,
-    SetupModelRecommendationsResponse,
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo, require_read_access
@@ -77,6 +80,7 @@ from synthorg.observability.events.setup import (
     SETUP_COMPANY_CREATED,
     SETUP_POSTURE_SEED_FAILED,
 )
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import settings_service_of
 
@@ -146,17 +150,27 @@ class SetupCompanyController(Controller):
         app_state: AppState = state.app_state
         settings_svc = settings_service_of(app_state)
         agents = await get_existing_agents(settings_svc)
-        model_ids = await _collect_model_ids(app_state)
+        provider_models = await _collect_provider_models(app_state)
+        model_ids = tuple(model_id for _, model_id in provider_models)
         selection = select_embedding_model(model_ids)
-        capable = pick_decomposition_model(agents)
+        capable = pick_decomposition_model_ref(agents)
 
         def _for(purpose: PromptPurposeId) -> str | None:
-            return pick_model_for_tier(agents, tier_for_purpose(purpose))
+            return pick_model_ref_for_tier(agents, tier_for_purpose(purpose))
+
+        candidates = tuple(
+            SetupModelCandidate(
+                provider=provider,
+                model_id=model_id,
+                ref=serialize_model_ref(ModelRef(provider=provider, model_id=model_id)),
+            )
+            for provider, model_id in provider_models
+        )
 
         return ApiResponse(
             data=SetupModelRecommendationsResponse(
                 decomposition_recommended=capable,
-                decomposition_candidates=model_ids,
+                decomposition_candidates=candidates,
                 embedding_recommended=selection.model_id if selection else None,
                 embedding_recommended_dims=(
                     selection.output_dims if selection else None

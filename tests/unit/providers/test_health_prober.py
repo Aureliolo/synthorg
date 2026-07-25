@@ -30,7 +30,7 @@ from synthorg.settings.resolver import ConfigResolver
 
 def _make_local_config(
     *,
-    base_url: str = "http://localhost:11434",
+    base_url: str | None = "http://localhost:11434",
     litellm_provider: str | None = "ollama",
     auth_type: str = "none",
     api_key: str | None = None,
@@ -71,6 +71,13 @@ def _make_prober(
         return_value=registered_default_int(
             SettingNamespace.PROVIDERS.value, "ollama_default_port"
         ),
+    )
+    # ``api.health_prober_enabled``: resolved live per cycle and by the
+    # on-demand probe, so it must answer on the mock rather than falling
+    # through to the resolver-failure fail-safe.
+    config_resolver.get_bool = AsyncMock(
+        spec=ConfigResolver.get_bool,
+        return_value=True,
     )
     prober = ProviderHealthProber(
         trk,
@@ -442,3 +449,81 @@ class TestProberLifecycle:
             await prober.stop()
 
         assert call_count >= 2  # First call failed, loop continued
+
+
+@pytest.mark.unit
+class TestProbeProviderOnDemand:
+    """A newly configured provider must not wait for the next sweep.
+
+    Health is derived from recorded outcomes, so a provider with none reports
+    UNKNOWN -- rendered identically to one that is genuinely unreachable. Until
+    the mutation paths probe on write, that state persisted for up to a full
+    probe interval after the operator finished configuring the provider.
+    """
+
+    async def test_probes_named_provider_immediately(self) -> None:
+        prober, tracker = _make_prober()
+        with _patch_httpx(status_code=200):
+            await prober.probe_provider("test-local")
+
+        summary = await tracker.get_summary("test-local")
+        assert summary.health_status == ProviderHealthStatus.UP
+        assert summary.calls_last_24h == 1
+
+    async def test_records_a_failure_rather_than_leaving_it_unknown(self) -> None:
+        prober, tracker = _make_prober()
+        with _patch_httpx(side_effect=httpx.ConnectError("refused")):
+            await prober.probe_provider("test-local")
+
+        summary = await tracker.get_summary("test-local")
+        assert summary.health_status == ProviderHealthStatus.DOWN
+
+    async def test_bypasses_the_cycle_recency_guard(self) -> None:
+        """A just-probed provider is re-probed: its endpoint may have changed."""
+        tracker = ProviderHealthTracker()
+        await tracker.record(
+            ProviderHealthRecord(
+                provider_name="test-local",
+                timestamp=datetime.now(UTC),
+                success=True,
+                response_time_ms=1.0,
+            )
+        )
+        prober, _ = _make_prober(tracker)
+        # The periodic sweep skips it (probed well inside the interval) ...
+        with _patch_httpx(status_code=200):
+            await prober._probe_all()
+        assert (await tracker.get_summary("test-local")).calls_last_24h == 1
+        # ... while the on-demand probe still runs.
+        with _patch_httpx(status_code=200):
+            await prober.probe_provider("test-local")
+        assert (await tracker.get_summary("test-local")).calls_last_24h == 2
+
+    async def test_unconfigured_provider_records_nothing(self) -> None:
+        prober, tracker = _make_prober()
+        with _patch_httpx(status_code=200):
+            await prober.probe_provider("never-configured")
+
+        assert (await tracker.get_summary("never-configured")).calls_last_24h == 0
+
+    async def test_skips_a_provider_without_a_base_url(self) -> None:
+        """A cloud provider exposes no lightweight ping to send."""
+        prober, tracker = _make_prober(
+            configs={"cloud": _make_local_config(base_url=None)},
+        )
+        with _patch_httpx(status_code=200):
+            await prober.probe_provider("cloud")
+
+        assert (await tracker.get_summary("cloud")).calls_last_24h == 0
+
+    async def test_paused_prober_does_not_probe(self) -> None:
+        """The kill switch gates the on-demand path, not just the loop."""
+        prober, tracker = _make_prober()
+        prober._config_resolver.get_bool = AsyncMock(  # type: ignore[method-assign]
+            spec=ConfigResolver.get_bool,
+            return_value=False,
+        )
+        with _patch_httpx(status_code=200):
+            await prober.probe_provider("test-local")
+
+        assert (await tracker.get_summary("test-local")).calls_last_24h == 0

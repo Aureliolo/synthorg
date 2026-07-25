@@ -8,6 +8,7 @@ export type {
   SetupAgentSummary,
   SetupCompanyRequest,
   SetupCompanyResponse,
+  SetupModelCandidate,
   SetupModelRecommendationsResponse,
   SetupNameLocalesRequest,
   SetupNameLocalesResponse,

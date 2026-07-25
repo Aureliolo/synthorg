@@ -7,8 +7,12 @@ import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
+import { normalizeModelRef } from '@/utils/model-ref'
 import type { SettingEntry } from '@/api/types/settings'
-import type { SetupModelRecommendationsResponse } from '@/api/types/setup'
+import type {
+  SetupModelCandidate,
+  SetupModelRecommendationsResponse,
+} from '@/api/types/setup'
 
 // Per-feature model pickers. Each writes straight through the settings API,
 // so a choice survives independently of the wizard and stays editable in
@@ -33,12 +37,19 @@ type PickerNamespace =
   | 'chief_of_staff'
   | 'charter'
 
+// How a picker's chosen value is written back. Every per-feature model setting
+// is a backend ``MODEL_REF``, which rejects a provider-less value at write
+// time, so those pickers select a serialized ``{provider, model_id}`` ref.
+// ``memory.embedder_model`` is a plain string setting and takes a bare id.
+type ValueKind = 'model_ref' | 'plain'
+
 interface PickerSpec {
   key: ModelKey
   namespace: PickerNamespace
   settingKey: string
   label: string
   hint: string
+  valueKind: ValueKind
 }
 
 const PICKERS: readonly PickerSpec[] = [
@@ -48,6 +59,7 @@ const PICKERS: readonly PickerSpec[] = [
     settingKey: 'decomposition_model',
     label: 'Coordination model',
     hint: 'Used by the coordinator to break briefs into tasks.',
+    valueKind: 'model_ref',
   },
   {
     key: 'embedding',
@@ -55,6 +67,7 @@ const PICKERS: readonly PickerSpec[] = [
     settingKey: 'embedder_model',
     label: 'Embedding model',
     hint: 'Powers memory + knowledge.',
+    valueKind: 'plain',
   },
   {
     key: 'research',
@@ -62,6 +75,7 @@ const PICKERS: readonly PickerSpec[] = [
     settingKey: 'model',
     label: 'Research model',
     hint: 'The model the research pipeline reasons with.',
+    valueKind: 'model_ref',
   },
   {
     key: 'cos',
@@ -69,6 +83,7 @@ const PICKERS: readonly PickerSpec[] = [
     settingKey: 'chat_model',
     label: 'Chief of Staff model',
     hint: 'Powers the conversational Chief-of-Staff turns.',
+    valueKind: 'model_ref',
   },
   {
     key: 'propose',
@@ -76,6 +91,7 @@ const PICKERS: readonly PickerSpec[] = [
     settingKey: 'propose_model',
     label: 'Request-work model',
     hint: 'Turns natural-language requests into concrete work proposals.',
+    valueKind: 'model_ref',
   },
   {
     key: 'routing',
@@ -83,6 +99,7 @@ const PICKERS: readonly PickerSpec[] = [
     settingKey: 'routing_model',
     label: 'Concern-routing model',
     hint: 'Classifies which role should handle an incoming concern.',
+    valueKind: 'model_ref',
   },
   {
     key: 'narrative',
@@ -90,6 +107,7 @@ const PICKERS: readonly PickerSpec[] = [
     settingKey: 'narrative_model',
     label: 'Run-narrative model',
     hint: 'Writes the documentary-style narrative of a run.',
+    valueKind: 'model_ref',
   },
   {
     key: 'charter',
@@ -97,6 +115,7 @@ const PICKERS: readonly PickerSpec[] = [
     settingKey: 'interview_model',
     label: 'Project-charter model',
     hint: "Interviews you and drafts a new project's charter.",
+    valueKind: 'model_ref',
   },
 ]
 
@@ -109,11 +128,33 @@ function emptyChoices(): ModelChoices {
   )
 }
 
-function toOptions(ids: readonly string[] | undefined): readonly SelectOption[] {
-  // A partial/garbled recommendations payload can leave a candidate list
-  // absent at runtime even though the type marks it required; degrade to an
-  // empty picker rather than crashing the whole step.
+// A partial/garbled recommendations payload can leave a candidate list absent
+// at runtime even though the type marks it required, so both builders below
+// take an optional list and degrade to an empty picker rather than crashing
+// the whole step.
+function plainOptions(ids: readonly string[] | undefined): readonly SelectOption[] {
   return (ids ?? []).map((id) => ({ value: id, label: id }))
+}
+
+// The option value is the serialized ref the settings write needs; the label
+// names the provider too, so the same model id served by two providers stays
+// distinguishable in the list.
+function refOptions(
+  candidates: readonly SetupModelCandidate[] | undefined,
+): readonly SelectOption[] {
+  return (candidates ?? []).map((candidate) => ({
+    value: normalizeModelRef(candidate.ref),
+    label: `${candidate.model_id} (${candidate.provider})`,
+  }))
+}
+
+function optionsFor(
+  recs: SetupModelRecommendationsResponse,
+  spec: PickerSpec,
+): readonly SelectOption[] {
+  return spec.valueKind === 'plain'
+    ? plainOptions(recs.embedding_candidates)
+    : refOptions(recs.decomposition_candidates)
 }
 
 function valueOf(entries: readonly SettingEntry[], key: string): string | undefined {
@@ -122,13 +163,6 @@ function valueOf(entries: readonly SettingEntry[], key: string): string | undefi
   // the recommendation still wins and the select never renders a blank option.
   const value = found?.value.trim()
   return value ? value : undefined
-}
-
-function candidatesFor(
-  recs: SetupModelRecommendationsResponse,
-  key: ModelKey,
-): readonly string[] {
-  return key === 'embedding' ? recs.embedding_candidates : recs.decomposition_candidates
 }
 
 function recommendedFor(
@@ -156,13 +190,23 @@ interface NamespaceEntries {
   charter: readonly SettingEntry[]
 }
 
+// A MODEL_REF value reaches the wizard in whichever JSON spelling last wrote
+// it (the backend pads after ``:``, the dashboard does not), so canonicalise
+// before comparing: the select preselects by string identity against its
+// option values.
+function canonical(spec: PickerSpec, value: string): string {
+  return spec.valueKind === 'model_ref' ? normalizeModelRef(value) : value
+}
+
 // Prefer a persisted operator choice, then the backend recommendation,
 // then empty.
 function pickModel(
+  spec: PickerSpec,
   persisted: string | undefined,
   recommended: string | null | undefined,
 ): string {
-  return persisted ?? recommended ?? ''
+  const chosen = persisted ?? recommended ?? ''
+  return chosen ? canonical(spec, chosen) : ''
 }
 
 function buildChoices(
@@ -173,6 +217,7 @@ function buildChoices(
     (acc, spec) => ({
       ...acc,
       [spec.key]: pickModel(
+        spec,
         valueOf(ns[spec.namespace], spec.settingKey),
         recommendedFor(recs, spec.key),
       ),
@@ -350,7 +395,7 @@ export function WizardModelSelection({ researchEnabled }: WizardModelSelectionPr
             onChange={(value) => {
               selectModel(spec, value)
             }}
-            options={toOptions(candidatesFor(recs, spec.key))}
+            options={optionsFor(recs, spec)}
           />
         ))}
       </div>
