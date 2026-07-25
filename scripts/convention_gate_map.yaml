@@ -186,6 +186,20 @@ mandatory_rules:
         prevention lives in .claude/hookify.block-pr-create.md
         rather than scripts/.
 
+  - id: claude-md::push-budget
+    file: CLAUDE.md
+    header: Push budget
+    exempt:
+      reason: |
+        Runtime property, not a source pattern: how long a push takes
+        is only knowable by running it, so no static scan can decide
+        it. Enforced at the moment it matters instead --
+        scripts/git-hooks/_run-hook.sh times every hook run and emits
+        the OVER BUDGET banner past BUDGET_SECONDS, and
+        tests/unit/scripts/test_run_hook_wrapper.py pins that the
+        banner fires, that a within-budget run stays quiet, and that
+        neither the banner nor a failure can consume the other.
+
   - id: claude-md::module-size-budget
     file: CLAUDE.md
     header: Module-Size Budget

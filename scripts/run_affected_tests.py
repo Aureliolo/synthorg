@@ -7,8 +7,13 @@ then maps them to their corresponding test directories via the project's 1:1
 Only Python (``.py``) file changes are considered; non-Python changes are ignored.
 
 Foundational modules (core, config, observability) are imported by nearly every
-other module, so changes to them trigger a full test run. Same for any
-``conftest.py`` and top-level source files (``__init__.py``, ``constants.py``).
+other module, so a change there raises a whole-suite question. Answering it is
+CI's job (the Test Unit shards): locally the changed module's own tests still
+run and the deferral is printed, never silent, so a push stays inside its
+five-minute budget. The same applies to a ``conftest.py``, a top-level source
+file (``__init__.py``, ``constants.py``), and a ``pyproject.toml`` edit, which
+carries pytest's own configuration. ``--full`` runs the whole suite on demand,
+with the timing-regression guards armed.
 
 The affected-tests run uses ``--max-worker-restart=0`` (matching CI) so any
 xdist worker crash (commonly the Python 3.14 + Windows ProactorEventLoop
@@ -20,6 +25,7 @@ Exit codes match pytest: 0 (passed/nothing to run), 1 (failures),
 etc.  Git command failures fall back to running the full unit suite.
 """
 
+import argparse
 import contextlib
 import math
 import os
@@ -29,6 +35,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Final, Literal
@@ -42,7 +49,37 @@ _PYTEST_FULL_SUITE_TIMEOUT_SECONDS: Final[float] = 12 * 60
 _PYTEST_AFFECTED_TIMEOUT_SECONDS: Final[float] = 6 * 60
 _PYTEST_HUNG_EXIT_CODE: Final[int] = 124  # matches GNU coreutils ``timeout(1)``
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _prepush_scope import (  # type: ignore[import-not-found]
+        MIN_MODULE_DEPTH,
+        PYPROJECT,
+        REPO_ROOT,
+        SAFE_MODULE_NAME,
+        TOP_LEVEL_SRC,
+        GitError,
+        announce_deferral,
+        changed_files,
+        classify_src_path,
+        git_output,
+        merge_base,
+    )
+else:
+    from scripts._prepush_scope import (
+        MIN_MODULE_DEPTH,
+        PYPROJECT,
+        REPO_ROOT,
+        SAFE_MODULE_NAME,
+        TOP_LEVEL_SRC,
+        GitError,
+        announce_deferral,
+        changed_files,
+        classify_src_path,
+        git_output,
+        merge_base,
+    )
+
+_REPO_ROOT = REPO_ROOT
 
 # Make ``tests.baselines.loader`` importable when this script runs from
 # the command line (the script's own directory is on ``sys.path`` but
@@ -59,94 +96,6 @@ from tests.baselines.loader import (  # noqa: E402
     load_baseline_snapshot as _shared_load_baseline_snapshot,
 )
 
-# Modules imported by nearly everything -- changes here mean "run all tests".
-_BLAST_RADIUS_MODULES = frozenset({"core", "config", "observability"})
-
-# Top-level source files that aren't in a module directory.
-_TOP_LEVEL_SRC = frozenset({"__init__.py", "constants.py"})
-
-# Minimum path depth for src/synthorg/<module> or tests/unit/<module>.
-_MIN_MODULE_DEPTH = 3
-
-# Valid Python package directory names (letters, digits, underscores;
-# leading letter or underscore). This regex is the ONLY barrier stopping
-# a crafted git-diff path component (e.g. ``..``) from being joined into
-# a filesystem path later. The special case ``"."`` is used for test-unit
-# root files; module names proper never contain dots. Do NOT relax it
-# without adding an explicit path-bounds check that the resolved test dir
-# stays under tests/unit/.
-_SAFE_MODULE_NAME = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
-
-
-class _GitError(Exception):
-    """Raised when a required git command fails."""
-
-
-def _git(*args: str, strip: bool = True) -> str:
-    """Run a git command and return its stdout.
-
-    Args:
-        args: Git argv tokens.
-        strip: When ``True`` (default) the whole stdout blob is
-            ``str.strip()``-ed for convenience. Callers parsing
-            ``--porcelain`` output MUST pass ``strip=False``: porcelain
-            v1 status codes are two columns and the first column is a
-            space for worktree-only modifications (`` M path``).
-            Stripping the blob eats that leading space on the first
-            line, shifting every fixed-index slice by one (e.g. a
-            ``[3:]`` slice that should read ``tests/foo.py`` instead
-            yields the truncated path ``ests/foo.py``) and the
-            subsequent ``git restore`` then fails on a bogus pathspec.
-
-    Raises:
-        _GitError: On non-zero exit so callers fail closed.
-    """
-    result = subprocess.run(
-        ["git", *args],
-        capture_output=True,
-        text=True,
-        cwd=_REPO_ROOT,
-        check=False,
-    )
-    if result.returncode != 0:
-        msg = f"git {' '.join(args)} failed: {result.stderr.strip()}"
-        raise _GitError(msg)
-    return result.stdout.strip() if strip else result.stdout
-
-
-def _merge_base() -> str:
-    """Find the merge base between HEAD and origin/main."""
-    try:
-        return _git("merge-base", "HEAD", "origin/main")
-    except _GitError as merge_base_exc:
-        # Fallback: if merge-base fails (e.g. origin/main not fetched, or
-        # history too shallow), diff against HEAD~1 so we check *something*.
-        # On an orphan / single-commit branch HEAD~1 also fails; wrap it so
-        # the caller gets the friendly "running full unit suite" fallback
-        # instead of a raw traceback.
-        try:
-            return _git("rev-parse", "HEAD~1")
-        except _GitError as head_parent_exc:
-            msg = (
-                f"no merge-base with origin/main ({merge_base_exc}) and "
-                f"HEAD~1 unavailable ({head_parent_exc})"
-            )
-            raise _GitError(msg) from head_parent_exc
-
-
-def _changed_files(base: str) -> list[str]:
-    """Return files changed between *base* and HEAD.
-
-    Includes both committed and uncommitted changes as a safety net.
-    """
-    committed = _git("diff", "--name-only", f"{base}...HEAD")
-    uncommitted = _git("diff", "--name-only", "HEAD")
-    all_files: set[str] = set()
-    for block in (committed, uncommitted):
-        if block:
-            all_files.update(block.splitlines())
-    return sorted(all_files)
-
 
 def _classify_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
     """Classify a file path into a category and optional module name.
@@ -158,25 +107,17 @@ def _classify_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
     if parts[-1] == "conftest.py":
         return "conftest", None
 
-    is_deep_enough = len(parts) >= _MIN_MODULE_DEPTH
-    if is_deep_enough and parts[0] == "src" and parts[1] == "synthorg":
-        if parts[2] in _TOP_LEVEL_SRC:
-            return "top_level_src", None
-        if not _SAFE_MODULE_NAME.match(parts[2]):
-            return "other", None
-        return (
-            ("blast_radius", None)
-            if parts[2] in _BLAST_RADIUS_MODULES
-            else ("src_module", parts[2])
-        )
+    source: tuple[str, str | None] | None = classify_src_path(parts)
+    if source is not None:
+        return source
 
-    if is_deep_enough and parts[0] == "tests" and parts[1] == "unit":
+    if len(parts) >= MIN_MODULE_DEPTH and parts[0] == "tests" and parts[1] == "unit":
         # The regex already rejects dotted names like test_smoke.py and
         # __init__.py, but listing them explicitly documents the intent.
         is_root = (
-            not _SAFE_MODULE_NAME.match(parts[2])
+            not SAFE_MODULE_NAME.match(parts[2])
             or parts[2] == "test_smoke.py"
-            or parts[2] in _TOP_LEVEL_SRC
+            or parts[2] in TOP_LEVEL_SRC
         )
         return ("test_unit", ".") if is_root else ("test_unit", parts[2])
 
@@ -186,17 +127,21 @@ def _classify_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
 def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
     """Map changed files to test directories.
 
-    Returns ``(test_dirs, run_all)`` where *run_all* is True when a
-    blast-radius module or shared infrastructure was touched.
+    Returns ``(test_dirs, deferred)`` where *deferred* records that a
+    cross-tree question (a blast-radius module, shared test
+    infrastructure, a top-level source file) was raised and handed to
+    CI. The affected directories are still returned and still run: the
+    local push verifies what changed, CI owns the sweep.
     """
     modules: set[str] = set()
+    deferred = False
 
     for filepath in changed:
         parts = PurePosixPath(filepath).parts
         category, module = _classify_path(parts)
 
         if category in {"conftest", "blast_radius", "top_level_src"}:
-            return [], True
+            deferred = True
         if module is not None:
             modules.add(module)
 
@@ -212,7 +157,7 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
             if test_dir.is_dir():
                 test_dirs.append(str(test_dir.relative_to(_REPO_ROOT)))
 
-    return test_dirs, False
+    return test_dirs, deferred
 
 
 _BASELINE_PATH = _REPO_ROOT / "tests" / "baselines" / "unit_timing.json"
@@ -464,39 +409,79 @@ def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
 
 
+def _own_process_group_kwargs() -> dict[str, object]:
+    """Return the Popen kwargs that isolate pytest's process group.
+
+    The pytest master and every xdist worker must share a group of their
+    own so the watchdog can take the whole tree out atomically; without
+    it ``proc.kill()`` reaches only the master and the workers survive as
+    orphans for several seconds.
+
+    Returns:
+        Platform-appropriate Popen keyword arguments.
+    """
+    kwargs: dict[str, object] = {}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    return kwargs
+
+
+def _print_hung_run_banner(timeout_seconds: float) -> None:
+    """Explain that the watchdog killed a wedged pytest run."""
+    print(
+        f"\n{'!' * 60}\n"
+        f"run_affected_tests: pytest exceeded "
+        f"{timeout_seconds:.0f}s wall-clock cap -- killing.\n"
+        f"The pre-push hook gates ALL pushes; investigate which test\n"
+        f"is hung (the worker traceback dumps above name it) and fix\n"
+        f"the root cause -- there is no bypass.\n"
+        f"{'!' * 60}",
+        file=sys.stderr,
+    )
+
+
+def _tee_output(proc: subprocess.Popen[str]) -> tuple[int, str]:
+    """Echo the process's output live while capturing it.
+
+    ``subprocess.run`` + ``capture_output`` buffers everything until the
+    process exits, hiding a multi-minute suite behind silence; the capture
+    is still needed because the "N passed" summary feeds the per-test
+    regression rail.
+
+    Returns:
+        The process's exit code and everything it wrote.
+    """
+    if proc.stdout is None:
+        return proc.wait(), ""
+    lines: list[str] = []
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        lines.append(line)
+    return proc.wait(), "".join(lines)
+
+
 def _stream_pytest(
     cmd: list[str], *, timeout_seconds: float | None = None
 ) -> tuple[int, str]:
     """Run *cmd* as pytest, tee stdout, and return ``(returncode, stdout)``.
 
-    Streams pytest stdout line-by-line so users see live progress
-    (``subprocess.run`` + ``capture_output`` buffers everything until
-    the process exits, which hides the ~90s full suite behind silence).
-    We still tee into a buffer so the "N passed" summary line is
-    available for the per-test regression rail.
-
     When ``timeout_seconds`` is set, a watchdog thread kills the entire
-    pytest process group (master + xdist workers) if the run lasts
-    longer; this is the safety net for the Windows + Python 3.14 +
-    xdist IOCP teardown hang that can leave a worker silently wedged
-    for hours otherwise. On timeout the function returns
-    ``(_PYTEST_HUNG_EXIT_CODE, captured)`` plus a clear stderr banner
-    so the operator sees what happened. Callers MUST short-circuit on
-    ``_PYTEST_HUNG_EXIT_CODE`` rather than forwarding to
+    pytest process group if the run lasts longer; this is the safety net
+    for the Windows + Python 3.14 + xdist IOCP teardown hang that can
+    leave a worker silently wedged for hours otherwise. On timeout the
+    function returns ``(_PYTEST_HUNG_EXIT_CODE, captured)``. Callers MUST
+    short-circuit on that code rather than forwarding to
     ``_classify_isolation_outcome``: the classifier would misread the
     killed run's partial stdout (worker-crash markers left by workers
     dying after the master vanished) rather than the canonical 124 signal.
+
+    Returns:
+        The run's exit code and captured output.
     """
     timeout_fired = False
-    # Put the pytest master + every xdist worker in a new process group
-    # so the watchdog can SIGKILL the whole tree atomically. Without
-    # this, ``proc.kill()`` only terminates the master and the workers
-    # survive as orphans for several seconds.
-    popen_extra: dict[str, object] = {}
-    if sys.platform == "win32":
-        popen_extra["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-    else:
-        popen_extra["start_new_session"] = True
 
     with subprocess.Popen(  # type: ignore[call-overload]  # **dict unpack can't match Popen overloads
         cmd,
@@ -505,66 +490,47 @@ def _stream_pytest(
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
-        **popen_extra,
+        **_own_process_group_kwargs(),
     ) as proc:
-
-        def _on_timeout() -> None:
-            nonlocal timeout_fired
-            timeout_fired = True
-            print(
-                f"\n{'!' * 60}\n"
-                f"run_affected_tests: pytest exceeded "
-                f"{timeout_seconds:.0f}s wall-clock cap -- killing.\n"
-                f"The pre-push hook gates ALL pushes; investigate which test\n"
-                f"is hung (the worker traceback dumps above name it) and fix\n"
-                f"the root cause -- there is no bypass.\n"
-                f"{'!' * 60}",
-                file=sys.stderr,
-            )
-            _kill_process_tree(proc)
-
         watchdog: threading.Timer | None = None
         if timeout_seconds is not None and timeout_seconds > 0:
-            watchdog = threading.Timer(timeout_seconds, _on_timeout)
+            cap = timeout_seconds
+
+            def _on_timeout() -> None:
+                nonlocal timeout_fired
+                timeout_fired = True
+                _print_hung_run_banner(cap)
+                _kill_process_tree(proc)
+
+            watchdog = threading.Timer(cap, _on_timeout)
             watchdog.daemon = True
             watchdog.start()
 
         try:
-            stdout_lines: list[str] = []
-            if proc.stdout is None:
-                returncode = proc.wait()
-                return returncode, ""
-            for line in proc.stdout:
-                sys.stdout.write(line)
-                sys.stdout.flush()
-                stdout_lines.append(line)
-            returncode = proc.wait()
+            returncode, captured = _tee_output(proc)
         finally:
             if watchdog is not None:
                 watchdog.cancel()
 
-    if timeout_fired:
-        return _PYTEST_HUNG_EXIT_CODE, "".join(stdout_lines)
-    return returncode, "".join(stdout_lines)
+    return (_PYTEST_HUNG_EXIT_CODE if timeout_fired else returncode), captured
 
 
-def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
-    """Run pytest with the given paths.
+def _pytest_command(paths: list[str]) -> list[str]:
+    """Build the pytest argv for *paths*.
 
     Inherits ``--dist loadfile`` from pyproject.toml's ``addopts`` so
-    every test in a file stays on the same xdist worker; this prevents
-    the cumulative resource leak that crashed workers under the prior
-    ``worksteal`` default on Python 3.14 + Windows.
+    every test in a file stays on the same xdist worker: work-stealing
+    rebalances tests across workers mid-run, and the resulting cumulative
+    per-worker resource growth crashes workers on Python 3.14 + Windows.
 
     ``--max-worker-restart=0`` (matching CI) forbids restarting a worker
-    that crashes, so a native crash always surfaces as a failed run
-    rather than being silently recovered.  ``_classify_isolation_outcome``
-    then parses the captured stdout and BLOCKS on any worker crash
-    alongside real test failures.  There is no advisory pass -- a crashed
-    worker is a real defect to debug from the faulthandler/core dump, not
-    noise to wave through.
+    that crashes, so a native crash always surfaces as a failed run rather
+    than being silently recovered.
+
+    Returns:
+        The argv to hand to :func:`_stream_pytest`.
     """
-    cmd = [
+    return [
         sys.executable,
         "-m",
         "pytest",
@@ -576,43 +542,62 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
         "--max-worker-restart=0",
         "-q",
     ]
-    start = time.monotonic()
+
+
+def _grade_run(
+    returncode: int,
+    captured_stdout: str,
+    *,
+    elapsed: float,
+    run_all: bool,
+) -> int:
+    """Turn a finished pytest run into the script's exit code.
+
+    The timing rail is skipped whenever the run itself was adverse: a
+    worker crash charges the time spent before the crash against the
+    surviving test count, so ``elapsed / test_count`` reports a
+    regression that is not there, and stacking that banner on top of a
+    crash dump buries the actual root cause.
+
+    Returns:
+        The exit code the push should see.
+    """
+    outcome = _classify_isolation_outcome(returncode, captured_stdout)
+    effective_returncode = outcome.exit_code
+    if effective_returncode == 0 and _check_timing_regression(
+        elapsed,
+        run_all=run_all,
+        test_count=_parse_test_count(captured_stdout),
+    ):
+        return max(effective_returncode, 1)
+    if outcome.kind == "regression":
+        _print_isolation_banner(outcome)
+    return effective_returncode
+
+
+def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
+    """Run pytest over *paths* and grade the result.
+
+    Returns:
+        The pytest exit code, or ``_PYTEST_HUNG_EXIT_CODE`` when the
+        watchdog had to kill a wedged run.
+    """
+    start = time.monotonic()  # lint-allow: clock-seam -- gate script, no DI
     timeout_seconds = (
         _PYTEST_FULL_SUITE_TIMEOUT_SECONDS
         if run_all
         else _PYTEST_AFFECTED_TIMEOUT_SECONDS
     )
-    returncode, captured_stdout = _stream_pytest(cmd, timeout_seconds=timeout_seconds)
+    returncode, captured_stdout = _stream_pytest(
+        _pytest_command(paths), timeout_seconds=timeout_seconds
+    )
     if returncode == _PYTEST_HUNG_EXIT_CODE:
-        # Watchdog killed the run. Do NOT pass through the classifier:
-        # a killed pytest typically logs worker-crash markers (workers
-        # dying after the master vanishes), which the classifier would
-        # misread instead of the canonical 124 watchdog signal.
-        # Return 124 so the push aborts with the banner ``_on_timeout``
-        # already printed.
+        # The banner is already printed; the classifier would misread the
+        # killed run's partial output instead of the canonical 124 signal.
         return _PYTEST_HUNG_EXIT_CODE
+    # lint-allow: clock-seam -- gate script, no DI
     elapsed = time.monotonic() - start
-    test_count = _parse_test_count(captured_stdout)
-    outcome = _classify_isolation_outcome(returncode, captured_stdout)
-    effective_returncode = outcome.exit_code
-    # Skip the regression guard when tests failed / crashed: worker
-    # crashes skew ``elapsed / test_count`` upward (time spent before
-    # the crash is charged against the surviving test count) and
-    # produce false-positive regressions. The underlying failure is
-    # already surfaced via ``effective_returncode`` and the test
-    # output. When tests fail the operator needs to fix those first;
-    # flipping the regression banner on top of a crash output adds
-    # noise without pointing at the real root cause.
-    if effective_returncode == 0 and _check_timing_regression(
-        elapsed,
-        run_all=run_all,
-        test_count=test_count,
-    ):
-        # Regression detected -- block the push even if tests passed.
-        return max(effective_returncode, 1)
-    if outcome.kind == "regression":
-        _print_isolation_banner(outcome)
-    return effective_returncode
+    return _grade_run(returncode, captured_stdout, elapsed=elapsed, run_all=run_all)
 
 
 @dataclass(frozen=True)
@@ -790,23 +775,21 @@ def _print_isolation_banner(outcome: IsolationOutcome) -> None:
 
 
 def _resolve_changed_files() -> list[str] | None:
-    """Return changed files, or ``None`` if we should run the full suite.
+    """Return changed files, or ``None`` when the file list is unknowable.
 
-    Returns ``None`` for any condition that forces a full unit run:
-    git command failure (no merge-base, shallow history, etc.) or a
-    ``pyproject.toml`` change.  ``pyproject.toml`` carries the pytest
-    config (addopts, xdist, plugin list, markers); a push that touches
-    it but no Python file would otherwise skip every test, shipping
-    the configuration change unverified.
+    ``None`` means git could not say what changed (no merge-base, shallow
+    history). Nothing can be scoped from that, so the caller falls back to
+    the whole suite: a push whose only local signal is "we could not tell"
+    is worse than a slow one.
+
+    Returns:
+        The changed files, or ``None`` when git could not report them.
     """
     try:
-        base = _merge_base()
-        changed = _changed_files(base)
-    except _GitError as exc:
-        print(f"ERROR: {exc} -- running full unit suite", file=sys.stderr)
-        return None
-    if "pyproject.toml" in changed:
-        print("pyproject.toml changed -- running full unit suite.")
+        base = merge_base()
+        changed: list[str] = changed_files(base)
+    except GitError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         return None
     return changed
 
@@ -820,7 +803,7 @@ def _tracked_dirty_paths() -> set[str]:
     this guard's job. Renames (``R``) carry ``orig -> new``; both sides
     are recorded so a hook-induced rename is fully reconciled.
     """
-    porcelain = _git("status", "--porcelain", strip=False)
+    porcelain = git_output("status", "--porcelain", strip=False)
     paths: set[str] = set()
     for line in porcelain.splitlines():
         if not line or line.startswith("??"):
@@ -855,7 +838,7 @@ def _reconcile_worktree(before: set[str]) -> int:
     """
     try:
         after = _tracked_dirty_paths()
-    except _GitError as exc:
+    except GitError as exc:
         # Fail closed: if we cannot read post-run status we cannot prove
         # the run left the tree clean. Returning 0 here would let a
         # test-induced mutation slip through silently (pre-commit would
@@ -883,8 +866,8 @@ def _reconcile_worktree(before: set[str]) -> int:
         file=sys.stderr,
     )
     try:
-        _git("restore", "--", *newly_dirtied)
-    except _GitError as exc:
+        git_output("restore", "--", *newly_dirtied)
+    except GitError as exc:
         print(
             f"run_affected_tests: FAILED to revert hook-modified files "
             f"({exc}). The working tree is left dirty; fix the writer "
@@ -895,28 +878,96 @@ def _reconcile_worktree(before: set[str]) -> int:
     return 0
 
 
+def _defer_to_ci(reason: str, *, scoped_run_follows: bool) -> None:
+    """Announce that the full-suite question is CI's to answer."""
+    announce_deferral(
+        reason,
+        deferred_scope="the full unit suite",
+        ci_job="Test Unit shards",
+        ran_locally="the affected tests still run here",
+        scoped_run_follows=scoped_run_follows,
+    )
+
+
+def _pytest_config_changed(changed: Sequence[str]) -> bool:
+    """Whether the push touches pytest's own configuration.
+
+    ``pyproject.toml`` carries ``addopts``, the xdist settings, the plugin
+    list and the marker registry alongside every dependency pin, so a
+    change to it can alter how the suite runs without any ``.py`` file
+    appearing in the diff.
+
+    Returns:
+        ``True`` when ``pyproject.toml`` is among the changed files.
+    """
+    return PYPROJECT in changed
+
+
 def _run_tests() -> int:
-    """Select and run the affected (or full) unit suite."""
+    """Select and run the affected unit tests.
+
+    Returns:
+        The pytest exit code (0 when nothing maps to a test directory).
+    """
     changed = _resolve_changed_files()
     if changed is None:
+        # The file list is unknowable, so nothing can be scoped. Run the
+        # whole suite rather than nothing: the alternative is a push whose
+        # only local signal is a message saying it was not checked.
+        print(
+            "Changed-file list unavailable -- cannot scope the suite; "
+            "running the FULL unit suite as a fail-safe.",
+            file=sys.stderr,
+        )
         return _run_pytest(["tests/unit/"], run_all=True)
 
     py_changed = [f for f in changed if f.endswith(".py")]
-    if not py_changed:
-        print("No Python files changed -- skipping unit tests.")
-        return 0
+    test_dirs, deferred = _affected_test_dirs(py_changed)
 
-    test_dirs, run_all = _affected_test_dirs(py_changed)
-    if run_all:
-        print("Foundational module or conftest changed -- running full unit suite.")
-        return _run_pytest(["tests/unit/"], run_all=True)
+    deferred_announced = False
+    if _pytest_config_changed(changed):
+        _defer_to_ci(
+            "pyproject.toml changed (pytest configuration)",
+            scoped_run_follows=bool(test_dirs),
+        )
+        deferred_announced = True
+    elif deferred:
+        _defer_to_ci(
+            "Foundational module or conftest changed",
+            scoped_run_follows=bool(test_dirs),
+        )
+        deferred_announced = True
 
     if not test_dirs:
+        # A deferral already stated whether anything runs locally; a
+        # second no-op verdict on the same push would read as unrelated.
+        if deferred_announced:
+            return 0
+        if not py_changed:
+            print("No Python files changed -- skipping unit tests.")
+            return 0
         print("Changed files don't map to any test directories -- skipping.")
         return 0
 
     print(f"Running affected tests: {', '.join(test_dirs)}")
-    return _run_pytest(test_dirs)
+    started = time.monotonic()  # lint-allow: clock-seam -- gate script, no DI
+    exit_code = _run_pytest(test_dirs)
+    # lint-allow: clock-seam -- gate script, no DI
+    print(f"pytest: {time.monotonic() - started:.1f}s")
+    return exit_code
+
+
+def _run_full_suite() -> int:
+    """Run the whole unit suite with the timing-regression rail armed.
+
+    The per-test and whole-suite timing guards only evaluate on a full
+    run (a scoped subset has no comparable baseline), so this is the one
+    entry point that arms them.
+
+    Returns:
+        The pytest exit code.
+    """
+    return _run_pytest(["tests/unit/"], run_all=True)
 
 
 def main() -> int:
@@ -926,10 +977,21 @@ def main() -> int:
     then reverts only the files the run itself dirtied. The test exit
     code is preserved; a failed revert is folded in so an un-revertable
     mutation cannot pass silently.
+
+    Returns:
+        The process exit code.
     """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="run the whole unit suite with the timing-regression guards armed",
+    )
+    run = _run_full_suite if parser.parse_args().full else _run_tests
+
     try:
         before = _tracked_dirty_paths()
-    except _GitError as exc:
+    except GitError as exc:
         # No pre-run snapshot means we cannot safely tell hook-induced
         # changes from the developer's own. Skip reconciliation rather
         # than risk reverting real work; the run still gates correctness.
@@ -938,8 +1000,8 @@ def main() -> int:
             f"({exc}); worktree reconciliation disabled for this run.",
             file=sys.stderr,
         )
-        return _run_tests()
-    test_returncode = _run_tests()
+        return run()
+    test_returncode = run()
     reconcile_returncode = _reconcile_worktree(before)
     return max(test_returncode, reconcile_returncode)
 

@@ -71,9 +71,12 @@ _COVERED_ELSEWHERE: Final[dict[str, str]] = {
     "go-vet": "cli.yml :: cli-lint (go vet ./...)",
     "go-test": "cli.yml :: cli-test (go test ./...)",
     "golangci-lint": "cli.yml :: cli-lint (golangci-lint run)",
-    "eslint-web": "ci.yml :: dashboard-lint (npm run lint)",
-    "web-circular": "ci.yml :: dashboard-lint (npm run lint:circular)",
-    "web-knip": "ci.yml :: dashboard-lint (npm run lint:knip)",
+    "web-checks": (
+        "ci.yml :: dashboard-lint (npm run lint + lint:knip + lint:circular; "
+        "the job runs each script over the whole dashboard. The hook scopes "
+        "only ESLint to the pushed files; knip and circular run whole-dashboard "
+        "in the hook too, since neither takes a file list)"
+    ),
     "dto-types-ts-in-sync": (
         "ci.yml :: dashboard-type-check (runs the gate where the pinned "
         "web/node_modules provides openapi-typescript + its typescript peer; "
@@ -261,60 +264,71 @@ def _all_files_invocations(ci: dict[str, object]) -> list[tuple[str, frozenset[s
     return out
 
 
-def _parity_violations(repo_root: Path) -> list[str]:
-    """Return parity problems between local hooks and CI coverage."""
-    config = _load_yaml(repo_root / _PRECOMMIT_CONFIG)
-    ci = _load_yaml(repo_root / _CI_WORKFLOW)
-    local_ids = _local_hook_ids(config)
-    invocations = _all_files_invocations(ci)
+def _stage_coverage_problems(
+    invocations: list[tuple[str, frozenset[str]]],
+) -> list[str]:
+    """Flag parity stages the all-files job never runs.
 
-    problems: list[str] = []
-    if not invocations:
-        problems.append(
-            f"{_CI_WORKFLOW}: no '{_ALL_FILES_MARKER}' step found -- the hybrid "
-            "parity job is missing, so the Python gate set has no CI mirror."
-        )
-        return problems
+    ``pre-commit run --all-files`` runs only the pre-commit stage; the
+    pre-push-only gates, which are the bulk of the suite, need a second
+    ``--hook-stage pre-push`` step or they have no CI backstop at all.
 
-    # The all-files job must cover EVERY parity stage. ``pre-commit run
-    # --all-files`` runs only the pre-commit stage; the pre-push-only gates
-    # (the bulk of the suite) need a second ``--hook-stage pre-push`` step.
+    Returns:
+        One problem per uncovered stage set.
+    """
     covered_stages = {stage for stage, _ in invocations}
     missing_stages = _PARITY_STAGES - covered_stages
-    if missing_stages:
-        problems.append(
-            f"{_CI_WORKFLOW}: the all-files job runs stages "
-            f"{sorted(covered_stages)} but not {sorted(missing_stages)}. "
-            "Pre-push-only gates would have NO CI backstop. Add a "
-            f"'{_ALL_FILES_MARKER} --hook-stage <stage>' step for each "
-            "missing stage."
-        )
+    if not missing_stages:
+        return []
+    return [
+        f"{_CI_WORKFLOW}: the all-files job runs stages "
+        f"{sorted(covered_stages)} but not {sorted(missing_stages)}. "
+        "Pre-push-only gates would have NO CI backstop. Add a "
+        f"'{_ALL_FILES_MARKER} --hook-stage <stage>' step for each "
+        "missing stage."
+    ]
 
-    # Every all-files invocation must share one SKIP list, or a hook could be
-    # skipped at one stage but run at another (the bug this gate prevents).
+
+def _skip_agreement_problems(
+    invocations: list[tuple[str, frozenset[str]]],
+) -> list[str]:
+    """Flag all-files invocations that disagree on their SKIP list.
+
+    Divergent SKIP lists let a hook be skipped at one stage and run at
+    another, so coverage depends on which stage happened to be read.
+
+    Returns:
+        A single problem when the invocations disagree, else nothing.
+    """
     skip_sets = {skip for _, skip in invocations}
-    if len(skip_sets) > 1:
-        rendered = [sorted(s) for s in skip_sets]
-        problems.append(
-            f"{_CI_WORKFLOW}: the all-files invocations disagree on SKIP "
-            f"({rendered}). Use one shared SKIP (job-level env) so coverage is "
-            "identical at every stage."
-        )
-    skip: frozenset[str] = frozenset().union(*skip_sets) if skip_sets else frozenset()
+    if len(skip_sets) <= 1:
+        return []
+    # Sorted twice over: a set iterates in hash order, so without the outer
+    # sort the same disagreement reads differently from one process to the
+    # next, and a diagnostic that changes shape is one nobody can diff.
+    rendered = sorted(sorted(skip) for skip in skip_sets)
+    return [
+        f"{_CI_WORKFLOW}: the all-files invocations disagree on SKIP "
+        f"({rendered}). Use one shared SKIP (job-level "
+        "env) so coverage is identical at every stage."
+    ]
+
+
+def _unjustified_skip_problems(local_ids: list[str], skip: frozenset[str]) -> list[str]:
+    """Flag hooks skipped in CI without a documented reason.
+
+    Returns:
+        One problem per hook whose skip nothing accounts for.
+    """
     justified = set(_COVERED_ELSEWHERE) | set(_LOCAL_ONLY)
-
-    for hook_id in local_ids:
-        covered_by_all_files = hook_id not in skip
-        if not (covered_by_all_files or hook_id in justified):
-            problems.append(
-                f"hook '{hook_id}' has NO CI counterpart: it is SKIPped by the "
-                "all-files job but absent from _COVERED_ELSEWHERE / _LOCAL_ONLY. "
-                "A --no-verify push could land a violation CI never catches. "
-                "Either stop skipping it, or document its coverage."
-            )
-
-    # Every SKIPped hook must be justified, and the SKIP list must match the
-    # documented coverage maps exactly (no drift in either direction).
+    problems = [
+        f"hook '{hook_id}' has NO CI counterpart: it is SKIPped by the "
+        "all-files job but absent from _COVERED_ELSEWHERE / _LOCAL_ONLY. "
+        "A --no-verify push could land a violation CI never catches. "
+        "Either stop skipping it, or document its coverage."
+        for hook_id in local_ids
+        if hook_id in skip and hook_id not in justified
+    ]
     problems.extend(
         f"all-files SKIP lists '{skipped}' but it is not in "
         "_COVERED_ELSEWHERE or _LOCAL_ONLY: an unjustified skip is a "
@@ -322,6 +336,22 @@ def _parity_violations(repo_root: Path) -> list[str]:
         for skipped in sorted(skip)
         if skipped not in justified
     )
+    return problems
+
+
+def _coverage_map_drift_problems(
+    local_ids: list[str], skip: frozenset[str]
+) -> list[str]:
+    """Flag drift between the documented coverage maps and reality.
+
+    The maps are the gate's own claim about where each hook is covered;
+    an entry that no longer matches the SKIP list or the hook config means
+    the claim has quietly stopped being true in one direction or the other.
+
+    Returns:
+        One problem per stale or contradicted entry.
+    """
+    problems: list[str] = []
     for covered in sorted(_COVERED_ELSEWHERE):
         if covered not in skip:
             problems.append(
@@ -347,6 +377,36 @@ def _parity_violations(repo_root: Path) -> list[str]:
                 "parity-stage hook in .pre-commit-config.yaml (stale entry)."
             )
     return problems
+
+
+def _parity_violations(repo_root: Path) -> list[str]:
+    """Return parity problems between local hooks and CI coverage.
+
+    Returns:
+        Every problem found, or an empty list when local and CI coverage
+        line up.
+    """
+    config = _load_yaml(repo_root / _PRECOMMIT_CONFIG)
+    ci = _load_yaml(repo_root / _CI_WORKFLOW)
+    local_ids = _local_hook_ids(config)
+    invocations = _all_files_invocations(ci)
+
+    if not invocations:
+        # Nothing downstream can be judged without a mirror to judge against.
+        return [
+            f"{_CI_WORKFLOW}: no '{_ALL_FILES_MARKER}' step found -- the hybrid "
+            "parity job is missing, so the Python gate set has no CI mirror."
+        ]
+
+    skip_sets = {skip for _, skip in invocations}
+    skip: frozenset[str] = frozenset().union(*skip_sets) if skip_sets else frozenset()
+
+    return [
+        *_stage_coverage_problems(invocations),
+        *_skip_agreement_problems(invocations),
+        *_unjustified_skip_problems(local_ids, skip),
+        *_coverage_map_drift_problems(local_ids, skip),
+    ]
 
 
 def _changed_file_outputs(wf: _CardinalWorkflow, condition: object) -> set[str]:

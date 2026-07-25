@@ -98,7 +98,8 @@ uv run pre-commit run --all-files
 | mypy (pre-push) | Type-check affected modules |
 | pytest (pre-push) | Run unit tests for affected modules |
 | golangci-lint + go vet (pre-push) | Lint/vet Go CLI code (conditional on `cli/**/*.go`) |
-| eslint-web (pre-push) | Lint web dashboard (conditional on `web/src/**`) |
+| web-checks (pre-push) | ESLint the pushed dashboard files, plus knip and circular-import scans, run concurrently (conditional on `web/**`) |
+| python-audits (pre-push) | Dead code, docstring coverage and dependency hygiene, run concurrently |
 
 ## Quality Checks
 

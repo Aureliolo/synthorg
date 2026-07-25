@@ -96,12 +96,39 @@ if [ -f "$LOG" ]; then
   cp -f "$LOG" "$PREV"
 fi
 
+# A push is held to a five-minute budget. Without a recorded duration a
+# gate-scope regression is only ever felt, never seen, so every run is
+# timed and a run over budget says so loudly enough to be acted on.
+# Overridable so a test can force the over-budget branch without waiting
+# out the real ceiling.
+: "${BUDGET_SECONDS:=300}"
+started_at=$SECONDS
+
 set +e
 uv run --frozen --project "$ROOT" python -m pre_commit hook-impl \
   --config=.pre-commit-config.yaml --hook-type="$hook_type" \
   --hook-dir "$ROOT/scripts/git-hooks" -- "$@" 2>&1 | tee "$LOG"
 status=${PIPESTATUS[0]}
-set -e
+
+# Still inside the fail-soft region: `set -e` + `pipefail` are what make a
+# `tee` failure (a full disk, an unwritable git dir) abort the script, and
+# aborting HERE would skip the status check below -- losing the failure
+# banner, the FAILED marker the re-push guard depends on, and the real
+# exit code. Diagnostics must never outrank the result they describe.
+elapsed=$((SECONDS - started_at))
+printf '\ngit %s hook: %dm%02ds total\n' \
+  "$hook_type" "$((elapsed / 60))" "$((elapsed % 60))" | tee -a "$LOG"
+if [ "$elapsed" -gt "$BUDGET_SECONDS" ]; then
+  {
+    echo "=================================================================="
+    echo "OVER BUDGET: the ${hook_type} hook took ${elapsed}s, past the"
+    echo "${BUDGET_SECONDS}s ceiling. That is a gate-scope defect, not a"
+    echo "cost of doing business. Read ${LOG} to see which hook dominated;"
+    echo "the usual cause is a change that widened an affected-scope"
+    echo "selector into a whole-tree run."
+    echo "=================================================================="
+  } | tee -a "$LOG" >&2
+fi
 
 if [ "$status" -ne 0 ]; then
   {
@@ -111,7 +138,7 @@ if [ "$status" -ne 0 ]; then
     echo "Full untruncated output: ${LOG}"
     echo "Previous run's log preserved at: ${PREV}"
     echo "--- failing tail (last 60 lines; read the full log above if needed) ---"
-    tail -n 60 "$LOG"
+    tail -n 60 "$LOG" || true
     echo "=================================================================="
   } >&2
   # Drop a failure marker so the Claude PreToolUse guard
@@ -126,5 +153,9 @@ else
   # Clean run: clear any stale failure marker so the guard stops blocking.
   rm -f "$FAILED_MARKER" 2>/dev/null || true
 fi
+# `errexit` stays off from the hook invocation onwards: everything after it
+# reports the result rather than producing it, so a failure writing a log
+# line must never decide the process's exit code.
+set -e
 
 exit "$status"

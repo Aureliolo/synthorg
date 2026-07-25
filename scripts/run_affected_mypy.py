@@ -23,12 +23,17 @@ daemon that failed). It uses git diff against origin/main to type-check only
 the affected module directories (``src/synthorg/<module>/`` and the
 corresponding ``tests/unit/<module>/`` and ``tests/integration/<module>/``),
 because a cold full run costs several minutes. Only Python (``.py``) file
-changes are considered; non-Python changes are ignored. Foundational modules
-(core, config, observability) define types imported across the entire codebase,
-so a change there widens to a full cold run. The ``.mypy_cache/`` directory
-keeps subsequent cold runs faster with a warm cache.
+changes are considered; non-Python changes are ignored. The ``.mypy_cache/``
+directory keeps subsequent cold runs faster with a warm cache.
 
-That narrowing is why the cold path is weaker than CI, which always checks the
+A foundational module (core, config, observability) defines types imported
+across the entire codebase, so a change there raises a whole-tree question.
+Cold, that question costs minutes and a push is held to a five-minute budget,
+so it is handed to CI's Type Check job and printed, never silently narrowed;
+the module's own paths are still checked here. ``--full`` runs the CI scope
+on demand.
+
+That deferral is why the cold path is weaker than CI, which always checks the
 full tree: a change whose only broken consumer lives in an untouched module
 directory passes here and fails there. The daemon path does not have that gap
 (it always checks the full scope), so it only applies to a run that opted out
@@ -36,8 +41,6 @@ of the daemon or fell back from it. A clean opted-out run is not a promise
 that CI will be clean.
 
 Exit codes match mypy: 0 (no errors/nothing to check), 1 (type errors found), etc.
-Git command failures fall back to running full mypy on the whole-tree scope
-(``src/``, ``tests/``, ``evals/``, ``docker/``, ``d2_fence.py``).
 """
 
 import argparse
@@ -47,10 +50,37 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path, PurePosixPath
 from typing import Final, Literal, NamedTuple
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _prepush_scope import (  # type: ignore[import-not-found]
+        MIN_MODULE_DEPTH,
+        PYPROJECT,
+        REPO_ROOT,
+        SAFE_MODULE_NAME,
+        GitError,
+        announce_deferral,
+        changed_files,
+        classify_src_path,
+        merge_base,
+    )
+else:
+    from scripts._prepush_scope import (
+        MIN_MODULE_DEPTH,
+        PYPROJECT,
+        REPO_ROOT,
+        SAFE_MODULE_NAME,
+        GitError,
+        announce_deferral,
+        changed_files,
+        classify_src_path,
+        merge_base,
+    )
+
+_REPO_ROOT = REPO_ROOT
 
 # Full-tree mypy scope, mirroring the CI type-check job so a full local
 # run catches the same surface CI does. evals/, docker/, and the root
@@ -58,21 +88,13 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 # separately by ``_run_scripts_mypy`` (it needs different flags).
 _FULL_SCOPE: Final[list[str]] = ["src/", "tests/", "evals/", "docker/", "d2_fence.py"]
 
-# Modules imported by nearly everything -- changes here mean "full mypy".
-_BLAST_RADIUS_MODULES = frozenset({"core", "config", "observability"})
-
-# Top-level source files that aren't in a module directory.
-_TOP_LEVEL_SRC = frozenset({"__init__.py", "constants.py"})
-
-# Minimum path depth for src/synthorg/<module> or tests/<kind>/<module>.
-_MIN_MODULE_DEPTH = 3
-
 # Test subdirectories whose module layout the cold path can map to a narrow
-# mypy target. Any other ``tests/<kind>/`` directory widens to a full run
-# instead: an unrecognised kind must never classify as "other", because that
-# path yields no mypy targets at all and lets the gate exit 0 having checked
-# nothing. Failing toward "check more" keeps a new tests/ subdirectory safe by
-# default rather than silently unguarded until someone updates this tuple.
+# mypy target. Any other ``tests/<kind>/`` directory defers to CI instead: an
+# unrecognised kind must never classify as "other", because that path yields
+# no mypy targets at all and lets the gate exit 0 having checked nothing.
+# Failing toward "someone checks it, and say so" keeps a new tests/
+# subdirectory safe by default rather than silently unguarded until someone
+# updates this tuple.
 _TEST_KINDS = ("unit", "integration")
 
 # mypy's ``--num-workers`` parallel build spawns worker subprocesses that talk
@@ -110,9 +132,6 @@ _MYPY_TIMEOUT_SITECUSTOMIZE_DIR: Final[Path] = (
     _REPO_ROOT / "scripts" / "_mypy_worker_timeout"
 )
 
-# Valid Python package directory names (prevents path traversal).
-_SAFE_MODULE_NAME = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
-
 # dmypy reports a completed check with mypy's own codes: 0 clean, 1 type errors
 # found. Anything else means the daemon failed to answer (busy with a
 # concurrent check, crashed, unusable state on disk), so the type result is
@@ -139,8 +158,8 @@ _FALSEY_ENV_VALUES: Final[frozenset[str]] = frozenset({"", "0", "false", "no"})
 # the push with no exit but Ctrl-C, which then leaves the stale status file
 # that ``_check_daemon`` has to recover from. The sibling
 # ``run_affected_tests.py`` bounds its pytest subprocess for the same reason.
-# A type-check timing out is treated as "no verdict", never as a pass.
-_GIT_TIMEOUT_SECONDS: Final[int] = 60
+# A type-check timing out is treated as "no verdict", never as a pass. The git
+# calls are bounded by ``GIT_TIMEOUT_SECONDS`` in the shared scope module.
 _PROCESS_QUERY_TIMEOUT_SECONDS: Final[int] = 30
 # Generous: a cold daemon build over ~6.5k files legitimately takes minutes on
 # a contended machine, so this bounds a hang rather than pacing a slow build.
@@ -232,57 +251,6 @@ _ABSENT_DAEMON_MARKERS: Final[tuple[str, ...]] = (
 )
 
 
-class _GitError(Exception):
-    """Raised when a required git command fails."""
-
-
-def _git(*args: str) -> str:
-    """Run a git command and return stripped stdout.
-
-    Raises ``_GitError`` on non-zero exit, or on a hang, so callers fail closed.
-    """
-    try:
-        result = subprocess.run(
-            ["git", *args],
-            capture_output=True,
-            text=True,
-            cwd=_REPO_ROOT,
-            check=False,
-            timeout=_GIT_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired as exc:
-        msg = f"git {' '.join(args)} timed out after {_GIT_TIMEOUT_SECONDS}s"
-        raise _GitError(msg) from exc
-    if result.returncode != 0:
-        msg = f"git {' '.join(args)} failed: {result.stderr.strip()}"
-        raise _GitError(msg)
-    return result.stdout.strip()
-
-
-def _merge_base() -> str:
-    """Find the merge base between HEAD and origin/main."""
-    try:
-        return _git("merge-base", "HEAD", "origin/main")
-    except _GitError:
-        # Fallback: if merge-base fails (e.g. origin/main not fetched, or
-        # history too shallow), diff against HEAD~1 so we check *something*.
-        return _git("rev-parse", "HEAD~1")
-
-
-def _changed_files(base: str) -> list[str]:
-    """Return files changed between *base* and HEAD.
-
-    Includes both committed and uncommitted changes as a safety net.
-    """
-    committed = _git("diff", "--name-only", f"{base}...HEAD")
-    uncommitted = _git("diff", "--name-only", "HEAD")
-    all_files: set[str] = set()
-    for block in (committed, uncommitted):
-        if block:
-            all_files.update(block.splitlines())
-    return sorted(all_files)
-
-
 def _classify_path(
     parts: tuple[str, ...],
 ) -> tuple[str, str | None, str | None]:
@@ -295,28 +263,23 @@ def _classify_path(
     if parts[-1] == "conftest.py":
         return "conftest", None, None
 
-    is_deep = len(parts) >= _MIN_MODULE_DEPTH
-    if is_deep and parts[0] == "src" and parts[1] == "synthorg":
-        if parts[2] in _TOP_LEVEL_SRC or not _SAFE_MODULE_NAME.match(parts[2]):
-            return "top_level_src", None, None
-        return (
-            ("blast_radius", None, None)
-            if parts[2] in _BLAST_RADIUS_MODULES
-            else ("src_module", parts[2], None)
-        )
+    source = classify_src_path(parts)
+    if source is not None:
+        category, module = source
+        return category, module, None
 
     if parts[0] == "tests":
-        if is_deep and parts[1] in _TEST_KINDS:
+        if len(parts) >= MIN_MODULE_DEPTH and parts[1] in _TEST_KINDS:
             # Direct test file (e.g. tests/unit/test_smoke.py).
             if parts[2].endswith(".py"):
                 return "test_file", None, f"tests/{parts[1]}/{parts[2]}"
-            if _SAFE_MODULE_NAME.match(parts[2]):
+            if SAFE_MODULE_NAME.match(parts[2]):
                 return "test_module", None, f"tests/{parts[1]}/{parts[2]}"
         # Everything else under tests/ (tests/e2e, tests/conformance,
         # tests/benchmarks, a shallow tests/foo.py, an unsafe directory name)
-        # has no narrow mapping. Widening is the only safe answer: classifying
-        # it "other" would drop it from the target set and let the gate pass
-        # having type-checked nothing (see _TEST_KINDS).
+        # has no narrow mapping. Deferring is the only safe answer:
+        # classifying it "other" would drop it from the target set and let the
+        # gate pass having type-checked nothing (see _TEST_KINDS).
         return "blast_radius", None, None
 
     return "other", None, None
@@ -338,18 +301,20 @@ def _paths_for_module(mod: str) -> list[str]:
 def _affected_mypy_paths(changed: list[str]) -> tuple[list[str], bool]:
     """Map changed files to mypy target directories.
 
-    Returns ``(paths, run_all)`` where *run_all* is True when a
-    blast-radius module or shared infrastructure was touched.
+    Returns ``(paths, deferred)`` where *deferred* records that a
+    cross-tree question was raised and handed to CI. The affected paths
+    are still returned and still checked.
     """
     src_modules: set[str] = set()
     test_paths: set[str] = set()
+    deferred = False
 
     for filepath in changed:
         parts = PurePosixPath(filepath).parts
         category, module, test_path = _classify_path(parts)
 
         if category in {"conftest", "blast_radius", "top_level_src"}:
-            return [], True
+            deferred = True
         if module is not None:
             src_modules.add(module)
         if test_path is not None:
@@ -366,7 +331,7 @@ def _affected_mypy_paths(changed: list[str]) -> tuple[list[str], bool]:
         if tp not in paths and (_REPO_ROOT / tp).exists():
             paths.append(tp)
 
-    return paths, False
+    return paths, deferred
 
 
 def _mypy_env(base: dict[str, str] | None = None) -> dict[str, str]:
@@ -688,7 +653,15 @@ def _run_scripts_mypy() -> int:
 
 
 def _run_full() -> int:
-    """Run mypy across the whole tree, including the ``scripts/`` pass."""
+    """Run mypy across the whole tree, including the ``scripts/`` pass.
+
+    Not reached by the pre-push path, which is scoped to what changed:
+    this is the on-demand ``--full`` run, matching what CI's Type Check
+    job covers.
+
+    Returns:
+        The worst exit code of the two passes.
+    """
     return max(_run_mypy(list(_FULL_SCOPE)), _run_scripts_mypy())
 
 
@@ -696,6 +669,9 @@ def _parse_args() -> argparse.Namespace:
     """Parse the daemon-management flags.
 
     With no flag the script is the pre-push hook and checks the tree.
+
+    Returns:
+        The parsed arguments.
     """
     parser = argparse.ArgumentParser(
         description="Type-check the tree, preferring the mypy daemon."
@@ -705,6 +681,11 @@ def _parse_args() -> argparse.Namespace:
         "--warm",
         action="store_true",
         help="build the main daemon now so later checks take seconds",
+    )
+    group.add_argument(
+        "--full",
+        action="store_true",
+        help="run the cold CI scope now, without consulting a daemon",
     )
     group.add_argument(
         "--stop",
@@ -719,13 +700,23 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _changed_python_files() -> list[str] | None:
-    """Return the changed ``.py`` files, or ``None`` if git could not say."""
+def _resolve_changed_files() -> list[str] | None:
+    """Return the changed files, or ``None`` if git could not say.
+
+    The full list, not just ``.py``: a ``pyproject.toml``-only change alters
+    how mypy runs (its own config, the third-party override block, dependency
+    pins) with no ``.py`` file in the diff, so the caller must see it to defer
+    rather than silently report nothing to do.
+
+    Returns:
+        The changed paths, or ``None`` when git could not report them.
+    """
     try:
-        return [f for f in _changed_files(_merge_base()) if f.endswith(".py")]
-    except _GitError as exc:
+        changed: list[str] = changed_files(merge_base())
+    except GitError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return None
+    return changed
 
 
 def _warm() -> int:
@@ -796,8 +787,56 @@ def _status() -> int:
     return 0
 
 
+def _defer_to_ci(reason: str, *, scoped_run_follows: bool) -> None:
+    """Announce that the whole-tree check is CI's to answer."""
+    announce_deferral(
+        reason,
+        deferred_scope="full-tree mypy",
+        ci_job="Type Check",
+        ran_locally="the affected paths are still checked here",
+        scoped_run_follows=scoped_run_follows,
+    )
+
+
+def _run_scoped(py_changed: list[str]) -> int:
+    """Type-check the paths the changed files map to.
+
+    Returns:
+        The worst mypy exit code across the scoped and scripts passes.
+    """
+    scripts_changed = any(f.startswith("scripts/") for f in py_changed)
+    paths, deferred = _affected_mypy_paths(py_changed)
+
+    if deferred:
+        _defer_to_ci(
+            "Foundational module or conftest changed",
+            scoped_run_follows=bool(paths) or scripts_changed,
+        )
+
+    started = time.monotonic()  # lint-allow: clock-seam -- gate script, no DI
+    exit_code = 0
+    if paths:
+        print(f"Running mypy on: {', '.join(paths)}")
+        exit_code = _run_mypy(paths)
+    elif not scripts_changed:
+        print("Changed files don't map to any mypy targets -- skipping.")
+        return 0
+
+    if scripts_changed:
+        print("scripts/ changed -- running scripts mypy.")
+        exit_code = max(exit_code, _run_scripts_mypy())
+
+    # lint-allow: clock-seam -- gate script, no DI
+    print(f"mypy: {time.monotonic() - started:.1f}s")
+    return exit_code
+
+
 def main() -> int:
-    """Entry point."""
+    """Entry point.
+
+    Returns:
+        The mypy exit code (0 when nothing maps to a target).
+    """
     args = _parse_args()
     if args.warm:
         return _warm()
@@ -805,14 +844,26 @@ def main() -> int:
         return _stop()
     if args.status:
         return _status()
+    if args.full:
+        return _run_full()
 
-    py_changed = _changed_python_files()
+    changed = _resolve_changed_files()
+    py_changed = None if changed is None else [f for f in changed if f.endswith(".py")]
 
     # Before the daemon, not after: a confirmed-empty diff needs no type check
     # at all, and consulting the daemon first would make a docs-only push pay
     # a full recheck, or a cold graph build if no daemon is up. An unreadable
     # diff (``None``) is not the same as an empty one and still gets checked.
     if py_changed is not None and not py_changed:
+        if changed is not None and PYPROJECT in changed:
+            # A config-only change alters how mypy runs with no .py in the
+            # diff; that is a whole-tree question, announced not silently
+            # dropped -- the same trigger run_affected_tests.py uses.
+            _defer_to_ci(
+                "pyproject.toml changed (mypy configuration)",
+                scoped_run_follows=False,
+            )
+            return 0
         print("No Python files changed -- skipping mypy.")
         return 0
 
@@ -826,29 +877,13 @@ def main() -> int:
         )
 
     if py_changed is None:
+        # Nothing can be scoped without a file list, and a cold full run is
+        # the only answer left: reporting a green push that inspected no code
+        # would be worse than the minutes it costs.
         print("Cannot read the diff -- running full mypy.", file=sys.stderr)
         return _run_full()
 
-    scripts_changed = any(f.startswith("scripts/") for f in py_changed)
-    paths, run_all = _affected_mypy_paths(py_changed)
-
-    if run_all:
-        print("Foundational module or conftest changed -- running full mypy.")
-        return _run_full()
-
-    exit_code = 0
-    if paths:
-        print(f"Running mypy on: {', '.join(paths)}")
-        exit_code = _run_mypy(paths)
-    elif not scripts_changed:
-        print("Changed files don't map to any mypy targets -- skipping.")
-        return 0
-
-    if scripts_changed:
-        print("scripts/ changed -- running scripts mypy.")
-        exit_code = max(exit_code, _run_scripts_mypy())
-
-    return exit_code
+    return _run_scoped(py_changed)
 
 
 if __name__ == "__main__":

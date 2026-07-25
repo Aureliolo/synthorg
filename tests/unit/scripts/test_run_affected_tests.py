@@ -802,7 +802,7 @@ async def test_unit_tier_uses_selector_event_loop_on_windows() -> None:
 
 
 class _FakeGit:
-    """Records ``_git`` calls and replays scripted ``status`` outputs.
+    """Records ``git_output`` calls and replays scripted ``status`` outputs.
 
     ``status_outputs`` is consumed in order on each
     ``status --porcelain`` call (snapshot-before, then snapshot-after).
@@ -829,14 +829,14 @@ class _FakeGit:
             self.status_strip.append(strip)
             if self._status_raises:
                 msg = "git status unreadable"
-                raise _MODULE._GitError(msg)
+                raise _MODULE.GitError(msg)
             if not self._status_outputs:
                 return ""
             return self._status_outputs.pop(0)
         if args[0] == "restore":
             if self._restore_raises:
                 msg = "restore failed"
-                raise _MODULE._GitError(msg)
+                raise _MODULE.GitError(msg)
             return ""
         return ""
 
@@ -850,7 +850,7 @@ def test_tracked_dirty_paths_excludes_untracked_and_parses_rename(
         "R  old/name.py -> new/name.py\n"
         "A  tests/new_test.py"
     )
-    monkeypatch.setattr(_MODULE, "_git", _FakeGit([porcelain]))
+    monkeypatch.setattr(_MODULE, "git_output", _FakeGit([porcelain]))
     result = _MODULE._tracked_dirty_paths()
     assert result == {
         "src/synthorg/a.py",
@@ -871,7 +871,7 @@ def test_tracked_dirty_paths_requests_unstripped_porcelain(
     # follow-up ``git restore`` fails on a bogus pathspec and the push
     # aborts. The parser MUST request unstripped output.
     fake = _FakeGit([" M scripts/git-hooks/_run-hook.sh\nD  tests/x_test.py"])
-    monkeypatch.setattr(_MODULE, "_git", fake)
+    monkeypatch.setattr(_MODULE, "git_output", fake)
     result = _MODULE._tracked_dirty_paths()
     assert result == {
         "scripts/git-hooks/_run-hook.sh",
@@ -886,7 +886,7 @@ def test_reconcile_noop_when_nothing_newly_dirtied(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     fake = _FakeGit([" M kept.py"])
-    monkeypatch.setattr(_MODULE, "_git", fake)
+    monkeypatch.setattr(_MODULE, "git_output", fake)
     rc = _MODULE._reconcile_worktree({"kept.py"})
     assert rc == 0
     assert not any(c[0] == "restore" for c in fake.calls)
@@ -901,7 +901,7 @@ def test_reconcile_reverts_only_run_induced_changes(
     # dirty + uv.lock newly rewritten by the run.
     after = " M feature.py\n M uv.lock"
     fake = _FakeGit([after])
-    monkeypatch.setattr(_MODULE, "_git", fake)
+    monkeypatch.setattr(_MODULE, "git_output", fake)
     rc = _MODULE._reconcile_worktree({"feature.py"})
     assert rc == 0
     restore_calls = [c for c in fake.calls if c[0] == "restore"]
@@ -915,7 +915,7 @@ def test_reconcile_returns_one_when_restore_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake = _FakeGit([" M uv.lock"], restore_raises=True)
-    monkeypatch.setattr(_MODULE, "_git", fake)
+    monkeypatch.setattr(_MODULE, "git_output", fake)
     rc = _MODULE._reconcile_worktree(set())
     assert rc == 1
 
@@ -928,7 +928,7 @@ def test_reconcile_fails_closed_when_post_status_unreadable(
     # the tree clean: fail closed (return 1) instead of silently
     # passing, so a hidden mutation cannot reach the push.
     fake = _FakeGit([], status_raises=True)
-    monkeypatch.setattr(_MODULE, "_git", fake)
+    monkeypatch.setattr(_MODULE, "git_output", fake)
     rc = _MODULE._reconcile_worktree(set())
     assert rc == 1
     assert "failing closed" in capsys.readouterr().err
@@ -939,9 +939,9 @@ def test_main_skips_reconcile_when_pre_snapshot_fails(
 ) -> None:
     def _raise(*_args: str, strip: bool = True) -> str:
         msg = "no git"
-        raise _MODULE._GitError(msg)
+        raise _MODULE.GitError(msg)
 
-    monkeypatch.setattr(_MODULE, "_git", _raise)
+    monkeypatch.setattr(_MODULE, "git_output", _raise)
     monkeypatch.setattr(_MODULE, "_run_tests", lambda: 0)
     reconcile_called = False
 
@@ -958,7 +958,7 @@ def test_main_skips_reconcile_when_pre_snapshot_fails(
 def test_main_folds_reconcile_failure_into_exit_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_MODULE, "_git", _FakeGit(["", ""]))
+    monkeypatch.setattr(_MODULE, "git_output", _FakeGit(["", ""]))
     monkeypatch.setattr(_MODULE, "_run_tests", lambda: 0)
     monkeypatch.setattr(_MODULE, "_reconcile_worktree", lambda _b: 1)
     assert _MODULE.main() == 1
@@ -967,7 +967,29 @@ def test_main_folds_reconcile_failure_into_exit_code(
 def test_main_preserves_test_failure_exit_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_MODULE, "_git", _FakeGit(["", ""]))
+    monkeypatch.setattr(_MODULE, "git_output", _FakeGit(["", ""]))
     monkeypatch.setattr(_MODULE, "_run_tests", lambda: 1)
     monkeypatch.setattr(_MODULE, "_reconcile_worktree", lambda _b: 0)
     assert _MODULE.main() == 1
+
+
+def test_run_tests_suppresses_the_no_op_line_after_a_deferral(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A pyproject-only push announces the deferral, then stays quiet.
+
+    The deferral line already states whether anything runs locally; a
+    following "No Python files changed" would read as an unrelated no-op
+    verdict on the same push.
+    """
+    monkeypatch.setattr(_MODULE, "_resolve_changed_files", lambda: ["pyproject.toml"])
+    monkeypatch.setattr(
+        _MODULE,
+        "_run_pytest",
+        lambda *_a, **_k: pytest.fail("no test directory selected -- must not run"),
+    )
+
+    assert _MODULE._run_tests() == 0
+    out = capsys.readouterr().out
+    assert "deferred to CI" in out
+    assert "No Python files changed" not in out
