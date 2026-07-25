@@ -439,13 +439,13 @@ class ProviderHealthProber:
         ollama_port = await self._config_resolver.get_int(
             "providers", "ollama_default_port"
         )
-        eligible, validation = await resolve_probe_target(
+        target = await resolve_probe_target(
             name, config, await self._load_policy(), ollama_port=ollama_port
         )
-        if not eligible:
+        if not target.eligible:
             return
         await self._safe_probe_one(
-            name, config, ollama_port=ollama_port, validation=validation
+            name, config, ollama_port=ollama_port, validation=target.validation
         )
 
     async def _probe_all(self) -> None:
@@ -457,17 +457,20 @@ class ProviderHealthProber:
         )
         eligible: list[tuple[str, ProviderConfig, DnsValidationOk | None]] = []
         for name, config in providers.items():
-            probe_ok, validation = await resolve_probe_target(
+            target = await resolve_probe_target(
                 name, config, policy, ollama_port=ollama_port
             )
-            if not probe_ok or await self._probed_within_interval(name):
+            if not target.eligible or await self._probed_within_interval(name):
                 continue
-            eligible.append((name, config, validation))
+            eligible.append((name, config, target.validation))
         # A cycle that probes nothing is otherwise indistinguishable from one
         # that probed everything successfully, so record both counts: an empty
         # provider map (the state before the first provider is configured)
-        # would otherwise iterate zero times and emit no trace at all.
-        logger.debug(
+        # would otherwise iterate zero times and emit no trace at all. INFO,
+        # not DEBUG: the deployed default is ``info``, so a DEBUG heartbeat
+        # would leave that exact silence in place. One line per cycle at the
+        # default 1800s interval is a heartbeat, not noise.
+        logger.info(
             PROVIDER_HEALTH_PROBER_CYCLE_COMPLETED,
             provider_count=len(providers),
             eligible_count=len(eligible),

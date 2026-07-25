@@ -149,15 +149,19 @@
  * Default (balanced) applies via :root.
  *
  * Density levels from brand-and-ux.md:
- *   Dense:    p-3/12px  gap-3/12px  text-2xl  text-xs
- *   Balanced: p-3.5/14px  gap-3.5/14px  text-3xl  text-sm   (default)
- *   Medium:   p-4/16px    gap-4/16px    text-3xl  text-sm
- *   Sparse:   p-5/20px    gap-6/24px    text-3xl  text-sm
+ *   Dense:    p-3/12px    gap-3/12px  text-2xl  text-xs
+ *   Medium:   p-3.5/14px  gap-4/16px  text-2xl  text-xs
+ *   Balanced: p-4/16px    gap-4/16px  text-3xl  text-sm   (default)
+ *   Sparse:   p-5/20px    gap-6/24px  text-3xl  text-sm
+ *
+ * Medium sits one notch TIGHTER than balanced on padding while keeping
+ * balanced's gaps, so the ladder by card padding is dense < medium <
+ * balanced < sparse.
  */
 :root {
-  --so-density-card-padding: var(--so-space-3-5);
-  --so-density-section-gap: var(--so-space-3-5);
-  --so-density-grid-gap: var(--so-space-3-5);
+  --so-density-card-padding: var(--so-space-4);
+  --so-density-section-gap: var(--so-space-4);
+  --so-density-grid-gap: var(--so-space-4);
   /*
    * Viewport-responsive companions used by dialogs. Pages compose them
    * as `p-card-tight sm:p-card md:p-card-roomy` so dialog padding shrinks
@@ -165,13 +169,13 @@
    * density axis (each density tier sets all three).
    */
   --so-density-card-tight: var(--so-space-3);
-  --so-density-card-roomy: var(--so-space-5);
+  --so-density-card-roomy: var(--so-space-6);
   /*
    * Snug padding for compact interactive rows (radio-option tiles,
    * preset list items) that sit one notch tighter than a card. Tracks
    * the density axis like the other card tokens.
    */
-  --so-density-card-snug: var(--so-space-2-5);
+  --so-density-card-snug: var(--so-space-3);
 
   /*
    * Dialog width axis. Pages compose them as
@@ -197,12 +201,12 @@
 }
 
 .density-medium {
-  --so-density-card-padding: var(--so-space-4);
+  --so-density-card-padding: var(--so-space-3-5);
   --so-density-section-gap: var(--so-space-4);
   --so-density-grid-gap: var(--so-space-4);
   --so-density-card-tight: var(--so-space-3);
-  --so-density-card-roomy: var(--so-space-6);
-  --so-density-card-snug: var(--so-space-3);
+  --so-density-card-roomy: var(--so-space-5);
+  --so-density-card-snug: var(--so-space-2-5);
 }
 
 .density-sparse {

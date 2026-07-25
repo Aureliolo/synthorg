@@ -23,7 +23,7 @@ function candidate(modelId: string) {
 
 const RECS = {
   decomposition_recommended: ref('large-model-001'),
-  decomposition_candidates: [candidate('large-model-001'), candidate('small-model-001')],
+  model_ref_candidates: [candidate('large-model-001'), candidate('small-model-001')],
   embedding_recommended: 'embed-large-001',
   embedding_recommended_dims: 4096,
   embedding_candidates: ['embed-large-001', 'embed-small-001'],
@@ -140,7 +140,7 @@ describe('WizardModelSelection', () => {
           apiSuccess({
             ...RECS,
             decomposition_recommended: ref('large-model-001'),
-            decomposition_candidates: [
+            model_ref_candidates: [
               candidate('large-model-001'),
               candidate('small-model-001'),
               candidate('medium-model-001'),

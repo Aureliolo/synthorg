@@ -7,7 +7,10 @@ import {
 } from '../fixtures/mock-api'
 import { installWebSocketHarness } from '../fixtures/websocket-harness'
 import { clickButton, fillForm } from '../helpers/interactions'
-import type { SetupCompanyResponse } from '@/api/types/setup'
+import type {
+  SetupCompanyResponse,
+  SetupModelRecommendationsResponse,
+} from '@/api/types/setup'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 /**
@@ -90,6 +93,30 @@ const COMPANY: SetupCompanyResponse = {
   currency: DEFAULT_CURRENCY,
   budget: 500,
   model_tier_profile: 'balanced',
+}
+
+// Per-feature model settings are MODEL_REF, so every recommendation and
+// candidate carries the serialized provider-bound ref a settings write needs.
+const MODEL_DEFAULT_REF = JSON.stringify({
+  provider: 'test-provider',
+  model_id: 'model-default',
+})
+
+/** Recommendations the Complete step's model panel loads on mount. */
+const MODEL_RECS: SetupModelRecommendationsResponse = {
+  charter_recommended: MODEL_DEFAULT_REF,
+  cos_recommended: MODEL_DEFAULT_REF,
+  decomposition_recommended: MODEL_DEFAULT_REF,
+  embedding_candidates: ['embed-default'],
+  embedding_recommended: 'embed-default',
+  embedding_recommended_dims: 1024,
+  model_ref_candidates: [
+    { provider: 'test-provider', model_id: 'model-default', ref: MODEL_DEFAULT_REF },
+  ],
+  narrative_recommended: MODEL_DEFAULT_REF,
+  propose_recommended: MODEL_DEFAULT_REF,
+  research_recommended: MODEL_DEFAULT_REF,
+  routing_recommended: MODEL_DEFAULT_REF,
 }
 
 test.describe('Setup wizard company submit', () => {
@@ -183,15 +210,7 @@ test.describe('Setup wizard complete step', () => {
     // CompleteStep renders the model-selection panel, which fetches its
     // recommendations on mount.
     await page.route('**/api/v1/setup/model-recommendations', (route) =>
-      route.fulfill({
-        json: ok({
-          decomposition_recommended: 'model-default',
-          decomposition_candidates: ['model-default'],
-          embedding_recommended: 'embed-default',
-          embedding_recommended_dims: 1024,
-          embedding_candidates: ['embed-default'],
-        }),
-      }),
+      route.fulfill({ json: ok(MODEL_RECS) }),
     )
     await page.route('**/api/v1/auth/me', (route) =>
       route.fulfill({ status: 401, json: { success: false, data: null, error: 'Not authenticated', error_detail: null } }),

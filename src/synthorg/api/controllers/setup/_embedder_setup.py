@@ -191,17 +191,6 @@ def _agent_model(agent: dict[str, object]) -> dict[str, object] | None:
     return None
 
 
-def _agent_model_id(agent: dict[str, object]) -> str | None:
-    """Return an agent's assigned model id, or ``None`` when unset.
-
-    Returns:
-        The non-blank ``model.model_id`` string, or ``None``.
-    """
-    model = _agent_model(agent)
-    model_id = model.get("model_id") if model else None
-    return model_id if isinstance(model_id, str) else None
-
-
 def _agent_model_ref(agent: dict[str, object]) -> str | None:
     """Return an agent's model as a bound ``{provider, model_id}`` MODEL_REF.
 
@@ -258,24 +247,12 @@ def _first_agent_with_model(
     return None
 
 
-def pick_model_for_tier(agents: list[dict[str, object]], tier: str) -> str | None:
-    """Choose a roster model id matching *tier*, then any agent's model.
-
-    Prefers an agent already matched to *tier* (so a per-feature model
-    tracks the declared tier policy), falling back to any agent that
-    carries a model assignment. The bare-id form feeds the wizard's
-    model-recommendations endpoint (a UI highlight); settings writes use the
-    ``_ref`` twin so the persisted value carries the provider.
-
-    Returns:
-        A model id, or ``None`` when no agent carries a model.
-    """
-    agent = _first_agent_with_model(agents, tier=tier)
-    return _agent_model_id(agent) if agent else None
-
-
 def pick_model_ref_for_tier(agents: list[dict[str, object]], tier: str) -> str | None:
     """Choose a bound ``{provider, model_id}`` ref for *tier*, then any agent.
+
+    Prefers an agent already matched to *tier* (so a per-feature model tracks
+    the declared tier policy), falling back to any agent carrying a bound
+    assignment.
 
     Returns:
         A serialized bound model reference, or ``None`` when no agent carries
@@ -283,21 +260,6 @@ def pick_model_ref_for_tier(agents: list[dict[str, object]], tier: str) -> str |
     """
     agent = _first_agent_with_model(agents, tier=tier, require_provider=True)
     return _agent_model_ref(agent) if agent else None
-
-
-def pick_decomposition_model(agents: list[dict[str, object]]) -> str | None:
-    """Choose a capable model id for the coordinator's decomposition strategy.
-
-    Prefers a top-tier (``large``) agent's model -- the strongest the catalogue
-    supports -- so the coordinator decomposes work with a capable model,
-    falling back to any agent that carries a model assignment. Bare-id form for
-    the wizard's model-recommendations endpoint (a UI highlight).
-
-    Returns:
-        A model id, or ``None`` when no agent carries a model.
-    """
-    agent = _first_agent_with_model(agents, tier="large")
-    return _agent_model_id(agent) if agent else None
 
 
 def pick_decomposition_model_ref(agents: list[dict[str, object]]) -> str | None:

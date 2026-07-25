@@ -146,7 +146,7 @@ export const setupHandlers = [
     HttpResponse.json(
       successFor<typeof getModelRecommendations>({
         decomposition_recommended: MODEL_DEFAULT_REF,
-        decomposition_candidates: [
+        model_ref_candidates: [
           {
             provider: 'test-provider',
             model_id: 'model-default',

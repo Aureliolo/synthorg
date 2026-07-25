@@ -93,7 +93,7 @@ const PALETTE_META: Record<ColorPalette, OptionMeta> = {
 const DENSITY_META: Record<Density, OptionMeta> = {
   dense: { label: 'Dense', description: '12px padding, tight gaps. For power users.' },
   balanced: { label: 'Balanced', description: '16px padding. Recommended for most users.' },
-  medium: { label: 'Medium', description: '16px padding with roomier gaps.' },
+  medium: { label: 'Medium', description: '14px padding, one notch tighter than balanced.' },
   sparse: { label: 'Sparse', description: '20px padding, relaxed layout.' },
 }
 

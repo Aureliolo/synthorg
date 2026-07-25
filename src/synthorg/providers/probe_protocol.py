@@ -16,7 +16,10 @@ class ProviderProbeRequester(Protocol):
     async def probe_provider(self, name: str) -> None:
         """Probe *name* now, bypassing the periodic cycle's cadence.
 
-        Implementations are best-effort: a probe failure is recorded as a
-        health outcome, never raised into the caller's mutation.
+        An implementation records the outcome against the provider's health
+        rather than returning it. It may still raise (a resolver or DNS
+        failure propagates), so a caller that must not fail on a probe error
+        is responsible for its own containment; see
+        ``ProviderManagementService._probe_after_mutation``.
         """
         ...

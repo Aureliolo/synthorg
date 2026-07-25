@@ -9,40 +9,52 @@ provider-bound pair rather than a bare model id.
 
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 
 
 class SetupModelCandidate(BaseModel):
     """One selectable provider-bound model for a wizard model picker.
 
-    Carries the canonical serialized ``MODEL_REF`` alongside its parts, so the
-    dashboard writes back exactly the value the settings validator accepts
-    without re-implementing the serializer client-side. Two providers serving
-    the same model id stay distinguishable because the pair, not the bare id,
-    identifies a candidate.
+    Two providers serving the same model id stay distinguishable because the
+    pair, not the bare id, identifies a candidate.
 
     Attributes:
         provider: Provider connection name that serves the model.
         model_id: Model id within that provider.
-        ref: Canonical ``{"provider", "model_id"}`` JSON for a settings write.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     provider: NotBlankStr
     model_id: NotBlankStr
-    ref: NotBlankStr
+
+    @computed_field
+    @property
+    def ref(self) -> str:
+        """The canonical ``{"provider", "model_id"}`` JSON for a settings write.
+
+        Derived rather than stored so a candidate cannot carry a reference that
+        disagrees with its own provider and model. Serialising it here (instead
+        of leaving it to the dashboard) keeps one implementation of the
+        canonical form, which the ``MODEL_REF`` validator accepts verbatim.
+
+        Returns:
+            The serialized model reference.
+        """
+        return serialize_model_ref(
+            ModelRef(provider=self.provider, model_id=self.model_id)
+        )
 
 
 class SetupModelRecommendationsResponse(BaseModel):
     """Wizard model-selection recommendations + candidate lists.
 
-    Lets the setup wizard prefill the coordinator's decomposition model and the
-    memory embedding model with sensible defaults (best-ranked / most-senior
-    catalogue model) while leaving the operator free to override either from
-    the full configured catalogue.
+    Lets the setup wizard prefill each per-feature model with a sensible
+    default (best-ranked / most-senior catalogue model) while leaving the
+    operator free to override any of them from the full configured catalogue.
 
     Every per-feature model setting is a ``SettingType.MODEL_REF``, which
     rejects a provider-less value at write time, so both the recommendation and
@@ -52,25 +64,34 @@ class SetupModelRecommendationsResponse(BaseModel):
     is a plain ``SettingType.STRING``, so it stays a bare model id on both sides.
 
     Attributes:
-        decomposition_recommended: Suggested decomposition model ref, if any.
-        decomposition_candidates: All catalogue models selectable for it.
+        model_ref_candidates: The shared provider-bound catalogue every
+            MODEL_REF picker selects from (coordination, research, both
+            Chief-of-Staff models, concern-routing, run-narrative, charter).
+        embedding_candidates: Catalogue model ids that are embedding-capable
+            (bare ids, not refs).
         embedding_recommended: Suggested embedding model id (bare), if any.
         embedding_recommended_dims: Output dims for the suggested embedder.
-        embedding_candidates: Catalogue model ids that are embedding-capable.
-        research_recommended: Suggested research model ref (a capable
-            model), if any. Research uses its own model, not the
-            decomposition model.
-        cos_recommended: Suggested Chief-of-Staff chat model ref (a
-            cheaper model for frequent conversational turns), if any.
+        decomposition_recommended: Suggested coordination/decomposition model
+            ref, if any.
+        research_recommended: Suggested research model ref, if any. Research
+            uses its own model, not the decomposition model.
+        cos_recommended: Suggested Chief-of-Staff chat model ref (a cheaper
+            model for frequent conversational turns), if any.
+        propose_recommended: Suggested request-work proposal model ref, if any.
+        routing_recommended: Suggested concern-routing classifier model ref,
+            if any.
+        narrative_recommended: Suggested run-narrative model ref, if any.
+        charter_recommended: Suggested project-charter interview model ref,
+            if any.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    decomposition_recommended: NotBlankStr | None = None
-    decomposition_candidates: tuple[SetupModelCandidate, ...] = ()
+    model_ref_candidates: tuple[SetupModelCandidate, ...] = ()
+    embedding_candidates: tuple[str, ...] = ()
     embedding_recommended: NotBlankStr | None = None
     embedding_recommended_dims: int | None = Field(default=None, ge=1)
-    embedding_candidates: tuple[str, ...] = ()
+    decomposition_recommended: NotBlankStr | None = None
     research_recommended: NotBlankStr | None = None
     cos_recommended: NotBlankStr | None = None
     propose_recommended: NotBlankStr | None = None

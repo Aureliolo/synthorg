@@ -80,7 +80,6 @@ from synthorg.observability.events.setup import (
     SETUP_COMPANY_CREATED,
     SETUP_POSTURE_SEED_FAILED,
 )
-from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import settings_service_of
 
@@ -159,18 +158,14 @@ class SetupCompanyController(Controller):
             return pick_model_ref_for_tier(agents, tier_for_purpose(purpose))
 
         candidates = tuple(
-            SetupModelCandidate(
-                provider=provider,
-                model_id=model_id,
-                ref=serialize_model_ref(ModelRef(provider=provider, model_id=model_id)),
-            )
+            SetupModelCandidate(provider=provider, model_id=model_id)
             for provider, model_id in provider_models
         )
 
         return ApiResponse(
             data=SetupModelRecommendationsResponse(
                 decomposition_recommended=capable,
-                decomposition_candidates=candidates,
+                model_ref_candidates=candidates,
                 embedding_recommended=selection.model_id if selection else None,
                 embedding_recommended_dims=(
                     selection.output_dims if selection else None

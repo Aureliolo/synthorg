@@ -6,6 +6,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToastStore } from '@/stores/toast'
+import { createCancellationToken, type CancellationToken } from '@/utils/cancellation'
 import { getErrorMessage } from '@/utils/errors'
 import { normalizeModelRef } from '@/utils/model-ref'
 import type { SettingEntry } from '@/api/types/settings'
@@ -14,19 +15,26 @@ import type {
   SetupModelRecommendationsResponse,
 } from '@/api/types/setup'
 
-// Per-feature model pickers. Each writes straight through the settings API,
-// so a choice survives independently of the wizard and stays editable in
-// dashboard Settings. All non-embedding pickers select from the full
-// catalogue (the decomposition candidate list); embedding has its own subset.
-type ModelKey =
-  | 'decomposition'
-  | 'embedding'
-  | 'research'
-  | 'cos'
-  | 'propose'
-  | 'routing'
-  | 'narrative'
-  | 'charter'
+// Per-feature model pickers, in render order. Each writes straight through the
+// settings API, so a choice survives independently of the wizard and stays
+// editable in dashboard Settings. All non-embedding pickers select from the
+// full catalogue of provider-bound refs; embedding has its own subset.
+//
+// This tuple is the single source of the key union, so a picker added here
+// without its spec, its recommendation mapping, or a slot in the per-key
+// records below is a type error rather than a silently blank select.
+const MODEL_KEYS = [
+  'decomposition',
+  'embedding',
+  'research',
+  'cos',
+  'propose',
+  'routing',
+  'narrative',
+  'charter',
+] as const
+
+type ModelKey = (typeof MODEL_KEYS)[number]
 
 // The subset of namespaces these pickers write to. Narrower than
 // ``SettingNamespace`` so ``NamespaceEntries`` can be indexed by it directly.
@@ -52,80 +60,78 @@ interface PickerSpec {
   valueKind: ValueKind
 }
 
-const PICKERS: readonly PickerSpec[] = [
-  {
-    key: 'decomposition',
+const PICKER_META: Record<ModelKey, Omit<PickerSpec, 'key'>> = {
+  decomposition: {
     namespace: 'coordination',
     settingKey: 'decomposition_model',
     label: 'Coordination model',
     hint: 'Used by the coordinator to break briefs into tasks.',
     valueKind: 'model_ref',
   },
-  {
-    key: 'embedding',
+  embedding: {
     namespace: 'memory',
     settingKey: 'embedder_model',
     label: 'Embedding model',
     hint: 'Powers memory + knowledge.',
     valueKind: 'plain',
   },
-  {
-    key: 'research',
+  research: {
     namespace: 'research',
     settingKey: 'model',
     label: 'Research model',
     hint: 'The model the research pipeline reasons with.',
     valueKind: 'model_ref',
   },
-  {
-    key: 'cos',
+  cos: {
     namespace: 'chief_of_staff',
     settingKey: 'chat_model',
     label: 'Chief of Staff model',
     hint: 'Powers the conversational Chief-of-Staff turns.',
     valueKind: 'model_ref',
   },
-  {
-    key: 'propose',
+  propose: {
     namespace: 'chief_of_staff',
     settingKey: 'propose_model',
     label: 'Request-work model',
     hint: 'Turns natural-language requests into concrete work proposals.',
     valueKind: 'model_ref',
   },
-  {
-    key: 'routing',
+  routing: {
     namespace: 'chief_of_staff',
     settingKey: 'routing_model',
     label: 'Concern-routing model',
     hint: 'Classifies which role should handle an incoming concern.',
     valueKind: 'model_ref',
   },
-  {
-    key: 'narrative',
+  narrative: {
     namespace: 'chief_of_staff',
     settingKey: 'narrative_model',
     label: 'Run-narrative model',
     hint: 'Writes the documentary-style narrative of a run.',
     valueKind: 'model_ref',
   },
-  {
-    key: 'charter',
+  charter: {
     namespace: 'charter',
     settingKey: 'interview_model',
     label: 'Project-charter model',
     hint: "Interviews you and drafts a new project's charter.",
     valueKind: 'model_ref',
   },
-]
+}
+
+const PICKERS: readonly PickerSpec[] = MODEL_KEYS.map((key) => ({
+  key,
+  ...PICKER_META[key],
+}))
 
 type ModelChoices = Record<ModelKey, string>
 
-function emptyChoices(): ModelChoices {
-  return PICKERS.reduce<ModelChoices>(
-    (acc, spec) => ({ ...acc, [spec.key]: '' }),
-    {} as ModelChoices,
-  )
+// Seeded from the key tuple, so the record is total by construction.
+function perKey<V>(value: V): Record<ModelKey, V> {
+  return Object.fromEntries(MODEL_KEYS.map((key) => [key, value])) as Record<
+    ModelKey,
+    V
+  >
 }
 
 // A partial/garbled recommendations payload can leave a candidate list absent
@@ -154,7 +160,7 @@ function optionsFor(
 ): readonly SelectOption[] {
   return spec.valueKind === 'plain'
     ? plainOptions(recs.embedding_candidates)
-    : refOptions(recs.decomposition_candidates)
+    : refOptions(recs.model_ref_candidates)
 }
 
 function valueOf(entries: readonly SettingEntry[], key: string): string | undefined {
@@ -222,7 +228,7 @@ function buildChoices(
         recommendedFor(recs, spec.key),
       ),
     }),
-    {} as ModelChoices,
+    perKey(''),
   )
 }
 
@@ -234,7 +240,7 @@ interface LoadHandlers {
 }
 
 async function loadModelSelection(
-  isCancelled: () => boolean,
+  token: CancellationToken,
   handlers: LoadHandlers,
 ): Promise<void> {
   try {
@@ -247,7 +253,7 @@ async function loadModelSelection(
         getNamespaceSettings('chief_of_staff'),
         getNamespaceSettings('charter'),
       ])
-    if (isCancelled()) return
+    if (token.cancelled()) return
     handlers.setRecs(recs)
     handlers.setModels(
       buildChoices(recs, {
@@ -259,13 +265,13 @@ async function loadModelSelection(
       }),
     )
   } catch (caught) {
-    if (!isCancelled()) handlers.setError(getErrorMessage(caught))
+    if (!token.cancelled()) handlers.setError(getErrorMessage(caught))
   } finally {
-    if (!isCancelled()) handlers.setLoading(false)
+    if (!token.cancelled()) handlers.setLoading(false)
   }
 }
 
-const EMPTY_MODELS: ModelChoices = emptyChoices()
+const EMPTY_MODELS: ModelChoices = perKey('')
 
 interface ModelSelectionState {
   recs: SetupModelRecommendationsResponse | null
@@ -279,12 +285,7 @@ interface ModelSelectionState {
 // allowed to roll back on failure, so a slow earlier request that fails after a
 // faster later one succeeded cannot clobber the newer value.
 function useRequestIdRefs() {
-  return useRef<Record<ModelKey, number>>(
-    PICKERS.reduce<Record<ModelKey, number>>(
-      (acc, spec) => ({ ...acc, [spec.key]: 0 }),
-      {} as Record<ModelKey, number>,
-    ),
-  )
+  return useRef<Record<ModelKey, number>>(perKey(0))
 }
 
 function useWizardModelSelection(): ModelSelectionState {
@@ -296,16 +297,14 @@ function useWizardModelSelection(): ModelSelectionState {
   const modelRequestIdsRef = useRequestIdRefs()
 
   useEffect(() => {
-    let cancelled = false
-    void loadModelSelection(() => cancelled, {
+    const token = createCancellationToken()
+    void loadModelSelection(token, {
       setRecs,
       setModels,
       setError,
       setLoading,
     })
-    return () => {
-      cancelled = true
-    }
+    return token.cancel
   }, [])
 
   const selectModel = useCallback(

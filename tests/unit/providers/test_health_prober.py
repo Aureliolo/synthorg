@@ -1,6 +1,7 @@
 """Tests for ProviderHealthProber."""
 
 import asyncio
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -20,6 +21,7 @@ from synthorg.providers.health_prober_helpers import (
 from synthorg.providers.health_prober_helpers import (
     build_ping_url as _build_ping_url,
 )
+from synthorg.providers.health_prober_targets import _base_url_is_required
 from synthorg.settings import (
     definitions as _settings_definitions,  # noqa: F401 -- side-effect import populates the registry
 )
@@ -27,24 +29,35 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_int
 from synthorg.settings.resolver import ConfigResolver
 
+_LOCAL_CONFIG_FIELDS: Mapping[str, object] = {
+    "base_url": "http://localhost:11434",
+    "litellm_provider": "ollama",
+    "auth_type": "none",
+    "api_key": None,
+    # The missing-base-url gate reads preset_name to tell a cloud provider
+    # from a self-hosted one; the probe resolves credentials from the catalog
+    # via connection_name, and None skips auth-header resolution (no catalog
+    # is wired here).
+    "preset_name": None,
+    "connection_name": None,
+}
 
-def _make_local_config(
-    *,
-    base_url: str | None = "http://localhost:11434",
-    litellm_provider: str | None = "ollama",
-    auth_type: str = "none",
-    api_key: str | None = None,
-    connection_name: str | None = None,
-) -> MagicMock:
-    """Build a mock ProviderConfig for a local provider."""
+
+def _make_local_config(**overrides: object) -> MagicMock:
+    """Build a mock ProviderConfig for a local provider.
+
+    Every field is assigned explicitly because ``spec=`` mirrors class
+    attributes only, and plain Pydantic fields are not among them.
+
+    Args:
+        **overrides: Field values replacing the local-provider defaults.
+
+    Returns:
+        The configured mock.
+    """
     mock = MagicMock(spec=ProviderConfig)
-    mock.base_url = base_url
-    mock.litellm_provider = litellm_provider
-    mock.auth_type = auth_type
-    mock.api_key = api_key
-    # The prober resolves credentials from the catalog via connection_name;
-    # None makes the probe skip auth-header resolution (no catalog wired here).
-    mock.connection_name = connection_name
+    for field, value in {**_LOCAL_CONFIG_FIELDS, **overrides}.items():
+        setattr(mock, field, value)
     return mock
 
 
@@ -54,6 +67,7 @@ def _make_prober(
     *,
     discovery_policy_loader: AsyncMock | None = None,
     interval_seconds: int = 3600,
+    enabled: bool = True,
 ) -> tuple[ProviderHealthProber, ProviderHealthTracker]:
     """Build a prober with a mock config_resolver.
 
@@ -77,7 +91,7 @@ def _make_prober(
     # through to the resolver-failure fail-safe.
     config_resolver.get_bool = AsyncMock(
         spec=ConfigResolver.get_bool,
-        return_value=True,
+        return_value=enabled,
     )
     prober = ProviderHealthProber(
         trk,
@@ -276,8 +290,9 @@ class TestProviderHealthProber:
         assert summary.health_status == ProviderHealthStatus.DOWN
 
     async def test_skips_cloud_providers(self) -> None:
-        mock_config = MagicMock(spec=ProviderConfig)
-        mock_config.base_url = None  # cloud provider
+        # A cloud preset legitimately carries no base URL, so the skip is the
+        # expected steady state rather than a misconfiguration.
+        mock_config = _make_local_config(base_url=None, preset_name="ollama-cloud")
 
         prober, _ = _make_prober(configs={"test-cloud": mock_config})
 
@@ -452,6 +467,32 @@ class TestProberLifecycle:
 
 
 @pytest.mark.unit
+class TestMissingBaseUrlClassification:
+    """A missing base URL is by-design for cloud, a defect for self-hosted.
+
+    Both skip the probe, so without this distinction a self-hosted provider
+    persisted with no base URL is silently never probed and looks identical to
+    a cloud provider working as intended.
+    """
+
+    def test_cloud_preset_does_not_require_a_base_url(self) -> None:
+        config = _make_local_config(base_url=None, preset_name="ollama-cloud")
+        assert _base_url_is_required(config) is False
+
+    def test_self_hosted_preset_requires_a_base_url(self) -> None:
+        config = _make_local_config(base_url=None, preset_name="ollama")
+        assert _base_url_is_required(config) is True
+
+    def test_unknown_preset_does_not_claim_a_requirement(self) -> None:
+        config = _make_local_config(base_url=None, preset_name="no-such-preset")
+        assert _base_url_is_required(config) is False
+
+    def test_provider_created_without_a_preset(self) -> None:
+        config = _make_local_config(base_url=None, preset_name=None)
+        assert _base_url_is_required(config) is False
+
+
+@pytest.mark.unit
 class TestProbeProviderOnDemand:
     """A newly configured provider must not wait for the next sweep.
 
@@ -518,12 +559,39 @@ class TestProbeProviderOnDemand:
 
     async def test_paused_prober_does_not_probe(self) -> None:
         """The kill switch gates the on-demand path, not just the loop."""
-        prober, tracker = _make_prober()
-        prober._config_resolver.get_bool = AsyncMock(  # type: ignore[method-assign]
-            spec=ConfigResolver.get_bool,
-            return_value=False,
-        )
+        prober, tracker = _make_prober(enabled=False)
         with _patch_httpx(status_code=200):
             await prober.probe_provider("test-local")
 
         assert (await tracker.get_summary("test-local")).calls_last_24h == 0
+
+    async def test_ssrf_blocked_provider_is_not_probed_on_demand(self) -> None:
+        """The on-demand path applies the same discovery gate as the sweep.
+
+        Covering the gate only through ``_probe_all`` would leave this path
+        free to mis-thread the policy and reach an unallowlisted host.
+        """
+        from synthorg.providers.discovery_policy import ProviderDiscoveryPolicy
+
+        policy = ProviderDiscoveryPolicy(host_port_allowlist=("allowed.com:8080",))
+
+        async def _policy_loader_spec() -> ProviderDiscoveryPolicy:
+            raise NotImplementedError
+
+        policy_loader = AsyncMock(spec=_policy_loader_spec, return_value=policy)
+        configs = {
+            "test-blocked": _make_local_config(
+                base_url="http://blocked.internal:8080",
+                litellm_provider=None,
+            ),
+        }
+        prober, tracker = _make_prober(
+            configs=configs,
+            discovery_policy_loader=policy_loader,
+        )
+        with _patch_httpx(status_code=200) as ctx:
+            await prober.probe_provider("test-blocked")
+
+        assert (await tracker.get_summary("test-blocked")).calls_last_24h == 0
+        assert ctx.mock_client_cls is not None
+        ctx.mock_client_cls.assert_not_called()

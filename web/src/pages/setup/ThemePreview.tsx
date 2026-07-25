@@ -6,7 +6,7 @@ import {
   type Transition,
 } from 'motion/react'
 import { cn } from '@/lib/utils'
-import { tweenDefault, tweenFast } from '@/lib/motion'
+import { reducedMotionInstant, tweenDefault, tweenFast } from '@/lib/motion'
 import { MetricCard } from '@/components/ui/metric-card'
 import { AgentCard } from '@/components/ui/agent-card'
 import { DeptHealthBar } from '@/components/ui/dept-health-bar'
@@ -56,7 +56,7 @@ const DEMO_TRANSITION: Record<AnimationPreset, Transition> = {
   minimal: tweenFast,
   'status-driven': tweenDefault,
   spring: { type: 'spring', stiffness: 220, damping: 12 },
-  instant: { duration: 0 },
+  instant: reducedMotionInstant,
   aggressive: { type: 'spring', stiffness: 420, damping: 9 },
 }
 

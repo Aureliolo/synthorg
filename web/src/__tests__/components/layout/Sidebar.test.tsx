@@ -214,7 +214,7 @@ describe('Sidebar', () => {
       // Hiding them would leave a 180px column rendering centred icons only.
       expect(screen.getByText('SynthOrg')).toBeInTheDocument()
       expect(screen.queryByText('S')).not.toBeInTheDocument()
-      expect(document.querySelector('aside')?.className).toContain(
+      expect(screen.getByRole('complementary').className).toContain(
         'var(--so-sidebar-compact)',
       )
 
@@ -229,7 +229,7 @@ describe('Sidebar', () => {
       expect(screen.getByText('SynthOrg')).toBeInTheDocument()
       expect(screen.queryByText('S')).not.toBeInTheDocument()
       // Persistent is the full-width twin of compact.
-      expect(document.querySelector('aside')?.className).toContain(
+      expect(screen.getByRole('complementary').className).toContain(
         'var(--so-sidebar-expanded)',
       )
 
@@ -270,6 +270,26 @@ describe('Sidebar', () => {
     expect(screen.getByText('S')).toBeInTheDocument()
     expect(screen.queryByText('SynthOrg')).not.toBeInTheDocument()
   })
+
+  it.each(['compact', 'persistent'] as const)(
+    'still forces collapsed at desktop-sm in %s mode',
+    (mode) => {
+      // The breakpoint check runs BEFORE the always-expanded modes, so the
+      // narrow viewport wins over the user's preference. Reordering those two
+      // checks would otherwise pass every other test in this file.
+      getBreakpoint.mockReturnValue({
+        breakpoint: 'desktop-sm',
+        isDesktop: true,
+        isTablet: false,
+        isMobile: false,
+      })
+      useThemeStore.getState().setSidebarMode(mode)
+      setup()
+
+      expect(screen.getByText('S')).toBeInTheDocument()
+      expect(screen.queryByText('SynthOrg')).not.toBeInTheDocument()
+    },
+  )
 
   describe('tablet overlay', () => {
     function setupTablet(overlayOpen: boolean, onOverlayClose = vi.fn()) {

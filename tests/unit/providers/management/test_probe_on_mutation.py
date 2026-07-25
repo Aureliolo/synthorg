@@ -7,6 +7,8 @@ provider sitting in that state until the next periodic sweep, up to a full
 probe interval later.
 """
 
+from typing import Any
+
 import pytest
 
 from synthorg.api.dto_providers import UpdateProviderRequest
@@ -16,8 +18,11 @@ from tests._shared import mock_of
 
 from .conftest import make_create_request
 
+#: Configured mock, typed loosely for the unittest.mock API.
+_Configured = Any  # type: ignore[explicit-any]
 
-def _requester() -> object:
+
+def _requester() -> _Configured:
     """Build a probe requester double whose probe is a no-op.
 
     ``probe_provider`` is left to the autospec so its child mock stays bound
@@ -38,12 +43,12 @@ class TestProbeOnMutation:
         service: ProviderManagementService,
     ) -> None:
         requester = _requester()
-        service.set_probe_requester(requester)  # type: ignore[arg-type]
+        service.set_probe_requester(requester)
 
         request = make_create_request()
         await service.create_provider(request)
 
-        requester.probe_provider.assert_awaited_once_with(request.name)  # type: ignore[attr-defined]
+        requester.probe_provider.assert_awaited_once_with(request.name)
 
     async def test_update_probes_the_changed_provider(
         self,
@@ -54,14 +59,14 @@ class TestProbeOnMutation:
         # Wired only now, so the create above cannot satisfy the assertion:
         # a re-pointed endpoint must be re-probed on its own.
         requester = _requester()
-        service.set_probe_requester(requester)  # type: ignore[arg-type]
+        service.set_probe_requester(requester)
 
         await service.update_provider(
             request.name,
             UpdateProviderRequest(base_url="http://localhost:9999"),
         )
 
-        requester.probe_provider.assert_awaited_once_with(request.name)  # type: ignore[attr-defined]
+        requester.probe_provider.assert_awaited_once_with(request.name)
 
     async def test_probe_failure_does_not_fail_the_mutation(
         self,
@@ -69,8 +74,8 @@ class TestProbeOnMutation:
     ) -> None:
         """The provider is already persisted, so a probe error must not raise."""
         requester = _requester()
-        requester.probe_provider.side_effect = RuntimeError("probe exploded")  # type: ignore[attr-defined]
-        service.set_probe_requester(requester)  # type: ignore[arg-type]
+        requester.probe_provider.side_effect = RuntimeError("probe exploded")
+        service.set_probe_requester(requester)
 
         result = await service.create_provider(make_create_request())
 

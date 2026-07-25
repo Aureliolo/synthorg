@@ -8,6 +8,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { useCommandPalette } from '@/hooks/useCommandPalette'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import type { SidebarMode } from '@/stores/theme'
 import { useWebSocketStore } from '@/stores/websocket'
 import { Drawer } from '@/components/ui/drawer'
 import { SidebarNav } from './SidebarNav'
@@ -20,8 +21,11 @@ const log = createLogger('Sidebar')
 // ``persistent`` both keep labels visible and differ only in column width, so
 // they pin it expanded rather than inheriting the collapsible toggle's state
 // (neither renders that toggle, so an inherited value would be unreachable).
-const SIDEBAR_MODES_FORCING_COLLAPSED = new Set(['rail'])
-const SIDEBAR_MODES_FORCING_EXPANDED = new Set(['persistent', 'compact'])
+const SIDEBAR_MODES_FORCING_COLLAPSED: ReadonlySet<SidebarMode> = new Set<SidebarMode>(['rail'])
+const SIDEBAR_MODES_FORCING_EXPANDED: ReadonlySet<SidebarMode> = new Set<SidebarMode>([
+  'persistent',
+  'compact',
+])
 
 interface SidebarProps {
   /** Whether the overlay sidebar is visible (used at tablet breakpoints). */
@@ -32,7 +36,7 @@ interface SidebarProps {
 
 function _computeEffectiveCollapsed(
   breakpoint: string,
-  sidebarMode: string,
+  sidebarMode: SidebarMode,
   localCollapsed: boolean,
 ): boolean {
   if (breakpoint === 'desktop-sm') return true
@@ -59,8 +63,9 @@ function useIsMacPlatform(): boolean {
   // DOM-global read never happens during render (``@eslint-react/globals``)
   // and we never call ``setState`` synchronously from an effect
   // (``@eslint-react/set-state-in-effect``). The snapshot is captured
-  // post-hydration on the client and falls back to ``false`` on the
-  // server, matching the same SSR-safe default the old useState seed had.
+  // post-hydration on the client and falls back to ``false`` on the server,
+  // where there is no ``navigator``; that keeps the first client render
+  // identical to the server's and avoids a hydration mismatch.
   return useSyncExternalStore(_noopSubscribe, _detectMacPlatform, _macServerSnapshot)
 }
 
@@ -82,7 +87,7 @@ type SidebarShape = 'hidden' | 'overlay' | 'desktop'
 
 function _decideSidebarShape(
   breakpoint: string,
-  sidebarMode: string,
+  sidebarMode: SidebarMode,
   isHidden: boolean,
   isOverlayMode: boolean,
 ): SidebarShape {
@@ -168,7 +173,7 @@ function SidebarDesktop({
   logout,
 }: {
   collapsed: boolean
-  sidebarMode: string
+  sidebarMode: SidebarMode
   showCollapseToggle: boolean
   toggleCollapse: () => void
   openCommandPalette: () => void

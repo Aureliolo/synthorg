@@ -492,8 +492,14 @@ class ProviderManagementService(
                     "model_count": len(new_config.models),
                 },
             )
-            await self._probe_after_mutation(request.name)
-            return new_config
+        # Probed outside the lock: this is a network round-trip (a 10s HTTP
+        # budget plus DNS resolution), and ``self._lock`` serialises EVERY
+        # mutating entry point on this service, so holding it across the probe
+        # would stall unrelated providers' mutations behind one unreachable
+        # endpoint. The config is already persisted, and the probe re-reads it
+        # itself, so it needs no exclusion.
+        await self._probe_after_mutation(request.name)
+        return new_config
 
     async def update_provider(
         self,
@@ -578,8 +584,11 @@ class ProviderManagementService(
                 event_type="provider_updated",
                 payload=_diff_provider_update(existing, updated),
             )
-            await self._probe_after_mutation(name)
-            return updated
+        # Outside the lock for the same reason as ``create_provider``: a
+        # re-pointed endpoint must be re-probed, but not while every other
+        # provider mutation waits on the result.
+        await self._probe_after_mutation(name)
+        return updated
 
     async def delete_provider(
         self,
