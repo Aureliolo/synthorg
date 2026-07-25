@@ -15,6 +15,7 @@ from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanItemKind, PlanStatus
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.decomposition._ids import subtask_uuid
 from synthorg.engine.initiative.completion import ItemProgress, StallReason
 from synthorg.engine.initiative.evaluate_session import build_evaluation_brief
 from synthorg.engine.initiative.integrate_brief import build_integration_brief
@@ -106,9 +107,9 @@ class TestReplanBrief:
             _plan(),
             (
                 ItemProgress(
-                    item_id=as_uuid(_ITEM),
+                    item_id=subtask_uuid(_ITEM),
                     kind=PlanItemKind.WORK,
-                    task_id=as_uuid(_ITEM),
+                    task_id=subtask_uuid(_ITEM),
                     task_status=TaskStatus.FAILED,
                 ),
             ),
@@ -123,9 +124,9 @@ class TestReplanBrief:
             _plan(title="Ship it"),
             (
                 ItemProgress(
-                    item_id=as_uuid(_ITEM),
+                    item_id=subtask_uuid(_ITEM),
                     kind=PlanItemKind.WORK,
-                    task_id=as_uuid(_ITEM),
+                    task_id=subtask_uuid(_ITEM),
                     task_status=TaskStatus.FAILED,
                 ),
             ),

@@ -184,6 +184,7 @@ class _PassingEvaluation:
         self._reconcile = reconcile
 
     def schedule(self, *, plan: Plan) -> None:
+        del plan
         self.fired += 1
 
     async def drain(self, *, timeout_sec: float) -> None:

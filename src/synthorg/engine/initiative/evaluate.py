@@ -104,6 +104,9 @@ class EvaluationStageService:
             one transition only this stage may make.
         replan_trigger: Fired when the objective is not met, so the gap becomes
             new work. ``None`` leaves an unmet initiative parked for a human.
+        reconcile: Re-derives the initiative graph after the completion write,
+            so the project and objective task follow the plan. ``None`` leaves
+            them lagging the plan's COMPLETED write.
         workspace_root: Root the session's read-only file tools are scoped to.
             ``None`` runs the judgement without workspace reads.
         cost_tracker: Optional cost tracker the session records against.

@@ -132,7 +132,8 @@ class LifecycleAdvancingExecutionService:
                 current_status=current_status.value,
                 reason=(
                     "plan_linked_needs_review_gate"
-                    if _needs_review_gate(task)
+                    if current_status is TaskStatus.IN_REVIEW
+                    and _needs_review_gate(task)
                     else "not_in_executable_status"
                 ),
             )

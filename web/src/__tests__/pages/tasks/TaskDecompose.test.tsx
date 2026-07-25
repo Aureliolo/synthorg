@@ -1,5 +1,8 @@
 import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
+import { apiError } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 import { TaskDecomposeForm } from '@/pages/tasks/TaskDecomposeForm'
 import { TaskDecomposeResult } from '@/pages/tasks/TaskDecomposeResult'
 import {
@@ -110,6 +113,16 @@ describe('useTaskDecomposeController', () => {
   })
 
   it('surfaces the backend detail when the deliverable guard rejects', async () => {
+    // Scoped override: assert the surfaced detail against a handler this test
+    // owns, not the global default's incidental rejection shape.
+    server.use(
+      http.post('/api/v1/tasks/:id/decompose', () =>
+        HttpResponse.json(
+          apiError("Field 'expected_artifacts' must be non-empty"),
+          { status: 422 },
+        ),
+      ),
+    )
     const { result } = renderHook(() => useTaskDecomposeController('task-1'))
     act(() => {
       result.current.updateDraft(0, {

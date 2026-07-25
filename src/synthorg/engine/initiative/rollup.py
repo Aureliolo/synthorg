@@ -429,6 +429,17 @@ class ProjectRollupService:
                 plan=plan, reason=StallReason.INTEGRATION_FAILED
             )
             return plan
+        if state.outcome is IntegrationOutcome.FAILED:
+            # Same visible-park discipline as the unwired-stage branches: a
+            # failed assembly with no trigger to route it cannot auto-replan,
+            # so say so rather than returning an unchanged plan in silence.
+            logger.warning(
+                PROJECT_ROLLUP_SKIPPED,
+                plan_id=str(plan.id),
+                reason="integration_failed_no_replan_trigger",
+                note="plan parked at integrating; failed assembly cannot auto-replan",
+            )
+            return plan
         if state.outcome is IntegrationOutcome.RUNNING:
             # Logged rather than passed over in silence: an assembly job that
             # is genuinely working and one that died without terminalising its
