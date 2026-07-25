@@ -11,6 +11,7 @@ import importlib.util
 import re
 import shutil
 import subprocess
+import sys
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -69,6 +70,50 @@ _MODULE = _load()
 
 
 @dataclass
+class _FakeProcess:
+    """Stand-in for the ``Popen`` the runner now opens per tool.
+
+    The runner moved off ``subprocess.run(timeout=...)`` because run's
+    timeout path kills only the direct child and then drains the pipes
+    without bound, so a surviving grandchild hangs the push. Modelling
+    ``communicate`` (and its ``TimeoutExpired``) is therefore the only way
+    to exercise the code path that used to hang.
+    """
+
+    argv: list[str]
+    returncode: int
+    wedge: bool = False
+    drain_also_wedges: bool = False
+    pid: int = 4242
+    killed: bool = False
+    communicate_calls: int = 0
+
+    def __enter__(self) -> _FakeProcess:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+    def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+        """Return the tool's output, or refuse to finish when wedged.
+
+        Returns:
+            The captured ``(stdout, stderr)`` pair.
+
+        Raises:
+            subprocess.TimeoutExpired: When this tool is meant to wedge.
+        """
+        self.communicate_calls += 1
+        first_call = self.communicate_calls == 1
+        if self.wedge and (first_call or self.drain_also_wedges):
+            raise subprocess.TimeoutExpired(self.argv, timeout or 0.0)
+        return ("out", "err")
+
+    def kill(self) -> None:
+        self.killed = True
+
+
+@dataclass
 class _Recorder:
     """Captures every subprocess the runner launches.
 
@@ -81,18 +126,29 @@ class _Recorder:
     calls: list[list[str]] = field(default_factory=list)
     kwargs: list[Mapping[str, object]] = field(default_factory=list)
     returncodes: Mapping[str, int] = field(default_factory=dict)
+    # Tokens naming a tool that should never return, standing in for the real
+    # wedge this runner exists to survive: a Node process that stops making
+    # progress while still holding the captured pipe open.
+    wedged: frozenset[str] = field(default_factory=frozenset)
+    # When set, the post-kill drain wedges too, i.e. the tree kill failed to
+    # close the pipes. The runner must still return rather than trading one
+    # unbounded wait for another.
+    drain_also_wedges: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
 
-    def __call__(
-        self, argv: list[str], **kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
+    def __call__(self, argv: list[str], **kwargs: object) -> _FakeProcess:
         with self.lock:
             self.calls.append(list(argv))
             self.kwargs.append(dict(kwargs))
         returncode = next(
             (code for token, code in self.returncodes.items() if token in argv), 0
         )
-        return subprocess.CompletedProcess(argv, returncode, "out", "err")
+        return _FakeProcess(
+            argv=list(argv),
+            returncode=returncode,
+            wedge=any(token in argv for token in self.wedged),
+            drain_also_wedges=self.drain_also_wedges,
+        )
 
     def argv_for(self, token: str) -> list[str]:
         """Return the argv of the single call containing *token*.
@@ -113,8 +169,23 @@ class _Recorder:
         return any(token in call for call in self.calls)
 
 
-def _patch(monkeypatch: pytest.MonkeyPatch, recorder: _Recorder) -> None:
-    monkeypatch.setattr(subprocess, "run", recorder)
+def _patch(
+    monkeypatch: pytest.MonkeyPatch,
+    recorder: _Recorder,
+    kills: list[list[str]] | None = None,
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", recorder)
+    # ``_terminate_tree`` shells out to ``taskkill`` on Windows, which is the
+    # only remaining ``subprocess.run`` in the runner. Route it somewhere the
+    # test can inspect instead of letting a real taskkill run against a fake
+    # pid, which would either fail or, worse, hit an unrelated process.
+    kill_log = kills if kills is not None else []
+
+    def _fake_run(argv: list[str], **_kwargs: object) -> object:
+        kill_log.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
     # ``shutil.which`` resolves npm to npm.cmd on Windows; the tests care
     # about the argument list, not the resolved interpreter path. The
     # runner imported this same module object, so patching it here reaches
@@ -122,8 +193,13 @@ def _patch(monkeypatch: pytest.MonkeyPatch, recorder: _Recorder) -> None:
     monkeypatch.setattr(shutil, "which", lambda name: name)
 
 
-def _run(monkeypatch: pytest.MonkeyPatch, argv: list[str], recorder: _Recorder) -> int:
-    _patch(monkeypatch, recorder)
+def _run(
+    monkeypatch: pytest.MonkeyPatch,
+    argv: list[str],
+    recorder: _Recorder,
+    kills: list[list[str]] | None = None,
+) -> int:
+    _patch(monkeypatch, recorder, kills)
     monkeypatch.setattr("sys.argv", ["run_prepush_hook_group.py", *argv])
     return _MODULE.main()
 
@@ -243,7 +319,7 @@ class TestGroupDispatch:
             msg = "spawn refused"
             raise OSError(msg)
 
-        monkeypatch.setattr(subprocess, "run", _explode)
+        monkeypatch.setattr(subprocess, "Popen", _explode)
         monkeypatch.setattr(shutil, "which", lambda name: name)
         monkeypatch.setattr("sys.argv", ["run_prepush_hook_group.py", "python-audits"])
 
@@ -254,15 +330,11 @@ class TestGroupDispatch:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         # This runner gates every push, so a hung tool must read as a
-        # failure, never block the push with no exit but Ctrl-C.
-        def _hang(argv: list[str], **_kwargs: object) -> object:
-            raise subprocess.TimeoutExpired(argv, _MODULE._TOOL_TIMEOUT_SECONDS)
-
-        monkeypatch.setattr(subprocess, "run", _hang)
-        monkeypatch.setattr(shutil, "which", lambda name: name)
-        monkeypatch.setattr("sys.argv", ["run_prepush_hook_group.py", "python-audits"])
-
-        assert _MODULE.main() == 1
+        # failure, never block the push with no exit but Ctrl-C. The wedge
+        # is modelled on ``communicate`` rather than the spawn, because that
+        # is where a real tool stalls and where the runner must intervene.
+        recorder = _Recorder(wedged=frozenset({"vulture", "interrogate", "deptry"}))
+        assert _run(monkeypatch, ["python-audits"], recorder) == 1
         assert "timed out" in capsys.readouterr().out
 
     def test_the_tools_actually_overlap(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -310,8 +382,50 @@ class TestSubprocessInvocation:
         assert recorder.kwargs
         for call_kwargs in recorder.kwargs:
             assert call_kwargs["cwd"] == _REPO_ROOT
-            assert call_kwargs["capture_output"] is True
-            assert call_kwargs["check"] is False
+            # Both streams must be captured for the report to have anything
+            # to print, and the runner must never raise on a non-zero exit:
+            # it reports every tool's verdict, it does not abort on the first.
+            assert call_kwargs["stdout"] is subprocess.PIPE
+            assert call_kwargs["stderr"] is subprocess.PIPE
+
+    def test_a_wedged_tool_is_killed_with_its_whole_tree(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # The defect this guards: ``subprocess.run(timeout=...)`` kills only
+        # the direct child, then drains the pipes unbounded. ``npm run`` is
+        # ``node -> cmd.exe -> node``, so the surviving grandchild held the
+        # captured stdout open and a 180s budget overran to 1034s of real
+        # wall-clock, releasable only by killing the tree by hand.
+        kills: list[list[str]] = []
+        recorder = _Recorder(wedged=frozenset({"deptry"}))
+        exit_code = _run(monkeypatch, ["python-audits"], recorder, kills=kills)
+
+        assert exit_code == 1
+        report = capsys.readouterr().out
+        assert "timed out after" in report
+        assert "killed with its process tree" in report
+        # The report must not let a gate defect read as a lint finding.
+        assert "GATE DEFECT" in report
+        if sys.platform == "win32":
+            assert any("taskkill" in call for call in kills), (
+                f"expected a taskkill for the wedged tree, got {kills}"
+            )
+            assert any("/T" in call for call in kills), (
+                "taskkill must carry /T or the grandchildren survive"
+            )
+
+    def test_the_post_kill_drain_cannot_hang_the_push(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Even when the tree kill fails to close the pipes, the runner must
+        # give up on the output rather than wait: the whole point is that no
+        # child can hold a push open, so the fix must not reintroduce the
+        # unbounded wait one level down.
+        recorder = _Recorder(wedged=frozenset({"deptry"}), drain_also_wedges=True)
+        exit_code = _run(monkeypatch, ["python-audits"], recorder)
+
+        assert exit_code == 1
+        assert "timed out after" in capsys.readouterr().out
 
     def test_output_is_decoded_leniently(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # A tool emitting a stray byte must not crash the group with a
@@ -321,6 +435,35 @@ class TestSubprocessInvocation:
         for call_kwargs in recorder.kwargs:
             assert call_kwargs["text"] is True
             assert call_kwargs["errors"] == "replace"
+
+
+class TestHookDeclaration:
+    def test_a_file_taking_group_hook_is_serial(self) -> None:
+        # The runner already parallelises the tools inside a group. Without
+        # ``require_serial``, pre-commit adds a second dimension on top: it
+        # partitions the matched files and runs the hook once per chunk in
+        # parallel, so a 22-file web push spawned six concurrent groups and
+        # eighteen Node processes, which exhausted memory and killed tools
+        # mid-parse.
+        #
+        # Only a hook that actually receives filenames can be chunked, so
+        # ``pass_filenames: false`` is an equally valid way to be immune;
+        # requiring the flag there would be cargo cult. Any future group hook
+        # must satisfy one of the two.
+        config = (_REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+        blocks = re.split(r"\n      - id: ", config)
+        offenders = [
+            block.split("\n", 1)[0]
+            for block in blocks[1:]
+            if "run_prepush_hook_group.py" in block
+            and "require_serial: true" not in block
+            and "pass_filenames: false" not in block
+        ]
+        assert not offenders, (
+            "a hook-group entry that receives filenames must declare "
+            "require_serial: true, or pass_filenames: false, so pre-commit "
+            f"does not fan it out per file chunk: {offenders}"
+        )
 
 
 class TestFilenameRouting:
