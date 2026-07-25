@@ -183,10 +183,13 @@ function SidebarDesktop({
   user: { username: string; role: string } | null
   logout: () => void
 }) {
-  const widthClass = sidebarMode === 'compact'
-    ? 'w-[var(--so-sidebar-compact)]'
-    : collapsed
-      ? 'w-[var(--so-sidebar-collapsed)]'
+  // Collapsed outranks the mode's own width: a narrow desktop pins every mode
+  // collapsed, and compact's 180px column around icon-only content would be
+  // mostly empty gutter.
+  const widthClass = collapsed
+    ? 'w-[var(--so-sidebar-collapsed)]'
+    : sidebarMode === 'compact'
+      ? 'w-[var(--so-sidebar-compact)]'
       : 'w-[var(--so-sidebar-expanded)]'
   return (
     <aside

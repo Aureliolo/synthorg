@@ -288,6 +288,11 @@ describe('Sidebar', () => {
 
       expect(screen.getByText('S')).toBeInTheDocument()
       expect(screen.queryByText('SynthOrg')).not.toBeInTheDocument()
+      // The width must follow the collapsed content: compact's own 180px
+      // token around centred icons would leave most of the column empty.
+      expect(screen.getByRole('complementary').className).toContain(
+        'var(--so-sidebar-collapsed)',
+      )
     },
   )
 

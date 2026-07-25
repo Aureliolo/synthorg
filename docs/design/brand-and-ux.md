@@ -122,13 +122,15 @@ Sidebar mode is an **independent user preference**.
 | Rail | Icons only, pinned collapsed; labels surface on hover | 56px | Maximum content area while keeping nav reachable |
 | Collapsible (default) | Expanded by default, can collapse to an icon rail. Remembers user preference. | 220px / 56px | Most users (full nav when needed, compact when focused) |
 | Hidden | Hamburger toggle, content gets full width | 240px (overlay) | Maximum content area, presentation |
-| Persistent | Always expanded with labels, no collapse toggle | 220px | High-interactivity workflows, many nav items |
-| Compact | Always expanded with labels, in a narrower column | 180px | Small screens, secondary monitors |
+| Persistent | Expanded with labels, no collapse toggle; `desktop-sm` collapses it | 220px / 56px | High-interactivity workflows, many nav items |
+| Compact | Expanded with labels in a narrower column; `desktop-sm` collapses it | 180px / 56px | Small screens, secondary monitors |
 
-Rail is the only desktop mode that hides labels. Compact and persistent both keep
-labels and differ from each other by column width alone; neither renders the
-collapse toggle, which belongs to collapsible. Notification badges render in every
-mode that shows labels, not only persistent.
+Rail is the only mode that hides labels at full desktop width. The `desktop-sm`
+breakpoint pins every mode collapsed regardless of preference, so compact and
+persistent render the icon rail there too, at the collapsed width rather than
+their own. Above that breakpoint the two keep labels and differ by column width
+alone; neither renders the collapse toggle, which belongs to collapsible.
+Notification badges render in every mode that shows labels, not only persistent.
 
 ### Persistence
 

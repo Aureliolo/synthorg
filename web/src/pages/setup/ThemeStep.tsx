@@ -120,9 +120,12 @@ const SIDEBAR_META: Record<SidebarMode, OptionMeta> = {
   hidden: { label: 'Hidden', description: 'No sidebar; full-width content with a menu toggle.' },
   persistent: {
     label: 'Persistent',
-    description: 'Always expanded at 220px with labels, no collapse toggle.',
+    description: 'Expanded at 220px with labels, no collapse toggle; narrow desktops collapse it.',
   },
-  compact: { label: 'Compact', description: 'Icons with labels in a tighter 180px column.' },
+  compact: {
+    label: 'Compact',
+    description: 'Icons with labels in a tighter 180px column; narrow desktops collapse it.',
+  },
 }
 
 const PALETTE_OPTIONS = optionsFor(COLOR_PALETTES, PALETTE_META)

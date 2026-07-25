@@ -27,6 +27,12 @@ describe('decodeModelRef', () => {
     expect(decodeModelRef('m-1')).toEqual({ provider: '', modelId: 'm-1' })
   })
 
+  it('strips padding from a bare model id', () => {
+    // The picker preselects by string identity, so a padded id would match
+    // no candidate and render as an empty select that still holds a value.
+    expect(decodeModelRef('  m-1  ')).toEqual({ provider: '', modelId: 'm-1' })
+  })
+
   it('falls back to model-only for malformed JSON', () => {
     expect(decodeModelRef('{not json')).toEqual({ provider: '', modelId: '{not json' })
   })

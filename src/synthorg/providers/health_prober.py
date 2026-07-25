@@ -416,9 +416,11 @@ class ProviderHealthProber:
         deliberately not applied: an endpoint that just changed must be
         re-probed even if the old one answered moments ago.
 
-        Best-effort by contract -- a paused prober, an unknown provider, a
-        gate rejection, or a failed probe is logged and recorded like any
-        cycle probe and never propagates into the caller's mutation.
+        A paused prober, an unknown provider, a gate rejection, or a failed
+        probe is logged and recorded like any cycle probe rather than raised.
+        Resolver, config-read and DNS errors do propagate, so a caller that
+        must not fail on a probe error contains them itself; see
+        ``ProviderManagementService._probe_after_mutation``.
         """
         if not await self._resolve_enabled():
             logger.debug(

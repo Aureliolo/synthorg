@@ -31,7 +31,10 @@ export function decodeModelRef(value: string): ModelRefValue {
       log.warn('decodeModelRef: value is not valid JSON, treating as model-only', err)
     }
   }
-  return { provider: '', modelId: value }
+  // ``text``, not ``value``: incidental padding would otherwise be baked into
+  // the id, survive ``normalizeModelRef`` (a no-op without a provider), and
+  // reach a picker that preselects by string identity.
+  return { provider: '', modelId: text }
 }
 
 /** Serialize a provider/model pair to the canonical stored ``MODEL_REF`` JSON. */
