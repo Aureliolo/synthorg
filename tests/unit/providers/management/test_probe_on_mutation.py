@@ -7,6 +7,7 @@ provider sitting in that state until the next periodic sweep, up to a full
 probe interval later.
 """
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -89,3 +90,20 @@ class TestProbeOnMutation:
         result = await service.create_provider(make_create_request())
 
         assert result.driver == "litellm"
+
+    async def test_cancellation_is_not_swallowed_by_the_best_effort_handler(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Shutdown must propagate, unlike an ordinary probe failure.
+
+        The handler that keeps a failed probe from failing the mutation
+        catches broadly, so without an explicit re-raise it would absorb the
+        cancellation that stops the service.
+        """
+        requester = _requester()
+        requester.probe_provider.side_effect = asyncio.CancelledError()
+        service.set_probe_requester(requester)
+
+        with pytest.raises(asyncio.CancelledError):
+            await service.create_provider(make_create_request())

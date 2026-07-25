@@ -2,13 +2,21 @@
 
 import asyncio
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.config.schema import ProviderConfig
+from synthorg.observability.events.provider import (
+    PROVIDER_HEALTH_PROBE_SKIPPED as PROBE_SKIPPED,
+)
+from synthorg.providers.discovery_policy import (
+    ProviderDiscoveryPolicy,
+    resolve_discovery_target,
+)
 from synthorg.providers.health import (
     ProviderHealthRecord,
     ProviderHealthStatus,
@@ -21,13 +29,18 @@ from synthorg.providers.health_prober_helpers import (
 from synthorg.providers.health_prober_helpers import (
     build_ping_url as _build_ping_url,
 )
-from synthorg.providers.health_prober_targets import _base_url_is_required
+from synthorg.providers.health_prober_targets import (
+    ProbeTarget,
+    _base_url_is_required,
+    resolve_probe_target,
+)
 from synthorg.settings import (
     definitions as _settings_definitions,  # noqa: F401 -- side-effect import populates the registry
 )
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_int
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.tools.network_validator import DnsValidationOk
 
 _LOCAL_CONFIG_FIELDS: Mapping[str, object] = {
     "base_url": "http://localhost:11434",
@@ -120,27 +133,23 @@ class _PatchCtx:
     ) -> None:
         self._status_code = status_code
         self._side_effect = side_effect
+        # The module-local name, NOT ``...._probe_request.httpx.AsyncClient``:
+        # the latter resolves through the shared httpx module and would swap
+        # the class out process-wide, so any library that happens to build a
+        # client inside this window (litellm does, on its lazy first use)
+        # would both receive the mock and register as a call on it.
         self._patcher = patch(
-            "synthorg.providers._probe_request.httpx.AsyncClient",
+            "synthorg.providers._probe_request.AsyncClient",
         )
         self.mock_client_cls: MagicMock | None = None
 
     def __enter__(self) -> _PatchCtx:
-        # Capture the real classes BEFORE entering the patch context.
-        # ``patch("synthorg.providers._probe_request.httpx.AsyncClient")``
-        # mutates the shared httpx module's attribute, so reading
-        # ``httpx.AsyncClient`` after ``__enter__`` returns a MagicMock
-        # (which mock rejects as a spec target). The ``spec=`` calls
-        # below need the real classes so AsyncMock auto-generates real
-        # method children.
-        real_async_client = httpx.AsyncClient
-        real_response = httpx.Response
         self.mock_client_cls = self._patcher.__enter__()
-        mock_client = AsyncMock(spec=real_async_client)
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
         if self._side_effect is not None:
             mock_client.get.side_effect = self._side_effect
         else:
-            mock_response = MagicMock(spec=real_response)
+            mock_response = MagicMock(spec=httpx.Response)
             mock_response.status_code = self._status_code or 200
             mock_client.get.return_value = mock_response
         mock_client.__aenter__.return_value = mock_client
@@ -595,3 +604,120 @@ class TestProbeProviderOnDemand:
         assert (await tracker.get_summary("test-blocked")).calls_last_24h == 0
         assert ctx.mock_client_cls is not None
         ctx.mock_client_cls.assert_not_called()
+
+
+def _resolver(result: object) -> AsyncMock:
+    """Build a ``resolve_discovery_target`` double returning *result*.
+
+    Returns:
+        An AsyncMock bound to the real function's signature.
+    """
+    return AsyncMock(spec=resolve_discovery_target, return_value=result)
+
+
+@pytest.mark.unit
+class TestProbeTargetGates:
+    """Each rejection reports why, and an allowlisted host is DNS-pinned.
+
+    A silently skipped provider is indistinguishable from a healthy idle
+    cycle, which is what hides a mis-scoped allowlist or a self-hosted
+    provider persisted without an endpoint.
+    """
+
+    async def test_self_hosted_provider_without_a_base_url_warns(self) -> None:
+        config = _make_local_config(base_url=None, preset_name="ollama")
+        with capture_logs() as logs:
+            target = await resolve_probe_target(
+                "self-hosted", config, None, ollama_port=11434
+            )
+
+        assert target == ProbeTarget(eligible=False, validation=None)
+        skipped = [entry for entry in logs if entry["event"] == PROBE_SKIPPED]
+        assert [entry["log_level"] for entry in skipped] == ["warning"]
+        assert skipped[0]["reason"] == "base_url_required_but_missing"
+
+    async def test_cloud_provider_without_a_base_url_stays_at_debug(self) -> None:
+        """Recurs every cycle and is not actionable, so it must not warn."""
+        config = _make_local_config(base_url=None, preset_name="ollama-cloud")
+        with capture_logs() as logs:
+            target = await resolve_probe_target(
+                "cloud", config, None, ollama_port=11434
+            )
+
+        assert target.eligible is False
+        skipped = [entry for entry in logs if entry["event"] == PROBE_SKIPPED]
+        assert [entry["log_level"] for entry in skipped] == ["debug"]
+        assert skipped[0]["reason"] == "no_base_url"
+
+    async def test_allowlisted_host_that_cannot_resolve_is_refused(self) -> None:
+        """Probing unpinned would reopen the DNS-rebinding window."""
+        policy = ProviderDiscoveryPolicy(host_port_allowlist=("host.example:8080",))
+        config = _make_local_config(
+            base_url="http://host.example:8080", litellm_provider=None
+        )
+        with (
+            patch(
+                "synthorg.providers.health_prober_targets.resolve_discovery_target",
+                _resolver("NXDOMAIN"),
+            ),
+            capture_logs() as logs,
+        ):
+            target = await resolve_probe_target(
+                "unresolvable", config, policy, ollama_port=11434
+            )
+
+        assert target == ProbeTarget(eligible=False, validation=None)
+        skipped = [entry for entry in logs if entry["event"] == PROBE_SKIPPED]
+        assert skipped[0]["reason"] == "discovery_dns_unresolved"
+
+    async def test_resolved_host_carries_its_pinned_addresses(self) -> None:
+        policy = ProviderDiscoveryPolicy(host_port_allowlist=("host.example:8080",))
+        config = _make_local_config(
+            base_url="http://host.example:8080", litellm_provider=None
+        )
+        validation = DnsValidationOk(
+            hostname="host.example", port=8080, resolved_ips=("203.0.113.7",)
+        )
+        with patch(
+            "synthorg.providers.health_prober_targets.resolve_discovery_target",
+            _resolver(validation),
+        ):
+            target = await resolve_probe_target(
+                "resolvable", config, policy, ollama_port=11434
+            )
+
+        # The validation must travel with the target: the probe pins its
+        # connection to these IPs rather than re-resolving the hostname.
+        assert target == ProbeTarget(eligible=True, validation=validation)
+
+
+@pytest.mark.unit
+class TestRecencyGuard:
+    async def test_stale_check_does_not_suppress_the_next_probe(self) -> None:
+        """A record older than one interval must not skip the provider."""
+        tracker = ProviderHealthTracker()
+        prober, _ = _make_prober(tracker, interval_seconds=60)
+        await tracker.record(
+            ProviderHealthRecord(
+                provider_name="test-local",
+                timestamp=datetime.now(UTC) - timedelta(seconds=120),
+                success=True,
+                response_time_ms=1.0,
+            )
+        )
+
+        assert await prober._probed_within_interval("test-local") is False
+
+    async def test_recent_check_suppresses_the_next_probe(self) -> None:
+        tracker = ProviderHealthTracker()
+        prober, _ = _make_prober(tracker, interval_seconds=3600)
+        await tracker.record(
+            ProviderHealthRecord(
+                provider_name="test-local",
+                timestamp=datetime.now(UTC),
+                success=True,
+                response_time_ms=1.0,
+            )
+        )
+
+        assert await prober._probed_within_interval("test-local") is True

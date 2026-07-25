@@ -53,8 +53,8 @@ function declarationsFor(scope: string): Map<string, string> {
  *
  * The option descriptions quote these pixel values as prose, which has no
  * compile-time link to the tokens they describe. Resolving the token here
- * means a retuned value fails the assertions below instead of silently
- * leaving the wizard describing a mode it no longer has.
+ * means a changed token fails the assertions below rather than silently
+ * leaving the wizard quoting a width or padding the app no longer uses.
  */
 function tokenPx(name: string, scope = ':root'): number {
   const raw = declarationsFor(scope).get(name)

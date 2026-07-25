@@ -11,6 +11,7 @@ import asyncio
 from typing import Final
 
 import httpx
+from httpx import AsyncClient
 
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
@@ -60,7 +61,11 @@ async def execute_probe(
     transport = build_pinned_transport(validation) if validation is not None else None
 
     try:
-        async with httpx.AsyncClient(
+        # Bound into this module's namespace (rather than reached through
+        # ``httpx.``) so a test double replaces the name here alone. Patching
+        # the attribute on the shared httpx module would hand every other
+        # library in the process a mock client for the duration.
+        async with AsyncClient(
             timeout=_PROBE_TIMEOUT_SECONDS,
             follow_redirects=False,
             transport=transport,
