@@ -118,26 +118,22 @@ template:
     - role: "Frontend Developer"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "rapid_prototyper"
       department: "engineering"
     - role: "Backend Developer"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "disciplined_executor"
       department: "engineering"
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "QA Engineer"
       model:
         priority: "cost"
-        requires_tools: true
       personality_preset: "process_optimizer"
       department: "quality_assurance"
     - role: "Content Writer"
@@ -154,7 +150,6 @@ template:
       merge_id: "fullstack-mid"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "empathetic_mentor"
       department: "engineering"
 

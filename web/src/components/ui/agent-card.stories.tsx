@@ -90,8 +90,35 @@ export const FullProfile: Story = {
     tier: 'large',
     personality: 'Visionary Leader',
     traits: ['strategic', 'decisive', 'inspiring'],
-    capabilities: ['tools', 'reasoning'],
+    capabilities: ['reasoning', 'vision'],
     timestamp: '2m ago',
+  },
+}
+
+export const CapabilitiesUnverified: Story = {
+  args: {
+    name: 'Rodrigo Sepúlveda',
+    role: 'UX Designer',
+    department: 'Design',
+    status: 'active',
+    model: 'example-large-001',
+    tier: 'large',
+    capabilitiesUnverified: true,
+    timestamp: '6m ago',
+  },
+}
+
+export const ToolCallingUnavailable: Story = {
+  args: {
+    name: 'Isobel Lúnam',
+    role: 'Automation Engineer',
+    department: 'Quality Assurance',
+    status: 'active',
+    model: 'example-small-001',
+    tier: 'small',
+    capabilities: ['reasoning'],
+    toolCallsVerified: false,
+    timestamp: '8m ago',
   },
 }
 

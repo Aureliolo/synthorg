@@ -67,7 +67,6 @@ template:
       merge_id: "fullstack-senior"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"
     # New agents
@@ -83,7 +82,6 @@ template:
       merge_id: "fullstack-mid"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "team_diplomat"
       department: "engineering"
     - role: "Product Manager"

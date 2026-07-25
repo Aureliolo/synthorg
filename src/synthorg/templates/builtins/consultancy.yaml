@@ -72,7 +72,6 @@ template:
       merge_id: "advisor-2"
       model:
         priority: "quality"
-        requires_tools: true
       personality_preset: "code_craftsman"
       department: "consulting"
     - role: "Project Manager"

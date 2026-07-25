@@ -76,17 +76,42 @@ export function agentTraits(agent: DashboardAgentConfig): readonly string[] {
 }
 
 /**
- * Capability requirements the agent's model must satisfy, derived from the
- * setup wizard's raw ``model_requirement`` flags. Absent requirement -> [].
+ * What the agent's assigned model can actually do, as resolved by the
+ * backend from the provider's capability metadata.
+ *
+ * Tool calling is deliberately absent: the matcher enforces it as a floor for
+ * every agent, so a "tools" pill would be constant and say nothing. A model
+ * that failed tool calling at runtime surfaces through
+ * ``agentToolCallsVerified`` instead.
+ *
+ * Unresolvable binding or a plain chat model -> [].
  */
 export function agentCapabilities(agent: DashboardAgentConfig): readonly string[] {
-  const req = agent.model_requirement
-  if (!req) return []
-  const caps: string[] = []
-  if (req['requires_tools'] === true) caps.push('tools')
-  if (req['requires_vision'] === true) caps.push('vision')
-  if (req['requires_reasoning'] === true) caps.push('reasoning')
-  return caps
+  const caps = agent.model_capabilities
+  if (!caps) return []
+  const labels: string[] = []
+  if (caps.supports_reasoning) labels.push('reasoning')
+  if (caps.supports_vision) labels.push('vision')
+  return labels
+}
+
+/**
+ * The assigned model's runtime tool-calling verdict: ``false`` means repeated
+ * runtime failures proved it cannot call tools. ``null`` when unobserved or
+ * when the model binding does not resolve.
+ */
+export function agentToolCallsVerified(
+  agent: DashboardAgentConfig,
+): boolean | null {
+  return agent.model_capabilities?.tool_calls_verified ?? null
+}
+
+/**
+ * True when the assigned model's capabilities were never measured, so the
+ * card can say "unverified" rather than implying the model has none.
+ */
+export function agentCapabilitiesUnverified(agent: DashboardAgentConfig): boolean {
+  return agent.model_capabilities?.metadata_source === 'unknown'
 }
 
 // ── Filtering ──────────────────────────────────────────────

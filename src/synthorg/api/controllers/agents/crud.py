@@ -11,6 +11,10 @@ from synthorg.api.api_core_state import org_mutation_service_of
 from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
+from synthorg.api.controllers.agents._model_capabilities import (
+    AgentConfigResponse,
+    with_model_capabilities,
+)
 from synthorg.api.controllers.agents._shared import _DEFAULT_LIMIT, _config_agent_by_id
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_org import (
@@ -31,7 +35,6 @@ from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
-from synthorg.config.agent_schema import AgentConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     AGENT_DELETED_AUDIT,
@@ -56,8 +59,8 @@ class AgentCrudController(Controller):
         state: State,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
-    ) -> PaginatedResponse[AgentConfig]:
-        """List all configured agents.
+    ) -> PaginatedResponse[AgentConfigResponse]:
+        """List all configured agents with their assigned model's capabilities.
 
         Args:
             state: Application state.
@@ -68,21 +71,29 @@ class AgentCrudController(Controller):
             Paginated agent configurations.
         """
         app_state: AppState = state.app_state
-        agents = await config_resolver_of(app_state).get_agents()
+        resolver = config_resolver_of(app_state)
+        agents = await resolver.get_agents()
+        # Paginate first, then resolve capabilities for the page only: the
+        # provider index is built per request and a small-page client should
+        # not pay for the whole roster.
         page, meta = paginate_cursor(
             agents,
             limit=limit,
             cursor=cursor,
             secret=cursor_secret_of(app_state),
         )
-        return PaginatedResponse(data=page, pagination=meta)
+        providers = await resolver.get_provider_configs()
+        return PaginatedResponse(
+            data=with_model_capabilities(page, providers),
+            pagination=meta,
+        )
 
     @get("/{agent_id:str}")
     async def get_agent(
         self,
         state: State,
         agent_id: PathId,
-    ) -> ApiResponse[AgentConfig]:
+    ) -> ApiResponse[AgentConfigResponse]:
         """Get an agent by its stable id.
 
         Args:
@@ -97,7 +108,8 @@ class AgentCrudController(Controller):
         """
         app_state: AppState = state.app_state
         found = await _config_agent_by_id(app_state, agent_id)
-        return ApiResponse(data=found)
+        providers = await config_resolver_of(app_state).get_provider_configs()
+        return ApiResponse(data=with_model_capabilities([found], providers)[0])
 
     @post(
         "/",
@@ -112,7 +124,7 @@ class AgentCrudController(Controller):
         request: Request[object, object, State],
         state: State,
         data: CreateAgentOrgRequest,
-    ) -> ApiResponse[AgentConfig]:
+    ) -> ApiResponse[AgentConfigResponse]:
         """Create a new agent in the org config.
 
         Args:
@@ -125,6 +137,7 @@ class AgentCrudController(Controller):
         """
         app_state: AppState = state.app_state
         agent = await org_mutation_service_of(app_state).create_agent(data)
+        providers = await config_resolver_of(app_state).get_provider_configs()
         publish_ws_event(
             request,
             WsEventType.AGENT_CREATED,
@@ -135,7 +148,7 @@ class AgentCrudController(Controller):
                 "department": agent.department,
             },
         )
-        return ApiResponse(data=agent)
+        return ApiResponse(data=with_model_capabilities([agent], providers)[0])
 
     @patch(
         "/{agent_id:str}",
@@ -150,7 +163,7 @@ class AgentCrudController(Controller):
         state: State,
         agent_id: PathId,
         data: UpdateAgentOrgRequest,
-    ) -> Response[ApiResponse[AgentConfig]]:
+    ) -> Response[ApiResponse[AgentConfigResponse]]:
         """Update an existing agent.
 
         Supports optimistic concurrency via ``If-Match`` header.
@@ -192,6 +205,10 @@ class AgentCrudController(Controller):
             CHANNEL_AGENTS,
             {"name": updated.name, "department": updated.department},
         )
+        # The ETag is the concurrency token for the persisted config, so it
+        # is computed from the config alone: model capabilities are derived
+        # provider state and would otherwise invalidate a client's token
+        # whenever an unrelated provider re-probe changed them.
         new_etag = compute_etag(
             json.dumps(
                 updated.model_dump(mode="json"),
@@ -199,8 +216,9 @@ class AgentCrudController(Controller):
             ),
             "",
         )
+        providers = await config_resolver_of(app_state).get_provider_configs()
         return Response(
-            content=ApiResponse(data=updated),
+            content=ApiResponse(data=with_model_capabilities([updated], providers)[0]),
             headers={"ETag": new_etag},
         )
 

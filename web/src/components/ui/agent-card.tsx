@@ -4,6 +4,7 @@ import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import { formatDateTime } from '@/utils/format'
 import { Avatar } from './avatar'
 import { StatusBadge } from './status-badge'
+import { ToolCallingUnavailableBadge } from './tool-calling-unavailable-badge'
 
 export interface AgentCardProps {
   name: string
@@ -18,8 +19,22 @@ export interface AgentCardProps {
   personality?: string | undefined
   /** Personality trait words. */
   traits?: readonly string[] | undefined
-  /** Capability requirements (e.g. "tools", "vision"). */
+  /**
+   * What the assigned model can actually do (e.g. "reasoning", "vision").
+   * Tool calling never appears: the matcher requires it of every agent, so a
+   * constant pill would carry no information.
+   */
   capabilities?: readonly string[] | undefined
+  /**
+   * The assigned model's runtime tool-calling verdict. ``false`` renders a
+   * warning badge; ``true`` / ``null`` render nothing.
+   */
+  toolCallsVerified?: boolean | null | undefined
+  /**
+   * True when the assigned model's capabilities were never measured, so the
+   * card says so instead of implying the model has none.
+   */
+  capabilitiesUnverified?: boolean | undefined
   currentTask?: string | undefined
   /** Human-readable (usually relative) timestamp text shown in the footer. */
   timestamp?: string | undefined
@@ -58,15 +73,29 @@ function modelMetaItem(props: AgentCardProps): MetaItemData | null {
   return null
 }
 
+/**
+ * The capability row for the assigned model. An un-probed model is reported
+ * as unmeasured rather than as having no capabilities, so the card never
+ * passes off an absent measurement as a negative result.
+ */
+function capabilitiesMetaItem(props: AgentCardProps): MetaItemData | null {
+  if (props.capabilities?.length) {
+    return { label: 'Capabilities', value: props.capabilities.join(', ') }
+  }
+  if (props.capabilitiesUnverified) {
+    return { label: 'Capabilities', value: 'unverified' }
+  }
+  return null
+}
+
 /** Assemble the metadata items present for this agent, in display order. */
 function buildMetaItems(props: AgentCardProps): MetaItemData[] {
   const items: MetaItemData[] = [{ label: 'Dept', value: props.department }]
   const model = modelMetaItem(props)
   if (model) items.push(model)
   if (props.personality) items.push({ label: 'Personality', value: props.personality })
-  if (props.capabilities?.length) {
-    items.push({ label: 'Capabilities', value: props.capabilities.join(', ') })
-  }
+  const capabilities = capabilitiesMetaItem(props)
+  if (capabilities) items.push(capabilities)
   if (props.traits?.length) {
     items.push({ label: 'Traits', value: props.traits.join(', '), span: true })
   }
@@ -147,6 +176,11 @@ export function AgentCard(props: AgentCardProps) {
             <MetaItem key={item.label} {...item} />
           ))}
         </div>
+        {props.toolCallsVerified === false && (
+          <div className="mt-1.5">
+            <ToolCallingUnavailableBadge toolCallsVerified={props.toolCallsVerified} />
+          </div>
+        )}
         {timestamp && <CardFooterTime timestamp={timestamp} timestampIso={timestampIso} />}
       </div>
     </article>

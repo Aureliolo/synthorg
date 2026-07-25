@@ -78,20 +78,17 @@ template:
     - role: "Data Engineer"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "disciplined_executor"
       department: "data_analytics"
     - role: "Data Analyst"
       merge_id: "analyst-primary"
       model:
         priority: "quality"
-        requires_tools: true
       personality_preset: "data_driven_optimizer"
       department: "data_analytics"
     - role: "ML Engineer"
       model:
         priority: "quality"
-        requires_tools: true
       personality_preset: "independent_researcher"
       department: "data_analytics"
     - role: "Data Analyst"

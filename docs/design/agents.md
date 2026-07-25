@@ -217,7 +217,6 @@ management wrapping `TaskEngine` (see [Async Delegation](communication-events.md
       model_requirement:            # capability requirements from template
         priority: "balanced"        # quality / balanced / speed / cost
         min_context: 0
-        requires_tools: false       # hard-require function/tool calling
         requires_vision: false      # hard-require image input
         requires_reasoning: false   # hard-require extended reasoning
         family: null                # e.g. "example-large": pin newest in family

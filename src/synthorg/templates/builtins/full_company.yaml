@@ -223,13 +223,11 @@ template:
     - role: "DevOps/SRE Engineer"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "disciplined_executor"
       department: "engineering"
     - role: "Database Engineer"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "methodical_analyst"
       department: "engineering"
     # Engineering -- dynamic backend devs
@@ -239,12 +237,10 @@ template:
 {% if i == 0 %}
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "pragmatic_builder"
 {% else %}
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "eager_learner"
 {% endif %}
       department: "engineering"
@@ -256,12 +252,10 @@ template:
 {% if i == 0 %}
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "creative_innovator"
 {% else %}
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "team_diplomat"
 {% endif %}
       department: "engineering"
@@ -270,32 +264,27 @@ template:
     - role: "QA Lead"
       model:
         priority: "quality"
-        requires_tools: true
       personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "QA Engineer"
       model:
         priority: "cost"
-        requires_tools: true
       personality_preset: "methodical_analyst"
       department: "quality_assurance"
     - role: "Automation Engineer"
       model:
         priority: "cost"
-        requires_tools: true
       personality_preset: "disciplined_executor"
       department: "quality_assurance"
     # Data & Analytics (2)
     - role: "Data Analyst"
       model:
         priority: "quality"
-        requires_tools: true
       personality_preset: "data_driven_optimizer"
       department: "data_analytics"
     - role: "Data Engineer"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "data_analytics"
     # Operations (2)

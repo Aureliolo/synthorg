@@ -39,21 +39,27 @@ def passes_hard_filters(
 ) -> bool:
     """Return ``True`` when *model* clears every hard requirement.
 
-    Optimistic: a required capability is a hard fail only when the model is
-    *known* to lack it (``litellm`` / ``probe`` metadata with the flag False).
-    A model with ``unknown`` metadata is allowed through -- most modern models
-    support tools/reasoning, and excluding every un-probed cloud model would
-    leave agents unassigned.
+    Tool calling is a floor, not a per-role choice: every agent turn dispatches
+    with tool definitions attached, so a model that cannot call them can only
+    emit prose and fails any task that expects an artifact. It is filtered for
+    every agent rather than only for those that asked for it.
 
-    Runtime tool-call feedback overrides optimism: a model whose
-    ``tool_calls_verified`` is ``False`` has *proven* at runtime that it cannot
-    call tools, so it is excluded for ``requires_tools`` agents regardless of
-    metadata source (the runtime signal is authoritative over the
-    discovery-time claim).
+    Optimistic: a capability is a hard fail only when the model is *known* to
+    lack it (``litellm`` / ``probe`` metadata with the flag False). A model with
+    ``unknown`` metadata is allowed through -- most modern models support
+    tools/reasoning, and excluding every un-probed cloud model would leave
+    agents unassigned.
+
+    Runtime tool-call feedback overrides the discovery-time claim in both
+    directions: ``tool_calls_verified is False`` excludes a model that has
+    *proven* it cannot call tools even when its metadata says otherwise, and
+    ``tool_calls_verified is True`` re-admits one whose ``supports_tools`` flag
+    is a false negative.
 
     Returns:
-        True when the model meets the context floor and every required
-        capability it is known to possess (or has unknown metadata for).
+        True when the model meets the context floor, can call tools, and has
+        every required capability it is known to possess (or has unknown
+        metadata for).
     """
     if model.max_context < requirement.min_context:
         return False
@@ -69,21 +75,27 @@ def passes_hard_filters(
             reason="embedding_model_not_chat_capable",
         )
         return False
-    if requirement.requires_tools and meta.tool_calls_verified is False:
+    if meta.tool_calls_verified is False:
         logger.debug(
             TEMPLATE_MODEL_MATCH_SKIPPED,
             model=model.id,
             reason="tool_calls_runtime_unverified",
         )
         return False
+    unknown = meta.metadata_source == "unknown"
     # A runtime-proven tool caller is authoritative over stale discovery
     # metadata: ``tool_calls_verified is True`` re-admits a model whose
     # ``supports_tools`` flag is a false negative, so it is never permanently
-    # unassignable to ``requires_tools`` agents.
+    # unassignable.
     tools_supported = meta.tool_calls_verified is True or meta.supports_tools
-    unknown = meta.metadata_source == "unknown"
+    if not unknown and not tools_supported:
+        logger.debug(
+            TEMPLATE_MODEL_MATCH_SKIPPED,
+            model=model.id,
+            reason="tool_calling_unsupported",
+        )
+        return False
     required_checks = (
-        (requirement.requires_tools, tools_supported),
         (requirement.requires_vision, meta.supports_vision),
         (requirement.requires_reasoning, meta.supports_reasoning),
     )

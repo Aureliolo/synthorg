@@ -1,4 +1,7 @@
 import {
+  agentCapabilities,
+  agentCapabilitiesUnverified,
+  agentToolCallsVerified,
   filterAgents,
   sortAgents,
   toRuntimeStatus,
@@ -58,6 +61,7 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     personality_preset: null,
     tier: null,
     model_requirement: null,
+    model_capabilities: null,
     hiring_date: '2026-01-15T00:00:00Z',
     ...overrides,
   }
@@ -140,6 +144,79 @@ describe('toRuntimeStatus', () => {
     for (const s of statuses) {
       expect(toRuntimeStatus(s)).toBeDefined()
     }
+  })
+})
+
+// ── model capabilities ─────────────────────────────────────
+
+describe('agentCapabilities', () => {
+  it('returns nothing when the model binding does not resolve', () => {
+    expect(agentCapabilities(makeAgent({ model_capabilities: null }))).toEqual([])
+  })
+
+  it('reports the capabilities the assigned model actually has', () => {
+    const agent = makeAgent({
+      model_capabilities: {
+        supports_reasoning: true,
+        supports_vision: true,
+        tool_calls_verified: null,
+        metadata_source: 'probe',
+      },
+    })
+    expect(agentCapabilities(agent)).toEqual(['reasoning', 'vision'])
+  })
+
+  it('never reports tool calling, which the matcher requires of every agent', () => {
+    const agent = makeAgent({
+      model_capabilities: {
+        supports_reasoning: false,
+        supports_vision: false,
+        tool_calls_verified: true,
+        metadata_source: 'probe',
+      },
+    })
+    expect(agentCapabilities(agent)).toEqual([])
+  })
+})
+
+describe('agentToolCallsVerified', () => {
+  it('surfaces a runtime-proven tool-calling failure', () => {
+    const agent = makeAgent({
+      model_capabilities: {
+        supports_reasoning: false,
+        supports_vision: false,
+        tool_calls_verified: false,
+        metadata_source: 'probe',
+      },
+    })
+    expect(agentToolCallsVerified(agent)).toBe(false)
+  })
+
+  it('is null when the model binding does not resolve', () => {
+    expect(agentToolCallsVerified(makeAgent({ model_capabilities: null }))).toBeNull()
+  })
+})
+
+describe('agentCapabilitiesUnverified', () => {
+  it('is true only for an un-probed model', () => {
+    const unknown = makeAgent({
+      model_capabilities: {
+        supports_reasoning: false,
+        supports_vision: false,
+        tool_calls_verified: null,
+        metadata_source: 'unknown',
+      },
+    })
+    const probed = makeAgent({
+      model_capabilities: {
+        supports_reasoning: false,
+        supports_vision: false,
+        tool_calls_verified: null,
+        metadata_source: 'probe',
+      },
+    })
+    expect(agentCapabilitiesUnverified(unknown)).toBe(true)
+    expect(agentCapabilitiesUnverified(probed)).toBe(false)
   })
 })
 

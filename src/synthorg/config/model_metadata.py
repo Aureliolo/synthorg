@@ -39,8 +39,8 @@ class ModelMetadata(BaseModel):
             the optimistic ``supports_tools`` path), ``True`` = a real tool
             call has been seen at runtime, ``False`` = repeated runtime
             tool-call failures proved the model cannot call tools (the matcher
-            treats this as an authoritative hard-fail for ``requires_tools``
-            agents, overriding optimism). Set by the runtime feedback loop
+            treats this as an authoritative hard-fail for every agent,
+            overriding optimism). Set by the runtime feedback loop
             (``providers.tool_call_feedback``); cleared back to ``None`` by a
             manual operator re-enable.
         supports_vision: Model accepts image inputs.

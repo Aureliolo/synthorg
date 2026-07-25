@@ -1,8 +1,10 @@
 import { AgentCard } from '@/components/ui/agent-card'
 import {
   agentCapabilities,
+  agentCapabilitiesUnverified,
   agentModelId,
   agentPersonalityLabel,
+  agentToolCallsVerified,
   agentTraits,
   toRuntimeStatus,
 } from '@/utils/agents'
@@ -39,6 +41,8 @@ export function AgentConfigCard({
       personality={agentPersonalityLabel(agent)}
       traits={agentTraits(agent)}
       capabilities={agentCapabilities(agent)}
+      toolCallsVerified={agentToolCallsVerified(agent)}
+      capabilitiesUnverified={agentCapabilitiesUnverified(agent)}
       timestamp={timestamp}
       timestampIso={timestampIso}
       className={className}

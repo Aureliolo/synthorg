@@ -27,7 +27,7 @@ def _make_model(  # noqa: PLR0913 -- keyword-only test factory
     max_context: int = 200_000,
     cost_input: float = 0.01,
     latency_ms: int | None = None,
-    tools: bool = False,
+    tools: bool = True,
     tool_calls_verified: bool | None = None,
     vision: bool = False,
     reasoning: bool = False,
@@ -92,11 +92,29 @@ class TestHardFilters:
         assert model is not None
         assert model.id == "seer"
 
-    def test_tools_requirement_excludes_non_tools(self) -> None:
-        req = ModelRequirement(requires_tools=True)
-        model, score = match_model(req, (_make_model("plain", tools=False),))
+    def test_tool_calling_floor_excludes_non_tools(self) -> None:
+        # Tool calling is a floor, not an opt-in: a requirement that never
+        # mentions tools still rejects a model known to lack them.
+        model, score = match_model(
+            ModelRequirement(), (_make_model("plain", tools=False),)
+        )
         assert model is None
         assert score == 0.0
+
+    def test_tool_calling_floor_prefers_tool_capable_sibling(self) -> None:
+        plain = _make_model("plain", tools=False)
+        caller = _make_model("caller", tools=True)
+        model, _ = match_model(ModelRequirement(), (plain, caller))
+        assert model is not None
+        assert model.id == "caller"
+
+    def test_tool_calling_floor_optimistic_for_unknown_metadata(self) -> None:
+        # An un-probed model is admitted rather than excluded: most modern
+        # models call tools, and pessimism would strand every cloud model.
+        unprobed = _make_model("unprobed", tools=False, source="unknown")
+        model, _ = match_model(ModelRequirement(), (unprobed,))
+        assert model is not None
+        assert model.id == "unprobed"
 
     def test_embedding_model_never_assigned_to_chat_agent(self) -> None:
         # An embedding model produces vectors, not chat completions, so it is
@@ -115,16 +133,15 @@ class TestHardFilters:
 
     def test_runtime_unverified_tools_hard_fail_overrides_optimism(self) -> None:
         # tool_calls_verified=False is authoritative: even an unknown-source
-        # model (normally optimistically allowed) is excluded for a
-        # requires_tools agent once runtime proved it cannot call tools.
+        # model (normally optimistically allowed) is excluded once runtime
+        # proved it cannot call tools.
         downgraded = _make_model(
             "downgraded",
             tools=True,
             tool_calls_verified=False,
             source="unknown",
         )
-        req = ModelRequirement(requires_tools=True)
-        model, score = match_model(req, (downgraded,))
+        model, score = match_model(ModelRequirement(), (downgraded,))
         assert model is None
         assert score == 0.0
 
@@ -132,49 +149,47 @@ class TestHardFilters:
         proven = _make_model(
             "proven", tools=True, tool_calls_verified=True, source="litellm"
         )
-        req = ModelRequirement(requires_tools=True)
-        model, _ = match_model(req, (proven,))
+        model, _ = match_model(ModelRequirement(), (proven,))
         assert model is not None
         assert model.id == "proven"
 
-    def test_runtime_unverified_tools_does_not_affect_non_tools_agent(self) -> None:
-        # A model downgraded for tool calling can still serve tool-free roles.
+    def test_runtime_unverified_tools_excludes_every_agent(self) -> None:
+        # There are no tool-free roles: a model runtime-proven incapable is
+        # excluded even for a requirement that declares no capability at all.
         downgraded = _make_model(
             "downgraded", tools=True, tool_calls_verified=False, source="unknown"
         )
-        req = ModelRequirement(requires_tools=False)
-        model, _ = match_model(req, (downgraded,))
+        chat = _make_model("chat")
+        model, _ = match_model(ModelRequirement(), (downgraded, chat))
         assert model is not None
-        assert model.id == "downgraded"
+        assert model.id == "chat"
 
     def test_runtime_unverified_none_keeps_optimistic_tools_path(self) -> None:
         # tool_calls_verified=None means "never observed": the load-bearing
-        # optimistic path. Even an unknown-source model is still accepted for a
-        # requires_tools agent until runtime proves it cannot call tools (only
-        # an explicit False downgrades it).
+        # optimistic path. Even an unknown-source model is still accepted
+        # until runtime proves it cannot call tools (only an explicit False
+        # downgrades it).
         candidate = _make_model(
             "candidate",
             tools=True,
             tool_calls_verified=None,
             source="unknown",
         )
-        req = ModelRequirement(requires_tools=True)
-        model, _ = match_model(req, (candidate,))
+        model, _ = match_model(ModelRequirement(), (candidate,))
         assert model is not None
         assert model.id == "candidate"
 
     def test_runtime_verified_true_overrides_stale_supports_tools(self) -> None:
         # A runtime-proven tool caller is authoritative: even with a stale
         # supports_tools=False false negative from a non-unknown source, the
-        # model stays assignable to a requires_tools agent.
+        # model stays assignable.
         proven = _make_model(
             "proven",
             tools=False,
             tool_calls_verified=True,
             source="litellm",
         )
-        req = ModelRequirement(requires_tools=True)
-        model, _ = match_model(req, (proven,))
+        model, _ = match_model(ModelRequirement(), (proven,))
         assert model is not None
         assert model.id == "proven"
 

@@ -77,13 +77,11 @@ template:
       merge_id: "support-eng"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "QA Engineer"
       model:
         priority: "cost"
-        requires_tools: true
       personality_preset: "methodical_analyst"
       department: "engineering"
 

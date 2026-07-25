@@ -72,6 +72,20 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   personality_preset: fc.constant(null),
   tier: fc.constant(null),
   model_requirement: fc.constant(null),
+  model_capabilities: fc.option(
+    fc.record({
+      supports_reasoning: fc.boolean(),
+      supports_vision: fc.boolean(),
+      tool_calls_verified: fc.constantFrom(true, false, null),
+      metadata_source: fc.constantFrom(
+        'litellm' as const,
+        'preset' as const,
+        'probe' as const,
+        'unknown' as const,
+      ),
+    }),
+    { nil: null },
+  ),
   hiring_date: fc.integer({ min: 1735689600000, max: 1767225600000 }).map(
     (ms) => new Date(ms).toISOString(),
   ),
@@ -83,7 +97,8 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   requiredKeys: [
     'id', 'name', 'role', 'department', 'personality', 'model',
     'memory', 'tools', 'authority', 'autonomy_level', 'strategic_output_mode',
-    'personality_preset', 'tier', 'model_requirement', 'hiring_date',
+    'personality_preset', 'tier', 'model_requirement', 'model_capabilities',
+    'hiring_date',
   ],
 })
 
