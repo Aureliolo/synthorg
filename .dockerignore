@@ -37,9 +37,13 @@ site/
 .venv/
 venv/
 
-# Python caches
-__pycache__/
-*.py[cod]
+# Python caches. The `**/` prefix is load-bearing: Docker's ignore patterns
+# do not cross `/` without it, so a bare `__pycache__/` matches only the
+# repository root and every nested cache still enters the build context.
+# That is how a developer's typeguard-instrumented test bytecode ended up
+# inside the backend image alongside the build's own.
+**/__pycache__/
+**/*.py[cod]
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/

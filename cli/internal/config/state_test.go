@@ -2,9 +2,12 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 )
 
@@ -190,6 +193,126 @@ func TestLoadForTeardown(t *testing.T) {
 		}
 		if s.DataDir != filepath.Clean(tmp) {
 			t.Errorf("DataDir = %q, want %q (caller-supplied dir)", s.DataDir, filepath.Clean(tmp))
+		}
+	})
+}
+
+// TestLoadForReinit covers the re-init loader. It must surrender the
+// secrets from a config that fails strict validation -- that is the whole
+// point, since re-init overwrites every other field anyway -- while still
+// failing hard when the file cannot be read at all, because proceeding
+// without master_key / settings_key / cursor_secret / postgres_password
+// would orphan every stored ciphertext.
+func TestLoadForReinit(t *testing.T) {
+	t.Parallel()
+
+	const (
+		settingsKey    = "carried-settings-key"
+		cursorSecret   = "carried-cursor-secret"
+		pgPassword     = "carried-postgres-password-at-least-32-chars"
+		validFernetKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	)
+
+	writeConfig := func(t *testing.T, tmp string, extra map[string]any) {
+		t.Helper()
+		body := map[string]any{
+			"data_dir":            tmp,
+			"backend_port":        3001,
+			"web_port":            3000,
+			"persistence_backend": "postgres",
+			"postgres_port":       3002,
+			"postgres_password":   pgPassword,
+			"encrypt_secrets":     true,
+			"master_key":          validFernetKey,
+			"settings_key":        settingsKey,
+			"cursor_secret":       cursorSecret,
+		}
+		maps.Copy(body, extra)
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(StatePath(tmp), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	assertSecrets := func(t *testing.T, s State) {
+		t.Helper()
+		if s.MasterKey != validFernetKey {
+			t.Errorf("MasterKey = %q, want %q", s.MasterKey, validFernetKey)
+		}
+		if s.SettingsKey != settingsKey {
+			t.Errorf("SettingsKey = %q, want %q", s.SettingsKey, settingsKey)
+		}
+		if s.CursorSecret != cursorSecret {
+			t.Errorf("CursorSecret = %q, want %q", s.CursorSecret, cursorSecret)
+		}
+		if s.PostgresPassword != pgPassword {
+			t.Errorf("PostgresPassword = %q, want %q", s.PostgresPassword, pgPassword)
+		}
+	}
+
+	t.Run("a value no allowlist accepts still surrenders every secret", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		// An out-of-range port fails strict Validate and, unlike a stale
+		// enum, is not coercible -- so this proves LoadForReinit skips
+		// validation rather than merely riding on Coerce.
+		writeConfig(t, tmp, map[string]any{"nats_client_port": 999999})
+		if _, err := Load(tmp); err == nil {
+			t.Fatal("expected strict Load to reject the invalid config")
+		}
+		s, err := LoadForReinit(tmp)
+		if err != nil {
+			t.Fatalf("LoadForReinit must tolerate an invalid config, got %v", err)
+		}
+		assertSecrets(t, s)
+	})
+
+	t.Run("a removed enum value still surrenders every secret", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		writeConfig(t, tmp, map[string]any{"memory_backend": "mem0"})
+		s, err := LoadForReinit(tmp)
+		if err != nil {
+			t.Fatalf("LoadForReinit: %v", err)
+		}
+		assertSecrets(t, s)
+	})
+
+	t.Run("missing file is a hard error", func(t *testing.T) {
+		t.Parallel()
+		if _, err := LoadForReinit(t.TempDir()); err == nil {
+			t.Error("expected an error: there are no secrets to carry forward")
+		}
+	})
+
+	t.Run("corrupt JSON is a hard error", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		if err := os.WriteFile(StatePath(tmp), []byte("{not json"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := LoadForReinit(tmp)
+		if err == nil {
+			t.Fatal("expected a parse error: the secrets cannot be recovered")
+		}
+		if !errors.Is(err, ErrParsing) {
+			t.Errorf("error = %v, want it to wrap ErrParsing", err)
+		}
+	})
+
+	t.Run("config omitting data_dir falls back to the CLI-supplied dir", func(t *testing.T) {
+		t.Parallel()
+		tmp := t.TempDir()
+		writeConfig(t, tmp, map[string]any{"data_dir": ""})
+		s, err := LoadForReinit(tmp)
+		if err != nil {
+			t.Fatalf("LoadForReinit: %v", err)
+		}
+		if s.DataDir != filepath.Clean(tmp) {
+			t.Errorf("DataDir = %q, want %q", s.DataDir, filepath.Clean(tmp))
 		}
 	})
 }
@@ -437,23 +560,74 @@ func TestDisplayChannel(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsInvalidChannelAndLogLevel(t *testing.T) {
+// TestLoadCoercesInvalidChannelAndLogLevel pins the load-time contract for
+// the two enums a user is most likely to hand-edit: an unrecognised value
+// never fails the load, it falls back to the default and is reported on
+// State.Coerced for the caller to warn about. Refusing to load would take
+// down every command including `init` and `doctor`, which exist to repair
+// exactly this.
+func TestLoadCoercesInvalidChannelAndLogLevel(t *testing.T) {
 	tests := []struct {
 		name     string
 		channel  string
 		logLevel string
-		wantErr  bool
+		// omitted drops the log_level key entirely, as distinct from
+		// writing it as an empty string.
+		omitted      bool
+		wantCoerced  []string
+		wantChannel  string
+		wantLogLevel string
 	}{
-		{"valid channel and log level", "dev", "warn", false},
-		{"empty channel is ok", "", "info", false},
-		{"invalid channel", "nightly", "info", true},
-		{"invalid log level", "stable", "warning", true},
-		{"empty log level uses default from DefaultState", "", "", false}, // unmarshals onto defaults
+		{
+			name:    "valid channel and log level survive untouched",
+			channel: "dev", logLevel: "warn",
+			wantChannel: "dev", wantLogLevel: "warn",
+		},
+		{
+			name:    "empty channel stays empty",
+			channel: "", logLevel: "info",
+			wantChannel: "", wantLogLevel: "info",
+		},
+		{
+			name:    "unrecognised channel coerces to unset",
+			channel: "nightly", logLevel: "info",
+			wantCoerced: []string{"channel"},
+			wantChannel: "", wantLogLevel: "info",
+		},
+		{
+			name:    "unrecognised log level coerces to the default",
+			channel: "stable", logLevel: "warning",
+			wantCoerced: []string{"log_level"},
+			wantChannel: "stable", wantLogLevel: DefaultState().LogLevel,
+		},
+		{
+			// An explicitly empty log_level overrides the DefaultState
+			// value it was unmarshalled onto, and would reach the backend
+			// container as an empty SYNTHORG_LOG_LEVEL, so it is coerced
+			// back to the default rather than passed through.
+			name:    "explicitly empty log level coerces to the default",
+			channel: "", logLevel: "",
+			wantCoerced: []string{"log_level"},
+			wantChannel: "", wantLogLevel: DefaultState().LogLevel,
+		},
+		{
+			// An OMITTED log_level keeps the DefaultState value and is not
+			// a coercion: there was nothing on disk to repair.
+			name:        "omitted log level is not a coercion",
+			omitted:     true,
+			wantChannel: "", wantLogLevel: DefaultState().LogLevel,
+		},
+		{
+			name:    "both unrecognised are reported together",
+			channel: "nightly", logLevel: "warning",
+			wantCoerced: []string{"channel", "log_level"},
+			wantChannel: "", wantLogLevel: DefaultState().LogLevel,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmp := t.TempDir()
-			raw, _ := json.Marshal(map[string]any{
+			body := map[string]any{
 				"data_dir":            tmp,
 				"image_tag":           "latest",
 				"backend_port":        3001,
@@ -465,15 +639,32 @@ func TestLoadRejectsInvalidChannelAndLogLevel(t *testing.T) {
 				// encrypt_secrets defaults to true (DefaultState), and
 				// the master-key invariant now rejects an empty key in
 				// that combination; opt this fixture out since it is
-				// targeting channel/log-level validation only.
+				// targeting channel/log-level coercion only.
 				"encrypt_secrets": false,
-			})
+			}
+			if tt.omitted {
+				delete(body, "log_level")
+			}
+			raw, _ := json.Marshal(body)
 			if err := os.WriteFile(filepath.Join(tmp, stateFileName), raw, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			_, err := Load(tmp)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
+			got, err := Load(tmp)
+			if err != nil {
+				t.Fatalf("Load() must not fail on an unrecognised enum, got %v", err)
+			}
+			if got.Channel != tt.wantChannel {
+				t.Errorf("Channel = %q, want %q", got.Channel, tt.wantChannel)
+			}
+			if got.LogLevel != tt.wantLogLevel {
+				t.Errorf("LogLevel = %q, want %q", got.LogLevel, tt.wantLogLevel)
+			}
+			coercedFields := make([]string, 0, len(got.Coerced))
+			for _, c := range got.Coerced {
+				coercedFields = append(coercedFields, c.Field)
+			}
+			if !slices.Equal(coercedFields, tt.wantCoerced) {
+				t.Errorf("coerced fields = %v, want %v", coercedFields, tt.wantCoerced)
 			}
 		})
 	}

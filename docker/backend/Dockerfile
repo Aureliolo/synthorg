@@ -70,7 +70,31 @@ RUN if [ -n "$LOGFIRE_PROJECT_TOKEN" ]; then \
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
     uv sync --frozen --no-dev --extra postgres --extra distributed --extra telemetry
 
-RUN find /app/src -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+# Ship the application's bytecode, and only the build's own.
+#
+# Importing a .py compiles it to bytecode first; CPython normally caches
+# that in __pycache__ so later imports skip the compile. This runtime
+# cannot: PYTHONDONTWRITEBYTECODE=1 is set below and compose mounts the
+# container read_only. So a container shipped without cached bytecode
+# recompiles all of /app/src on every start and discards the result.
+# Measured A/B on identical source in this image at --cpus 2, importing
+# synthorg.api.app: 31.6s without cached bytecode, 20.4s with, i.e. 11.2s
+# (35%) of every boot. The venv's third-party bytecode already ships via
+# UV_COMPILE_BYTECODE=1; this brings the application in line with it.
+#
+# The strip runs FIRST and is load-bearing, not redundant with
+# .dockerignore: any __pycache__ that reached the build context carries
+# the *developer's* bytecode, including typeguard-instrumented variants
+# from a local test run. Discarding it and recompiling from source is what
+# makes the shipped bytecode a product of the build rather than of
+# whichever machine ran it.
+#
+# unchecked-hash pins cache validity to source content rather than
+# mtime+size, so the COPY into the runtime stage cannot produce a stale
+# hit, and it embeds no timestamps (reproducible builds). compileall exits
+# non-zero on a syntax error, which is a build-time signal worth failing on.
+RUN find /app/src -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true \
+    && python -m compileall -q -j 0 --invalidation-mode unchecked-hash /app/src
 
 # Strip cached wheels only. Keep *.dist-info so Syft and other SBOM tooling
 # can detect actual installed Python packages (not just declared dependencies).
@@ -147,7 +171,37 @@ EXPOSE 3001
 # so it must probe /healthz (always 200 while the event loop is
 # responsive). Probing /readyz would restart the container whenever a
 # dependency is transiently unready -- readiness gates traffic, not restart.
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=30s \
+#
+# The budget is derived from measurement, not guessed. uvicorn runs the
+# whole ASGI lifespan (persistence connect, migrations, service wiring)
+# BEFORE it binds the listening socket, so every probe until boot completes
+# fails with a connection refused -- the start period has to cover the
+# entire cold boot, not just the interpreter start.
+#
+# Measured on a fresh install (new volumes, so every migration applies),
+# container start -> first passing probe:
+#   43.7s  full stack, warm image cache, this image's precompiled bytecode
+#   238s   cold image cache, no precompiled bytecode, several services
+#          contending for the same 2 CPUs -- the worst case observed in
+#          the field, and what the budget has to absorb
+#
+# start-period = 600s is ~2.5x that worst case. It costs nothing on a
+# healthy boot: the first passing probe ends the start period immediately,
+# which is what start-interval is for. It only bounds how long a genuinely
+# hung boot is tolerated before compose gives up. A crashed process is
+# detected by compose straight away and never waits this out.
+#
+# start-interval (Docker 25+) probes every 2s *during* the start period, so
+# a fast boot is detected within ~2s instead of inheriting the 10s
+# steady-state interval. An older daemon ignores the field and falls back
+# to --interval, so this stays compatible with the 20.10 floor the CLI
+# enforces.
+#
+# timeout = 10s against a measured probe cost of 0.5-0.9s under boot
+# contention: the probe spawns a fresh interpreter, so it competes for CPU
+# with the boot it is probing. interval and retries are unchanged -- they
+# govern steady-state liveness, which was never the failure.
+HEALTHCHECK --interval=10s --timeout=10s --retries=3 --start-period=600s --start-interval=2s \
     CMD ["/app/.venv/bin/python", "-c", "import json,urllib.request,sys,os; port=os.environ.get('UVICORN_PORT','3001'); r=urllib.request.urlopen(f'http://127.0.0.1:{port}/api/v1/healthz'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='ok' else 1)"]
 
 ENTRYPOINT []

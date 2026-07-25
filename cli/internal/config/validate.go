@@ -9,12 +9,17 @@ import (
 	"time"
 )
 
-// ErrMissingMasterKey is returned (wrapped) by Validate when
-// EncryptSecrets is true and MasterKey is empty. Exported as a sentinel
-// so the init reinit flow can distinguish this recoverable legacy-config
-// case from a hard validation failure and route through the
-// LoadAllowMissingMasterKey path to regenerate the key on save.
-var ErrMissingMasterKey = errors.New("master_key is required when encrypt_secrets is true")
+// errMissingMasterKey is returned (wrapped) by Validate when
+// EncryptSecrets is true and MasterKey is empty. Unexported: no caller
+// branches on it. The init flow recovers this case structurally, by
+// reading the old config through LoadForReinit (which skips validation
+// entirely) rather than by matching a sentinel.
+//
+// Deliberately NOT coerced the way an unrecognised enum value is: an
+// absent master key cannot be defaulted, and continuing without one would
+// mean writing connection secrets unencrypted while the operator believes
+// encrypt_secrets is on.
+var errMissingMasterKey = errors.New("master_key is required when encrypt_secrets is true")
 
 // Per-section validators called by State.Validate. Each returns the first
 // failure for the section it covers; Validate runs them in order and
@@ -123,7 +128,7 @@ func validateMasterKey(s State) error {
 		return nil
 	}
 	if strings.TrimSpace(s.MasterKey) == "" {
-		return ErrMissingMasterKey
+		return errMissingMasterKey
 	}
 	if err := validateFernetKey(s.MasterKey); err != nil {
 		return fmt.Errorf("invalid master_key: %w", err)
@@ -142,12 +147,9 @@ func validateFineTuning(s State) error {
 	// went unnoticed while fine_tuning=false would silently coerce to "gpu"
 	// the moment the user flipped the feature on. Reject typos at load time
 	// regardless of the current toggle state.
-	switch s.FineTuningVariant {
-	case "", FineTuneVariantGPU, FineTuneVariantCPU:
-		return nil
-	default:
-		return fmt.Errorf("fine_tuning_variant must be %q or %q, got %q", FineTuneVariantGPU, FineTuneVariantCPU, s.FineTuningVariant)
-	}
+	return checkEnumOptional(
+		"fine_tuning_variant", s.FineTuningVariant, isValidFineTuneVariant, FineTuneVariantNames(),
+	)
 }
 
 func validateVerifiedDigests(s State) error {

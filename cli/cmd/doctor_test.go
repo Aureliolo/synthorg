@@ -238,6 +238,58 @@ func TestClassifyDoctor(t *testing.T) {
 	}
 }
 
+// TestDoctorReportsConfigCoercions covers the diagnosis half of the
+// config-recovery story: when the running binary does not recognise a
+// persisted setting it substitutes a default, and doctor has to say so.
+// Without this the operator sees a stack running on values they never
+// chose, with the on-disk file still showing the originals.
+func TestDoctorReportsConfigCoercions(t *testing.T) {
+	base := diagnostics.Report{
+		HealthStatus:      "200",
+		ComposeFileExists: true,
+		ContainerSummary:  []diagnostics.ContainerDetail{{Name: "backend", Health: "healthy"}},
+		ConfigCoercions: []string{
+			`memory_backend: "mem0" is not a recognised value, using sqlvector instead (valid: composite, inmemory, sqlvector)`,
+		},
+	}
+
+	t.Run("surfaced as a warning by default", func(t *testing.T) {
+		defer func(saved string) { doctorChecks = saved }(doctorChecks)
+		doctorChecks = ""
+
+		status, issues := classifyDoctor(base)
+		if status != doctorWarnings {
+			t.Errorf("status = %v, want %v", status, doctorWarnings)
+		}
+		var found bool
+		for _, issue := range issues {
+			if strings.Contains(issue, "memory_backend") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("issues must mention the coerced field, got %v", issues)
+		}
+	})
+
+	t.Run("suppressed when the config category is scoped out", func(t *testing.T) {
+		defer func(saved string) { doctorChecks = saved }(doctorChecks)
+		// --checks containers deliberately excludes config, so a config
+		// finding must not leak into the verdict.
+		doctorChecks = "containers"
+
+		filtered := filterReportByDoctorChecks(base)
+		if len(filtered.ConfigCoercions) != 0 {
+			t.Errorf("ConfigCoercions = %v, want none when config is excluded", filtered.ConfigCoercions)
+		}
+		for _, issue := range collectDoctorWarnings(filtered) {
+			if strings.Contains(issue, "memory_backend") {
+				t.Errorf("config finding leaked into an excluded category: %q", issue)
+			}
+		}
+	})
+}
+
 func TestDoctorRejectsExtraArgs(t *testing.T) {
 	// Cannot run in parallel: rootCmd is a package-level singleton.
 	// sandboxRootCmd snapshots writers and bound flag values and

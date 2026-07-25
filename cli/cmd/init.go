@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -228,18 +227,9 @@ func hintAfterInit(out *ui.UI, state config.State) {
 // or --yes), and preserves the settings key in state. Returns false if
 // declined.
 func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bool, error) {
-	oldState, loadErr := config.Load(state.DataDir)
-	if errors.Is(loadErr, config.ErrMissingMasterKey) {
-		// Recovery path: encrypt_secrets is on but no master_key was
-		// ever generated on disk. Re-read via the permissive variant so
-		// reinit can carry forward the rest of the state; the new key
-		// (already generated on `state`) is preserved through the
-		// normal reinit-Yes / reinit-Interactive flows below.
-		oldState, loadErr = config.LoadAllowMissingMasterKey(state.DataDir)
-	}
+	oldState, loadErr := config.LoadForReinit(state.DataDir)
 	if loadErr != nil {
-		return false, fmt.Errorf("existing config at %s is unreadable: %w (delete it manually to force a fresh init)",
-			config.StatePath(state.DataDir), loadErr)
+		return false, unreadableExistingConfigError(config.StatePath(state.DataDir), loadErr)
 	}
 	if opts.Yes {
 		return applyReinitYes(cmd, state, oldState)

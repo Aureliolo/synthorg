@@ -155,6 +155,13 @@ type State struct {
 	MaxAPIResponseBytes  int64 `json:"max_api_response_bytes,omitempty"`
 	MaxBinaryBytes       int64 `json:"max_binary_bytes,omitempty"`
 	MaxArchiveEntryBytes int64 `json:"max_archive_entry_bytes,omitempty"`
+
+	// Coerced records enum fields whose persisted value this binary did
+	// not recognise and replaced at load time (see Coerce). Deliberately
+	// NOT persisted: it describes one load, not configuration, and the
+	// operator's original value must survive on disk until something
+	// deliberately rewrites the file.
+	Coerced []Coercion `json:"-"`
 }
 
 // Compiled-in default values for the tunables. Exposed so Tunables can detect
@@ -360,18 +367,63 @@ func StatePath(dataDir string) string {
 
 // Load reads State from disk. Returns a default state with the given dataDir
 // if the file does not exist (so --data-dir is respected on bootstrap).
+//
+// Enum values this binary no longer recognises are coerced to their
+// defaults (see Coerce) BEFORE Validate runs, and reported on
+// State.Coerced for the caller to warn about. Without that, dropping a
+// value from an allowlist would make every command refuse to load the
+// config -- including the ones that exist to repair it.
 func Load(dataDir string) (State, error) {
-	return loadWith(dataDir, State.Validate)
+	safeDir, err := SecurePath(dataDir)
+	if err != nil {
+		return State{}, err
+	}
+	s, readErr := readState(safeDir)
+	if readErr != nil {
+		if errors.Is(readErr, os.ErrNotExist) {
+			defaults := DefaultState()
+			defaults.DataDir = safeDir
+			// Conservative fallback: sandbox requires explicit user confirmation
+			// via `synthorg init`, so disable it when no config file exists.
+			defaults.Sandbox = false
+			return defaults, nil
+		}
+		return State{}, readErr
+	}
+	s, coerced := Coerce(s)
+	if err := s.Validate(); err != nil {
+		return State{}, fmt.Errorf("config %s: %w", StatePath(safeDir), err)
+	}
+	s.Coerced = coerced
+	return canonicaliseDataDir(s, safeDir)
 }
 
-// LoadAllowMissingMasterKey is Load but runs ValidateAllowMissingMasterKey
-// instead of Validate, so a legacy persisted config can be read even
-// when EncryptSecrets is true and MasterKey is empty. Used by the init
-// reinit flow to recover such installs; callers MUST regenerate or
-// hand-provide a master_key before persisting the returned state back
-// (the strict Validate runs again on the next normal Load).
-func LoadAllowMissingMasterKey(dataDir string) (State, error) {
-	return loadWith(dataDir, State.ValidateAllowMissingMasterKey)
+// LoadForReinit reads State for the `synthorg init` re-init path. Like
+// LoadForTeardown it NEVER runs Validate, for the same reason: re-init is
+// about to overwrite the config wholesale, so validating the value it is
+// replacing can only refuse the repair the command exists to perform. The
+// only thing re-init takes from the old file is the secrets it must carry
+// forward, and those parse fine whatever else is wrong.
+//
+// It differs from LoadForTeardown in one way: a missing, unreadable, or
+// unparseable file IS a hard error here. Teardown can delete an install it
+// could not parse, but re-init cannot silently proceed without
+// master_key / settings_key / cursor_secret / postgres_password -- doing so
+// would orphan every stored ciphertext and lock the CLI out of an existing
+// Postgres volume.
+func LoadForReinit(dataDir string) (State, error) {
+	safeDir, err := SecurePath(dataDir)
+	if err != nil {
+		return State{}, err
+	}
+	s, err := readState(safeDir)
+	if err != nil {
+		return State{}, err
+	}
+	// Deliberately NO Validate and NO Coerce: every field is about to be
+	// replaced by the answers this init run collected, so the only thing
+	// that matters is that the secrets came through.
+	return canonicaliseDataDir(s, safeDir)
 }
 
 // LoadForTeardown reads State on a best-effort basis for destroy paths
@@ -431,47 +483,37 @@ func LoadForTeardown(dataDir string) (State, error) {
 	return s, nil
 }
 
-// loadWith is the shared body of Load and LoadAllowMissingMasterKey.
-// validate is the per-state validator the caller wants applied to the
-// unmarshalled State; both wrappers pass a method value so the dispatch
-// cost is a single function call rather than a per-call branch.
-func loadWith(dataDir string, validate func(State) error) (State, error) {
-	safeDir, err := SecurePath(dataDir)
-	if err != nil {
-		return State{}, err
-	}
+// readState reads and decodes the state file under safeDir, unmarshalling
+// onto DefaultState so an omitted field keeps its default. A missing file
+// surfaces as an ErrReading error wrapping os.ErrNotExist, so callers that
+// treat "absent" as a valid bootstrap state can branch on errors.Is while
+// callers that require the file get a hard failure.
+func readState(safeDir string) (State, error) {
 	path := StatePath(safeDir)
 	data, err := os.ReadFile(path) //nolint:gosec // G304: path is the state file under the SecurePath-cleaned data dir
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			defaults := DefaultState()
-			defaults.DataDir = safeDir
-			// Conservative fallback: sandbox requires explicit user confirmation
-			// via `synthorg init`, so disable it when no config file exists.
-			defaults.Sandbox = false
-			return defaults, nil
-		}
 		return State{}, fmt.Errorf("%w %s: %w", ErrReading, path, err)
 	}
-	// Unmarshal onto defaults so missing fields retain default values.
 	s := DefaultState()
 	if err := json.Unmarshal(data, &s); err != nil {
 		return State{}, fmt.Errorf("%w %s: %w", ErrParsing, path, err)
 	}
-	if err := validate(s); err != nil {
-		return State{}, fmt.Errorf("config %s: %w", path, err)
-	}
-	// Canonicalize and validate DataDir.
-	if s.DataDir != "" {
-		safeLoaded, err := SecurePath(s.DataDir)
-		if err != nil {
-			return State{}, fmt.Errorf("data_dir: %w", err)
-		}
-		s.DataDir = safeLoaded
-	} else {
-		// Config file omitted data_dir; fall back to the directory we loaded from.
+	return s, nil
+}
+
+// canonicaliseDataDir resolves the persisted data_dir to its SecurePath
+// form, falling back to the directory the state was loaded from when the
+// config omits the field.
+func canonicaliseDataDir(s State, safeDir string) (State, error) {
+	if s.DataDir == "" {
 		s.DataDir = safeDir
+		return s, nil
 	}
+	safeLoaded, err := SecurePath(s.DataDir)
+	if err != nil {
+		return State{}, fmt.Errorf("data_dir: %w", err)
+	}
+	s.DataDir = safeLoaded
 	return s, nil
 }
 
@@ -491,6 +533,7 @@ var validOutputModes = map[string]bool{"text": true, "json": true}
 var validTimestampModes = map[string]bool{"relative": true, "iso8601": true}
 var validHintsModes = map[string]bool{"always": true, "auto": true, "never": true}
 var validChangelogViews = map[string]bool{"highlights": true, "commits": true}
+var validFineTuneVariants = map[string]bool{FineTuneVariantGPU: true, FineTuneVariantCPU: true}
 
 // Cached sortedKeys outputs for each enum map. sortedKeys allocates a
 // keys slice + the joined string, so callers that hit it per Validate
@@ -510,7 +553,17 @@ var (
 	timestampModeNamesCache      = sortedKeys(validTimestampModes)
 	hintsModeNamesCache          = sortedKeys(validHintsModes)
 	changelogViewNamesCache      = sortedKeys(validChangelogViews)
+	fineTuneVariantNamesCache    = sortedKeys(validFineTuneVariants)
 )
+
+// isValidFineTuneVariant reports whether name is a known fine-tune image
+// variant. Unexported because the flag layer takes its variant from the
+// TUI index rather than a free-form string; the coercion table is the
+// only consumer.
+func isValidFineTuneVariant(name string) bool { return validFineTuneVariants[name] }
+
+// FineTuneVariantNames returns the allowed fine-tune variant names.
+func FineTuneVariantNames() string { return fineTuneVariantNamesCache }
 
 // IsValidChannel reports whether name is a known update channel.
 func IsValidChannel(name string) bool {
@@ -602,12 +655,8 @@ func IsValidHintsMode(name string) bool { return validHintsModes[name] }
 func HintsModeNames() string { return hintsModeNamesCache }
 
 // stateValidations is the ordered list of per-section State validators
-// invoked by both Validate and ValidateAllowMissingMasterKey.
-// validateMasterKey is NOT in this slice; both wrappers call it (or
-// skip it) separately so the migration-recovery path does not need
-// pointer comparison or per-iteration skip logic to omit it.
-// Package-level so the slice header is allocated once at init rather
-// than on every Validate call (LoadExisting is a hot path).
+// invoked by Validate. Package-level so the slice header is allocated
+// once at init rather than on every Validate call (Load is a hot path).
 var stateValidations = []func(State) error{
 	validatePorts,
 	validateBackends,
@@ -631,27 +680,6 @@ func (s State) Validate() error {
 		}
 	}
 	if err := validateMasterKey(s); err != nil {
-		return err
-	}
-	return s.validateTunables()
-}
-
-// ValidateAllowMissingMasterKey is Validate but tolerates ONE specific
-// failure -- ErrMissingMasterKey. Every other validateMasterKey error
-// (e.g. a non-empty MasterKey that fails the Fernet format check) is
-// still surfaced so a malformed key cannot leak through the recovery
-// path. Used by LoadAllowMissingMasterKey (and ultimately by the init
-// reinit flow) so a legacy persisted config can be read into memory
-// even though it fails the strict invariant; the caller MUST
-// regenerate or hand-provide a master_key before persisting the
-// returned state back.
-func (s State) ValidateAllowMissingMasterKey() error {
-	for _, check := range stateValidations {
-		if err := check(s); err != nil {
-			return err
-		}
-	}
-	if err := validateMasterKey(s); err != nil && !errors.Is(err, ErrMissingMasterKey) {
 		return err
 	}
 	return s.validateTunables()

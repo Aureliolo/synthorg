@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -9,9 +8,28 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Helper extractions for init.go to keep individual functions inside the
-// per-function complexity budget. Logic is unchanged; structure mirrors
-// the original control flow exactly.
+// Helper extractions for init.go, split out to keep each function inside
+// the per-function complexity budget.
+
+// irreplaceableSecretsAdvice is appended to any error about a config file
+// the CLI could not read. config.json is the ONLY copy of these four
+// values: master_key decrypts every stored connection secret, settings_key
+// decrypts the settings store, cursor_secret signs outstanding pagination
+// tokens, and postgres_password is the credential for an existing volume.
+// None can be regenerated, so no message may send the operator to delete
+// the file without saying what has to come out of it first.
+const irreplaceableSecretsAdvice = "It holds secrets that cannot be regenerated: copy master_key, " +
+	"settings_key, cursor_secret and postgres_password out of it before replacing it. " +
+	"Deleting it makes every stored connection secret permanently undecryptable and " +
+	"locks the CLI out of an existing postgres volume."
+
+// unreadableExistingConfigError wraps a failure to read the config an init
+// run was about to carry secrets forward from. Reaching this means the file
+// could not be read or parsed at all -- a value that merely fails
+// validation is tolerated by config.LoadForReinit.
+func unreadableExistingConfigError(path string, err error) error {
+	return fmt.Errorf("existing config at %s could not be read: %w. %s", path, err, irreplaceableSecretsAdvice)
+}
 
 // reuseExistingStateForInteractive carries forward secrets / Postgres
 // settings from an existing config when the interactive TUI re-inits an
@@ -28,18 +46,9 @@ func reuseExistingStateForInteractive(cmd *cobra.Command, state *config.State, r
 		errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), GetGlobalOpts(cmd.Context()).UIOptions())
 		errOut.Warn(fmt.Sprintf("Existing configuration found at %s -- secrets will be regenerated.", existing))
 	}
-	oldState, loadErr := config.Load(state.DataDir)
-	if errors.Is(loadErr, config.ErrMissingMasterKey) {
-		// Recovery path mirrors handleReinit: encrypt_secrets is on but
-		// no master_key was ever generated. Re-read via the permissive
-		// variant so the rest of the state carries forward; the new
-		// key (already generated on `state`) wins through
-		// copyPreservedSecrets below (which only copies the OLD key
-		// when it is non-empty).
-		oldState, loadErr = config.LoadAllowMissingMasterKey(state.DataDir)
-	}
+	oldState, loadErr := config.LoadForReinit(state.DataDir)
 	if loadErr != nil {
-		return fmt.Errorf("existing config unreadable: %w", loadErr)
+		return unreadableExistingConfigError(existing, loadErr)
 	}
 	copyPreservedSecrets(state, oldState)
 	return reusePostgresAcrossInteractive(cmd, state, oldState, result.answers)

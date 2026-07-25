@@ -184,6 +184,7 @@ func applyTunables(cmd *cobra.Command, opts *GlobalOpts) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
+	warnCoercedConfigFields(cmd, opts, state)
 	tun, err := config.ResolveTunables(state)
 	if err != nil {
 		return fmt.Errorf("resolving tunables: %w", err)
@@ -226,6 +227,32 @@ func applyTunables(cmd *cobra.Command, opts *GlobalOpts) error {
 				"'synthorg config unset <key>' to restore verification.")
 	}
 	return nil
+}
+
+// warnCoercedConfigFields reports every persisted enum value this binary
+// did not recognise and replaced at load time (see config.Coerce).
+//
+// Ignores --quiet / --json for the same reason the custom-registry warning
+// does: the stack is running with a value the operator did not choose, and
+// a scripted pipeline that never sees that would silently deploy against
+// the wrong backend. The warning stops on its own once any command
+// persists state, because Save writes the coerced value through.
+func warnCoercedConfigFields(cmd *cobra.Command, opts *GlobalOpts, state config.State) {
+	if len(state.Coerced) == 0 {
+		return
+	}
+	warnOpts := opts.UIOptions()
+	warnOpts.Quiet = false
+	warnOpts.JSON = false
+	warnOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), warnOpts)
+	warnOut.Warn(fmt.Sprintf(
+		"%s holds settings this version does not recognise; the defaults below are in effect. "+
+			"Run 'synthorg config set <key> <value>' to choose explicitly.",
+		config.StatePath(state.DataDir),
+	))
+	for _, c := range state.Coerced {
+		warnOut.Warn("  " + c.String())
+	}
 }
 
 // resolveEnvOverrides merges environment variable overrides with flag values.
