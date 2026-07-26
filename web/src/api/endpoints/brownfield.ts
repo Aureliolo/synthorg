@@ -5,8 +5,6 @@ import type {
   ImportCodebasePayload as ImportCodebasePayloadWire,
 } from '@/api/types/setup'
 
-export type { ImportCodebaseAck }
-
 // The generated wire type marks the server-defaulted fields
 // (``title`` / ``requested_by`` / ``default_branch``) as required; the
 // client omits them so the backend applies its defaults. Derive the

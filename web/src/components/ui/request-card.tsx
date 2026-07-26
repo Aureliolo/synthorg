@@ -1,4 +1,4 @@
-import type { ClientRequest } from '@/api/endpoints/clients'
+import type { ClientRequest } from '@/api/types/clients'
 import { Button } from '@/components/ui/button'
 
 /**

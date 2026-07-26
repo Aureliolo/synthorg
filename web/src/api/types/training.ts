@@ -6,5 +6,3 @@ export type {
   TrainingResultResponse,
   UpdateTrainingOverridesRequest,
 } from './dtos.gen'
-
-export type { ContentType, TrainingPlanStatus } from './enum-values.gen'

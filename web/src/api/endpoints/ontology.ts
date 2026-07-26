@@ -12,30 +12,15 @@ import {
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   CreateEntityRequest,
-  DriftAgentResponse,
   DriftReportResponse,
-  EntityFieldResponse,
   EntityListMeta,
   EntityListResponse,
-  EntityRelationResponse,
   EntityResponse,
   EntityVersionResponse,
   UpdateEntityRequest,
 } from '@/api/types/ontology'
 
 // ── Types ─────────────────────────────────────────────────────
-
-export type {
-  CreateEntityRequest,
-  DriftAgentResponse,
-  DriftReportResponse,
-  EntityFieldResponse,
-  EntityListMeta,
-  EntityRelationResponse,
-  EntityResponse,
-  EntityVersionResponse,
-  UpdateEntityRequest,
-}
 
 /**
  * Paginated entity page plus the backend's catalog-wide aggregates

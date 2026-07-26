@@ -1,4 +1,5 @@
-import { ACTIVE_STAGES, type FineTuneStage } from '@/api/endpoints/fine-tuning'
+import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
+import type { FineTuneStage } from '@/api/types/fine-tuning'
 import { ProgressIndicator } from '@/components/ui/progress-indicator'
 
 /**

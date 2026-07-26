@@ -2,7 +2,8 @@ import { motion } from 'motion/react'
 
 import { InputField } from '@/components/ui/input-field'
 import { cardEntrance } from '@/lib/motion'
-import type { Comparator, PreviewResult } from '@/api/endpoints/custom-rules'
+import type { PreviewResult } from '@/api/endpoints/custom-rules'
+import type { Comparator } from '@/api/types/custom-rules'
 
 import { useRulePreview } from './useRulePreview'
 

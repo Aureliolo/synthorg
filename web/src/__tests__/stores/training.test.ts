@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as trainingApi from '@/api/endpoints/training'
-import type {
-  TrainingPlanResponse,
-  TrainingResultResponse,
-} from '@/api/endpoints/training'
+import type { TrainingPlanResponse, TrainingResultResponse } from '@/api/types/training'
 import { useTrainingStore } from '@/stores/training'
 import { useToastStore } from '@/stores/toast'
 

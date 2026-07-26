@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
-import type { FineTuneDataSourceType } from '@/api/endpoints/fine-tuning'
+import type { FineTuneDataSourceType } from '@/api/types/fine-tuning'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'

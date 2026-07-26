@@ -2,7 +2,7 @@
 
 import type { AgentConfig } from './agents'
 import type { Department as WireDepartment } from './dtos.gen'
-import type { AutonomyLevel, DepartmentName } from './enums'
+import type { AutonomyLevel } from './enums'
 
 export type {
   CreateAgentOrgRequest,
@@ -60,6 +60,3 @@ export interface CompanyConfig {
   readonly agents: readonly AgentConfig[]
   readonly departments: readonly Department[]
 }
-
-/** Convenience type aliases used by older import paths. */
-export type { AutonomyLevel, DepartmentName }

@@ -1,4 +1,4 @@
-import type { FineTuneStage } from '@/api/endpoints/fine-tuning'
+import type { FineTuneStage } from '@/api/types/fine-tuning'
 import type { FineTuningErrors, ListPagination } from './types'
 
 /** All valid fine-tune stage values for runtime validation of WS payloads. */

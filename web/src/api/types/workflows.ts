@@ -20,7 +20,6 @@ export type {
 
 export type {
   WorkflowEdgeType,
-  WorkflowExecutionStatus,
   WorkflowNodeType,
 } from './enum-values.gen'
 

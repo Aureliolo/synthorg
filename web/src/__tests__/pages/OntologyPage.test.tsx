@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { UseOntologyDataReturn } from '@/hooks/useOntologyData'
-import type { EntityResponse, DriftReportResponse } from '@/api/endpoints/ontology'
+import type { DriftReportResponse, EntityResponse } from '@/api/types/ontology'
 
 // ── Mock data ──────────────────────────────────────────────
 

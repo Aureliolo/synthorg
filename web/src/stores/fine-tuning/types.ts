@@ -1,11 +1,11 @@
 import type { StoreApi } from 'zustand'
 import type {
   CheckpointRecord,
+  FineTuneRequest,
   FineTuneRun,
   FineTuneStatus,
   PreflightResult,
-  FineTuneRequest,
-} from '@/api/endpoints/fine-tuning'
+} from '@/api/types/fine-tuning'
 import type { WsEvent } from '@/api/types/websocket'
 
 /** Per-resource error map so a successful fetch never clears another's failure. */

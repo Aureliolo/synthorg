@@ -147,7 +147,7 @@ When a new shared component is needed (not covered by the inventory above), choo
 
 **Sub-package layout** (a primitive plus its internal sub-components, sub-hooks, or utility files):
 
-1. Create `web/src/components/ui/<kebab-name>/` with a barrel `index.ts` re-exporting the public surface.
+1. Create `web/src/components/ui/<kebab-name>/` with a barrel `index.ts`. The barrel is the package boundary: it exports the components a consumer can render plus their `<ComponentName>Props`, carries a `/** @public */` tag so knip treats those as surface by rule rather than by consumption, and exports nothing else. A helper type, or the Props of a sub-component the barrel does not export, is unreachable surface and stays internal; siblings import it from its defining module, which also avoids closing an import cycle back through the barrel.
 2. Each `<SubName>.tsx` sits in the sub-package with a sibling `<SubName>.stories.tsx` covering all states.
 3. Shared utility / hook `.ts` files (no JSX, exempt from the story rule) sit alongside (e.g. `<name>.utils.ts`, `derive-<thing>.ts`). The canonical sub-package layout is `web/src/components/ui/health-popover/` (HealthPopover, HealthPopoverContent, HealthStatusRow, HealthStatusIcon each with sibling stories, plus `health-popover.utils.ts` and `derive-subsystem-states.ts`).
 

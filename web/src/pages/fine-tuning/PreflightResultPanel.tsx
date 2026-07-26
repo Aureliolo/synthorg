@@ -1,4 +1,4 @@
-import type { PreflightResult } from '@/api/endpoints/fine-tuning'
+import type { PreflightResult } from '@/api/types/fine-tuning'
 import { StatusBadge } from '@/components/ui/status-badge'
 
 const STATUS_MAP = {

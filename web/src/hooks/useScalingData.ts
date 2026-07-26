@@ -9,7 +9,7 @@ import type {
   ScalingDecisionResponse,
   ScalingSignalResponse,
   ScalingStrategyResponse,
-} from '@/api/endpoints/scaling'
+} from '@/api/types/scaling'
 
 const SCALING_POLL_INTERVAL = 30_000
 const SCALING_CHANNELS = ['scaling'] as const satisfies readonly WsChannel[]

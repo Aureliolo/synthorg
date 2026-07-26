@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 
-import type { FineTuneStage } from '@/api/endpoints/fine-tuning'
+import type { FineTuneStage } from '@/api/types/fine-tuning'
 
 const STAGES: { key: FineTuneStage; label: string }[] = [
   { key: 'generating_data', label: 'Data Generation' },

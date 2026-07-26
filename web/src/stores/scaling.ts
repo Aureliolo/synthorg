@@ -8,10 +8,12 @@ import {
   triggerScalingEvaluation,
   updateScalingPriority,
   updateScalingStrategy,
-  type ScalingDecisionResponse,
-  type ScalingSignalResponse,
-  type ScalingStrategyResponse,
 } from '@/api/endpoints/scaling'
+import type {
+  ScalingDecisionResponse,
+  ScalingSignalResponse,
+  ScalingStrategyResponse,
+} from '@/api/types/scaling'
 import { createLogger } from '@/lib/logger'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { useToastStore } from '@/stores/toast'

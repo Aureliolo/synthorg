@@ -1,8 +1,6 @@
 import { http, HttpResponse } from 'msw'
-import type {
-  listWorkflowExecutions,
-  WorkflowExecution,
-} from '@/api/endpoints/workflow-executions'
+import type { listWorkflowExecutions } from '@/api/endpoints/workflow-executions'
+import type { WorkflowExecution } from '@/api/types/workflows'
 import { apiSuccess, paginatedFor } from './helpers'
 
 /**

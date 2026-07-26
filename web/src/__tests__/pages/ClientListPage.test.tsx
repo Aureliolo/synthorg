@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { voidSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
-import type { ClientProfile } from '@/api/endpoints/clients'
+import type { ClientProfile } from '@/api/types/clients'
 
 interface ClientsData {
   clients: readonly ClientProfile[]

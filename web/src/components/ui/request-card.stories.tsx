@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
-import type { ClientRequest, RequestStatus } from '@/api/endpoints/clients'
+import type { ClientRequest, RequestStatus } from '@/api/types/clients'
 
 import { RequestCard } from './request-card'
 

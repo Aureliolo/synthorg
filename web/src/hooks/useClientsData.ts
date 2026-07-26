@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { listClients, type ClientProfile } from '@/api/endpoints/clients'
+import { listClients } from '@/api/endpoints/clients'
+import type { ClientProfile } from '@/api/types/clients'
 import { createLogger } from '@/lib/logger'
 import { useWebSocketStore } from '@/stores/websocket'
 import { getErrorMessage } from '@/utils/errors'

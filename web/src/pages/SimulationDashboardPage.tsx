@@ -8,8 +8,8 @@ import {
   getSimulationReport,
   listSimulations,
   type SimulationReport,
-  type SimulationStatusResponse,
 } from '@/api/endpoints/clients'
+import type { SimulationStatusResponse } from '@/api/types/clients'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'

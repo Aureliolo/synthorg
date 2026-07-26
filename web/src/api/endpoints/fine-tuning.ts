@@ -8,31 +8,14 @@ import {
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
   CheckpointRecord,
-  EvalMetrics,
-  FineTuneDataSourceType,
   FineTuneRequest,
   FineTuneRun,
-  FineTuneRunConfig,
   FineTuneStage,
   FineTuneStatus,
-  PreflightCheck,
   PreflightResult,
 } from '@/api/types/fine-tuning'
 
 // -- Types -----------------------------------------------------------
-
-export type {
-  CheckpointRecord,
-  EvalMetrics,
-  FineTuneDataSourceType,
-  FineTuneRequest,
-  FineTuneRun,
-  FineTuneRunConfig,
-  FineTuneStage,
-  FineTuneStatus,
-  PreflightCheck,
-  PreflightResult,
-}
 
 /** Pipeline stages considered "active" (in progress). */
 export const ACTIVE_STAGES: ReadonlySet<FineTuneStage> = new Set<FineTuneStage>([

@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { Inbox } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 
-import type { ClientRequest, RequestStatus } from '@/api/endpoints/clients'
+import type { ClientRequest, RequestStatus } from '@/api/types/clients'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'

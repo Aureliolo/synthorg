@@ -5,11 +5,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { buildSimulation, emptyPage, paginatedFor, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { Capabilities } from '@/api/types/capabilities'
-import type {
-  cancelSimulation,
-  listSimulations,
-  SimulationStatusResponse,
-} from '@/api/endpoints/clients'
+import type { cancelSimulation, listSimulations } from '@/api/endpoints/clients'
+import type { SimulationStatusResponse } from '@/api/types/clients'
 
 interface CapReturn {
   capabilities: Capabilities

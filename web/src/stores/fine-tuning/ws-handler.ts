@@ -1,7 +1,7 @@
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
-import type { FineTuneStatus } from '@/api/endpoints/fine-tuning'
+import type { FineTuneStatus } from '@/api/types/fine-tuning'
 import type { WsEvent } from '@/api/types/websocket'
 import { VALID_STAGE_VALUES } from './_helpers'
 import type { FineTuningGet, FineTuningSet } from './types'

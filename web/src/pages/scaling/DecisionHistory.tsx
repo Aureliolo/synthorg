@@ -5,7 +5,7 @@ import { Pagination } from '@/components/ui/pagination'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { useListPagination } from '@/hooks/use-list-pagination'
-import type { ScalingDecisionResponse } from '@/api/endpoints/scaling'
+import type { ScalingDecisionResponse } from '@/api/types/scaling'
 import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
 interface DecisionHistoryProps {

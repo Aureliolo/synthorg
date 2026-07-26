@@ -7,12 +7,9 @@ import {
 import { createCrudActions } from './fine-tuning/crud-actions'
 import { createFetchActions } from './fine-tuning/fetch-actions'
 import { createWsHandler } from './fine-tuning/ws-handler'
-import type {
-  FineTuningErrors,
-  FineTuningState,
-} from './fine-tuning/types'
+import type { FineTuningState } from './fine-tuning/types'
 
-export type { FineTuningErrors, FineTuningState }
+export type { FineTuningState }
 export { selectFineTuningBannerError }
 
 export const useFineTuningStore = create<FineTuningState>((set, get) => ({

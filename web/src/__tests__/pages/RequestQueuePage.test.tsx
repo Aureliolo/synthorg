@@ -5,7 +5,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { emptyPage, paginatedFor, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { Capabilities } from '@/api/types/capabilities'
-import type { ClientRequest, listRequests } from '@/api/endpoints/clients'
+import type { listRequests } from '@/api/endpoints/clients'
+import type { ClientRequest } from '@/api/types/clients'
 import { approveRequest, rejectRequest, scopeRequest } from '@/api/endpoints/clients'
 
 interface CapReturn {

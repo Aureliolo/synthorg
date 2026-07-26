@@ -2,12 +2,9 @@
 
 export type {
   CreateEntityRequest,
-  DriftAgentResponse,
   DriftReportResponse,
-  EntityFieldResponse,
   EntityListMeta,
   EntityListResponse,
-  EntityRelationResponse,
   EntityResponse,
   EntityVersionResponse,
   UpdateEntityRequest,

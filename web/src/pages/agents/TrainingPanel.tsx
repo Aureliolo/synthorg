@@ -19,11 +19,8 @@ import { TagInput } from '@/components/ui/tag-input'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import type {
-  CreateTrainingPlanRequest,
-  TrainingPlanResponse,
-  TrainingResultResponse,
-} from '@/api/endpoints/training'
+import type { CreateTrainingPlanRequest } from '@/api/endpoints/training'
+import type { TrainingPlanResponse, TrainingResultResponse } from '@/api/types/training'
 
 const log = createLogger('training-panel')
 

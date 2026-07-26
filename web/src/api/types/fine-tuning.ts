@@ -2,12 +2,9 @@
 
 export type {
   CheckpointRecord,
-  EvalMetrics,
   FineTuneRequest,
   FineTuneRun,
-  FineTuneRunConfig,
   FineTuneStatus,
-  PreflightCheck,
   PreflightResult,
 } from './dtos.gen'
 

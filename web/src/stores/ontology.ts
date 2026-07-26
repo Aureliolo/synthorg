@@ -7,10 +7,12 @@ import {
   deleteEntity as apiDeleteEntity,
   listEntities,
   listDriftReports,
-  type EntityListMeta,
-  type EntityResponse,
-  type DriftReportResponse,
 } from '@/api/endpoints/ontology'
+import type {
+  DriftReportResponse,
+  EntityListMeta,
+  EntityResponse,
+} from '@/api/types/ontology'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'

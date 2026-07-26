@@ -24,11 +24,7 @@ import {
   toGroupRelative,
 } from './layout-internals'
 
-export type {
-  LayoutDirection,
-  LayoutOptions,
-  LayoutVisualPrefs,
-} from './layout-shared'
+export type { LayoutOptions } from './layout-shared'
 
 /** Grid fallback when there are no agent leaf nodes to lay out. */
 function layoutEmptyChart(nodes: Node[]): Node[] {

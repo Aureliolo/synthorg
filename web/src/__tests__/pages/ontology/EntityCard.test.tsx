@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { EntityCard } from '@/pages/ontology/EntityCard'
-import type { EntityResponse } from '@/api/endpoints/ontology'
+import type { EntityResponse } from '@/api/types/ontology'
 
 function buildEntity(overrides: Partial<EntityResponse> = {}): EntityResponse {
   return {

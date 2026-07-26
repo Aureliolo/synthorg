@@ -2,8 +2,6 @@ import { http, HttpResponse } from 'msw'
 import type {
   approveRequest,
   cancelSimulation,
-  ClientProfile,
-  ClientRequest,
   createClient,
   decideReviewStage,
   getClient,
@@ -17,12 +15,16 @@ import type {
   listSimulations,
   rejectRequest,
   scopeRequest,
-  SimulationStatusResponse,
   startSimulation,
   submitRequest,
-  TaskRequirement,
   updateClient,
 } from '@/api/endpoints/clients'
+import type {
+  ClientProfile,
+  ClientRequest,
+  SimulationStatusResponse,
+  TaskRequirement,
+} from '@/api/types/clients'
 import { apiError, emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 function buildProfile(overrides: Partial<ClientProfile> = {}): ClientProfile {

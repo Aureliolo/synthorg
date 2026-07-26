@@ -6,13 +6,13 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { useCustomRulesStore } from '@/stores/custom-rules'
 import { makeEnumParser } from '@/utils/type-guards'
+import type { CustomRule } from '@/api/endpoints/custom-rules'
 import type {
   Comparator,
   CreateCustomRuleRequest,
-  CustomRule,
   ProposalAltitude,
   RuleSeverity,
-} from '@/api/endpoints/custom-rules'
+} from '@/api/types/custom-rules'
 
 interface CustomRuleFormDrawerProps {
   open: boolean

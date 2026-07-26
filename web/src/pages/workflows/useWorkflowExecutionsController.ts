@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   cancelWorkflowExecution,
   listWorkflowExecutions,
-  type WorkflowExecution,
 } from '@/api/endpoints/workflow-executions'
+import type { WorkflowExecution } from '@/api/types/workflows'
 import { useToastStore } from '@/stores/toast'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'

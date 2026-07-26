@@ -268,9 +268,8 @@ export default tseslint.config(
     // One barrel per name. A generated DTO lives at `@/api/types/<domain>` and
     // nowhere else, so knip's `types` report can prove a re-export dead: a
     // second path to the same name makes every path look unused, which is what
-    // kept that report switched off. Deleting the index barrel already makes
-    // the old path a resolution failure; this turns that into a message that
-    // names the replacement, and stops the barrel being recreated.
+    // kept that report switched off. These three rules stop the second path
+    // coming back.
     files: ['**/*.ts', '**/*.tsx'],
     rules: {
       'no-restricted-imports': [
@@ -284,6 +283,40 @@ export default tseslint.config(
                 "`@/api/types/agents`, `@/api/types/http`, `@/api/types/errors`.",
             },
           ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/api/types/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          // A wildcard over the generated modules re-creates the uncurated
+          // index barrel: it can never be reported unused, so it hides drift
+          // instead of surfacing it. List the names the dashboard imports.
+          selector: "ExportAllDeclaration[source.value=/\\.gen$/]",
+          message:
+            'Do not `export *` from a generated module -- list the names the dashboard imports, ' +
+            'so an entry nothing consumes shows up in knip.',
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/api/endpoints/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          // An endpoint module exports behaviour and the types it derives
+          // (`StageVerdict`, `SimulationReport`); DTO shapes come from the type
+          // barrel. Re-exporting them here is a third path to the same name.
+          selector: "ExportNamedDeclaration[source.value=/^@\\/api\\/types\\//]",
+          message:
+            'Do not re-export DTO types from an endpoint module -- consumers import them from ' +
+            '`@/api/types/<domain>` directly. Endpoint modules export behaviour and their own derived types.',
         },
       ],
     },

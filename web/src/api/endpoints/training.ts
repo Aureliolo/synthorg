@@ -1,10 +1,8 @@
 import { apiClient, unwrap } from '../client'
 import type { ApiResponse } from '../types/http'
 import type {
-  ContentType,
   CreateTrainingPlanRequest as CreateTrainingPlanRequestWire,
   TrainingPlanResponse,
-  TrainingPlanStatus,
   TrainingResultResponse,
   UpdateTrainingOverridesRequest,
 } from '@/api/types/training'
@@ -25,14 +23,6 @@ export type CreateTrainingPlanRequest = Omit<
   readonly override_sources?: readonly string[]
   readonly require_review?: boolean
   readonly skip_training?: boolean
-}
-
-export type {
-  ContentType,
-  TrainingPlanResponse,
-  TrainingPlanStatus,
-  TrainingResultResponse,
-  UpdateTrainingOverridesRequest,
 }
 
 // -- Endpoints -------------------------------------------------------

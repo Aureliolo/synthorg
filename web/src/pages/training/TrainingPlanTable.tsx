@@ -6,10 +6,7 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { ROUTES } from '@/router/routes'
 import { formatDateTime, formatNumber } from '@/utils/format'
 import { GraduationCap } from 'lucide-react'
-import type {
-  TrainingPlanResponse,
-  TrainingResultResponse,
-} from '@/api/endpoints/training'
+import type { TrainingPlanResponse, TrainingResultResponse } from '@/api/types/training'
 import type { AgentRuntimeStatus } from '@/utils/agent-status'
 
 export interface TrainingPlanRow {

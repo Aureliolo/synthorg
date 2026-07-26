@@ -1,6 +1,6 @@
 import { memo } from 'react'
 
-import type { FineTuneRun, FineTuneStage } from '@/api/endpoints/fine-tuning'
+import type { FineTuneRun, FineTuneStage } from '@/api/types/fine-tuning'
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'

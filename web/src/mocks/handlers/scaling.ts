@@ -1,6 +1,5 @@
 import { http, HttpResponse } from 'msw'
 import type {
-  ScalingDecisionResponse,
   getScalingDecisions,
   getScalingSignals,
   getScalingStrategies,
@@ -8,6 +7,7 @@ import type {
   updateScalingPriority,
   updateScalingStrategy,
 } from '@/api/endpoints/scaling'
+import type { ScalingDecisionResponse } from '@/api/types/scaling'
 import {
   emptyPage,
   paginatedEnvelopeFor,

@@ -6,7 +6,7 @@ import { MoreHorizontal, Trash2 } from 'lucide-react'
 import { memo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog, type ConfirmHandler } from '@/components/ui/confirm-dialog'
-import type { EntityResponse } from '@/api/endpoints/ontology'
+import type { EntityResponse } from '@/api/types/ontology'
 
 const TIER_STYLES = {
   core: 'bg-accent/10 text-accent border-accent/20',

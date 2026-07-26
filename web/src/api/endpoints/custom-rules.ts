@@ -11,15 +11,6 @@ import type {
 
 // -- Types -------------------------------------------------------------------
 
-export type {
-  Comparator,
-  CreateCustomRuleRequest,
-  PreviewRuleRequest,
-  ProposalAltitude,
-  RuleSeverity,
-  UpdateCustomRuleRequest,
-}
-
 export interface MetricDescriptor {
   path: string
   label: string

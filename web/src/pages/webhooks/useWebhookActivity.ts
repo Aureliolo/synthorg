@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { getErrorMessage } from '@/utils/errors'
-import { listWebhookActivity, type WebhookReceipt } from '@/api/endpoints/webhooks'
+import { listWebhookActivity } from '@/api/endpoints/webhooks'
+import type { WebhookReceipt } from '@/api/types/integrations'
 import type { useBulkSelection } from '@/hooks/useBulkSelection'
 
 const log = createLogger('WebhookReceiptsPage')

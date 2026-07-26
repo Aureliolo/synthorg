@@ -10,7 +10,7 @@ import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
-import type { FineTuneRequest } from '@/api/endpoints/fine-tuning'
+import type { FineTuneRequest } from '@/api/types/fine-tuning'
 import type { FineTuningGet, FineTuningSet } from './types'
 
 const log = createLogger('fine-tuning-store')

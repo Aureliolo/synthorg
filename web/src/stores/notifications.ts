@@ -25,7 +25,7 @@ import { createPreferenceActions } from './notifications/preference-actions'
 import { createWsHandler } from './notifications/ws-handler'
 import type { NotificationsState } from './notifications/types'
 
-export type { EnqueueParams, NotificationsState } from './notifications/types'
+export type { NotificationsState } from './notifications/types'
 
 export const useNotificationsStore = create<NotificationsState>()(
   (set, get) => {

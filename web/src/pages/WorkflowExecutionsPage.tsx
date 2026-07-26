@@ -23,7 +23,7 @@ import { useListPagination } from '@/hooks/use-list-pagination'
 import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import { ROUTES } from '@/router/routes'
 import { formatDateTime } from '@/utils/format'
-import type { WorkflowExecution } from '@/api/endpoints/workflow-executions'
+import type { WorkflowExecution } from '@/api/types/workflows'
 
 import { useWorkflowExecutionsController } from './workflows/useWorkflowExecutionsController'
 
