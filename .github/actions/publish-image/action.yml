@@ -29,6 +29,14 @@ inputs:
   ghcr-token:
     description: "GITHUB_TOKEN for GHCR login -- must come from the caller's `secrets.GITHUB_TOKEN`."
     required: true
+  github-token:
+    description: >-
+      GITHUB_TOKEN for the artifact REST API, from the caller's
+      `secrets.GITHUB_TOKEN`, which must also grant `actions: read`. Both are
+      needed so a re-run can reach a tarball an earlier attempt uploaded; the
+      full reasoning and its security trade-off are in the header comment of
+      `.github/workflows/docker.yml`.
+    required: true
 
 outputs:
   digest:
@@ -46,6 +54,7 @@ runs:
       with:
         name: scan-image-${{ inputs.image-name }}-amd64
         path: /tmp
+        github-token: ${{ inputs.github-token }}
 
     - name: Download arm64 image tarball
       if: inputs.enable-arm64 == 'true'
@@ -53,6 +62,7 @@ runs:
       with:
         name: scan-image-${{ inputs.image-name }}-arm64
         path: /tmp
+        github-token: ${{ inputs.github-token }}
 
     - name: Load scanned image tarballs and re-tag for registry
       shell: bash

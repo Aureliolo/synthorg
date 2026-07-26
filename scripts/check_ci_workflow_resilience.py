@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: CI workflow resilience invariants.
 
-Enforces four invariants across the CI definitions so the resilience
+Enforces six invariants across the CI definitions so the resilience
 hardening they carry cannot silently regress:
 
 1. **Every job declares ``timeout-minutes``.** A job without it inherits
@@ -12,19 +12,18 @@ hardening they carry cannot silently regress:
    ``timeout-minutes``; the called workflow owns its own job timeouts.
 
 2. **Every step using an external upload/OIDC action without internal
-   retry is wrapped in a fail-closed retry ladder.** The incident that
-   motivated this gate: ``codecov/codecov-action`` failed on a 503 from
-   the OIDC ``getIDToken()`` mint -- an UNHANDLED error BEFORE the upload,
-   which the action's ``fail_ci_if_error: false`` never sees -- and
-   crashed the job. The fix is the house step-duplication ladder
-   (see ``.github/actions/checkout``): intermediate attempts carry
-   ``continue-on-error: true`` so the run advances to the retry, and the
-   final attempt carries neither guard so a genuinely persistent outage
-   fails CI loud. This gate checks, per (job, enforced-action), that the
-   action's steps include at least one with ``continue-on-error`` (a
-   ladder exists) AND at least one without (a fail-closed final attempt).
-   A single bare step fails the first half; an all-soft-failed ladder
-   fails the second.
+   retry is wrapped in a fail-closed retry ladder.** Such an action can
+   5xx while minting its OIDC token (``getIDToken()``), which happens
+   BEFORE the upload it guards, so ``fail_ci_if_error: false`` never sees
+   the error and the job crashes outright. The house step-duplication
+   ladder covers that window (see ``.github/actions/checkout``):
+   intermediate attempts carry ``continue-on-error: true`` so the run
+   advances to the retry, and the final attempt carries neither guard so
+   a genuinely persistent outage fails CI loud. This gate checks, per
+   (job, enforced-action), that the action's steps include at least one
+   with ``continue-on-error`` (a ladder exists) AND at least one without
+   (a fail-closed final attempt). A single bare step fails the first
+   half; an all-soft-failed ladder fails the second.
 
 3. **Every ``retry_cmd.sh`` call site bounds its ladder in wall-clock.**
    A retry ladder is only useful if it can finish inside the job that runs
@@ -61,14 +60,52 @@ hardening they carry cannot silently regress:
    decide each other structurally rather than through an allowlist that
    would go stale the moment a job gained or lost a checkout.
 
+5. **Every artifact-consuming job grants ``actions: read`` and passes a
+   token to the download.** ``actions/download-artifact``'s default path
+   uses the runtime token, which is scoped to the CURRENT run ATTEMPT.
+   Artifacts uploaded by attempt 1 are therefore invisible to attempt 2,
+   and a re-run of a failed consumer dies with ``GetSignedArtifactURL
+   ... (404) workflow run not found``. Both halves are needed to escape
+   that: an explicit ``github-token`` switches the action onto the REST
+   API path, and ``actions: read`` is the scope that path requires. One
+   without the other still 404s, so the gate demands both -- otherwise
+   the documented "re-run the failed job" recovery is unreachable
+   config.
+
+   The obligation is transitive. A job that never mentions the download
+   directly still consumes artifacts when it calls a composite action
+   that does, so the rule is checked against the closure of local
+   composites that reach a download (``_artifact_consumer_dirs``), and
+   each such composite must declare the ``github-token`` input its
+   callers are required to pass.
+
+6. **A resilient-pull ladder can exhaust inside the job that runs it.**
+   Invariant 3 applied to the other ladder in the tree. ``timeout`` on a
+   single ``docker pull`` bounds one attempt; it says nothing about the
+   ladder, which pays that bound twice per attempt (Docker Hub, then the
+   mirror) plus doubling backoff. Sized wrong, the ladder outlasts its job,
+   the runner reaps it mid-retry, and a retryable registry stall surfaces as
+   an opaque ``cancelled`` job with no diagnosis -- precisely the outcome
+   the ladder exists to turn INTO a named failure, reintroduced one level up.
+
+   The worst case is ``2 x attempts x pull-timeout-seconds + 10 x (2^(n-1) -
+   1)``, resolved per call site from the step's ``with:`` over the action's
+   declared defaults, and compared against the job's ``timeout-minutes``. A
+   ``${{ }}`` expression resolves to the default rather than being skipped,
+   so a parameterised call site is still judged. Costs propagate through the
+   composite call graph by fixpoint, because a ladder nested a level deep is
+   still paid by the job's budget.
+
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
 externally-dependent actions are excluded by design (see ``_EXCLUDED``)
 because they retry internally or are non-blocking feature-advisory.
 
-Invariants 1-2 scan ``.github/workflows/``; invariants 3-4 also scan
-``.github/actions/*/action.yml``, because composite actions both host
-every ``retry_cmd.sh`` call site and can bypass a wrapper themselves.
+Invariants 1-2 scan ``.github/workflows/``; invariants 3-6 also scan
+``.github/actions/*/action.yml``, because composite actions host every
+``retry_cmd.sh`` call site, can bypass a wrapper themselves, and are the
+transitive artifact consumers and ladder hosts invariants 5-6 resolve
+through.
 
 This is a no-baseline gate: the convention passes clean from day one. If
 it flags an existing workflow, fix the workflow -- do NOT add a baseline.
@@ -96,6 +133,23 @@ _DEADLINE_VAR: Final[str] = "RETRY_CMD_DEADLINE"
 
 _CHECKOUT_ACTION: Final[str] = "actions/checkout"
 _CHECKOUT_WRAPPER_DIR: Final[str] = ".github/actions/checkout"
+
+_PULL_ACTION_DIR: Final[str] = ".github/actions/docker-pull-resilient"
+_ATTEMPTS_INPUT: Final[str] = "attempts"
+_PULL_TIMEOUT_INPUT: Final[str] = "pull-timeout-seconds"
+# Each attempt pays the per-pull bound twice: Docker Hub, then the mirror.
+_REGISTRIES_PER_ATTEMPT: Final[int] = 2
+_BACKOFF_BASE_SECONDS: Final[int] = 10
+_SECONDS_PER_MINUTE: Final[int] = 60
+
+_DOWNLOAD_ACTION: Final[str] = "actions/download-artifact"
+_DOWNLOAD_WRAPPER_DIR: Final[str] = ".github/actions/download-artifact"
+_TOKEN_INPUT: Final[str] = "github-token"  # noqa: S105 -- an input name, not a secret
+_ACTIONS_SCOPE: Final[str] = "actions"
+# ``write`` subsumes ``read``; the two blanket string forms are the only
+# other shapes that grant the scope.
+_ACTIONS_READ_VALUES: Final[frozenset[str]] = frozenset({"read", "write"})
+_BLANKET_READ_PERMISSIONS: Final[frozenset[str]] = frozenset({"read-all", "write-all"})
 
 # Upstream actions that exactly one in-repo wrapper is allowed to call, so
 # the wrapper's retry ladder cannot be bypassed. Maps the upstream action to
@@ -418,6 +472,362 @@ def _check_wrapped_action(
     ]
 
 
+def _local_action_dir(uses: str) -> str | None:
+    """Return the repo-relative action directory a ``uses:`` ref names.
+
+    Both in-repo reference forms resolve: the local ``./.github/actions/x``
+    and the fork-qualified ``<owner>/<repo>/.github/actions/x@<sha>`` a job
+    must use before its workspace is populated. ``None`` for anything that is
+    not an in-repo action.
+    """
+    action = _action_id(uses).removeprefix("./").rstrip("/")
+    marker = f"{_ACTIONS_ROOT.parent.name}/{_ACTIONS_ROOT.name}/"
+    if action.startswith(marker):
+        return action
+    index = action.find(f"/{marker}")
+    return action[index + 1 :] if index != -1 else None
+
+
+def _iter_action_files() -> list[Path]:
+    """Return every composite action definition under ``.github/actions/``."""
+    if not _ACTIONS_ROOT.exists():
+        return []
+    return sorted(
+        path
+        for name in ("action.yml", "action.yaml")
+        for path in _ACTIONS_ROOT.rglob(name)
+    )
+
+
+def _composite_uses(data: dict[str, object]) -> list[str]:
+    """Return the ``uses:`` values of a composite action's steps."""
+    runs = data.get("runs")
+    if not isinstance(runs, dict):
+        return []
+    steps = runs.get("steps")
+    if not isinstance(steps, list):
+        return []
+    return [
+        str(step["uses"])
+        for step in steps
+        if isinstance(step, dict) and isinstance(step.get("uses"), str)
+    ]
+
+
+def _load_yaml_mapping(path: Path) -> dict[str, object] | None:
+    """Parse *path* as YAML, returning ``None`` unless it is a mapping."""
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except OSError, yaml.YAMLError, UnicodeDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _artifact_consumer_dirs() -> frozenset[str]:
+    """Return every local action directory that reaches an artifact download.
+
+    A composite consumes artifacts when it uses the upstream action, the
+    in-repo wrapper, or another composite that does, so the set is closed
+    under "calls a consumer" by fixpoint. A hand-maintained list would lose
+    that inheritance the first time a composite gained a download, and the
+    caller whose ``permissions:`` block is the thing that actually has to
+    change is always a level or two up from the download itself.
+    """
+    calls: dict[str, set[str]] = {}
+    consumers: set[str] = {_DOWNLOAD_WRAPPER_DIR}
+    for path in _iter_action_files():
+        data = _load_yaml_mapping(path)
+        if data is None:
+            continue
+        directory = _relative_path(path.parent)
+        used = _composite_uses(data)
+        if any(_action_id(ref) == _DOWNLOAD_ACTION for ref in used):
+            consumers.add(directory)
+        calls[directory] = {
+            local
+            for local in (_local_action_dir(ref) for ref in used)
+            if local is not None
+        }
+    settled = False
+    while not settled:
+        settled = True
+        for directory, targets in calls.items():
+            if directory not in consumers and targets & consumers:
+                consumers.add(directory)
+                settled = False
+    return frozenset(consumers)
+
+
+def _consumes_artifacts(uses: str, consumers: frozenset[str]) -> bool:
+    """Return True when a step downloads artifacts, directly or transitively."""
+    if _action_id(uses) == _DOWNLOAD_ACTION:
+        return True
+    directory = _local_action_dir(uses)
+    return directory is not None and directory in consumers
+
+
+def _step_passes_token(step: dict[str, object]) -> bool:
+    """Return True when the step passes a non-empty ``github-token`` input."""
+    with_ = step.get("with")
+    if not isinstance(with_, dict):
+        return False
+    value = with_.get(_TOKEN_INPUT)
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _grants_actions_read(permissions: object) -> bool:
+    """Return True when a ``permissions:`` value grants the ``actions`` scope.
+
+    Covers the blanket string forms as well as the per-scope mapping. An
+    absent or empty block grants nothing: GitHub's repository-level default
+    is not knowable from the workflow, so it cannot be assumed to include a
+    scope this gate exists to guarantee.
+    """
+    if isinstance(permissions, str):
+        return permissions.strip() in _BLANKET_READ_PERMISSIONS
+    if not isinstance(permissions, dict):
+        return False
+    value = permissions.get(_ACTIONS_SCOPE)
+    return isinstance(value, str) and value.strip() in _ACTIONS_READ_VALUES
+
+
+def _step_label(step: dict[str, object], index: int) -> str:
+    """Return the step's ``name``, or a 1-based positional fallback."""
+    name = step.get("name")
+    return str(name) if isinstance(name, str) else f"step {index + 1}"
+
+
+def _check_artifact_downloads(
+    job_name: str,
+    job: dict[str, object],
+    workflow_permissions: object,
+    consumers: frozenset[str],
+) -> list[str]:
+    """Return violations for an artifact consumer missing its token or scope.
+
+    A job-level ``permissions:`` block REPLACES the workflow-level one rather
+    than merging into it, so the key's presence decides which block is
+    effective: a job that declares other scopes and omits ``actions`` has
+    genuinely dropped it, however generous the workflow default is.
+
+    Args:
+        job_name: Job key, for the message.
+        job: The job mapping.
+        workflow_permissions: The workflow-level ``permissions:`` value.
+        consumers: Local action directories that reach a download.
+
+    Returns:
+        Violation messages, empty when the job consumes no artifacts or is
+        correctly wired.
+    """
+    consuming = [
+        (index, step)
+        for index, step in enumerate(_job_steps(job))
+        if isinstance(step.get("uses"), str)
+        and _consumes_artifacts(str(step["uses"]), consumers)
+    ]
+    if not consuming:
+        return []
+    violations = [
+        (
+            f"job '{job_name}': '{_step_label(step, index)}' consumes artifacts"
+            f" without passing `{_TOKEN_INPUT}`, so it uses the runtime token"
+            " and cannot see artifacts uploaded by an earlier run attempt"
+            " (re-running this job would 404)"
+        )
+        for index, step in consuming
+        if not _step_passes_token(step)
+    ]
+    effective = job.get("permissions", workflow_permissions)
+    if not _grants_actions_read(effective):
+        violations.append(
+            f"job '{job_name}': consumes artifacts but does not grant"
+            f" `{_ACTIONS_SCOPE}: read`, which the API download path its"
+            f" `{_TOKEN_INPUT}` selects requires"
+        )
+    return violations
+
+
+def _ladder_worst_case_seconds(attempts: int, pull_timeout: int) -> int:
+    """Return the longest the resilient-pull ladder can run before giving up.
+
+    Every attempt pays the per-pull bound once per registry, and the backoff
+    doubles from 10s after each attempt except the last.
+    """
+    pulls = _REGISTRIES_PER_ATTEMPT * attempts * pull_timeout
+    # Shift rather than ``2 ** n``: the doubling sum is exact in ints, and
+    # ``**`` widens to Any because a negative exponent would yield a float.
+    backoff = _BACKOFF_BASE_SECONDS * ((1 << (attempts - 1)) - 1)
+    return pulls + backoff
+
+
+def _positive_int(value: object, fallback: int) -> int:
+    """Coerce a YAML scalar to a positive int, falling back when it cannot be.
+
+    A ``${{ }}`` expression is only known at run time, so the action's own
+    default is the only defensible static assumption. Resolving toward the
+    default keeps the estimate honest rather than optimistic: a caller that
+    parameterises the ladder owns the budget it passes.
+    """
+    try:
+        parsed = int(str(value).strip())
+    except TypeError, ValueError:
+        return fallback
+    return parsed if parsed > 0 else fallback
+
+
+def _pull_action_defaults() -> tuple[int, int]:
+    """Return the resilient-pull action's declared ``(attempts, timeout)``."""
+    attempts, timeout = 1, 1
+    definition = _REPO_ROOT / _PULL_ACTION_DIR / "action.yml"
+    data = _load_yaml_mapping(definition)
+    inputs = data.get("inputs") if data else None
+    if not isinstance(inputs, dict):
+        return attempts, timeout
+    for key, target in (
+        (_ATTEMPTS_INPUT, "attempts"),
+        (_PULL_TIMEOUT_INPUT, "timeout"),
+    ):
+        spec = inputs.get(key)
+        if not isinstance(spec, dict):
+            continue
+        value = _positive_int(spec.get("default"), 1)
+        if target == "attempts":
+            attempts = value
+        else:
+            timeout = value
+    return attempts, timeout
+
+
+def _step_ladder_seconds(
+    step: dict[str, object], defaults: tuple[int, int]
+) -> int | None:
+    """Return a step's worst-case ladder duration, or ``None`` if not one."""
+    uses = step.get("uses")
+    if not isinstance(uses, str) or _local_action_dir(uses) != _PULL_ACTION_DIR:
+        return None
+    with_ = step.get("with")
+    overrides = with_ if isinstance(with_, dict) else {}
+    default_attempts, default_timeout = defaults
+    return _ladder_worst_case_seconds(
+        _positive_int(overrides.get(_ATTEMPTS_INPUT), default_attempts),
+        _positive_int(overrides.get(_PULL_TIMEOUT_INPUT), default_timeout),
+    )
+
+
+def _pull_ladder_costs(defaults: tuple[int, int]) -> dict[str, int]:
+    """Return each local action's worst-case ladder duration, by directory.
+
+    Fixpoint over the call graph, the same shape as the artifact closure: a
+    composite's cost is the worst of its own call sites and of any composite
+    it calls, because a job reaching it can pay either. Without this, a ladder
+    nested one composite deep would be invisible to the job whose
+    ``timeout-minutes`` actually has to accommodate it.
+    """
+    direct: dict[str, int] = {}
+    calls: dict[str, set[str]] = {}
+    for path in _iter_action_files():
+        data = _load_yaml_mapping(path)
+        if data is None:
+            continue
+        directory = _relative_path(path.parent)
+        runs = data.get("runs")
+        steps = runs.get("steps") if isinstance(runs, dict) else None
+        if not isinstance(steps, list):
+            continue
+        costs = [
+            seconds
+            for step in steps
+            if isinstance(step, dict)
+            and (seconds := _step_ladder_seconds(step, defaults)) is not None
+        ]
+        if costs:
+            direct[directory] = max(costs)
+        calls[directory] = {
+            local
+            for local in (
+                _local_action_dir(str(step["uses"]))
+                for step in steps
+                if isinstance(step, dict) and isinstance(step.get("uses"), str)
+            )
+            if local is not None
+        }
+    settled = False
+    while not settled:
+        settled = True
+        for directory, targets in calls.items():
+            reachable = [direct[t] for t in targets if t in direct]
+            if not reachable:
+                continue
+            worst = max(reachable)
+            if worst > direct.get(directory, 0):
+                direct[directory] = worst
+                settled = False
+    return direct
+
+
+def _check_ladder_budget(
+    job_name: str,
+    job: dict[str, object],
+    costs: dict[str, int],
+    defaults: tuple[int, int],
+) -> list[str]:
+    """Return a violation when a pull ladder cannot exhaust inside its job.
+
+    Bounding one pull is not enough: if the ladder's worst case outlasts the
+    job, the runner reaps the job mid-retry and a retryable registry stall
+    surfaces as an opaque cancellation with no diagnosis, which is the exact
+    outcome the ladder exists to convert into a named failure. Same rule as
+    invariant 3, applied to the other ladder in the tree.
+
+    Args:
+        job_name: Job key, for the message.
+        job: The job mapping.
+        costs: Worst-case ladder duration per local action directory.
+        defaults: The pull action's declared ``(attempts, timeout)``.
+
+    Returns:
+        One message when the job's budget cannot contain its worst ladder.
+    """
+    worst = 0
+    for step in _job_steps(job):
+        direct = _step_ladder_seconds(step, defaults)
+        if direct is not None:
+            worst = max(worst, direct)
+            continue
+        uses = step.get("uses")
+        if isinstance(uses, str):
+            nested = _local_action_dir(uses)
+            if nested is not None and nested in costs:
+                worst = max(worst, costs[nested])
+    if not worst:
+        return []
+    budget = _positive_int(job.get(_TIMEOUT_KEY), 0) * _SECONDS_PER_MINUTE
+    if budget > worst:
+        return []
+    return [
+        (
+            f"job '{job_name}': the resilient-pull ladder can run up to {worst}s"
+            f" but the job is budgeted {budget}s, so the runner reaps it"
+            " mid-retry and a registry stall surfaces as an opaque cancelled"
+            f" job. Raise {_TIMEOUT_KEY}, or lower `{_ATTEMPTS_INPUT}` /"
+            f" `{_PULL_TIMEOUT_INPUT}` at the call site."
+        )
+    ]
+
+
+def _declares_token_input(data: dict[str, object]) -> bool:
+    """Return True when a composite action declares a ``github-token`` input.
+
+    A composite cannot declare ``permissions:`` -- that is its caller's job --
+    but it must accept the token its caller is required to pass, else the
+    caller's compliance stops at the boundary and the download inside falls
+    back to the runtime token.
+    """
+    inputs = data.get("inputs")
+    return isinstance(inputs, dict) and _TOKEN_INPUT in inputs
+
+
 def _step_env_has_deadline(step: dict[str, object]) -> bool:
     """Return True if the step's ``env:`` sets the deadline."""
     env = step.get("env")
@@ -469,16 +879,19 @@ def _check_retry_deadlines(context: str, step: dict[str, object]) -> list[str]:
     ]
 
 
-def _scan_composite_action(data: dict[str, object], rel_path: str) -> list[str]:
-    """Return retry-deadline violations for a composite action file.
+def _scan_composite_action(
+    data: dict[str, object], rel_path: str, consumers: frozenset[str]
+) -> list[str]:
+    """Return violations for a composite action file.
 
     Composite actions have no ``jobs``; their steps hang off ``runs.steps``.
-    Invariants 3 and 4 apply -- an action cannot declare ``timeout-minutes``,
-    and the enforced upload actions are not used from one.
+    Invariants 3-5 apply -- an action cannot declare ``timeout-minutes``, and
+    the enforced upload actions are not used from one.
 
     Args:
         data: The parsed ``action.yml``.
         rel_path: Repo-relative path, so a wrapper can exempt itself.
+        consumers: Local action directories that reach an artifact download.
 
     Returns:
         Violation messages, empty when the action is compliant.
@@ -490,15 +903,31 @@ def _scan_composite_action(data: dict[str, object], rel_path: str) -> list[str]:
     if not isinstance(steps, list):
         return []
     violations: list[str] = []
+    consumes = False
     for index, step in enumerate(steps):
         if not isinstance(step, dict):
             continue
-        name = step.get("name")
-        label = str(name) if isinstance(name, str) else f"step {index + 1}"
+        label = _step_label(step, index)
         violations.extend(_check_retry_deadlines(f"'{label}'", step))
         uses = step.get("uses")
-        if isinstance(uses, str):
-            violations.extend(_check_wrapped_action(f"'{label}'", rel_path, uses, None))
+        if not isinstance(uses, str):
+            continue
+        violations.extend(_check_wrapped_action(f"'{label}'", rel_path, uses, None))
+        if not _consumes_artifacts(uses, consumers):
+            continue
+        consumes = True
+        if not _step_passes_token(step):
+            violations.append(
+                f"'{label}': consumes artifacts without passing"
+                f" `{_TOKEN_INPUT}`, dropping the caller's token at this"
+                " boundary"
+            )
+    if consumes and not _declares_token_input(data):
+        violations.append(
+            f"action consumes artifacts but declares no `{_TOKEN_INPUT}` input,"
+            " so its callers have no way to reach the API download path that"
+            " sees a previous attempt's artifacts"
+        )
     return violations
 
 
@@ -547,9 +976,21 @@ def _relative_path(path: Path) -> str:
         return resolved.as_posix()
 
 
-def _scan_file(path: Path) -> list[str]:
-    """Return all violation messages for one workflow file."""
+def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]:
+    """Return all violation messages for one workflow file.
+
+    Args:
+        path: The workflow or composite-action file to scan.
+        consumers: Local action directories that reach an artifact download.
+            Computed on demand when omitted; ``_scan_paths`` passes the one
+            it resolved so a whole-tree run walks the actions tree once.
+
+    Returns:
+        Violation messages, empty when the file is compliant.
+    """
     rel_path = _relative_path(path)
+    if consumers is None:
+        consumers = _artifact_consumer_dirs()
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (yaml.YAMLError, UnicodeDecodeError) as exc:
@@ -561,7 +1002,10 @@ def _scan_file(path: Path) -> list[str]:
         return []
     jobs = data.get("jobs")
     if not isinstance(jobs, dict):
-        return _scan_composite_action(data, rel_path)
+        return _scan_composite_action(data, rel_path, consumers)
+    permissions = data.get("permissions")
+    pull_defaults = _pull_action_defaults()
+    ladder_costs = _pull_ladder_costs(pull_defaults)
     violations: list[str] = []
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
@@ -570,16 +1014,19 @@ def _scan_file(path: Path) -> list[str]:
         violations.extend(_check_job_timeout(name, job))
         violations.extend(_check_job_ladders(name, job))
         violations.extend(_check_job_steps(name, rel_path, job))
+        violations.extend(_check_artifact_downloads(name, job, permissions, consumers))
+        violations.extend(_check_ladder_budget(name, job, ladder_costs, pull_defaults))
     return violations
 
 
 def _scan_paths(paths: Iterable[Path]) -> int:
     """Scan each path; print violations; return the shell exit code."""
     failed = False
+    consumers = _artifact_consumer_dirs()
     for path in paths:
         if not path.exists() or path.suffix not in (".yml", ".yaml"):
             continue
-        violations = _scan_file(path)
+        violations = _scan_file(path, consumers)
         if not violations:
             continue
         failed = True
@@ -592,10 +1039,12 @@ def _scan_paths(paths: Iterable[Path]) -> int:
             " job, wrap every enforced external/OIDC upload action in a"
             " fail-closed retry ladder (see .github/actions/checkout for the"
             " pattern), give every retry_cmd.sh call site a"
-            " RETRY_CMD_DEADLINE sized below its job budget, and reach every"
-            " wrapped action through its wrapper rather than upstream. To"
-            " exclude an action deliberately, add it to _EXCLUDED in"
-            " scripts/check_ci_workflow_resilience.py with a reason.",
+            " RETRY_CMD_DEADLINE sized below its job budget, reach every"
+            " wrapped action through its wrapper rather than upstream, and"
+            " give every artifact-consuming job both `actions: read` and an"
+            " explicit github-token. To exclude an action deliberately, add"
+            " it to _EXCLUDED in scripts/check_ci_workflow_resilience.py"
+            " with a reason.",
             file=sys.stderr,
         )
         return 1

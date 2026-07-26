@@ -55,6 +55,13 @@ type HookOutcome =
 
 const _DENY_PATTERN = /\b(block(?:ed|s)?|den(?:y|ied|ies))\b/i;
 
+/** Outer bound on the shutdown daemon stop.
+ *
+ * The script bounds each `dmypy stop` itself, so this only covers a stall
+ * before or between those calls. Without it a wedged interpreter would leave
+ * the dispose handler awaiting a promise that never settles. */
+const _DAEMON_STOP_TIMEOUT_MS = 60000;
+
 function _stdoutString(value: string | null | undefined): string {
   return typeof value === "string" ? value : "";
 }
@@ -181,7 +188,7 @@ function denyReasonFromOutcome(outcome: HookOutcome): string | null {
   return outcome.reason;
 }
 
-export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
+export const SynthOrgHooks: Plugin = async ({ $, worktree }) => {
   return {
     tool: {
       execute: {
@@ -573,6 +580,47 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
           }
         },
       },
+    },
+
+    // Counterpart to the SessionEnd hook in .claude/settings.json. OpenCode
+    // exposes no session-end key, so this keys off the server instance for
+    // this directory being disposed: past that point nothing here is running,
+    // so releasing the worktree's mypy daemons is safe by construction.
+    //
+    // Deliberately fail-open, unlike every guard above: this reclaims memory
+    // and releases the handle that makes a worktree undeletable on Windows,
+    // and refusing to shut down because housekeeping failed would be worse
+    // than skipping it. If it never fires, the daemon's own idle timeout still
+    // reaps it, so this is the fast path rather than the guarantee.
+    event: async ({ event }) => {
+      if (event.type !== "server.instance.disposed") {
+        return;
+      }
+      // Awaited rather than execSync: a synchronous call here would block the
+      // plugin event loop for as long as the stop takes, on the one path
+      // where everything else is trying to shut down.
+      //
+      // Pinned to `worktree` because the command names the script relatively:
+      // inheriting the plugin process's directory would either miss the
+      // script or reach a sibling checkout and stop ITS daemons, which is
+      // worse than not running at all.
+      const stop = $`uv run python scripts/run_affected_mypy.py --stop`
+        .cwd(worktree)
+        .quiet()
+        .nothrow();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          stop,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, _DAEMON_STOP_TIMEOUT_MS);
+          }),
+        ]);
+      } catch {
+        // Best-effort: see above.
+      } finally {
+        clearTimeout(timer);
+      }
     },
   };
 };

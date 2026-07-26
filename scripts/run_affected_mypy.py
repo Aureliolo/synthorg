@@ -16,7 +16,13 @@ codebase, so both figures grow with the dependency set rather than staying
 put. The ``scripts/`` daemon is therefore not kept warm by default. It is
 consulted only when it would earn its footprint: when the change could reach
 that scope, or when it is already running, where the extra coverage is nearly
-free. ``--warm``, ``--status`` and ``--stop`` manage that footprint by hand.
+free. ``--warm``, ``--status`` and ``--stop`` manage that footprint by hand,
+and a daemon left idle past ``_DAEMON_IDLE_TIMEOUT_SECONDS`` releases it
+unprompted, so a session that ends without calling ``--stop`` (or is killed
+outright) cannot strand a daemon on the machine indefinitely. That bound is
+only ever applied when a daemon starts, so one already listening is stopped
+first and rebound (``_adopt_idle_timeout``); otherwise the guarantee would
+skip exactly the long-lived daemons it exists for.
 
 The cold path runs when no daemon can answer (CI, an explicit opt-out, or a
 daemon that failed). It uses git diff against origin/main to type-check only
@@ -44,6 +50,7 @@ Exit codes match mypy: 0 (no errors/nothing to check), 1 (type errors found), et
 """
 
 import argparse
+import contextlib
 import csv
 import json
 import os
@@ -51,6 +58,7 @@ import re
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 from typing import Final, Literal, NamedTuple
 
@@ -161,9 +169,41 @@ _FALSEY_ENV_VALUES: Final[frozenset[str]] = frozenset({"", "0", "false", "no"})
 # A type-check timing out is treated as "no verdict", never as a pass. The git
 # calls are bounded by ``GIT_TIMEOUT_SECONDS`` in the shared scope module.
 _PROCESS_QUERY_TIMEOUT_SECONDS: Final[int] = 30
+# ``ProcessId,CommandLine``: a row shorter than this lost its command line.
+_PROCESS_ROW_FIELDS: Final[int] = 2
+# What may follow a path in a command line without extending it into a
+# different path: a separator, a closing quote, or an argument break.
+_PATH_BOUNDARY_CHARS: Final[str] = "\\/\"' \t"
+# How a mypy daemon identifies itself in its own command line. The only
+# process ``--stop-holder`` is willing to terminate.
+_DAEMON_PROCESS_MARKER: Final[str] = "mypy.dmypy"
+
+# Whether two paths differing only in case are the same path. A command line
+# records a path as the process was launched with it, while the needle is
+# resolved, so on Windows the two routinely differ in case (drive letter, a
+# hand-typed path, a launcher that lower-cases) and an exact match would miss
+# a real holder -- reporting "no process holds ..." for the stranded worktree
+# this tooling exists to release. POSIX paths are genuinely case-sensitive,
+# where folding would conflate two different directories.
+_PATH_MATCH_IS_CASE_SENSITIVE: Final[bool] = sys.platform != "win32"
 # Generous: a cold daemon build over ~6.5k files legitimately takes minutes on
 # a contended machine, so this bounds a hang rather than pacing a slow build.
 _MYPY_TIMEOUT_SECONDS: Final[int] = 1800
+
+# Idle lifetime of the daemon process itself (dmypy's ``--timeout``), NOT a
+# bound on any one check. A daemon outlives the shell that started it, holding
+# its scope's graph resident (see ``_warm`` for the per-scope cost) plus an open
+# handle on its worktree's interpreter; on Windows that handle makes the
+# worktree undeletable, and ``git worktree remove`` fails with "Invalid
+# argument", which looks nothing like its cause. Nothing can stop a daemon whose
+# session was killed rather than exited, so the daemon has to expire on its own.
+# Two hours outlasts a meeting or a lunch, so a warm daemon is rarely lost
+# mid-session, while one left behind overnight always goes away.
+#
+# dmypy fixes this when the daemon process starts, so a daemon already
+# listening never picks it up from a later ``run``; ``_adopt_idle_timeout``
+# is what brings those under the bound.
+_DAEMON_IDLE_TIMEOUT_SECONDS: Final[int] = 7200
 
 
 class _Daemon(NamedTuple):
@@ -187,6 +227,17 @@ class _Daemon(NamedTuple):
     # path rather than a flag keeps the daemon self-describing: the caller
     # does not have to know which single directory a boolean stood for.
     mypypath: Path | None
+
+    @property
+    def lifetime_file(self) -> Path:
+        """Companion marker naming the pid started under a bounded lifetime.
+
+        dmypy's own status file records the pid but not the idle timeout it
+        was started with, and there is no way to ask a running daemon. This
+        is the missing half: written by this script when it starts one, so a
+        daemon it did not start is recognisable as unbounded.
+        """
+        return self.status_file.with_suffix(".lifetime.json")
 
 
 _MAIN_DAEMON: Final[_Daemon] = _Daemon(
@@ -461,11 +512,96 @@ def _dmypy(daemon: _Daemon, *args: str, quiet: bool = False) -> int:
     return _DMYPY_FAILED if result is None else result.returncode
 
 
+def _recorded_lifetime_pid(daemon: _Daemon) -> int | None:
+    """Return the pid this script last started under the current lifetime.
+
+    ``None`` whenever the marker is missing, unreadable, not an object, or
+    records a different lifetime than the one now configured -- every case
+    where the daemon that may be listening cannot be assumed to expire.
+    Changing ``_DAEMON_IDLE_TIMEOUT_SECONDS`` therefore rebinds warm daemons
+    on their next use rather than leaving them on the old value.
+    """
+    try:
+        raw = json.loads(daemon.lifetime_file.read_text(encoding="utf-8"))
+    except OSError, json.JSONDecodeError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    if raw.get("idle_timeout_seconds") != _DAEMON_IDLE_TIMEOUT_SECONDS:
+        return None
+    pid = raw.get("pid")
+    # ``bool`` subclasses ``int``, and a pid of ``True`` is not a pid.
+    return pid if type(pid) is int else None
+
+
+def _record_bounded_lifetime(daemon: _Daemon) -> None:
+    """Record that the daemon now listening was started under the bound."""
+    pid = _daemon_pid(daemon)
+    if pid is None:
+        return
+    payload = json.dumps(
+        {"pid": pid, "idle_timeout_seconds": _DAEMON_IDLE_TIMEOUT_SECONDS}
+    )
+    try:
+        daemon.lifetime_file.write_text(payload, encoding="utf-8")
+    except OSError as exc:
+        # Not fatal: the next invocation reads no marker and restarts the
+        # daemon once more, which is wasteful but never wrong.
+        print(
+            f"could not record the {daemon.label} daemon's lifetime: {exc}",
+            file=sys.stderr,
+        )
+
+
+def _forget_bounded_lifetime(daemon: _Daemon) -> None:
+    """Drop the marker for a daemon that is no longer running.
+
+    Pids are reused, so a marker outliving its process could vouch for an
+    unrelated one that happened to land on the same number.
+    """
+    # A marker that cannot be removed only costs one extra restart.
+    with contextlib.suppress(OSError):
+        daemon.lifetime_file.unlink(missing_ok=True)
+
+
+def _adopt_idle_timeout(daemon: _Daemon) -> None:
+    """Stop a daemon predating the idle timeout so the next run rebinds it.
+
+    dmypy fixes a daemon's idle lifetime at process start. A ``run`` against
+    one already listening is only a check request, so ``--timeout`` never
+    reaches it: a daemon started before this script passed the flag, or by a
+    bare ``dmypy run`` typed by hand, lives forever. That is precisely the
+    daemon that strands a worktree, so the guarantee is worth a restart.
+
+    The marker names the pid this script last started under the current
+    bound, so an unvouched pid is stopped once and comes back bounded. Cost:
+    one graph rebuild, once per worktree -- the same cost a dependency sync
+    already imposes, rather than something paid every push.
+    """
+    if _recorded_lifetime_pid(daemon) == _daemon_pid(daemon):
+        return
+    if not _daemon_running(daemon):
+        return
+    print(
+        f"{daemon.label} daemon predates the "
+        f"{_DAEMON_IDLE_TIMEOUT_SECONDS}s idle timeout and would outlive this "
+        "session; restarting it once so it cannot (the rebuild is slow, and "
+        "happens only this once)."
+    )
+    _dmypy_result(daemon, "stop", quiet=True, timeout=_PROCESS_QUERY_TIMEOUT_SECONDS)
+    _forget_bounded_lifetime(daemon)
+
+
 def _check_daemon(daemon: _Daemon) -> int | None:
     """Check *daemon*'s scope, returning ``None`` if it gave no verdict.
 
     Uses ``run`` rather than ``check`` so the daemon starts on first use and
-    restarts itself whenever the mypy configuration changes.
+    restarts itself whenever the mypy configuration changes. ``--timeout``
+    binds the started daemon's idle lifetime (see
+    ``_DAEMON_IDLE_TIMEOUT_SECONDS``); it is a daemon-management flag rather
+    than a mypy flag, so it does not count towards the flag set whose change
+    forces a rebuild. It only ever reaches a daemon at start, which is what
+    ``_adopt_idle_timeout`` exists to arrange for one already running.
 
     A daemon killed without cleaning up (a reboot, a machine-wide process
     sweep) leaves a status file pointing at a dead pid. dmypy reports "Daemon
@@ -482,10 +618,20 @@ def _check_daemon(daemon: _Daemon) -> int | None:
     standalone pre-push hook that must run without importing synthorg, so the
     shared GeneralRetryHandler is not available to it.
     """
+    _adopt_idle_timeout(daemon)
     last_code: int | None = None
     for attempt in range(_DAEMON_ATTEMPTS):
-        code = _dmypy(daemon, "run", "--", *daemon.paths, *daemon.extra)
+        code = _dmypy(
+            daemon,
+            "run",
+            "--timeout",
+            str(_DAEMON_IDLE_TIMEOUT_SECONDS),
+            "--",
+            *daemon.paths,
+            *daemon.extra,
+        )
         if code in _CHECK_COMPLETED_CODES:
+            _record_bounded_lifetime(daemon)
             if attempt:
                 print(
                     f"{daemon.label} daemon needed a restart before it could "
@@ -697,6 +843,17 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="show each daemon's state and resident memory",
     )
+    group.add_argument(
+        "--find-holders",
+        metavar="PATH",
+        help="list the processes holding PATH open (read-only)",
+    )
+    group.add_argument(
+        "--stop-holder",
+        metavar="PID",
+        type=int,
+        help="terminate one process named by --find-holders",
+    )
     return parser.parse_args()
 
 
@@ -754,8 +911,10 @@ def _stop() -> int:
         )
         if result is not None and result.returncode == 0:
             reclaimed += rss or 0
+            _forget_bounded_lifetime(daemon)
             print(f"{daemon.label}: stopped")
         elif result is not None and _reports_absent_daemon(result):
+            _forget_bounded_lifetime(daemon)
             print(f"{daemon.label}: not running")
         else:
             failed = True
@@ -772,6 +931,190 @@ def _stop() -> int:
     if reclaimed:
         print(f"Reclaimed ~{reclaimed}MB.")
     return 1 if failed else 0
+
+
+def _process_table() -> list[tuple[int, str]]:
+    """Return every visible process as ``(pid, command line)``.
+
+    Only the enumeration is platform-specific; the matching stays in Python so
+    the rule that decides what gets killed is one testable function rather
+    than a quoting-sensitive shell predicate. PowerShell is a data source here
+    (CSV out), never the place a decision is made.
+    """
+    if sys.platform == "win32":
+        command = [
+            "powershell",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            (
+                "Get-CimInstance Win32_Process"
+                " | Select-Object ProcessId,CommandLine"
+                " | ConvertTo-Csv -NoTypeInformation"
+            ),
+        ]
+    else:
+        command = ["ps", "-eo", "pid=,args="]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_PROCESS_QUERY_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"could not list processes: {exc}", file=sys.stderr)
+        return []
+    if result.returncode != 0:
+        print(
+            f"could not list processes: {_first_line(result.stderr)}", file=sys.stderr
+        )
+        return []
+    parse = (
+        _parse_windows_process_table
+        if sys.platform == "win32"
+        else _parse_posix_process_table
+    )
+    return list(parse(result.stdout))
+
+
+def _parse_windows_process_table(output: str) -> Iterator[tuple[int, str]]:
+    """Yield ``(pid, command line)`` from ``ConvertTo-Csv`` output.
+
+    Parsed as real CSV rather than split on commas: a command line routinely
+    contains them, and the quoted field must survive intact.
+    """
+    rows = list(csv.reader(output.splitlines()))
+    # ConvertTo-Csv emits a header row naming the selected properties.
+    for row in rows[1:]:
+        if len(row) < _PROCESS_ROW_FIELDS:
+            continue
+        pid, command = row[0].strip(), row[1].strip()
+        if pid.isdigit():
+            yield int(pid), command
+
+
+def _parse_posix_process_table(output: str) -> Iterator[tuple[int, str]]:
+    """Yield ``(pid, command line)`` from ``ps -eo pid=,args=`` output."""
+    for line in output.splitlines():
+        pid, _, command = line.strip().partition(" ")
+        if pid.isdigit():
+            yield int(pid), command.strip()
+
+
+def _references_path(command: str, needle: str) -> bool:
+    """Return True when *command* names *needle* as a whole path.
+
+    A bare substring test is wrong in the dangerous direction: a worktree
+    named ``foo`` is a prefix of a sibling named ``foo2``, so the sibling's
+    daemon would be offered up for killing while it may be mid-push. Requiring
+    a path separator, quote, or whitespace after the match settles that. A
+    path genuinely nested under the needle still matches, which is correct --
+    it does live there -- and is why the caller confirms each pid rather than
+    acting on the list wholesale.
+
+    Case handling follows the platform (see
+    ``_PATH_MATCH_IS_CASE_SENSITIVE``), because a miss here is silent: the
+    holder simply never appears in the listing.
+    """
+    if not _PATH_MATCH_IS_CASE_SENSITIVE:
+        command, needle = command.casefold(), needle.casefold()
+    start = 0
+    while (index := command.find(needle, start)) != -1:
+        end = index + len(needle)
+        if end == len(command) or command[end] in _PATH_BOUNDARY_CHARS:
+            return True
+        start = index + 1
+    return False
+
+
+def _holders_of(path: Path) -> list[tuple[int, str]]:
+    """Return the processes whose command line names *path*.
+
+    Matched on the RESOLVED absolute path, so a bare directory name shared by
+    two worktrees cannot conflate them: killing another worktree's daemon
+    mid-push is a worse outcome than leaving this one behind.
+    """
+    needle = str(path.resolve())
+    return [
+        (pid, command)
+        for pid, command in _process_table()
+        if _references_path(command, needle)
+    ]
+
+
+def _find_holders(raw_path: str) -> int:
+    """Print the processes holding *raw_path* open, touching none of them.
+
+    Read-only by construction: this half exists so an operator can see exactly
+    what would be killed before anything is. ``--stop-holder`` takes it from
+    here, one explicit pid at a time.
+    """
+    path = Path(raw_path)
+    if not path.exists():
+        print(f"{raw_path} does not exist", file=sys.stderr)
+        return 2
+    holders = _holders_of(path)
+    if not holders:
+        print(f"no process holds {path.resolve()}")
+        return 0
+    print(f"{len(holders)} process(es) hold {path.resolve()}:")
+    for pid, command in holders:
+        print(f"  {pid}\t{command}")
+    print("\nStop only the ones you recognise: --stop-holder <pid>")
+    print("(that refuses any pid that is not a mypy daemon)")
+    return 0
+
+
+def _stop_holder(pid: int) -> int:
+    """Terminate one named mypy daemon.
+
+    Takes a single pid rather than a path: nothing here discovers what to
+    kill, so a mistake in ``--find-holders`` cannot escalate into a kill on
+    its own.
+
+    The pid is then checked against the live process table and refused unless
+    it really is a mypy daemon. Naming a process is the operator's
+    confirmation, but a mistyped pid names some OTHER process perfectly well,
+    and this exists to release a stranded daemon rather than to be a
+    general-purpose process killer. Anything else is the operator's own tools
+    to deal with.
+    """
+    holder = next(
+        (command for running, command in _process_table() if running == pid), None
+    )
+    if holder is None:
+        print(f"pid {pid} is not running", file=sys.stderr)
+        return 2
+    if _DAEMON_PROCESS_MARKER not in holder:
+        print(
+            f"pid {pid} is not a mypy daemon, refusing to stop it:\n  {holder}",
+            file=sys.stderr,
+        )
+        return 2
+    command = (
+        ["taskkill", "/PID", str(pid), "/F"]
+        if sys.platform == "win32"
+        else ["kill", "-9", str(pid)]
+    )
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_PROCESS_QUERY_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"could not stop pid {pid}: {exc}", file=sys.stderr)
+        return 1
+    if result.returncode != 0:
+        detail = _first_line(result.stderr) or _first_line(result.stdout)
+        print(f"could not stop pid {pid}: {detail}", file=sys.stderr)
+        return 1
+    print(f"stopped pid {pid}")
+    return 0
 
 
 def _status() -> int:
@@ -844,6 +1187,10 @@ def main() -> int:
         return _stop()
     if args.status:
         return _status()
+    if args.find_holders:
+        return _find_holders(args.find_holders)
+    if args.stop_holder:
+        return _stop_holder(args.stop_holder)
     if args.full:
         return _run_full()
 

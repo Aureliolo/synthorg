@@ -29,6 +29,14 @@ inputs:
   ghcr-token:
     description: "GITHUB_TOKEN for GHCR"
     required: true
+  github-token:
+    description: >-
+      GITHUB_TOKEN for the artifact REST API, from the caller's
+      `secrets.GITHUB_TOKEN`, which must also grant `actions: read`. Both are
+      needed so a re-run can reach the base tarball an earlier attempt
+      uploaded; the full reasoning and its security trade-off are in the header
+      comment of `.github/workflows/docker.yml`.
+    required: true
 
 outputs:
   digest:
@@ -46,6 +54,7 @@ runs:
       with:
         name: ${{ inputs.artifact-name }}
         path: .
+        github-token: ${{ inputs.github-token }}
 
     # GHCR's token endpoint occasionally exceeds the docker client's default
     # 30s deadline. Drive `docker login` through nick-fields/retry so the

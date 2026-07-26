@@ -25,7 +25,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_backend_regional_defaults.py` | PostToolUse | backend region/currency edits | n/a | n/a | none | harden |
 | `check_baseline_growth.py` | commit+push | `scripts/*_baseline.{txt,json}` | staged | yes | guards baselines | keep |
 | `check_boundary_typed.py` | push | `src/synthorg/` | full | no | none | keep |
-| `check_ci_workflow_resilience.py` | commit+push | `.github/workflows/` | full | no | none | add |
+| `check_ci_workflow_resilience.py` | push | `.github/workflows/` + `.github/actions/` | full | no | none | add |
 | `check_comparison_md_in_sync.py` | push | `competitors.yaml` + `comparison.md` + generator | full | no | none | keep |
 | `check_completion_config_temperature.py` | commit+push | `src/synthorg/` | full | no | none | keep |
 | `check_convention_gate_inventory.py` | push | canonical docs + `convention_gate_map.yaml` | full | no | none | keep (meta-gate) |
@@ -167,6 +167,10 @@ Some conventions are also enforced *before* the file lands on disk so the offend
 PostToolUse hooks run *after* an agent edit lands, validating the written file: `check_web_design_system.py` (web design-token compliance on `web/src/` edits) and `check_backend_regional_defaults.py` (region / currency neutrality on backend edits). Both are agent-time only and excluded from CI parity.
 
 The hook layer is fail-closed: the OpenCode plugin treats hook execution errors as denials, so a misbehaving hook script blocks the action rather than letting it through.
+
+## SessionEnd hook (housekeeping, not a gate)
+
+One `SessionEnd` hook in `.claude/settings.json` runs `scripts/run_affected_mypy.py --stop`, which enforces nothing and blocks nothing: it releases the worktree's mypy daemons when a session ends cleanly (for why a stray daemon matters, see `_DAEMON_IDLE_TIMEOUT_SECONDS` in `scripts/run_affected_mypy.py`). The hook cannot cover a session that is killed rather than exited, so it is the fast path only; the daemon's own two-hour idle timeout is what guarantees an orphan eventually goes away regardless.
 
 ## Third-party prose / formatting hooks
 

@@ -13,6 +13,17 @@
 # for several minutes. A warm daemon holds ~2.5GB resident per worktree, so
 # `typecheck-stop` reclaims it when moving to another branch. `typecheck-status`
 # reports what is running and how much it costs.
+#
+# A daemon also expires on its own after two hours idle (see
+# `_DAEMON_IDLE_TIMEOUT_SECONDS` in run_affected_mypy.py for why it has to).
+# dmypy can only bind that when the daemon starts, so one already running
+# without it is restarted once to adopt it, at the cost of a single graph
+# rebuild. `typecheck-stop` is still how to reclaim a daemon now rather than in
+# two hours, and is required before removing a worktree.
+#
+# When a worktree still will not delete, `--find-holders <path>` lists what is
+# holding it (read-only) and `--stop-holder <pid>` terminates one named
+# process. Two steps on purpose: nothing discovers and kills in one go.
 typecheck:
 	uv run python scripts/run_affected_mypy.py
 

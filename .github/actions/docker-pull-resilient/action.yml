@@ -1,0 +1,147 @@
+name: Docker pull (resilient)
+description: |
+  Pull a Docker Hub image with exponential-backoff retries and a
+  ``mirror.gcr.io`` fallback, then re-tag it to a fixed local tag.
+
+  Docker Hub (registry-1.docker.io) periodically times out from the hosted
+  runners with "context deadline exceeded" or "Client.Timeout exceeded while
+  awaiting headers". Anything that pulls at job runtime without its own retry
+  fails the whole job on a sub-minute blip: a GitHub Actions ``services:``
+  block gives up after three internal attempts, ``setup-buildx-action`` does
+  not retry its BuildKit boot at all, and a bare ``docker run`` gets one shot.
+
+  Retries alone cannot outlast a multi-minute Docker Hub outage, so each
+  attempt also falls back to Google's public Docker Hub mirror
+  (``mirror.gcr.io``) -- a no-auth, no-rate-limit pull-through cache that stays
+  reachable when registry-1.docker.io is down. The fallback ref pins the SAME
+  digest, so the resolved image is byte-identical to the Docker Hub one (the
+  digest pin, and thus the supply-chain guarantee, is preserved).
+
+  Whichever registry serves the pull is re-tagged to ``local-tag`` so the
+  caller is decoupled from the registry it came from. That re-tag is why the
+  local tag is the contract rather than the input ref: a local image cannot be
+  tagged to a digest reference, so a consumer that must name the image (a
+  ``docker run``, a buildx ``driver-opts: image=``, a testcontainers ref) has
+  to be handed a plain tag.
+
+inputs:
+  image:
+    description: |
+      Image reference to pull. MUST carry an ``@sha256:`` digest
+      (``postgres:18-alpine@sha256:...``); a registry host and a tag are
+      optional. The digest is not a convention here but the whole basis of
+      the mirror fallback: a tag-only pull verifies nothing, so serving it
+      from a mirror would silently substitute "trust Docker Hub" with
+      "trust Docker Hub or Google, whichever answered". A digest-less
+      reference is rejected rather than quietly downgraded.
+    required: true
+  local-tag:
+    description: |
+      Local tag applied to whichever registry served the pull. This is the
+      reference the caller should use afterwards.
+    required: true
+  attempts:
+    description: |
+      Number of (Docker Hub, then mirror) attempts before failing. Must be a
+      positive integer.
+
+      Sized with ``pull-timeout-seconds`` so the whole ladder fits inside the
+      caller's ``timeout-minutes``: see that input for the budget, which is
+      enforced per call site by ``check_ci_workflow_resilience.py``.
+    required: false
+    default: "3"
+  pull-timeout-seconds:
+    description: |
+      Wall-clock bound on a single ``docker pull``. A registry that accepts
+      the connection but never completes the transfer would otherwise let one
+      attempt outrun the whole backoff schedule and burn the caller job's
+      timeout, turning an outage into an opaque cancellation instead of a
+      named failure the ladder can retry.
+
+      Bounding one pull is not enough on its own: the LADDER has to be able to
+      exhaust inside the job that runs it, or the runner reaps the job
+      mid-retry and the outage still surfaces as an opaque cancellation rather
+      than the named failure above. Each attempt pays this twice (Docker Hub,
+      then the mirror), so the worst case is
+      ``2 x attempts x pull-timeout-seconds`` plus ``10 x (2^n - 1)`` seconds
+      of backoff. At these defaults that is 3 x 2 x 60 + 30 = 390s, which fits
+      the tightest caller (``schema-validate``, budgeted 15 minutes) with room
+      for the work that follows the pull. 60s is generous for the alpine-sized
+      images pulled here, which land in 10-20s on a healthy runner.
+    required: false
+    default: "60"
+
+runs:
+  using: composite
+  steps:
+    - name: Pull image (Docker Hub, mirror.gcr.io fallback, retries)
+      shell: bash
+      env:
+        SRC_IMAGE: ${{ inputs.image }}
+        LOCAL_TAG: ${{ inputs.local-tag }}
+        MAX_ATTEMPTS: ${{ inputs.attempts }}
+        PULL_TIMEOUT: ${{ inputs.pull-timeout-seconds }}
+      run: |
+        set -euo pipefail
+        # Validate before the loop. A non-positive or non-numeric attempts
+        # value makes `seq` emit nothing, so the loop body never runs, `set -e`
+        # never fires, and the step would exit 0 having pulled and tagged
+        # nothing -- the caller then fails somewhere far from the cause, or
+        # resolves the untagged local name against Docker Hub and defeats the
+        # point of this action.
+        for value in MAX_ATTEMPTS PULL_TIMEOUT; do
+          if [[ ! "${!value}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::${value} must be a positive integer, got '${!value}'"
+            exit 1
+          fi
+        done
+        # A digest is what makes the mirror fallback safe, so its absence is an
+        # error rather than a silent downgrade to an unverified tag pull.
+        if [[ "${SRC_IMAGE}" != *"@sha256:"* ]]; then
+          echo "::error::image must be digest-pinned (…@sha256:…), got '${SRC_IMAGE}'"
+          exit 1
+        fi
+        # mirror.gcr.io is a pull-through cache for Docker Hub, so the mirror
+        # ref mirrors the Docker Hub repository path. Derive that path from the
+        # input rather than assuming a ``library/*`` ref, so a namespaced image
+        # (``moby/buildkit``) or an already-registry-qualified one resolves too.
+        # The digest carries over verbatim, which is what makes the two refs
+        # interchangeable: whichever registry answers, the content is verified
+        # identical.
+        digest="${SRC_IMAGE##*@}"
+        ref="${SRC_IMAGE%@*}"
+        # Strip an explicit registry host (a first path segment that looks like
+        # a hostname) so the remainder is the Docker Hub repository path.
+        if [[ "${ref}" == *"/"* ]]; then
+          host="${ref%%/*}"
+          case "${host}" in
+            *.* | *:* | localhost) ref="${ref#*/}" ;;
+          esac
+        fi
+        # Drop the tag: a digest already identifies the content, and Docker
+        # rejects a mismatched name:tag@digest pair.
+        ref="${ref%:*}"
+        # Official images live under ``library/`` on Docker Hub and its mirror.
+        if [[ "${ref}" != *"/"* ]]; then
+          ref="library/${ref}"
+        fi
+        mirror_ref="mirror.gcr.io/${ref}@${digest}"
+        for attempt in $(seq 1 "${MAX_ATTEMPTS}"); do
+          if timeout "${PULL_TIMEOUT}" docker pull "${SRC_IMAGE}"; then
+            docker tag "${SRC_IMAGE}" "${LOCAL_TAG}"
+            exit 0
+          fi
+          echo "::warning::Docker Hub pull of ${SRC_IMAGE} failed (attempt ${attempt}/${MAX_ATTEMPTS}); trying mirror.gcr.io"
+          if timeout "${PULL_TIMEOUT}" docker pull "${mirror_ref}"; then
+            docker tag "${mirror_ref}" "${LOCAL_TAG}"
+            echo "::notice::pulled ${SRC_IMAGE} from mirror.gcr.io fallback"
+            exit 0
+          fi
+          if [[ "${attempt}" -eq "${MAX_ATTEMPTS}" ]]; then
+            echo "::error::pull of ${SRC_IMAGE} failed from Docker Hub and mirror.gcr.io after ${MAX_ATTEMPTS} attempts"
+            exit 1
+          fi
+          backoff=$((10 * (2 ** (attempt - 1))))
+          echo "::warning::both registries failed (attempt ${attempt}/${MAX_ATTEMPTS}); retrying in ${backoff}s"
+          sleep "${backoff}"
+        done

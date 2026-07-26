@@ -12,6 +12,7 @@ import inspect
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -42,6 +43,60 @@ def _load_script_module() -> object:
 # no static type; ``cast(Any, ...)`` types the handle once here instead of an
 # ``# type: ignore[attr-defined]`` on every access site.
 _MODULE = cast(Any, _load_script_module())  # type: ignore[explicit-any]  # dynamically loaded hook module; attrs resolved by name
+
+
+# Captured before the autouse fixture can replace them, so the tests that
+# exercise the bookkeeping itself reach the real implementations rather than
+# the stubs every other test needs.
+_REAL_ADOPT_IDLE_TIMEOUT = _MODULE._adopt_idle_timeout
+_REAL_RECORD_BOUNDED_LIFETIME = _MODULE._record_bounded_lifetime
+_REAL_FORGET_BOUNDED_LIFETIME = _MODULE._forget_bounded_lifetime
+# Captured for the same reason: the ``main`` tests replace ``_parse_args``,
+# and the helper that builds their arguments must not re-enter the stub.
+_REAL_PARSE_ARGS = _MODULE._parse_args
+
+
+@pytest.fixture(autouse=True)
+def _stub_daemon_lifetime_bookkeeping(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the daemon lifetime bookkeeping off the real machine.
+
+    Most tests here drive ``_check_daemon`` or ``_stop`` against the real
+    ``_MAIN_DAEMON`` / ``_ALL_DAEMONS`` (they have to: the point is asserting
+    the real scope is threaded through), stubbing only the ``dmypy`` call
+    itself. The bookkeeping added around that call reaches real system state
+    by three separate routes -- adoption can issue a genuine ``dmypy stop``,
+    the marker write lands beside the status file in the repo root, and
+    ``_stop`` unlinks that marker -- none of which the ``dmypy`` stub covers.
+
+    Left unstubbed, a unit run deletes the developer's lifetime markers, so
+    the next invocation sees an unvouched daemon and restarts it: a two-minute
+    graph rebuild charged to the next push, which is what breaches the push
+    budget. All three are stubbed together because they are one concern, and
+    autouse rather than opt-in because the damage lands on a later push
+    instead of failing anything here, so an opt-in a test forgets is silent.
+    """
+    monkeypatch.setattr(_MODULE, "_adopt_idle_timeout", lambda _daemon: None)
+    monkeypatch.setattr(_MODULE, "_record_bounded_lifetime", lambda _daemon: None)
+    monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)
+
+
+def _isolated_daemon(tmp_path: Path) -> Any:  # type: ignore[explicit-any]
+    """A daemon whose status and lifetime files live under *tmp_path*."""
+    return _MODULE._MAIN_DAEMON._replace(status_file=tmp_path / ".dmypy-main.json")
+
+
+def _write_status(daemon: Any, pid: int) -> None:  # type: ignore[explicit-any]
+    """Write the dmypy status file *daemon* reads its pid from."""
+    daemon.status_file.write_text(f'{{"pid": {pid}}}', encoding="utf-8")
+
+
+def _unreachable_subprocess() -> Any:  # type: ignore[explicit-any]
+    """A ``subprocess`` stand-in that fails if anything is executed.
+
+    A refusal that still ran the kill would pass an exit-code assertion while
+    doing the exact thing it claims to prevent.
+    """
+    return SimpleNamespace(run=_unreachable, CompletedProcess=_unreachable)
 
 
 @pytest.mark.parametrize(
@@ -222,6 +277,8 @@ def test_check_daemon_threads_the_daemon_scope_into_the_dmypy_call(
         (
             _MODULE._SCRIPTS_DAEMON,
             "run",
+            "--timeout",
+            str(_MODULE._DAEMON_IDLE_TIMEOUT_SECONDS),
             "--",
             *_MODULE._SCRIPTS_DAEMON.paths,
             *_MODULE._SCRIPTS_DAEMON.extra,
@@ -253,9 +310,287 @@ def test_scripts_cold_and_daemon_paths_pass_identical_flags(
     _MODULE._check_daemon(_MODULE._SCRIPTS_DAEMON)
     _MODULE._run_scripts_mypy()
 
-    # The daemon call carries the "run --" preamble the cold call does not.
-    assert daemon_extra[:2] == ["run", "--"]
-    assert daemon_extra[2:] == cold_extra
+    # The daemon call carries a "run <daemon-management flags> --" preamble the
+    # cold call does not. Split on the separator rather than a fixed offset: the
+    # flags that must match are exactly the ones mypy itself sees, and anchoring
+    # on a length lets a new pre-separator flag shift the slice so this asserts
+    # parity on the wrong span instead of failing.
+    assert daemon_extra[0] == "run"
+    separator = daemon_extra.index("--")
+    assert daemon_extra[separator + 1 :] == cold_extra
+
+
+def test_every_daemon_starts_with_a_bounded_idle_lifetime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unbounded daemon outlives its session and holds the worktree open."""
+    seen: list[tuple[str, ...]] = []
+
+    def _record(_daemon: object, *args: str, **_kwargs: object) -> int:
+        seen.append(args)
+        return 0
+
+    monkeypatch.setattr(_MODULE, "_dmypy", _record)
+    for daemon in _MODULE._ALL_DAEMONS:
+        _MODULE._check_daemon(daemon)
+
+    assert len(seen) == len(_MODULE._ALL_DAEMONS)
+    for args in seen:
+        # Before the separator, so dmypy consumes it as a daemon-management
+        # flag rather than forwarding it to mypy as a checked path.
+        separator = args.index("--")
+        timeout_flag = args.index("--timeout")
+        assert timeout_flag < separator
+        assert int(args[timeout_flag + 1]) == _MODULE._DAEMON_IDLE_TIMEOUT_SECONDS
+
+
+class TestIdleTimeoutAdoption:
+    """A daemon started before the bound existed still has to expire.
+
+    dmypy fixes the idle lifetime when the process starts, so passing
+    ``--timeout`` on every ``run`` binds new daemons only. Without adoption
+    the guarantee would skip precisely the long-lived daemons it exists for:
+    the one already warm on a developer's machine when this landed, and any
+    started by a bare ``dmypy run``.
+    """
+
+    def test_marker_sits_beside_the_status_file(self, tmp_path: Path) -> None:
+        daemon = _isolated_daemon(tmp_path)
+        assert daemon.lifetime_file == tmp_path / ".dmypy-main.lifetime.json"
+
+    def test_a_daemon_this_script_started_is_left_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        daemon = _isolated_daemon(tmp_path)
+        _write_status(daemon, 4242)
+        _REAL_RECORD_BOUNDED_LIFETIME(daemon)
+        calls: list[tuple[str, ...]] = []
+        monkeypatch.setattr(
+            _MODULE,
+            "_dmypy_result",
+            lambda _d, *args, **_kw: calls.append(args),
+        )
+
+        _REAL_ADOPT_IDLE_TIMEOUT(daemon)
+
+        assert calls == []
+        assert daemon.lifetime_file.exists()
+
+    def test_a_pre_existing_daemon_is_stopped_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A marker naming a DIFFERENT pid is the shape a daemon someone else
+        # started leaves behind: it vouches for nothing about the process now
+        # listening, so that process is unbounded and holds the worktree open.
+        daemon = _isolated_daemon(tmp_path)
+        _write_status(daemon, 4242)
+        _REAL_RECORD_BOUNDED_LIFETIME(daemon)
+        _write_status(daemon, 5151)
+        calls: list[tuple[str, ...]] = []
+        monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: True)
+        monkeypatch.setattr(
+            _MODULE,
+            "_dmypy_result",
+            lambda _d, *args, **_kw: calls.append(args),
+        )
+        monkeypatch.setattr(
+            _MODULE, "_forget_bounded_lifetime", _REAL_FORGET_BOUNDED_LIFETIME
+        )
+
+        _REAL_ADOPT_IDLE_TIMEOUT(daemon)
+
+        assert calls == [("stop",)]
+        # The stale marker must go with it, or a recycled pid could later
+        # match it and vouch for a daemon nothing verified.
+        assert not daemon.lifetime_file.exists()
+
+    def test_a_changed_bound_rebinds_a_warm_daemon(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Editing the constant must reach daemons already running under the
+        # old one, else the value in the source stops describing the machine.
+        daemon = _isolated_daemon(tmp_path)
+        _write_status(daemon, 4242)
+        _REAL_RECORD_BOUNDED_LIFETIME(daemon)
+        monkeypatch.setattr(_MODULE, "_DAEMON_IDLE_TIMEOUT_SECONDS", 60)
+
+        assert _MODULE._recorded_lifetime_pid(daemon) is None
+
+    def test_a_recycled_pid_does_not_inherit_the_marker(self, tmp_path: Path) -> None:
+        daemon = _isolated_daemon(tmp_path)
+        _write_status(daemon, 4242)
+        _REAL_RECORD_BOUNDED_LIFETIME(daemon)
+        _write_status(daemon, 5151)
+
+        assert _MODULE._recorded_lifetime_pid(daemon) != _MODULE._daemon_pid(daemon)
+
+    @pytest.mark.parametrize(
+        "marker",
+        [
+            pytest.param("not json at all", id="unparseable"),
+            pytest.param("[1, 2]", id="not-an-object"),
+            pytest.param('{"idle_timeout_seconds": 7200}', id="no-pid"),
+            pytest.param('{"pid": true, "idle_timeout_seconds": 7200}', id="bool-pid"),
+        ],
+    )
+    def test_an_unusable_marker_reads_as_unbounded(
+        self, tmp_path: Path, marker: str
+    ) -> None:
+        # Failing open here would vouch for a daemon nothing verified.
+        daemon = _isolated_daemon(tmp_path)
+        daemon.lifetime_file.write_text(marker, encoding="utf-8")
+
+        assert _MODULE._recorded_lifetime_pid(daemon) is None
+
+    def test_a_cold_scope_is_not_restarted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        daemon = _isolated_daemon(tmp_path)
+        calls: list[tuple[str, ...]] = []
+        monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: False)
+        monkeypatch.setattr(
+            _MODULE,
+            "_dmypy_result",
+            lambda _d, *args, **_kw: calls.append(args),
+        )
+
+        _REAL_ADOPT_IDLE_TIMEOUT(daemon)
+
+        assert calls == []
+
+
+class TestWorktreeHolders:
+    """Finding what holds a worktree open, without offering up a neighbour.
+
+    This replaces a PowerShell snippet that lived in two skill docs. Keeping
+    the matching in Python is the point: it is the rule that decides what an
+    operator is invited to kill, so it belongs somewhere testable rather than
+    in a quoting-sensitive shell predicate duplicated across files.
+    """
+
+    @pytest.mark.parametrize(
+        ("command", "expected"),
+        [
+            pytest.param(r"python.exe C:\wt\foo", True, id="at-end"),
+            pytest.param(r"python.exe C:\wt\foo\.venv\python.exe", True, id="nested"),
+            pytest.param(r'python.exe "C:\wt\foo" --x', True, id="quoted"),
+            pytest.param(r"python.exe C:\wt\foo --x", True, id="argument-break"),
+            # The dangerous one: a sibling whose name extends this one.
+            pytest.param(r"python.exe C:\wt\foo2\.venv\python.exe", False, id="prefix"),
+            pytest.param(r"python.exe C:\wt\bar", False, id="unrelated"),
+        ],
+    )
+    def test_path_matching_respects_boundaries(
+        self, command: str, expected: bool
+    ) -> None:
+        assert _MODULE._references_path(command, r"C:\wt\foo") is expected
+
+    def test_case_insensitive_where_the_platform_is(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A command line records the path as launched, the needle is resolved,
+        # so on Windows they routinely differ in case. A miss here is silent:
+        # the holder just never appears and the worktree stays stranded.
+        monkeypatch.setattr(_MODULE, "_PATH_MATCH_IS_CASE_SENSITIVE", False)
+
+        assert _MODULE._references_path(r"python.exe c:\WT\Foo\.venv", r"C:\wt\foo")
+        # Folding must not defeat the sibling guard.
+        assert not _MODULE._references_path(
+            r"python.exe c:\WT\Foo2\.venv", r"C:\wt\foo"
+        )
+
+    def test_case_sensitive_where_the_platform_is(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # POSIX paths are genuinely case-sensitive: /home/Foo and /home/foo are
+        # different directories, so folding there would conflate them.
+        monkeypatch.setattr(_MODULE, "_PATH_MATCH_IS_CASE_SENSITIVE", True)
+
+        assert not _MODULE._references_path("python /home/Foo/.venv", "/home/foo")
+        assert _MODULE._references_path("python /home/foo/.venv", "/home/foo")
+
+    def test_posix_process_table_parsed(self) -> None:
+        output = "  123 /usr/bin/python -m mypy.dmypy\n  456 sleep 1\nnot-a-row\n"
+
+        assert list(_MODULE._parse_posix_process_table(output)) == [
+            (123, "/usr/bin/python -m mypy.dmypy"),
+            (456, "sleep 1"),
+        ]
+
+    def test_windows_process_table_parsed(self) -> None:
+        # ConvertTo-Csv emits a header row, and a command line containing a
+        # comma must survive as one field rather than splitting the row.
+        output = (
+            '"ProcessId","CommandLine"\n'
+            '"123","python.exe -m mypy.dmypy --opts=a,b"\n'
+            '"456",\n'
+        )
+
+        assert list(_MODULE._parse_windows_process_table(output)) == [
+            (123, "python.exe -m mypy.dmypy --opts=a,b"),
+            (456, ""),
+        ]
+
+    def test_a_missing_path_is_a_usage_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert _MODULE._find_holders(str(tmp_path / "absent")) == 2
+        assert "does not exist" in capsys.readouterr().err
+
+    def test_stopping_a_non_daemon_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # A mistyped pid names some other process perfectly well, so the pid
+        # alone is not sufficient confirmation to kill something.
+        monkeypatch.setattr(_MODULE, "_process_table", lambda: [(99, "notepad.exe")])
+        monkeypatch.setattr(_MODULE, "subprocess", _unreachable_subprocess())
+
+        assert _MODULE._stop_holder(99) == 2
+        assert "not a mypy daemon" in capsys.readouterr().err
+
+    def test_stopping_an_absent_pid_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr(_MODULE, "_process_table", list)
+        monkeypatch.setattr(_MODULE, "subprocess", _unreachable_subprocess())
+
+        assert _MODULE._stop_holder(99) == 2
+        assert "not running" in capsys.readouterr().err
+
+    def test_stopping_a_daemon_is_allowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        issued: list[list[str]] = []
+
+        def _record(
+            command: list[str], **_kw: object
+        ) -> subprocess.CompletedProcess[str]:
+            issued.append(command)
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        monkeypatch.setattr(
+            _MODULE,
+            "_process_table",
+            lambda: [(99, "python.exe -m mypy.dmypy --status-file x daemon")],
+        )
+        monkeypatch.setattr(_MODULE.subprocess, "run", _record)
+
+        assert _MODULE._stop_holder(99) == 0
+        assert str(99) in issued[0]
+
+    def test_listing_never_terminates_anything(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The read-only half must stay read-only: the whole design rests on an
+        # operator seeing the list before anything is killed.
+        monkeypatch.setattr(
+            _MODULE, "_process_table", lambda: [(1, f"python {tmp_path}")]
+        )
+        killed: list[int] = []
+        monkeypatch.setattr(_MODULE, "_stop_holder", killed.append)
+
+        assert _MODULE._find_holders(str(tmp_path)) == 0
+        assert killed == []
 
 
 def test_daemons_do_not_share_a_status_file() -> None:
@@ -615,16 +950,7 @@ def test_main_dispatches_each_management_flag(
     monkeypatch: pytest.MonkeyPatch, flag: str
 ) -> None:
     """Each subcommand runs instead of, never alongside, a type check."""
-    monkeypatch.setattr(
-        _MODULE,
-        "_parse_args",
-        lambda: argparse.Namespace(
-            warm=flag == "warm",
-            stop=flag == "stop",
-            status=flag == "status",
-            full=False,
-        ),
-    )
+    monkeypatch.setattr(_MODULE, "_parse_args", lambda: _flag_args(**{flag: True}))
     monkeypatch.setattr(_MODULE, "_resolve_changed_files", _unreachable)
     monkeypatch.setattr(_MODULE, f"_{flag}", lambda: 0)
 
@@ -640,11 +966,7 @@ def test_full_runs_the_cold_ci_scope_without_a_daemon(
     path defers the whole-tree question to CI, so neither reproduces what
     CI's Type Check job runs.
     """
-    monkeypatch.setattr(
-        _MODULE,
-        "_parse_args",
-        lambda: argparse.Namespace(warm=False, stop=False, status=False, full=True),
-    )
+    monkeypatch.setattr(_MODULE, "_parse_args", lambda: _flag_args(full=True))
     monkeypatch.setattr(_MODULE, "_resolve_changed_files", _unreachable)
     monkeypatch.setattr(_MODULE, "_run_daemon_pass", _unreachable)
     monkeypatch.setattr(_MODULE, "_run_full", lambda: 0)
@@ -653,8 +975,27 @@ def test_full_runs_the_cold_ci_scope_without_a_daemon(
 
 
 def _no_flags() -> argparse.Namespace:
-    """Return parsed args for a plain pre-push invocation."""
-    return argparse.Namespace(warm=False, stop=False, status=False, full=False)
+    """Return parsed args for a plain pre-push invocation.
+
+    Parsed from the real parser with an empty argv rather than hand-listed:
+    an enumerated ``Namespace`` goes stale the moment a flag is added, and
+    fails as an ``AttributeError`` inside ``main`` that says nothing about
+    the actual cause.
+    """
+    argv = sys.argv
+    try:
+        sys.argv = [_SCRIPT_PATH.name]
+        return cast("argparse.Namespace", _REAL_PARSE_ARGS())
+    finally:
+        sys.argv = argv
+
+
+def _flag_args(**overrides: bool) -> argparse.Namespace:
+    """Return parsed args with the named management flags turned on."""
+    args = _no_flags()
+    for name, value in overrides.items():
+        setattr(args, name, value)
+    return args
 
 
 def _unreachable(*_args: object, **_kwargs: object) -> int:

@@ -1,26 +1,15 @@
 name: Start Postgres (resilient pull)
 description: |
   Start a postgres:18-alpine container for the persistence test suites,
-  pulling the image from Docker Hub with exponential-backoff retries so a
-  transient registry timeout does not fail the job.
+  pulling the image through docker-pull-resilient so a transient registry
+  timeout does not fail the job.
 
   A GitHub Actions ``services: postgres`` block cannot retry its image
   pull: the runner's container-init gives up after three internal
   attempts, and Docker Hub (registry-1.docker.io) periodically times out
   from the hosted runners with "context deadline exceeded", failing the
   whole job before any step runs. Pulling in a step we control lets the
-  retry outlast a sub-minute registry blip, mirroring the npm / docker
-  retry pattern already used in codspeed.yml, lighthouse.yml, and
-  docker.yml.
-
-  Retries alone cannot outlast a multi-minute Docker Hub outage, so each
-  attempt also falls back to Google's public Docker Hub mirror
-  (``mirror.gcr.io``) -- a no-auth, no-rate-limit pull-through cache that
-  stays reachable when registry-1.docker.io is down. The fallback ref
-  pins the SAME digest, so the resolved image is byte-identical to the
-  Docker Hub one (the digest pin, and thus the supply-chain guarantee, is
-  preserved). Whichever registry serves the pull is re-tagged to a fixed
-  local tag so the run step is decoupled from the registry it came from.
+  retry-and-mirror ladder outlast a registry outage.
 
   The container exposes 5432 on localhost with the same user / password /
   database and readiness contract the former ``services: postgres`` block
@@ -31,6 +20,7 @@ inputs:
   image:
     description: Digest-pinned postgres image reference (single source of truth).
     required: false
+    # renovate: datasource=docker depName=postgres
     default: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
   user:
     description: POSTGRES_USER for the container.
@@ -52,69 +42,16 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Pull postgres image (Docker Hub, mirror.gcr.io fallback, retries)
-      shell: bash
-      env:
-        PG_IMAGE: ${{ inputs.image }}
-        PG_LOCAL: synthorg-postgres-ci:18-alpine
-      run: |
-        set -euo pipefail
-        # mirror.gcr.io is a pull-through cache for Docker Hub, so the mirror
-        # ref mirrors the Docker Hub repository path. Derive that path (plus the
-        # digest / tag) from the input rather than assuming a digest-pinned
-        # ``library/postgres`` ref, so a tag-only or non-official override still
-        # yields a valid reference. When the input carries a digest the pin is
-        # preserved (byte-identical image); a tag-only input falls back to the
-        # tag, the best guarantee available without a digest.
-        ref="${PG_IMAGE}"
-        digest=""
-        if [[ "${ref}" == *"@"* ]]; then
-          digest="${ref##*@}"
-          ref="${ref%@*}"
-        fi
-        # Strip an explicit registry host (a first path segment that looks like
-        # a hostname) so the remainder is the Docker Hub repository path.
-        if [[ "${ref}" == *"/"* ]]; then
-          host="${ref%%/*}"
-          case "${host}" in
-            *.* | *:* | localhost) ref="${ref#*/}" ;;
-          esac
-        fi
-        tag=""
-        if [[ "${ref}" == *":"* ]]; then
-          tag="${ref##*:}"
-          ref="${ref%:*}"
-        fi
-        # Official images live under ``library/`` on Docker Hub and its mirror.
-        if [[ "${ref}" != *"/"* ]]; then
-          ref="library/${ref}"
-        fi
-        if [[ -n "${digest}" ]]; then
-          mirror_ref="mirror.gcr.io/${ref}@${digest}"
-        else
-          mirror_ref="mirror.gcr.io/${ref}:${tag:-latest}"
-        fi
-        # Re-tag whichever registry served the pull to a fixed local tag so
-        # the run step never re-resolves a registry-qualified reference.
-        for attempt in 1 2 3 4 5; do
-          if docker pull "${PG_IMAGE}"; then
-            docker tag "${PG_IMAGE}" "${PG_LOCAL}"
-            exit 0
-          fi
-          echo "::warning::Docker Hub pull failed (attempt ${attempt}/5); trying mirror.gcr.io"
-          if docker pull "${mirror_ref}"; then
-            docker tag "${mirror_ref}" "${PG_LOCAL}"
-            echo "::notice::pulled postgres from mirror.gcr.io fallback"
-            exit 0
-          fi
-          if [ "${attempt}" -eq 5 ]; then
-            echo "::error::postgres pull failed from Docker Hub and mirror.gcr.io after 5 attempts"
-            exit 1
-          fi
-          backoff=$((10 * (2 ** (attempt - 1))))
-          echo "::warning::both registries failed (attempt ${attempt}/5); retrying in ${backoff}s"
-          sleep "${backoff}"
-        done
+    - name: Pull postgres image
+      uses: ./.github/actions/docker-pull-resilient
+      with:
+        image: ${{ inputs.image }}
+        # `-ci` keeps the image tag distinct from the `container-name` default
+        # (`synthorg-postgres`) started below, so `docker images` and `docker ps`
+        # do not show near-identical names for two different things. The other
+        # callers of this action pull tooling images that name no container, so
+        # they use a bare `synthorg-<thing>` tag.
+        local-tag: synthorg-postgres-ci:18-alpine
     - name: Start postgres container
       shell: bash
       env:

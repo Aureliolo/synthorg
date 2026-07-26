@@ -173,10 +173,16 @@ jobs:
           bash scripts/install_cli_tools.sh vale
           export PATH="$HOME/.local/bin:$PATH"
           vale README.md CLAUDE.md cli/CLAUDE.md web/CLAUDE.md docs/
+      - name: Pull caddy image
+        uses: ./.github/actions/docker-pull-resilient
+        with:
+          # renovate: datasource=docker depName=caddy
+          image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+          local-tag: synthorg-caddy:2.10.2-alpine
       - name: Caddyfile validate
         run: >-
           docker run --rm -v "$PWD:/work" -w /work
-          caddy:2.10.2-alpine
+          synthorg-caddy:2.10.2-alpine
           caddy validate --config web/Caddyfile --adapter caddyfile
       # Spell-check runs as a dedicated step rather than a pre-commit hook so
       # the ~11s full-tree scan gates every push in CI without sitting on the
@@ -417,11 +423,25 @@ jobs:
       #
       # Bringing that container up reaches Docker Hub at job runtime,
       # which times out from the hosted runners often enough to fail the
-      # gate on its own. The script exits 3 for "container never came
-      # up" specifically so the retry below covers that and nothing else:
-      # a real drift finding (exit 1) fails on the first attempt, as it
-      # must, since retrying a deterministic result only burns the job's
-      # 15-minute budget.
+      # gate on its own. Pre-pulling through the retry-and-mirror ladder
+      # keeps a registry outage out of the gate: testcontainers then finds
+      # the image already present and never reaches a registry itself.
+      - name: Pull postgres image
+        uses: ./.github/actions/docker-pull-resilient
+        with:
+          # Keep in step with the pin in .github/actions/start-postgres and
+          # _POSTGRES_TESTCONTAINER_IMAGE, so the drift gate and the test
+          # suites validate against the same Postgres image bytes.
+          # renovate: datasource=docker depName=postgres
+          image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+          local-tag: synthorg-postgres-ci:18-alpine
+
+      # The script exits 3 for "container never came up" specifically so
+      # the retry below covers that and nothing else: a real drift finding
+      # (exit 1) fails on the first attempt, as it must, since retrying a
+      # deterministic result only burns the job's 15-minute budget. It
+      # stays as the outer net for a container that fails to start for a
+      # reason the pull cannot pre-empt (port contention, disk pressure).
       - name: Postgres drift detection
         env:
           # The reaper exists to clean up leaked containers on a
@@ -438,7 +458,9 @@ jobs:
           provision_exit=3
           for attempt in 1 2 3; do
             status=0
-            uv run python scripts/check_schema_drift_revisions.py --backend postgres || status=$?
+            uv run python scripts/check_schema_drift_revisions.py \
+              --backend postgres \
+              --postgres-image synthorg-postgres-ci:18-alpine || status=$?
             if [ "$status" -ne "$provision_exit" ]; then
               exit "$status"
             fi
@@ -1099,6 +1121,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      # Required so `download-artifact` uses the REST API rather than the
+      # runtime token, whose scope covers only the CURRENT run attempt: a
+      # re-run of this job would otherwise 404 on the coverage and
+      # test-result artifacts the earlier attempt uploaded.
+      actions: read
       contents: read
       # Required for tokenless Codecov upload via use_oidc: true.
       id-token: write
@@ -1115,6 +1142,7 @@ jobs:
           pattern: coverage-data-*
           merge-multiple: true
           path: coverage-data
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download test results
         uses: ./.github/actions/download-artifact
@@ -1122,6 +1150,7 @@ jobs:
           pattern: test-results-*
           merge-multiple: true
           path: test-results
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Hard no-missed-coverage assertion. Every split arm MUST have
       # contributed a data file before the gate runs; a silently dropped
@@ -1463,6 +1492,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      # See the coverage-aggregate job: `actions: read` keeps a re-run of
+      # this job able to fetch the openapi-schema artifact the earlier
+      # attempt uploaded.
+      actions: read
       contents: read
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
@@ -1482,6 +1515,7 @@ jobs:
         with:
           name: openapi-schema
           path: docs/openapi
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/install-js-deps
         with:
           working-directory: web
@@ -1512,6 +1546,10 @@ jobs:
     # the required check is unchanged.
     timeout-minutes: 15
     permissions:
+      # See the coverage-aggregate job: `actions: read` keeps a re-run of
+      # this job able to fetch the openapi-schema artifact the earlier
+      # attempt uploaded.
+      actions: read
       contents: read
     strategy:
       fail-fast: false
@@ -1532,6 +1570,7 @@ jobs:
         with:
           name: openapi-schema
           path: docs/openapi
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/install-js-deps
         with:
           working-directory: web
@@ -1571,6 +1610,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      # See the coverage-aggregate job: `actions: read` keeps a re-run of
+      # this job able to fetch the openapi-schema artifact the earlier
+      # attempt uploaded.
+      actions: read
       contents: read
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
@@ -1587,6 +1630,7 @@ jobs:
         with:
           name: openapi-schema
           path: docs/openapi
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       # The DTO drift gate (check_dto_types_ts_in_sync.py) is the
       # only step in this job that needs the Python env; type-check
       # and test don't.

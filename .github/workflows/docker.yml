@@ -31,6 +31,21 @@ on:
 
 permissions: {}
 
+# Every job below that downloads an artifact carries `actions: read` and
+# hands its composite action the workflow token. Without both,
+# `download-artifact` falls back to the runtime token, whose scope covers
+# only the CURRENT run attempt: re-running a failed job then 404s
+# ("GetSignedArtifactURL ... workflow run not found") on the tarball the
+# earlier attempt uploaded, so the only recovery is a full re-run of the
+# whole matrix.
+#
+# The trade-off is deliberate and worth stating plainly, because it is larger
+# than "read-only": `actions: read` is repo-wide, so it also exposes artifacts,
+# run metadata and job logs from every past run, not just this one, and these
+# jobs each run several third-party actions. GitHub offers no narrower
+# current-run-only artifact scope, so this is the minimum that makes a failed
+# job recoverable. It grants no write surface, and secret values stay masked.
+
 # PR runs cancel each other (we don't care about intermediate PR-build
 # artifacts). Non-PR events key on the SHA: a main-push and a
 # tag-push for the same commit (the release-please flow) share the
@@ -301,6 +316,7 @@ jobs:
     timeout-minutes: 20
     environment: image-push
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write
@@ -321,6 +337,7 @@ jobs:
           artifact-name: ${{ needs.build-backend-base.outputs.artifact-name }}
           tarball-name: ${{ needs.build-backend-base.outputs.tarball-name }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sandbox-base:
     name: Build Sandbox Base (apko)
@@ -362,6 +379,7 @@ jobs:
     timeout-minutes: 20
     environment: image-push
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write
@@ -382,6 +400,7 @@ jobs:
           artifact-name: ${{ needs.build-sandbox-base.outputs.artifact-name }}
           tarball-name: ${{ needs.build-sandbox-base.outputs.tarball-name }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sidecar-base:
     name: Build Sidecar Base (apko)
@@ -423,6 +442,7 @@ jobs:
     timeout-minutes: 20
     environment: image-push
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write
@@ -443,6 +463,7 @@ jobs:
           artifact-name: ${{ needs.build-sidecar-base.outputs.artifact-name }}
           tarball-name: ${{ needs.build-sidecar-base.outputs.tarball-name }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-fine-tune-base:
     name: Build Fine-Tune Base (apko)
@@ -484,6 +505,7 @@ jobs:
     timeout-minutes: 20
     environment: image-push
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write
@@ -505,6 +527,7 @@ jobs:
           tarball-name: ${{ needs.build-fine-tune-base.outputs.tarball-name }}
           architectures: "amd64"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # =========================================================================
   # Application images -- thin Dockerfile wrappers over apko bases
@@ -528,6 +551,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
+      actions: read
       contents: read
       security-events: write
     steps:
@@ -550,6 +574,7 @@ jobs:
           base-image-artifact-name: ${{ needs.build-backend-base.outputs.artifact-name }}
           base-image-tarball-name: ${{ needs.build-backend-base.outputs.tarball-name }}
           trivy-version: ${{ env.TRIVY_VERSION }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           # ``LOGFIRE_PROJECT_TOKEN`` is the GHA repo secret; the
           # Dockerfile's ``embed_logfire_token.py`` step writes it
           # into ``_embedded_token.py`` before ``uv sync`` packages
@@ -581,14 +606,13 @@ jobs:
       #   - tag push: same story for graduate.yml + manual tags.
       #   - workflow_dispatch: protects ad-hoc rebuilds.
       #
-      # Earlier the smoke lived in finalize-release.yml and ran
-      # only after a tag was already cut -- catching the same
-      # regression after the entire Docker matrix + GoReleaser
-      # signing had already run. Running here makes it the SOURCE
-      # OF TRUTH gate; finalize-release no longer re-tests because
-      # Docker images are content-addressed and pulling from GHCR
-      # at release time can never produce different bytes than the
-      # image just smoked here.
+      # This is the single source-of-truth gate for a broken boot
+      # path, and nothing downstream re-tests it: Docker images are
+      # content-addressed, so pulling this digest from GHCR at
+      # release time can never produce different bytes than the
+      # image smoked here. Smoking at release time instead would
+      # only catch the same regression later, after the whole Docker
+      # matrix and the signing steps had already run.
       #
       # The image is already loaded into the local Docker daemon
       # by build-scan-image (it builds with `outputs: type=docker,
@@ -614,6 +638,7 @@ jobs:
     timeout-minutes: 30
     environment: image-push
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write
@@ -633,6 +658,7 @@ jobs:
           image-name: backend
           app-version: ${{ needs.version.outputs.app_version }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # =========================================================================
   # Web image -- melange-packaged assets + pure apko (no Dockerfile)
@@ -779,6 +805,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
+      actions: read
       contents: read
       security-events: write
     steps:
@@ -795,6 +822,7 @@ jobs:
         with:
           name: web-apk-packages
           path: /work
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up apko
         uses: ./.github/actions/setup-apko
@@ -906,6 +934,7 @@ jobs:
     timeout-minutes: 40
     environment: image-push
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write
@@ -923,6 +952,7 @@ jobs:
         with:
           name: web-image-tarball
           path: .
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # The apko-built `web.tar` is a multi-arch tarball whose internal
       # tags are `ghcr.io/aureliolo/synthorg-web:sha-<short>-amd64` and
@@ -959,6 +989,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
+      actions: read
       contents: read
       security-events: write
     steps:
@@ -980,6 +1011,7 @@ jobs:
           base-image-artifact-name: ${{ needs.build-sandbox-base.outputs.artifact-name }}
           base-image-tarball-name: ${{ needs.build-sandbox-base.outputs.tarball-name }}
           trivy-version: ${{ env.TRIVY_VERSION }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sandbox-publish:
     name: Publish Sandbox
@@ -992,6 +1024,7 @@ jobs:
     timeout-minutes: 30
     environment: image-push
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write
@@ -1011,6 +1044,7 @@ jobs:
           image-name: sandbox
           app-version: ${{ needs.version.outputs.app_version }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sidecar:
     name: Build Sidecar
@@ -1024,6 +1058,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
+      actions: read
       contents: read
       security-events: write
     steps:
@@ -1045,6 +1080,7 @@ jobs:
           base-image-artifact-name: ${{ needs.build-sidecar-base.outputs.artifact-name }}
           base-image-tarball-name: ${{ needs.build-sidecar-base.outputs.tarball-name }}
           trivy-version: ${{ env.TRIVY_VERSION }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sidecar-publish:
     name: Publish Sidecar
@@ -1057,6 +1093,7 @@ jobs:
     timeout-minutes: 30
     environment: image-push
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write
@@ -1076,8 +1113,9 @@ jobs:
           image-name: sidecar
           app-version: ${{ needs.version.outputs.app_version }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  # Fine-tune ships in two flavors. The matrix builds them in parallel:
+  # Fine-tune ships in two flavours. The matrix builds them in parallel:
   #   - gpu  -> ghcr.io/aureliolo/synthorg-fine-tune-gpu  (bundled CUDA, ~4 GB)
   #   - cpu  -> ghcr.io/aureliolo/synthorg-fine-tune-cpu  (CPU torch, ~1.7 GB)
   # The variant is driven by the FINE_TUNE_EXTRA build-arg; uv routes torch to
@@ -1108,6 +1146,7 @@ jobs:
           - variant: cpu
             extra: fine-tune-cpu
     permissions:
+      actions: read
       contents: read
       security-events: write
     steps:
@@ -1134,13 +1173,24 @@ jobs:
           cache-scope: fine-tune-${{ matrix.variant }}
           free-disk-space: "true"
           trivy-version: ${{ env.TRIVY_VERSION }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-fine-tune-publish:
     name: Publish Fine-Tune
     needs: [version, build-fine-tune]
+    # `failure` is admitted deliberately. `build-fine-tune` is a
+    # `fail-fast: false` matrix, so its aggregate result is `failure` when ANY
+    # variant failed. Gating on `success` alone would let one variant's
+    # transient failure withhold the healthy variant's publish as well, and
+    # then fail both retag legs on the next tag push, since the images the tag
+    # needs were never pushed. Each publish leg downloads its own variant's
+    # tarball, so the healthy variant publishes while the failed variant's leg
+    # fails loudly on the artifact it never produced. `skipped` stays excluded:
+    # no build ran, so there is nothing to push.
     if: >-
       !cancelled() &&
-      needs.build-fine-tune.result == 'success' &&
+      (needs.build-fine-tune.result == 'success' ||
+        needs.build-fine-tune.result == 'failure') &&
       github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -1154,6 +1204,7 @@ jobs:
             extra: fine-tune-cpu
     environment: image-push
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write
@@ -1185,6 +1236,7 @@ jobs:
           app-version: ${{ needs.version.outputs.app_version }}
           enable-arm64: "false"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Matrix jobs can't expose per-variant outputs to `update-release` via
       # `needs.build-fine-tune-publish.outputs.digest` (only the last matrix
@@ -1478,22 +1530,46 @@ jobs:
     # consumes. Bases are only in the inventory on main-push (skipped
     # on tag-push by design); the script's per-image divergence check
     # works on whichever scope of tags shows up.
+    #
+    # ANY publish having RUN is enough to trigger this, rather than all of
+    # them succeeding. Two steps behind that:
+    #
+    #   - Per image, not per set. This job is the last line of defence
+    #     against a concurrent run overwriting a tag after it was signed, and
+    #     that risk attaches to each image independently. Requiring the whole
+    #     set would forfeit the check for four healthy, signed images because
+    #     a fifth failed for an unrelated reason.
+    #   - `success` is the wrong signal for a matrix. `build-fine-tune-publish`
+    #     and `retag-fine-tune` are cpu/gpu matrices with `fail-fast: false`,
+    #     so one failed leg reports `failure` for the whole job while the
+    #     other leg has already pushed and signed. Gating on `success` there
+    #     skips verification for exactly the images that did get published --
+    #     and when fine-tune is the only publisher a run touched (its
+    #     paths-filter fires alone), nothing else is left to trigger the job.
+    #     A job that ran may have pushed, so only `skipped` excludes it.
+    #
+    # The inventory is built from whichever `pushed-tags-*` artifacts exist, so
+    # a partial run verifies exactly what was actually pushed, and the
+    # aggregation step fails loudly if nothing was. Completeness is not
+    # weakened by this: `update-release` gates on every retag succeeding in
+    # its own right, so an incomplete image set still cannot reach the
+    # release notes.
     if: >-
       github.event_name != 'pull_request' &&
       !cancelled() &&
       (
         (github.ref == 'refs/heads/main' &&
-          needs.build-backend-publish.result == 'success' &&
-          needs.build-web-publish.result == 'success' &&
-          needs.build-sandbox-publish.result == 'success' &&
-          needs.build-sidecar-publish.result == 'success' &&
-          needs.build-fine-tune-publish.result == 'success') ||
+          (needs.build-backend-publish.result != 'skipped' ||
+            needs.build-web-publish.result != 'skipped' ||
+            needs.build-sandbox-publish.result != 'skipped' ||
+            needs.build-sidecar-publish.result != 'skipped' ||
+            needs.build-fine-tune-publish.result != 'skipped')) ||
         (startsWith(github.ref, 'refs/tags/v') &&
-          needs.retag-backend.result == 'success' &&
-          needs.retag-web.result == 'success' &&
-          needs.retag-sandbox.result == 'success' &&
-          needs.retag-sidecar.result == 'success' &&
-          needs.retag-fine-tune.result == 'success')
+          (needs.retag-backend.result != 'skipped' ||
+            needs.retag-web.result != 'skipped' ||
+            needs.retag-sandbox.result != 'skipped' ||
+            needs.retag-sidecar.result != 'skipped' ||
+            needs.retag-fine-tune.result != 'skipped'))
       )
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1502,6 +1578,7 @@ jobs:
     # mint a pull-scoped GHCR token. No write permissions: this job
     # only verifies, never pushes.
     permissions:
+      actions: read
       contents: read
       packages: read
     steps:
@@ -1522,6 +1599,7 @@ jobs:
           pattern: pushed-tags-*
           merge-multiple: true
           path: tag-inventories
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Aggregate pushed-tag inventories
         id: inventory
@@ -1590,6 +1668,7 @@ jobs:
     # does not need the App token.
     environment: release-tags
     permissions:
+      actions: read
       contents: write
     steps:
       # Upstream, not the ./.github/actions/download-artifact ladder: this
@@ -1600,6 +1679,7 @@ jobs:
           pattern: sbom-*
           merge-multiple: true
           path: sboms
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download fine-tune digest artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -1607,6 +1687,7 @@ jobs:
           pattern: fine-tune-*-digest
           merge-multiple: true
           path: fine-tune-digests
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Read fine-tune digests
         id: ft-digests

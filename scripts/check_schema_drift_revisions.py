@@ -24,9 +24,15 @@ Usage::
 
     python scripts/check_schema_drift_revisions.py --backend sqlite
     python scripts/check_schema_drift_revisions.py --backend postgres
+    python scripts/check_schema_drift_revisions.py --backend postgres --postgres-image synthorg-postgres-ci:18-alpine
 
 The Postgres arm requires Docker (uses ``testcontainers``); the SQLite
 arm runs against a temp file with no external dependency.
+``--postgres-image`` points the throwaway container at an image already
+present locally, which is how CI feeds in a pre-pulled one instead of
+reaching a registry a second time; it defaults to the digest-pinned
+reference and is rejected outright with ``--backend sqlite``, which has
+no container to configure.
 """
 
 import argparse
@@ -82,10 +88,13 @@ _REVISION_PATHS: Final[dict[str, Path]] = {
 
 # Digest-pinned for supply-chain integrity; mirrors the pin in the
 # start-postgres composite action so the drift gate and the test
-# suites validate against the same Postgres image bytes.
+# suites validate against the same Postgres image bytes. Whole ref on one
+# line (not a digest split across two literals) with the marker directly
+# above it, so the renovate.json custom manager matches it and bumps all
+# three copies in the same PR.
 _POSTGRES_TESTCONTAINER_IMAGE: Final[str] = (
-    "postgres:18-alpine@sha256:"
-    "96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88"
+    # renovate: datasource=docker depName=postgres
+    "postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88"
 )
 _PROVISION_EXIT_CODE: Final[int] = 3
 """Exit code for "the throwaway Postgres container never came up".
@@ -202,7 +211,7 @@ async def _dump_sqlite_schema(revisions_path: Path) -> str:
     return ";\n".join(row[0] for row in rows) + ";\n"
 
 
-async def _dump_postgres_schema(revisions_path: Path) -> str:
+async def _dump_postgres_schema(revisions_path: Path, postgres_image: str) -> str:
     """Apply revisions to a Postgres testcontainer and return its schema dump."""
     try:
         from testcontainers.community.postgres import PostgresContainer
@@ -214,7 +223,7 @@ async def _dump_postgres_schema(revisions_path: Path) -> str:
         )
         raise SystemExit(msg) from exc
 
-    pg = PostgresContainer(_POSTGRES_TESTCONTAINER_IMAGE)
+    pg = PostgresContainer(postgres_image)
     # Inside the cleanup-owning try so a start that fails AFTER Docker
     # created the container still reaches ``stop()``; a leaked container
     # would otherwise accumulate across the caller's provisioning retries.
@@ -651,14 +660,15 @@ def _wrap_schema_as_revisions(schema_text: str) -> Path:
 async def _dump_via_yoyo(
     backend: BackendName,
     revisions_path: Path,
+    postgres_image: str,
 ) -> str:
     """Apply *revisions_path* to a fresh DB of the right backend, return dump."""
     if backend == "sqlite":
         return await _dump_sqlite_schema(revisions_path)
-    return await _dump_postgres_schema(revisions_path)
+    return await _dump_postgres_schema(revisions_path, postgres_image)
 
 
-async def _main(backend: BackendName) -> int:
+async def _main(backend: BackendName, postgres_image: str) -> int:
     schema_path = _SCHEMA_PATHS[backend]
     revisions_path = _REVISION_PATHS[backend]
     if not schema_path.is_file():
@@ -672,10 +682,10 @@ async def _main(backend: BackendName) -> int:
 
     declared_tmp = _wrap_schema_as_revisions(schema_text)
     try:
-        declared_sql = await _dump_via_yoyo(backend, declared_tmp)
+        declared_sql = await _dump_via_yoyo(backend, declared_tmp, postgres_image)
     finally:
         shutil.rmtree(declared_tmp, ignore_errors=True)
-    actual_sql = await _dump_via_yoyo(backend, revisions_path)
+    actual_sql = await _dump_via_yoyo(backend, revisions_path, postgres_image)
 
     declared_tables, declared_indexes = parse_schema(declared_sql, backend)
     actual_tables, actual_indexes = parse_schema(actual_sql, backend)
@@ -715,14 +725,37 @@ def _build_argparser() -> argparse.ArgumentParser:
         required=True,
         help="Which backend's schema + revisions to check.",
     )
+    # CI pre-pulls the image through the docker-pull-resilient action, which
+    # may serve it from a Docker Hub mirror and can only hand back a plain
+    # local tag (a local image cannot be tagged to a digest reference). Taking
+    # the reference as an argument lets that already-present tag be used
+    # instead of a second, unretried pull of the digest-pinned default.
+    parser.add_argument(
+        "--postgres-image",
+        default=_POSTGRES_TESTCONTAINER_IMAGE,
+        help=(
+            "Postgres image reference for the throwaway container "
+            "(default: the digest-pinned Docker Hub image). "
+            "Only meaningful with --backend postgres."
+        ),
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point: parse args + run the drift check for one backend."""
-    args = _build_argparser().parse_args(argv)
+    parser = _build_argparser()
+    args = parser.parse_args(argv)
+    # Refuse rather than ignore: the SQLite arm starts no container, so
+    # silently discarding the override would let a caller believe it had
+    # pinned an image the run never used.
+    if (
+        args.backend == "sqlite"
+        and args.postgres_image != _POSTGRES_TESTCONTAINER_IMAGE
+    ):
+        parser.error("--postgres-image is only valid with --backend postgres")
     try:
-        return asyncio.run(_main(args.backend))
+        return asyncio.run(_main(args.backend, args.postgres_image))
     except SchemaDriftProvisionError as exc:
         # Printed rather than raised so the retryable case reads as one
         # legible line instead of a Docker traceback a caller must parse.

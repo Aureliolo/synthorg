@@ -97,6 +97,14 @@ inputs:
   trivy-version:
     description: "Trivy version, WITHOUT a leading `v` (e.g. `0.70.0`). The release download URL adds the `v` prefix; the tarball filename does not."
     required: true
+  github-token:
+    description: >-
+      GITHUB_TOKEN for the artifact REST API, from the caller's
+      `secrets.GITHUB_TOKEN`, which must also grant `actions: read`. Both are
+      needed so a re-run can reach the base tarball an earlier attempt
+      uploaded; the full reasoning and its security trade-off are in the header
+      comment of `.github/workflows/docker.yml`.
+    required: true
 
 outputs:
   ref_amd64:
@@ -145,6 +153,19 @@ runs:
         sudo docker image prune --all --force
         df -h /
 
+    # Registering the arm64 handlers pulls tonistiigi/binfmt from Docker Hub,
+    # and setup-qemu-action does not retry that pull, so it is pre-pulled
+    # through the retry-and-mirror ladder and pinned. Left un-pinned the action
+    # resolves a floating tag, so a reconnect could also silently change which
+    # binfmt build runs.
+    - name: Pull binfmt image (ARM64 emulation)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: ./.github/actions/docker-pull-resilient
+      with:
+        # renovate: datasource=docker depName=tonistiigi/binfmt
+        image: tonistiigi/binfmt:qemu-v9.2.2@sha256:1b804311fe87047a4c96d38b4b3ef6f62fca8cd125265917a9e3dc3c996c39e6
+        local-tag: synthorg-binfmt:qemu-v9.2.2
+
     # Required on non-PR events when building the arm64 tarball on an
     # amd64 runner. PR builds are amd64-only and skip QEMU.
     - name: Set up QEMU (ARM64 emulation)
@@ -152,6 +173,22 @@ runs:
       uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
       with:
         platforms: arm64
+        image: synthorg-binfmt:qemu-v9.2.2
+
+    # The `docker-container` driver boots BuildKit by pulling moby/buildkit
+    # from Docker Hub, and setup-buildx-action does not retry that pull: a
+    # sub-minute registry timeout fails the whole build job before the
+    # Dockerfile is even read. Pre-pull through the retry-and-mirror ladder
+    # and point the driver at the resulting local tag so the boot never
+    # reaches Docker Hub itself. The `docker` driver used on PRs boots no
+    # BuildKit container, so it needs neither the pull nor the driver-opt.
+    - name: Pull BuildKit image
+      if: github.event_name != 'pull_request'
+      uses: ./.github/actions/docker-pull-resilient
+      with:
+        # renovate: datasource=docker depName=moby/buildkit
+        image: moby/buildkit:buildx-stable-1@sha256:2f5adac4ecd194d9f8c10b7b5d7bceb5186853db1b26e5abd3a657af0b7e26ec
+        local-tag: synthorg-buildkit:buildx-stable-1
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -161,6 +198,10 @@ runs:
         # enables `type=gha` layer cache + `type=docker` archive output
         # for the tarball handoff on non-PR builds.
         driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
+        # Condition is inverted relative to `driver` above so the non-empty
+        # value sits on the truthy branch: `A && '' || B` would always yield
+        # B, since `''` is falsy and GHA falls through to the `||` arm.
+        driver-opts: ${{ github.event_name != 'pull_request' && 'image=synthorg-buildkit:buildx-stable-1' || '' }}
         cache-binary: false
 
     - name: Download base image artifact (PR only)
@@ -169,6 +210,7 @@ runs:
       with:
         name: ${{ inputs.base-image-artifact-name }}
         path: /tmp
+        github-token: ${{ inputs.github-token }}
 
     - name: Load base image (PR only)
       if: github.event_name == 'pull_request'
