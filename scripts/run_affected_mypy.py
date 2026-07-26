@@ -58,6 +58,7 @@ import re
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 from typing import Final, Literal, NamedTuple
 
@@ -168,6 +169,11 @@ _FALSEY_ENV_VALUES: Final[frozenset[str]] = frozenset({"", "0", "false", "no"})
 # A type-check timing out is treated as "no verdict", never as a pass. The git
 # calls are bounded by ``GIT_TIMEOUT_SECONDS`` in the shared scope module.
 _PROCESS_QUERY_TIMEOUT_SECONDS: Final[int] = 30
+# ``ProcessId,CommandLine``: a row shorter than this lost its command line.
+_PROCESS_ROW_FIELDS: Final[int] = 2
+# What may follow a path in a command line without extending it into a
+# different path: a separator, a closing quote, or an argument break.
+_PATH_BOUNDARY_CHARS: Final[str] = "\\/\"' \t"
 # Generous: a cold daemon build over ~6.5k files legitimately takes minutes on
 # a contended machine, so this bounds a hang rather than pacing a slow build.
 _MYPY_TIMEOUT_SECONDS: Final[int] = 1800
@@ -825,6 +831,17 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="show each daemon's state and resident memory",
     )
+    group.add_argument(
+        "--find-holders",
+        metavar="PATH",
+        help="list the processes holding PATH open (read-only)",
+    )
+    group.add_argument(
+        "--stop-holder",
+        metavar="PID",
+        type=int,
+        help="terminate one process named by --find-holders",
+    )
     return parser.parse_args()
 
 
@@ -904,6 +921,164 @@ def _stop() -> int:
     return 1 if failed else 0
 
 
+def _process_table() -> list[tuple[int, str]]:
+    """Return every visible process as ``(pid, command line)``.
+
+    Only the enumeration is platform-specific; the matching stays in Python so
+    the rule that decides what gets killed is one testable function rather
+    than a quoting-sensitive shell predicate. PowerShell is a data source here
+    (CSV out), never the place a decision is made.
+    """
+    if sys.platform == "win32":
+        command = [
+            "powershell",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            (
+                "Get-CimInstance Win32_Process"
+                " | Select-Object ProcessId,CommandLine"
+                " | ConvertTo-Csv -NoTypeInformation"
+            ),
+        ]
+    else:
+        command = ["ps", "-eo", "pid=,args="]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_PROCESS_QUERY_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"could not list processes: {exc}", file=sys.stderr)
+        return []
+    if result.returncode != 0:
+        print(
+            f"could not list processes: {_first_line(result.stderr)}", file=sys.stderr
+        )
+        return []
+    parse = (
+        _parse_windows_process_table
+        if sys.platform == "win32"
+        else _parse_posix_process_table
+    )
+    return list(parse(result.stdout))
+
+
+def _parse_windows_process_table(output: str) -> Iterator[tuple[int, str]]:
+    """Yield ``(pid, command line)`` from ``ConvertTo-Csv`` output.
+
+    Parsed as real CSV rather than split on commas: a command line routinely
+    contains them, and the quoted field must survive intact.
+    """
+    rows = list(csv.reader(output.splitlines()))
+    # ConvertTo-Csv emits a header row naming the selected properties.
+    for row in rows[1:]:
+        if len(row) < _PROCESS_ROW_FIELDS:
+            continue
+        pid, command = row[0].strip(), row[1].strip()
+        if pid.isdigit():
+            yield int(pid), command
+
+
+def _parse_posix_process_table(output: str) -> Iterator[tuple[int, str]]:
+    """Yield ``(pid, command line)`` from ``ps -eo pid=,args=`` output."""
+    for line in output.splitlines():
+        pid, _, command = line.strip().partition(" ")
+        if pid.isdigit():
+            yield int(pid), command.strip()
+
+
+def _references_path(command: str, needle: str) -> bool:
+    """Return True when *command* names *needle* as a whole path.
+
+    A bare substring test is wrong in the dangerous direction: a worktree
+    named ``foo`` is a prefix of a sibling named ``foo2``, so the sibling's
+    daemon would be offered up for killing while it may be mid-push. Requiring
+    a path separator, quote, or whitespace after the match settles that. A
+    path genuinely nested under the needle still matches, which is correct --
+    it does live there -- and is why the caller confirms each pid rather than
+    acting on the list wholesale.
+    """
+    start = 0
+    while (index := command.find(needle, start)) != -1:
+        end = index + len(needle)
+        if end == len(command) or command[end] in _PATH_BOUNDARY_CHARS:
+            return True
+        start = index + 1
+    return False
+
+
+def _holders_of(path: Path) -> list[tuple[int, str]]:
+    """Return the processes whose command line names *path*.
+
+    Matched on the RESOLVED absolute path, so a bare directory name shared by
+    two worktrees cannot conflate them: killing another worktree's daemon
+    mid-push is a worse outcome than leaving this one behind.
+    """
+    needle = str(path.resolve())
+    return [
+        (pid, command)
+        for pid, command in _process_table()
+        if _references_path(command, needle)
+    ]
+
+
+def _find_holders(raw_path: str) -> int:
+    """Print the processes holding *raw_path* open, touching none of them.
+
+    Read-only by construction: this half exists so an operator can see exactly
+    what would be killed before anything is. ``--stop-holder`` takes it from
+    here, one explicit pid at a time.
+    """
+    path = Path(raw_path)
+    if not path.exists():
+        print(f"{raw_path} does not exist", file=sys.stderr)
+        return 2
+    holders = _holders_of(path)
+    if not holders:
+        print(f"no process holds {path.resolve()}")
+        return 0
+    print(f"{len(holders)} process(es) hold {path.resolve()}:")
+    for pid, command in holders:
+        print(f"  {pid}\t{command}")
+    print("\nStop only the ones you recognise: --stop-holder <pid>")
+    return 0
+
+
+def _stop_holder(pid: int) -> int:
+    """Terminate one named process.
+
+    Deliberately takes a single pid rather than a path: naming the process is
+    the confirmation. Nothing here discovers what to kill, so a mistake in
+    ``--find-holders`` cannot escalate into a kill on its own.
+    """
+    command = (
+        ["taskkill", "/PID", str(pid), "/F"]
+        if sys.platform == "win32"
+        else ["kill", "-9", str(pid)]
+    )
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_PROCESS_QUERY_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"could not stop pid {pid}: {exc}", file=sys.stderr)
+        return 1
+    if result.returncode != 0:
+        detail = _first_line(result.stderr) or _first_line(result.stdout)
+        print(f"could not stop pid {pid}: {detail}", file=sys.stderr)
+        return 1
+    print(f"stopped pid {pid}")
+    return 0
+
+
 def _status() -> int:
     """Report each daemon's state and resident memory."""
     for daemon in _ALL_DAEMONS:
@@ -974,6 +1149,10 @@ def main() -> int:
         return _stop()
     if args.status:
         return _status()
+    if args.find_holders:
+        return _find_holders(args.find_holders)
+    if args.stop_holder:
+        return _stop_holder(args.stop_holder)
     if args.full:
         return _run_full()
 

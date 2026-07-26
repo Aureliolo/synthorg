@@ -50,6 +50,9 @@ _MODULE = cast(Any, _load_script_module())  # type: ignore[explicit-any]  # dyna
 _REAL_ADOPT_IDLE_TIMEOUT = _MODULE._adopt_idle_timeout
 _REAL_RECORD_BOUNDED_LIFETIME = _MODULE._record_bounded_lifetime
 _REAL_FORGET_BOUNDED_LIFETIME = _MODULE._forget_bounded_lifetime
+# Captured for the same reason: the ``main`` tests replace ``_parse_args``,
+# and the helper that builds their arguments must not re-enter the stub.
+_REAL_PARSE_ARGS = _MODULE._parse_args
 
 
 @pytest.fixture(autouse=True)
@@ -446,6 +449,75 @@ class TestIdleTimeoutAdoption:
         assert calls == []
 
 
+class TestWorktreeHolders:
+    """Finding what holds a worktree open, without offering up a neighbour.
+
+    This replaces a PowerShell snippet that lived in two skill docs. Keeping
+    the matching in Python is the point: it is the rule that decides what an
+    operator is invited to kill, so it belongs somewhere testable rather than
+    in a quoting-sensitive shell predicate duplicated across files.
+    """
+
+    @pytest.mark.parametrize(
+        ("command", "expected"),
+        [
+            pytest.param(r"python.exe C:\wt\foo", True, id="at-end"),
+            pytest.param(r"python.exe C:\wt\foo\.venv\python.exe", True, id="nested"),
+            pytest.param(r'python.exe "C:\wt\foo" --x', True, id="quoted"),
+            pytest.param(r"python.exe C:\wt\foo --x", True, id="argument-break"),
+            # The dangerous one: a sibling whose name extends this one.
+            pytest.param(r"python.exe C:\wt\foo2\.venv\python.exe", False, id="prefix"),
+            pytest.param(r"python.exe C:\wt\bar", False, id="unrelated"),
+        ],
+    )
+    def test_path_matching_respects_boundaries(
+        self, command: str, expected: bool
+    ) -> None:
+        assert _MODULE._references_path(command, r"C:\wt\foo") is expected
+
+    def test_posix_process_table_parsed(self) -> None:
+        output = "  123 /usr/bin/python -m mypy.dmypy\n  456 sleep 1\nnot-a-row\n"
+
+        assert list(_MODULE._parse_posix_process_table(output)) == [
+            (123, "/usr/bin/python -m mypy.dmypy"),
+            (456, "sleep 1"),
+        ]
+
+    def test_windows_process_table_parsed(self) -> None:
+        # ConvertTo-Csv emits a header row, and a command line containing a
+        # comma must survive as one field rather than splitting the row.
+        output = (
+            '"ProcessId","CommandLine"\n'
+            '"123","python.exe -m mypy.dmypy --opts=a,b"\n'
+            '"456",\n'
+        )
+
+        assert list(_MODULE._parse_windows_process_table(output)) == [
+            (123, "python.exe -m mypy.dmypy --opts=a,b"),
+            (456, ""),
+        ]
+
+    def test_a_missing_path_is_a_usage_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert _MODULE._find_holders(str(tmp_path / "absent")) == 2
+        assert "does not exist" in capsys.readouterr().err
+
+    def test_listing_never_terminates_anything(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The read-only half must stay read-only: the whole design rests on an
+        # operator seeing the list before anything is killed.
+        monkeypatch.setattr(
+            _MODULE, "_process_table", lambda: [(1, f"python {tmp_path}")]
+        )
+        killed: list[int] = []
+        monkeypatch.setattr(_MODULE, "_stop_holder", killed.append)
+
+        assert _MODULE._find_holders(str(tmp_path)) == 0
+        assert killed == []
+
+
 def test_daemons_do_not_share_a_status_file() -> None:
     """Sharing one would restart the daemon on every alternating invocation."""
     status_files = {daemon.status_file for daemon in _MODULE._ALL_DAEMONS}
@@ -803,16 +875,7 @@ def test_main_dispatches_each_management_flag(
     monkeypatch: pytest.MonkeyPatch, flag: str
 ) -> None:
     """Each subcommand runs instead of, never alongside, a type check."""
-    monkeypatch.setattr(
-        _MODULE,
-        "_parse_args",
-        lambda: argparse.Namespace(
-            warm=flag == "warm",
-            stop=flag == "stop",
-            status=flag == "status",
-            full=False,
-        ),
-    )
+    monkeypatch.setattr(_MODULE, "_parse_args", lambda: _flag_args(**{flag: True}))
     monkeypatch.setattr(_MODULE, "_resolve_changed_files", _unreachable)
     monkeypatch.setattr(_MODULE, f"_{flag}", lambda: 0)
 
@@ -828,11 +891,7 @@ def test_full_runs_the_cold_ci_scope_without_a_daemon(
     path defers the whole-tree question to CI, so neither reproduces what
     CI's Type Check job runs.
     """
-    monkeypatch.setattr(
-        _MODULE,
-        "_parse_args",
-        lambda: argparse.Namespace(warm=False, stop=False, status=False, full=True),
-    )
+    monkeypatch.setattr(_MODULE, "_parse_args", lambda: _flag_args(full=True))
     monkeypatch.setattr(_MODULE, "_resolve_changed_files", _unreachable)
     monkeypatch.setattr(_MODULE, "_run_daemon_pass", _unreachable)
     monkeypatch.setattr(_MODULE, "_run_full", lambda: 0)
@@ -841,8 +900,27 @@ def test_full_runs_the_cold_ci_scope_without_a_daemon(
 
 
 def _no_flags() -> argparse.Namespace:
-    """Return parsed args for a plain pre-push invocation."""
-    return argparse.Namespace(warm=False, stop=False, status=False, full=False)
+    """Return parsed args for a plain pre-push invocation.
+
+    Parsed from the real parser with an empty argv rather than hand-listed:
+    an enumerated ``Namespace`` goes stale the moment a flag is added, and
+    fails as an ``AttributeError`` inside ``main`` that says nothing about
+    the actual cause.
+    """
+    argv = sys.argv
+    try:
+        sys.argv = [_SCRIPT_PATH.name]
+        return _REAL_PARSE_ARGS()
+    finally:
+        sys.argv = argv
+
+
+def _flag_args(**overrides: bool) -> argparse.Namespace:
+    """Return parsed args with the named management flags turned on."""
+    args = _no_flags()
+    for name, value in overrides.items():
+        setattr(args, name, value)
+    return args
 
 
 def _unreachable(*_args: object, **_kwargs: object) -> int:

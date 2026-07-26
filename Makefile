@@ -20,6 +20,10 @@
 # without it is restarted once to adopt it, at the cost of a single graph
 # rebuild. `typecheck-stop` is still how to reclaim a daemon now rather than in
 # two hours, and is required before removing a worktree.
+#
+# When a worktree still will not delete, `--find-holders <path>` lists what is
+# holding it (read-only) and `--stop-holder <pid>` terminates one named
+# process. Two steps on purpose: nothing discovers and kills in one go.
 typecheck:
 	uv run python scripts/run_affected_mypy.py
 

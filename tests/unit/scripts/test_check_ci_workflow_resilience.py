@@ -3,7 +3,7 @@
 Loads the script as a module so its private helpers are callable without
 spawning subprocesses.
 
-Covers all five invariants:
+Covers all six invariants:
 
 * ``timeout-minutes`` required on every job, with the reusable-workflow
   -call exemption (a job whose body is a top-level ``uses:``).
@@ -24,6 +24,9 @@ Covers all five invariants:
   explicit ``github-token``, transitively through the composites that
   reach a download, so a re-run can still see the previous attempt's
   artifacts.
+* A resilient-pull ladder's worst case fits inside its job's
+  ``timeout-minutes``, resolved per call site and through the composite
+  call graph, so the runner cannot reap the job mid-retry.
 """
 
 import importlib.util
@@ -62,20 +65,36 @@ def _scan(tmp_path: Path, content: str) -> list[str]:
 
 
 def _job(
-    steps: str, *, timeout: bool = True, permissions: str | None = "actions: read"
+    steps: str,
+    *,
+    timeout: bool = True,
+    minutes: int = 5,
+    permissions: str | None = "actions: read",
 ) -> str:
     """Build a one-job workflow whose ``steps:`` is ``steps``.
 
     The job grants ``actions: read`` by default so a fixture that happens to
     download an artifact still isolates the invariant under test; pass
-    ``permissions=None`` to exercise invariant 5's permission half.
+    ``permissions=None`` to exercise invariant 5's permission half. ``minutes``
+    sets the budget invariant 6 measures a pull ladder against.
     """
     head = "jobs:\n  a:\n    runs-on: ubuntu-latest\n"
     if timeout:
-        head += "    timeout-minutes: 5\n"
+        head += f"    timeout-minutes: {minutes}\n"
     if permissions is not None:
         head += f"    permissions:\n      {permissions}\n"
     return f"{head}    steps:\n{steps}"
+
+
+def _pull(*, attempts: str | None = None, seconds: str | None = None) -> str:
+    """A resilient-pull step, optionally overriding the ladder inputs."""
+    step = "      - uses: ./.github/actions/docker-pull-resilient\n"
+    overrides = {"attempts": attempts, "pull-timeout-seconds": seconds}
+    given = {key: value for key, value in overrides.items() if value is not None}
+    if not given:
+        return step
+    lines = "".join(f'          {key}: "{value}"\n' for key, value in given.items())
+    return f"{step}        with:\n{lines}"
 
 
 def _enforced(*, guard: bool) -> str:
@@ -99,6 +118,7 @@ _NO_TOKEN = "consumes artifacts without passing `github-token`"
 _NO_ACTIONS_READ = "does not grant `actions: read`"
 _DROPS_TOKEN = "dropping the caller's token at this boundary"
 _NO_TOKEN_INPUT = "declares no `github-token` input"
+_LADDER_OVERRUNS = "resilient-pull ladder can run up to"
 
 
 _TOKEN_EXPR = "${{ github.token }}"
@@ -556,9 +576,37 @@ class TestArtifactDownloads:
         assert not consumes("owner/repo/.github/actions/other@sha", consumers)
 
     def test_closure_reaches_composites_that_call_the_wrapper(self) -> None:
+        # Only a computed member is worth asserting: the wrapper's own
+        # directory is the seed, so its membership holds even if the
+        # directory were deleted.
         consumers = _MODULE._artifact_consumer_dirs()  # type: ignore[attr-defined]
-        assert ".github/actions/download-artifact" in consumers
         assert ".github/actions/publish-image" in consumers
+
+    def test_closure_follows_a_multi_hop_chain(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The live tree only has depth-1 consumers, so the fixpoint's whole
+        # reason for existing goes unexercised by it. A composite that reaches
+        # a download only through ANOTHER composite still obliges its caller.
+        actions = tmp_path / ".github" / "actions"
+        for name, target in (
+            ("outer", "./.github/actions/inner"),
+            ("inner", "./.github/actions/download-artifact"),
+            ("unrelated", "./.github/actions/checkout"),
+        ):
+            directory = actions / name
+            directory.mkdir(parents=True)
+            (directory / "action.yml").write_text(
+                _composite(f"    - uses: {target}\n"), encoding="utf-8"
+            )
+        monkeypatch.setattr(_MODULE, "_REPO_ROOT", tmp_path)
+        monkeypatch.setattr(_MODULE, "_ACTIONS_ROOT", actions)
+
+        consumers = _MODULE._artifact_consumer_dirs()  # type: ignore[attr-defined]
+
+        assert ".github/actions/inner" in consumers
+        assert ".github/actions/outer" in consumers
+        assert ".github/actions/unrelated" not in consumers
 
     def test_composite_dropping_the_token_flagged(self, tmp_path: Path) -> None:
         content = _composite("    - uses: ./.github/actions/download-artifact\n")
@@ -580,6 +628,87 @@ class TestArtifactDownloads:
     def test_composite_not_consuming_needs_no_token_input(self, tmp_path: Path) -> None:
         content = _composite("    - run: true\n      shell: bash\n", token_input=False)
         assert _scan(tmp_path, content) == []
+
+
+class TestPullLadderBudget:
+    """A resilient-pull ladder must be able to exhaust inside its job.
+
+    Bounding one ``docker pull`` is not the same as bounding the ladder: each
+    attempt pays that bound twice (Docker Hub, then the mirror) and backoff
+    doubles between attempts. Oversized, the runner reaps the job mid-retry
+    and the registry stall surfaces as an opaque cancellation, which is the
+    outcome the ladder exists to convert into a named failure.
+    """
+
+    @pytest.mark.parametrize(
+        ("attempts", "timeout", "expected"),
+        [
+            # 2 x 3 x 60 = 360 pull seconds, + 10 + 20 backoff.
+            pytest.param(3, 60, 390, id="defaults"),
+            # The pre-fix defaults: 2 x 5 x 300 = 3000, + 10+20+40+80 backoff.
+            pytest.param(5, 300, 3150, id="pre-fix-defaults"),
+            # A single attempt pays no backoff at all.
+            pytest.param(1, 60, 120, id="single-attempt"),
+        ],
+    )
+    def test_worst_case_arithmetic(
+        self, attempts: int, timeout: int, expected: int
+    ) -> None:
+        worst = _MODULE._ladder_worst_case_seconds  # type: ignore[attr-defined]
+        assert worst(attempts, timeout) == expected
+
+    def test_ladder_outlasting_its_job_flagged(self, tmp_path: Path) -> None:
+        # 390s of ladder in a 5-minute (300s) job.
+        violations = _scan(tmp_path, _job(_checkout() + _pull(), minutes=5))
+        assert len(violations) == 1
+        assert _LADDER_OVERRUNS in violations[0]
+
+    def test_ladder_inside_its_job_clean(self, tmp_path: Path) -> None:
+        assert _scan(tmp_path, _job(_checkout() + _pull(), minutes=15)) == []
+
+    def test_the_pre_fix_defaults_would_have_been_caught(self, tmp_path: Path) -> None:
+        # The regression this invariant exists for: 5 attempts x 300s could
+        # run 3150s inside the 15-minute schema-validate budget, so the
+        # ladder could never exhaust and the job died opaque instead.
+        steps = _checkout() + _pull(attempts="5", seconds="300")
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _LADDER_OVERRUNS in violations[0]
+
+    def test_an_expression_resolves_to_the_declared_default(
+        self, tmp_path: Path
+    ) -> None:
+        # An unresolvable value must not skip the check: resolving toward the
+        # action's default keeps a parameterised call site judged rather than
+        # silently exempt.
+        steps = _checkout() + _pull(attempts="${{ inputs.attempts }}")
+        assert _scan(tmp_path, _job(steps, minutes=15)) == []
+        assert len(_scan(tmp_path, _job(steps, minutes=5))) == 1
+
+    def test_a_nested_ladder_counts_against_the_calling_job(self) -> None:
+        # A job that never names the pull action still pays for one reached
+        # through a composite, so the closure has to carry the cost up.
+        costs = {".github/actions/build-scan-image": 3150}
+        job = {
+            "timeout-minutes": 15,
+            "steps": [{"uses": "./.github/actions/build-scan-image"}],
+        }
+        check = _MODULE._check_ladder_budget  # type: ignore[attr-defined]
+        violations = check("a", job, costs, (3, 60))
+        assert len(violations) == 1
+        assert _LADDER_OVERRUNS in violations[0]
+
+    def test_a_job_without_any_ladder_is_unaffected(self, tmp_path: Path) -> None:
+        assert _scan(tmp_path, _job("      - run: true\n", minutes=1)) == []
+
+    def test_live_defaults_fit_every_caller(self) -> None:
+        # The live tree passes --scan-all, but assert the arithmetic directly
+        # so a future default bump is caught by a readable failure rather than
+        # only by the whole-tree scan.
+        attempts, timeout = _MODULE._pull_action_defaults()  # type: ignore[attr-defined]
+        worst = _MODULE._ladder_worst_case_seconds(attempts, timeout)  # type: ignore[attr-defined]
+        # schema-validate is the tightest caller at 15 minutes.
+        assert worst < 15 * 60
 
 
 class TestScanFileEdgeCases:

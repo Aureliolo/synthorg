@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: CI workflow resilience invariants.
 
-Enforces five invariants across the CI definitions so the resilience
+Enforces six invariants across the CI definitions so the resilience
 hardening they carry cannot silently regress:
 
 1. **Every job declares ``timeout-minutes``.** A job without it inherits
@@ -79,15 +79,33 @@ hardening they carry cannot silently regress:
    each such composite must declare the ``github-token`` input its
    callers are required to pass.
 
+6. **A resilient-pull ladder can exhaust inside the job that runs it.**
+   Invariant 3 applied to the other ladder in the tree. ``timeout`` on a
+   single ``docker pull`` bounds one attempt; it says nothing about the
+   ladder, which pays that bound twice per attempt (Docker Hub, then the
+   mirror) plus doubling backoff. Sized wrong, the ladder outlasts its job,
+   the runner reaps it mid-retry, and a retryable registry stall surfaces as
+   an opaque ``cancelled`` job with no diagnosis -- precisely the outcome
+   the ladder exists to turn INTO a named failure, reintroduced one level up.
+
+   The worst case is ``2 x attempts x pull-timeout-seconds + 10 x (2^(n-1) -
+   1)``, resolved per call site from the step's ``with:`` over the action's
+   declared defaults, and compared against the job's ``timeout-minutes``. A
+   ``${{ }}`` expression resolves to the default rather than being skipped,
+   so a parameterised call site is still judged. Costs propagate through the
+   composite call graph by fixpoint, because a ladder nested a level deep is
+   still paid by the job's budget.
+
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
 externally-dependent actions are excluded by design (see ``_EXCLUDED``)
 because they retry internally or are non-blocking feature-advisory.
 
-Invariants 1-2 scan ``.github/workflows/``; invariants 3-5 also scan
+Invariants 1-2 scan ``.github/workflows/``; invariants 3-6 also scan
 ``.github/actions/*/action.yml``, because composite actions host every
 ``retry_cmd.sh`` call site, can bypass a wrapper themselves, and are the
-transitive artifact consumers invariant 5 resolves through.
+transitive artifact consumers and ladder hosts invariants 5-6 resolve
+through.
 
 This is a no-baseline gate: the convention passes clean from day one. If
 it flags an existing workflow, fix the workflow -- do NOT add a baseline.
@@ -115,6 +133,14 @@ _DEADLINE_VAR: Final[str] = "RETRY_CMD_DEADLINE"
 
 _CHECKOUT_ACTION: Final[str] = "actions/checkout"
 _CHECKOUT_WRAPPER_DIR: Final[str] = ".github/actions/checkout"
+
+_PULL_ACTION_DIR: Final[str] = ".github/actions/docker-pull-resilient"
+_ATTEMPTS_INPUT: Final[str] = "attempts"
+_PULL_TIMEOUT_INPUT: Final[str] = "pull-timeout-seconds"
+# Each attempt pays the per-pull bound twice: Docker Hub, then the mirror.
+_REGISTRIES_PER_ATTEMPT: Final[int] = 2
+_BACKOFF_BASE_SECONDS: Final[int] = 10
+_SECONDS_PER_MINUTE: Final[int] = 60
 
 _DOWNLOAD_ACTION: Final[str] = "actions/download-artifact"
 _DOWNLOAD_WRAPPER_DIR: Final[str] = ".github/actions/download-artifact"
@@ -622,6 +648,174 @@ def _check_artifact_downloads(
     return violations
 
 
+def _ladder_worst_case_seconds(attempts: int, pull_timeout: int) -> int:
+    """Return the longest the resilient-pull ladder can run before giving up.
+
+    Every attempt pays the per-pull bound once per registry, and the backoff
+    doubles from 10s after each attempt except the last.
+    """
+    pulls = _REGISTRIES_PER_ATTEMPT * attempts * pull_timeout
+    # Shift rather than ``2 ** n``: the doubling sum is exact in ints, and
+    # ``**`` widens to Any because a negative exponent would yield a float.
+    backoff = _BACKOFF_BASE_SECONDS * ((1 << (attempts - 1)) - 1)
+    return pulls + backoff
+
+
+def _positive_int(value: object, fallback: int) -> int:
+    """Coerce a YAML scalar to a positive int, falling back when it cannot be.
+
+    A ``${{ }}`` expression is only known at run time, so the action's own
+    default is the only defensible static assumption. Resolving toward the
+    default keeps the estimate honest rather than optimistic: a caller that
+    parameterises the ladder owns the budget it passes.
+    """
+    try:
+        parsed = int(str(value).strip())
+    except TypeError, ValueError:
+        return fallback
+    return parsed if parsed > 0 else fallback
+
+
+def _pull_action_defaults() -> tuple[int, int]:
+    """Return the resilient-pull action's declared ``(attempts, timeout)``."""
+    attempts, timeout = 1, 1
+    definition = _REPO_ROOT / _PULL_ACTION_DIR / "action.yml"
+    data = _load_yaml_mapping(definition)
+    inputs = data.get("inputs") if data else None
+    if not isinstance(inputs, dict):
+        return attempts, timeout
+    for key, target in (
+        (_ATTEMPTS_INPUT, "attempts"),
+        (_PULL_TIMEOUT_INPUT, "timeout"),
+    ):
+        spec = inputs.get(key)
+        if not isinstance(spec, dict):
+            continue
+        value = _positive_int(spec.get("default"), 1)
+        if target == "attempts":
+            attempts = value
+        else:
+            timeout = value
+    return attempts, timeout
+
+
+def _step_ladder_seconds(
+    step: dict[str, object], defaults: tuple[int, int]
+) -> int | None:
+    """Return a step's worst-case ladder duration, or ``None`` if not one."""
+    uses = step.get("uses")
+    if not isinstance(uses, str) or _local_action_dir(uses) != _PULL_ACTION_DIR:
+        return None
+    with_ = step.get("with")
+    overrides = with_ if isinstance(with_, dict) else {}
+    default_attempts, default_timeout = defaults
+    return _ladder_worst_case_seconds(
+        _positive_int(overrides.get(_ATTEMPTS_INPUT), default_attempts),
+        _positive_int(overrides.get(_PULL_TIMEOUT_INPUT), default_timeout),
+    )
+
+
+def _pull_ladder_costs(defaults: tuple[int, int]) -> dict[str, int]:
+    """Return each local action's worst-case ladder duration, by directory.
+
+    Fixpoint over the call graph, the same shape as the artifact closure: a
+    composite's cost is the worst of its own call sites and of any composite
+    it calls, because a job reaching it can pay either. Without this, a ladder
+    nested one composite deep would be invisible to the job whose
+    ``timeout-minutes`` actually has to accommodate it.
+    """
+    direct: dict[str, int] = {}
+    calls: dict[str, set[str]] = {}
+    for path in _iter_action_files():
+        data = _load_yaml_mapping(path)
+        if data is None:
+            continue
+        directory = _relative_path(path.parent)
+        runs = data.get("runs")
+        steps = runs.get("steps") if isinstance(runs, dict) else None
+        if not isinstance(steps, list):
+            continue
+        costs = [
+            seconds
+            for step in steps
+            if isinstance(step, dict)
+            and (seconds := _step_ladder_seconds(step, defaults)) is not None
+        ]
+        if costs:
+            direct[directory] = max(costs)
+        calls[directory] = {
+            local
+            for local in (
+                _local_action_dir(str(step["uses"]))
+                for step in steps
+                if isinstance(step, dict) and isinstance(step.get("uses"), str)
+            )
+            if local is not None
+        }
+    settled = False
+    while not settled:
+        settled = True
+        for directory, targets in calls.items():
+            reachable = [direct[t] for t in targets if t in direct]
+            if not reachable:
+                continue
+            worst = max(reachable)
+            if worst > direct.get(directory, 0):
+                direct[directory] = worst
+                settled = False
+    return direct
+
+
+def _check_ladder_budget(
+    job_name: str,
+    job: dict[str, object],
+    costs: dict[str, int],
+    defaults: tuple[int, int],
+) -> list[str]:
+    """Return a violation when a pull ladder cannot exhaust inside its job.
+
+    Bounding one pull is not enough: if the ladder's worst case outlasts the
+    job, the runner reaps the job mid-retry and a retryable registry stall
+    surfaces as an opaque cancellation with no diagnosis, which is the exact
+    outcome the ladder exists to convert into a named failure. Same rule as
+    invariant 3, applied to the other ladder in the tree.
+
+    Args:
+        job_name: Job key, for the message.
+        job: The job mapping.
+        costs: Worst-case ladder duration per local action directory.
+        defaults: The pull action's declared ``(attempts, timeout)``.
+
+    Returns:
+        One message when the job's budget cannot contain its worst ladder.
+    """
+    worst = 0
+    for step in _job_steps(job):
+        direct = _step_ladder_seconds(step, defaults)
+        if direct is not None:
+            worst = max(worst, direct)
+            continue
+        uses = step.get("uses")
+        if isinstance(uses, str):
+            nested = _local_action_dir(uses)
+            if nested is not None and nested in costs:
+                worst = max(worst, costs[nested])
+    if not worst:
+        return []
+    budget = _positive_int(job.get(_TIMEOUT_KEY), 0) * _SECONDS_PER_MINUTE
+    if budget > worst:
+        return []
+    return [
+        (
+            f"job '{job_name}': the resilient-pull ladder can run up to {worst}s"
+            f" but the job is budgeted {budget}s, so the runner reaps it"
+            " mid-retry and a registry stall surfaces as an opaque cancelled"
+            f" job. Raise {_TIMEOUT_KEY}, or lower `{_ATTEMPTS_INPUT}` /"
+            f" `{_PULL_TIMEOUT_INPUT}` at the call site."
+        )
+    ]
+
+
 def _declares_token_input(data: dict[str, object]) -> bool:
     """Return True when a composite action declares a ``github-token`` input.
 
@@ -810,6 +1004,8 @@ def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]
     if not isinstance(jobs, dict):
         return _scan_composite_action(data, rel_path, consumers)
     permissions = data.get("permissions")
+    pull_defaults = _pull_action_defaults()
+    ladder_costs = _pull_ladder_costs(pull_defaults)
     violations: list[str] = []
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
@@ -819,6 +1015,7 @@ def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]
         violations.extend(_check_job_ladders(name, job))
         violations.extend(_check_job_steps(name, rel_path, job))
         violations.extend(_check_artifact_downloads(name, job, permissions, consumers))
+        violations.extend(_check_ladder_budget(name, job, ladder_costs, pull_defaults))
     return violations
 
 

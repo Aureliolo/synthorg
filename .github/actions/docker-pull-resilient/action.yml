@@ -44,8 +44,12 @@ inputs:
     description: |
       Number of (Docker Hub, then mirror) attempts before failing. Must be a
       positive integer.
+
+      Sized with ``pull-timeout-seconds`` so the whole ladder fits inside the
+      caller's ``timeout-minutes``: see that input for the budget, which is
+      enforced per call site by ``check_ci_workflow_resilience.py``.
     required: false
-    default: "5"
+    default: "3"
   pull-timeout-seconds:
     description: |
       Wall-clock bound on a single ``docker pull``. A registry that accepts
@@ -53,8 +57,19 @@ inputs:
       attempt outrun the whole backoff schedule and burn the caller job's
       timeout, turning an outage into an opaque cancellation instead of a
       named failure the ladder can retry.
+
+      Bounding one pull is not enough on its own: the LADDER has to be able to
+      exhaust inside the job that runs it, or the runner reaps the job
+      mid-retry and the outage still surfaces as an opaque cancellation rather
+      than the named failure above. Each attempt pays this twice (Docker Hub,
+      then the mirror), so the worst case is
+      ``2 x attempts x pull-timeout-seconds`` plus ``10 x (2^n - 1)`` seconds
+      of backoff. At these defaults that is 3 x 2 x 60 + 30 = 390s, which fits
+      the tightest caller (``schema-validate``, budgeted 15 minutes) with room
+      for the work that follows the pull. 60s is generous for the alpine-sized
+      images pulled here, which land in 10-20s on a healthy runner.
     required: false
-    default: "300"
+    default: "60"
 
 runs:
   using: composite
