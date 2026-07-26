@@ -44,16 +44,36 @@ def _load_script_module() -> object:
 _MODULE = cast(Any, _load_script_module())  # type: ignore[explicit-any]  # dynamically loaded hook module; attrs resolved by name
 
 
-@pytest.fixture
-def stub_daemon_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep ``_check_daemon``'s lifetime bookkeeping off the real machine.
+# Captured before the autouse fixture can replace them, so the tests that
+# exercise the bookkeeping itself reach the real implementations rather than
+# the stubs every other test needs.
+_REAL_ADOPT_IDLE_TIMEOUT = _MODULE._adopt_idle_timeout
+_REAL_RECORD_BOUNDED_LIFETIME = _MODULE._record_bounded_lifetime
+_REAL_FORGET_BOUNDED_LIFETIME = _MODULE._forget_bounded_lifetime
 
-    Adoption spawns dmypy and the marker write lands beside the status file
-    in the repo root, so a test asserting on the ``dmypy`` invocation itself
-    stubs both. The bookkeeping has its own tests, which call it directly.
+
+@pytest.fixture(autouse=True)
+def _stub_daemon_lifetime_bookkeeping(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the daemon lifetime bookkeeping off the real machine.
+
+    Most tests here drive ``_check_daemon`` or ``_stop`` against the real
+    ``_MAIN_DAEMON`` / ``_ALL_DAEMONS`` (they have to: the point is asserting
+    the real scope is threaded through), stubbing only the ``dmypy`` call
+    itself. The bookkeeping added around that call reaches real system state
+    by three separate routes -- adoption can issue a genuine ``dmypy stop``,
+    the marker write lands beside the status file in the repo root, and
+    ``_stop`` unlinks that marker -- none of which the ``dmypy`` stub covers.
+
+    Left unstubbed, a unit run deletes the developer's lifetime markers, so
+    the next invocation sees an unvouched daemon and restarts it: a two-minute
+    graph rebuild charged to the next push, which is what breaches the push
+    budget. All three are stubbed together because they are one concern, and
+    autouse rather than opt-in because the damage lands on a later push
+    instead of failing anything here, so an opt-in a test forgets is silent.
     """
     monkeypatch.setattr(_MODULE, "_adopt_idle_timeout", lambda _daemon: None)
     monkeypatch.setattr(_MODULE, "_record_bounded_lifetime", lambda _daemon: None)
+    monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)
 
 
 def _isolated_daemon(tmp_path: Path) -> Any:  # type: ignore[explicit-any]
@@ -227,7 +247,6 @@ def test_daemon_pass_falls_back_when_scripts_daemon_gives_no_verdict(
     assert _MODULE._run_daemon_pass(["scripts/x.py"]) is None
 
 
-@pytest.mark.usefixtures("stub_daemon_lifecycle")
 def test_check_daemon_threads_the_daemon_scope_into_the_dmypy_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -254,7 +273,6 @@ def test_check_daemon_threads_the_daemon_scope_into_the_dmypy_call(
     ]
 
 
-@pytest.mark.usefixtures("stub_daemon_lifecycle")
 def test_scripts_cold_and_daemon_paths_pass_identical_flags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -289,7 +307,6 @@ def test_scripts_cold_and_daemon_paths_pass_identical_flags(
     assert daemon_extra[separator + 1 :] == cold_extra
 
 
-@pytest.mark.usefixtures("stub_daemon_lifecycle")
 def test_every_daemon_starts_with_a_bounded_idle_lifetime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -333,7 +350,7 @@ class TestIdleTimeoutAdoption:
     ) -> None:
         daemon = _isolated_daemon(tmp_path)
         _write_status(daemon, 4242)
-        _MODULE._record_bounded_lifetime(daemon)
+        _REAL_RECORD_BOUNDED_LIFETIME(daemon)
         calls: list[tuple[str, ...]] = []
         monkeypatch.setattr(
             _MODULE,
@@ -341,7 +358,7 @@ class TestIdleTimeoutAdoption:
             lambda _d, *args, **_kw: calls.append(args),
         )
 
-        _MODULE._adopt_idle_timeout(daemon)
+        _REAL_ADOPT_IDLE_TIMEOUT(daemon)
 
         assert calls == []
         assert daemon.lifetime_file.exists()
@@ -349,10 +366,13 @@ class TestIdleTimeoutAdoption:
     def test_a_pre_existing_daemon_is_stopped_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # No marker: the daemon predates this script's --timeout, so it would
-        # otherwise hold the worktree open forever.
+        # A marker naming a DIFFERENT pid is the shape a daemon someone else
+        # started leaves behind: it vouches for nothing about the process now
+        # listening, so that process is unbounded and holds the worktree open.
         daemon = _isolated_daemon(tmp_path)
         _write_status(daemon, 4242)
+        _REAL_RECORD_BOUNDED_LIFETIME(daemon)
+        _write_status(daemon, 5151)
         calls: list[tuple[str, ...]] = []
         monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: True)
         monkeypatch.setattr(
@@ -360,10 +380,15 @@ class TestIdleTimeoutAdoption:
             "_dmypy_result",
             lambda _d, *args, **_kw: calls.append(args),
         )
+        monkeypatch.setattr(
+            _MODULE, "_forget_bounded_lifetime", _REAL_FORGET_BOUNDED_LIFETIME
+        )
 
-        _MODULE._adopt_idle_timeout(daemon)
+        _REAL_ADOPT_IDLE_TIMEOUT(daemon)
 
         assert calls == [("stop",)]
+        # The stale marker must go with it, or a recycled pid could later
+        # match it and vouch for a daemon nothing verified.
         assert not daemon.lifetime_file.exists()
 
     def test_a_changed_bound_rebinds_a_warm_daemon(
@@ -373,7 +398,7 @@ class TestIdleTimeoutAdoption:
         # old one, else the value in the source stops describing the machine.
         daemon = _isolated_daemon(tmp_path)
         _write_status(daemon, 4242)
-        _MODULE._record_bounded_lifetime(daemon)
+        _REAL_RECORD_BOUNDED_LIFETIME(daemon)
         monkeypatch.setattr(_MODULE, "_DAEMON_IDLE_TIMEOUT_SECONDS", 60)
 
         assert _MODULE._recorded_lifetime_pid(daemon) is None
@@ -381,7 +406,7 @@ class TestIdleTimeoutAdoption:
     def test_a_recycled_pid_does_not_inherit_the_marker(self, tmp_path: Path) -> None:
         daemon = _isolated_daemon(tmp_path)
         _write_status(daemon, 4242)
-        _MODULE._record_bounded_lifetime(daemon)
+        _REAL_RECORD_BOUNDED_LIFETIME(daemon)
         _write_status(daemon, 5151)
 
         assert _MODULE._recorded_lifetime_pid(daemon) != _MODULE._daemon_pid(daemon)
@@ -416,7 +441,7 @@ class TestIdleTimeoutAdoption:
             lambda _d, *args, **_kw: calls.append(args),
         )
 
-        _MODULE._adopt_idle_timeout(daemon)
+        _REAL_ADOPT_IDLE_TIMEOUT(daemon)
 
         assert calls == []
 
