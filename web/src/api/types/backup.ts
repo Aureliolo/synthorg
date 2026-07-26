@@ -6,5 +6,3 @@ export type {
   RestoreRequest,
   RestoreResponse,
 } from './dtos.gen'
-
-export type { BackupComponent, BackupTrigger } from './enum-values.gen'

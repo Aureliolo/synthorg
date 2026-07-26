@@ -12,7 +12,6 @@ export type {
   ApprovalTaskRef,
   ApproveRequest,
   CreateApprovalRequest,
-  RecommendedAction,
   RejectRequest,
   // The API redacts the raw audit-chain signature bytes, so the wire
   // evidence package is the ``Safe*`` variant (no ``signature_bytes``).

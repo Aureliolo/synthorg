@@ -17,9 +17,9 @@ import type {
   StageDecisionPayload,
   StageDecisionResult,
   UpdateClientRequest,
-} from '@/api/types'
+} from '@/api/types/clients'
 
-// DTO shapes are owned by the generated barrel (`@/api/types`,
+// DTO shapes are owned by the domain barrel (`@/api/types/clients`,
 // regenerated from the backend OpenAPI schema). Re-export the ones
 // callers consume so the import site stays `@/api/endpoints/clients`
 // without hand-maintaining the shapes here.
@@ -41,7 +41,7 @@ export type {
   StageDecisionResult,
   TaskRequirement,
   UpdateClientRequest,
-} from '@/api/types'
+} from '@/api/types/clients'
 
 // Derived from the generated stage result; not a hand-maintained
 // duplicate (the verdict literal union has no standalone DTO).

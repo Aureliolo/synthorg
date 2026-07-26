@@ -1,6 +1,9 @@
 import { useCallback, useState } from 'react'
 import { decomposeTaskManually } from '@/api/endpoints/decomposition'
-import type { DecompositionResult, ManualDecomposeRequest } from '@/api/types'
+import type {
+  DecompositionResult,
+  ManualDecomposeRequest,
+} from '@/api/types/decomposition'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'

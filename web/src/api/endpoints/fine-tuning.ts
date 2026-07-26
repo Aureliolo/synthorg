@@ -17,7 +17,7 @@ import type {
   FineTuneStatus,
   PreflightCheck,
   PreflightResult,
-} from '../types'
+} from '@/api/types/fine-tuning'
 
 // -- Types -----------------------------------------------------------
 

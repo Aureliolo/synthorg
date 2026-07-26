@@ -7,7 +7,7 @@
  */
 import { apiClient, paginateAll, unwrap, unwrapPaginated } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
-import type { ExperimentAssignment, ExperimentVariant } from '../types'
+import type { ExperimentAssignment, ExperimentVariant } from '@/api/types/experiments'
 
 const VARIANTS_PAGE_SIZE = 200
 

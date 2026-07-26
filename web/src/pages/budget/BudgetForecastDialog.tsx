@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { formatCurrency } from '@/utils/format'
-import type { Forecast } from '@/api/types'
+import type { Forecast } from '@/api/types/budget'
 
 export interface BudgetForecastDialogProps {
   open: boolean

@@ -1,5 +1,8 @@
 import { apiClient, unwrap } from '../client'
-import type { DecompositionResult, ManualDecomposeRequest } from '../types'
+import type {
+  DecompositionResult,
+  ManualDecomposeRequest,
+} from '@/api/types/decomposition'
 import type { ApiResponse } from '../types/http'
 
 /**

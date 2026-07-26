@@ -6,7 +6,7 @@ import type {
 import type {
   DeliverableReceipt,
   ReceiptValidationResult,
-} from '@/api/types'
+} from '@/api/types/deliverable-receipts'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
 

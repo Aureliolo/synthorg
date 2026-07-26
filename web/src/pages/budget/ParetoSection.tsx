@@ -4,7 +4,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ProvenanceBadge } from '@/components/ui/provenance-badge'
 import { cn } from '@/lib/utils'
-import type { ParetoFrontier } from '@/api/types'
+import type { ParetoFrontier } from '@/api/types/budget'
 
 export interface ParetoSectionProps {
   frontier: ParetoFrontier | null

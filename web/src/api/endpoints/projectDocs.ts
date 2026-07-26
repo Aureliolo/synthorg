@@ -5,7 +5,7 @@ import type {
   DocType,
   DocVersion,
   LivingDocument,
-} from '../types'
+} from '@/api/types/project-docs'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 export interface ListProjectDocsParams {

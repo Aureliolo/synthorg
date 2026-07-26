@@ -7,5 +7,6 @@ export type {
   SessionResponse as SessionInfo,
   SetupRequest,
   UserInfoResponse,
+  UserResponse,
   WsTicketResponse,
 } from './dtos.gen'

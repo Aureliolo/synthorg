@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import type { SteeringSupersessionProposal } from '@/api/types'
+import type { SteeringSupersessionProposal } from '@/api/types/steering'
 import { Button } from '@/components/ui/button'
 import { TagInput } from '@/components/ui/tag-input'
 import { useSteeringStore } from '@/stores/steering'

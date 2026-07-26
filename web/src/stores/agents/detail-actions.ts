@@ -25,8 +25,8 @@ import type {
   AgentHealthResponse,
   AgentPerformanceSummary,
   CareerEvent,
-  Task,
-} from '@/api/types'
+} from '@/api/types/agents'
+import type { Task } from '@/api/types/tasks'
 import type { PaginatedResult } from '@/api/client'
 import {
   MAX_ACTIVITIES,

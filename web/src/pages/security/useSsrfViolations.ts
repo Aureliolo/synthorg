@@ -4,7 +4,10 @@ import { useAuth } from '@/hooks/useAuth'
 import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { useSsrfViolationsStore } from '@/stores/ssrf-violations'
 import type { EmptyStateProps } from '@/components/ui/empty-state'
-import type { ResolveSsrfViolationRequest, SsrfViolationDTO } from '@/api/types'
+import type {
+  ResolveSsrfViolationRequest,
+  SsrfViolationDTO,
+} from '@/api/types/ssrf-violations'
 import type { SsrfViolationStatus } from '@/api/types/enum-values.gen'
 import { hasPrivilegedRole } from '@/utils/roles'
 

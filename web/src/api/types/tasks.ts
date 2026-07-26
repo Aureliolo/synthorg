@@ -4,10 +4,8 @@ import type { Task as WireTask } from './dtos.gen'
 import type { TaskSource, TaskStatus } from './enums'
 
 export type {
-  AcceptanceCriterion,
   CancelTaskRequest,
   CreateTaskRequest,
-  ExpectedArtifact,
   TaskBoardSubmissionResponse,
   TransitionTaskRequest,
   UpdateTaskRequest,

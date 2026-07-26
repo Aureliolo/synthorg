@@ -6,7 +6,7 @@ import type {
   AgentIdentity,
   AgentIdentityDiff,
   RollbackAgentIdentityRequest,
-} from '../types'
+} from '@/api/types/agents'
 import type {
   AgentActivityEvent,
   AgentPerformanceSummary,

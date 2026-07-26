@@ -1,4 +1,4 @@
-import type { LivingDocument } from '@/api/types'
+import type { LivingDocument } from '@/api/types/project-docs'
 import { DocBlockRenderer } from './DocBlockRenderer'
 import { ReceiptPanel } from './ReceiptPanel'
 

@@ -3,7 +3,7 @@ import type {
   getProviderRateLimits,
   updateProviderRateLimits,
 } from '@/api/endpoints/providers'
-import type { RateLimitsResponse } from '@/api/types'
+import type { RateLimitsResponse } from '@/api/types/providers'
 import { successFor } from '../helpers'
 
 function buildRateLimitsResponse(

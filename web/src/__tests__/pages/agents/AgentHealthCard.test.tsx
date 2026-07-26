@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import type { AgentHealthResponse } from '@/api/types'
+import type { AgentHealthResponse } from '@/api/types/agents'
 import { AgentHealthCard } from '@/pages/agents/AgentHealthCard'
 
 function makeHealth(

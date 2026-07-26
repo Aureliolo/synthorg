@@ -10,11 +10,11 @@ import {
 } from '@/api/endpoints/budget'
 import type {
   Forecast,
-  ForecastRequest,
   ForecastApproveRequest,
   ForecastRejectRequest,
+  ForecastRequest,
   RaiseCeilingRequest,
-} from '@/api/types'
+} from '@/api/types/budget'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'

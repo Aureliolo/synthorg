@@ -17,7 +17,7 @@ import type {
   CreateFromPresetRequest,
   CreateProviderRequest,
   ProbePresetResponse,
-} from '@/api/types'
+} from '@/api/types/providers'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { useToastStore } from '@/stores/toast'

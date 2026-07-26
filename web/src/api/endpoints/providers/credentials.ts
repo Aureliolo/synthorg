@@ -1,9 +1,6 @@
 import { apiClient, unwrap } from '../../client'
-import type {
-  ApiResponse,
-  CredentialsRotateRequest,
-  ProviderConfig,
-} from '@/api/types'
+import type { ApiResponse } from '@/api/types/http'
+import type { CredentialsRotateRequest, ProviderConfig } from '@/api/types/providers'
 
 export async function rotateProviderCredentials(
   name: string,

@@ -21,7 +21,7 @@ import type {
   EntityResponse,
   EntityVersionResponse,
   UpdateEntityRequest,
-} from '../types'
+} from '@/api/types/ontology'
 
 // ── Types ─────────────────────────────────────────────────────
 

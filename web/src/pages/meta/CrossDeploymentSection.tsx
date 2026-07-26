@@ -14,7 +14,10 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonText } from '@/components/ui/skeleton'
 import { listPatterns, listRecommendations } from '@/api/endpoints/meta-analytics'
-import type { AggregatedPattern, ThresholdRecommendation } from '@/api/types'
+import type {
+  AggregatedPattern,
+  ThresholdRecommendation,
+} from '@/api/types/meta-analytics'
 import { ErrorCode } from '@/api/types/errors'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'

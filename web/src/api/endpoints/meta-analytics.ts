@@ -8,7 +8,10 @@
  */
 import { apiClient, paginateAll, unwrapPaginated } from '../client'
 import type { PaginatedResponse } from '../types/http'
-import type { AggregatedPattern, ThresholdRecommendation } from '../types'
+import type {
+  AggregatedPattern,
+  ThresholdRecommendation,
+} from '@/api/types/meta-analytics'
 
 /** Query aggregated cross-deployment patterns (newest first). */
 export async function listPatterns(

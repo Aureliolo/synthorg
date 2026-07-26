@@ -6,7 +6,7 @@ import type {
   getCharter,
   listCharters,
 } from '@/api/endpoints/charter'
-import type { CharterApprovalResult, ProjectCharter } from '@/api/types'
+import type { CharterApprovalResult, ProjectCharter } from '@/api/types/charter'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { paginatedFor, successFor } from './helpers'
 

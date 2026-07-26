@@ -9,7 +9,7 @@ import { useSsrfViolationsStore } from '@/stores/ssrf-violations'
 import { useToastStore } from '@/stores/toast'
 import { server } from '@/test-setup'
 import type { resolveSsrfViolation } from '@/api/endpoints/ssrf-violations'
-import type { SsrfViolationDTO } from '@/api/types'
+import type { SsrfViolationDTO } from '@/api/types/ssrf-violations'
 
 const authMock = vi.hoisted((): { userRole: string } => ({ userRole: 'ceo' }))
 vi.mock('@/hooks/useAuth', () => ({

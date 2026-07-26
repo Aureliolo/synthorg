@@ -6,7 +6,7 @@ import type {
   rejectRecommendation,
   triggerRefresh,
 } from '@/api/endpoints/recommendations'
-import type { UpgradeRecommendationDTO } from '@/api/types'
+import type { UpgradeRecommendationDTO } from '@/api/types/recommendations'
 import { successFor } from './helpers'
 
 const BASE = '/api/v1/providers/model-refresh'

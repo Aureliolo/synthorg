@@ -1,7 +1,8 @@
 import { getCompanyConfig, getDepartmentHealth } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeWsString } from '@/utils/ws-sanitize'
-import type { DepartmentHealth, WsEvent } from '@/api/types'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { WsEvent } from '@/api/types/websocket'
 import { log } from './_helpers'
 import type { CompanyGet, CompanySet } from './types'
 

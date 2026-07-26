@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { DocBlockRenderer } from '@/pages/project-docs/DocBlockRenderer'
-import type { LinkBlock } from '@/api/types'
+import type { LinkBlock } from '@/api/types/project-docs'
 
 function linkBlock(url: string): LinkBlock {
   return { block_id: 'b1', block_kind: 'link', label: 'Source', url }

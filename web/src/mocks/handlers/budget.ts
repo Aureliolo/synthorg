@@ -17,7 +17,7 @@ import type {
   BudgetConfig,
   PromptClassBreakdown,
 } from '@/api/types/budget'
-import type { AnalyticsAggregation, Forecast, ParetoFrontier } from '@/api/types'
+import type { AnalyticsAggregation, Forecast, ParetoFrontier } from '@/api/types/budget'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
 

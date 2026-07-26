@@ -14,7 +14,7 @@ import { CHART_INITIAL_DIMENSION, CHART_STROKE_HAIRLINE, CHART_STROKE_THIN } fro
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatDateOnly, formatDateTime } from '@/utils/format'
-import type { LearningCurve, LearningCurvePoint } from '@/api/types'
+import type { LearningCurve, LearningCurvePoint } from '@/api/types/analytics'
 
 export interface BenchmarkScoreChartProps {
   curve: LearningCurve

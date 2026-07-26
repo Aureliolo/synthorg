@@ -1,4 +1,4 @@
-import type { PlanStatus } from '@/api/types'
+import type { PlanStatus } from '@/api/types/plans'
 
 import { StatusPill, type StatusPillTone } from './status-pill'
 

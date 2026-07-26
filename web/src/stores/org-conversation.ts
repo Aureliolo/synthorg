@@ -7,7 +7,7 @@ import {
   type PostTurnOptions,
   type StreamTurnOutcome,
 } from '@/api/endpoints/meta'
-import type { TurnIntent, TurnResult } from '@/api/types'
+import type { TurnIntent, TurnResult } from '@/api/types/meta-turn'
 import { createLogger } from '@/lib/logger'
 import { useApprovalsStore } from '@/stores/approvals'
 import { useCharterStore } from '@/stores/charter'

@@ -10,12 +10,12 @@ import type {
 import type {
   AnalyticsAggregation,
   Forecast,
-  ForecastRequest,
   ForecastApproveRequest,
   ForecastRejectRequest,
+  ForecastRequest,
   ParetoFrontier,
   RaiseCeilingRequest,
-} from '../types'
+} from '@/api/types/budget'
 import type { ErrorDetail } from '../types/errors'
 import type { ApiResponse, PaginationParams } from '../types/http'
 

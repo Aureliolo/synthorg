@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 
-import type { Forecast } from '@/api/types'
+import type { Forecast } from '@/api/types/budget'
 import { apiSuccess } from '@/mocks/handlers'
 import { PlanForecastPanel } from '@/pages/plans/PlanForecastPanel'
 import { server } from '@/test-setup'

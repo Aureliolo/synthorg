@@ -3,7 +3,7 @@ import type {
   RefreshCycleReportDTO,
   RefreshStatusDTO,
   UpgradeRecommendationDTO,
-} from '../types'
+} from '@/api/types/recommendations'
 import type { ApiResponse } from '../types/http'
 import type { RecommendationStatus } from '../types/enum-values.gen'
 

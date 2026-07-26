@@ -1,5 +1,5 @@
 import { memo, useState } from 'react'
-import type { CharterEditRequest, ProjectCharter } from '@/api/types'
+import type { CharterEditRequest, ProjectCharter } from '@/api/types/charter'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SectionCard } from '@/components/ui/section-card'

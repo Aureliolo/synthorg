@@ -10,7 +10,7 @@ import type {
   DocSummary,
   DocVersion,
   LivingDocument,
-} from '@/api/types'
+} from '@/api/types/project-docs'
 import {
   emptyPage,
   paginatedFor,

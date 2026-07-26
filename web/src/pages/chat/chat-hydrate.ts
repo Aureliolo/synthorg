@@ -2,7 +2,7 @@ import type {
   ConversationKind,
   ConversationTurnRecord,
 } from '@/api/endpoints/meta'
-import type { TurnIntent } from '@/api/types'
+import type { TurnIntent } from '@/api/types/meta-turn'
 
 import { nextMessageId } from './message-id'
 import type { OrgTurn } from './org-chat-types'

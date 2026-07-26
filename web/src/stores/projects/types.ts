@@ -1,13 +1,13 @@
 import type { StoreApi } from 'zustand'
 import type { AutonomyLevel } from '@/api/types/enums'
+import type { ProjectStatus } from '@/api/types/enums'
 import type {
   CreateProjectRequest,
   Project,
   ProjectProgress,
-  ProjectStatus,
-  Task,
-  WsEvent,
-} from '@/api/types'
+} from '@/api/types/projects'
+import type { Task } from '@/api/types/tasks'
+import type { WsEvent } from '@/api/types/websocket'
 
 export interface BatchDeleteOutcome {
   succeeded: number

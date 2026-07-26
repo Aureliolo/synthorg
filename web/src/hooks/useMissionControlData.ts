@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
-import type { LiveActivitySnapshot } from '@/api/types'
+import type { LiveActivitySnapshot } from '@/api/types/cockpit'
 import type { WsChannel } from '@/api/types/websocket'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'

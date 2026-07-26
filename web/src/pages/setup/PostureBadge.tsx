@@ -1,4 +1,4 @@
-import type { PostureName } from '@/api/types'
+import type { PostureName } from '@/api/types/setup'
 import { InfoTooltip } from '@/components/ui/info-tooltip'
 import { cn } from '@/lib/utils'
 import { POSTURE_INFO, type PostureInfo } from '@/utils/posture-info'

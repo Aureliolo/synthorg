@@ -2,7 +2,7 @@ import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 
 import { getForecast } from '@/api/endpoints/budget'
-import type { Forecast } from '@/api/types'
+import type { Forecast } from '@/api/types/budget'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'

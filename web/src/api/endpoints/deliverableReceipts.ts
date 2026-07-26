@@ -1,5 +1,8 @@
 import { apiClient, unwrap, withSignal } from '../client'
-import type { DeliverableReceipt, ReceiptValidationResult } from '@/api/types'
+import type {
+  DeliverableReceipt,
+  ReceiptValidationResult,
+} from '@/api/types/deliverable-receipts'
 import type { ApiResponse } from '@/api/types/http'
 
 /**

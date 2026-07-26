@@ -7,7 +7,7 @@ import type {
   InterviewTurnResult,
   ProposeResult,
   TurnResult,
-} from '@/api/types'
+} from '@/api/types/meta-turn'
 
 import { hasAttribution } from './attribution'
 import { nextMessageId } from './message-id'

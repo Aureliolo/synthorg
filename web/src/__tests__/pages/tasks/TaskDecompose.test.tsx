@@ -9,7 +9,7 @@ import {
   useTaskDecomposeController,
   type SubtaskDraft,
 } from '@/pages/tasks/useTaskDecomposeController'
-import type { DecompositionResult } from '@/api/types'
+import type { DecompositionResult } from '@/api/types/decomposition'
 import { useToastStore } from '@/stores/toast'
 
 function draft(overrides: Partial<SubtaskDraft> = {}): SubtaskDraft {

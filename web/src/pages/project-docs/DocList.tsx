@@ -1,6 +1,10 @@
 import { useMemo } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
-import { DOC_TYPE_VALUES, type DocSummary, type DocType } from '@/api/types'
+import {
+  DOC_TYPE_VALUES,
+  type DocSummary,
+  type DocType,
+} from '@/api/types/project-docs'
 
 const DOC_TYPE_LABEL: Record<DocType, string> = {
   status_report: 'Status report',

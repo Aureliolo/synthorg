@@ -1,10 +1,7 @@
 import type { StoreApi } from 'zustand'
-import type {
-  Artifact,
-  ArtifactType,
-  CreateArtifactRequest,
-  WsEvent,
-} from '@/api/types'
+import type { Artifact, CreateArtifactRequest } from '@/api/types/artifacts'
+import type { ArtifactType } from '@/api/types/enums'
+import type { WsEvent } from '@/api/types/websocket'
 
 export interface ArtifactsState {
   // List page

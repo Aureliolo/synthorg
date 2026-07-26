@@ -12,7 +12,7 @@ import type {
   SteeringIssueResult,
   SteeringSupersessionProposal,
   SteeringSupersessionResult,
-} from '@/api/types'
+} from '@/api/types/steering'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'

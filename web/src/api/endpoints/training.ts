@@ -7,7 +7,7 @@ import type {
   TrainingPlanStatus,
   TrainingResultResponse,
   UpdateTrainingOverridesRequest,
-} from '../types'
+} from '@/api/types/training'
 
 // -- Types -----------------------------------------------------------
 

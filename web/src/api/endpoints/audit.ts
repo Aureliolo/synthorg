@@ -7,7 +7,7 @@
  */
 import { apiClient, unwrapPaginated } from '../client'
 import type { PaginatedResponse } from '../types/http'
-import type { AuditEntry } from '@/api/types'
+import type { AuditEntry } from '@/api/types/audit'
 import type { PaginatedResult } from '../client'
 
 export interface ListAuditEntriesParams {

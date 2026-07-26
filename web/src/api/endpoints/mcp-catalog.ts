@@ -1,6 +1,6 @@
 import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
-import type { InstalledEntry } from '../types'
+import type { InstalledEntry } from '@/api/types/integrations'
 import type {
   McpCatalogEntry,
   McpInstallRequest,

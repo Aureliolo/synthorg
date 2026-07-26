@@ -6,7 +6,7 @@ import type {
   LinkBlock,
   MetricBlock,
   ProseBlock,
-} from '@/api/types'
+} from '@/api/types/project-docs'
 
 type DocBlock =
   | HeadingBlock

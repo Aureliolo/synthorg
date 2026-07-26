@@ -6,10 +6,7 @@ import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
-import type {
-  Artifact,
-  CreateArtifactRequest,
-} from '@/api/types'
+import type { Artifact, CreateArtifactRequest } from '@/api/types/artifacts'
 import {
   bumpDetailRequestToken,
   bumpListRequestToken,

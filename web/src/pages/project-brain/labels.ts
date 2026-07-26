@@ -1,4 +1,4 @@
-import type { BrainEntryKind, BrainEntryStatus } from '@/api/types'
+import type { BrainEntryKind, BrainEntryStatus } from '@/api/types/project-brain'
 
 /**
  * Human-readable labels for brain entry kinds and statuses.

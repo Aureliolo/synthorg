@@ -3,8 +3,8 @@ import type {
   LiveActivitySnapshot,
   RedTeamReportRecord,
   ReplaySeekView,
-  Task,
-} from '@/api/types'
+} from '@/api/types/cockpit'
+import type { Task } from '@/api/types/tasks'
 
 import {
   apiClient,

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-import type { Forecast } from '@/api/types'
+import type { Forecast } from '@/api/types/budget'
 import { usePlanForecastStore } from '@/stores/planForecast'
 
 export interface UsePlanForecastReturn {

@@ -3,7 +3,7 @@ import { Check, DollarSign, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/utils/format'
-import type { Forecast } from '@/api/types'
+import type { Forecast } from '@/api/types/budget'
 
 export interface CostForecastApprovalCardProps {
   forecast: Forecast

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 
 import { BudgetForecastDialog } from '@/pages/budget/BudgetForecastDialog'
-import type { Forecast } from '@/api/types'
+import type { Forecast } from '@/api/types/budget'
 
 const baseForecast: Forecast = {
   forecast_id: '00000000-0000-0000-0000-000000000001',

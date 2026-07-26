@@ -13,7 +13,7 @@ import type {
   ApprovalResponse,
   ApproveRequest,
   RejectRequest,
-} from '@/api/types'
+} from '@/api/types/approvals'
 import {
   getDetailRequestSeq,
   getListRequestSeq,

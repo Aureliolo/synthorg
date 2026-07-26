@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import type { FlightRecorderFrame, RedTeamFinding, RedTeamSeverity } from '@/api/types'
+import type {
+  FlightRecorderFrame,
+  RedTeamFinding,
+  RedTeamSeverity,
+} from '@/api/types/cockpit'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'

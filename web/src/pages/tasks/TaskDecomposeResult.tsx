@@ -1,6 +1,6 @@
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
-import type { DecompositionResult, SubtaskDefinition } from '@/api/types'
+import type { DecompositionResult, SubtaskDefinition } from '@/api/types/decomposition'
 
 function MetaTag({ children }: { children: string }) {
   return (

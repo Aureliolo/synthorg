@@ -12,7 +12,7 @@ import type {
   listConversations,
   postTurn,
 } from '@/api/endpoints/meta'
-import type { TurnIntent, TurnResult } from '@/api/types'
+import type { TurnIntent, TurnResult } from '@/api/types/meta-turn'
 import { apiSuccess, apiError, paginatedEnvelopeFor, successFor } from './helpers'
 
 function _hasBlankField(body: unknown, field: string): boolean {

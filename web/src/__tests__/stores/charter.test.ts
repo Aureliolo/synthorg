@@ -8,7 +8,7 @@ import type {
   editCharter as editCharterApi,
   listCharters as listChartersApi,
 } from '@/api/endpoints/charter'
-import type { CharterApprovalResult } from '@/api/types'
+import type { CharterApprovalResult } from '@/api/types/charter'
 import { server } from '@/test-setup'
 
 describe('useCharterStore', () => {

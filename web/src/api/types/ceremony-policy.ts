@@ -4,7 +4,6 @@ export type {
   ActiveCeremonyStrategyResponse as ActiveCeremonyStrategy,
   CeremonyPolicyConfig,
   ResolvedCeremonyPolicyResponse,
-  ResolvedPolicyField,
 } from './dtos.gen'
 
 export type { CeremonyStrategyType, VelocityCalcType } from './enum-values.gen'

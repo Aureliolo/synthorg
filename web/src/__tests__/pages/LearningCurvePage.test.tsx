@@ -6,7 +6,7 @@ import { apiError, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import LearningCurvePage from '@/pages/LearningCurvePage'
 import type { getLearningCurve } from '@/api/endpoints/learning'
-import type { LearningCurvePoint } from '@/api/types'
+import type { LearningCurvePoint } from '@/api/types/analytics'
 
 function renderPage() {
   return render(

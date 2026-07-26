@@ -23,7 +23,7 @@ import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SearchInput } from '@/components/ui/search-input'
 import { SelectField } from '@/components/ui/select-field'
 import { TagInput } from '@/components/ui/tag-input'
-import type { PresetSummaryResponse } from '@/api/types'
+import type { PresetSummaryResponse } from '@/api/types/personalities'
 import { makeEnumParser } from '@/utils/type-guards'
 
 import {

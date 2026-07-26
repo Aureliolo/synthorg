@@ -7,7 +7,7 @@ import type {
   ProposalAltitude,
   RuleSeverity,
   UpdateCustomRuleRequest,
-} from '../types'
+} from '@/api/types/custom-rules'
 
 // -- Types -------------------------------------------------------------------
 

@@ -10,7 +10,7 @@ import type {
   ReceiptSourceEntry,
   ReceiptTestEntry,
   ReceiptValidationResult,
-} from '@/api/types'
+} from '@/api/types/deliverable-receipts'
 import { Button } from '@/components/ui/button'
 import { Collapsible } from '@/components/ui/collapsible'
 import { MetadataGrid, type MetadataGridItem } from '@/components/ui/metadata-grid'

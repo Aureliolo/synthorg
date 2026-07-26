@@ -3,7 +3,7 @@ import type { ApiResponse } from '../types/http'
 import type {
   SubmitObjectiveAck,
   SubmitObjectivePayload as SubmitObjectivePayloadWire,
-} from '../types'
+} from '@/api/types/plans'
 
 export type { SubmitObjectiveAck }
 

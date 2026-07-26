@@ -1,13 +1,13 @@
 import { apiClient, unwrap } from '../../client'
+import type { ApiResponse } from '@/api/types/http'
 import type {
   AddAllowlistEntryRequest,
-  ApiResponse,
   DiscoverModelsResponse,
   DiscoveryPolicyResponse,
   ProbeLocalResponse,
   ProviderHealthSummary,
   RemoveAllowlistEntryRequest,
-} from '@/api/types'
+} from '@/api/types/providers'
 
 export async function getProviderHealth(name: string): Promise<ProviderHealthSummary> {
   const response = await apiClient.get<ApiResponse<ProviderHealthSummary>>(`/providers/${encodeURIComponent(name)}/health`)

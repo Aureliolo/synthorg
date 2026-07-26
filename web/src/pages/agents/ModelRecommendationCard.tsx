@@ -1,7 +1,7 @@
 import { ArrowRight, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
-import type { UpgradeRecommendationDTO } from '@/api/types'
+import type { UpgradeRecommendationDTO } from '@/api/types/recommendations'
 
 export interface ModelRecommendationCardProps {
   recommendation: UpgradeRecommendationDTO

@@ -12,11 +12,11 @@ import type {
 import type {
   AgentHealthResponse,
   AgentPerformanceSummary,
-  AgentStatus,
   CareerEvent,
-  Task,
-  WsEvent,
-} from '@/api/types'
+} from '@/api/types/agents'
+import type { AgentStatus } from '@/api/types/enums'
+import type { Task } from '@/api/types/tasks'
+import type { WsEvent } from '@/api/types/websocket'
 import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import type { AgentSortKey } from '@/utils/agents'
 
