@@ -177,6 +177,15 @@ _PATH_BOUNDARY_CHARS: Final[str] = "\\/\"' \t"
 # How a mypy daemon identifies itself in its own command line. The only
 # process ``--stop-holder`` is willing to terminate.
 _DAEMON_PROCESS_MARKER: Final[str] = "mypy.dmypy"
+
+# Whether two paths differing only in case are the same path. A command line
+# records a path as the process was launched with it, while the needle is
+# resolved, so on Windows the two routinely differ in case (drive letter, a
+# hand-typed path, a launcher that lower-cases) and an exact match would miss
+# a real holder -- reporting "no process holds ..." for the stranded worktree
+# this tooling exists to release. POSIX paths are genuinely case-sensitive,
+# where folding would conflate two different directories.
+_PATH_MATCH_IS_CASE_SENSITIVE: Final[bool] = sys.platform != "win32"
 # Generous: a cold daemon build over ~6.5k files legitimately takes minutes on
 # a contended machine, so this bounds a hang rather than pacing a slow build.
 _MYPY_TIMEOUT_SECONDS: Final[int] = 1800
@@ -1004,7 +1013,13 @@ def _references_path(command: str, needle: str) -> bool:
     path genuinely nested under the needle still matches, which is correct --
     it does live there -- and is why the caller confirms each pid rather than
     acting on the list wholesale.
+
+    Case handling follows the platform (see
+    ``_PATH_MATCH_IS_CASE_SENSITIVE``), because a miss here is silent: the
+    holder simply never appears in the listing.
     """
+    if not _PATH_MATCH_IS_CASE_SENSITIVE:
+        command, needle = command.casefold(), needle.casefold()
     start = 0
     while (index := command.find(needle, start)) != -1:
         end = index + len(needle)

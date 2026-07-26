@@ -485,6 +485,30 @@ class TestWorktreeHolders:
     ) -> None:
         assert _MODULE._references_path(command, r"C:\wt\foo") is expected
 
+    def test_case_insensitive_where_the_platform_is(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A command line records the path as launched, the needle is resolved,
+        # so on Windows they routinely differ in case. A miss here is silent:
+        # the holder just never appears and the worktree stays stranded.
+        monkeypatch.setattr(_MODULE, "_PATH_MATCH_IS_CASE_SENSITIVE", False)
+
+        assert _MODULE._references_path(r"python.exe c:\WT\Foo\.venv", r"C:\wt\foo")
+        # Folding must not defeat the sibling guard.
+        assert not _MODULE._references_path(
+            r"python.exe c:\WT\Foo2\.venv", r"C:\wt\foo"
+        )
+
+    def test_case_sensitive_where_the_platform_is(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # POSIX paths are genuinely case-sensitive: /home/Foo and /home/foo are
+        # different directories, so folding there would conflate them.
+        monkeypatch.setattr(_MODULE, "_PATH_MATCH_IS_CASE_SENSITIVE", True)
+
+        assert not _MODULE._references_path("python /home/Foo/.venv", "/home/foo")
+        assert _MODULE._references_path("python /home/foo/.venv", "/home/foo")
+
     def test_posix_process_table_parsed(self) -> None:
         output = "  123 /usr/bin/python -m mypy.dmypy\n  456 sleep 1\nnot-a-row\n"
 
