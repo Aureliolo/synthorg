@@ -1,4 +1,4 @@
-import type { BrainEntry, BrainEntryVersion } from '@/api/types'
+import type { BrainEntry, BrainEntryVersion } from '@/api/types/project-brain'
 import { formatRelativeTime } from '@/utils/format'
 import { BRAIN_KIND_LABEL, BRAIN_STATUS_LABEL } from './labels'
 

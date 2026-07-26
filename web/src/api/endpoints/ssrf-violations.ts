@@ -8,7 +8,10 @@
  */
 
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
-import type { ResolveSsrfViolationRequest, SsrfViolationDTO } from '../types'
+import type {
+  ResolveSsrfViolationRequest,
+  SsrfViolationDTO,
+} from '@/api/types/ssrf-violations'
 import type { SsrfViolationStatus } from '../types/enum-values.gen'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 

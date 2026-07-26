@@ -3,7 +3,6 @@
 export type {
   CalibrationSummaryResponse,
   CollaborationScoreResult,
-  LlmCalibrationRecord,
   OverrideResponse,
   SetOverrideRequest,
 } from './dtos.gen'

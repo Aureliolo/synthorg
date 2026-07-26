@@ -1,5 +1,5 @@
 import * as approvalsApi from '@/api/endpoints/approvals'
-import type { ApprovalResponse } from '@/api/types'
+import type { ApprovalResponse } from '@/api/types/approvals'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import {

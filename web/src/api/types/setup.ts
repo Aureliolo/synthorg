@@ -2,12 +2,15 @@
 
 export type {
   AvailableLocalesResponse,
+  ImportCodebaseAck,
+  ImportCodebasePayload,
   PersonalityPresetInfoResponse as PersonalityPresetInfo,
   SetupAgentRequest,
   SetupAgentResponse,
   SetupAgentSummary,
   SetupCompanyRequest,
   SetupCompanyResponse,
+  SetupCompleteResponse,
   SetupModelCandidate,
   SetupModelRecommendationsResponse,
   SetupNameLocalesRequest,
@@ -20,4 +23,4 @@ export type {
   UpdateAgentPersonalityRequest,
 } from './dtos.gen'
 
-export type { SkillPattern } from './enum-values.gen'
+export type { PostureName } from './enum-values.gen'

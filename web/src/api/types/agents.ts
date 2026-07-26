@@ -4,10 +4,14 @@ import type { AgentConfigResponse as WireAgentConfig } from './dtos.gen'
 import type { AgentStatus } from './enums'
 
 export type {
+  ActiveAgentSummary,
   ActivityEvent as AgentActivityEvent,
+  AgentHealthResponse,
+  AgentIdentity,
+  AgentIdentityDiff,
   AgentPerformanceSummary,
   CareerEvent,
-  RecommendedAction,
+  RollbackAgentIdentityRequest,
   TrendResult,
   WindowMetrics,
 } from './dtos.gen'
@@ -15,8 +19,6 @@ export type {
 export type {
   ActivityEventType,
   LifecycleEventType as CareerEventType,
-  StrategicOutputMode,
-  TrendDirection,
 } from './enum-values.gen'
 
 export {

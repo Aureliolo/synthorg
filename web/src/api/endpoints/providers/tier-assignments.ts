@@ -1,12 +1,12 @@
 import { apiClient, unwrap } from '../../client'
+import type { ApiResponse } from '@/api/types/http'
 import type {
-  ApiResponse,
   ApplyRecommendationRequest,
   ClassifierModelDTO,
   TierAssignmentsResponse,
   TierOverrideRequest,
   TierRecommendationsResponse,
-} from '@/api/types'
+} from '@/api/types/providers'
 
 const BASE = '/providers/tier-assignments'
 

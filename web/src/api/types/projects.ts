@@ -7,7 +7,6 @@ export type {
   Project,
   ProjectAutonomyModeRequest,
   ProjectProgress,
-  ProjectProgressCounts,
   ProjectProgressItem,
 } from './dtos.gen'
 

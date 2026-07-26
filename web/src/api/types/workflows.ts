@@ -1,7 +1,6 @@
 /** Workflow definition, execution, versioning and blueprint types. */
 
 export type {
-  ActivateWorkflowRequest,
   BlueprintInfoResponse as BlueprintInfo,
   CreateFromBlueprintRequest,
   CreateSubworkflowRequest,
@@ -16,16 +15,13 @@ export type {
   WorkflowExecution,
   WorkflowIODeclaration,
   WorkflowIODeclarationRequest,
-  WorkflowValidationError,
   WorkflowValidationResult,
 } from './dtos.gen'
 
 export type {
   WorkflowEdgeType,
   WorkflowExecutionStatus,
-  WorkflowNodeExecutionStatus,
   WorkflowNodeType,
-  WorkflowValueType,
 } from './enum-values.gen'
 
 import type {

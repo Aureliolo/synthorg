@@ -2,7 +2,7 @@ import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { isObject } from '@/utils/type-guards'
 import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
-import type { WsEvent } from '@/api/types'
+import type { WsEvent } from '@/api/types/websocket'
 import type { AgentRuntimeStatus } from '@/utils/agent-status'
 import type { AgentsSet } from './types'
 

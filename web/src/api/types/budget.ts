@@ -2,14 +2,20 @@
 
 export type {
   AgentSpending,
-  AutoDowngradeConfig,
+  AnalyticsAggregation,
   BudgetAlertConfig,
   BudgetConfig,
   CostRecord,
   DailySummary,
+  Forecast,
+  ForecastApproveRequest,
+  ForecastRejectRequest,
+  ForecastRequest,
+  ParetoFrontier,
   PeriodSummary,
   PromptClassBreakdown,
   PromptClassBreakdownRow,
+  RaiseCeilingRequest,
 } from './dtos.gen'
 
-export type { FinishReason, LLMCallCategory } from './enum-values.gen'
+export type { ForecastDecision } from './enum-values.gen'

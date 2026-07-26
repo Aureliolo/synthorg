@@ -1,6 +1,6 @@
 import { listArtifacts } from '@/api/endpoints/artifacts'
 import { getErrorMessage } from '@/utils/errors'
-import type { ArtifactType } from '@/api/types'
+import type { ArtifactType } from '@/api/types/enums'
 import {
   bumpDetailRequestToken,
   isStaleListRequest,

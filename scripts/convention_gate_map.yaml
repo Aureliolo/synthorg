@@ -310,6 +310,11 @@ mandatory_rules:
     header: Generated DTO types
     gate: scripts/check_dto_types_ts_in_sync.py
 
+  - id: web-claude-md::one-barrel-per-name
+    file: web/CLAUDE.md
+    header: One barrel per name
+    gate: web/eslint.config.js
+
   - id: web-claude-md::design-system
     file: web/CLAUDE.md
     header: Design System

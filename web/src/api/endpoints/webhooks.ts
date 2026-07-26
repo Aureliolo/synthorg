@@ -3,7 +3,7 @@
  */
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
-import type { WebhookReceipt } from '../types'
+import type { WebhookReceipt } from '@/api/types/integrations'
 
 export type { WebhookReceipt }
 

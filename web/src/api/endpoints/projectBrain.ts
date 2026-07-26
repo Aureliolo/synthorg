@@ -6,7 +6,7 @@ import type {
   BrainEntryVersion,
   BrainSearchHit,
   BrainSummary,
-} from '../types'
+} from '@/api/types/project-brain'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 export interface ListProjectBrainParams {

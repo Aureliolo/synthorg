@@ -5,7 +5,7 @@ import {
   type BrainEntryKind,
   type BrainEntryStatus,
   type BrainSummary,
-} from '@/api/types'
+} from '@/api/types/project-brain'
 import { SkeletonText } from '@/components/ui/skeleton'
 import { BRAIN_KIND_HEADING, BRAIN_STATUS_LABEL } from './labels'
 

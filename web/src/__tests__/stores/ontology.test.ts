@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { type EntityResponse } from '@/api/endpoints/ontology'
-import type { EntityListResponse } from '@/api/types'
+import type { EntityListResponse } from '@/api/types/ontology'
 import { useOntologyStore } from '@/stores/ontology'
 import { useToastStore } from '@/stores/toast'
 import { apiError, voidSuccess } from '@/mocks/handlers'

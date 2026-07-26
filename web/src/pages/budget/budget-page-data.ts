@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getParetoFrontier } from '@/api/endpoints/budget'
-import type { ParetoFrontier } from '@/api/types'
+import type { ParetoFrontier } from '@/api/types/budget'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 import { useBudgetData } from '@/hooks/useBudgetData'

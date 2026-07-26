@@ -3,7 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, it, expect } from 'vitest'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
-import type { TierAssignmentsResponse } from '@/api/types'
+import type { TierAssignmentsResponse } from '@/api/types/providers'
 import { ModelTierAssignmentSection } from '../ModelTierAssignmentSection'
 
 const BASE = '/api/v1/providers/tier-assignments'

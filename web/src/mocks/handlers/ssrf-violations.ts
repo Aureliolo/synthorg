@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { resolveSsrfViolation } from '@/api/endpoints/ssrf-violations'
-import type { SsrfViolationDTO } from '@/api/types'
+import type { SsrfViolationDTO } from '@/api/types/ssrf-violations'
 import { apiError, emptyPageEnvelope, successFor } from './helpers'
 
 const BASE = '/api/v1/providers/ssrf-violations'

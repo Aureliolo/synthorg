@@ -3,8 +3,8 @@ import type {
   SettingDefinition,
   SettingEntry,
   SettingNamespace,
-  WsEvent,
-} from '@/api/types'
+} from '@/api/types/settings'
+import type { WsEvent } from '@/api/types/websocket'
 
 /**
  * A guarded-key write the backend rejected pending a confirm + reason (the

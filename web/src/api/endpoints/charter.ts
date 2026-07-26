@@ -4,7 +4,7 @@ import type {
   CharterApprovalResult,
   CharterEditRequest,
   ProjectCharter,
-} from '../types'
+} from '@/api/types/charter'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 export interface CharterFilters {

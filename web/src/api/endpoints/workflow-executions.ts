@@ -10,7 +10,7 @@
  * pagination metadata.
  */
 import { apiClient, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
-import type { WorkflowExecution, WorkflowExecutionStatus } from '../types'
+import type { WorkflowExecution, WorkflowExecutionStatus } from '@/api/types/workflows'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 export type { WorkflowExecution, WorkflowExecutionStatus }

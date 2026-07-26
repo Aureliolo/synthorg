@@ -3,6 +3,8 @@
 export type {
   AddAllowlistEntryRequest,
   AddModelRequest,
+  ApplyRecommendationRequest,
+  ClassifierModelDTO,
   CloudPreset,
   CreateFromPresetRequest,
   CreateProviderRequest,
@@ -14,7 +16,6 @@ export type {
   PresetOverrideUpdateRequest,
   ProbeLocalResponse,
   ProbePresetResponse,
-  ProviderAuditActor,
   ProviderAuditEvent,
   ProviderHealthSummary,
   ProviderModelConfig,
@@ -27,6 +28,11 @@ export type {
   SyncModelsResponse,
   TestConnectionRequest,
   TestConnectionResponse,
+  TierAssignmentDTO,
+  TierAssignmentsResponse,
+  TierOverrideRequest,
+  TierRecommendationDTO,
+  TierRecommendationsResponse,
   UpdateModelConfigRequest,
   UpdateProviderRequest,
 } from './dtos.gen'

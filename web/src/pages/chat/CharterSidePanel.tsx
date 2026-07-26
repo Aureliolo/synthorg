@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 
-import type { CharterEditRequest } from '@/api/types'
+import type { CharterEditRequest } from '@/api/types/charter'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SectionCard } from '@/components/ui/section-card'
 import { useCharterStore } from '@/stores/charter'

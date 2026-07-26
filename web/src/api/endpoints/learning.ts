@@ -1,5 +1,5 @@
 import { apiClient, unwrap } from '../client'
-import type { LearningCurve } from '../types'
+import type { LearningCurve } from '@/api/types/analytics'
 import type { ApiResponse } from '../types/http'
 
 /**

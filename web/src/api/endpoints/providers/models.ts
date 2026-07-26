@@ -4,9 +4,9 @@ import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { fetchWithRetryAfter } from '@/utils/fetch-with-retry'
 import { parseRetryAfterMs, RateLimitedError } from '@/utils/retry-after'
 import { apiClient, unwrap, unwrapVoid } from '../../client'
+import type { ApiResponse } from '@/api/types/http'
 import type {
   AddModelRequest,
-  ApiResponse,
   LocalModelParams,
   ProviderConfig,
   ProviderModelResponse,
@@ -15,7 +15,7 @@ import type {
   SyncModelsRequest,
   SyncModelsResponse,
   UpdateModelConfigRequest,
-} from '@/api/types'
+} from '@/api/types/providers'
 
 const log = createLogger('providers-api-models')
 

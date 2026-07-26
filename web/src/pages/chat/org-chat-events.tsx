@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { Link } from 'react-router'
 
-import type { ExecutedToolCall } from '@/api/types'
+import type { ExecutedToolCall } from '@/api/types/meta-turn'
 import { Button } from '@/components/ui/button'
 import { InputField, PasswordVisibilityGroup } from '@/components/ui/input-field'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'

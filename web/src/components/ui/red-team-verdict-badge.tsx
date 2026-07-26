@@ -1,4 +1,4 @@
-import type { RedTeamVerdict } from '@/api/types'
+import type { RedTeamVerdict } from '@/api/types/cockpit'
 import { cn } from '@/lib/utils'
 
 interface VerdictMapping {

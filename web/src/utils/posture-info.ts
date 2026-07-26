@@ -1,4 +1,4 @@
-import type { PostureName } from '@/api/types'
+import type { PostureName } from '@/api/types/setup'
 
 /** Visual + descriptive metadata for a named operating posture. */
 export interface PostureInfo {

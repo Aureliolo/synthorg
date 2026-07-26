@@ -13,7 +13,7 @@ import type {
   PresetDetailResponse,
   PresetSummaryResponse,
   UpdatePresetRequest,
-} from '@/api/types'
+} from '@/api/types/personalities'
 
 export interface ListAdminPresetsParams {
   readonly cursor?: string | null

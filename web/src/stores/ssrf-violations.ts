@@ -17,7 +17,10 @@ import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
-import type { ResolveSsrfViolationRequest, SsrfViolationDTO } from '@/api/types'
+import type {
+  ResolveSsrfViolationRequest,
+  SsrfViolationDTO,
+} from '@/api/types/ssrf-violations'
 import type { SsrfViolationStatus } from '@/api/types/enum-values.gen'
 
 const log = createLogger('ssrf-violations')

@@ -17,6 +17,8 @@ export type {
   PlanVersionSnapshot,
   ReplanRequest,
   RequestPlanChangesRequest,
+  SubmitObjectiveAck,
+  SubmitObjectivePayload,
 } from './dtos.gen'
 
 /** Query filters for the plan list endpoint (all optional). */

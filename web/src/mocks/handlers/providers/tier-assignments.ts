@@ -11,7 +11,7 @@ import type {
   ClassifierModelDTO,
   TierAssignmentsResponse,
   TierRecommendationsResponse,
-} from '@/api/types'
+} from '@/api/types/providers'
 import { apiSuccess, successFor } from '../helpers'
 
 const BASE = '/api/v1/providers/tier-assignments'

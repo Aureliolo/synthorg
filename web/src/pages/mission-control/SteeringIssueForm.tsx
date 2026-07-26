@@ -1,7 +1,7 @@
 import { Send } from 'lucide-react'
 import { useState } from 'react'
 
-import type { InterventionKind, SupersedeMode } from '@/api/types'
+import type { InterventionKind, SupersedeMode } from '@/api/types/steering'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'

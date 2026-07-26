@@ -7,11 +7,14 @@
  * the home of any frontend-only helpers (type guards, sets, etc.)
  * that compose with the generated tuples.
  *
- * Adding a new enum to the wire contract: land it on the Pydantic
- * side, regenerate, then surface it here in the re-export block
- * below. Frontend-only enums (UI state, never seen by the
- * backend) belong further down, in the "Frontend-only enums"
- * section.
+ * The re-export block below lists what the dashboard actually
+ * imports, not everything the generator emits: an entry no module
+ * consumes is surface nobody asked for, and knip's ``types`` report
+ * fails the build on one. Adding a new enum to the wire contract:
+ * land it on the Pydantic side, regenerate, then surface it here in
+ * the same commit as the consumer that needs it. Frontend-only enums
+ * (UI state, never seen by the backend) belong further down, in the
+ * "Frontend-only enums" section.
  */
 
 export {
@@ -33,34 +36,22 @@ export {
   TASK_STRUCTURE_VALUES,
   TASK_TYPE_VALUES,
   URGENCY_LEVEL_VALUES,
-  type ActivityEventType,
   type AgentStatus,
   type ApprovalRiskLevel,
   type ApprovalSource,
   type ApprovalStatus,
   type ArtifactType,
   type AutonomyLevel,
-  type CollaborationPreference,
-  type CommunicationVerbosity,
   type Complexity,
-  type ConflictApproach,
-  type CoordinationTopology,
-  type CreativityLevel,
-  type DecisionMakingStyle,
   type DepartmentName,
   type HumanRole,
-  type MemoryLevel,
   type OrgRole,
   type Priority,
   type ProjectStatus,
-  type RiskTolerance,
   type RunOutcome,
-  type Stakes,
   type TaskSource,
   type TaskStatus,
-  type TaskStructure,
   type TaskType,
-  type ToolAccessLevel,
   type UrgencyLevel,
 } from './enum-values.gen'
 

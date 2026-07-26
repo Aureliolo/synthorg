@@ -19,7 +19,7 @@ import type {
   ClassifierModelDTO,
   TierAssignmentDTO,
   TierRecommendationDTO,
-} from '@/api/types'
+} from '@/api/types/providers'
 import { useToastStore } from '@/stores/toast'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'

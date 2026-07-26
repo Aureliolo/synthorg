@@ -9,12 +9,14 @@ export type {
   DepartmentHealth,
   ForecastPoint,
   ForecastResponse,
+  LearningCurve,
+  LearningCurvePoint,
   OverviewMetrics,
   TrendDataPoint,
   TrendsResponse,
 } from './dtos.gen'
 
-export type { BucketSize, TrendMetric, TrendPeriod } from './enum-values.gen'
+export type { TrendMetric, TrendPeriod } from './enum-values.gen'
 
 /**
  * Display-oriented activity item: a frontend-only composition (no backend

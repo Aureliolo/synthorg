@@ -6,13 +6,11 @@ export type {
   SettingDefinition,
   SettingEntry,
   SinkInfoResponse as SinkInfo,
-  SinkRotationResponse as SinkRotation,
   TestSinkConfigResponse as TestSinkResult,
   UpdateSettingRequest,
 } from './dtos.gen'
 
 export type {
-  SettingLevel,
   SettingNamespace,
   SettingSource,
   SettingType,

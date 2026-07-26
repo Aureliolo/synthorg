@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { Activity } from 'lucide-react'
 
-import type { AgentActivity } from '@/api/types'
+import type { AgentActivity } from '@/api/types/cockpit'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'

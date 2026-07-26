@@ -10,7 +10,7 @@ import type {
   ScalingDecisionResponse,
   ScalingSignalResponse,
   ScalingStrategyResponse,
-} from '../types'
+} from '@/api/types/scaling'
 
 // -- Response types ----------------------------------------------------------
 

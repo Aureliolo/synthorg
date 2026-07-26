@@ -9,10 +9,7 @@ import { getErrorMessage } from '@/utils/errors'
 // overlay (id? / status? / hiring_date? extras) is needed here;
 // the barrel exports the wire-only AgentConfig which lacks ``id``.
 import type { AgentConfig } from '@/api/types/agents'
-import type {
-  CreateAgentOrgRequest,
-  UpdateAgentOrgRequest,
-} from '@/api/types'
+import type { CreateAgentOrgRequest, UpdateAgentOrgRequest } from '@/api/types/org'
 import {
   beginMutation,
   emitErrorToast,

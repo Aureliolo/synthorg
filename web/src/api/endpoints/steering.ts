@@ -4,7 +4,7 @@ import type {
   SteeringIssueResult,
   SteeringSupersessionResult,
   SupersedeMode,
-} from '@/api/types'
+} from '@/api/types/steering'
 
 import { apiClient, unwrap, withSignal } from '../client'
 import type { ApiResponse } from '../types/http'

@@ -6,7 +6,7 @@ import type {
   InterviewTurnResult,
   ProposeResult,
   TurnResult,
-} from '@/api/types'
+} from '@/api/types/meta-turn'
 import { buildCharter } from '@/mocks/handlers'
 import { intentDegradeNotice, mapTurnResult } from '@/pages/chat/org-turn-map'
 

@@ -2,6 +2,6 @@
 
 export type {
   CoordinateTaskRequest,
-  CoordinationPhaseResponse,
+  CoordinationMetricsRecord,
   CoordinationResultResponse,
 } from './dtos.gen'

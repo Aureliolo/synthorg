@@ -6,7 +6,10 @@ import {
   rejectRecommendation,
   triggerRefresh,
 } from '@/api/endpoints/recommendations'
-import type { RefreshStatusDTO, UpgradeRecommendationDTO } from '@/api/types'
+import type {
+  RefreshStatusDTO,
+  UpgradeRecommendationDTO,
+} from '@/api/types/recommendations'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage, isAxiosError } from '@/utils/errors'

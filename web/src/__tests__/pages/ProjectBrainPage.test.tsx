@@ -8,7 +8,11 @@ import type {
   getProjectBrainHistory,
   listProjectBrain,
 } from '@/api/endpoints/projectBrain'
-import type { BrainEntry, BrainEntryVersion, BrainSummary } from '@/api/types'
+import type {
+  BrainEntry,
+  BrainEntryVersion,
+  BrainSummary,
+} from '@/api/types/project-brain'
 import {
   apiError,
   apiPaginatedError,

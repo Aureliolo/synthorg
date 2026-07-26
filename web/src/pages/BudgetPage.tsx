@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react'
 import { budgetConfigVersionsClient } from '@/api/endpoints/version-history'
-import type { ParetoFrontier } from '@/api/types'
+import type { ParetoFrontier } from '@/api/types/budget'
 import { MetricCard } from '@/components/ui/metric-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'

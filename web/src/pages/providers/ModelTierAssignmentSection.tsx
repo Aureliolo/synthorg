@@ -17,7 +17,7 @@ import { StatusPill, type StatusPillTone } from '@/components/ui/status-pill'
 import { ProvenanceBadge } from '@/components/ui/provenance-badge'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { EmptyState } from '@/components/ui/empty-state'
-import type { TierAssignmentDTO, TierRecommendationDTO } from '@/api/types'
+import type { TierAssignmentDTO, TierRecommendationDTO } from '@/api/types/providers'
 import {
   canRecommend as recommenderReady,
   hasClassifierModel,

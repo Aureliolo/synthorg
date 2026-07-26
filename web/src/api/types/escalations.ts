@@ -2,7 +2,6 @@
 
 export type {
   CancelEscalationRequest,
-  Conflict,
   ConflictPosition,
   Escalation,
   EscalationResponse,

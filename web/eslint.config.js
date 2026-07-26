@@ -265,6 +265,30 @@ export default tseslint.config(
     },
   },
   {
+    // One barrel per name. A generated DTO lives at `@/api/types/<domain>` and
+    // nowhere else, so knip's `types` report can prove a re-export dead: a
+    // second path to the same name makes every path look unused, which is what
+    // kept that report switched off. Deleting the index barrel already makes
+    // the old path a resolution failure; this turns that into a message that
+    // names the replacement, and stops the barrel being recreated.
+    files: ['**/*.ts', '**/*.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@/api/types',
+              message:
+                'The index barrel was removed. Import from the domain barrel instead, e.g. ' +
+                "`@/api/types/agents`, `@/api/types/http`, `@/api/types/errors`.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Test infra files compose many test setup variants; existing files
     // exceed the function-length cap.
     files: ['test-infra/**', '**/__tests__/**', '**/*.test.{ts,tsx}', '**/*.bench.ts'],

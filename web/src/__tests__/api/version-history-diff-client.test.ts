@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { diffAgentIdentityVersions } from '@/api/endpoints/agents'
 import { diffWorkflowVersions } from '@/api/endpoints/workflows'
-import type { AgentIdentityDiff } from '@/api/types'
+import type { AgentIdentityDiff } from '@/api/types/agents'
 import type { WorkflowDiff } from '@/api/types/workflows'
 import { server } from '@/test-setup'
 

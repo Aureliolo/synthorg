@@ -1,5 +1,5 @@
 import { apiClient, unwrap, unwrapPaginated, withSignal, type PaginatedResult } from '../client'
-import type { KnowledgeHit, KnowledgeSource } from '../types'
+import type { KnowledgeHit, KnowledgeSource } from '@/api/types/knowledge'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 export interface ListProjectKnowledgeParams {

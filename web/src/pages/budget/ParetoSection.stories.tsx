@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
 import { ParetoSection } from './ParetoSection'
-import type { ParetoFrontier } from '@/api/types'
+import type { ParetoFrontier } from '@/api/types/budget'
 
 const absentFrontier: ParetoFrontier = {
   points: [

@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { listAuditEntries } from '@/api/endpoints/audit'
-import type { AuditEntry } from '@/api/types'
+import type { AuditEntry } from '@/api/types/audit'
 import { paginatedFor } from './helpers'
 
 export function buildAuditEntry(overrides: Partial<AuditEntry> = {}): AuditEntry {

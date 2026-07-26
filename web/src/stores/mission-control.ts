@@ -14,8 +14,8 @@ import type {
   LiveActivitySnapshot,
   RedTeamReportRecord,
   ReplaySeekView,
-  Task,
-} from '@/api/types'
+} from '@/api/types/cockpit'
+import type { Task } from '@/api/types/tasks'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'

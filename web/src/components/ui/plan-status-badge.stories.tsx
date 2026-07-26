@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
-import type { PlanStatus } from '@/api/types'
+import type { PlanStatus } from '@/api/types/plans'
 
 import { PlanStatusBadge } from './plan-status-badge'
 

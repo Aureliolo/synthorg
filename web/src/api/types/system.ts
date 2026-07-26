@@ -10,4 +10,4 @@ export type {
   ReadinessStatus as HealthStatus,
 } from './dtos.gen'
 
-export type { MemoryState, ReadinessOutcome, TelemetryStatus } from './enum-values.gen'
+export type { MemoryState } from './enum-values.gen'

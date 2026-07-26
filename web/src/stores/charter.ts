@@ -9,9 +9,9 @@ import { createLogger } from '@/lib/logger'
 import type {
   CharterApprovalResult,
   CharterEditRequest,
-  InterviewTurnResult,
   ProjectCharter,
-} from '@/api/types'
+} from '@/api/types/charter'
+import type { InterviewTurnResult } from '@/api/types/meta-turn'
 
 const log = createLogger('charter')
 

@@ -13,13 +13,13 @@ import { parseRetryAfterMs, RateLimitedError } from '@/utils/retry-after'
 import { ApiRequestError, apiClient, LLM_BOUND_TIMEOUT_MS, unwrap } from '../client'
 import { readSseFrames } from '../sse/read-frames'
 import type { ApiResponse } from '../types/http'
+import type { ErrorDetail } from '@/api/types/errors'
 import type {
   ChimeIn,
-  ErrorDetail,
   TurnIntent,
   TurnRequest,
   TurnResult,
-} from '../types'
+} from '@/api/types/meta-turn'
 
 import { parseCitedRecords } from './cited-records'
 

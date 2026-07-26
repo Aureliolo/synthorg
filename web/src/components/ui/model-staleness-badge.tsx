@@ -1,5 +1,5 @@
 import { AlertCircle } from 'lucide-react'
-import type { ModelStaleness } from '@/api/types'
+import type { ModelStaleness } from '@/api/types/recommendations'
 import { InfoTooltip } from '@/components/ui/info-tooltip'
 import { cn } from '@/lib/utils'
 import { formatDateTime } from '@/utils/format'

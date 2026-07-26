@@ -5,7 +5,7 @@ import type {
   listProjectKnowledgeSources,
   searchProjectKnowledge,
 } from '@/api/endpoints/knowledge'
-import type { KnowledgeHit, KnowledgeSource } from '@/api/types'
+import type { KnowledgeHit, KnowledgeSource } from '@/api/types/knowledge'
 import { emptyPage, paginatedFor, successFor } from './helpers'
 
 function buildSource(overrides: Partial<KnowledgeSource> = {}): KnowledgeSource {

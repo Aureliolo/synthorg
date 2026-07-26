@@ -6,7 +6,7 @@ import {
   deleteAdminPreset,
   listAdminPresets,
 } from '@/api/endpoints/personalities'
-import type { PresetSummaryResponse } from '@/api/types'
+import type { PresetSummaryResponse } from '@/api/types/personalities'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'

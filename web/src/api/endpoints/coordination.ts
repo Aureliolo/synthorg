@@ -1,7 +1,7 @@
 import { apiClient, paginateAll, unwrap, unwrapPaginated } from '../client'
 import type { CoordinateTaskRequest, CoordinationResultResponse } from '../types/coordination'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
-import type { CoordinationMetricsRecord } from '../types'
+import type { CoordinationMetricsRecord } from '@/api/types/coordination'
 
 export async function coordinateTask(
   taskId: string,

@@ -3,7 +3,7 @@ import { HeartPulse } from 'lucide-react'
 
 import { SectionCard } from '@/components/ui/section-card'
 import { StatusBadge } from '@/components/ui/status-badge'
-import type { AgentHealthResponse } from '@/api/types'
+import type { AgentHealthResponse } from '@/api/types/agents'
 import { toRuntimeStatus } from '@/utils/agents'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 

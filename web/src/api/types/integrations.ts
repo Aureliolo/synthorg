@@ -10,6 +10,7 @@ export type {
   ForgeAccessibleRepo,
   HealthReport,
   InitiateOAuthFlowRequest,
+  InstalledEntry,
   InstallEntryRequest,
   InstallEntryResponse,
   OAuthInitiationResponse,
@@ -21,14 +22,12 @@ export type {
   TunnelSnapshot,
   TunnelStartResponse,
   UpdateConnectionRequest,
+  WebhookReceipt,
 } from './dtos.gen'
 
 export type {
   ConnectionStatus,
   ConnectionType,
-  FieldInputType,
-  FieldPlacement,
-  SecretCaptureMode,
 } from './enum-values.gen'
 export { CONNECTION_TYPE_VALUES } from './enum-values.gen'
 

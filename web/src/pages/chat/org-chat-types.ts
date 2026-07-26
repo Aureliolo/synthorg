@@ -1,5 +1,5 @@
 import type { CitedRecord } from '@/api/endpoints/meta'
-import type { ExecutedToolCall } from '@/api/types'
+import type { ExecutedToolCall } from '@/api/types/meta-turn'
 
 /**
  * The rendered transcript model for the one unified org conversation.

@@ -8,7 +8,7 @@ import {
 } from '../client'
 import type { OrgRole } from '../types/enums'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
-import type { UserResponse as UserResponseWire } from '../types'
+import type { UserResponse as UserResponseWire } from '@/api/types/auth'
 
 // Derive from the generated wire type so id/username/role/timestamps stay in
 // lockstep with the backend, but keep ``org_roles`` narrowed to ``OrgRole``:

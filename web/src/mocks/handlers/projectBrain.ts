@@ -10,7 +10,7 @@ import type {
   BrainEntryVersion,
   BrainSearchHit,
   BrainSummary,
-} from '@/api/types'
+} from '@/api/types/project-brain'
 import { emptyPage, paginatedFor, successFor } from './helpers'
 
 function buildEntry(overrides: Partial<BrainEntry> = {}): BrainEntry {

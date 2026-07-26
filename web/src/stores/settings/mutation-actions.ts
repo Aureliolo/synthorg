@@ -8,7 +8,7 @@ import type {
   SettingEntry,
   SettingNamespace,
   UpdateSettingRequest,
-} from '@/api/types'
+} from '@/api/types/settings'
 import {
   DEFAULT_CURRENCY,
   decrementSavingKey,

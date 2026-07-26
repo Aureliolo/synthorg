@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { getProjectDoc, listProjectDocs } from '@/api/endpoints/projectDocs'
-import type { DocSummary, DocType, LivingDocument } from '@/api/types'
+import type { DocSummary, DocType, LivingDocument } from '@/api/types/project-docs'
 import { isAxiosError } from '@/utils/errors'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { ErrorBanner } from '@/components/ui/error-banner'

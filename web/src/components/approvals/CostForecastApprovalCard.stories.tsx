@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from 'storybook/test'
 
 import { CostForecastApprovalCard } from './CostForecastApprovalCard'
-import type { Forecast } from '@/api/types'
+import type { Forecast } from '@/api/types/budget'
 
 const baseForecast: Forecast = {
   forecast_id: '00000000-0000-0000-0000-000000000001',

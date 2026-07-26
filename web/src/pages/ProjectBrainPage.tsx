@@ -11,7 +11,7 @@ import type {
   BrainEntryStatus,
   BrainEntryVersion,
   BrainSummary,
-} from '@/api/types'
+} from '@/api/types/project-brain'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'

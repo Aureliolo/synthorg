@@ -3,7 +3,6 @@
 export type {
   ActionItem,
   MeetingAgenda,
-  MeetingAgendaItem,
   MeetingContribution,
   MeetingMinutes,
   MeetingResponse,

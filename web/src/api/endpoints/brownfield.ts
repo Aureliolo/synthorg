@@ -3,7 +3,7 @@ import type { ApiResponse } from '../types/http'
 import type {
   ImportCodebaseAck,
   ImportCodebasePayload as ImportCodebasePayloadWire,
-} from '../types'
+} from '@/api/types/setup'
 
 export type { ImportCodebaseAck }
 
