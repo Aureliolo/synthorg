@@ -245,6 +245,68 @@ def test_suppression_marker_does_not_leak_across_lines(web_file: Path) -> None:
     assert ":3:" in warnings[0]
 
 
+# Sub-package barrel boundary
+
+
+_BARREL = "web/src/components/ui/health-popover/index.ts"
+
+
+@pytest.mark.unit
+def test_barrel_exporting_component_and_its_props_is_clean(web_file: Path) -> None:
+    """The sanctioned boundary: a renderable component plus its own Props."""
+    src = "export { HealthPopover, type HealthPopoverProps } from './HealthPopover'\n"
+    p = _write(web_file, _BARREL, src)
+    assert check.check_subpackage_barrel_boundary(src, p, web_file) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("src", "flagged"),
+    [
+        pytest.param(
+            "export type { LoadState } from './health-popover.utils'\n",
+            "LoadState",
+            id="helper_type",
+        ),
+        pytest.param(
+            "export { HealthPopover } from './HealthPopover'\n"
+            "export type { HealthStatusRowProps } from './HealthStatusRow'\n",
+            "HealthStatusRowProps",
+            id="props_of_unexported_subcomponent",
+        ),
+        pytest.param(
+            "export { type SubsystemState } from './health-popover.utils'\n",
+            "SubsystemState",
+            id="inline_type_specifier",
+        ),
+        pytest.param(
+            "export { HealthPopover, type HealthPopoverProps as PopoverProps }"
+            " from './HealthPopover'\n",
+            "PopoverProps",
+            id="alias_is_the_published_surface",
+        ),
+    ],
+)
+def test_barrel_exporting_unreachable_surface_is_flagged(
+    web_file: Path, src: str, flagged: str
+) -> None:
+    """Anything past the boundary is surface knip can no longer prove dead."""
+    p = _write(web_file, _BARREL, src)
+    warnings = check.check_subpackage_barrel_boundary(src, p, web_file)
+    assert len(warnings) == 1
+    assert flagged in warnings[0]
+
+
+@pytest.mark.unit
+def test_barrel_check_ignores_modules_outside_a_ui_subpackage(
+    web_file: Path,
+) -> None:
+    """Only the `components/ui/<name>/` barrels are package boundaries."""
+    src = "export type { SliceCreator } from './types'\n"
+    p = _write(web_file, "web/src/stores/agents/index.ts", src)
+    assert check.check_subpackage_barrel_boundary(src, p, web_file) == []
+
+
 # Integration: check_file runs all new checks
 
 
