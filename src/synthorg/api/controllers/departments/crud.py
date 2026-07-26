@@ -278,10 +278,12 @@ class DepartmentController(Controller):
             name,
             data,
         )
-        # Read before announcing, best-effort: the reorder has already
-        # committed, so a settings failure here must neither fail the response
-        # the caller is owed nor skip the event subscribers need to resync.
+        # Build the response before announcing, best-effort: the reorder has
+        # already committed, so neither a settings failure nor a projection
+        # failure may fail the response the caller is owed or skip the event
+        # subscribers need to resync.
         providers = await providers_for_capabilities(app_state)
+        projected = with_model_capabilities(reordered, providers)
         publish_ws_event(
             request,
             WsEventType.AGENTS_REORDERED,
@@ -291,4 +293,4 @@ class DepartmentController(Controller):
                 "agent_names": [a.name for a in reordered],
             },
         )
-        return ApiResponse(data=with_model_capabilities(reordered, providers))
+        return ApiResponse(data=projected)

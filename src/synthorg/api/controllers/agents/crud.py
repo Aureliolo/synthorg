@@ -138,7 +138,12 @@ class AgentCrudController(Controller):
         """
         app_state: AppState = state.app_state
         agent = await org_mutation_service_of(app_state).create_agent(data)
+        # Build the response before announcing: publishing is fire-and-forget
+        # and cannot be retracted, so projecting afterwards would let a
+        # projection failure leave subscribers told of a create the requester
+        # is shown as an error.
         providers = await providers_for_capabilities(app_state)
+        created = with_model_capabilities([agent], providers)[0]
         publish_ws_event(
             request,
             WsEventType.AGENT_CREATED,
@@ -149,7 +154,7 @@ class AgentCrudController(Controller):
                 "department": agent.department,
             },
         )
-        return ApiResponse(data=with_model_capabilities([agent], providers)[0])
+        return ApiResponse(data=created)
 
     @patch(
         "/{agent_id:str}",
@@ -200,10 +205,11 @@ class AgentCrudController(Controller):
             fields_changed=tuple(sorted(data.model_fields_set)),
             actor=get_authenticated_user_id(),
         )
-        # Resolve capabilities before announcing the change: publishing is
+        # Build the response before announcing the change: publishing is
         # fire-and-forget and cannot be retracted, so a failure after it would
         # leave subscribers told while the requester sees an error.
         providers = await providers_for_capabilities(app_state)
+        projected = with_model_capabilities([updated], providers)[0]
         publish_ws_event(
             request,
             WsEventType.AGENT_UPDATED,
@@ -222,7 +228,7 @@ class AgentCrudController(Controller):
             "",
         )
         return Response(
-            content=ApiResponse(data=with_model_capabilities([updated], providers)[0]),
+            content=ApiResponse(data=projected),
             headers={"ETag": new_etag},
         )
 

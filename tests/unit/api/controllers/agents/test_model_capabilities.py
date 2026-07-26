@@ -1,22 +1,39 @@
 """Tests for resolving an agent's assigned-model capabilities for the API."""
 
+import asyncio
 import logging
 from typing import Final
+from unittest.mock import AsyncMock
 
 import pytest
 
 from synthorg.api.controllers.agents._model_capabilities import (
     AgentConfigResponse,
     AgentModelCapabilities,
+    providers_for_capabilities,
     with_model_capabilities,
 )
+from synthorg.api.state import AppState
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability.events.api import API_AGENT_MODEL_BINDING_UNRESOLVED
 from synthorg.providers.enums import AuthType
+from synthorg.settings.errors import SettingsError
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import make_app_state, mock_of
 
 _PROVIDER: Final[str] = "test-provider"
+
+
+def _app_state(resolver: object) -> AppState:
+    """Compose the app state ``providers_for_capabilities`` reads.
+
+    Returns:
+        App state carrying *resolver*.
+    """
+    return make_app_state(config_resolver=resolver)
 
 
 def _agent(
@@ -212,3 +229,56 @@ class TestWithModelCapabilities:
         (enriched,) = with_model_capabilities([_agent("Ada")], _provider())
         assert isinstance(enriched, AgentConfigResponse)
         assert AgentConfig not in type(enriched).__mro__
+
+
+@pytest.mark.unit
+class TestProvidersForCapabilities:
+    """The tolerance boundary around the provider read.
+
+    Callers layer this onto work that has its own result, several of them
+    after a committed write, so what escapes matters more than what it
+    returns.
+    """
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            SettingsError(),
+            # Raised by ``config_resolver_of`` itself when the resolver is
+            # unwired, so it is reachable before the read even starts.
+            ServiceUnavailableError("Config Resolver not configured"),
+            # Stands in for whatever a dropped store connection surfaces:
+            # the caller cannot act on the distinction either way.
+            OSError("connection reset"),
+        ],
+    )
+    async def test_ordinary_failures_are_tolerated(self, failure: Exception) -> None:
+        resolver = mock_of[ConfigResolver](
+            get_provider_configs=AsyncMock(side_effect=failure)
+        )
+
+        assert await providers_for_capabilities(_app_state(resolver)) is None
+
+    @pytest.mark.parametrize("critical", [MemoryError, RecursionError])
+    async def test_critical_failures_still_propagate(
+        self, critical: type[BaseException]
+    ) -> None:
+        # Degrading the projection is worth it; masking an exhausted process
+        # is not, so these keep escaping the best-effort boundary.
+        resolver = mock_of[ConfigResolver](
+            get_provider_configs=AsyncMock(side_effect=critical())
+        )
+
+        with pytest.raises(critical):
+            await providers_for_capabilities(_app_state(resolver))
+
+    async def test_cancellation_is_not_mistaken_for_an_outage(self) -> None:
+        # A caller walking away must not be recorded as a settings failure,
+        # and must not leave the enclosing TaskGroup believing the read
+        # completed.
+        resolver = mock_of[ConfigResolver](
+            get_provider_configs=AsyncMock(side_effect=asyncio.CancelledError())
+        )
+
+        with pytest.raises(asyncio.CancelledError):
+            await providers_for_capabilities(_app_state(resolver))

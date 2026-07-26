@@ -73,7 +73,14 @@ Reading provider config is best-effort on every endpoint that projects capabilit
 (`providers_for_capabilities`). Capabilities are derived display data layered onto an
 operation with its own result: on a mutation the write has already committed by the time
 they resolve, so a settings failure must not report a successful create or reorder as an
-error and invite a duplicate retry.
+error and invite a duplicate retry. Tolerance covers any ordinary failure, not just
+`SettingsError`, because an unwired resolver and a dropped store connection reach the
+caller identically; only critical errors and cancellation still propagate.
+
+For the same reason a mutation projects its response *before* publishing its WebSocket
+event. Publishing cannot be retracted, so projecting afterwards would let a projection
+failure fail the response while subscribers reload against a change the requester was
+shown as an error.
 
 The agent `id` is a stable UUID derived deterministically from the agent name
 (`stable_agent_id(name)` = `uuid5(namespace, name)` in `core.types`). The config layer and the

@@ -6,13 +6,17 @@ interest: a settings-store outage must degrade the projection rather than
 turn a successful mutation into a 500 the client would retry.
 """
 
+from types import ModuleType
 from typing import Final
 from unittest.mock import AsyncMock
 
 import pytest
 from litestar.datastructures import State
+from litestar.status_codes import HTTP_500_INTERNAL_SERVER_ERROR
 
+from synthorg.api.controllers.agents import crud as agent_crud
 from synthorg.api.controllers.agents.crud import AgentCrudController
+from synthorg.api.controllers.departments import crud as department_crud
 from synthorg.api.cursor import CursorSecret
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.model_metadata import ModelMetadata
@@ -20,7 +24,7 @@ from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.providers.enums import AuthType
 from synthorg.settings.errors import SettingsError
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import make_app_state, mock_of
+from tests._shared import LoopAsyncClient, make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -140,3 +144,105 @@ class TestGetAgentCapabilities:
         assert result.data is not None
         assert result.data.model_capabilities is None
         assert result.data.model_capability_status == "provider_config_unavailable"
+
+
+def _projection_failure(*_args: object, **_kwargs: object) -> tuple[object, ...]:
+    """Stand in for a projection that fails after the write has committed.
+
+    Raises:
+        ValueError: Always, matching the ``ValidationError`` a response model
+            raises when it rejects a field the persisted config allowed.
+    """
+    msg = "projection rejected the persisted config"
+    raise ValueError(msg)
+
+
+def _break_projection(
+    monkeypatch: pytest.MonkeyPatch, module: ModuleType
+) -> list[tuple[object, ...]]:
+    """Make *module*'s projection fail and capture whatever it announces.
+
+    Args:
+        monkeypatch: Patcher scoped to the calling test.
+        module: Controller module whose mutation paths are under test.
+
+    Returns:
+        Published events, in publish order.
+    """
+    published: list[tuple[object, ...]] = []
+    monkeypatch.setattr(module, "with_model_capabilities", _projection_failure)
+    monkeypatch.setattr(
+        module,
+        "publish_ws_event",
+        lambda *args, **_kwargs: published.append(args),
+    )
+    return published
+
+
+@pytest.mark.unit
+class TestProjectionPrecedesAnnouncement:
+    """Capability-projecting mutations build the response before announcing.
+
+    Publishing is fire-and-forget, so once the event is out subscribers have
+    been told the mutation happened. Projecting afterwards would let a
+    projection failure fail the response while the dashboard resyncs to a
+    change its requester was shown as an error.
+    """
+
+    async def test_create_agent_does_not_announce(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        await async_test_client.post("/api/v1/departments", json={"name": "eng"})
+        published = _break_projection(monkeypatch, agent_crud)
+
+        resp = await async_test_client.post(
+            "/api/v1/agents",
+            json={"name": "alice", "role": "dev", "department": "eng"},
+        )
+
+        assert resp.status_code >= HTTP_500_INTERNAL_SERVER_ERROR
+        assert published == []
+
+    async def test_update_agent_does_not_announce(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        await async_test_client.post("/api/v1/departments", json={"name": "eng"})
+        created = await async_test_client.post(
+            "/api/v1/agents",
+            json={"name": "alice", "role": "dev", "department": "eng"},
+        )
+        agent_id = created.json()["data"]["id"]
+        published = _break_projection(monkeypatch, agent_crud)
+
+        resp = await async_test_client.patch(
+            f"/api/v1/agents/{agent_id}",
+            json={"role": "lead"},
+        )
+
+        assert resp.status_code >= HTTP_500_INTERNAL_SERVER_ERROR
+        assert published == []
+
+    async def test_reorder_agents_does_not_announce(
+        self,
+        async_test_client: LoopAsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        await async_test_client.post("/api/v1/departments", json={"name": "eng"})
+        for name in ("alice", "bob"):
+            await async_test_client.post(
+                "/api/v1/agents",
+                json={"name": name, "role": "dev", "department": "eng"},
+            )
+        published = _break_projection(monkeypatch, department_crud)
+
+        resp = await async_test_client.post(
+            "/api/v1/departments/eng/reorder-agents",
+            json={"agent_names": ["bob", "alice"]},
+        )
+
+        assert resp.status_code >= HTTP_500_INTERNAL_SERVER_ERROR
+        assert published == []

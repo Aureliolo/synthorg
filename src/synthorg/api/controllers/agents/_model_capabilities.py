@@ -20,6 +20,7 @@ a settings-store outage indistinguishable from a stale binding, and the
 dashboard would report every agent in the org as pointing at a deleted model.
 """
 
+import builtins
 from collections.abc import Mapping, Sequence
 from typing import Literal, Self
 from uuid import UUID
@@ -38,7 +39,6 @@ from synthorg.observability.events.api import (
     API_AGENT_CAPABILITIES_UNAVAILABLE,
     API_AGENT_MODEL_BINDING_UNRESOLVED,
 )
-from synthorg.settings.errors import SettingsError
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -267,15 +267,28 @@ async def providers_for_capabilities(
     provider is configured, ``None`` means the question could not be asked.
     Only the latter makes an unresolved binding meaningless.
 
+    The catch is broad because tolerance here cannot be contingent on which
+    layer failed: an unwired resolver raises ``ServiceUnavailableError`` and a
+    dropped connection surfaces whatever the store raises, neither of which is
+    a ``SettingsError``, yet both reach the caller identically. Cancellation
+    still propagates, so a caller abandoning the request is not mistaken for an
+    outage.
+
     Args:
         app_state: Application state carrying the config resolver.
 
     Returns:
         Configured providers, or ``None`` when they cannot be read.
+
+    Raises:
+        MemoryError: If the process is out of memory.
+        RecursionError: If the recursion limit was exceeded.
     """
     try:
         return await config_resolver_of(app_state).get_provider_configs()
-    except SettingsError as exc:
+    except builtins.MemoryError, RecursionError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised above
         logger.warning(
             API_AGENT_CAPABILITIES_UNAVAILABLE,
             error_type=type(exc).__name__,
