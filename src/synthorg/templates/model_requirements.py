@@ -13,9 +13,14 @@ through :class:`ModelRequirement`:
 * **explicit example id** (``model_id``): pin a concrete configured model.
 * **family / pattern** (``family`` / ``model_pattern``): resolve to the
   newest configured model matching the family or glob.
-* **capability** (``requires_tools`` / ``requires_vision`` /
-  ``requires_reasoning`` plus ``priority`` / ``min_context``): let the
-  matcher pick the best-fitting configured model.
+* **capability** (``requires_vision`` / ``requires_reasoning`` plus
+  ``priority`` / ``min_context``): let the matcher pick the best-fitting
+  configured model.
+
+Tool calling is deliberately absent from that list. Every agent turn
+dispatches with tool definitions attached, so it is a floor the matcher
+applies to every candidate rather than a capability a role opts into; see
+:func:`~synthorg.templates.model_matcher_tiering.passes_hard_filters`.
 
 There is no tier-string selection axis: the matcher classifies models by
 real metadata, and ``ModelMatch.tier`` is report-only.
@@ -70,7 +75,6 @@ class ModelRequirement(BaseModel):
             scoring.
         priority: Optimisation axis when several models clear the filters.
         min_context: Minimum context window in tokens (0 = no minimum).
-        requires_tools: Hard-require function/tool-calling support.
         requires_vision: Hard-require image-input support.
         requires_reasoning: Hard-require extended-reasoning support.
         family: Resolve to the newest configured model in this family
@@ -93,10 +97,6 @@ class ModelRequirement(BaseModel):
         default=0,
         ge=0,
         description="Minimum context window in tokens",
-    )
-    requires_tools: bool = Field(
-        default=False,
-        description="Hard-require function/tool-calling support",
     )
     requires_vision: bool = Field(
         default=False,
@@ -210,17 +210,17 @@ _RAW_AFFINITY: dict[str, dict[str, AffinityValue]] = {
     "methodical_analyst": {"priority": "quality", "requires_reasoning": True},
     "quality_guardian": {"priority": "quality"},
     "security_sentinel": {"priority": "quality", "requires_reasoning": True},
-    "data_driven_optimizer": {"priority": "quality", "requires_tools": True},
-    "code_craftsman": {"priority": "quality", "requires_tools": True},
+    "data_driven_optimizer": {"priority": "quality"},
+    "code_craftsman": {"priority": "quality"},
     "devil_advocate": {"priority": "quality", "requires_reasoning": True},
-    # Fast movers prefer speed; builders still need tool-calling.
+    # Fast movers prefer speed.
     "eager_learner": {"priority": "speed"},
-    "rapid_prototyper": {"priority": "speed", "requires_tools": True},
+    "rapid_prototyper": {"priority": "speed"},
     "growth_hacker": {"priority": "speed"},
-    # Cost-conscious executors that still run tools.
-    "disciplined_executor": {"priority": "cost", "requires_tools": True},
+    # Cost-conscious executors.
+    "disciplined_executor": {"priority": "cost"},
     # Balanced defaults for everyone else.
-    "pragmatic_builder": {"priority": "balanced", "requires_tools": True},
+    "pragmatic_builder": {"priority": "balanced"},
     "creative_innovator": {"priority": "balanced"},
     "team_diplomat": {"priority": "balanced"},
     "independent_researcher": {"priority": "balanced", "requires_reasoning": True},
@@ -249,7 +249,6 @@ assert all(  # noqa: S101
 _AFFINITY_DEFAULT_KEYS: tuple[str, ...] = (
     "priority",
     "min_context",
-    "requires_tools",
     "requires_vision",
     "requires_reasoning",
     "family",

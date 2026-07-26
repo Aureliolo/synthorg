@@ -6196,8 +6196,8 @@ export type components = {
             /** @description Turns recorded so far */
             readonly turn_count: number;
         };
-        /** AgentConfig */
-        readonly AgentConfig: {
+        /** AgentConfigResponse */
+        readonly AgentConfigResponse: {
             /** @description Raw authority config */
             readonly authority: {
                 readonly [key: string]: readonly unknown[] | {
@@ -6205,7 +6205,7 @@ export type components = {
                 } | string | boolean | number | null;
             };
             /**
-             * @description Per-agent autonomy level override; None inherits the default.
+             * @description Per-agent autonomy level override
              * @enum {string|null}
              */
             readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
@@ -6213,7 +6213,7 @@ export type components = {
             readonly department: string;
             /**
              * Format: uuid
-             * @description Stable agent id, derived deterministically from the name.
+             * @description Stable agent id, derived from the name
              */
             readonly id: string;
             /** @description Raw memory config */
@@ -6228,7 +6228,15 @@ export type components = {
                     readonly [key: string]: unknown;
                 } | string | boolean | number | null;
             };
-            /** @description Raw model requirement dict from the setup wizard; kept raw to avoid a config -> templates import cycle. */
+            /** @description Capabilities of the assigned model; None when the agent's model is not in any configured provider (unassigned or stale binding) or when provider configuration could not be read */
+            readonly model_capabilities: components["schemas"]["AgentModelCapabilities"] | null;
+            /**
+             * @description Why model_capabilities is null: 'unresolved' = the binding names nothing configured, 'provider_config_unavailable' = provider configuration could not be read so no binding was resolvable
+             * @default unresolved
+             * @enum {string}
+             */
+            readonly model_capability_status: "resolved" | "unresolved" | "provider_config_unavailable";
+            /** @description Raw model requirement dict from the setup wizard */
             readonly model_requirement: {
                 readonly [key: string]: readonly unknown[] | {
                     readonly [key: string]: unknown;
@@ -6242,17 +6250,17 @@ export type components = {
                     readonly [key: string]: unknown;
                 } | string | boolean | number | null;
             };
-            /** @description Named personality preset; round-trips from template setup. */
+            /** @description Named personality preset */
             readonly personality_preset: string | null;
             /** @description Role name */
             readonly role: string;
             /**
-             * @description Per-agent strategic output mode override. None inherits the company strategy config default.
+             * @description Per-agent strategic output mode override
              * @enum {string|null}
              */
             readonly strategic_output_mode: "option_expander" | "advisor" | "decision_maker" | "context_dependent" | null;
             /**
-             * @description Resolved model tier from the setup wizard; round-trips.
+             * @description Resolved model tier from the setup wizard
              * @enum {null|string}
              */
             readonly tier: "large" | "medium" | "small" | null;
@@ -6359,6 +6367,31 @@ export type components = {
              *     ]
              */
             readonly chain: readonly string[];
+        };
+        /** AgentModelCapabilities */
+        readonly AgentModelCapabilities: {
+            /**
+             * @description Provenance of the capability data
+             * @default unknown
+             * @enum {string}
+             */
+            readonly metadata_source: "litellm" | "preset" | "probe" | "unknown";
+            /**
+             * @description Model exposes extended reasoning
+             * @default false
+             */
+            readonly supports_reasoning: boolean;
+            /**
+             * @description Model accepts image inputs
+             * @default false
+             */
+            readonly supports_vision: boolean;
+            /**
+             * @description Runtime tool-calling verdict
+             * @default unverified
+             * @enum {string}
+             */
+            readonly tool_calling: "unverified" | "verified" | "failed";
         };
         /** AgentPerformanceSummary */
         readonly AgentPerformanceSummary: {
@@ -6569,9 +6602,9 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[AgentConfig] */
-        readonly ApiResponse_AgentConfig_: {
-            readonly data: components["schemas"]["AgentConfig"] | null;
+        /** ApiResponse[AgentConfigResponse] */
+        readonly ApiResponse_AgentConfigResponse_: {
+            readonly data: components["schemas"]["AgentConfigResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -7649,9 +7682,9 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[tuple[AgentConfig, ...]] */
-        readonly "ApiResponse_tuple_AgentConfig_..._": {
-            readonly data: readonly components["schemas"]["AgentConfig"][] | null;
+        /** ApiResponse[tuple[AgentConfigResponse, ...]] */
+        readonly "ApiResponse_tuple_AgentConfigResponse_..._": {
+            readonly data: readonly components["schemas"]["AgentConfigResponse"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -12952,10 +12985,10 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** PaginatedResponse[AgentConfig] */
-        readonly PaginatedResponse_AgentConfig_: {
+        /** PaginatedResponse[AgentConfigResponse] */
+        readonly PaginatedResponse_AgentConfigResponse_: {
             /** @default [] */
-            readonly data: readonly components["schemas"]["AgentConfig"][];
+            readonly data: readonly components["schemas"]["AgentConfigResponse"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -19860,7 +19893,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PaginatedResponse_AgentConfig_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_AgentConfigResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -19890,7 +19923,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_AgentConfig_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_AgentConfigResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -19920,7 +19953,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_AgentConfig_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_AgentConfigResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -19982,7 +20015,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_AgentConfig_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_AgentConfigResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -23854,7 +23887,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_tuple_AgentConfig_..._"];
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_AgentConfigResponse_..._"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

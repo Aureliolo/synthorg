@@ -9,7 +9,7 @@ Every agent is a composition of **immutable config** (identity, personality, ski
 
 ## Agent Identity Card
 
-Every agent has a comprehensive identity. At the design level, agent data splits into two
+Every agent has a comprehensive identity. At the design level, agent data splits into three
 layers:
 
 Config (immutable)
@@ -21,6 +21,66 @@ Runtime state (mutable-via-copy)
 :   Current status, active task, conversation history, and execution metrics. Evolves during
     agent operation. Represented as Pydantic models using `model_copy(update=...)` for state
     transitions, never mutated in place.
+
+Resolved provider view (never persisted)
+:   What the agent's assigned model can actually do. Belongs to the provider, not the agent,
+    so it is resolved per request at the API boundary and never written to agent config.
+    See [Model capabilities on the wire](#model-capabilities-on-the-wire).
+
+### Model capabilities on the wire
+
+Two model-related fields ride on an agent, and they point in opposite directions:
+
+`model_requirement` (input, config layer)
+:   What the *role* demanded of a model when the matcher chose one: `priority`,
+    `min_context`, `requires_vision`, `requires_reasoning`, and optionally a `family` or
+    `model_pattern`. Persisted, round-trips through settings. Tool calling is deliberately
+    absent, because the matcher applies it as a floor to every agent rather than as a
+    per-role option.
+
+`model_capabilities` (output, resolved per request)
+:   What the *assigned model* can actually do, projected by
+    `api/controllers/agents/_model_capabilities.py` from the provider's `ModelMetadata`:
+    `supports_reasoning`, `supports_vision`, `tool_calling`, and `metadata_source`.
+
+`AgentConfigResponse` lists the agent fields it exposes explicitly rather than inheriting from
+`AgentConfig`, so a field added to the persisted schema reaches the wire only when someone
+adds it here too, and a response can never be handed to a persistence path typed for
+`AgentConfig`. The provider-level counterpart is `GET /providers/{name}/models` (see
+[Providers](providers.md)); this is the agent-facing projection of the same metadata.
+
+`tool_calling` is a named state rather than a boolean because "never observed" and "proven
+incapable" are opposite facts that a truthiness check would conflate:
+
+| Value | Meaning |
+|---|---|
+| `unverified` | No tool call has been observed yet. Not a fault. |
+| `verified` | A real tool call succeeded. |
+| `failed` | Repeated runtime failures proved the model cannot call tools. |
+
+`model_capabilities` is `null` for two unrelated reasons, so `model_capability_status` names
+which one applies. Without it a consumer reading the null alone cannot tell one agent
+pointing at a deleted model from an entire org whose provider config momentarily could not
+be read, and the dashboard would report the whole roster as broken during a settings outage.
+
+| Value | Meaning |
+|---|---|
+| `resolved` | The binding resolved; `model_capabilities` is populated. |
+| `unresolved` | The binding matches no configured model: unassigned, or stale after a removed model. |
+| `provider_config_unavailable` | Provider config could not be read, so no binding was resolvable. Says nothing about this agent's binding. |
+
+Reading provider config is best-effort on every endpoint that projects capabilities
+(`providers_for_capabilities`). Capabilities are derived display data layered onto an
+operation with its own result: on a mutation the write has already committed by the time
+they resolve, so a settings failure must not report a successful create or reorder as an
+error and invite a duplicate retry. Tolerance covers any ordinary failure, not just
+`SettingsError`, because an unwired resolver and a dropped store connection reach the
+caller identically; only critical errors and cancellation still propagate.
+
+For the same reason a mutation projects its response *before* publishing its WebSocket
+event. Publishing cannot be retracted, so projecting afterwards would let a projection
+failure fail the response while subscribers reload against a change the requester was
+shown as an error.
 
 The agent `id` is a stable UUID derived deterministically from the agent name
 (`stable_agent_id(name)` = `uuid5(namespace, name)` in `core.types`). The config layer and the
@@ -217,7 +277,6 @@ management wrapping `TaskEngine` (see [Async Delegation](communication-events.md
       model_requirement:            # capability requirements from template
         priority: "balanced"        # quality / balanced / speed / cost
         min_context: 0
-        requires_tools: false       # hard-require function/tool calling
         requires_vision: false      # hard-require image input
         requires_reasoning: false   # hard-require extended reasoning
         family: null                # e.g. "example-large": pin newest in family

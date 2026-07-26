@@ -16,6 +16,7 @@ from synthorg.templates.model_matcher import (
     match_model,
 )
 from synthorg.templates.model_matcher_config import ModelMatcherConfig, derive_tier
+from synthorg.templates.model_matcher_tiering import passes_hard_filters
 from synthorg.templates.model_requirements import ModelRequirement
 
 _CFG = ModelMatcherConfig()
@@ -27,7 +28,12 @@ def _make_model(  # noqa: PLR0913 -- keyword-only test factory
     max_context: int = 200_000,
     cost_input: float = 0.01,
     latency_ms: int | None = None,
-    tools: bool = False,
+    # Deliberately the opposite of ``ModelMetadata.supports_tools``'s
+    # conservative production default: tool calling is an unconditional match
+    # floor, so a tool-less default would exclude every fixture and couple
+    # unrelated vision/family/priority tests to tool-calling behaviour. Tests
+    # that exercise the floor pass ``tools=False`` explicitly.
+    tools: bool = True,
     tool_calls_verified: bool | None = None,
     vision: bool = False,
     reasoning: bool = False,
@@ -92,9 +98,55 @@ class TestHardFilters:
         assert model is not None
         assert model.id == "seer"
 
-    def test_tools_requirement_excludes_non_tools(self) -> None:
-        req = ModelRequirement(requires_tools=True)
-        model, score = match_model(req, (_make_model("plain", tools=False),))
+    @pytest.mark.parametrize(
+        ("tools", "verified", "source", "admitted"),
+        [
+            pytest.param(False, None, "litellm", False, id="known-incapable"),
+            pytest.param(True, None, "litellm", True, id="known-capable"),
+            pytest.param(False, None, "unknown", True, id="unprobed-optimism"),
+            pytest.param(
+                True, False, "unknown", False, id="runtime-failed-beats-optimism"
+            ),
+            pytest.param(
+                True, False, "litellm", False, id="runtime-failed-beats-claim"
+            ),
+            pytest.param(False, True, "litellm", True, id="runtime-proven-beats-stale"),
+            pytest.param(True, True, "litellm", True, id="runtime-proven-and-claimed"),
+        ],
+    )
+    def test_tool_calling_floor_decision_matrix(
+        self,
+        tools: bool,
+        verified: bool | None,
+        source: MetadataSource,
+        admitted: bool,
+    ) -> None:
+        # Tool calling is a floor, not an opt-in, so a bare requirement that
+        # never mentions tools still drives every one of these outcomes.
+        # Asserted against the filter itself rather than through match_model:
+        # a selection result would only prove exclusion by way of the scorer's
+        # tie-break, which is unrelated machinery that could change.
+        candidate = _make_model(
+            "candidate", tools=tools, tool_calls_verified=verified, source=source
+        )
+        assert passes_hard_filters(candidate, ModelRequirement()) is admitted
+
+    def test_tool_calling_floor_excludes_non_tools_leaving_capable_sibling(
+        self,
+    ) -> None:
+        # The floor is a hard exclusion, not a scoring preference: the plain
+        # model is removed from the pool, not merely out-ranked.
+        plain = _make_model("plain", tools=False)
+        caller = _make_model("caller", tools=True)
+        assert passes_hard_filters(plain, ModelRequirement()) is False
+        model, _ = match_model(ModelRequirement(), (plain, caller))
+        assert model is not None
+        assert model.id == "caller"
+
+    def test_tool_calling_floor_leaves_agent_unmatched_when_pool_empties(self) -> None:
+        model, score = match_model(
+            ModelRequirement(), (_make_model("plain", tools=False),)
+        )
         assert model is None
         assert score == 0.0
 
@@ -113,70 +165,18 @@ class TestHardFilters:
         assert model is not None
         assert model.id == "chat"
 
-    def test_runtime_unverified_tools_hard_fail_overrides_optimism(self) -> None:
-        # tool_calls_verified=False is authoritative: even an unknown-source
-        # model (normally optimistically allowed) is excluded for a
-        # requires_tools agent once runtime proved it cannot call tools.
-        downgraded = _make_model(
-            "downgraded",
-            tools=True,
-            tool_calls_verified=False,
-            source="unknown",
-        )
-        req = ModelRequirement(requires_tools=True)
-        model, score = match_model(req, (downgraded,))
-        assert model is None
-        assert score == 0.0
-
-    def test_runtime_verified_true_passes_tools_filter(self) -> None:
-        proven = _make_model(
-            "proven", tools=True, tool_calls_verified=True, source="litellm"
-        )
-        req = ModelRequirement(requires_tools=True)
-        model, _ = match_model(req, (proven,))
-        assert model is not None
-        assert model.id == "proven"
-
-    def test_runtime_unverified_tools_does_not_affect_non_tools_agent(self) -> None:
-        # A model downgraded for tool calling can still serve tool-free roles.
+    def test_runtime_failed_model_excluded_for_every_agent(self) -> None:
+        # No role is exempt: a model runtime-proven incapable is dropped from
+        # the pool even for a requirement declaring no capability at all, and
+        # a healthy sibling is what the agent gets instead.
         downgraded = _make_model(
             "downgraded", tools=True, tool_calls_verified=False, source="unknown"
         )
-        req = ModelRequirement(requires_tools=False)
-        model, _ = match_model(req, (downgraded,))
+        chat = _make_model("chat")
+        assert passes_hard_filters(downgraded, ModelRequirement()) is False
+        model, _ = match_model(ModelRequirement(), (downgraded, chat))
         assert model is not None
-        assert model.id == "downgraded"
-
-    def test_runtime_unverified_none_keeps_optimistic_tools_path(self) -> None:
-        # tool_calls_verified=None means "never observed": the load-bearing
-        # optimistic path. Even an unknown-source model is still accepted for a
-        # requires_tools agent until runtime proves it cannot call tools (only
-        # an explicit False downgrades it).
-        candidate = _make_model(
-            "candidate",
-            tools=True,
-            tool_calls_verified=None,
-            source="unknown",
-        )
-        req = ModelRequirement(requires_tools=True)
-        model, _ = match_model(req, (candidate,))
-        assert model is not None
-        assert model.id == "candidate"
-
-    def test_runtime_verified_true_overrides_stale_supports_tools(self) -> None:
-        # A runtime-proven tool caller is authoritative: even with a stale
-        # supports_tools=False false negative from a non-unknown source, the
-        # model stays assignable to a requires_tools agent.
-        proven = _make_model(
-            "proven",
-            tools=False,
-            tool_calls_verified=True,
-            source="litellm",
-        )
-        req = ModelRequirement(requires_tools=True)
-        model, _ = match_model(req, (proven,))
-        assert model is not None
-        assert model.id == "proven"
+        assert model.id == "chat"
 
     def test_reasoning_requirement_honoured(self) -> None:
         thinker = _make_model("thinker", reasoning=True)
@@ -267,6 +267,29 @@ class TestFamilyResolution:
         assert model is not None
         assert model.id == "only"
         assert score > 0.0
+
+    def test_family_never_crosses_the_tool_calling_floor(self) -> None:
+        # A family ref pins the newest HARD-FILTER SURVIVOR, so the floor
+        # applies before the pin: the newest sibling is skipped for the older
+        # one that can still call tools.
+        newest_incapable = _make_model(
+            "ex-2", family="example-large", generation=2.0, tool_calls_verified=False
+        )
+        older_capable = _make_model("ex-1", family="example-large", generation=1.0)
+        req = ModelRequirement(family="example-large")
+        model, _ = match_model(req, (newest_incapable, older_capable))
+        assert model is not None
+        assert model.id == "ex-1"
+
+    def test_pattern_never_crosses_the_tool_calling_floor(self) -> None:
+        newest_incapable = _make_model(
+            "example-x-2", generation=2.0, tool_calls_verified=False
+        )
+        older_capable = _make_model("example-x-1", generation=1.0)
+        req = ModelRequirement(model_pattern="example-x-*")
+        model, _ = match_model(req, (newest_incapable, older_capable))
+        assert model is not None
+        assert model.id == "example-x-1"
 
     def test_newest_breaks_generation_tie_by_release_date(self) -> None:
         older = _make_model(
@@ -487,6 +510,53 @@ class TestExplicitModelId:
         model, _ = match_model(req, (plain,))
         assert model is not None
         assert model.id == "plain"
+
+    def test_pin_does_not_bypass_the_tool_calling_floor(self) -> None:
+        # The one thing a pin cannot override. A model that has PROVEN at
+        # runtime it cannot call tools would leave the agent emitting prose
+        # and failing every task that expects an artifact, so the pin is
+        # refused outright rather than seeding an agent that cannot work.
+        proven_incapable = _make_model("pinned", tools=True, tool_calls_verified=False)
+        req = ModelRequirement(model_id="pinned")
+        model, score = match_model(req, (proven_incapable,))
+        assert model is None
+        assert score == 0.0
+
+    def test_pin_admits_an_unprobed_model(self) -> None:
+        # The floor is optimistic: an un-enriched model is not yet KNOWN to
+        # lack tool calling, so the pin still resolves.
+        unprobed = _make_model("pinned", tools=False, source="unknown")
+        req = ModelRequirement(model_id="pinned")
+        model, _ = match_model(req, (unprobed,))
+        assert model is not None
+        assert model.id == "pinned"
+
+    def test_pin_skips_a_tool_incapable_alias_sibling(self) -> None:
+        # One alias can resolve to several catalogue entries; the floor picks
+        # among them rather than failing the pin outright.
+        incapable = ProviderModelConfig(
+            id="broken-001",
+            alias="fast",
+            metadata=ModelMetadata(supports_tools=True, tool_calls_verified=False),
+        )
+        capable = ProviderModelConfig(
+            id="working-001",
+            alias="fast",
+            metadata=ModelMetadata(supports_tools=True, metadata_source="litellm"),
+        )
+        req = ModelRequirement(model_id="fast")
+        model, _ = match_model(req, (incapable, capable))
+        assert model is not None
+        assert model.id == "working-001"
+
+    def test_pinned_tool_incapable_model_leaves_the_agent_unassigned(self) -> None:
+        # The batch path inherits the floor: no model is better than one that
+        # cannot do the work, so the agent is omitted from the roster.
+        providers = {
+            "prov": _provider(_make_model("pinned", tool_calls_verified=False))
+        }
+        agents = [{"model_requirement": {"model_id": "pinned"}}]
+        assert match_all_agents(agents, providers) == []
 
 
 # ── Strategy seam ────────────────────────────────────────────

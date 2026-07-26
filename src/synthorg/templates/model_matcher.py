@@ -19,6 +19,7 @@ from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
+from synthorg.config.model_metadata import is_tool_capable
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.core.url_locality import is_local_url
@@ -112,20 +113,18 @@ class CapabilityFitStrategy:
     ) -> tuple[ProviderModelConfig | None, float]:
         """Select the best model for *requirement* from *candidates*.
 
-        Resolution order: an explicit ``model_id`` pin wins outright (the
-        user chose it, so the capability hard-filters do not apply); then a
-        ``family`` / ``model_pattern`` reference pins the newest match; then
-        capability scoring over the hard-filter survivors.
+        Resolution order: an explicit ``model_id`` pin wins outright over the
+        capability *preferences* (the operator chose it) but never over the
+        tool-calling floor; then a ``family`` / ``model_pattern`` reference
+        pins the newest hard-filter survivor; then capability scoring over
+        those survivors.
 
         Returns:
             ``(model, score)`` for the best survivor, or ``(None, 0.0)``
             when nothing matches the pin / clears the hard filters.
         """
         if requirement.model_id is not None:
-            pinned = [m for m in candidates if requirement.model_id in (m.id, m.alias)]
-            if not pinned:
-                return None, 0.0
-            return self._newest(pinned), 1.0
+            return self._select_pinned(requirement.model_id, candidates)
 
         survivors = [m for m in candidates if passes_hard_filters(m, requirement)]
         if not survivors:
@@ -150,6 +149,41 @@ class CapabilityFitStrategy:
             (m, self._score(m, requirement, survivors, config)) for m in survivors
         ]
         return max(scored, key=lambda pair: pair[1])
+
+    def _select_pinned(
+        self,
+        model_id: str,
+        candidates: Sequence[ProviderModelConfig],
+    ) -> tuple[ProviderModelConfig | None, float]:
+        """Resolve an explicit ``model_id`` pin against the tool-calling floor.
+
+        A pin is an escape hatch from the capability preferences, not from the
+        floor: every agent turn dispatches with tool definitions attached, so a
+        model runtime-proven unable to call them can only emit prose and fails
+        any task expecting an artifact. The floor is the optimistic
+        :func:`is_tool_capable` rule, so only a model *known* to lack tool
+        calling is refused -- and refusing loudly beats seeding an agent that
+        cannot do its work.
+
+        Args:
+            model_id: The pinned id or alias.
+            candidates: Models available across the pool.
+
+        Returns:
+            ``(model, 1.0)`` for the newest pinned match, or ``(None, 0.0)``
+            when the pin names nothing or names only tool-incapable models.
+        """
+        named = [m for m in candidates if model_id in (m.id, m.alias)]
+        capable = [m for m in named if is_tool_capable(m.metadata)]
+        if not capable:
+            if named:
+                logger.warning(
+                    TEMPLATE_MODEL_MATCH_SKIPPED,
+                    model=model_id,
+                    reason="pinned_model_cannot_call_tools",
+                )
+            return None, 0.0
+        return self._newest(capable), 1.0
 
     def _ref_matches(
         self,
@@ -538,7 +572,11 @@ def _match_agent(
 
     provider = ctx.owner.get(id(model)) if model is not None else None
     if model is None or provider is None:
-        logger.debug(
+        # WARNING, not DEBUG: an agent with no model does no work at all, and
+        # the tool-calling floor applies to every agent, so one misconfigured
+        # provider catalogue can starve a whole roster at once. That has to be
+        # visible at a level operators actually collect.
+        logger.warning(
             TEMPLATE_MODEL_MATCH_FAILED,
             agent_index=idx,
             reason="no_compliant_model",

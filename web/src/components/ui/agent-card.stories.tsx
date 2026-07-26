@@ -90,8 +90,60 @@ export const FullProfile: Story = {
     tier: 'large',
     personality: 'Visionary Leader',
     traits: ['strategic', 'decisive', 'inspiring'],
-    capabilities: ['tools', 'reasoning'],
+    capabilities: ['reasoning', 'vision'],
     timestamp: '2m ago',
+  },
+}
+
+export const CapabilitiesUnverified: Story = {
+  args: {
+    name: 'Rodrigo Sepúlveda',
+    role: 'UX Designer',
+    department: 'Design',
+    status: 'active',
+    model: 'example-large-001',
+    tier: 'large',
+    capabilitiesUnverified: true,
+    timestamp: '6m ago',
+  },
+}
+
+export const ToolCallingUnavailable: Story = {
+  args: {
+    name: 'Isobel Lúnam',
+    role: 'Automation Engineer',
+    department: 'Quality Assurance',
+    status: 'active',
+    model: 'example-small-001',
+    tier: 'small',
+    capabilities: ['reasoning'],
+    toolCallsFailed: true,
+    timestamp: '8m ago',
+  },
+}
+
+export const ModelBindingUnresolved: Story = {
+  args: {
+    name: 'Grete Hermann',
+    role: 'Data Engineer',
+    department: 'Data Analytics',
+    status: 'active',
+    model: 'example-removed-001',
+    modelBindingUnresolved: true,
+    timestamp: '10m ago',
+  },
+}
+
+export const CapabilitiesUnavailable: Story = {
+  args: {
+    name: 'Wangari Maathai',
+    role: 'Platform Engineer',
+    department: 'Infrastructure',
+    status: 'active',
+    model: 'example-medium-001',
+    tier: 'medium',
+    capabilitiesUnavailable: true,
+    timestamp: '12m ago',
   },
 }
 

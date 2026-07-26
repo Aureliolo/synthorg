@@ -3,7 +3,7 @@
 Loads the script as a module so its private helpers are callable without
 spawning subprocesses.
 
-Covers both invariants:
+Covers all four invariants:
 
 * ``timeout-minutes`` required on every job, with the reusable-workflow
   -call exemption (a job whose body is a top-level ``uses:``).
@@ -12,6 +12,14 @@ Covers both invariants:
   with ``continue-on-error`` AND >=1 without) passes, and an
   all-soft-failed ladder is flagged. Excluded / unrelated actions are
   ignored.
+* Every ``retry_cmd.sh`` call site bounds its ladder with
+  ``RETRY_CMD_DEADLINE``, via step ``env:`` or an inline ``VAR=n`` prefix.
+* A local action resolves where it is used, and a wrapped upstream action
+  is reached only through its wrapper (except where the wrapper is itself
+  unreachable). Checkout coverage is tracked in step order and in both
+  YAML shapes ``sparse-checkout`` accepts, because a shape the gate fails
+  to parse would read as a full checkout and pass a job that cannot
+  resolve its action.
 """
 
 import importlib.util
@@ -70,6 +78,23 @@ _LADDER = _enforced(guard=True) + _enforced(guard=True) + _enforced(guard=False)
 
 _UNGUARDED = "has an unguarded step"
 _SOFT_ONLY = "no fail-closed final attempt"
+_NO_DEADLINE = "without RETRY_CMD_DEADLINE"
+_NEVER_CHECKS_OUT = "the job never checks out"
+_SPARSE_EXCLUDES = "sparse checkout excludes that path"
+_BYPASSES_WRAPPER = "so the retry ladder cannot be bypassed"
+
+
+def _checkout(sparse: str = "", uses: str = "actions/checkout@abc") -> str:
+    """A checkout step, optionally carrying a ``sparse-checkout`` spec."""
+    step = f"      - uses: {uses}\n"
+    if not sparse:
+        return step
+    return f"{step}        with:\n          sparse-checkout: {sparse}\n"
+
+
+def _composite(steps: str) -> str:
+    """Build a composite ``action.yml`` body whose ``runs.steps`` is *steps*."""
+    return f"runs:\n  using: composite\n  steps:\n{steps}"
 
 
 class TestTimeout:
@@ -198,6 +223,217 @@ class TestLadder:
         # step must not leak into the enforced-action state machine.
         steps = _LADDER + "      - uses: actions/deploy-pages@abc\n"
         assert _scan(tmp_path, _job(steps)) == []
+
+
+class TestRetryDeadline:
+    """Every retry_cmd.sh call site must bound its ladder in wall-clock."""
+
+    def test_call_site_without_deadline_flagged(self, tmp_path: Path) -> None:
+        content = _job("      - run: .github/scripts/retry_cmd.sh 'x' true\n")
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _NO_DEADLINE in violations[0]
+
+    def test_step_env_deadline_clean(self, tmp_path: Path) -> None:
+        content = _job(
+            "      - env:\n"
+            '          RETRY_CMD_DEADLINE: "60"\n'
+            "        run: .github/scripts/retry_cmd.sh 'x' true\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_inline_prefix_deadline_clean(self, tmp_path: Path) -> None:
+        content = _job(
+            "      - run: RETRY_CMD_DEADLINE=60 .github/scripts/retry_cmd.sh 'x' true\n"
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_one_bounded_line_does_not_cover_its_sibling(self, tmp_path: Path) -> None:
+        # An inline prefix binds to ONE command, so a bounded invocation says
+        # nothing about the unbounded one beside it.
+        content = _job(
+            "      - run: |\n"
+            "          RETRY_CMD_DEADLINE=60 .github/scripts/retry_cmd.sh 'a' true\n"
+            "          .github/scripts/retry_cmd.sh 'b' true\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert "'b'" in violations[0]
+
+    def test_composite_action_call_site_flagged(self, tmp_path: Path) -> None:
+        # Composite actions host most call sites, so they are scanned too.
+        content = _composite(
+            "    - name: fetch\n      run: .github/scripts/retry_cmd.sh 'x' true\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _NO_DEADLINE in violations[0]
+        assert "'fetch'" in violations[0]
+
+
+class TestLocalActionResolution:
+    """A ``uses: ./...`` step needs an earlier checkout covering its path."""
+
+    def test_no_checkout_flagged(self, tmp_path: Path) -> None:
+        violations = _scan(tmp_path, _job("      - uses: ./.github/actions/thing\n"))
+        assert len(violations) == 1
+        assert _NEVER_CHECKS_OUT in violations[0]
+
+    def test_full_checkout_clean(self, tmp_path: Path) -> None:
+        steps = _checkout() + "      - uses: ./.github/actions/thing\n"
+        assert _scan(tmp_path, _job(steps)) == []
+
+    def test_checkout_after_the_step_is_too_late(self, tmp_path: Path) -> None:
+        # Coverage accrues in step order: a checkout below the step cannot
+        # have put the action on disk for it.
+        steps = "      - uses: ./.github/actions/thing\n" + _checkout()
+        violations = _scan(tmp_path, _job(steps))
+        assert len(violations) == 1
+        assert _NEVER_CHECKS_OUT in violations[0]
+
+    def test_sparse_block_scalar_covering_path_clean(self, tmp_path: Path) -> None:
+        steps = (
+            _checkout("|\n            .github/actions\n")
+            + "      - uses: ./.github/actions/thing\n"
+        )
+        assert _scan(tmp_path, _job(steps)) == []
+
+    def test_sparse_block_scalar_excluding_path_flagged(self, tmp_path: Path) -> None:
+        steps = (
+            _checkout("|\n            web\n")
+            + "      - uses: ./.github/actions/thing\n"
+        )
+        violations = _scan(tmp_path, _job(steps))
+        assert len(violations) == 1
+        assert _SPARSE_EXCLUDES in violations[0]
+
+    def test_sparse_yaml_list_excluding_path_flagged(self, tmp_path: Path) -> None:
+        # The fail-open shape: a sequence is as valid as a block scalar, and
+        # treating it as unparseable would read a sparse checkout as a full
+        # one and pass a job that cannot resolve its action.
+        steps = _checkout("[web, cli]\n") + "      - uses: ./.github/actions/thing\n"
+        violations = _scan(tmp_path, _job(steps))
+        assert len(violations) == 1
+        assert _SPARSE_EXCLUDES in violations[0]
+
+    def test_sparse_yaml_list_covering_path_clean(self, tmp_path: Path) -> None:
+        steps = (
+            _checkout("[.github/actions, web]\n")
+            + "      - uses: ./.github/actions/thing\n"
+        )
+        assert _scan(tmp_path, _job(steps)) == []
+
+    def test_sparse_ancestor_prefix_covers_descendant(self, tmp_path: Path) -> None:
+        steps = (
+            _checkout("|\n            .github\n")
+            + "      - uses: ./.github/actions/thing\n"
+        )
+        assert _scan(tmp_path, _job(steps)) == []
+
+    def test_sparse_coverage_does_not_generalise(self, tmp_path: Path) -> None:
+        # Checking out one directory is not a full checkout: an action
+        # elsewhere in the tree is still absent.
+        steps = _checkout("|\n            .github/actions\n") + "      - uses: ./cli\n"
+        violations = _scan(tmp_path, _job(steps))
+        assert len(violations) == 1
+        assert _SPARSE_EXCLUDES in violations[0]
+
+    def test_prefix_match_is_segment_aware(self, tmp_path: Path) -> None:
+        steps = (
+            _checkout("|\n            .github/actions\n")
+            + "      - uses: ./.github/actions-old/thing\n"
+        )
+        violations = _scan(tmp_path, _job(steps))
+        assert len(violations) == 1
+        assert _SPARSE_EXCLUDES in violations[0]
+
+    def test_local_checkout_wrapper_cannot_vouch_for_itself(
+        self, tmp_path: Path
+    ) -> None:
+        # A local checkout wrapper is an action like any other: it needs a
+        # checkout to exist before it can run.
+        violations = _scan(tmp_path, _job("      - uses: ./.github/actions/checkout\n"))
+        assert len(violations) == 1
+        assert _NEVER_CHECKS_OUT in violations[0]
+
+    def test_fork_qualified_checkout_wrapper_counts_as_a_checkout(
+        self, tmp_path: Path
+    ) -> None:
+        # The form nearly every job here uses: the in-repo retry wrapper
+        # referenced fork-qualified, which is what a job MUST do while the
+        # workspace is still empty. Failing to recognise it would report every
+        # such job as never checking out.
+        steps = (
+            _checkout(uses="Aureliolo/synthorg/.github/actions/checkout@abc")
+            + "      - uses: ./.github/actions/thing\n"
+        )
+        assert _scan(tmp_path, _job(steps)) == []
+
+    def test_a_wrapper_neighbour_is_not_a_checkout(self, tmp_path: Path) -> None:
+        # The over-approximation this predicate exists to prevent: a substring
+        # test would accept `checkout-legacy` as a checkout and fold its absent
+        # sparse-checkout in as FULL coverage, suppressing every real violation
+        # for the rest of the job. The later local action must still be flagged.
+        steps = (
+            "      - uses: ./.github/actions/checkout-legacy\n"
+            "      - uses: ./.github/actions/thing\n"
+        )
+        violations = _scan(tmp_path, _job(steps))
+        assert len(violations) == 2
+        assert all(_NEVER_CHECKS_OUT in v for v in violations)
+
+    def test_an_unrelated_action_named_checkout_is_not_a_checkout(
+        self, tmp_path: Path
+    ) -> None:
+        steps = (
+            "      - uses: someoneelse/checkout-action@abc\n"
+            "      - uses: ./.github/actions/thing\n"
+        )
+        violations = _scan(tmp_path, _job(steps))
+        assert len(violations) == 1
+        assert _NEVER_CHECKS_OUT in violations[0]
+
+
+class TestWrappedAction:
+    """A wrapped upstream action is reached only through its wrapper."""
+
+    def test_upstream_with_reachable_wrapper_flagged(self, tmp_path: Path) -> None:
+        steps = _checkout() + "      - uses: actions/download-artifact@abc\n"
+        violations = _scan(tmp_path, _job(steps))
+        assert len(violations) == 1
+        assert _BYPASSES_WRAPPER in violations[0]
+
+    def test_wrapper_call_clean(self, tmp_path: Path) -> None:
+        steps = _checkout() + "      - uses: ./.github/actions/download-artifact\n"
+        assert _scan(tmp_path, _job(steps)) == []
+
+    def test_upstream_without_a_checkout_allowed(self, tmp_path: Path) -> None:
+        # Reaching upstream is legitimate exactly where the wrapper is
+        # physically unreachable, which is decided structurally rather than
+        # by an allowlist that would go stale on the next checkout change.
+        content = _job("      - uses: actions/download-artifact@abc\n")
+        assert _scan(tmp_path, content) == []
+
+    def test_upstream_under_a_sparse_checkout_without_the_wrapper(
+        self, tmp_path: Path
+    ) -> None:
+        steps = (
+            _checkout("|\n            web\n")
+            + "      - uses: actions/download-artifact@abc\n"
+        )
+        assert _scan(tmp_path, _job(steps)) == []
+
+    def test_composite_action_bypassing_the_wrapper_flagged(
+        self, tmp_path: Path
+    ) -> None:
+        # A composite's caller necessarily checked out to fetch it, so the
+        # wrapper is always reachable from one.
+        content = _composite(
+            "    - name: fetch\n      uses: actions/download-artifact@abc\n"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _BYPASSES_WRAPPER in violations[0]
 
 
 class TestScanFileEdgeCases:

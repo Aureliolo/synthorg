@@ -245,6 +245,13 @@ API_AGENT_CREATED: Final[str] = "api.agent.created"
 API_AGENT_UPDATED: Final[str] = "api.agent.updated"
 API_AGENT_DELETED: Final[str] = "api.agent.deleted"
 API_AGENTS_REORDERED: Final[str] = "api.agents.reordered"
+# An agent names a (provider, model) pair that no configured provider offers:
+# a stale binding left by a removed or renamed model, distinct from an agent
+# that simply has no model assigned yet.
+API_AGENT_MODEL_BINDING_UNRESOLVED: Final[str] = "api.agent.model_binding_unresolved"
+# Provider config could not be read while decorating an agent response. The
+# agent data itself is intact; only the derived capability view is missing.
+API_AGENT_CAPABILITIES_UNAVAILABLE: Final[str] = "api.agent.capabilities_unavailable"
 
 # Project mutations
 API_PROJECT_CREATED: Final[str] = "api.project.created"

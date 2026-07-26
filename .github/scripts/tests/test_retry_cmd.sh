@@ -3,12 +3,15 @@
 # streamed-output helper used to wrap idempotent network installs (uv
 # sync, apt, curl downloads, GHCR token mint).
 #
-# Asserts the three contract properties:
+# Asserts the contract properties:
 #   1. A command that fails then succeeds is retried to success (exit 0).
 #   2. A command that always fails bubbles the LAST exit code (fail-closed),
 #      NOT 0 and NOT the gh_with_retry soft-skip 75.
 #   3. A command that succeeds first try is not retried (no wasted budget).
-# All cases run with zero backoff via RETRY_CMD_BASE_DELAY=0.
+#   4. A ladder given a deadline stops inside it, still fail-closed, and
+#      clamps an otherwise-unbounded attempt to the time left.
+# Backoff-free cases run with RETRY_CMD_BASE_DELAY=0; the deadline cases
+# need real elapsed time, so they use small non-zero delays.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)" # .github/scripts
@@ -162,6 +165,70 @@ if [ "$rc" -eq 2 ] && grep -q 'RETRY_CMD_ATTEMPT_TIMEOUT must be a non-negative 
   pass "retry_cmd rejects a non-numeric RETRY_CMD_ATTEMPT_TIMEOUT with exit 2"
 else
   fail "retry_cmd did not reject a non-numeric attempt timeout (rc=${rc}, expected 2)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- 11. non-numeric deadline: rejected up front with exit 2 ------------
+rc=0
+out="$(RETRY_CMD_ATTEMPTS=2 RETRY_CMD_BASE_DELAY=0 RETRY_CMD_DEADLINE=abc \
+  bash "$HELPER" "selftest-baddeadline" bash -c 'exit 1' 2>&1)" || rc=$?
+if [ "$rc" -eq 2 ] && grep -q 'RETRY_CMD_DEADLINE must be a non-negative integer' <<<"$out"; then
+  pass "retry_cmd rejects a non-numeric RETRY_CMD_DEADLINE with exit 2"
+else
+  fail "retry_cmd did not reject a non-numeric deadline (rc=${rc}, expected 2)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- 12. deadline stops the ladder early and still fails closed ---------
+# 5 attempts with a 1s backoff would run ~4s, but a 2s deadline must cut it
+# short. The point is the FAILURE MODE: it exits loud with the wrapped code
+# and the deadline message, rather than sleeping on into the enclosing job's
+# timeout where the reaper would turn it into an opaque cancellation.
+rc=0
+out="$(RETRY_CMD_ATTEMPTS=5 RETRY_CMD_BASE_DELAY=1 RETRY_CMD_MAX_DELAY=1 RETRY_CMD_DEADLINE=2 \
+  bash "$HELPER" "selftest-deadline" bash -c 'exit 9' 2>&1)" || rc=$?
+if [ "$rc" -eq 9 ] && grep -q 'exhausted its 2s deadline' <<<"$out" \
+  && ! grep -q 'failed after 5 attempts' <<<"$out"; then
+  pass "retry_cmd stops at the deadline and fails closed with the wrapped code"
+else
+  fail "retry_cmd did not stop at the deadline (rc=${rc}, expected 9)"
+  printf '%s\n' "$out" | tail -n 3 >&2 || true
+fi
+
+# --- 13. deadline bounds a hang even with no per-attempt timeout --------
+# The regression that motivated the deadline: a stalled fetch with no
+# ATTEMPT_TIMEOUT ran unbounded until the job timeout. With only a deadline
+# set, the attempt must be clamped to the remaining budget and killed, so
+# `sleep 30` cannot outlive a 2s deadline.
+if command -v timeout >/dev/null 2>&1; then
+  rc=0
+  start=$SECONDS
+  out="$(RETRY_CMD_ATTEMPTS=3 RETRY_CMD_BASE_DELAY=0 RETRY_CMD_DEADLINE=2 \
+    bash "$HELPER" "selftest-deadline-hang" sleep 30 2>&1)" || rc=$?
+  elapsed=$((SECONDS - start))
+  if [ "$rc" -ne 0 ] && [ "$elapsed" -lt 15 ]; then
+    pass "retry_cmd clamps an unbounded attempt to the deadline (${elapsed}s)"
+  else
+    fail "retry_cmd let a hang outlive its deadline (rc=${rc}, elapsed=${elapsed}s)"
+    printf '%s\n' "$out" | tail -n 3 >&2 || true
+  fi
+else
+  printf 'SKIP: timeout(1) unavailable; deadline-clamps-hang case not run\n'
+fi
+
+# --- 14. no deadline: behaviour is byte-for-byte unchanged --------------
+# The deadline is opt-in, so a caller that never sets it must still run the
+# full attempt ladder and report exhaustion the old way.
+# The label deliberately avoids the word "deadline": the negative assertion
+# greps the whole stream, and a label containing it would match itself.
+rc=0
+out="$(RETRY_CMD_ATTEMPTS=3 RETRY_CMD_BASE_DELAY=0 \
+  bash "$HELPER" "selftest-plain-ladder" bash -c 'exit 5' 2>&1)" || rc=$?
+if [ "$rc" -eq 5 ] && grep -q 'failed after 3 attempts' <<<"$out" \
+  && ! grep -q 'exhausted its' <<<"$out"; then
+  pass "retry_cmd leaves the ladder unchanged when no deadline is set"
+else
+  fail "retry_cmd changed behaviour without a deadline (rc=${rc}, expected 5)"
   printf '%s\n' "$out" | tail -n 3 >&2 || true
 fi
 

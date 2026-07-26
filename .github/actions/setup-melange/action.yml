@@ -15,9 +15,14 @@ runs:
     # git and jq. The Ubuntu mirror is a network dependency like any
     # other, so route both apt calls through the generic retry helper
     # (idempotent: re-running update/install converges) rather than
-    # letting a transient mirror 5xx fail the job on a single blip.
+    # letting a transient mirror 5xx fail the job on a single blip. The
+    # deadline bounds the ladder in wall-clock so a mirror that accepts the
+    # connection then stalls is killed and reported here, instead of hanging
+    # until the job timeout reaps it as an opaque cancellation.
     - name: Install melange runner dependencies
       shell: bash
+      env:
+        RETRY_CMD_DEADLINE: "240"
       run: |
         .github/scripts/retry_cmd.sh "apt-get update (melange deps)" \
           sudo apt-get update

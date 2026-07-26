@@ -73,7 +73,6 @@ template:
     - role: "Backend Developer"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"
     # Add Technical Writer in engineering (different dept from parent's product)

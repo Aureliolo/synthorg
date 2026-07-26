@@ -322,6 +322,18 @@ Both are hot-reloadable (a change triggers a runtime-services rebuild via the
 settings subscriber, no restart), so the defaults give a sensible allocation
 with no operator input while remaining tunable per deployment.
 
+**Tool calling is a floor, not a preference.** Every agent turn dispatches with
+tool definitions attached, so a model that cannot call them can only emit prose
+and fails any task that expects an artifact. `is_tool_capable` filters every
+candidate, and an explicit reference does not exempt the pick from it: a
+`family` or `model_pattern` ref pins the newest hard-filter *survivor*, and an
+explicit `model_id` pin -- which does override the capability requirements the
+role declared, since an operator naming a model has chosen it deliberately --
+is still refused when the named model is *known* to lack tool calling. The
+agent is left unassigned (a logged warning) rather than seeded onto a model
+that cannot do its work. The rule stays optimistic throughout: an un-probed
+model is admitted, and only a declared or runtime-proven incapacity excludes.
+
 **Agent-eligible providers.** A provider carries `agent_eligible` (default
 `true`). An `agent_eligible=false` provider stays fully usable for
 explicitly-configured feature calls (the chat / judge / charter / narrative

@@ -17,8 +17,8 @@ from synthorg.api.controllers.setup.company_helpers import read_name_locales
 from synthorg.api.controllers.setup_agents import (
     agents_to_summaries,
     expand_template_agents,
-    match_and_assign_models,
 )
+from synthorg.api.controllers.setup_model_assignment import match_and_assign_models
 from synthorg.api.controllers.setup_models import SetupAgentSummary
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical

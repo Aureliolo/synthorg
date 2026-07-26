@@ -20,16 +20,19 @@ class TestModelRequirement:
         assert req.model_id is None
         assert req.priority == "balanced"
         assert req.min_context == 0
-        assert req.requires_tools is False
         assert req.requires_vision is False
         assert req.requires_reasoning is False
         assert req.family is None
         assert req.model_pattern is None
 
-    def test_no_legacy_fields(self) -> None:
-        """The removed tier-string and capabilities-tuple axes are gone."""
+    def test_rejects_tier_and_capabilities_fields(self) -> None:
+        """A model is selected by capability and priority, not a tier string."""
         assert "tier" not in ModelRequirement.model_fields
         assert "capabilities" not in ModelRequirement.model_fields
+
+    def test_tool_calling_is_not_a_requirement_axis(self) -> None:
+        """Tool calling is a matcher floor, so no role can opt out of it."""
+        assert "requires_tools" not in ModelRequirement.model_fields
 
     def test_model_id_pin(self) -> None:
         req = ModelRequirement(model_id="example-large-001")
@@ -37,13 +40,11 @@ class TestModelRequirement:
 
     def test_capability_and_family_fields(self) -> None:
         req = ModelRequirement(
-            requires_tools=True,
             requires_vision=True,
             requires_reasoning=True,
             family="example-large",
             model_pattern="example-*",
         )
-        assert req.requires_tools is True
         assert req.requires_vision is True
         assert req.requires_reasoning is True
         assert req.family == "example-large"
@@ -103,26 +104,29 @@ class TestParseModelRequirement:
         assert req.requires_reasoning is True
 
     def test_dict_partial_uses_defaults(self) -> None:
-        req = parse_model_requirement({"requires_tools": True})
-        assert req.requires_tools is True
+        req = parse_model_requirement({"requires_reasoning": True})
+        assert req.requires_reasoning is True
         assert req.priority == "balanced"
         assert req.min_context == 0
+
+    def test_dict_rejects_requires_tools_field(self) -> None:
+        """Tool calling is a floor, so a template cannot request it as a flag."""
+        with pytest.raises(ValidationError):
+            parse_model_requirement({"requires_tools": True})
 
     def test_dict_with_capability_requirements(self) -> None:
         req = parse_model_requirement(
             {
                 "requires_vision": True,
-                "requires_tools": True,
                 "family": "example-large",
                 "model_pattern": "example-*",
             }
         )
         assert req.requires_vision is True
-        assert req.requires_tools is True
         assert req.family == "example-large"
         assert req.model_pattern == "example-*"
 
-    def test_dict_rejects_legacy_tier(self) -> None:
+    def test_dict_rejects_tier_field(self) -> None:
         with pytest.raises(ValidationError):
             parse_model_requirement({"tier": "large"})
 
@@ -159,8 +163,21 @@ class TestModelAffinity:
     ) -> None:
         assert MODEL_AFFINITY[preset]["priority"] == expected_priority
 
-    def test_code_craftsman_requires_tools(self) -> None:
-        assert MODEL_AFFINITY["code_craftsman"].get("requires_tools") is True
+    def test_every_affinity_profile_resolves(self) -> None:
+        """Every preset's affinity dict is a valid ``ModelRequirement``.
+
+        ``AffinityValue`` is ``str | int | bool``, so the type system alone
+        would let a key the requirement no longer accepts sit in a preset
+        until whichever agent uses it happens to resolve. Resolving all of
+        them here catches that for any retired key, not just one.
+        """
+        for name in MODEL_AFFINITY:
+            assert resolve_model_requirement(name) is not None, name
+
+    def test_no_preset_declares_tool_calling(self) -> None:
+        """Tool calling is a matcher floor, never a personality affinity."""
+        for name, affinity in MODEL_AFFINITY.items():
+            assert "requires_tools" not in affinity, f"{name} declares tools"
 
     def test_visionary_leader_profile(self) -> None:
         profile = MODEL_AFFINITY["visionary_leader"]
@@ -208,9 +225,11 @@ class TestResolveModelRequirement:
         assert req.min_context == _VISIONARY_CONTEXT_FLOOR
 
     def test_overrides_with_model_id(self) -> None:
-        req = resolve_model_requirement("code_craftsman", {"model_id": "pinned-001"})
+        req = resolve_model_requirement(
+            "methodical_analyst", {"model_id": "pinned-001"}
+        )
         assert req.model_id == "pinned-001"
         # An explicit pin is clean: affinity capability flags are NOT layered
         # on (the matcher selects the pinned id verbatim, ignoring filters).
-        assert req.requires_tools is False
+        assert req.requires_reasoning is False
         assert req.family is None

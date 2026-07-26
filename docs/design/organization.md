@@ -261,8 +261,8 @@ template:
   # Names setup step. User-defined templates may instead set an explicit
   # name or a Jinja2 placeholder (e.g. {{ name | auto }}).
   # The `model` field is a capability reference: either a structured dict
-  # (priority / min_context / requires_tools / requires_vision /
-  # requires_reasoning, plus an optional family or model_pattern), or an
+  # (priority / min_context / requires_vision / requires_reasoning, plus an
+  # optional family or model_pattern), or an
   # explicit model id/alias string to pin a configured model. The matcher
   # resolves it against the configured providers; personality-preset affinity
   # fills any capability defaults the agent omits. Built-in templates use
@@ -286,14 +286,12 @@ template:
       merge_id: "fullstack-senior"
       model:
         priority: "balanced"
-        requires_tools: true
       personality_preset: "pragmatic_builder"
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-mid"
       model:
         priority: "cost"
-        requires_tools: true
       personality_preset: "team_diplomat"
 
     - role: "Product Manager"

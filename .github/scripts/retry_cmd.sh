@@ -47,14 +47,28 @@
 # becomes a retryable 124 and the ladder engages. Off by default so existing
 # callers are byte-for-byte unchanged; opt in per-call.
 #
+# Total deadline: an attempt timeout multiplies. N attempts of T seconds plus
+# the backoff is the real worst case, and when that exceeds the enclosing
+# job's timeout-minutes the ladder can never exhaust -- the runner is reaped
+# mid-retry and the failure surfaces as an opaque "cancelled" job instead of
+# the loud message below, with the last attempts unreachable dead
+# configuration. RETRY_CMD_DEADLINE (seconds; 0 = off, the default) bounds
+# the whole ladder in wall-clock: every attempt is clamped to the time left,
+# and the loop stops rather than sleeping into a backoff it cannot afford.
+# Clamping is what lets a caller keep a generous per-attempt timeout on a
+# short job, and it bounds a caller that sets no attempt timeout at all --
+# with a deadline set, a hang is killed by whatever remains of it. Set it
+# comfortably below the job budget so teardown still fits.
+#
 # Usage:
 #   retry_cmd.sh "label for log" <command> [args...]
 #
 # Behaviour / contract:
 #   - exit 0           : the command succeeded (on some attempt).
-#   - exit <wrapped rc>: the command still failed after every attempt; the
-#                        LAST attempt's exit code is bubbled so the job
-#                        fails loud (fail-closed -- never a soft-skip).
+#   - exit <wrapped rc>: the command still failed after every attempt, or the
+#                        deadline left no room for another; the LAST attempt's
+#                        exit code is bubbled so the job fails loud
+#                        (fail-closed -- never a soft-skip).
 #
 # NOTE: deliberately ``set -uo pipefail`` WITHOUT ``-e``. The wrapped
 # command's failure is captured explicitly via ``|| rc=$?``, and the
@@ -75,6 +89,10 @@ ATTEMPTS="${RETRY_CMD_ATTEMPTS:-5}"
 DELAY="${RETRY_CMD_BASE_DELAY:-15}"
 MAX_DELAY="${RETRY_CMD_MAX_DELAY:-120}"
 ATTEMPT_TIMEOUT="${RETRY_CMD_ATTEMPT_TIMEOUT:-0}"
+DEADLINE="${RETRY_CMD_DEADLINE:-0}"
+# SECONDS counts wall-clock from here, so every deadline test below measures
+# the ladder's own elapsed time rather than trusting an external clock.
+SECONDS=0
 
 # Fail fast on a non-numeric tunable. Without ``-e``, a non-numeric value
 # makes the ``[ "$attempt" -ge "$ATTEMPTS" ]`` exhaustion test error out
@@ -97,6 +115,10 @@ if ! [[ "$ATTEMPT_TIMEOUT" =~ ^[0-9]+$ ]]; then
   echo "::error::retry_cmd.sh: RETRY_CMD_ATTEMPT_TIMEOUT must be a non-negative integer (got '$ATTEMPT_TIMEOUT')" >&2
   exit 2
 fi
+if ! [[ "$DEADLINE" =~ ^[0-9]+$ ]]; then
+  echo "::error::retry_cmd.sh: RETRY_CMD_DEADLINE must be a non-negative integer (got '$DEADLINE')" >&2
+  exit 2
+fi
 
 # Resolve the per-attempt timeout wrapper once, before the loop. macOS ships
 # coreutils' `timeout` as `gtimeout` (or not at all); when a timeout was asked
@@ -104,28 +126,39 @@ fi
 # log rather than silently skipped -- and warning here, not per attempt, keeps
 # the retry output clean.
 TIMEOUT_CMD=""
-if [ "$ATTEMPT_TIMEOUT" -gt 0 ]; then
+if [ "$ATTEMPT_TIMEOUT" -gt 0 ] || [ "$DEADLINE" -gt 0 ]; then
   if command -v timeout >/dev/null 2>&1; then
     TIMEOUT_CMD="timeout"
   elif command -v gtimeout >/dev/null 2>&1; then
     TIMEOUT_CMD="gtimeout"
   else
-    echo "::warning::retry_cmd.sh: RETRY_CMD_ATTEMPT_TIMEOUT=${ATTEMPT_TIMEOUT} set but neither 'timeout' nor 'gtimeout' is available; attempts run WITHOUT a per-attempt timeout" >&2
+    echo "::warning::retry_cmd.sh: a per-attempt bound was requested (RETRY_CMD_ATTEMPT_TIMEOUT=${ATTEMPT_TIMEOUT}, RETRY_CMD_DEADLINE=${DEADLINE}) but neither 'timeout' nor 'gtimeout' is available; attempts run UNBOUNDED and the deadline is only checked between them" >&2
   fi
 fi
 
 attempt=0
 while :; do
   attempt=$((attempt + 1))
+  # Clamp this attempt to whatever the deadline leaves. The loop only starts
+  # an attempt when the tail check below proved time remained, so this stays
+  # positive. A caller with a deadline but no attempt timeout gets the
+  # remaining budget as its bound, which is what stops a hang there too.
+  this_timeout="$ATTEMPT_TIMEOUT"
+  if [ "$DEADLINE" -gt 0 ]; then
+    remaining=$((DEADLINE - SECONDS))
+    if [ "$this_timeout" -eq 0 ] || [ "$this_timeout" -gt "$remaining" ]; then
+      this_timeout="$remaining"
+    fi
+  fi
   # `|| rc=$?` keeps `set -e`-style aborts away and captures the real exit
   # code, sidestepping the `if cmd; then` idiom that resets $? to 0.
   rc=0
-  if [ -n "$TIMEOUT_CMD" ]; then
+  if [ -n "$TIMEOUT_CMD" ] && [ "$this_timeout" -gt 0 ]; then
     # --kill-after escalates to SIGKILL if the command ignores the initial
     # SIGTERM, so a wedged process cannot outlive its attempt. A timeout exits
     # 124 (or 137 on the SIGKILL escalation), which the loop treats as any
     # other retryable non-zero exit.
-    "$TIMEOUT_CMD" --kill-after=10s "$ATTEMPT_TIMEOUT" "$@" || rc=$?
+    "$TIMEOUT_CMD" --kill-after=10s "$this_timeout" "$@" || rc=$?
   else
     "$@" || rc=$?
   fi
@@ -137,6 +170,13 @@ while :; do
   fi
   if [ "$attempt" -ge "$ATTEMPTS" ]; then
     echo "::error::${LABEL} failed after ${attempt} attempts (last exit ${rc})" >&2
+    exit "$rc"
+  fi
+  # Stop once the backoff would run past the deadline. Sleeping into it would
+  # hand the job reaper a loop mid-retry, replacing this loud exit with the
+  # opaque cancellation the deadline exists to prevent.
+  if [ "$DEADLINE" -gt 0 ] && [ $((SECONDS + DELAY)) -ge "$DEADLINE" ]; then
+    echo "::error::${LABEL} exhausted its ${DEADLINE}s deadline after ${attempt} attempts (last exit ${rc})" >&2
     exit "$rc"
   fi
   echo "::warning::${LABEL} failed (attempt ${attempt}/${ATTEMPTS}, exit ${rc}); retrying in ${DELAY}s" >&2

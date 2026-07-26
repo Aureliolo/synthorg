@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { paginateAll, type PaginatedResult } from '@/api/client'
 import { listAgents } from '@/api/endpoints/agents'
-import type { AgentConfig } from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
 import { createLogger } from '@/lib/logger'
 import { useTrainingStore } from '@/stores/training'
 import { getErrorMessage, isAxiosError } from '@/utils/errors'

@@ -63,6 +63,12 @@ PROVIDER_TOOL_CALL_FAILURE_OBSERVED: Final[str] = (
 PROVIDER_TOOL_CALL_SUCCESS_OBSERVED: Final[str] = (
     "provider.tool_call_feedback.success_observed"
 )
+# Ties one tool-call failure back to the agent and task that provoked it.
+# The tracker scores by (provider, model) alone, so without this an operator
+# looking at a task that produced no artifacts has no path to the cause.
+PROVIDER_TOOL_CALL_FAILURE_ATTRIBUTED: Final[str] = (
+    "provider.tool_call_feedback.failure_attributed"
+)
 PROVIDER_TOOL_CALL_DOWNGRADED: Final[str] = "provider.tool_call_feedback.downgraded"
 PROVIDER_TOOL_CALL_REENABLED: Final[str] = "provider.tool_call_feedback.reenabled"
 PROVIDER_TOOL_CALL_FEEDBACK_RECORD_FAILED: Final[str] = (

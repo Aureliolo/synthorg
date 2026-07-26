@@ -77,7 +77,6 @@ template:
     - role: "Backend Developer"
       model:
         priority: "quality"
-        requires_tools: true
       personality_preset: "code_craftsman"
       department: "engineering"
 

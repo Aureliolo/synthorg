@@ -58,13 +58,16 @@ runs:
         # Both apt calls reach the PGDG mirror; wrap each in the generic
         # retry helper so a transient mirror 5xx / connection reset retries
         # (idempotent: re-running update / install converges) rather than
-        # failing the integration + e2e jobs on a single blip.
-        .github/scripts/retry_cmd.sh "apt-get update (pgdg)" \
+        # failing the integration + e2e jobs on a single blip. The deadline
+        # bounds the ladder in wall-clock so a mirror that accepts the
+        # connection then stalls is killed and reported here, instead of
+        # hanging until the job timeout reaps it as an opaque cancellation.
+        RETRY_CMD_DEADLINE=240 .github/scripts/retry_cmd.sh "apt-get update (pgdg)" \
           sudo apt-get update \
           -o Dir::Etc::sourcelist="sources.list.d/pgdg.list" \
           -o Dir::Etc::sourceparts="-" \
           -o APT::Get::List-Cleanup="0"
-        .github/scripts/retry_cmd.sh "apt-get install postgresql-client-18" \
+        RETRY_CMD_DEADLINE=240 .github/scripts/retry_cmd.sh "apt-get install postgresql-client-18" \
           sudo apt-get install -y postgresql-client-18
         echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
         /usr/lib/postgresql/18/bin/pg_dump --version

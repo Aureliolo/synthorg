@@ -1,4 +1,9 @@
 import {
+  agentCapabilities,
+  agentCapabilitiesUnavailable,
+  agentCapabilitiesUnverified,
+  agentModelBindingUnresolved,
+  agentToolCallsFailed,
   filterAgents,
   sortAgents,
   toRuntimeStatus,
@@ -58,6 +63,8 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     personality_preset: null,
     tier: null,
     model_requirement: null,
+    model_capabilities: null,
+    model_capability_status: 'unresolved',
     hiring_date: '2026-01-15T00:00:00Z',
     ...overrides,
   }
@@ -140,6 +147,142 @@ describe('toRuntimeStatus', () => {
     for (const s of statuses) {
       expect(toRuntimeStatus(s)).toBeDefined()
     }
+  })
+})
+
+// ── model capabilities ─────────────────────────────────────
+
+type Caps = NonNullable<AgentConfig['model_capabilities']>
+
+function caps(overrides: Partial<Caps> = {}): Caps {
+  return {
+    supports_reasoning: false,
+    supports_vision: false,
+    tool_calling: 'unverified',
+    metadata_source: 'probe',
+    ...overrides,
+  }
+}
+
+describe('agentCapabilities', () => {
+  it('returns nothing when the model binding does not resolve', () => {
+    expect(agentCapabilities(makeAgent({ model_capabilities: null }))).toEqual([])
+  })
+
+  it('reports the capabilities the assigned model actually has', () => {
+    const agent = makeAgent({
+      model_capabilities: caps({ supports_reasoning: true, supports_vision: true }),
+    })
+    expect(agentCapabilities(agent)).toEqual(['reasoning', 'vision'])
+  })
+
+  it('never reports tool calling, which the matcher requires of every agent', () => {
+    const agent = makeAgent({ model_capabilities: caps({ tool_calling: 'verified' }) })
+    expect(agentCapabilities(agent)).toEqual([])
+  })
+})
+
+describe('agentModelBindingUnresolved', () => {
+  it('is true when the agent names a model no provider offers', () => {
+    expect(
+      agentModelBindingUnresolved(
+        makeAgent({ model_capabilities: null, model_capability_status: 'unresolved' }),
+      ),
+    ).toBe(true)
+  })
+
+  it('is false for a healthy model that simply has no extra capabilities', () => {
+    // The distinction this function exists for: without it, a stale binding
+    // and a plain chat model are indistinguishable on the card.
+    expect(
+      agentModelBindingUnresolved(
+        makeAgent({ model_capabilities: caps(), model_capability_status: 'resolved' }),
+      ),
+    ).toBe(false)
+  })
+
+  it('is false when provider config could not be read', () => {
+    // Both states null the capabilities. Reading the null alone would accuse
+    // every agent in the org of a stale binding during a settings outage.
+    expect(
+      agentModelBindingUnresolved(
+        makeAgent({
+          model_capabilities: null,
+          model_capability_status: 'provider_config_unavailable',
+        }),
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('agentCapabilitiesUnavailable', () => {
+  it('is true when provider config could not be read', () => {
+    expect(
+      agentCapabilitiesUnavailable(
+        makeAgent({
+          model_capabilities: null,
+          model_capability_status: 'provider_config_unavailable',
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it('is false for a genuinely unresolved binding', () => {
+    expect(
+      agentCapabilitiesUnavailable(
+        makeAgent({ model_capabilities: null, model_capability_status: 'unresolved' }),
+      ),
+    ).toBe(false)
+  })
+
+  it('is false when capabilities resolved', () => {
+    expect(
+      agentCapabilitiesUnavailable(
+        makeAgent({ model_capabilities: caps(), model_capability_status: 'resolved' }),
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('agentToolCallsFailed', () => {
+  it('is true only when runtime proved the model cannot call tools', () => {
+    const agent = makeAgent({ model_capabilities: caps({ tool_calling: 'failed' }) })
+    expect(agentToolCallsFailed(agent)).toBe(true)
+  })
+
+  it('is false when tool calling was never observed', () => {
+    // "never tried" is not a fault and must not raise a warning badge.
+    const agent = makeAgent({ model_capabilities: caps({ tool_calling: 'unverified' }) })
+    expect(agentToolCallsFailed(agent)).toBe(false)
+  })
+
+  it('is false when a real tool call has succeeded', () => {
+    const agent = makeAgent({ model_capabilities: caps({ tool_calling: 'verified' }) })
+    expect(agentToolCallsFailed(agent)).toBe(false)
+  })
+
+  it('is false when the model binding does not resolve', () => {
+    expect(agentToolCallsFailed(makeAgent({ model_capabilities: null }))).toBe(false)
+  })
+})
+
+describe('agentCapabilitiesUnverified', () => {
+  it('is true for an un-probed model', () => {
+    const agent = makeAgent({ model_capabilities: caps({ metadata_source: 'unknown' }) })
+    expect(agentCapabilitiesUnverified(agent)).toBe(true)
+  })
+
+  it('is false for a probed model', () => {
+    expect(agentCapabilitiesUnverified(makeAgent({ model_capabilities: caps() }))).toBe(
+      false,
+    )
+  })
+
+  it('is false when the model binding does not resolve', () => {
+    // An unresolved binding is its own state, not an unverified measurement.
+    expect(
+      agentCapabilitiesUnverified(makeAgent({ model_capabilities: null })),
+    ).toBe(false)
   })
 })
 

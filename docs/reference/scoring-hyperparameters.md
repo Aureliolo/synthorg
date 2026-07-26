@@ -38,19 +38,24 @@ telemetry is in place.
 
 Selects the best provider-model fit for a capability-bound
 `ModelRequirement`. The matcher first hard-filters on declared
-capability requirements (vision / function-calling / `min_context` /
-reasoning) against each model's persisted `ModelMetadata`, then resolves
-any family/pattern reference to the newest matching configured model,
-then scores survivors. Four score components: base + capability fit +
-context headroom + priority alignment (capped at 1.0).
+capability requirements (vision / `min_context` / reasoning) against each
+model's persisted `ModelMetadata`, then resolves any family/pattern
+reference to the newest matching configured model, then scores survivors.
+Four score components: base + capability fit + context headroom + priority
+alignment (capped at 1.0).
 
-For `requires_tools` requirements an authoritative runtime hard-fail runs
-before the optimistic capability checks: a model whose
-`ModelMetadata.tool_calls_verified` is `False` (proven at runtime, by the
-tool-call failure feedback loop, to be unable to call tools) is excluded
-regardless of its metadata source, overriding the optimistic
-`supports_tools` path that would otherwise select an unknown-capability
-model.
+Function calling is not a declared requirement but an unconditional floor.
+Every agent turn dispatches with tool definitions attached, so a model
+known to lack tool calling is excluded for every agent, not only for those
+that asked. The filter stays optimistic for un-probed models
+(`metadata_source == "unknown"`), since excluding every unmeasured cloud
+model would leave agents unassigned.
+
+Runtime feedback overrides the discovery-time claim in both directions: a
+model whose `ModelMetadata.tool_calls_verified` is `False` (proven at
+runtime, by the tool-call failure feedback loop, to be unable to call
+tools) is excluded regardless of its metadata source, and one verified
+`True` is re-admitted even when a stale `supports_tools` says otherwise.
 
 | Setting | Default | Controls |
 |---|---:|---|

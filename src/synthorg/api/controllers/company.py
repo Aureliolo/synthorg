@@ -12,6 +12,10 @@ from synthorg.api.channels import (
     CHANNEL_DEPARTMENTS,
     publish_ws_event,
 )
+from synthorg.api.controllers.agents._model_capabilities import (
+    providers_for_capabilities,
+    with_model_capabilities,
+)
 from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_org import (
     ReorderDepartmentsRequest,
@@ -62,6 +66,11 @@ class CompanyController(Controller):
                 t_name = tg.create_task(resolver.get_str("company", "company_name"))
                 t_agents = tg.create_task(resolver.get_agents())
                 t_depts = tg.create_task(resolver.get_departments())
+                # Best-effort inside the group on purpose: provider config is
+                # only needed for the derived capability projection, so a
+                # settings failure there must not cancel the siblings that
+                # carry the payload the caller actually asked for.
+                t_providers = tg.create_task(providers_for_capabilities(app_state))
         except ExceptionGroup as eg:
             logger.warning(
                 SETTINGS_FETCH_FAILED,
@@ -70,9 +79,13 @@ class CompanyController(Controller):
                 error_count=len(eg.exceptions),
             )
             raise eg.exceptions[0] from eg
+        # Agents carry their assigned model's capabilities here too: the
+        # org-edit board reads this payload, and a roster that reported
+        # capabilities on one page and not another would just look broken.
+        agents = with_model_capabilities(t_agents.result(), t_providers.result())
         data: dict[str, object] = {
             "company_name": t_name.result(),
-            "agents": [a.model_dump(mode="json") for a in t_agents.result()],
+            "agents": [a.model_dump(mode="json") for a in agents],
             "departments": [d.model_dump(mode="json") for d in t_depts.result()],
         }
         return ApiResponse(data=data)

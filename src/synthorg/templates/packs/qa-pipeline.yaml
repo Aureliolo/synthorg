@@ -33,19 +33,16 @@ template:
     - role: "QA Lead"
       model:
         priority: "quality"
-        requires_tools: true
       personality_preset: "quality_guardian"
       department: "quality_assurance"
     - role: "QA Engineer"
       model:
         priority: "cost"
-        requires_tools: true
       personality_preset: "methodical_analyst"
       department: "quality_assurance"
     - role: "Automation Engineer"
       model:
         priority: "cost"
-        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "quality_assurance"
 

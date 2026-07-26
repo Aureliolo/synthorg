@@ -356,6 +356,10 @@ jobs:
             .github/package-lock.json
           sparse-checkout-cone-mode: false
 
+      # Upstream, not the ./.github/actions/download-artifact ladder: the
+      # sparse checkout above pulls only the wrangler lockfile from main, so
+      # no local composite action is on disk here (same reason the npm ci
+      # below is inlined rather than using install-js-deps).
       - name: Download preview artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:

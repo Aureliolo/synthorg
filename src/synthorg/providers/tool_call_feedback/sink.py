@@ -25,8 +25,10 @@ from typing import Protocol, runtime_checkable
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
+    PROVIDER_TOOL_CALL_FAILURE_ATTRIBUTED,
     PROVIDER_TOOL_CALL_FEEDBACK_RECORD_FAILED,
 )
+from synthorg.providers.cost_recording import current_cost_context
 
 logger = get_logger(__name__)
 
@@ -101,7 +103,11 @@ async def emit_tool_call_outcome(
     model: str,
     outcome: ToolCallOutcome,
 ) -> None:
-    """Emit one tool-call outcome to the installed sink (no-op if unset).
+    """Emit one tool-call outcome to the installed sink.
+
+    A failure is always attributed in the log, even with no sink installed:
+    turning the feedback loop off disables scoring, not an operator's ability
+    to find out why a task came back empty. Only the sink write is skipped.
 
     Args:
         provider: SynthOrg provider registry key.
@@ -109,6 +115,24 @@ async def emit_tool_call_outcome(
         outcome: The observed :class:`ToolCallOutcome`.
     """
     sink = _sink
+    if outcome is ToolCallOutcome.FAILURE:
+        # Correlation, not attribution: the sink deliberately scores by
+        # (provider, model) alone, but without this line a task that produced
+        # nothing gives an operator no way back to "the model it was given
+        # cannot call tools". The agent/task identity is read from the ambient
+        # cost scope rather than threaded through the provider signature,
+        # which would couple every driver to agent identity.
+        context = current_cost_context()
+        logger.info(
+            PROVIDER_TOOL_CALL_FAILURE_ATTRIBUTED,
+            provider=provider,
+            model=model,
+            agent_id=context.agent_id if context is not None else None,
+            task_id=context.task_id if context is not None else None,
+        )
+    # Only the scoring half is gated on the sink. The line above is an
+    # operator's sole trace from an empty deliverable back to the model that
+    # could not call tools, and that question outlives the feedback loop.
     if sink is None:
         return
     try:

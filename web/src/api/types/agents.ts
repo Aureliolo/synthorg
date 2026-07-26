@@ -1,6 +1,6 @@
 /** Agent config, performance, activity and career event types. */
 
-import type { AgentConfig as WireAgentConfig } from './dtos.gen'
+import type { AgentConfigResponse as WireAgentConfig } from './dtos.gen'
 import type { AgentStatus } from './enums'
 
 export type {
@@ -25,7 +25,8 @@ export {
 
 /**
  * AgentConfig with optional dashboard / WS extras layered on top of
- * the wire ``AgentConfig``. ``id`` is the stable agent UUID and now
+ * the wire ``AgentConfigResponse`` (the agent config plus its assigned
+ * model's resolved capabilities). ``id`` is the stable agent UUID and now
  * arrives on the wire from every list / get endpoint (derived
  * deterministically from the agent name), so the dashboard addresses
  * agents by it uniformly. ``status`` lives on ``AgentIdentity`` in the

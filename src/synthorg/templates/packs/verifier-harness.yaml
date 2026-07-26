@@ -40,7 +40,6 @@ template:
       model:
         priority: "balanced"
         min_context: 50000
-        requires_tools: true
       personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "Evaluator"

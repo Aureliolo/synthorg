@@ -12,6 +12,11 @@ from synthorg._core.features import require_service
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.channels import CHANNEL_DEPARTMENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
+from synthorg.api.controllers.agents._model_capabilities import (
+    AgentConfigResponse,
+    providers_for_capabilities,
+    with_model_capabilities,
+)
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_org import (
     CreateDepartmentRequest,
@@ -29,7 +34,6 @@ from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
-from synthorg.config.agent_schema import AgentConfig
 from synthorg.core.company_departments import Department
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.normalization import find_by_name_ci
@@ -251,7 +255,7 @@ class DepartmentController(Controller):
         state: State,
         name: PathName,
         data: ReorderAgentsRequest,
-    ) -> ApiResponse[tuple[AgentConfig, ...]]:
+    ) -> ApiResponse[tuple[AgentConfigResponse, ...]]:
         """Reorder agents within a department.
 
         The payload must be an exact permutation of agents in the
@@ -274,6 +278,14 @@ class DepartmentController(Controller):
             name,
             data,
         )
+        # Build the response before announcing: the reorder has already
+        # committed, so ordering decides what a later failure costs. The
+        # provider read degrades to an unavailable status rather than failing
+        # the response, but the projection itself still can, and publishing
+        # first would leave subscribers told of a reorder the caller is shown
+        # as an error.
+        providers = await providers_for_capabilities(app_state)
+        projected = with_model_capabilities(reordered, providers)
         publish_ws_event(
             request,
             WsEventType.AGENTS_REORDERED,
@@ -283,4 +295,4 @@ class DepartmentController(Controller):
                 "agent_names": [a.name for a in reordered],
             },
         )
-        return ApiResponse(data=reordered)
+        return ApiResponse(data=projected)

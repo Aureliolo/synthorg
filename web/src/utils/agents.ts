@@ -76,17 +76,65 @@ export function agentTraits(agent: DashboardAgentConfig): readonly string[] {
 }
 
 /**
- * Capability requirements the agent's model must satisfy, derived from the
- * setup wizard's raw ``model_requirement`` flags. Absent requirement -> [].
+ * What the agent's assigned model can actually do, as resolved by the
+ * backend from the provider's capability metadata.
+ *
+ * Tool calling carries no label here. The matcher only ever assigns a model
+ * it believes can call tools, so a positive label would read the same for
+ * every agent that has one. The case where that guarantee goes stale is a
+ * runtime failure, reported by ``agentToolCallsFailed``.
+ *
+ * Unresolvable binding or a plain chat model -> [].
  */
 export function agentCapabilities(agent: DashboardAgentConfig): readonly string[] {
-  const req = agent.model_requirement
-  if (!req) return []
-  const caps: string[] = []
-  if (req['requires_tools'] === true) caps.push('tools')
-  if (req['requires_vision'] === true) caps.push('vision')
-  if (req['requires_reasoning'] === true) caps.push('reasoning')
-  return caps
+  const caps = agent.model_capabilities
+  if (!caps) return []
+  const labels: string[] = []
+  if (caps.supports_reasoning) labels.push('reasoning')
+  if (caps.supports_vision) labels.push('vision')
+  return labels
+}
+
+/**
+ * True when the agent's ``(provider, model_id)`` binding matches no configured
+ * model: a stale or deleted model, not a healthy one that happens to have no
+ * extra capabilities. Those two states look identical in every other accessor,
+ * so the card needs this one to tell them apart.
+ *
+ * Reads the status rather than testing ``model_capabilities === null``: the
+ * backend also nulls capabilities when provider configuration cannot be read,
+ * and inferring from the null alone would accuse every agent in the org of a
+ * broken binding during a settings outage.
+ */
+export function agentModelBindingUnresolved(agent: DashboardAgentConfig): boolean {
+  return agent.model_capability_status === 'unresolved'
+}
+
+/**
+ * True when provider configuration could not be read, so no agent's model
+ * capabilities could be resolved. An org-wide outage, not a fault of this
+ * agent's binding, which may well be fine.
+ */
+export function agentCapabilitiesUnavailable(agent: DashboardAgentConfig): boolean {
+  return agent.model_capability_status === 'provider_config_unavailable'
+}
+
+/**
+ * True when runtime tool calls proved the assigned model cannot make them.
+ * Distinct from "never observed", which is not a fault.
+ */
+export function agentToolCallsFailed(agent: DashboardAgentConfig): boolean {
+  return agent.model_capabilities?.tool_calling === 'failed'
+}
+
+/**
+ * True when the assigned model's capabilities were never measured, so the
+ * card can say "unverified" rather than implying the model has none. A model
+ * binding that does not resolve at all is a different state; see
+ * ``agentModelBindingUnresolved``.
+ */
+export function agentCapabilitiesUnverified(agent: DashboardAgentConfig): boolean {
+  return agent.model_capabilities?.metadata_source === 'unknown'
 }
 
 // ── Filtering ──────────────────────────────────────────────
