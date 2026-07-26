@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Gate: CI workflow resilience invariants.
 
-Enforces two invariants across ``.github/workflows/*.yml`` so the
-resilience hardening in this PR cannot silently regress:
+Enforces four invariants across the CI definitions so the resilience
+hardening they carry cannot silently regress:
 
 1. **Every job declares ``timeout-minutes``.** A job without it inherits
    GitHub's 6-hour default, so a single black-holed network call (a hung
@@ -38,15 +38,23 @@ resilience hardening in this PR cannot silently regress:
    bound, so this gate requires every call site to set it, via step
    ``env:`` or an inline ``VAR=n`` prefix.
 
-4. **A wrapped action is reached only through its wrapper.** Where the
-   ladder lives in a dedicated composite (``.github/actions/checkout``,
-   ``.github/actions/download-artifact``), calling the upstream action
-   directly silently opts out of the retry. ``actions/download-artifact``
-   earned its wrapper when a ``(403) Forbidden: Error from intermediary``
-   -- which the action itself classifies as non-retryable -- killed two
-   jobs and the required ``CI Pass`` with them, on a head whose identical
-   jobs had passed three times before with the same token. Only the paths
-   in ``_WRAPPED_ACTIONS`` may name their upstream action.
+4. **A local action resolves where it is used, and a wrapped action is
+   reached only through its wrapper.** Two halves of one rule.
+
+   A ``uses: ./...`` step loads from the runner's workspace, so it needs an
+   EARLIER checkout in the same job that actually put the action on disk.
+   Miss that and the job dies with "Can't find 'action.yml' ... Did you
+   forget to run actions/checkout" -- including the subtle case where the
+   job does check out, but sparsely, without the action's path.
+
+   ``actions/download-artifact`` earned its wrapper when a ``(403)
+   Forbidden: Error from intermediary`` -- which the action itself
+   classifies as non-retryable -- killed two jobs and the required ``CI
+   Pass`` with them, on a head whose identical jobs had passed three times
+   before with the same token. Reaching upstream is legitimate exactly
+   where the wrapper is unresolvable by the rule above, so the two halves
+   decide each other structurally rather than through an allowlist that
+   would go stale the moment a job gained or lost a checkout.
 
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
@@ -245,30 +253,107 @@ def _check_job_ladders(job_name: str, job: dict[str, object]) -> list[str]:
     return violations
 
 
+def _sparse_covers(sparse: object, action_dir: str) -> bool:
+    """Return True when a sparse-checkout spec would place *action_dir* on disk.
+
+    An absent or blank spec is a full checkout, which covers everything.
+
+    Args:
+        sparse: The step's ``sparse-checkout`` value.
+        action_dir: Repo-relative directory the local action lives in.
+
+    Returns:
+        Whether the checkout would materialise *action_dir*.
+    """
+    if not isinstance(sparse, str) or not sparse.strip():
+        return True
+    return any(
+        action_dir.startswith(line.strip())
+        for line in sparse.splitlines()
+        if line.strip()
+    )
+
+
+class _CheckoutState:
+    """What a job's checkouts have placed on disk so far.
+
+    A ``uses: ./...`` step resolves from the workspace, so it only works if
+    an EARLIER step in the same job checked the action out. Tracking this in
+    step order is the whole point: a checkout later in the job is too late.
+    """
+
+    def __init__(self) -> None:
+        self.full = False
+        self.sparse_prefixes: set[str] = set()
+
+    def record(self, step: dict[str, object]) -> None:
+        """Fold a checkout step's coverage into the state."""
+        with_ = step.get("with")
+        sparse = with_.get("sparse-checkout") if isinstance(with_, dict) else None
+        if _sparse_covers(sparse, ".github/actions"):
+            self.full = True
+            return
+        self.sparse_prefixes.update(
+            line.strip() for line in str(sparse).splitlines() if line.strip()
+        )
+
+    def resolves(self, action_dir: str) -> bool:
+        """Return True when *action_dir* is on disk by this point in the job."""
+        return self.full or any(action_dir.startswith(p) for p in self.sparse_prefixes)
+
+
+def _check_local_action_resolvable(
+    job_name: str, uses: str, checkout: _CheckoutState
+) -> list[str]:
+    """Return a violation when a local action cannot be resolved where used."""
+    action_dir = uses.removeprefix("./").rstrip("/")
+    if checkout.resolves(action_dir):
+        return []
+    reason = (
+        "the job never checks out"
+        if not checkout.sparse_prefixes
+        else "the job's sparse checkout excludes that path"
+    )
+    return [
+        (
+            f"job '{job_name}': uses local action `{uses}` but {reason}, so the"
+            " runner cannot find its action.yml. Check out the path first, or"
+            " call the upstream action directly."
+        )
+    ]
+
+
 def _check_wrapped_action(
-    context: str, rel_path: str, step: dict[str, object]
+    context: str, rel_path: str, uses: str, checkout: _CheckoutState | None
 ) -> list[str]:
     """Return violations for a step bypassing a wrapper's retry ladder.
+
+    Reaching upstream is legitimate exactly where the wrapper cannot be
+    reached: a job that never checks out, or checks out sparsely without the
+    action's path, physically cannot run a local composite. Deciding that
+    structurally beats an allowlist, which would go stale the moment a job
+    gained or lost its checkout.
 
     Args:
         context: Human-readable location (job or composite-action step).
         rel_path: Repo-relative path of the file being scanned.
-        step: The step mapping.
+        uses: The step's ``uses`` value.
+        checkout: Checkout coverage so far, or ``None`` inside a composite
+            action (whose caller necessarily checked out to fetch it).
 
     Returns:
-        One message when the step calls a wrapped action from outside its
-        wrapper, empty otherwise.
+        One message when the step bypasses a reachable wrapper, else empty.
     """
-    uses = step.get("uses")
-    if not isinstance(uses, str):
-        return []
     action = _action_id(uses)
     wrapper = _WRAPPED_ACTIONS.get(action)
     if wrapper is None or rel_path == wrapper:
         return []
+    wrapper_dir = Path(wrapper).parent.as_posix()
+    if checkout is not None and not checkout.resolves(wrapper_dir):
+        return []
     return [
         (
-            f"{context}: uses `{action}` directly; call `./{Path(wrapper).parent.as_posix()}`"
+            f"{context}: uses `{action}` directly; call `./{wrapper_dir}`"
             " instead so the retry ladder cannot be bypassed"
         )
     ]
@@ -352,7 +437,42 @@ def _scan_composite_action(data: dict[str, object], rel_path: str) -> list[str]:
         name = step.get("name")
         label = str(name) if isinstance(name, str) else f"step {index + 1}"
         violations.extend(_check_retry_deadlines(f"'{label}'", step))
-        violations.extend(_check_wrapped_action(f"'{label}'", rel_path, step))
+        uses = step.get("uses")
+        if isinstance(uses, str):
+            violations.extend(_check_wrapped_action(f"'{label}'", rel_path, uses, None))
+    return violations
+
+
+def _check_job_steps(job_name: str, rel_path: str, job: dict[str, object]) -> list[str]:
+    """Return per-step violations for one job, walked in execution order.
+
+    Order matters: checkout coverage accumulates as the job runs, so a local
+    action is judged against what is on disk at ITS point, not at the end.
+
+    Args:
+        job_name: Job key, for the message.
+        rel_path: Repo-relative path of the workflow file.
+        job: The job mapping.
+
+    Returns:
+        Violation messages, empty when the job is compliant.
+    """
+    violations: list[str] = []
+    checkout = _CheckoutState()
+    for step in _job_steps(job):
+        violations.extend(_check_retry_deadlines(f"job '{job_name}'", step))
+        uses = step.get("uses")
+        if not isinstance(uses, str):
+            continue
+        if "actions/checkout" in uses:
+            checkout.record(step)
+            continue
+        if uses.startswith("./"):
+            violations.extend(_check_local_action_resolvable(job_name, uses, checkout))
+            continue
+        violations.extend(
+            _check_wrapped_action(f"job '{job_name}'", rel_path, uses, checkout)
+        )
     return violations
 
 
@@ -387,9 +507,7 @@ def _scan_file(path: Path) -> list[str]:
         name = str(job_name)
         violations.extend(_check_job_timeout(name, job))
         violations.extend(_check_job_ladders(name, job))
-        for step in _job_steps(job):
-            violations.extend(_check_retry_deadlines(f"job '{name}'", step))
-            violations.extend(_check_wrapped_action(f"job '{name}'", rel_path, step))
+        violations.extend(_check_job_steps(name, rel_path, job))
     return violations
 
 
