@@ -68,7 +68,9 @@ def passes_hard_filters(
     # Embedding models produce vector output, not chat completions, so they
     # must never be assigned to a chat agent regardless of any other
     # capability flags. An explicit ``model_id`` pin still bypasses this
-    # filter (the operator escape hatch for a deliberately specialised agent).
+    # filter (the operator escape hatch for a deliberately specialised agent);
+    # the tool-calling floor below is the one thing a pin cannot bypass, so a
+    # pinned model proven unable to call tools is still refused.
     if meta.supports_embeddings:
         logger.debug(
             TEMPLATE_MODEL_MATCH_SKIPPED,

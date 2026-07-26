@@ -134,6 +134,19 @@ export const ModelBindingUnresolved: Story = {
   },
 }
 
+export const CapabilitiesUnavailable: Story = {
+  args: {
+    name: 'Wangari Maathai',
+    role: 'Platform Engineer',
+    department: 'Infrastructure',
+    status: 'active',
+    model: 'example-medium-001',
+    tier: 'medium',
+    capabilitiesUnavailable: true,
+    timestamp: '12m ago',
+  },
+}
+
 export const TierWithoutModel: Story = {
   args: {
     name: 'Grace Hopper',

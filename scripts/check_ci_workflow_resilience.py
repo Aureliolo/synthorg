@@ -253,25 +253,49 @@ def _check_job_ladders(job_name: str, job: dict[str, object]) -> list[str]:
     return violations
 
 
-def _sparse_covers(sparse: object, action_dir: str) -> bool:
-    """Return True when a sparse-checkout spec would place *action_dir* on disk.
+def _normalise_pattern(entry: object) -> str:
+    """Return a sparse-checkout entry as a bare repo-relative directory prefix."""
+    return str(entry).strip().removeprefix("./").strip("/")
 
-    An absent or blank spec is a full checkout, which covers everything.
+
+def _sparse_prefixes(sparse: object) -> list[str] | None:
+    """Return the path prefixes a sparse-checkout spec materialises.
+
+    ``None`` means "not sparse at all": an absent or blank spec is a full
+    checkout, which covers every path.
+
+    ``actions/checkout`` accepts the spec in two YAML shapes -- a block
+    scalar (``sparse-checkout: |``) and a sequence (``sparse-checkout: [a,
+    b]``) -- and treating an unrecognised shape as "no spec" would read a
+    genuinely sparse checkout as a full one, passing the invariant on a job
+    that cannot resolve its action. Both shapes are parsed for that reason.
+    A negation pattern (non-cone mode's ``!path``) subtracts rather than
+    adds, so it contributes no prefix.
 
     Args:
         sparse: The step's ``sparse-checkout`` value.
-        action_dir: Repo-relative directory the local action lives in.
 
     Returns:
-        Whether the checkout would materialise *action_dir*.
+        The covered prefixes, or ``None`` when the checkout is not sparse.
     """
-    if not isinstance(sparse, str) or not sparse.strip():
-        return True
-    return any(
-        action_dir.startswith(line.strip())
-        for line in sparse.splitlines()
-        if line.strip()
-    )
+    if sparse is None:
+        return None
+    entries = sparse if isinstance(sparse, list) else str(sparse).splitlines()
+    prefixes = [
+        pattern
+        for pattern in (_normalise_pattern(entry) for entry in entries)
+        if pattern and not pattern.startswith("!")
+    ]
+    return prefixes or None
+
+
+def _covered_by(path: str, prefix: str) -> bool:
+    """Return True when *prefix* is *path* itself or one of its ancestors.
+
+    Segment-aware, so ``.github/actions-old`` is not read as covered by a
+    checkout of ``.github/actions``.
+    """
+    return path == prefix or path.startswith(f"{prefix}/")
 
 
 class _CheckoutState:
@@ -290,16 +314,17 @@ class _CheckoutState:
         """Fold a checkout step's coverage into the state."""
         with_ = step.get("with")
         sparse = with_.get("sparse-checkout") if isinstance(with_, dict) else None
-        if _sparse_covers(sparse, ".github/actions"):
+        prefixes = _sparse_prefixes(sparse)
+        if prefixes is None:
             self.full = True
             return
-        self.sparse_prefixes.update(
-            line.strip() for line in str(sparse).splitlines() if line.strip()
-        )
+        self.sparse_prefixes.update(prefixes)
 
     def resolves(self, action_dir: str) -> bool:
         """Return True when *action_dir* is on disk by this point in the job."""
-        return self.full or any(action_dir.startswith(p) for p in self.sparse_prefixes)
+        return self.full or any(
+            _covered_by(action_dir, prefix) for prefix in self.sparse_prefixes
+        )
 
 
 def _check_local_action_resolvable(
@@ -464,15 +489,18 @@ def _check_job_steps(job_name: str, rel_path: str, job: dict[str, object]) -> li
         uses = step.get("uses")
         if not isinstance(uses, str):
             continue
+        is_local = uses.startswith("./")
+        # A LOCAL checkout wrapper needs a checkout of its own to exist, so
+        # resolvability is judged before any coverage is folded in -- ordering
+        # the two the other way would let the step vouch for itself.
+        if is_local:
+            violations.extend(_check_local_action_resolvable(job_name, uses, checkout))
         if "actions/checkout" in uses:
             checkout.record(step)
-            continue
-        if uses.startswith("./"):
-            violations.extend(_check_local_action_resolvable(job_name, uses, checkout))
-            continue
-        violations.extend(
-            _check_wrapped_action(f"job '{job_name}'", rel_path, uses, checkout)
-        )
+        elif not is_local:
+            violations.extend(
+                _check_wrapped_action(f"job '{job_name}'", rel_path, uses, checkout)
+            )
     return violations
 
 

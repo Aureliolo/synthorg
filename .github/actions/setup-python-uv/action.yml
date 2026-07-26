@@ -38,20 +38,33 @@ runs:
     # case, and an unbounded one is how a stalled download becomes an opaque
     # cancelled job with no diagnosis.
     #
-    # ``uv python install`` is a quick, bounded fetch, so it also carries a
-    # per-attempt timeout that converts a stalled download into a retry.
-    # ``uv sync`` keeps none of its own: a cold cross-platform resolve
-    # legitimately runs for minutes, and a fixed timeout tight enough to help
-    # within the shorter job budgets would risk killing a slow-but-progressing
-    # sync. Its deadline supplies the bound instead -- retry_cmd clamps each
-    # attempt to the time left, so a hung sync is still killed without
-    # capping a healthy one at some guessed constant.
+    # Sizing rule: a deadline is only useful between two bounds. Below the
+    # realistic healthy duration it kills work that was going to succeed;
+    # above the enclosing job's timeout-minutes the reaper wins first and the
+    # ladder never reports. The smallest job that installs Python budgets
+    # 300s, so 240s is the ceiling worth setting, and each per-attempt timeout
+    # is sized so a SECOND full attempt plus its backoff still fits inside it
+    # -- a ladder whose retry cannot be reached is the very defect the
+    # deadline exists to remove.
+    #
+    # ``uv python install`` is a quick, bounded fetch (a ~30 MB CPython
+    # standalone tarball), so 90s per attempt is generous for a healthy run
+    # while still converting a stall into a retry: 90 + 15 + 90 = 195s leaves
+    # room inside the 240s deadline for a third, clamped attempt.
+    #
+    # ``uv sync`` sets no per-attempt timeout of its own, because a cold
+    # cross-platform resolve has no honest fixed duration to pick. Its
+    # deadline doubles as the bound, which does mean 240s is an accepted
+    # UPPER LIMIT on a cold resolve, not an unbounded allowance: a sync still
+    # running at 240s is failed deliberately. That is the right trade at this
+    # budget -- a resolve that slow would exhaust the 300s job regardless, and
+    # failing at the ladder names the cause instead of leaving a cancellation.
     - name: Install Python
       shell: bash
       env:
         PYTHON_VERSION: ${{ inputs.python-version }}
-        RETRY_CMD_ATTEMPT_TIMEOUT: "180"
-        RETRY_CMD_DEADLINE: "210"
+        RETRY_CMD_ATTEMPT_TIMEOUT: "90"
+        RETRY_CMD_DEADLINE: "240"
       run: |
         .github/scripts/retry_cmd.sh "uv python install" \
           uv python install "$PYTHON_VERSION"

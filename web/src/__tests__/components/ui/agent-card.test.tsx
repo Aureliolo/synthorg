@@ -82,6 +82,32 @@ describe('AgentCard', () => {
       expect(screen.queryByText('reasoning')).not.toBeInTheDocument()
     })
 
+    it('names a provider-config outage rather than blaming the binding', () => {
+      // The binding may be perfectly healthy; the org just cannot read its
+      // provider config right now. Reporting "model not found" here would
+      // accuse every agent at once.
+      render(<AgentCard {...defaultProps} capabilitiesUnavailable />)
+
+      expect(screen.getByText('provider config unavailable')).toBeInTheDocument()
+      expect(screen.queryByText('model not found')).not.toBeInTheDocument()
+    })
+
+    it('outranks every other capability wording during an outage', () => {
+      render(
+        <AgentCard
+          {...defaultProps}
+          capabilitiesUnavailable
+          modelBindingUnresolved
+          capabilities={['reasoning']}
+          capabilitiesUnverified
+        />,
+      )
+
+      expect(screen.getByText('provider config unavailable')).toBeInTheDocument()
+      expect(screen.queryByText('model not found')).not.toBeInTheDocument()
+      expect(screen.queryByText('reasoning')).not.toBeInTheDocument()
+    })
+
     it('warns only when runtime proved tool calling fails', () => {
       const { unmount } = render(<AgentCard {...defaultProps} toolCallsFailed />)
       expect(screen.getByText('No tool calling')).toBeInTheDocument()

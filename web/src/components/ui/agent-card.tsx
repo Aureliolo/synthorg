@@ -38,6 +38,13 @@ export interface AgentCardProps {
    * capabilities, which is the more dangerous of the two to hide.
    */
   modelBindingUnresolved?: boolean | undefined
+  /**
+   * True when provider configuration could not be read, so nothing about the
+   * model could be resolved. Distinct from an unresolved binding: the binding
+   * may be perfectly healthy, and saying "model not found" during a settings
+   * outage would accuse every agent in the org at once.
+   */
+  capabilitiesUnavailable?: boolean | undefined
   currentTask?: string | undefined
   /** Human-readable (usually relative) timestamp text shown in the footer. */
   timestamp?: string | undefined
@@ -79,11 +86,17 @@ function modelMetaItem(props: AgentCardProps): MetaItemData | null {
 }
 
 /**
- * The capability row for the assigned model. An unresolved binding and an
- * un-probed model each get their own wording, so the card never passes off a
- * missing model or an absent measurement as "this model has no capabilities".
+ * The capability row for the assigned model. A provider-config outage, an
+ * unresolved binding and an un-probed model each get their own wording, so the
+ * card never passes off a missing model, an unreadable provider config or an
+ * absent measurement as "this model has no capabilities".
  */
 function capabilitiesMetaItem(props: AgentCardProps): MetaItemData | null {
+  // First: an outage says nothing about THIS agent's binding, so it must not
+  // be reported as one.
+  if (props.capabilitiesUnavailable) {
+    return { label: 'Capabilities', value: 'provider config unavailable', muted: true }
+  }
   if (props.modelBindingUnresolved) {
     return { label: 'Capabilities', value: 'model not found', muted: true }
   }

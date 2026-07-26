@@ -268,6 +268,29 @@ class TestFamilyResolution:
         assert model.id == "only"
         assert score > 0.0
 
+    def test_family_never_crosses_the_tool_calling_floor(self) -> None:
+        # A family ref pins the newest HARD-FILTER SURVIVOR, so the floor
+        # applies before the pin: the newest sibling is skipped for the older
+        # one that can still call tools.
+        newest_incapable = _make_model(
+            "ex-2", family="example-large", generation=2.0, tool_calls_verified=False
+        )
+        older_capable = _make_model("ex-1", family="example-large", generation=1.0)
+        req = ModelRequirement(family="example-large")
+        model, _ = match_model(req, (newest_incapable, older_capable))
+        assert model is not None
+        assert model.id == "ex-1"
+
+    def test_pattern_never_crosses_the_tool_calling_floor(self) -> None:
+        newest_incapable = _make_model(
+            "example-x-2", generation=2.0, tool_calls_verified=False
+        )
+        older_capable = _make_model("example-x-1", generation=1.0)
+        req = ModelRequirement(model_pattern="example-x-*")
+        model, _ = match_model(req, (newest_incapable, older_capable))
+        assert model is not None
+        assert model.id == "example-x-1"
+
     def test_newest_breaks_generation_tie_by_release_date(self) -> None:
         older = _make_model(
             "ex-a", family="f", generation=2.0, release_date=date(2025, 1, 1)
@@ -487,6 +510,53 @@ class TestExplicitModelId:
         model, _ = match_model(req, (plain,))
         assert model is not None
         assert model.id == "plain"
+
+    def test_pin_does_not_bypass_the_tool_calling_floor(self) -> None:
+        # The one thing a pin cannot override. A model that has PROVEN at
+        # runtime it cannot call tools would leave the agent emitting prose
+        # and failing every task that expects an artifact, so the pin is
+        # refused outright rather than seeding an agent that cannot work.
+        proven_incapable = _make_model("pinned", tools=True, tool_calls_verified=False)
+        req = ModelRequirement(model_id="pinned")
+        model, score = match_model(req, (proven_incapable,))
+        assert model is None
+        assert score == 0.0
+
+    def test_pin_admits_an_unprobed_model(self) -> None:
+        # The floor is optimistic: an un-enriched model is not yet KNOWN to
+        # lack tool calling, so the pin still resolves.
+        unprobed = _make_model("pinned", tools=False, source="unknown")
+        req = ModelRequirement(model_id="pinned")
+        model, _ = match_model(req, (unprobed,))
+        assert model is not None
+        assert model.id == "pinned"
+
+    def test_pin_skips_a_tool_incapable_alias_sibling(self) -> None:
+        # One alias can resolve to several catalogue entries; the floor picks
+        # among them rather than failing the pin outright.
+        incapable = ProviderModelConfig(
+            id="broken-001",
+            alias="fast",
+            metadata=ModelMetadata(supports_tools=True, tool_calls_verified=False),
+        )
+        capable = ProviderModelConfig(
+            id="working-001",
+            alias="fast",
+            metadata=ModelMetadata(supports_tools=True, metadata_source="litellm"),
+        )
+        req = ModelRequirement(model_id="fast")
+        model, _ = match_model(req, (incapable, capable))
+        assert model is not None
+        assert model.id == "working-001"
+
+    def test_pinned_tool_incapable_model_leaves_the_agent_unassigned(self) -> None:
+        # The batch path inherits the floor: no model is better than one that
+        # cannot do the work, so the agent is omitted from the roster.
+        providers = {
+            "prov": _provider(_make_model("pinned", tool_calls_verified=False))
+        }
+        agents = [{"model_requirement": {"model_id": "pinned"}}]
+        assert match_all_agents(agents, providers) == []
 
 
 # ── Strategy seam ────────────────────────────────────────────
