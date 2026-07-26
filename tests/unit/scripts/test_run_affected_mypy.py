@@ -12,6 +12,7 @@ import inspect
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -87,6 +88,15 @@ def _isolated_daemon(tmp_path: Path) -> Any:  # type: ignore[explicit-any]
 def _write_status(daemon: Any, pid: int) -> None:  # type: ignore[explicit-any]
     """Write the dmypy status file *daemon* reads its pid from."""
     daemon.status_file.write_text(f'{{"pid": {pid}}}', encoding="utf-8")
+
+
+def _unreachable_subprocess() -> Any:  # type: ignore[explicit-any]
+    """A ``subprocess`` stand-in that fails if anything is executed.
+
+    A refusal that still ran the kill would pass an exit-code assertion while
+    doing the exact thing it claims to prevent.
+    """
+    return SimpleNamespace(run=_unreachable, CompletedProcess=_unreachable)
 
 
 @pytest.mark.parametrize(
@@ -502,6 +512,47 @@ class TestWorktreeHolders:
     ) -> None:
         assert _MODULE._find_holders(str(tmp_path / "absent")) == 2
         assert "does not exist" in capsys.readouterr().err
+
+    def test_stopping_a_non_daemon_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # A mistyped pid names some other process perfectly well, so the pid
+        # alone is not sufficient confirmation to kill something.
+        monkeypatch.setattr(_MODULE, "_process_table", lambda: [(99, "notepad.exe")])
+        monkeypatch.setattr(_MODULE, "subprocess", _unreachable_subprocess())
+
+        assert _MODULE._stop_holder(99) == 2
+        assert "not a mypy daemon" in capsys.readouterr().err
+
+    def test_stopping_an_absent_pid_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setattr(_MODULE, "_process_table", list)
+        monkeypatch.setattr(_MODULE, "subprocess", _unreachable_subprocess())
+
+        assert _MODULE._stop_holder(99) == 2
+        assert "not running" in capsys.readouterr().err
+
+    def test_stopping_a_daemon_is_allowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        issued: list[list[str]] = []
+
+        def _record(
+            command: list[str], **_kw: object
+        ) -> subprocess.CompletedProcess[str]:
+            issued.append(command)
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        monkeypatch.setattr(
+            _MODULE,
+            "_process_table",
+            lambda: [(99, "python.exe -m mypy.dmypy --status-file x daemon")],
+        )
+        monkeypatch.setattr(_MODULE.subprocess, "run", _record)
+
+        assert _MODULE._stop_holder(99) == 0
+        assert str(99) in issued[0]
 
     def test_listing_never_terminates_anything(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

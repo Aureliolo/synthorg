@@ -174,6 +174,9 @@ _PROCESS_ROW_FIELDS: Final[int] = 2
 # What may follow a path in a command line without extending it into a
 # different path: a separator, a closing quote, or an argument break.
 _PATH_BOUNDARY_CHARS: Final[str] = "\\/\"' \t"
+# How a mypy daemon identifies itself in its own command line. The only
+# process ``--stop-holder`` is willing to terminate.
+_DAEMON_PROCESS_MARKER: Final[str] = "mypy.dmypy"
 # Generous: a cold daemon build over ~6.5k files legitimately takes minutes on
 # a contended machine, so this bounds a hang rather than pacing a slow build.
 _MYPY_TIMEOUT_SECONDS: Final[int] = 1800
@@ -1045,16 +1048,36 @@ def _find_holders(raw_path: str) -> int:
     for pid, command in holders:
         print(f"  {pid}\t{command}")
     print("\nStop only the ones you recognise: --stop-holder <pid>")
+    print("(that refuses any pid that is not a mypy daemon)")
     return 0
 
 
 def _stop_holder(pid: int) -> int:
-    """Terminate one named process.
+    """Terminate one named mypy daemon.
 
-    Deliberately takes a single pid rather than a path: naming the process is
-    the confirmation. Nothing here discovers what to kill, so a mistake in
-    ``--find-holders`` cannot escalate into a kill on its own.
+    Takes a single pid rather than a path: nothing here discovers what to
+    kill, so a mistake in ``--find-holders`` cannot escalate into a kill on
+    its own.
+
+    The pid is then checked against the live process table and refused unless
+    it really is a mypy daemon. Naming a process is the operator's
+    confirmation, but a mistyped pid names some OTHER process perfectly well,
+    and this exists to release a stranded daemon rather than to be a
+    general-purpose process killer. Anything else is the operator's own tools
+    to deal with.
     """
+    holder = next(
+        (command for running, command in _process_table() if running == pid), None
+    )
+    if holder is None:
+        print(f"pid {pid} is not running", file=sys.stderr)
+        return 2
+    if _DAEMON_PROCESS_MARKER not in holder:
+        print(
+            f"pid {pid} is not a mypy daemon, refusing to stop it:\n  {holder}",
+            file=sys.stderr,
+        )
+        return 2
     command = (
         ["taskkill", "/PID", str(pid), "/F"]
         if sys.platform == "win32"
