@@ -16,8 +16,10 @@
 #
 # A daemon also expires on its own after two hours idle (see
 # `_DAEMON_IDLE_TIMEOUT_SECONDS` in run_affected_mypy.py for why it has to).
-# `typecheck-stop` is still how to reclaim it now rather than in two hours, and
-# is required before removing a worktree.
+# dmypy can only bind that when the daemon starts, so one already running
+# without it is restarted once to adopt it, at the cost of a single graph
+# rebuild. `typecheck-stop` is still how to reclaim a daemon now rather than in
+# two hours, and is required before removing a worktree.
 typecheck:
 	uv run python scripts/run_affected_mypy.py
 

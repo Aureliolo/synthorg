@@ -360,7 +360,12 @@ repos:
         entry: uv
         args: [run, python, scripts/check_ci_workflow_resilience.py, --scan-all]
         language: system
-        files: ^(\.github/workflows/.*\.ya?ml|scripts/check_ci_workflow_resilience\.py|\.pre-commit-config\.yaml)$
+        # `.github/actions/` is in scope because invariants 3-5 scan composite
+        # actions too: they host every retry_cmd.sh call site, can bypass a
+        # wrapper, and are the transitive artifact consumers invariant 5
+        # resolves through. Without it, an action-only edit never triggers the
+        # gate that judges it.
+        files: ^(\.github/(workflows|actions)/.*\.ya?ml|scripts/check_ci_workflow_resilience\.py|\.pre-commit-config\.yaml)$
         # pass_filenames: false so the hook always re-scans every workflow
         # regardless of which file in `files:` triggered it (same rationale
         # as workflow-tag-lifecycle above): an edit limited to the checker

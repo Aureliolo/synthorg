@@ -19,7 +19,10 @@ that scope, or when it is already running, where the extra coverage is nearly
 free. ``--warm``, ``--status`` and ``--stop`` manage that footprint by hand,
 and a daemon left idle past ``_DAEMON_IDLE_TIMEOUT_SECONDS`` releases it
 unprompted, so a session that ends without calling ``--stop`` (or is killed
-outright) cannot strand a daemon on the machine indefinitely.
+outright) cannot strand a daemon on the machine indefinitely. That bound is
+only ever applied when a daemon starts, so one already listening is stopped
+first and rebound (``_adopt_idle_timeout``); otherwise the guarantee would
+skip exactly the long-lived daemons it exists for.
 
 The cold path runs when no daemon can answer (CI, an explicit opt-out, or a
 daemon that failed). It uses git diff against origin/main to type-check only
@@ -47,6 +50,7 @@ Exit codes match mypy: 0 (no errors/nothing to check), 1 (type errors found), et
 """
 
 import argparse
+import contextlib
 import csv
 import json
 import os
@@ -177,6 +181,10 @@ _MYPY_TIMEOUT_SECONDS: Final[int] = 1800
 # session was killed rather than exited, so the daemon has to expire on its own.
 # Two hours outlasts a meeting or a lunch, so a warm daemon is rarely lost
 # mid-session, while one left behind overnight always goes away.
+#
+# dmypy fixes this when the daemon process starts, so a daemon already
+# listening never picks it up from a later ``run``; ``_adopt_idle_timeout``
+# is what brings those under the bound.
 _DAEMON_IDLE_TIMEOUT_SECONDS: Final[int] = 7200
 
 
@@ -201,6 +209,17 @@ class _Daemon(NamedTuple):
     # path rather than a flag keeps the daemon self-describing: the caller
     # does not have to know which single directory a boolean stood for.
     mypypath: Path | None
+
+    @property
+    def lifetime_file(self) -> Path:
+        """Companion marker naming the pid started under a bounded lifetime.
+
+        dmypy's own status file records the pid but not the idle timeout it
+        was started with, and there is no way to ask a running daemon. This
+        is the missing half: written by this script when it starts one, so a
+        daemon it did not start is recognisable as unbounded.
+        """
+        return self.status_file.with_suffix(".lifetime.json")
 
 
 _MAIN_DAEMON: Final[_Daemon] = _Daemon(
@@ -475,6 +494,86 @@ def _dmypy(daemon: _Daemon, *args: str, quiet: bool = False) -> int:
     return _DMYPY_FAILED if result is None else result.returncode
 
 
+def _recorded_lifetime_pid(daemon: _Daemon) -> int | None:
+    """Return the pid this script last started under the current lifetime.
+
+    ``None`` whenever the marker is missing, unreadable, not an object, or
+    records a different lifetime than the one now configured -- every case
+    where the daemon that may be listening cannot be assumed to expire.
+    Changing ``_DAEMON_IDLE_TIMEOUT_SECONDS`` therefore rebinds warm daemons
+    on their next use rather than leaving them on the old value.
+    """
+    try:
+        raw = json.loads(daemon.lifetime_file.read_text(encoding="utf-8"))
+    except OSError, json.JSONDecodeError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    if raw.get("idle_timeout_seconds") != _DAEMON_IDLE_TIMEOUT_SECONDS:
+        return None
+    pid = raw.get("pid")
+    # ``bool`` subclasses ``int``, and a pid of ``True`` is not a pid.
+    return pid if type(pid) is int else None
+
+
+def _record_bounded_lifetime(daemon: _Daemon) -> None:
+    """Record that the daemon now listening was started under the bound."""
+    pid = _daemon_pid(daemon)
+    if pid is None:
+        return
+    payload = json.dumps(
+        {"pid": pid, "idle_timeout_seconds": _DAEMON_IDLE_TIMEOUT_SECONDS}
+    )
+    try:
+        daemon.lifetime_file.write_text(payload, encoding="utf-8")
+    except OSError as exc:
+        # Not fatal: the next invocation reads no marker and restarts the
+        # daemon once more, which is wasteful but never wrong.
+        print(
+            f"could not record the {daemon.label} daemon's lifetime: {exc}",
+            file=sys.stderr,
+        )
+
+
+def _forget_bounded_lifetime(daemon: _Daemon) -> None:
+    """Drop the marker for a daemon that is no longer running.
+
+    Pids are reused, so a marker outliving its process could vouch for an
+    unrelated one that happened to land on the same number.
+    """
+    # A marker that cannot be removed only costs one extra restart.
+    with contextlib.suppress(OSError):
+        daemon.lifetime_file.unlink(missing_ok=True)
+
+
+def _adopt_idle_timeout(daemon: _Daemon) -> None:
+    """Stop a daemon predating the idle timeout so the next run rebinds it.
+
+    dmypy fixes a daemon's idle lifetime at process start. A ``run`` against
+    one already listening is only a check request, so ``--timeout`` never
+    reaches it: a daemon started before this script passed the flag, or by a
+    bare ``dmypy run`` typed by hand, lives forever. That is precisely the
+    daemon that strands a worktree, so the guarantee is worth a restart.
+
+    The marker names the pid this script last started under the current
+    bound, so an unvouched pid is stopped once and comes back bounded. Cost:
+    one graph rebuild, once per worktree -- the same cost a dependency sync
+    already imposes, rather than something paid every push.
+    """
+    if _recorded_lifetime_pid(daemon) == _daemon_pid(daemon):
+        return
+    if not _daemon_running(daemon):
+        return
+    print(
+        f"{daemon.label} daemon predates the "
+        f"{_DAEMON_IDLE_TIMEOUT_SECONDS}s idle timeout and would outlive this "
+        "session; restarting it once so it cannot (the rebuild is slow, and "
+        "happens only this once)."
+    )
+    _dmypy_result(daemon, "stop", quiet=True, timeout=_PROCESS_QUERY_TIMEOUT_SECONDS)
+    _forget_bounded_lifetime(daemon)
+
+
 def _check_daemon(daemon: _Daemon) -> int | None:
     """Check *daemon*'s scope, returning ``None`` if it gave no verdict.
 
@@ -483,8 +582,8 @@ def _check_daemon(daemon: _Daemon) -> int | None:
     binds the started daemon's idle lifetime (see
     ``_DAEMON_IDLE_TIMEOUT_SECONDS``); it is a daemon-management flag rather
     than a mypy flag, so it does not count towards the flag set whose change
-    forces a rebuild, and a daemon already listening keeps the lifetime it
-    started with until the next ``--stop``.
+    forces a rebuild. It only ever reaches a daemon at start, which is what
+    ``_adopt_idle_timeout`` exists to arrange for one already running.
 
     A daemon killed without cleaning up (a reboot, a machine-wide process
     sweep) leaves a status file pointing at a dead pid. dmypy reports "Daemon
@@ -501,6 +600,7 @@ def _check_daemon(daemon: _Daemon) -> int | None:
     standalone pre-push hook that must run without importing synthorg, so the
     shared GeneralRetryHandler is not available to it.
     """
+    _adopt_idle_timeout(daemon)
     last_code: int | None = None
     for attempt in range(_DAEMON_ATTEMPTS):
         code = _dmypy(
@@ -513,6 +613,7 @@ def _check_daemon(daemon: _Daemon) -> int | None:
             *daemon.extra,
         )
         if code in _CHECK_COMPLETED_CODES:
+            _record_bounded_lifetime(daemon)
             if attempt:
                 print(
                     f"{daemon.label} daemon needed a restart before it could "
@@ -781,8 +882,10 @@ def _stop() -> int:
         )
         if result is not None and result.returncode == 0:
             reclaimed += rss or 0
+            _forget_bounded_lifetime(daemon)
             print(f"{daemon.label}: stopped")
         elif result is not None and _reports_absent_daemon(result):
+            _forget_bounded_lifetime(daemon)
             print(f"{daemon.label}: not running")
         else:
             failed = True

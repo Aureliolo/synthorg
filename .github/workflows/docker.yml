@@ -1531,32 +1531,45 @@ jobs:
     # on tag-push by design); the script's per-image divergence check
     # works on whichever scope of tags shows up.
     #
-    # ANY publish succeeding is enough to run, rather than all of them. This
-    # job is the last line of defence against a concurrent run overwriting a
-    # tag after it was signed, and that risk attaches per image: requiring the
-    # whole set would forfeit the check for four healthy, signed images because
-    # a fifth failed for an unrelated reason. Since the inventory is built from
-    # whichever `pushed-tags-*` artifacts exist, a partial run verifies exactly
-    # what was actually pushed, and the aggregation step fails loudly if
-    # nothing was. Completeness is not weakened by this: `update-release`
-    # gates on every retag succeeding in its own right, so an incomplete image
-    # set still cannot reach the release notes.
+    # ANY publish having RUN is enough to trigger this, rather than all of
+    # them succeeding. Two steps behind that:
+    #
+    #   - Per image, not per set. This job is the last line of defence
+    #     against a concurrent run overwriting a tag after it was signed, and
+    #     that risk attaches to each image independently. Requiring the whole
+    #     set would forfeit the check for four healthy, signed images because
+    #     a fifth failed for an unrelated reason.
+    #   - `success` is the wrong signal for a matrix. `build-fine-tune-publish`
+    #     and `retag-fine-tune` are cpu/gpu matrices with `fail-fast: false`,
+    #     so one failed leg reports `failure` for the whole job while the
+    #     other leg has already pushed and signed. Gating on `success` there
+    #     skips verification for exactly the images that did get published --
+    #     and when fine-tune is the only publisher a run touched (its
+    #     paths-filter fires alone), nothing else is left to trigger the job.
+    #     A job that ran may have pushed, so only `skipped` excludes it.
+    #
+    # The inventory is built from whichever `pushed-tags-*` artifacts exist, so
+    # a partial run verifies exactly what was actually pushed, and the
+    # aggregation step fails loudly if nothing was. Completeness is not
+    # weakened by this: `update-release` gates on every retag succeeding in
+    # its own right, so an incomplete image set still cannot reach the
+    # release notes.
     if: >-
       github.event_name != 'pull_request' &&
       !cancelled() &&
       (
         (github.ref == 'refs/heads/main' &&
-          (needs.build-backend-publish.result == 'success' ||
-            needs.build-web-publish.result == 'success' ||
-            needs.build-sandbox-publish.result == 'success' ||
-            needs.build-sidecar-publish.result == 'success' ||
-            needs.build-fine-tune-publish.result == 'success')) ||
+          (needs.build-backend-publish.result != 'skipped' ||
+            needs.build-web-publish.result != 'skipped' ||
+            needs.build-sandbox-publish.result != 'skipped' ||
+            needs.build-sidecar-publish.result != 'skipped' ||
+            needs.build-fine-tune-publish.result != 'skipped')) ||
         (startsWith(github.ref, 'refs/tags/v') &&
-          (needs.retag-backend.result == 'success' ||
-            needs.retag-web.result == 'success' ||
-            needs.retag-sandbox.result == 'success' ||
-            needs.retag-sidecar.result == 'success' ||
-            needs.retag-fine-tune.result == 'success'))
+          (needs.retag-backend.result != 'skipped' ||
+            needs.retag-web.result != 'skipped' ||
+            needs.retag-sandbox.result != 'skipped' ||
+            needs.retag-sidecar.result != 'skipped' ||
+            needs.retag-fine-tune.result != 'skipped'))
       )
     runs-on: ubuntu-latest
     timeout-minutes: 5

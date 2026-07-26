@@ -44,6 +44,28 @@ def _load_script_module() -> object:
 _MODULE = cast(Any, _load_script_module())  # type: ignore[explicit-any]  # dynamically loaded hook module; attrs resolved by name
 
 
+@pytest.fixture
+def stub_daemon_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep ``_check_daemon``'s lifetime bookkeeping off the real machine.
+
+    Adoption spawns dmypy and the marker write lands beside the status file
+    in the repo root, so a test asserting on the ``dmypy`` invocation itself
+    stubs both. The bookkeeping has its own tests, which call it directly.
+    """
+    monkeypatch.setattr(_MODULE, "_adopt_idle_timeout", lambda _daemon: None)
+    monkeypatch.setattr(_MODULE, "_record_bounded_lifetime", lambda _daemon: None)
+
+
+def _isolated_daemon(tmp_path: Path) -> Any:  # type: ignore[explicit-any]
+    """A daemon whose status and lifetime files live under *tmp_path*."""
+    return _MODULE._MAIN_DAEMON._replace(status_file=tmp_path / ".dmypy-main.json")
+
+
+def _write_status(daemon: Any, pid: int) -> None:  # type: ignore[explicit-any]
+    """Write the dmypy status file *daemon* reads its pid from."""
+    daemon.status_file.write_text(f'{{"pid": {pid}}}', encoding="utf-8")
+
+
 @pytest.mark.parametrize(
     ("changed", "expected"),
     [
@@ -205,6 +227,7 @@ def test_daemon_pass_falls_back_when_scripts_daemon_gives_no_verdict(
     assert _MODULE._run_daemon_pass(["scripts/x.py"]) is None
 
 
+@pytest.mark.usefixtures("stub_daemon_lifecycle")
 def test_check_daemon_threads_the_daemon_scope_into_the_dmypy_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -231,6 +254,7 @@ def test_check_daemon_threads_the_daemon_scope_into_the_dmypy_call(
     ]
 
 
+@pytest.mark.usefixtures("stub_daemon_lifecycle")
 def test_scripts_cold_and_daemon_paths_pass_identical_flags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -265,6 +289,7 @@ def test_scripts_cold_and_daemon_paths_pass_identical_flags(
     assert daemon_extra[separator + 1 :] == cold_extra
 
 
+@pytest.mark.usefixtures("stub_daemon_lifecycle")
 def test_every_daemon_starts_with_a_bounded_idle_lifetime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -286,7 +311,114 @@ def test_every_daemon_starts_with_a_bounded_idle_lifetime(
         separator = args.index("--")
         timeout_flag = args.index("--timeout")
         assert timeout_flag < separator
-        assert int(args[timeout_flag + 1]) > 0
+        assert int(args[timeout_flag + 1]) == _MODULE._DAEMON_IDLE_TIMEOUT_SECONDS
+
+
+class TestIdleTimeoutAdoption:
+    """A daemon started before the bound existed still has to expire.
+
+    dmypy fixes the idle lifetime when the process starts, so passing
+    ``--timeout`` on every ``run`` binds new daemons only. Without adoption
+    the guarantee would skip precisely the long-lived daemons it exists for:
+    the one already warm on a developer's machine when this landed, and any
+    started by a bare ``dmypy run``.
+    """
+
+    def test_marker_sits_beside_the_status_file(self, tmp_path: Path) -> None:
+        daemon = _isolated_daemon(tmp_path)
+        assert daemon.lifetime_file == tmp_path / ".dmypy-main.lifetime.json"
+
+    def test_a_daemon_this_script_started_is_left_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        daemon = _isolated_daemon(tmp_path)
+        _write_status(daemon, 4242)
+        _MODULE._record_bounded_lifetime(daemon)
+        calls: list[tuple[str, ...]] = []
+        monkeypatch.setattr(
+            _MODULE,
+            "_dmypy_result",
+            lambda _d, *args, **_kw: calls.append(args),
+        )
+
+        _MODULE._adopt_idle_timeout(daemon)
+
+        assert calls == []
+        assert daemon.lifetime_file.exists()
+
+    def test_a_pre_existing_daemon_is_stopped_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # No marker: the daemon predates this script's --timeout, so it would
+        # otherwise hold the worktree open forever.
+        daemon = _isolated_daemon(tmp_path)
+        _write_status(daemon, 4242)
+        calls: list[tuple[str, ...]] = []
+        monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: True)
+        monkeypatch.setattr(
+            _MODULE,
+            "_dmypy_result",
+            lambda _d, *args, **_kw: calls.append(args),
+        )
+
+        _MODULE._adopt_idle_timeout(daemon)
+
+        assert calls == [("stop",)]
+        assert not daemon.lifetime_file.exists()
+
+    def test_a_changed_bound_rebinds_a_warm_daemon(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Editing the constant must reach daemons already running under the
+        # old one, else the value in the source stops describing the machine.
+        daemon = _isolated_daemon(tmp_path)
+        _write_status(daemon, 4242)
+        _MODULE._record_bounded_lifetime(daemon)
+        monkeypatch.setattr(_MODULE, "_DAEMON_IDLE_TIMEOUT_SECONDS", 60)
+
+        assert _MODULE._recorded_lifetime_pid(daemon) is None
+
+    def test_a_recycled_pid_does_not_inherit_the_marker(self, tmp_path: Path) -> None:
+        daemon = _isolated_daemon(tmp_path)
+        _write_status(daemon, 4242)
+        _MODULE._record_bounded_lifetime(daemon)
+        _write_status(daemon, 5151)
+
+        assert _MODULE._recorded_lifetime_pid(daemon) != _MODULE._daemon_pid(daemon)
+
+    @pytest.mark.parametrize(
+        "marker",
+        [
+            pytest.param("not json at all", id="unparseable"),
+            pytest.param("[1, 2]", id="not-an-object"),
+            pytest.param('{"idle_timeout_seconds": 7200}', id="no-pid"),
+            pytest.param('{"pid": true, "idle_timeout_seconds": 7200}', id="bool-pid"),
+        ],
+    )
+    def test_an_unusable_marker_reads_as_unbounded(
+        self, tmp_path: Path, marker: str
+    ) -> None:
+        # Failing open here would vouch for a daemon nothing verified.
+        daemon = _isolated_daemon(tmp_path)
+        daemon.lifetime_file.write_text(marker, encoding="utf-8")
+
+        assert _MODULE._recorded_lifetime_pid(daemon) is None
+
+    def test_a_cold_scope_is_not_restarted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        daemon = _isolated_daemon(tmp_path)
+        calls: list[tuple[str, ...]] = []
+        monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: False)
+        monkeypatch.setattr(
+            _MODULE,
+            "_dmypy_result",
+            lambda _d, *args, **_kw: calls.append(args),
+        )
+
+        _MODULE._adopt_idle_timeout(daemon)
+
+        assert calls == []
 
 
 def test_daemons_do_not_share_a_status_file() -> None:

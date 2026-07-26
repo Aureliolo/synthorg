@@ -343,6 +343,11 @@ jobs:
     environment: cloudflare-preview
     timeout-minutes: 5
     permissions:
+      # `actions: read` is what the API download path below needs; without
+      # it the download falls back to the runtime token, which only sees the
+      # current run ATTEMPT, so re-running this job alone would 404 on the
+      # artifact the build job uploaded in attempt 1.
+      actions: read
       contents: read
       pull-requests: write
     steps:
@@ -365,6 +370,7 @@ jobs:
         with:
           name: preview-site
           path: _site
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

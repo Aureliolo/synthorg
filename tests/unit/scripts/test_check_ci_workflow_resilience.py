@@ -3,7 +3,7 @@
 Loads the script as a module so its private helpers are callable without
 spawning subprocesses.
 
-Covers all four invariants:
+Covers all five invariants:
 
 * ``timeout-minutes`` required on every job, with the reusable-workflow
   -call exemption (a job whose body is a top-level ``uses:``).
@@ -20,6 +20,10 @@ Covers all four invariants:
   YAML shapes ``sparse-checkout`` accepts, because a shape the gate fails
   to parse would read as a full checkout and pass a job that cannot
   resolve its action.
+* An artifact-consuming job grants ``actions: read`` AND passes an
+  explicit ``github-token``, transitively through the composites that
+  reach a download, so a re-run can still see the previous attempt's
+  artifacts.
 """
 
 import importlib.util
@@ -57,11 +61,20 @@ def _scan(tmp_path: Path, content: str) -> list[str]:
     return violations
 
 
-def _job(steps: str, *, timeout: bool = True) -> str:
-    """Build a one-job workflow whose ``steps:`` is ``steps``."""
+def _job(
+    steps: str, *, timeout: bool = True, permissions: str | None = "actions: read"
+) -> str:
+    """Build a one-job workflow whose ``steps:`` is ``steps``.
+
+    The job grants ``actions: read`` by default so a fixture that happens to
+    download an artifact still isolates the invariant under test; pass
+    ``permissions=None`` to exercise invariant 5's permission half.
+    """
     head = "jobs:\n  a:\n    runs-on: ubuntu-latest\n"
     if timeout:
         head += "    timeout-minutes: 5\n"
+    if permissions is not None:
+        head += f"    permissions:\n      {permissions}\n"
     return f"{head}    steps:\n{steps}"
 
 
@@ -82,6 +95,26 @@ _NO_DEADLINE = "without RETRY_CMD_DEADLINE"
 _NEVER_CHECKS_OUT = "the job never checks out"
 _SPARSE_EXCLUDES = "sparse checkout excludes that path"
 _BYPASSES_WRAPPER = "so the retry ladder cannot be bypassed"
+_NO_TOKEN = "consumes artifacts without passing `github-token`"
+_NO_ACTIONS_READ = "does not grant `actions: read`"
+_DROPS_TOKEN = "dropping the caller's token at this boundary"
+_NO_TOKEN_INPUT = "declares no `github-token` input"
+
+
+_TOKEN_EXPR = "${{ github.token }}"
+
+
+def _download(*, wrapper: bool = True, token: str | None = _TOKEN_EXPR) -> str:
+    """An artifact-download step, through the wrapper or straight upstream."""
+    ref = (
+        "./.github/actions/download-artifact"
+        if wrapper
+        else "actions/download-artifact@abc"
+    )
+    step = f"      - uses: {ref}\n"
+    if token is None:
+        return step
+    return f'{step}        with:\n          github-token: "{token}"\n'
 
 
 def _checkout(sparse: str = "", uses: str = "actions/checkout@abc") -> str:
@@ -92,9 +125,15 @@ def _checkout(sparse: str = "", uses: str = "actions/checkout@abc") -> str:
     return f"{step}        with:\n          sparse-checkout: {sparse}\n"
 
 
-def _composite(steps: str) -> str:
-    """Build a composite ``action.yml`` body whose ``runs.steps`` is *steps*."""
-    return f"runs:\n  using: composite\n  steps:\n{steps}"
+def _composite(steps: str, *, token_input: bool = True) -> str:
+    """Build a composite ``action.yml`` body whose ``runs.steps`` is *steps*.
+
+    Declares a ``github-token`` input by default, which invariant 5 requires
+    of any composite that reaches a download; pass ``token_input=False`` to
+    exercise that half.
+    """
+    head = 'inputs:\n  github-token:\n    default: ""\n' if token_input else ""
+    return f"{head}runs:\n  using: composite\n  steps:\n{steps}"
 
 
 class TestTimeout:
@@ -398,29 +437,23 @@ class TestWrappedAction:
     """A wrapped upstream action is reached only through its wrapper."""
 
     def test_upstream_with_reachable_wrapper_flagged(self, tmp_path: Path) -> None:
-        steps = _checkout() + "      - uses: actions/download-artifact@abc\n"
-        violations = _scan(tmp_path, _job(steps))
+        violations = _scan(tmp_path, _job(_checkout() + _download(wrapper=False)))
         assert len(violations) == 1
         assert _BYPASSES_WRAPPER in violations[0]
 
     def test_wrapper_call_clean(self, tmp_path: Path) -> None:
-        steps = _checkout() + "      - uses: ./.github/actions/download-artifact\n"
-        assert _scan(tmp_path, _job(steps)) == []
+        assert _scan(tmp_path, _job(_checkout() + _download())) == []
 
     def test_upstream_without_a_checkout_allowed(self, tmp_path: Path) -> None:
         # Reaching upstream is legitimate exactly where the wrapper is
         # physically unreachable, which is decided structurally rather than
         # by an allowlist that would go stale on the next checkout change.
-        content = _job("      - uses: actions/download-artifact@abc\n")
-        assert _scan(tmp_path, content) == []
+        assert _scan(tmp_path, _job(_download(wrapper=False))) == []
 
     def test_upstream_under_a_sparse_checkout_without_the_wrapper(
         self, tmp_path: Path
     ) -> None:
-        steps = (
-            _checkout("|\n            web\n")
-            + "      - uses: actions/download-artifact@abc\n"
-        )
+        steps = _checkout("|\n            web\n") + _download(wrapper=False)
         assert _scan(tmp_path, _job(steps)) == []
 
     def test_composite_action_bypassing_the_wrapper_flagged(
@@ -429,11 +462,124 @@ class TestWrappedAction:
         # A composite's caller necessarily checked out to fetch it, so the
         # wrapper is always reachable from one.
         content = _composite(
-            "    - name: fetch\n      uses: actions/download-artifact@abc\n"
+            "    - name: fetch\n"
+            "      uses: actions/download-artifact@abc\n"
+            "      with:\n"
+            '        github-token: "${{ inputs.github-token }}"\n'
         )
         violations = _scan(tmp_path, content)
         assert len(violations) == 1
         assert _BYPASSES_WRAPPER in violations[0]
+
+
+class TestArtifactDownloads:
+    """An artifact consumer grants ``actions: read`` AND passes a token.
+
+    Neither half is sufficient alone: the token is what selects the REST API
+    download path, and ``actions: read`` is the scope that path requires, so
+    a job missing either still 404s on the cross-attempt fetch a re-run of a
+    failed consumer depends on.
+    """
+
+    def test_missing_token_flagged(self, tmp_path: Path) -> None:
+        violations = _scan(tmp_path, _job(_checkout() + _download(token=None)))
+        assert len(violations) == 1
+        assert _NO_TOKEN in violations[0]
+
+    def test_blank_token_flagged(self, tmp_path: Path) -> None:
+        # An empty string is the wrapper's own default and selects the
+        # runtime token, so passing the key is not the same as passing a
+        # token.
+        violations = _scan(tmp_path, _job(_checkout() + _download(token="")))
+        assert len(violations) == 1
+        assert _NO_TOKEN in violations[0]
+
+    def test_missing_permission_flagged(self, tmp_path: Path) -> None:
+        content = _job(_checkout() + _download(), permissions=None)
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _NO_ACTIONS_READ in violations[0]
+
+    def test_both_halves_present_clean(self, tmp_path: Path) -> None:
+        assert _scan(tmp_path, _job(_checkout() + _download())) == []
+
+    def test_non_consuming_job_unaffected(self, tmp_path: Path) -> None:
+        assert _scan(tmp_path, _job("      - run: true\n", permissions=None)) == []
+
+    def test_workflow_level_permissions_are_inherited(self, tmp_path: Path) -> None:
+        content = "permissions:\n  actions: read\n" + _job(
+            _checkout() + _download(), permissions=None
+        )
+        assert _scan(tmp_path, content) == []
+
+    def test_job_block_overrides_rather_than_merges(self, tmp_path: Path) -> None:
+        # GitHub replaces the workflow-level block wholesale, so a job that
+        # declares any scope and omits `actions` has genuinely dropped it.
+        content = "permissions:\n  actions: read\n" + _job(
+            _checkout() + _download(), permissions="contents: read"
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _NO_ACTIONS_READ in violations[0]
+
+    @pytest.mark.parametrize(
+        ("permissions", "granted"),
+        [
+            ({"actions": "read"}, True),
+            ({"actions": "write"}, True),
+            ({"actions": "none"}, False),
+            ({"contents": "read"}, False),
+            ({}, False),
+            ("read-all", True),
+            ("write-all", True),
+            ("none", False),
+            (None, False),
+        ],
+    )
+    def test_permission_shapes(self, permissions: object, granted: bool) -> None:
+        grants = _MODULE._grants_actions_read  # type: ignore[attr-defined]
+        assert grants(permissions) is granted
+
+    def test_transitive_consumer_inherits_the_obligation(self) -> None:
+        # A job that never names a download still consumes artifacts when the
+        # composite it calls does, and it is that job's permissions block
+        # that has to change.
+        job = {"steps": [{"uses": "./.github/actions/publish"}]}
+        check = _MODULE._check_artifact_downloads  # type: ignore[attr-defined]
+        violations = check("a", job, None, frozenset({".github/actions/publish"}))
+        assert len(violations) == 2
+
+    def test_fork_qualified_reference_resolves(self) -> None:
+        consumes = _MODULE._consumes_artifacts  # type: ignore[attr-defined]
+        consumers = frozenset({".github/actions/publish"})
+        assert consumes("owner/repo/.github/actions/publish@sha", consumers)
+        assert not consumes("owner/repo/.github/actions/other@sha", consumers)
+
+    def test_closure_reaches_composites_that_call_the_wrapper(self) -> None:
+        consumers = _MODULE._artifact_consumer_dirs()  # type: ignore[attr-defined]
+        assert ".github/actions/download-artifact" in consumers
+        assert ".github/actions/publish-image" in consumers
+
+    def test_composite_dropping_the_token_flagged(self, tmp_path: Path) -> None:
+        content = _composite("    - uses: ./.github/actions/download-artifact\n")
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _DROPS_TOKEN in violations[0]
+
+    def test_composite_without_a_token_input_flagged(self, tmp_path: Path) -> None:
+        content = _composite(
+            "    - uses: ./.github/actions/download-artifact\n"
+            "      with:\n"
+            '        github-token: "${{ inputs.github-token }}"\n',
+            token_input=False,
+        )
+        violations = _scan(tmp_path, content)
+        assert len(violations) == 1
+        assert _NO_TOKEN_INPUT in violations[0]
+
+    def test_composite_not_consuming_needs_no_token_input(self, tmp_path: Path) -> None:
+        content = _composite("    - run: true\n      shell: bash\n", token_input=False)
+        assert _scan(tmp_path, content) == []
 
 
 class TestScanFileEdgeCases:

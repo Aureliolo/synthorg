@@ -25,7 +25,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_backend_regional_defaults.py` | PostToolUse | backend region/currency edits | n/a | n/a | none | harden |
 | `check_baseline_growth.py` | commit+push | `scripts/*_baseline.{txt,json}` | staged | yes | guards baselines | keep |
 | `check_boundary_typed.py` | push | `src/synthorg/` | full | no | none | keep |
-| `check_ci_workflow_resilience.py` | commit+push | `.github/workflows/` | full | no | none | add |
+| `check_ci_workflow_resilience.py` | commit+push | `.github/workflows/` + `.github/actions/` | full | no | none | add |
 | `check_comparison_md_in_sync.py` | push | `competitors.yaml` + `comparison.md` + generator | full | no | none | keep |
 | `check_completion_config_temperature.py` | commit+push | `src/synthorg/` | full | no | none | keep |
 | `check_convention_gate_inventory.py` | push | canonical docs + `convention_gate_map.yaml` | full | no | none | keep (meta-gate) |

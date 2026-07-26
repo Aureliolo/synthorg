@@ -37,15 +37,22 @@ Run this after squash-merging a PR to clean up the local repo.
 
    The `--stop` runs first because a live daemon keeps an open handle on the worktree's `.venv` interpreter, which on Windows makes the directory undeletable: `git worktree remove` then fails with `Invalid argument`, an error that looks nothing like its cause. It is a no-op when no daemon is running, so run it unconditionally. This mirrors step 5 of `/worktree cleanup`.
 
-   If the daemon belongs to a session that is already gone, `--stop` cannot reach it (the status file is in the worktree being removed). Find the holder and stop it directly, then remove the leftover directory:
+   `--stop` reaches a daemon only through the status file at that path. If it reports `not running` and the removal still fails, a daemon is holding the directory with no status file to reach it through (a stale or already-deleted one). List the holders by their resolved absolute path:
 
    ```powershell
+   $wt = (Resolve-Path '<worktree-path>').Path
    Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-     Where-Object { $_.CommandLine -like '*<worktree-dir-name>*' } |
-     ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+     Where-Object { $_.CommandLine -and $_.CommandLine.Contains($wt) } |
+     Select-Object ProcessId, CommandLine
    ```
 
-   Match on the specific worktree path, never on `mypy.dmypy` alone: other worktrees (and a push in flight) have their own daemons that must survive. If `git worktree remove` already dropped the registration but left the directory, delete the directory and run `git worktree prune`.
+   Show that list to the user and stop only the pids they confirm, one explicit call each:
+
+   ```powershell
+   Stop-Process -Id <pid> -Force
+   ```
+
+   Never pipe the query straight into `Stop-Process`, and never match on a bare directory name or on `mypy.dmypy`: a sibling worktree with the same basename, and any daemon mid-push, would be force-killed alongside the intended one. The resolved absolute path is what makes the match exact. If `git worktree remove` already dropped the registration but left the directory, delete the directory and run `git worktree prune`.
 
    Avoid piped bulk deletion (e.g., via `xargs`) to reduce the risk of accidental destructive operations. Use explicit `git branch -D branch1 branch2` calls instead.
 
