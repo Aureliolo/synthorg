@@ -222,6 +222,8 @@ def test_check_daemon_threads_the_daemon_scope_into_the_dmypy_call(
         (
             _MODULE._SCRIPTS_DAEMON,
             "run",
+            "--timeout",
+            str(_MODULE._DAEMON_IDLE_TIMEOUT_SECONDS),
             "--",
             *_MODULE._SCRIPTS_DAEMON.paths,
             *_MODULE._SCRIPTS_DAEMON.extra,
@@ -253,9 +255,38 @@ def test_scripts_cold_and_daemon_paths_pass_identical_flags(
     _MODULE._check_daemon(_MODULE._SCRIPTS_DAEMON)
     _MODULE._run_scripts_mypy()
 
-    # The daemon call carries the "run --" preamble the cold call does not.
-    assert daemon_extra[:2] == ["run", "--"]
-    assert daemon_extra[2:] == cold_extra
+    # The daemon call carries a "run <daemon-management flags> --" preamble the
+    # cold call does not. Split on the separator rather than a fixed offset: the
+    # flags that must match are exactly the ones mypy itself sees, and anchoring
+    # on a length lets a new pre-separator flag shift the slice so this asserts
+    # parity on the wrong span instead of failing.
+    assert daemon_extra[0] == "run"
+    separator = daemon_extra.index("--")
+    assert daemon_extra[separator + 1 :] == cold_extra
+
+
+def test_every_daemon_starts_with_a_bounded_idle_lifetime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unbounded daemon outlives its session and holds the worktree open."""
+    seen: list[tuple[str, ...]] = []
+
+    def _record(_daemon: object, *args: str, **_kwargs: object) -> int:
+        seen.append(args)
+        return 0
+
+    monkeypatch.setattr(_MODULE, "_dmypy", _record)
+    for daemon in _MODULE._ALL_DAEMONS:
+        _MODULE._check_daemon(daemon)
+
+    assert len(seen) == len(_MODULE._ALL_DAEMONS)
+    for args in seen:
+        # Before the separator, so dmypy consumes it as a daemon-management
+        # flag rather than forwarding it to mypy as a checked path.
+        separator = args.index("--")
+        timeout_flag = args.index("--timeout")
+        assert timeout_flag < separator
+        assert int(args[timeout_flag + 1]) > 0
 
 
 def test_daemons_do_not_share_a_status_file() -> None:

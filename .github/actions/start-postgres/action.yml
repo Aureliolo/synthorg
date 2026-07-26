@@ -46,6 +46,11 @@ runs:
       uses: ./.github/actions/docker-pull-resilient
       with:
         image: ${{ inputs.image }}
+        # `-ci` keeps the image tag distinct from the `container-name` default
+        # (`synthorg-postgres`) started below, so `docker images` and `docker ps`
+        # do not show near-identical names for two different things. The other
+        # callers of this action pull tooling images that name no container, so
+        # they use a bare `synthorg-<thing>` tag.
         local-tag: synthorg-postgres-ci:18-alpine
     - name: Start postgres container
       shell: bash

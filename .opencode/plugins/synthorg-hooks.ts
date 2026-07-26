@@ -574,6 +574,30 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
         },
       },
     },
+
+    // Counterpart to the SessionEnd hook in .claude/settings.json. OpenCode
+    // exposes no session-end key, so this keys off the server instance for
+    // this directory being disposed: past that point nothing here is running,
+    // so releasing the worktree's mypy daemons is safe by construction.
+    //
+    // Deliberately fail-open, unlike every guard above: this reclaims memory
+    // and releases the handle that makes a worktree undeletable on Windows,
+    // and refusing to shut down because housekeeping failed would be worse
+    // than skipping it. If it never fires, the daemon's own idle timeout still
+    // reaps it, so this is the fast path rather than the guarantee.
+    event: async ({ event }) => {
+      if (event.type !== "server.instance.disposed") {
+        return;
+      }
+      try {
+        execSync("uv run python scripts/run_affected_mypy.py --stop", {
+          timeout: 60000,
+          encoding: "utf-8",
+        });
+      } catch {
+        // Best-effort: see above.
+      }
+    },
   };
 };
 

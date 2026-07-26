@@ -178,11 +178,11 @@ jobs:
         with:
           # renovate: datasource=docker depName=caddy
           image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
-          local-tag: synthorg-caddy-ci:2.10.2-alpine
+          local-tag: synthorg-caddy:2.10.2-alpine
       - name: Caddyfile validate
         run: >-
           docker run --rm -v "$PWD:/work" -w /work
-          synthorg-caddy-ci:2.10.2-alpine
+          synthorg-caddy:2.10.2-alpine
           caddy validate --config web/Caddyfile --adapter caddyfile
       # Spell-check runs as a dedicated step rather than a pre-commit hook so
       # the ~11s full-tree scan gates every push in CI without sitting on the
@@ -460,7 +460,7 @@ jobs:
             status=0
             uv run python scripts/check_schema_drift_revisions.py \
               --backend postgres \
-              --image synthorg-postgres-ci:18-alpine || status=$?
+              --postgres-image synthorg-postgres-ci:18-alpine || status=$?
             if [ "$status" -ne "$provision_exit" ]; then
               exit "$status"
             fi

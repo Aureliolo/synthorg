@@ -100,11 +100,10 @@ inputs:
   github-token:
     description: >-
       GITHUB_TOKEN for the artifact REST API, from the caller's
-      `secrets.GITHUB_TOKEN`. Without it `download-artifact` authenticates
-      with the runtime token, whose scope covers only the CURRENT run
-      attempt -- so re-running this job after a failure 404s on the base
-      tarball the first attempt uploaded. The caller must also grant
-      `actions: read`.
+      `secrets.GITHUB_TOKEN`, which must also grant `actions: read`. Both are
+      needed so a re-run can reach the base tarball an earlier attempt
+      uploaded; the full reasoning and its security trade-off are in the header
+      comment of `.github/workflows/docker.yml`.
     required: true
 
 outputs:
@@ -154,6 +153,19 @@ runs:
         sudo docker image prune --all --force
         df -h /
 
+    # Registering the arm64 handlers pulls tonistiigi/binfmt from Docker Hub,
+    # and setup-qemu-action does not retry that pull, so it is pre-pulled
+    # through the retry-and-mirror ladder and pinned. Left un-pinned the action
+    # resolves a floating tag, so a reconnect could also silently change which
+    # binfmt build runs.
+    - name: Pull binfmt image (ARM64 emulation)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: ./.github/actions/docker-pull-resilient
+      with:
+        # renovate: datasource=docker depName=tonistiigi/binfmt
+        image: tonistiigi/binfmt:qemu-v9.2.2@sha256:1b804311fe87047a4c96d38b4b3ef6f62fca8cd125265917a9e3dc3c996c39e6
+        local-tag: synthorg-binfmt:qemu-v9.2.2
+
     # Required on non-PR events when building the arm64 tarball on an
     # amd64 runner. PR builds are amd64-only and skip QEMU.
     - name: Set up QEMU (ARM64 emulation)
@@ -161,6 +173,7 @@ runs:
       uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
       with:
         platforms: arm64
+        image: synthorg-binfmt:qemu-v9.2.2
 
     # The `docker-container` driver boots BuildKit by pulling moby/buildkit
     # from Docker Hub, and setup-buildx-action does not retry that pull: a

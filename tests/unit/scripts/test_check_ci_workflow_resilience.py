@@ -174,10 +174,10 @@ class TestLadder:
         assert _UNGUARDED in violations[0]
 
     def test_two_ladders_one_malformed_flagged(self, tmp_path: Path) -> None:
-        # The finding-1 regression: two independent codecov ladders in one
-        # job (separated by a non-codecov step), the first a bare pair. The
-        # state machine must flag the bare pair even though the second
-        # ladder is well-formed (a naive aggregate check would not).
+        # Two independent codecov ladders in one job (separated by a
+        # non-codecov step), the first a bare pair. The state machine must
+        # flag the bare pair even though the second ladder is well-formed,
+        # which a naive aggregate check over the whole job would not.
         steps = (
             _enforced(guard=False)
             + _enforced(guard=False)

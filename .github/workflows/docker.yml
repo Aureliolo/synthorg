@@ -37,7 +37,14 @@ permissions: {}
 # only the CURRENT run attempt: re-running a failed job then 404s
 # ("GetSignedArtifactURL ... workflow run not found") on the tarball the
 # earlier attempt uploaded, so the only recovery is a full re-run of the
-# whole matrix. The permission is read-only and grants no write surface.
+# whole matrix.
+#
+# The trade-off is deliberate and worth stating plainly, because it is larger
+# than "read-only": `actions: read` is repo-wide, so it also exposes artifacts,
+# run metadata and job logs from every past run, not just this one, and these
+# jobs each run several third-party actions. GitHub offers no narrower
+# current-run-only artifact scope, so this is the minimum that makes a failed
+# job recoverable. It grants no write surface, and secret values stay masked.
 
 # PR runs cancel each other (we don't care about intermediate PR-build
 # artifacts). Non-PR events key on the SHA: a main-push and a
@@ -599,14 +606,13 @@ jobs:
       #   - tag push: same story for graduate.yml + manual tags.
       #   - workflow_dispatch: protects ad-hoc rebuilds.
       #
-      # Earlier the smoke lived in finalize-release.yml and ran
-      # only after a tag was already cut -- catching the same
-      # regression after the entire Docker matrix + GoReleaser
-      # signing had already run. Running here makes it the SOURCE
-      # OF TRUTH gate; finalize-release no longer re-tests because
-      # Docker images are content-addressed and pulling from GHCR
-      # at release time can never produce different bytes than the
-      # image just smoked here.
+      # This is the single source-of-truth gate for a broken boot
+      # path, and nothing downstream re-tests it: Docker images are
+      # content-addressed, so pulling this digest from GHCR at
+      # release time can never produce different bytes than the
+      # image smoked here. Smoking at release time instead would
+      # only catch the same regression later, after the whole Docker
+      # matrix and the signing steps had already run.
       #
       # The image is already loaded into the local Docker daemon
       # by build-scan-image (it builds with `outputs: type=docker,
@@ -1109,7 +1115,7 @@ jobs:
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  # Fine-tune ships in two flavors. The matrix builds them in parallel:
+  # Fine-tune ships in two flavours. The matrix builds them in parallel:
   #   - gpu  -> ghcr.io/aureliolo/synthorg-fine-tune-gpu  (bundled CUDA, ~4 GB)
   #   - cpu  -> ghcr.io/aureliolo/synthorg-fine-tune-cpu  (CPU torch, ~1.7 GB)
   # The variant is driven by the FINE_TUNE_EXTRA build-arg; uv routes torch to
@@ -1173,15 +1179,14 @@ jobs:
     name: Publish Fine-Tune
     needs: [version, build-fine-tune]
     # `failure` is admitted deliberately. `build-fine-tune` is a
-    # `fail-fast: false` matrix, so its aggregate result is `failure` when
-    # ANY variant failed -- gating on `success` alone meant one variant's
-    # transient failure withheld the other's publish too, and then failed
-    # BOTH retag legs on the following tag run. Each publish leg downloads
-    # its own variant's tarball, so the healthy variant publishes and the
-    # failed variant's leg fails loudly on the artifact it never produced.
-    # `skipped` stays excluded: no build ran, so there is nothing to push.
-    # `verify-signatures` still requires every publish to succeed, so a
-    # partial publish never passes the release gate.
+    # `fail-fast: false` matrix, so its aggregate result is `failure` when ANY
+    # variant failed. Gating on `success` alone would let one variant's
+    # transient failure withhold the healthy variant's publish as well, and
+    # then fail both retag legs on the next tag push, since the images the tag
+    # needs were never pushed. Each publish leg downloads its own variant's
+    # tarball, so the healthy variant publishes while the failed variant's leg
+    # fails loudly on the artifact it never produced. `skipped` stays excluded:
+    # no build ran, so there is nothing to push.
     if: >-
       !cancelled() &&
       (needs.build-fine-tune.result == 'success' ||
@@ -1525,22 +1530,33 @@ jobs:
     # consumes. Bases are only in the inventory on main-push (skipped
     # on tag-push by design); the script's per-image divergence check
     # works on whichever scope of tags shows up.
+    #
+    # ANY publish succeeding is enough to run, rather than all of them. This
+    # job is the last line of defence against a concurrent run overwriting a
+    # tag after it was signed, and that risk attaches per image: requiring the
+    # whole set would forfeit the check for four healthy, signed images because
+    # a fifth failed for an unrelated reason. Since the inventory is built from
+    # whichever `pushed-tags-*` artifacts exist, a partial run verifies exactly
+    # what was actually pushed, and the aggregation step fails loudly if
+    # nothing was. Completeness is not weakened by this: `update-release`
+    # gates on every retag succeeding in its own right, so an incomplete image
+    # set still cannot reach the release notes.
     if: >-
       github.event_name != 'pull_request' &&
       !cancelled() &&
       (
         (github.ref == 'refs/heads/main' &&
-          needs.build-backend-publish.result == 'success' &&
-          needs.build-web-publish.result == 'success' &&
-          needs.build-sandbox-publish.result == 'success' &&
-          needs.build-sidecar-publish.result == 'success' &&
-          needs.build-fine-tune-publish.result == 'success') ||
+          (needs.build-backend-publish.result == 'success' ||
+            needs.build-web-publish.result == 'success' ||
+            needs.build-sandbox-publish.result == 'success' ||
+            needs.build-sidecar-publish.result == 'success' ||
+            needs.build-fine-tune-publish.result == 'success')) ||
         (startsWith(github.ref, 'refs/tags/v') &&
-          needs.retag-backend.result == 'success' &&
-          needs.retag-web.result == 'success' &&
-          needs.retag-sandbox.result == 'success' &&
-          needs.retag-sidecar.result == 'success' &&
-          needs.retag-fine-tune.result == 'success')
+          (needs.retag-backend.result == 'success' ||
+            needs.retag-web.result == 'success' ||
+            needs.retag-sandbox.result == 'success' ||
+            needs.retag-sidecar.result == 'success' ||
+            needs.retag-fine-tune.result == 'success'))
       )
     runs-on: ubuntu-latest
     timeout-minutes: 5

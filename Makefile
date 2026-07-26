@@ -14,10 +14,10 @@
 # `typecheck-stop` reclaims it when moving to another branch. `typecheck-status`
 # reports what is running and how much it costs.
 #
-# A daemon also expires on its own after two hours idle, so one left behind by
-# a closed session releases both the memory and the handle it holds on the
-# worktree's interpreter. `typecheck-stop` is still the way to reclaim it now
-# rather than in two hours, and is required before removing a worktree.
+# A daemon also expires on its own after two hours idle (see
+# `_DAEMON_IDLE_TIMEOUT_SECONDS` in run_affected_mypy.py for why it has to).
+# `typecheck-stop` is still how to reclaim it now rather than in two hours, and
+# is required before removing a worktree.
 typecheck:
 	uv run python scripts/run_affected_mypy.py
 

@@ -32,12 +32,10 @@ inputs:
   github-token:
     description: >-
       GITHUB_TOKEN for the artifact REST API, from the caller's
-      `secrets.GITHUB_TOKEN`. Without it `download-artifact` authenticates
-      with the runtime token, whose scope covers only the CURRENT run
-      attempt -- so re-running this job after a failure 404s on the tarball
-      the first attempt uploaded ("GetSignedArtifactURL ... workflow run not
-      found"), making the failure unrecoverable without a full re-run. The
-      caller must also grant `actions: read`.
+      `secrets.GITHUB_TOKEN`, which must also grant `actions: read`. Both are
+      needed so a re-run can reach a tarball an earlier attempt uploaded; the
+      full reasoning and its security trade-off are in the header comment of
+      `.github/workflows/docker.yml`.
     required: true
 
 outputs:

@@ -12,19 +12,18 @@ hardening they carry cannot silently regress:
    ``timeout-minutes``; the called workflow owns its own job timeouts.
 
 2. **Every step using an external upload/OIDC action without internal
-   retry is wrapped in a fail-closed retry ladder.** The incident that
-   motivated this gate: ``codecov/codecov-action`` failed on a 503 from
-   the OIDC ``getIDToken()`` mint -- an UNHANDLED error BEFORE the upload,
-   which the action's ``fail_ci_if_error: false`` never sees -- and
-   crashed the job. The fix is the house step-duplication ladder
-   (see ``.github/actions/checkout``): intermediate attempts carry
-   ``continue-on-error: true`` so the run advances to the retry, and the
-   final attempt carries neither guard so a genuinely persistent outage
-   fails CI loud. This gate checks, per (job, enforced-action), that the
-   action's steps include at least one with ``continue-on-error`` (a
-   ladder exists) AND at least one without (a fail-closed final attempt).
-   A single bare step fails the first half; an all-soft-failed ladder
-   fails the second.
+   retry is wrapped in a fail-closed retry ladder.** Such an action can
+   5xx while minting its OIDC token (``getIDToken()``), which happens
+   BEFORE the upload it guards, so ``fail_ci_if_error: false`` never sees
+   the error and the job crashes outright. The house step-duplication
+   ladder covers that window (see ``.github/actions/checkout``):
+   intermediate attempts carry ``continue-on-error: true`` so the run
+   advances to the retry, and the final attempt carries neither guard so
+   a genuinely persistent outage fails CI loud. This gate checks, per
+   (job, enforced-action), that the action's steps include at least one
+   with ``continue-on-error`` (a ladder exists) AND at least one without
+   (a fail-closed final attempt). A single bare step fails the first
+   half; an all-soft-failed ladder fails the second.
 
 3. **Every ``retry_cmd.sh`` call site bounds its ladder in wall-clock.**
    A retry ladder is only useful if it can finish inside the job that runs

@@ -16,7 +16,10 @@ codebase, so both figures grow with the dependency set rather than staying
 put. The ``scripts/`` daemon is therefore not kept warm by default. It is
 consulted only when it would earn its footprint: when the change could reach
 that scope, or when it is already running, where the extra coverage is nearly
-free. ``--warm``, ``--status`` and ``--stop`` manage that footprint by hand.
+free. ``--warm``, ``--status`` and ``--stop`` manage that footprint by hand,
+and a daemon left idle past ``_DAEMON_IDLE_TIMEOUT_SECONDS`` releases it
+unprompted, so a session that ends without calling ``--stop`` (or is killed
+outright) cannot strand a daemon on the machine indefinitely.
 
 The cold path runs when no daemon can answer (CI, an explicit opt-out, or a
 daemon that failed). It uses git diff against origin/main to type-check only
@@ -167,12 +170,13 @@ _MYPY_TIMEOUT_SECONDS: Final[int] = 1800
 
 # Idle lifetime of the daemon process itself (dmypy's ``--timeout``), NOT a
 # bound on any one check. A daemon outlives the shell that started it, holding
-# ~2.5GB resident and an open handle on its worktree's interpreter; on Windows
-# that handle makes the worktree undeletable, and ``git worktree remove`` fails
-# with "Invalid argument", which looks nothing like its cause. Nothing can stop
-# a daemon whose session was killed rather than exited, so the daemon has to
-# expire on its own. Two hours outlasts a meeting or a lunch, so a warm daemon
-# is rarely lost mid-session, while one left behind overnight always goes away.
+# its scope's graph resident (see ``_warm`` for the per-scope cost) plus an open
+# handle on its worktree's interpreter; on Windows that handle makes the
+# worktree undeletable, and ``git worktree remove`` fails with "Invalid
+# argument", which looks nothing like its cause. Nothing can stop a daemon whose
+# session was killed rather than exited, so the daemon has to expire on its own.
+# Two hours outlasts a meeting or a lunch, so a warm daemon is rarely lost
+# mid-session, while one left behind overnight always goes away.
 _DAEMON_IDLE_TIMEOUT_SECONDS: Final[int] = 7200
 
 

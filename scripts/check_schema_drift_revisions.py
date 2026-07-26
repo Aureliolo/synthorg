@@ -24,9 +24,15 @@ Usage::
 
     python scripts/check_schema_drift_revisions.py --backend sqlite
     python scripts/check_schema_drift_revisions.py --backend postgres
+    python scripts/check_schema_drift_revisions.py --backend postgres --postgres-image synthorg-postgres-ci:18-alpine
 
 The Postgres arm requires Docker (uses ``testcontainers``); the SQLite
 arm runs against a temp file with no external dependency.
+``--postgres-image`` points the throwaway container at an image already
+present locally, which is how CI feeds in a pre-pulled one instead of
+reaching a registry a second time; it defaults to the digest-pinned
+reference and is rejected outright with ``--backend sqlite``, which has
+no container to configure.
 """
 
 import argparse
@@ -205,7 +211,7 @@ async def _dump_sqlite_schema(revisions_path: Path) -> str:
     return ";\n".join(row[0] for row in rows) + ";\n"
 
 
-async def _dump_postgres_schema(revisions_path: Path, image: str) -> str:
+async def _dump_postgres_schema(revisions_path: Path, postgres_image: str) -> str:
     """Apply revisions to a Postgres testcontainer and return its schema dump."""
     try:
         from testcontainers.community.postgres import PostgresContainer
@@ -217,7 +223,7 @@ async def _dump_postgres_schema(revisions_path: Path, image: str) -> str:
         )
         raise SystemExit(msg) from exc
 
-    pg = PostgresContainer(image)
+    pg = PostgresContainer(postgres_image)
     # Inside the cleanup-owning try so a start that fails AFTER Docker
     # created the container still reaches ``stop()``; a leaked container
     # would otherwise accumulate across the caller's provisioning retries.
@@ -725,11 +731,12 @@ def _build_argparser() -> argparse.ArgumentParser:
     # the reference as an argument lets that already-present tag be used
     # instead of a second, unretried pull of the digest-pinned default.
     parser.add_argument(
-        "--image",
+        "--postgres-image",
         default=_POSTGRES_TESTCONTAINER_IMAGE,
         help=(
             "Postgres image reference for the throwaway container "
-            "(default: the digest-pinned Docker Hub image)."
+            "(default: the digest-pinned Docker Hub image). "
+            "Only meaningful with --backend postgres."
         ),
     )
     return parser
@@ -737,9 +744,18 @@ def _build_argparser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point: parse args + run the drift check for one backend."""
-    args = _build_argparser().parse_args(argv)
+    parser = _build_argparser()
+    args = parser.parse_args(argv)
+    # Refuse rather than ignore: the SQLite arm starts no container, so
+    # silently discarding the override would let a caller believe it had
+    # pinned an image the run never used.
+    if (
+        args.backend == "sqlite"
+        and args.postgres_image != _POSTGRES_TESTCONTAINER_IMAGE
+    ):
+        parser.error("--postgres-image is only valid with --backend postgres")
     try:
-        return asyncio.run(_main(args.backend, args.image))
+        return asyncio.run(_main(args.backend, args.postgres_image))
     except SchemaDriftProvisionError as exc:
         # Printed rather than raised so the retryable case reads as one
         # legible line instead of a Docker traceback a caller must parse.
