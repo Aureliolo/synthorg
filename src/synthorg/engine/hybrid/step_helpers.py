@@ -10,32 +10,19 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.execution_identity import current_execution_identity
 from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_models import HybridLoopConfig
-from synthorg.engine.loop_helpers import (
-    build_result,
-)
-from synthorg.engine.loop_protocol import (
-    ExecutionResult,
-    TerminationReason,
-)
 from synthorg.engine.plan_helpers import (
     assess_step_success,
-    extract_task_summary,
-    run_planner_turn,
 )
-from synthorg.engine.plan_loop_context import StepRunContext
 from synthorg.engine.plan_models import ExecutionPlan, PlanStep
-from synthorg.engine.plan_parsing import parse_plan
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_HYBRID_PLAN_TRUNCATED,
     EXECUTION_HYBRID_TURN_BUDGET_WARNING,
-    EXECUTION_PLAN_PARSE_ERROR,
     EXECUTION_PLAN_STEP_TOOL_USE_EMPTY,
     EXECUTION_PLAN_STEP_TRUNCATED,
 )
@@ -163,56 +150,3 @@ def warn_insufficient_budget(
             max_plan_steps=config.max_plan_steps,
             max_turns_per_step=config.max_turns_per_step,
         )
-
-
-async def call_planner(
-    run: StepRunContext,
-    ctx: AgentContext,
-    turns: list[TurnRecord],
-    message: ChatMessage,
-    *,
-    revision_number: int = 0,
-) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
-    """Shared body for plan generation and re-planning.
-
-    Takes ``ctx`` and ``turns`` explicitly rather than a
-    :class:`StepRunState`, because initial planning runs before a plan
-    exists and therefore before the state object can be built.
-
-    Args:
-        run: Run-scoped collaborators; the planner model, completion
-            config, and checkpoint callback are read from here.
-        ctx: Agent context.
-        turns: Mutable list of turn records.
-        message: The planning message to send.
-        revision_number: Plan revision number.
-
-    Returns:
-        ``(ctx, plan)`` on success, or ``ExecutionResult`` on error.
-    """
-    task_summary = extract_task_summary(ctx)
-    outcome = await run_planner_turn(run, ctx, turns, message)
-    if isinstance(outcome, ExecutionResult):
-        return outcome
-    ctx, response = outcome
-
-    plan = parse_plan(
-        response,
-        ctx.execution_id,
-        task_summary,
-        revision_number=revision_number,
-    )
-    if plan is None:
-        error_msg = "Failed to parse execution plan from LLM response"
-        logger.warning(
-            EXECUTION_PLAN_PARSE_ERROR,
-            execution_id=ctx.execution_id,
-            revision_number=revision_number,
-        )
-        return build_result(
-            ctx,
-            TerminationReason.ERROR,
-            turns,
-            error_message=error_msg,
-        )
-    return ctx, plan

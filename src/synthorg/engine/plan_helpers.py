@@ -27,12 +27,14 @@ from synthorg.engine.plan_loop_context import (
     StepRunState,
 )
 from synthorg.engine.plan_models import ExecutionPlan, StepStatus
+from synthorg.engine.plan_parsing import parse_plan
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import STEERING_REPLAN_SUPERSEDED
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
     EXECUTION_LOOP_TURN_COMPLETE,
+    EXECUTION_PLAN_PARSE_ERROR,
     EXECUTION_PLAN_STEP_INDEX_OUT_OF_RANGE,
     EXECUTION_PLAN_STEP_STATUS_UPDATED,
     EXECUTION_PLAN_SUMMARY_FALLBACK,
@@ -206,6 +208,60 @@ async def invoke_checkpoint_callback(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+
+
+async def call_planner(
+    run: StepRunContext,
+    ctx: AgentContext,
+    turns: list[TurnRecord],
+    message: ChatMessage,
+    *,
+    revision_number: int = 0,
+) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
+    """Send one planner message and parse the plan it returned.
+
+    The one planner call both loops make. Takes ``ctx`` and ``turns``
+    explicitly rather than a :class:`StepRunState`, because initial
+    planning runs before a plan exists and therefore before the state
+    object can be built.
+
+    Args:
+        run: Run-scoped collaborators; the planner model, completion
+            config, and checkpoint callback are read from here.
+        ctx: Agent context.
+        turns: Mutable list of turn records.
+        message: The planning message to send.
+        revision_number: Plan revision number.
+
+    Returns:
+        ``(ctx, plan)`` on success, or ``ExecutionResult`` on error.
+    """
+    task_summary = extract_task_summary(ctx)
+    outcome = await run_planner_turn(run, ctx, turns, message)
+    if isinstance(outcome, ExecutionResult):
+        return outcome
+    ctx, response = outcome
+
+    plan = parse_plan(
+        response,
+        ctx.execution_id,
+        task_summary,
+        revision_number=revision_number,
+    )
+    if plan is None:
+        error_msg = "Failed to parse execution plan from LLM response"
+        logger.warning(
+            EXECUTION_PLAN_PARSE_ERROR,
+            execution_id=ctx.execution_id,
+            revision_number=revision_number,
+        )
+        return build_result(
+            ctx,
+            TerminationReason.ERROR,
+            turns,
+            error_message=error_msg,
+        )
+    return ctx, plan
 
 
 async def run_planner_turn(

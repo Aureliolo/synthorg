@@ -10,10 +10,7 @@ import re
 from collections.abc import Callable
 
 from synthorg.core.normalization import compare_ci
-from synthorg.engine.hybrid.step_helpers import (
-    call_planner,
-    truncate_plan,
-)
+from synthorg.engine.hybrid.step_helpers import truncate_plan
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_control_helpers import (
     check_budget,
@@ -21,18 +18,14 @@ from synthorg.engine.loop_control_helpers import (
 )
 from synthorg.engine.loop_helpers import (
     build_result,
-    call_provider,
-    check_response_errors,
-    classify_turn,
-    make_turn_record,
-    response_to_message,
 )
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
 from synthorg.engine.plan_helpers import (
-    invoke_checkpoint_callback,
+    call_planner,
+    run_planner_turn,
     update_step_status,
 )
 from synthorg.engine.plan_loop_context import (
@@ -192,51 +185,21 @@ async def run_progress_summary(
         return budget_result
 
     step_idx = state.step_idx
-    state.ctx = state.ctx.with_message(_summary_message(config, state))
-    turn_number = state.ctx.turn_count + 1
-
-    response = await call_provider(
-        state.ctx,
-        run.provider,
-        run.planner_model,
-        tool_defs=None,
-        config=run.completion_config,
-        turn_number=turn_number,
-        turns=state.turns,
+    # The summary is a planner turn like any other, so it runs through the
+    # shared body; only the domain event below is specific to it.
+    outcome = await run_planner_turn(
+        run, state.ctx, state.turns, _summary_message(config, state)
     )
-    if isinstance(response, ExecutionResult):
-        return response
+    if isinstance(outcome, ExecutionResult):
+        return outcome
+    state.ctx, response = outcome
 
-    state.turns.append(
-        make_turn_record(
-            turn_number,
-            response,
-            call_category=classify_turn(
-                turn_number,
-                response,
-                state.ctx,
-                is_planning_phase=True,
-            ),
-            provider_metadata=response.provider_metadata,
-        )
-    )
-
-    error = check_response_errors(state.ctx, response, turn_number, state.turns)
-    if error is not None:
-        return error
-
-    state.ctx = state.ctx.with_turn_completed(
-        response.usage,
-        response_to_message(response),
-    )
     logger.info(
         EXECUTION_HYBRID_PROGRESS_SUMMARY,
         execution_id=state.ctx.execution_id,
-        turn=turn_number,
+        turn=state.ctx.turn_count,
         step_completed=step_idx + 1,
     )
-
-    await invoke_checkpoint_callback(run.checkpoint_callback, state.ctx, turn_number)
 
     raw_content = response.content or ""
     if not raw_content.strip():
@@ -297,6 +260,10 @@ async def attempt_replan(
         :class:`ExecutionResult` for termination conditions.
     """
     state.plan = update_step_status(state.plan, state.step_idx, StepStatus.FAILED)
+    # Every early return below finalises straight from ``all_plans``,
+    # bypassing the tail's resync, so the FAILED status has to land in the
+    # history now or the terminal ``final_plan`` loses it.
+    state.sync_current_plan()
     logger.warning(
         EXECUTION_PLAN_STEP_FAILED,
         execution_id=state.ctx.execution_id,

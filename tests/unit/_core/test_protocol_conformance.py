@@ -96,6 +96,7 @@ def test_bare_object_does_not_satisfy_protocol(pair: tuple[type, type]) -> None:
 if TYPE_CHECKING:
 
     def _accepts_protocols(  # noqa: PLR0913 -- one param per collaborator Protocol under test
+        *,
         queue: TaskQueue,
         executor: ParallelExecutorProtocol,
         resolver: ConfigResolverProtocol,
@@ -106,6 +107,7 @@ if TYPE_CHECKING:
     ) -> None: ...
 
     def _real_classes_are_assignable_to_protocols(  # noqa: PLR0913 -- mirrors _accepts_protocols
+        *,
         queue: JetStreamTaskQueue,
         executor: ParallelExecutor,
         resolver: ConfigResolver,
@@ -121,11 +123,11 @@ if TYPE_CHECKING:
         at runtime.
         """
         _accepts_protocols(
-            queue,
-            executor,
-            resolver,
-            settings,
-            tracker,
-            registry,
-            classifier,
+            queue=queue,
+            executor=executor,
+            resolver=resolver,
+            settings=settings,
+            tracker=tracker,
+            registry=registry,
+            classifier=classifier,
         )

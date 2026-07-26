@@ -21,6 +21,7 @@ from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ShutdownChecker,
     TaskCancellationChecker,
+    TerminationReason,
     TurnObserver,
 )
 from synthorg.engine.plan_models import ExecutionPlan
@@ -43,10 +44,15 @@ class StepTurnOutcome(Enum):
     CONTINUE = "continue"
     STEP_SUCCEEDED = "step_succeeded"
     STEP_FAILED = "step_failed"
+    STEP_EXHAUSTED = "step_exhausted"
 
     @classmethod
     def from_success(cls, *, success: bool) -> StepTurnOutcome:
-        """Map a step's success flag onto the matching terminal member.
+        """Map a concluded turn's success flag onto its terminal member.
+
+        Only for a turn that ended the step on its own terms. A step the
+        loop abandons because its turn budget ran out is ``STEP_EXHAUSTED``,
+        which the caller returns directly.
 
         Returns:
             ``STEP_SUCCEEDED`` when *success* is true, ``STEP_FAILED``
@@ -62,6 +68,26 @@ class StepTurnOutcome(Enum):
             ``True`` only for ``STEP_SUCCEEDED``.
         """
         return self is StepTurnOutcome.STEP_SUCCEEDED
+
+    @property
+    def signal_reason(self) -> TerminationReason:
+        """Reason the per-step quality signal classifies this step under.
+
+        Separating ``STEP_EXHAUSTED`` from ``STEP_FAILED`` is what keeps a
+        step abandoned on its turn budget from being reported as the same
+        thing as a step the model concluded unsuccessfully: the quality
+        pipeline reads this reason to attribute the cause.
+
+        Returns:
+            ``COMPLETED`` for a successful step, ``MAX_TURNS`` for one that
+            ran out of turns, and ``ERROR`` otherwise. ``CONTINUE`` is
+            consumed by the sub-loop and never classified.
+        """
+        if self is StepTurnOutcome.STEP_SUCCEEDED:
+            return TerminationReason.COMPLETED
+        if self is StepTurnOutcome.STEP_EXHAUSTED:
+            return TerminationReason.MAX_TURNS
+        return TerminationReason.ERROR
 
 
 class ReplanVerdict(Enum):

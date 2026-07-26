@@ -54,6 +54,7 @@ from .loop_protocol import (
     TurnObserver,
 )
 from .plan_helpers import (
+    call_planner,
     clear_superseded_directive,
     update_step_status,
 )
@@ -290,9 +291,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
                 signals,
                 state,
                 step_start,
-                TerminationReason.COMPLETED
-                if step_result.step_succeeded
-                else TerminationReason.MAX_TURNS,
+                step_result.signal_reason,
             )
 
             if step_result.step_succeeded:
@@ -385,6 +384,9 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             state.step_idx,
             StepStatus.COMPLETED,
         )
+        # Resync before a steering replan can append a fresh plan on top:
+        # the history entry would otherwise freeze this step as pending.
+        state.sync_current_plan()
         logger.info(
             EXECUTION_PLAN_STEP_COMPLETE,
             execution_id=state.ctx.execution_id,
@@ -397,7 +399,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             steer_out = await steering_replan(
                 run,
                 state,
-                call_planner=self._call_planner,
+                call_planner=call_planner,
                 finalize=self._finalize,
             )
             if steer_out is not None:
@@ -489,4 +491,6 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             if isinstance(stag_outcome, tuple):
                 state.ctx, step_corrections = stag_outcome
 
-        return StepTurnOutcome.STEP_FAILED
+        # The while guard fell through, so the run's turn budget ran out
+        # rather than the step concluding unsuccessfully.
+        return StepTurnOutcome.STEP_EXHAUSTED

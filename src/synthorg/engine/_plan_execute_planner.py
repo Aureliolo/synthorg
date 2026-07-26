@@ -12,7 +12,6 @@ from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_PLAN_CREATED,
-    EXECUTION_PLAN_PARSE_ERROR,
     EXECUTION_PLAN_REPLAN_COMPLETE,
     EXECUTION_PLAN_REPLAN_EXHAUSTED,
     EXECUTION_PLAN_REPLAN_START,
@@ -29,14 +28,10 @@ from .loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
-from .plan_helpers import (
-    extract_task_summary,
-    run_planner_turn,
-    update_step_status,
-)
+from .plan_helpers import call_planner, update_step_status
 from .plan_loop_context import ReplanTrigger, StepRunContext, StepRunState
 from .plan_models import ExecutionPlan, PlanExecuteConfig, PlanStep, StepStatus
-from .plan_parsing import _PLANNING_PROMPT, _REPLAN_JSON_EXAMPLE, parse_plan
+from .plan_parsing import _PLANNING_PROMPT, _REPLAN_JSON_EXAMPLE
 
 logger = get_logger(__name__)
 
@@ -84,6 +79,10 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
             :class:`ExecutionResult` for termination conditions.
         """
         state.plan = update_step_status(state.plan, state.step_idx, StepStatus.FAILED)
+        # Every early return below finalises straight from ``all_plans``,
+        # bypassing the tail's resync, so the FAILED status has to land in
+        # the history now or the terminal ``final_plan`` loses it.
+        state.sync_current_plan()
         logger.warning(
             EXECUTION_PLAN_STEP_FAILED,
             execution_id=state.ctx.execution_id,
@@ -151,7 +150,7 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
             role=MessageRole.USER,
             content=_PLANNING_PROMPT,
         )
-        result = await self._call_planner(run, ctx, turns, plan_msg)
+        result = await call_planner(run, ctx, turns, plan_msg)
         if isinstance(result, ExecutionResult):
             return result
         ctx, plan = result
@@ -212,7 +211,7 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
             role=MessageRole.USER,
             content=replan_content,
         )
-        result = await self._call_planner(
+        result = await call_planner(
             run,
             state.ctx,
             state.turns,
@@ -229,50 +228,3 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
             revision=plan.revision_number,
         )
         return plan
-
-    async def _call_planner(
-        self,
-        run: StepRunContext,
-        ctx: AgentContext,
-        turns: list[TurnRecord],
-        message: ChatMessage,
-        *,
-        revision_number: int = 0,
-    ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
-        """Shared body for plan generation and re-planning.
-
-        Takes ``ctx`` and ``turns`` explicitly rather than a
-        :class:`StepRunState`, because initial planning runs before a
-        plan exists and therefore before the state object can be built.
-
-        Returns:
-            ``(updated_ctx, parsed_plan)`` on a successful planner
-            call and parse; a terminal :class:`ExecutionResult` when
-            the planner errored or parsing failed.
-        """
-        task_summary = extract_task_summary(ctx)
-        outcome = await run_planner_turn(run, ctx, turns, message)
-        if isinstance(outcome, ExecutionResult):
-            return outcome
-        ctx, response = outcome
-
-        plan = parse_plan(
-            response,
-            ctx.execution_id,
-            task_summary,
-            revision_number=revision_number,
-        )
-        if plan is None:
-            logger.warning(
-                EXECUTION_PLAN_PARSE_ERROR,
-                execution_id=ctx.execution_id,
-                revision_number=revision_number,
-            )
-            error_msg = "Failed to parse execution plan from LLM response"
-            return build_result(
-                ctx,
-                TerminationReason.ERROR,
-                turns,
-                error_message=error_msg,
-            )
-        return ctx, plan

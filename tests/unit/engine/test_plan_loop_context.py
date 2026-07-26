@@ -13,6 +13,7 @@ import dataclasses
 import pytest
 
 from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.plan_loop_context import (
     ReplanTrigger,
     ReplanVerdict,
@@ -301,6 +302,7 @@ class TestStepTurnOutcome:
         [
             (StepTurnOutcome.STEP_SUCCEEDED, True),
             (StepTurnOutcome.STEP_FAILED, False),
+            (StepTurnOutcome.STEP_EXHAUSTED, False),
             (StepTurnOutcome.CONTINUE, False),
         ],
     )
@@ -310,6 +312,24 @@ class TestStepTurnOutcome:
         expected: bool,
     ) -> None:
         assert member.step_succeeded is expected
+
+    @pytest.mark.parametrize(
+        ("member", "expected"),
+        [
+            (StepTurnOutcome.STEP_SUCCEEDED, TerminationReason.COMPLETED),
+            (StepTurnOutcome.STEP_EXHAUSTED, TerminationReason.MAX_TURNS),
+            (StepTurnOutcome.STEP_FAILED, TerminationReason.ERROR),
+        ],
+    )
+    def test_signal_reason_separates_a_spent_budget_from_a_failure(
+        self,
+        member: StepTurnOutcome,
+        expected: TerminationReason,
+    ) -> None:
+        # A step the model concluded unsuccessfully must not reach the
+        # quality pipeline wearing the same reason as one the loop
+        # abandoned because its turn budget ran out.
+        assert member.signal_reason is expected
 
 
 class TestReplanVerdict:
