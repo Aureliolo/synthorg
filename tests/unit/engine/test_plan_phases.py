@@ -24,7 +24,18 @@ _SHARED_METHODS = (
     "_run_planning_phase",
     "_generate_plan",
     "_build_final_result",
+    "_finalize",
 )
+
+
+def _owners(cls: type, name: str) -> list[type]:
+    """Classes in *cls*'s MRO that define *name* in their own body.
+
+    Returns:
+        Every MRO entry carrying its own definition, nearest first. More
+        than one means a subclass has shadowed the shared implementation.
+    """
+    return [base for base in cls.__mro__ if name in vars(base)]
 
 
 def _plan(step_count: int) -> ExecutionPlan:
@@ -44,18 +55,18 @@ def _plan(step_count: int) -> ExecutionPlan:
 class TestSharedImplementation:
     """One body per phase method, inherited by both loops."""
 
+    @pytest.mark.parametrize(
+        "loop_cls",
+        [HybridLoop, PlanExecuteLoop],
+        ids=["hybrid", "plan_execute"],
+    )
     @pytest.mark.parametrize("name", _SHARED_METHODS)
-    def test_both_loops_resolve_the_same_function(self, name: str) -> None:
-        assert getattr(HybridLoop, name) is getattr(PlanExecuteLoop, name)
-
-    @pytest.mark.parametrize("name", _SHARED_METHODS)
-    def test_the_shared_function_is_the_mixin_s(self, name: str) -> None:
-        assert getattr(HybridLoop, name) is getattr(PlanPhaseMixin, name)
-
-    def test_finalize_is_shared_too(self) -> None:
-        # A classmethod binds to its owner, so compare the underlying
-        # function rather than the bound objects.
-        assert HybridLoop._finalize.__func__ is PlanExecuteLoop._finalize.__func__
+    def test_only_the_shared_mixin_defines_it(
+        self,
+        name: str,
+        loop_cls: type[HybridLoop] | type[PlanExecuteLoop],
+    ) -> None:
+        assert _owners(loop_cls, name) == [PlanPhaseMixin]
 
 
 class TestPlanLimits:
