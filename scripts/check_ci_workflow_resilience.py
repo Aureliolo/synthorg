@@ -26,10 +26,26 @@ resilience hardening in this PR cannot silently regress:
    A single bare step fails the first half; an all-soft-failed ladder
    fails the second.
 
+3. **Every ``retry_cmd.sh`` call site bounds its ladder in wall-clock.**
+   A retry ladder is only useful if it can finish inside the job that runs
+   it. ``uv``'s installer was wrapped in 5 attempts x a 120s per-attempt
+   timeout plus ~3m45s of backoff -- an 825s worst case inside jobs
+   budgeted 300-600s -- so the ladder could never exhaust: the runner was
+   reaped mid-retry and a stalled CDN surfaced as an opaque ``cancelled``
+   job with no diagnosis, its final attempts unreachable dead config. The
+   apt call sites had no per-attempt bound at all and hung outright. Both
+   are the same defect: an unbounded ladder. ``RETRY_CMD_DEADLINE`` is the
+   bound, so this gate requires every call site to set it, via step
+   ``env:`` or an inline ``VAR=n`` prefix.
+
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
 externally-dependent actions are excluded by design (see ``_EXCLUDED``)
 because they retry internally or are non-blocking feature-advisory.
+
+Invariants 1-2 scan ``.github/workflows/``; invariant 3 also scans
+``.github/actions/*/action.yml``, because every current ``retry_cmd.sh``
+call site lives in a composite action rather than a workflow.
 
 This is a no-baseline gate: the convention passes clean from day one. If
 it flags an existing workflow, fix the workflow -- do NOT add a baseline.
@@ -50,6 +66,10 @@ import yaml
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _WORKFLOWS_ROOT = _REPO_ROOT / ".github" / "workflows"
+_ACTIONS_ROOT = _REPO_ROOT / ".github" / "actions"
+
+_RETRY_HELPER: Final[str] = "retry_cmd.sh"
+_DEADLINE_VAR: Final[str] = "RETRY_CMD_DEADLINE"
 
 # External upload / OIDC actions that lack internal retry and sit on an
 # important or required path. A step using one MUST be in a fail-closed
@@ -89,11 +109,12 @@ _TIMEOUT_KEY: Final[str] = "timeout-minutes"
 
 
 def _iter_workflow_files() -> Iterable[Path]:
-    """Walk ``.github/workflows/`` for YAML files."""
-    if not _WORKFLOWS_ROOT.exists():
-        return
-    for pattern in ("*.yml", "*.yaml"):
-        yield from sorted(_WORKFLOWS_ROOT.rglob(pattern))
+    """Walk ``.github/workflows/`` and ``.github/actions/`` for YAML files."""
+    for root in (_WORKFLOWS_ROOT, _ACTIONS_ROOT):
+        if not root.exists():
+            continue
+        for pattern in ("*.yml", "*.yaml"):
+            yield from sorted(root.rglob(pattern))
 
 
 def _action_id(uses: str) -> str:
@@ -207,6 +228,86 @@ def _check_job_ladders(job_name: str, job: dict[str, object]) -> list[str]:
     return violations
 
 
+def _step_env_has_deadline(step: dict[str, object]) -> bool:
+    """Return True if the step's ``env:`` sets the deadline."""
+    env = step.get("env")
+    return isinstance(env, dict) and _DEADLINE_VAR in env
+
+
+def _retry_lines_missing_deadline(run: str) -> list[str]:
+    """Return the ``retry_cmd.sh`` invocations lacking an inline deadline.
+
+    A call site may set the deadline as an inline ``VAR=n cmd`` prefix
+    instead of via step ``env:``, so each invocation line is inspected
+    separately: one prefixed line does not cover an unprefixed sibling.
+
+    Args:
+        run: The step's shell body.
+
+    Returns:
+        The offending lines, stripped, in source order.
+    """
+    return [
+        line.strip()
+        for line in run.splitlines()
+        if _RETRY_HELPER in line and _DEADLINE_VAR not in line
+    ]
+
+
+def _check_retry_deadlines(context: str, step: dict[str, object]) -> list[str]:
+    """Return violations for a step invoking the retry helper unbounded.
+
+    Args:
+        context: Human-readable location (job or composite-action step).
+        step: The step mapping.
+
+    Returns:
+        One message per unbounded invocation.
+    """
+    run = step.get("run")
+    if not isinstance(run, str) or _RETRY_HELPER not in run:
+        return []
+    if _step_env_has_deadline(step):
+        return []
+    return [
+        (
+            f"{context}: `{line}` runs {_RETRY_HELPER} without {_DEADLINE_VAR}"
+            " (an unbounded ladder outlives its job budget, so the reaper"
+            " turns a retryable stall into an opaque cancelled job)"
+        )
+        for line in _retry_lines_missing_deadline(run)
+    ]
+
+
+def _scan_composite_action(data: dict[str, object]) -> list[str]:
+    """Return retry-deadline violations for a composite action file.
+
+    Composite actions have no ``jobs``; their steps hang off ``runs.steps``.
+    Only invariant 3 applies -- an action cannot declare ``timeout-minutes``
+    and the enforced upload actions are not used from one.
+
+    Args:
+        data: The parsed ``action.yml``.
+
+    Returns:
+        Violation messages, empty when the action is compliant.
+    """
+    runs = data.get("runs")
+    if not isinstance(runs, dict):
+        return []
+    steps = runs.get("steps")
+    if not isinstance(steps, list):
+        return []
+    violations: list[str] = []
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        name = step.get("name")
+        label = str(name) if isinstance(name, str) else f"step {index + 1}"
+        violations.extend(_check_retry_deadlines(f"'{label}'", step))
+    return violations
+
+
 def _scan_file(path: Path) -> list[str]:
     """Return all violation messages for one workflow file."""
     try:
@@ -220,7 +321,7 @@ def _scan_file(path: Path) -> list[str]:
         return []
     jobs = data.get("jobs")
     if not isinstance(jobs, dict):
-        return []
+        return _scan_composite_action(data)
     violations: list[str] = []
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
@@ -228,6 +329,8 @@ def _scan_file(path: Path) -> list[str]:
         name = str(job_name)
         violations.extend(_check_job_timeout(name, job))
         violations.extend(_check_job_ladders(name, job))
+        for step in _job_steps(job):
+            violations.extend(_check_retry_deadlines(f"job '{name}'", step))
     return violations
 
 
@@ -251,10 +354,12 @@ def _scan_paths(paths: Iterable[Path]) -> int:
     if failed:
         print(
             "\nCI workflow resilience gate failed. Add timeout-minutes to every"
-            " job, and wrap every enforced external/OIDC upload action in a"
+            " job, wrap every enforced external/OIDC upload action in a"
             " fail-closed retry ladder (see .github/actions/checkout for the"
-            " pattern). To exclude an action deliberately, add it to _EXCLUDED"
-            " in scripts/check_ci_workflow_resilience.py with a reason.",
+            " pattern), and give every retry_cmd.sh call site a"
+            " RETRY_CMD_DEADLINE sized below its job budget. To exclude an"
+            " action deliberately, add it to _EXCLUDED in"
+            " scripts/check_ci_workflow_resilience.py with a reason.",
             file=sys.stderr,
         )
         return 1
