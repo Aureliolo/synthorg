@@ -791,6 +791,34 @@ class TestStaleProbeGuard:
             for log in logs
         )
 
+    async def test_an_ollama_port_change_mid_probe_is_not_recorded(self) -> None:
+        """The port is the other input to the ping URL, so it can go stale too.
+
+        A provider with no explicit ``litellm_provider`` is classified as
+        Ollama purely by its URL port matching the setting, so changing
+        that setting moves the live ping URL between the root and
+        ``/models`` without any provider config being touched.
+        """
+        port = registered_default_int(
+            SettingNamespace.PROVIDERS.value, "ollama_default_port"
+        )
+        tracker = ProviderHealthTracker()
+        prober, _ = _make_prober(
+            tracker, {"test-local": _make_local_config(litellm_provider=None)}
+        )
+        # The probe resolves the old port, the staleness check the new one.
+        _resolver_of(prober).get_int.side_effect = [port, port + 1]
+
+        with _patch_httpx(status_code=200), capture_logs() as logs:
+            await prober.probe_provider("test-local")
+
+        summary = await tracker.get_summary("test-local")
+        assert summary.health_status == ProviderHealthStatus.UNKNOWN
+        assert any(
+            log["event"] == PROBE_SKIPPED and log.get("reason") == "config_changed"
+            for log in logs
+        )
+
     async def test_an_unchanged_config_still_records(self) -> None:
         """The guard must not suppress the ordinary path."""
         tracker = ProviderHealthTracker()

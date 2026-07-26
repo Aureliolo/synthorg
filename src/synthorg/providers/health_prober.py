@@ -577,8 +577,14 @@ class ProviderHealthProber:
         # provider concurrently with the immediate post-mutation probe. Whoever
         # records last would otherwise win, pinning health to an endpoint the
         # operator has already replaced.
+        # The port is re-read alongside the configs: it is the other input to
+        # the ping URL, and for a provider with no explicit litellm_provider
+        # it alone decides root versus /models.
         live = await self._config_resolver.get_provider_configs()
-        if not probe_url_is_current(name, url, live, ollama_port=ollama_port):
+        live_port = await self._config_resolver.get_int(
+            "providers", "ollama_default_port"
+        )
+        if not probe_url_is_current(name, url, live, ollama_port=live_port):
             logger.debug(
                 PROVIDER_HEALTH_PROBE_SKIPPED, provider=name, reason="config_changed"
             )
