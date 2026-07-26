@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import sys
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, cast
@@ -31,10 +31,12 @@ _BARRIER_TIMEOUT_SECONDS = 10.0
 
 
 class _ToolShape(Protocol):
-    """The two fields the tests read off a declared tool."""
+    """The fields the tests read off a declared tool."""
 
     name: str
     argv: tuple[str, ...]
+    filename_pattern: re.Pattern[str] | None
+    whole_scope: tuple[str, ...]
 
 
 class _GateModule(Protocol):
@@ -113,6 +115,20 @@ class _FakeProcess:
         self.killed = True
 
 
+def _names(argv: Sequence[str], token: str) -> bool:
+    """Whether *argv* invokes the tool *token* identifies.
+
+    Substring rather than element equality: a tool reached through its entry
+    point (``node .../eslint/bin/eslint.js``) carries its name inside a path
+    rather than as an argument of its own, and a test naming the tool should
+    not have to track which invocation form the runner currently uses.
+
+    Returns:
+        ``True`` when any argument contains the token.
+    """
+    return any(token in arg for arg in argv)
+
+
 @dataclass
 class _Recorder:
     """Captures every subprocess the runner launches.
@@ -141,32 +157,32 @@ class _Recorder:
             self.calls.append(list(argv))
             self.kwargs.append(dict(kwargs))
         returncode = next(
-            (code for token, code in self.returncodes.items() if token in argv), 0
+            (code for token, code in self.returncodes.items() if _names(argv, token)), 0
         )
         return _FakeProcess(
             argv=list(argv),
             returncode=returncode,
-            wedge=any(token in argv for token in self.wedged),
+            wedge=any(_names(argv, token) for token in self.wedged),
             drain_also_wedges=self.drain_also_wedges,
         )
 
     def argv_for(self, token: str) -> list[str]:
-        """Return the argv of the single call containing *token*.
+        """Return the argv of the single call naming *token*.
 
         Raises:
             AssertionError: When no call, or more than one, matches.
         """
-        matches = [call for call in self.calls if token in call]
+        matches = [call for call in self.calls if _names(call, token)]
         assert len(matches) == 1, f"expected one {token!r} call, got {len(matches)}"
         return matches[0]
 
     def ran(self, token: str) -> bool:
-        """Whether any launched command contained *token*.
+        """Whether any launched command named *token*.
 
         Returns:
             ``True`` when at least one call's argv carries the token.
         """
-        return any(token in call for call in self.calls)
+        return any(_names(call, token) for call in self.calls)
 
 
 def _patch(
@@ -245,6 +261,29 @@ class TestGroupDeclarations:
             tool for tool in _MODULE._GROUPS["web-checks"] if tool.name == "eslint"
         )
         assert "--no-warn-ignored" in eslint.argv
+
+    def test_eslint_does_not_route_its_path_list_through_a_shell(self) -> None:
+        # ``npm`` is ``npm.cmd`` on Windows, so invoking eslint through it puts
+        # cmd.exe between the runner and the tool -- and cmd.exe caps a command
+        # line at 8191 characters, which a hundred-odd web paths clear. Going
+        # straight to the entry point keeps the ceiling at CreateProcess's.
+        eslint = next(
+            tool for tool in _MODULE._GROUPS["web-checks"] if tool.name == "eslint"
+        )
+        assert eslint.argv[0] == "node"
+        assert "npm" not in eslint.argv
+
+    def test_a_blank_whole_scope_path_is_rejected(self) -> None:
+        # An empty path would reach the tool as the working directory and lint
+        # the entire repository, which reads as a very slow pass, not a defect.
+        with pytest.raises(ValueError, match="whole_scope"):
+            _MODULE._Tool("eslint", ("node", "x.js"), whole_scope=("web/src", " "))
+
+    def test_a_file_taking_tool_declares_a_whole_scope_to_fall_back_to(self) -> None:
+        # Without one, an over-long path list has nowhere to go but truncation.
+        for tool in _MODULE._GROUPS["web-checks"]:
+            if tool.filename_pattern is not None:
+                assert tool.whole_scope
 
 
 class TestGroupDispatch:
@@ -516,6 +555,43 @@ class TestFilenameRouting:
         recorder = _Recorder()
         _run(monkeypatch, ["web-checks", unlintable], recorder)
         assert not recorder.ran("eslint")
+
+    def test_an_over_long_path_list_widens_to_the_whole_scope(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Windows refuses a command line past 32767 characters. Dropping the
+        # excess would leave a gate reporting success on files it never read,
+        # so the runner widens instead: the whole scope contains every path it
+        # would otherwise have passed.
+        many = [f"web/src/pages/Page{i:05d}Component.tsx" for i in range(2_000)]
+        recorder = _Recorder()
+        _run(monkeypatch, ["web-checks", *many], recorder)
+        eslint = recorder.argv_for("eslint")
+        assert eslint[-2:] == ["web/src", "web/test-infra"]
+        assert not any(path in eslint for path in many)
+
+    def test_a_path_list_that_fits_is_passed_file_by_file(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The widening above must stay exceptional: if it fired for an ordinary
+        # push, every web change would pay a whole-scope lint and the runner's
+        # reason for filtering at all would be gone.
+        few = [f"web/src/pages/Page{i:05d}Component.tsx" for i in range(20)]
+        recorder = _Recorder()
+        _run(monkeypatch, ["web-checks", *few], recorder)
+        eslint = recorder.argv_for("eslint")
+        assert eslint[-len(few) :] == few
+        assert "web/src" not in eslint
+
+    def test_widening_is_reported_rather_than_silent(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # A gate that quietly changed what it inspected is the failure mode
+        # this runner's timing output exists to expose.
+        many = [f"web/src/pages/Page{i:05d}Component.tsx" for i in range(2_000)]
+        recorder = _Recorder()
+        _run(monkeypatch, ["web-checks", *many], recorder)
+        assert "whole scope" in capsys.readouterr().out
 
     def test_a_skipped_tool_is_reported_as_skipped_not_instant(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
