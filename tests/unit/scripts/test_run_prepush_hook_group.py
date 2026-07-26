@@ -39,6 +39,18 @@ class _ToolShape(Protocol):
     whole_scope: tuple[str, ...]
 
 
+class _ToolFactory(Protocol):
+    """The runner's ``_Tool`` constructor, as the tests call it."""
+
+    def __call__(
+        self,
+        name: str,
+        argv: tuple[str, ...],
+        *,
+        whole_scope: tuple[str, ...] = ...,
+    ) -> _ToolShape: ...
+
+
 class _GateModule(Protocol):
     """Subset of ``scripts/run_prepush_hook_group.py`` the tests exercise.
 
@@ -48,7 +60,7 @@ class _GateModule(Protocol):
     nothing.
     """
 
-    _Tool: Callable[[str, tuple[str, ...]], _ToolShape]
+    _Tool: _ToolFactory
     _GROUPS: Mapping[str, tuple[_ToolShape, ...]]
     _validate_groups: Callable[[Mapping[str, tuple[object, ...]]], None]
     _TOOL_TIMEOUT_SECONDS: int
