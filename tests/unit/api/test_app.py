@@ -1137,6 +1137,9 @@ class TestAutoWirePhase2ErrorPaths:
         # Set an invalid encryption key to trigger SettingsService failure
         monkeypatch.setenv("SYNTHORG_SETTINGS_KEY", "invalid-key")
 
+        from synthorg.api.lifecycle_helpers.settings_dispatcher import (
+            _build_settings_dispatcher,
+        )
         from synthorg.settings.errors import SettingsEncryptionError
 
         with pytest.raises(SettingsEncryptionError):
@@ -1146,7 +1149,7 @@ class TestAutoWirePhase2ErrorPaths:
                 effective_config=root_config,
                 app_state=app_state,
                 backup_service=None,
-                build_dispatcher=lambda **kw: None,
+                build_dispatcher=_build_settings_dispatcher,
             )
 
         # AppState must not have been mutated

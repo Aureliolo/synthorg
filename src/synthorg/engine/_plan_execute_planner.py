@@ -11,8 +11,8 @@ from synthorg.engine.plan_execute_step_mixin import PlanExecuteStepMixin
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
-    EXECUTION_LOOP_TURN_COMPLETE,
     EXECUTION_PLAN_CREATED,
+    EXECUTION_PLAN_PARSE_ERROR,
     EXECUTION_PLAN_REPLAN_COMPLETE,
     EXECUTION_PLAN_REPLAN_EXHAUSTED,
     EXECUTION_PLAN_REPLAN_START,
@@ -24,18 +24,17 @@ from synthorg.providers.models import ChatMessage
 from .loop_control_helpers import check_budget, check_shutdown
 from .loop_helpers import (
     build_result,
-    call_provider,
-    check_response_errors,
-    classify_turn,
-    make_turn_record,
-    response_to_message,
 )
 from .loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
-from .plan_helpers import extract_task_summary, update_step_status
-from .plan_loop_context import StepRunContext, StepRunState
+from .plan_helpers import (
+    extract_task_summary,
+    run_planner_turn,
+    update_step_status,
+)
+from .plan_loop_context import ReplanTrigger, StepRunContext, StepRunState
 from .plan_models import ExecutionPlan, PlanExecuteConfig, PlanStep, StepStatus
 from .plan_parsing import _PLANNING_PROMPT, _REPLAN_JSON_EXAMPLE, parse_plan
 
@@ -132,9 +131,7 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
         if isinstance(replan_result, ExecutionResult):
             return self._finalize(replan_result, state.all_plans, state.replans_used)
 
-        state.plan = replan_result
-        state.replans_used += 1
-        state.all_plans.append(state.plan)
+        state.record_replan(replan_result)
         return None
 
     async def _generate_plan(
@@ -187,7 +184,9 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
         logger.info(
             EXECUTION_PLAN_REPLAN_START,
             execution_id=state.ctx.execution_id,
-            failed_step=failed_step.step_number,
+            trigger=ReplanTrigger.STEP_FAILURE.value,
+            step_number=failed_step.step_number,
+            directive_id=state.ctx.pending_steering_replan_id,
             revision=current_plan.revision_number,
         )
 
@@ -242,11 +241,9 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
     ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
         """Shared body for plan generation and re-planning.
 
-        Sends the message to the LLM, records the turn, checks for
-        response errors, parses the plan, and returns either
-        ``(ctx, plan)`` or an error result. Takes ``ctx`` and ``turns``
-        explicitly rather than a :class:`StepRunState`, because initial
-        planning runs before a plan exists.
+        Takes ``ctx`` and ``turns`` explicitly rather than a
+        :class:`StepRunState`, because initial planning runs before a
+        plan exists and therefore before the state object can be built.
 
         Returns:
             ``(updated_ctx, parsed_plan)`` on a successful planner
@@ -254,52 +251,10 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
             the planner errored or parsing failed.
         """
         task_summary = extract_task_summary(ctx)
-        ctx = ctx.with_message(message)
-        turn_number = ctx.turn_count + 1
-
-        response = await call_provider(
-            ctx,
-            run.provider,
-            run.planner_model,
-            tool_defs=None,
-            config=run.completion_config,
-            turn_number=turn_number,
-            turns=turns,
-        )
-        if isinstance(response, ExecutionResult):
-            return response
-
-        turns.append(
-            make_turn_record(
-                turn_number,
-                response,
-                call_category=classify_turn(
-                    turn_number,
-                    response,
-                    ctx,
-                    is_planning_phase=True,
-                ),
-                provider_metadata=response.provider_metadata,
-            )
-        )
-
-        error = check_response_errors(ctx, response, turn_number, turns)
-        if error is not None:
-            return error
-
-        ctx = ctx.with_turn_completed(
-            response.usage,
-            response_to_message(response),
-        )
-        logger.info(
-            EXECUTION_LOOP_TURN_COMPLETE,
-            execution_id=ctx.execution_id,
-            turn=turn_number,
-            finish_reason=response.finish_reason.value,
-            tool_call_count=0,
-        )
-
-        await self._invoke_checkpoint_callback(ctx, turn_number)
+        outcome = await run_planner_turn(run, ctx, turns, message)
+        if isinstance(outcome, ExecutionResult):
+            return outcome
+        ctx, response = outcome
 
         plan = parse_plan(
             response,
@@ -308,6 +263,11 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
             revision_number=revision_number,
         )
         if plan is None:
+            logger.warning(
+                EXECUTION_PLAN_PARSE_ERROR,
+                execution_id=ctx.execution_id,
+                revision_number=revision_number,
+            )
             error_msg = "Failed to parse execution plan from LLM response"
             return build_result(
                 ctx,

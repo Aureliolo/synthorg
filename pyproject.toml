@@ -348,11 +348,12 @@ convention = "google"
 # helpers or per-strategy variants.
 [tool.ruff.lint.pylint]
 max-args = 5
-# Pinned explicitly, NOT left to default. ruff defaults
-# max-positional-args to the value of max-args, so raising max-args (see
-# the tracking issue for making that cap binding) would silently raise the
-# positional cap too and undo the keyword-only sweep that made PLR0917
-# suppression-free. This cap stays at 5 whatever max-args becomes.
+# Pinned explicitly, NOT left to default: ruff defaults
+# max-positional-args to whatever max-args is, so leaving it implicit ties
+# the positional cap to a knob that governs a different concern. A wide
+# signature is acceptable when every argument is named at the call site; a
+# wide POSITIONAL signature is what lets two same-typed arguments swap
+# silently. This cap stays at 5 whatever max-args becomes.
 max-positional-args = 5
 max-public-methods = 12
 max-statements = 30

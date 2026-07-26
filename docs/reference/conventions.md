@@ -936,6 +936,39 @@ distinct write seams:
   acquisition. Use when the caller must stop or close the service it is
   replacing before the swap takes effect.
 
+## 35. Run-context / run-state split for wide loop signatures
+
+A loop helper that needs most of a run's collaborators takes two
+parameters, not a long list: a frozen context and a mutable state. The
+canonical pair is `StepRunContext` / `StepRunState`
+(`engine/plan_loop_context.py`), shared by `HybridLoop` and
+`PlanExecuteLoop`; `OpenHandsLoopDeps` / `_RunState`
+(`engine/openhands/`) is the same shape one loop down.
+
+* **Context** -- `@dataclass(frozen=True, slots=True, kw_only=True)`.
+  Holds the collaborators fixed for one `execute()` call (provider,
+  invoker, checkers, callbacks, model ids). Keyword-only is load-bearing
+  whenever two fields share a type: two `str` model ids next to each
+  other are transposable with no type error. Collaborators that can hold
+  credentials carry `field(repr=False)`. Blank-string invariants use
+  `require_not_blank` from `core.types` in `__post_init__`, since a
+  `NotBlankStr` annotation only runs under Pydantic.
+* **State** -- `@dataclass(slots=True, kw_only=True)`, mutable. Holds the
+  cursor and the accumulators. Frozen values (`AgentContext`, plans) are
+  *rebound*, never mutated, so the immutability discipline survives.
+  Bookkeeping that must move together gets a method on the state
+  (`record_replan` writes the plan, the history, and the counter as one
+  step) rather than being hand-copied at each call site.
+* **Verdicts** -- a helper returning "keep going / done / terminate"
+  spells each arm as an enum member, never a `bool`. A `bool` sharing a
+  union with a domain model makes `if verdict:` read `False` as absence,
+  which is the bug the split exists to prevent.
+
+The state object is call-local by construction: one `execute()` owns one
+instance for its lifetime. It is never stored on `self` and never handed
+to a second concurrently-scheduled coroutine, because its mutations are
+read-modify-writes that are race-free only under a single owner.
+
 ## See also
 
 * [persistence-boundary.md](persistence-boundary.md): repository /

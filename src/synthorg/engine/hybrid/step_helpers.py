@@ -7,18 +7,11 @@ re-planning. Stateless free functions only; no instance state.
 """
 
 from synthorg.core.completion_enums import FinishReason
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import current_execution_identity
-from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_helpers import (
     build_result,
-    call_provider,
-    check_response_errors,
-    classify_turn,
-    make_turn_record,
-    response_to_message,
 )
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
@@ -27,6 +20,7 @@ from synthorg.engine.loop_protocol import (
 from synthorg.engine.plan_helpers import (
     assess_step_success,
     extract_task_summary,
+    run_planner_turn,
 )
 from synthorg.engine.plan_loop_context import StepRunContext
 from synthorg.engine.plan_models import ExecutionPlan, PlanStep
@@ -37,13 +31,12 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.execution.turn import TurnRecord
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
-    EXECUTION_CHECKPOINT_CALLBACK_FAILED,
     EXECUTION_HYBRID_PLAN_TRUNCATED,
     EXECUTION_HYBRID_TURN_BUDGET_WARNING,
-    EXECUTION_LOOP_TURN_COMPLETE,
     EXECUTION_PLAN_PARSE_ERROR,
+    EXECUTION_PLAN_STEP_TOOL_USE_EMPTY,
     EXECUTION_PLAN_STEP_TRUNCATED,
 )
 from synthorg.providers.enums import MessageRole
@@ -125,10 +118,14 @@ def handle_step_completion(
         ``(ctx, success)`` where *success* indicates step completion.
     """
     if response.finish_reason == FinishReason.TOOL_USE:
+        # Its own event, not the routine per-turn one: a consumer filtering
+        # for turn completions would otherwise get this error under the same
+        # name with an entirely different field set.
         logger.error(
-            EXECUTION_LOOP_TURN_COMPLETE,
+            EXECUTION_PLAN_STEP_TOOL_USE_EMPTY,
             execution_id=ctx.execution_id,
             turn=turn_number,
+            finish_reason=response.finish_reason.value,
             error="Provider returned TOOL_USE with no tool calls",
         )
         return ctx, False
@@ -168,41 +165,6 @@ def warn_insufficient_budget(
         )
 
 
-async def invoke_checkpoint_callback(
-    callback: CheckpointCallback | None,
-    ctx: AgentContext,
-    turn_number: int,
-) -> None:
-    """Invoke the checkpoint callback if provided.
-
-    Non-critical errors are logged and swallowed so checkpointing does
-    not interrupt execution. Critical system errors are propagated.
-
-    Args:
-        callback: Optional checkpoint callback to invoke.
-        ctx: Agent context for the current turn.
-        turn_number: Current turn number for logging.
-
-    Raises:
-        MemoryError: Propagated as a critical system error.
-        RecursionError: Propagated as a critical system error.
-    """
-    if callback is None:
-        return
-    try:
-        await callback(ctx)
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- resiliency side channel
-        reraise_critical(exc)
-        logger.warning(
-            EXECUTION_CHECKPOINT_CALLBACK_FAILED,
-            execution_id=ctx.execution_id,
-            turn=turn_number,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-
-
 async def call_planner(
     run: StepRunContext,
     ctx: AgentContext,
@@ -228,56 +190,11 @@ async def call_planner(
     Returns:
         ``(ctx, plan)`` on success, or ``ExecutionResult`` on error.
     """
-    if not ctx.has_turns_remaining:
-        return build_result(ctx, TerminationReason.MAX_TURNS, turns)
-
     task_summary = extract_task_summary(ctx)
-    ctx = ctx.with_message(message)
-    turn_number = ctx.turn_count + 1
-
-    response = await call_provider(
-        ctx,
-        run.provider,
-        run.planner_model,
-        tool_defs=None,
-        config=run.completion_config,
-        turn_number=turn_number,
-        turns=turns,
-    )
-    if isinstance(response, ExecutionResult):
-        return response
-
-    turns.append(
-        make_turn_record(
-            turn_number,
-            response,
-            call_category=classify_turn(
-                turn_number,
-                response,
-                ctx,
-                is_planning_phase=True,
-            ),
-            provider_metadata=response.provider_metadata,
-        )
-    )
-
-    error = check_response_errors(ctx, response, turn_number, turns)
-    if error is not None:
-        return error
-
-    ctx = ctx.with_turn_completed(
-        response.usage,
-        response_to_message(response),
-    )
-    logger.info(
-        EXECUTION_LOOP_TURN_COMPLETE,
-        execution_id=ctx.execution_id,
-        turn=turn_number,
-        finish_reason=response.finish_reason.value,
-        tool_call_count=0,
-    )
-
-    await invoke_checkpoint_callback(run.checkpoint_callback, ctx, turn_number)
+    outcome = await run_planner_turn(run, ctx, turns, message)
+    if isinstance(outcome, ExecutionResult):
+        return outcome
+    ctx, response = outcome
 
     plan = parse_plan(
         response,

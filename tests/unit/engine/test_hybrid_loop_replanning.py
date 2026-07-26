@@ -5,17 +5,21 @@ from typing import TYPE_CHECKING
 import pytest
 
 from synthorg.engine.context import AgentContext
+from synthorg.engine.hybrid.replan_helpers import do_replan
 from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_protocol import TerminationReason
-from synthorg.providers.models import CompletionConfig
+from synthorg.engine.plan_loop_context import ReplanTrigger
 
 from ._hybrid_loop_helpers import (
+    _content_filter_response,
     _ctx_with_user_msg,
     _make_plan_model,
     _multi_step_plan,
     _single_step_plan,
     _step_fail_response,
+    _step_run_context,
+    _step_run_state,
     _stop_response,
     _summary_response,
 )
@@ -78,8 +82,6 @@ class TestHybridLoopReplanning:
         sample_agent_context: AgentContext,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        from ._hybrid_loop_helpers import _content_filter_response
-
         ctx = _ctx_with_user_msg(sample_agent_context)
         provider = mock_provider_factory(
             [
@@ -103,44 +105,28 @@ class TestHybridLoopReplanPromptContent:
         sample_agent_context: AgentContext,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """do_replan with step_failed=False produces a different prompt
-        than step_failed=True, verifying the content differs for
-        success vs failure triggers.
-        """
-        from synthorg.engine.hybrid.replan_helpers import do_replan
-        from synthorg.engine.plan_loop_context import StepRunContext, StepRunState
-
+        """A failure-triggered replan prompt differs from a success one."""
         plan = _make_plan_model()
         step = plan.steps[0]
         cfg = HybridLoopConfig(max_replans=2)
 
-        def _run(provider: MockCompletionProvider) -> StepRunContext:
-            return StepRunContext(
-                provider=provider,
-                executor_model="test-model-001",
-                planner_model="test-model-001",
-                completion_config=CompletionConfig(),
-            )
-
-        # Capture messages for step_failed=True
         failure_provider = mock_provider_factory([_single_step_plan()])
         await do_replan(
             cfg,
-            _run(failure_provider),
-            StepRunState(ctx=_ctx_with_user_msg(sample_agent_context), plan=plan),
+            _step_run_context(failure_provider),
+            _step_run_state(_ctx_with_user_msg(sample_agent_context), plan),
             step,
-            step_failed=True,
+            trigger=ReplanTrigger.STEP_FAILURE,
         )
         failure_messages = failure_provider.recorded_messages[0]
 
-        # Capture messages for step_failed=False
         success_provider = mock_provider_factory([_single_step_plan()])
         await do_replan(
             cfg,
-            _run(success_provider),
-            StepRunState(ctx=_ctx_with_user_msg(sample_agent_context), plan=plan),
+            _step_run_context(success_provider),
+            _step_run_state(_ctx_with_user_msg(sample_agent_context), plan),
             step,
-            step_failed=False,
+            trigger=ReplanTrigger.COMPLETION_SUMMARY,
         )
         success_messages = success_provider.recorded_messages[0]
 
@@ -154,6 +140,87 @@ class TestHybridLoopReplanPromptContent:
         assert fail_prompt != ok_prompt
         assert "failed" in fail_prompt.lower()
         assert "successfully" in ok_prompt.lower()
+
+
+@pytest.mark.unit
+class TestHybridLoopReplanRestartsTheWalk:
+    """A replan must rewind the cursor and actually run the revised plan."""
+
+    async def test_replan_after_a_later_step_reruns_from_the_new_first_step(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A failure at step 2 replans and executes the revised step 1.
+
+        Driven from step index 1 on purpose: with a single-step plan a
+        cursor left where it was would still land on a valid index and the
+        run would terminate looking successful, so only a later-step failure
+        distinguishes a real rewind from a no-op.
+        """
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        cfg = HybridLoopConfig(checkpoint_after_each_step=False, max_replans=1)
+        provider = mock_provider_factory(
+            [
+                _multi_step_plan(),  # 3-step plan
+                _stop_response("Step 1 done."),  # step index 0 succeeds
+                _step_fail_response(),  # step index 1 fails
+                _single_step_plan(),  # failure replan -> 1-step plan
+                _stop_response("Revised step done."),  # revised step index 0
+            ]
+        )
+        loop = HybridLoop(config=cfg)
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        assert result.metadata["replans_used"] == 1
+        # The fifth call is the proof: a cursor left at index 1 would make
+        # the one-step revised plan exit immediately after four calls.
+        assert provider.call_count == 5
+        assert len(result.turns) == 5
+        revised_step_messages = provider.recorded_messages[4]
+        assert any(
+            "Analyze and solve the problem" in (m.content or "")
+            for m in revised_step_messages
+        )
+
+
+@pytest.mark.unit
+class TestHybridLoopFinalResult:
+    """Terminal classification once the step walk stops."""
+
+    async def test_turns_exhausted_mid_plan_terminates_max_turns(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Running out of turns with steps left is MAX_TURNS, not COMPLETED.
+
+        Reached only with per-step checkpointing off: the progress summary
+        otherwise short-circuits on its own turn check before the walk ends.
+        """
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        ctx = ctx.model_copy(update={"max_turns": 2})
+        cfg = HybridLoopConfig(checkpoint_after_each_step=False, max_replans=0)
+        provider = mock_provider_factory(
+            [
+                _multi_step_plan(),  # turn 1: 3-step plan
+                _stop_response("Step 1 done."),  # turn 2: step index 0 done
+                # No turns left, steps 2 and 3 never start.
+            ]
+        )
+        loop = HybridLoop(config=cfg)
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.MAX_TURNS
+        assert result.metadata["replans_used"] == 0
+        final_plan = result.metadata["final_plan"]
+        assert isinstance(final_plan, dict)
+        # The synced history entry carries the live step statuses, so the
+        # completed first step is visible on the terminal result.
+        assert final_plan["steps"][0]["status"] == "completed"
 
 
 @pytest.mark.unit

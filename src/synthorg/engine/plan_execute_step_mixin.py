@@ -8,7 +8,6 @@ top-level loop file stays under the project's size limit.
 import copy
 
 from synthorg.core.completion_enums import FinishReason
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.context import AgentContext
@@ -39,18 +38,21 @@ from synthorg.engine.loop_tool_execution import (
     clear_last_turn_tool_calls,
     execute_tool_calls,
 )
-from synthorg.engine.plan_helpers import assess_step_success
+from synthorg.engine.plan_helpers import (
+    assess_step_success,
+    invoke_checkpoint_callback,
+)
 from synthorg.engine.plan_loop_context import (
     StepRunContext,
     StepRunState,
     StepTurnOutcome,
 )
 from synthorg.engine.plan_models import ExecutionPlan
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
-    EXECUTION_CHECKPOINT_CALLBACK_FAILED,
     EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURN_COMPLETE,
+    EXECUTION_PLAN_STEP_TOOL_USE_EMPTY,
     EXECUTION_PLAN_STEP_TRUNCATED,
 )
 from synthorg.providers.models import (
@@ -73,32 +75,20 @@ class PlanExecuteStepMixin:
         run: StepRunContext,
         state: StepRunState,
         tool_defs: list[ToolDefinition] | None,
-    ) -> StepTurnOutcome | bool | ExecutionResult:
+    ) -> StepTurnOutcome | ExecutionResult:
         """Execute a single turn within a step's mini-ReAct sub-loop.
 
         Returns:
             :attr:`StepTurnOutcome.CONTINUE` to keep the sub-loop running
-            (also the re-issue path after a mid-turn steering REDIRECT), a
-            ``bool`` carrying the step's success once it completes, or an
-            :class:`ExecutionResult` to terminate execution (shutdown /
-            budget / cancellation).
+            (also the re-issue path after a mid-turn steering REDIRECT),
+            ``STEP_SUCCEEDED`` / ``STEP_FAILED`` once the step concludes, or
+            an :class:`ExecutionResult` to terminate execution: shutdown,
+            budget, cancellation, a provider error, or an approval-gate or
+            tool-failure outcome from the tool-call arm.
         """
-        shutdown_result = check_shutdown(state.ctx, run.shutdown_checker, state.turns)
-        if shutdown_result is not None:
-            return shutdown_result
-        budget_result = check_budget(state.ctx, run.budget_checker, state.turns)
-        if budget_result is not None:
-            return budget_result
-        cancel_result = await check_task_cancelled(
-            state.ctx, run.task_cancellation_checker, state.turns
-        )
-        if cancel_result is not None:
-            return cancel_result
-        # Adopt pending steering directives before the LLM call so the
-        # operator's constraint is in context for this step's turn.
-        steered = await check_steering(state.ctx, self._steering_inbox)
-        if steered is not None:
-            state.ctx = steered
+        blocked = await self._pre_turn_checks(run, state)
+        if blocked is not None:
+            return blocked
 
         turn_number = state.ctx.turn_count + 1
         outcome = await run_provider_turn(
@@ -121,8 +111,54 @@ class PlanExecuteStepMixin:
             # fired for.
             state.ctx = fold_interrupt_usage(state.ctx, outcome)
             return StepTurnOutcome.CONTINUE
-        response = outcome
 
+        return await self._finish_turn(run, state, outcome, turn_number)
+
+    async def _pre_turn_checks(
+        self,
+        run: StepRunContext,
+        state: StepRunState,
+    ) -> ExecutionResult | None:
+        """Run the pre-LLM guards and adopt any pending steering directive.
+
+        Returns:
+            A terminal :class:`ExecutionResult` when shutdown, budget, or
+            cancellation trips, or ``None`` when the turn may proceed.
+        """
+        shutdown_result = check_shutdown(state.ctx, run.shutdown_checker, state.turns)
+        if shutdown_result is not None:
+            return shutdown_result
+        budget_result = check_budget(state.ctx, run.budget_checker, state.turns)
+        if budget_result is not None:
+            return budget_result
+        cancel_result = await check_task_cancelled(
+            state.ctx, run.task_cancellation_checker, state.turns
+        )
+        if cancel_result is not None:
+            return cancel_result
+        # Adopt pending steering directives before the LLM call so the
+        # operator's constraint is in context for this step's turn.
+        steered = await check_steering(state.ctx, self._steering_inbox)
+        if steered is not None:
+            state.ctx = steered
+        return None
+
+    async def _finish_turn(
+        self,
+        run: StepRunContext,
+        state: StepRunState,
+        response: CompletionResponse,
+        turn_number: int,
+    ) -> StepTurnOutcome | ExecutionResult:
+        """Record a completed provider turn and dispatch on its tool calls.
+
+        Returns:
+            :attr:`StepTurnOutcome.CONTINUE` when tool calls ran and the
+            sub-loop should issue another turn, ``STEP_SUCCEEDED`` /
+            ``STEP_FAILED`` when this turn concluded the step, or an
+            :class:`ExecutionResult` for a provider error or a terminal
+            tool-execution outcome.
+        """
         state.turns.append(
             make_turn_record(
                 turn_number,
@@ -148,13 +184,15 @@ class PlanExecuteStepMixin:
             tool_call_count=len(response.tool_calls),
         )
 
-        await self._invoke_checkpoint_callback(state.ctx, turn_number)
+        await invoke_checkpoint_callback(
+            run.checkpoint_callback, state.ctx, turn_number
+        )
 
         if not response.tool_calls:
             state.ctx, step_ok = self._handle_step_completion(
                 state.ctx, response, turn_number
             )
-            return step_ok
+            return StepTurnOutcome.from_success(success=step_ok)
 
         return await self._handle_step_tool_calls(
             run,
@@ -169,12 +207,21 @@ class PlanExecuteStepMixin:
         response: CompletionResponse,
         turn_number: int,
     ) -> tuple[AgentContext, bool]:
-        """Assess step success and log truncation if applicable.
+        """Assess step success and log the two provider anomalies.
 
         Returns:
             ``(ctx, success)``: the unchanged context and the step's
             success flag from :func:`assess_step_success`.
         """
+        if response.finish_reason == FinishReason.TOOL_USE:
+            logger.error(
+                EXECUTION_PLAN_STEP_TOOL_USE_EMPTY,
+                execution_id=ctx.execution_id,
+                turn=turn_number,
+                finish_reason=response.finish_reason.value,
+                error="Provider returned TOOL_USE with no tool calls",
+            )
+            return ctx, False
         success = assess_step_success(response)
         if response.finish_reason == FinishReason.MAX_TOKENS:
             logger.warning(
@@ -219,36 +266,6 @@ class PlanExecuteStepMixin:
         state.ctx = result
         return StepTurnOutcome.CONTINUE
 
-    async def _invoke_checkpoint_callback(
-        self,
-        ctx: AgentContext,
-        turn_number: int,
-    ) -> None:
-        """Invoke the checkpoint callback if configured.
-
-        Non-critical errors are logged and suppressed so checkpointing
-        does not interrupt execution; critical system errors are
-        re-raised via :func:`reraise_critical`.
-
-        Raises:
-            MemoryError: Propagated as a critical system error.
-            RecursionError: Propagated as a critical system error.
-        """
-        if self._checkpoint_callback is None:
-            return
-        try:
-            await self._checkpoint_callback(ctx)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- resiliency side channel
-            reraise_critical(exc)
-            logger.warning(
-                EXECUTION_CHECKPOINT_CALLBACK_FAILED,
-                execution_id=ctx.execution_id,
-                turn=turn_number,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-
     @staticmethod
     def _finalize(
         result: ExecutionResult,
@@ -281,8 +298,7 @@ class PlanExecuteStepMixin:
             when turns ran out mid-plan and ``COMPLETED`` otherwise.
         """
         # Sync live plan so final_plan metadata reflects step statuses
-        if state.all_plans:
-            state.all_plans[-1] = state.plan
+        state.sync_current_plan()
         if not state.ctx.has_turns_remaining and state.step_idx < len(state.plan.steps):
             logger.info(
                 EXECUTION_LOOP_TERMINATED,

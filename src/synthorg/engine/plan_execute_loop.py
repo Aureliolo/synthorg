@@ -19,8 +19,9 @@ from synthorg.engine.quality.classifier import StepQualityClassifier
 from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.execution.turn import TurnRecord
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
+    EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_START,
     EXECUTION_PLAN_STEP_COMPLETE,
     EXECUTION_PLAN_STEP_START,
@@ -53,9 +54,15 @@ from .loop_protocol import (
     TurnObserver,
 )
 from .plan_helpers import (
+    clear_superseded_directive,
     update_step_status,
 )
-from .plan_loop_context import StepRunContext, StepRunState
+from .plan_loop_context import (
+    ReplanTrigger,
+    StepRunContext,
+    StepRunState,
+    StepTurnOutcome,
+)
 from .plan_models import (
     ExecutionPlan,
     PlanExecuteConfig,
@@ -88,6 +95,9 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         step_classifier: Optional step-quality classifier scored once per
             plan step from that step's turns; ``None`` disables quality
             classification.
+        steering_inbox: Optional source of operator steering directives,
+            polled at each turn boundary and mid-stream; ``None`` disables
+            steering for the run.
     """
 
     def __init__(  # noqa: PLR0913
@@ -174,6 +184,9 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             Execution result with final context and termination info.
 
         Raises:
+            ValueError: When the resolved executor or planner model id is
+                blank, so a misconfigured run fails at its first boundary
+                rather than several turns into the provider calls.
             MemoryError: Re-raised unconditionally (non-recoverable).
             RecursionError: Re-raised unconditionally (non-recoverable).
         """
@@ -189,23 +202,34 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         if cancel_result is not None:
             return self._finalize(cancel_result, [], 0)
         default_model = ctx.identity.model.model_id
-        run = StepRunContext(
-            provider=provider,
-            executor_model=self._config.executor_model or default_model,
-            planner_model=self._config.planner_model or default_model,
-            completion_config=completion_config
-            or CompletionConfig(
-                temperature=ctx.identity.model.temperature,
-                max_tokens=ctx.identity.model.max_tokens,
-            ),
-            tool_invoker=tool_invoker,
-            budget_checker=budget_checker,
-            shutdown_checker=shutdown_checker,
-            task_cancellation_checker=task_cancellation_checker,
-            turn_observer=turn_observer,
-            checkpoint_callback=self._checkpoint_callback,
-            streaming_enabled=streaming_enabled,
-        )
+        try:
+            run = StepRunContext(
+                provider=provider,
+                executor_model=self._config.executor_model or default_model,
+                planner_model=self._config.planner_model or default_model,
+                completion_config=completion_config
+                or CompletionConfig(
+                    temperature=ctx.identity.model.temperature,
+                    max_tokens=ctx.identity.model.max_tokens,
+                ),
+                tool_invoker=tool_invoker,
+                budget_checker=budget_checker,
+                shutdown_checker=shutdown_checker,
+                task_cancellation_checker=task_cancellation_checker,
+                turn_observer=turn_observer,
+                checkpoint_callback=self._checkpoint_callback,
+                streaming_enabled=streaming_enabled,
+            )
+        except ValueError as exc:
+            # Fails loud, but the run object does not exist yet to carry the
+            # id, so name the run here before the error leaves the loop.
+            logger.error(
+                EXECUTION_LOOP_ERROR,
+                execution_id=ctx.execution_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         turns: list[TurnRecord] = []
         all_plans: list[ExecutionPlan] = []
 
@@ -240,20 +264,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
                 break
 
             step = state.plan.steps[state.step_idx]
-            state.plan = update_step_status(
-                state.plan,
-                state.step_idx,
-                StepStatus.IN_PROGRESS,
-            )
-            logger.info(
-                EXECUTION_PLAN_STEP_START,
-                execution_id=state.ctx.execution_id,
-                step_number=step.step_number,
-                description=step.description,
-            )
-            await notify_turn_observer(
-                run.turn_observer, step.step_number, (step.description,)
-            )
+            await self._announce_step(run, state, step)
 
             step_start = len(state.turns)
             step_result = await self._execute_step(run, state, step)
@@ -263,58 +274,31 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
                 # stagnation / error). Classify it too so its signal is not
                 # dropped from quality_signals, which the worker health
                 # pipeline consumes downstream.
-                if step_start < len(state.turns):
-                    step_signal = await classify_step(
-                        self._step_classifier,
-                        step_index=state.step_idx,
-                        step_turns=tuple(state.turns[step_start:]),
-                        termination_reason=step_result.termination_reason,
-                    )
-                    if step_signal is not None:
-                        signals.append(step_signal)
+                await self._record_step_signal(
+                    signals,
+                    state,
+                    step_start,
+                    step_result.termination_reason,
+                    skip_when_empty=True,
+                )
                 return self._attach_signals(
                     self._finalize(step_result, state.all_plans, state.replans_used),
                     signals,
                 )
 
-            step_ok = step_result
-            step_signal = await classify_step(
-                self._step_classifier,
-                step_index=state.step_idx,
-                step_turns=tuple(state.turns[step_start:]),
-                termination_reason=(
-                    TerminationReason.COMPLETED
-                    if step_ok
-                    else TerminationReason.MAX_TURNS
-                ),
+            await self._record_step_signal(
+                signals,
+                state,
+                step_start,
+                TerminationReason.COMPLETED
+                if step_result.step_succeeded
+                else TerminationReason.MAX_TURNS,
             )
-            if step_signal is not None:
-                signals.append(step_signal)
 
-            if step_ok:
-                state.plan = update_step_status(
-                    state.plan,
-                    state.step_idx,
-                    StepStatus.COMPLETED,
-                )
-                logger.info(
-                    EXECUTION_PLAN_STEP_COMPLETE,
-                    execution_id=state.ctx.execution_id,
-                    step_number=step.step_number,
-                )
-                state.step_idx += 1
-                # A REDIRECT adopted mid-step forces a replan at this
-                # safe boundary so the revised plan honours the directive.
-                if state.ctx.pending_steering_replan_id is not None:
-                    steer_out = await steering_replan(
-                        run,
-                        state,
-                        call_planner=self._call_planner,
-                        finalize=self._finalize,
-                    )
-                    if steer_out is not None:
-                        return self._attach_signals(steer_out, signals)
-                    state.step_idx = 0
+            if step_result.step_succeeded:
+                terminal = await self._settle_completed_step(run, state, step)
+                if terminal is not None:
+                    return self._attach_signals(terminal, signals)
                 continue
 
             # Step failed -- attempt re-planning
@@ -324,10 +308,102 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             # The failure replan already incorporates any adopted directive
             # (it is in the conversation), so clear the pending steering
             # replan to avoid a redundant second replan at the next boundary.
-            state.ctx = state.ctx.cleared_pending_replan()
-            state.step_idx = 0
+            state.ctx = clear_superseded_directive(
+                state, trigger=ReplanTrigger.STEP_FAILURE
+            )
+            state.restart_plan()
 
         return self._attach_signals(self._build_final_result(state), signals)
+
+    async def _announce_step(
+        self,
+        run: StepRunContext,
+        state: StepRunState,
+        step: PlanStep,
+    ) -> None:
+        """Mark the current step in progress and publish its start."""
+        state.plan = update_step_status(
+            state.plan,
+            state.step_idx,
+            StepStatus.IN_PROGRESS,
+        )
+        logger.info(
+            EXECUTION_PLAN_STEP_START,
+            execution_id=state.ctx.execution_id,
+            step_number=step.step_number,
+            description=step.description,
+        )
+        await notify_turn_observer(
+            run.turn_observer, step.step_number, (step.description,)
+        )
+
+    async def _record_step_signal(
+        self,
+        signals: list[StepQualitySignal],
+        state: StepRunState,
+        step_start: int,
+        reason: TerminationReason,
+        *,
+        skip_when_empty: bool = False,
+    ) -> None:
+        """Classify the turns this step produced and accumulate its signal.
+
+        Args:
+            signals: Accumulator the produced signal is appended to.
+            state: Run state, read for the step index and turn history.
+            step_start: Index into ``state.turns`` where this step began.
+            reason: Termination reason to classify the step under.
+            skip_when_empty: Skip classification when the step produced no
+                turns at all, which a terminal outcome can do.
+        """
+        step_turns = tuple(state.turns[step_start:])
+        if skip_when_empty and not step_turns:
+            return
+        step_signal = await classify_step(
+            self._step_classifier,
+            step_index=state.step_idx,
+            step_turns=step_turns,
+            termination_reason=reason,
+        )
+        if step_signal is not None:
+            signals.append(step_signal)
+
+    async def _settle_completed_step(
+        self,
+        run: StepRunContext,
+        state: StepRunState,
+        step: PlanStep,
+    ) -> ExecutionResult | None:
+        """Mark a successful step done and position the cursor for the next.
+
+        Returns:
+            A terminal :class:`ExecutionResult` when a steering replan halts
+            the run, or ``None`` once the cursor has been positioned.
+        """
+        state.plan = update_step_status(
+            state.plan,
+            state.step_idx,
+            StepStatus.COMPLETED,
+        )
+        logger.info(
+            EXECUTION_PLAN_STEP_COMPLETE,
+            execution_id=state.ctx.execution_id,
+            step_number=step.step_number,
+        )
+        state.advance_step()
+        # A REDIRECT adopted mid-step forces a replan at this safe boundary
+        # so the revised plan honours the directive.
+        if state.ctx.pending_steering_replan_id is not None:
+            steer_out = await steering_replan(
+                run,
+                state,
+                call_planner=self._call_planner,
+                finalize=self._finalize,
+            )
+            if steer_out is not None:
+                return steer_out
+            state.restart_plan()
+        return None
 
     @staticmethod
     def _attach_signals(
@@ -351,12 +427,13 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         run: StepRunContext,
         state: StepRunState,
         step: PlanStep,
-    ) -> bool | ExecutionResult:
+    ) -> StepTurnOutcome | ExecutionResult:
         """Execute a single plan step via a mini-ReAct sub-loop.
 
         Returns:
-            ``True`` on success, ``False`` on step failure, or
-            ``ExecutionResult`` for termination conditions.
+            ``STEP_SUCCEEDED`` or ``STEP_FAILED`` once the step concludes
+            (never ``CONTINUE``, which the sub-loop consumes here), or an
+            :class:`ExecutionResult` for termination conditions.
         """
         instruction = (
             f"Execute the following step {step.step_number}:\n"
@@ -392,7 +469,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             if compacted is not None:
                 state.ctx = compacted
 
-            if isinstance(result, bool):
+            if result is not StepTurnOutcome.CONTINUE:
                 return result
 
             # Per-step stagnation detection (step-scoped turns only)
@@ -412,4 +489,4 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             if isinstance(stag_outcome, tuple):
                 state.ctx, step_corrections = stag_outcome
 
-        return False
+        return StepTurnOutcome.STEP_FAILED

@@ -11,7 +11,11 @@ from typing import Protocol
 
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult
-from synthorg.engine.plan_loop_context import StepRunContext, StepRunState
+from synthorg.engine.plan_loop_context import (
+    ReplanTrigger,
+    StepRunContext,
+    StepRunState,
+)
 from synthorg.engine.plan_models import ExecutionPlan, StepStatus
 from synthorg.engine.plan_parsing import _REPLAN_JSON_EXAMPLE
 from synthorg.engine.prompt_safety import (
@@ -80,7 +84,8 @@ async def steering_replan(
     logger.info(
         EXECUTION_PLAN_REPLAN_START,
         execution_id=state.ctx.execution_id,
-        trigger="steering",
+        trigger=ReplanTrigger.STEERING.value,
+        step_number=state.step_idx + 1,
         directive_id=state.ctx.pending_steering_replan_id,
         revision=plan.revision_number,
     )
@@ -118,8 +123,7 @@ async def steering_replan(
         return finalize(result, state.all_plans, state.replans_used)
     state.ctx, new_plan = result
     state.ctx = state.ctx.cleared_pending_replan()
-    state.plan = new_plan
-    state.all_plans.append(new_plan)
+    state.record_replan(new_plan, counts_against_budget=False)
     logger.info(
         EXECUTION_PLAN_REPLAN_COMPLETE,
         execution_id=state.ctx.execution_id,

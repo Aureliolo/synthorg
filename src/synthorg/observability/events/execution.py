@@ -103,6 +103,7 @@ EXECUTION_PLAN_STEP_INDEX_OUT_OF_RANGE: Final[str] = (
     "execution.plan.step_index_out_of_range"
 )
 EXECUTION_PLAN_STEP_STATUS_UPDATED: Final[str] = "execution.plan.step_status_updated"
+EXECUTION_PLAN_STEP_TOOL_USE_EMPTY: Final[str] = "execution.plan.step_tool_use_empty"
 
 EXECUTION_RECOVERY_START: Final[str] = "execution.recovery.start"
 EXECUTION_RECOVERY_COMPLETE: Final[str] = "execution.recovery.complete"

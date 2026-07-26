@@ -12,7 +12,6 @@ from collections.abc import Callable
 from synthorg.core.normalization import compare_ci
 from synthorg.engine.hybrid.step_helpers import (
     call_planner,
-    invoke_checkpoint_callback,
     truncate_plan,
 )
 from synthorg.engine.hybrid_models import HybridLoopConfig
@@ -32,8 +31,16 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
-from synthorg.engine.plan_helpers import update_step_status
-from synthorg.engine.plan_loop_context import StepRunContext, StepRunState
+from synthorg.engine.plan_helpers import (
+    invoke_checkpoint_callback,
+    update_step_status,
+)
+from synthorg.engine.plan_loop_context import (
+    ReplanTrigger,
+    ReplanVerdict,
+    StepRunContext,
+    StepRunState,
+)
 from synthorg.engine.plan_models import ExecutionPlan, PlanStep, StepStatus
 from synthorg.engine.plan_parsing import _REPLAN_JSON_EXAMPLE
 from synthorg.observability import get_logger
@@ -143,12 +150,14 @@ def _parse_replan_decision(content: str) -> bool:
 
     # Both parsers failed on non-empty content
     if '"replan"' in lower:
+        # The body is a raw model completion that can echo task and tool
+        # content, so record its shape rather than any of its text.
         logger.warning(
             EXECUTION_HYBRID_REPLAN_PARSE_TRACE,
             parser="fallback",
             note="replan key found but value not parsed as true; "
             "defaulting to no replan",
-            content_snippet=content[:200],
+            content_length=len(content),
         )
     return False
 
@@ -157,7 +166,7 @@ async def run_progress_summary(
     config: HybridLoopConfig,
     run: StepRunContext,
     state: StepRunState,
-) -> bool | ExecutionResult:
+) -> ReplanVerdict | ExecutionResult:
     """Produce a progress summary and determine if replanning is needed.
 
     Advances ``state.ctx`` across the summary turn and appends the turn
@@ -169,8 +178,8 @@ async def run_progress_summary(
         state: Mutable loop cursor; ``step_idx`` names the completed step.
 
     Returns:
-        ``True`` when the LLM asked for a replan, ``False`` otherwise, or
-        an :class:`ExecutionResult` for termination conditions.
+        The :class:`ReplanVerdict` the LLM asked for, or an
+        :class:`ExecutionResult` for termination conditions.
     """
     if not state.ctx.has_turns_remaining:
         return build_result(state.ctx, TerminationReason.MAX_TURNS, state.turns)
@@ -182,19 +191,8 @@ async def run_progress_summary(
     if budget_result is not None:
         return budget_result
 
-    plan = state.plan
     step_idx = state.step_idx
-    summary_msg = ChatMessage(
-        role=MessageRole.USER,
-        content=_build_summary_prompt(
-            plan,
-            step_idx,
-            ask_replan=(
-                config.allow_replan_on_completion and step_idx < len(plan.steps) - 1
-            ),
-        ),
-    )
-    state.ctx = state.ctx.with_message(summary_msg)
+    state.ctx = state.ctx.with_message(_summary_message(config, state))
     turn_number = state.ctx.turn_count + 1
 
     response = await call_provider(
@@ -247,7 +245,31 @@ async def run_progress_summary(
             execution_id=state.ctx.execution_id,
             note="empty progress summary response",
         )
-    return _parse_replan_decision(raw_content)
+    return ReplanVerdict.from_flag(replan=_parse_replan_decision(raw_content))
+
+
+def _summary_message(
+    config: HybridLoopConfig,
+    state: StepRunState,
+) -> ChatMessage:
+    """Build the progress-summary prompt for the step just completed.
+
+    Returns:
+        The user message asking for a summary, and for a replan decision
+        when a replan could still act on one.
+    """
+    plan = state.plan
+    step_idx = state.step_idx
+    return ChatMessage(
+        role=MessageRole.USER,
+        content=_build_summary_prompt(
+            plan,
+            step_idx,
+            ask_replan=(
+                config.allow_replan_on_completion and step_idx < len(plan.steps) - 1
+            ),
+        ),
+    )
 
 
 async def attempt_replan(
@@ -317,13 +339,13 @@ async def attempt_replan(
     if budget_result is not None:
         return finalize(budget_result, state.all_plans, state.replans_used)
 
-    replan_result = await do_replan(config, run, state, step)
+    replan_result = await do_replan(
+        config, run, state, step, trigger=ReplanTrigger.STEP_FAILURE
+    )
     if isinstance(replan_result, ExecutionResult):
         return finalize(replan_result, state.all_plans, state.replans_used)
 
-    state.plan = replan_result
-    state.replans_used += 1
-    state.all_plans.append(state.plan)
+    state.record_replan(replan_result)
     return None
 
 
@@ -333,7 +355,7 @@ async def do_replan(
     state: StepRunState,
     trigger_step: PlanStep,
     *,
-    step_failed: bool = True,
+    trigger: ReplanTrigger,
 ) -> ExecutionPlan | ExecutionResult:
     """Generate a revised plan after a step failure or replan trigger.
 
@@ -347,7 +369,8 @@ async def do_replan(
         run: Run-scoped collaborators.
         state: Mutable loop cursor supplying the current plan and turns.
         trigger_step: The step that triggered replanning.
-        step_failed: Whether the trigger step failed.
+        trigger: What prompted the replan, which selects the prompt wording
+            and is recorded on the replan-start event.
 
     Returns:
         The revised :class:`ExecutionPlan` on success, or an
@@ -357,8 +380,9 @@ async def do_replan(
     logger.info(
         EXECUTION_PLAN_REPLAN_START,
         execution_id=state.ctx.execution_id,
-        trigger_step=trigger_step.step_number,
-        step_failed=step_failed,
+        trigger=trigger.value,
+        step_number=trigger_step.step_number,
+        directive_id=state.ctx.pending_steering_replan_id,
         revision=current_plan.revision_number,
     )
 
@@ -371,7 +395,7 @@ async def do_replan(
         or "  (none)"
     )
 
-    if step_failed:
+    if trigger.step_failed:
         trigger_line = (
             f"Step {trigger_step.step_number} failed: {trigger_step.description}"
         )

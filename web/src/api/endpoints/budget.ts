@@ -79,7 +79,11 @@ function degradedSourcesOf(body: CostRecordListResponseBody): readonly string[] 
 }
 
 export async function listCostRecords(
-  params?: PaginationParams & { agent_id?: string; task_id?: string },
+  params?: PaginationParams & {
+    agent_id?: string
+    task_id?: string
+    prompt_class_id?: string
+  },
 ): Promise<CostRecordListResult> {
   const response = await apiClient.get<CostRecordListResponseBody>('/budget/records', { params })
   // Axios types ``response.data`` as the declared envelope, but the server

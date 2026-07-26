@@ -48,9 +48,12 @@ logger = get_logger(__name__)
 class SettingsDispatcherBuilder(Protocol):
     """Builds the SettingsChangeDispatcher during on-startup wiring.
 
-    A Protocol rather than a ``Callable`` alias because the builder's six
-    same-shaped optional collaborators are keyword-only, which the callable
-    alias form cannot express.
+    A Protocol rather than a ``Callable`` alias because every parameter is
+    keyword-only and the last two carry defaults, neither of which the
+    alias form can express. The six are not interchangeable: ``config`` and
+    ``app_state`` are required and non-nullable, ``message_bus`` and
+    ``settings_service`` are nullable but must still be passed, and only
+    ``backup_service`` and ``approval_timeout_scheduler`` may be omitted.
     """
 
     def __call__(  # noqa: PLR0913
