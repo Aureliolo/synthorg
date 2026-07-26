@@ -322,10 +322,15 @@ export default tseslint.config(
         {
           // A domain module re-exporting from a sibling domain module gives the
           // name a second barrel. knip is blind to it whenever both paths have
-          // consumers, so each looks legitimately used. Matches any relative
-          // source that is not a generated module, so a future module name
-          // carrying a digit or a capital cannot slip past it.
-          selector: "ExportNamedDeclaration[source.value=/^\\.{1,2}\\/(?!.*\\.gen$)/]",
+          // consumers, so each looks legitimately used. Both specifier forms
+          // have to match: `no-restricted-imports` is off for this scope, so a
+          // relative-only anchor would leave `@/api/types/enums` as an open
+          // door to the very shape the rule exists to close. Excluding the
+          // generated modules is what lets a barrel curate them, and matching
+          // any other source means a future module name carrying a digit or a
+          // capital cannot slip past either.
+          selector:
+            "ExportNamedDeclaration[source.value=/^(@\\/api\\/types\\/|\\.{1,2}\\/)(?!.*\\.gen$)/]",
           message:
             'Do not re-export a name from a sibling domain module -- it gives that name a second ' +
             'barrel. Point consumers at the module that owns it.',

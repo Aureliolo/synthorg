@@ -47,6 +47,7 @@ class _ToolFactory(Protocol):
         name: str,
         argv: tuple[str, ...],
         *,
+        filename_pattern: re.Pattern[str] | None = ...,
         whole_scope: tuple[str, ...] = ...,
     ) -> _ToolShape: ...
 
@@ -291,11 +292,21 @@ class TestGroupDeclarations:
         with pytest.raises(ValueError, match="whole_scope"):
             _MODULE._Tool("eslint", ("node", "x.js"), whole_scope=("web/src", " "))
 
-    def test_a_file_taking_tool_declares_a_whole_scope_to_fall_back_to(self) -> None:
+    def test_a_file_taking_tool_without_a_whole_scope_is_rejected(self) -> None:
+        # Enforced on the type rather than per group: a file-taking tool added
+        # to some future group would otherwise construct fine and silently
+        # reopen the truncate-without-warning hole.
+        with pytest.raises(ValueError, match="whole_scope is required"):
+            _MODULE._Tool(
+                "eslint", ("node", "x.js"), filename_pattern=re.compile(r".*\.ts$")
+            )
+
+    def test_every_file_taking_tool_declares_a_whole_scope(self) -> None:
         # Without one, an over-long path list has nowhere to go but truncation.
-        for tool in _MODULE._GROUPS["web-checks"]:
-            if tool.filename_pattern is not None:
-                assert tool.whole_scope
+        for tools in _MODULE._GROUPS.values():
+            for tool in tools:
+                if tool.filename_pattern is not None:
+                    assert tool.whole_scope
 
 
 class TestGroupDispatch:

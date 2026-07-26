@@ -65,6 +65,13 @@ const FIXTURES = [
     code: "export type { RunOutcome } from './enums2'\n",
   },
   {
+    // `no-restricted-imports` is off inside this scope, so the alias form of a
+    // sibling re-export had nothing else catching it.
+    id: 'sibling-domain-reexport-alias',
+    file: 'src/api/types/__barrel_probe_e3__.ts',
+    code: "export type { RunOutcome } from '@/api/types/enums'\n",
+  },
+  {
     id: 'endpoint-dto-passthrough',
     file: 'src/api/endpoints/__barrel_probe_f__.ts',
     code: "export type { AgentConfig } from '@/api/types/agents'\n",
@@ -169,6 +176,10 @@ describe('one barrel per name', () => {
     expect(rulesFor('sibling-domain-reexport-awkward-name')).toContain(
       'no-restricted-syntax',
     )
+  })
+
+  it('rejects a sibling re-export written with the path alias', () => {
+    expect(rulesFor('sibling-domain-reexport-alias')).toContain('no-restricted-syntax')
   })
 
   it('rejects a DTO pass-through re-export from an endpoint module', () => {

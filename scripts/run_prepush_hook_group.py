@@ -162,9 +162,10 @@ class _Tool:
         surfaces as an IndexError inside a worker thread, mid-push.
 
         Raises:
-            ValueError: When the name is blank, the argv is empty, or a
+            ValueError: When the name is blank, the argv is empty, a
                 ``whole_scope`` entry is blank (which would hand the tool the
-                working directory and lint the entire repository).
+                working directory and lint the entire repository), or a tool
+                takes filenames without declaring somewhere to fall back to.
         """
         if not self.name.strip():
             msg = "_Tool.name must not be blank"
@@ -174,6 +175,16 @@ class _Tool:
             raise ValueError(msg)
         if any(not path.strip() for path in self.whole_scope):
             msg = f"_Tool.whole_scope must not hold a blank path (tool {self.name!r})"
+            raise ValueError(msg)
+        if self.filename_pattern is not None and not self.whole_scope:
+            # Without a fallback, an over-long path list has nowhere to go but
+            # truncation, which is a gate reporting success on files it never
+            # read. Structural here rather than in a per-group test, so a tool
+            # added to some future group cannot reopen it.
+            msg = (
+                f"_Tool.whole_scope is required when filename_pattern is set "
+                f"(tool {self.name!r})"
+            )
             raise ValueError(msg)
 
 
