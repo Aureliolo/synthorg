@@ -579,11 +579,11 @@ class PruningService:
         approval = self._build_approval_item(
             approval_id,
             agent,
-            evaluation,
-            reason_summary,
-            now,
-            expires_at,
-            NotBlankStr(str(request_id)),
+            evaluation=evaluation,
+            reason_summary=reason_summary,
+            now=now,
+            expires_at=expires_at,
+            request_id=NotBlankStr(str(request_id)),
         )
         await self._approval_store.add(approval)
 
@@ -621,9 +621,10 @@ class PruningService:
         return True
 
     @staticmethod
-    def _build_approval_item(  # noqa: PLR0913, PLR0917
+    def _build_approval_item(  # noqa: PLR0913
         approval_id: NotBlankStr,
         agent: AgentIdentity,
+        *,
         evaluation: PruningEvaluation,
         reason_summary: str,
         now: datetime,

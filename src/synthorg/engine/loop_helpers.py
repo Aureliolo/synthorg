@@ -114,10 +114,11 @@ async def notify_turn_observer(
         )
 
 
-async def call_provider(  # noqa: PLR0913, PLR0917
+async def call_provider(  # noqa: PLR0913
     ctx: AgentContext,
     provider: CompletionProvider,
     model_id: str,
+    *,
     tool_defs: list[ToolDefinition] | None,
     config: CompletionConfig,
     turn_number: int,

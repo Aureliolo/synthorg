@@ -87,10 +87,10 @@ class ContextDependentDispatcher:
             wave_workspaces, exec_group = await self._setup_wave(
                 wave_idx,
                 group,
-                workspace_service,
-                config,
-                all_phases,
-                all_workspaces,
+                workspace_service=workspace_service,
+                config=config,
+                all_phases=all_phases,
+                all_workspaces=all_workspaces,
                 project_id=project_id,
             )
             if exec_group is None:
@@ -101,12 +101,12 @@ class ContextDependentDispatcher:
             wave_failed = await self._execute_wave(
                 wave_idx,
                 exec_group,
-                parallel_executor,
-                all_waves,
-                all_phases,
-                wave_workspaces,
-                workspace_service,
-                merge_results,
+                parallel_executor=parallel_executor,
+                all_waves=all_waves,
+                all_phases=all_phases,
+                wave_workspaces=wave_workspaces,
+                workspace_service=workspace_service,
+                merge_results=merge_results,
                 project_id=project_id,
                 repo_root=repo_root,
             )
@@ -116,15 +116,15 @@ class ContextDependentDispatcher:
 
         return self._build_result(all_waves, all_workspaces, merge_results, all_phases)
 
-    async def _setup_wave(  # noqa: PLR0913, PLR0917
+    async def _setup_wave(  # noqa: PLR0913
         self,
         wave_idx: int,
         group: ParallelExecutionGroup,
+        *,
         workspace_service: WorkspaceIsolationService | None,
         config: CoordinationConfig,
         all_phases: list[CoordinationPhaseResult],
         all_workspaces: list[Workspace],
-        *,
         project_id: NotBlankStr | None = None,
     ) -> tuple[tuple[Workspace, ...], ParallelExecutionGroup | None]:
         """Set up workspaces for a wave if needed.
@@ -214,17 +214,17 @@ class ContextDependentDispatcher:
         rebuilt = rebuild_group_with_workspaces(group, wave_workspaces)
         return wave_workspaces, rebuilt
 
-    async def _execute_wave(  # noqa: PLR0913, PLR0917
+    async def _execute_wave(  # noqa: PLR0913
         self,
         wave_idx: int,
         group: ParallelExecutionGroup,
+        *,
         parallel_executor: ParallelExecutorProtocol,
         all_waves: list[CoordinationWave],
         all_phases: list[CoordinationPhaseResult],
         wave_workspaces: tuple[Workspace, ...],
         workspace_service: WorkspaceIsolationService | None,
         merge_results: list[WorkspaceGroupResult],
-        *,
         project_id: NotBlankStr | None = None,
         repo_root: Path | None = None,
     ) -> bool:

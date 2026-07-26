@@ -275,10 +275,10 @@ class TestCallProvider:
             ctx,
             provider,
             "test-model",
-            None,
-            config,
-            1,
-            [],
+            tool_defs=None,
+            config=config,
+            turn_number=1,
+            turns=[],
         )
         assert isinstance(result, CompletionResponse)
         assert result.content == "ok"
@@ -293,10 +293,10 @@ class TestCallProvider:
             ctx,
             ScriptedProvider(error=ConnectionError("connection refused")),
             "m",
-            None,
-            CompletionConfig(),
-            1,
-            [],
+            tool_defs=None,
+            config=CompletionConfig(),
+            turn_number=1,
+            turns=[],
         )
         from synthorg.engine.loop_protocol import ExecutionResult
 
@@ -314,10 +314,10 @@ class TestCallProvider:
                 ctx,
                 ScriptedProvider(error=MemoryError()),
                 "m",
-                None,
-                CompletionConfig(),
-                1,
-                [],
+                tool_defs=None,
+                config=CompletionConfig(),
+                turn_number=1,
+                turns=[],
             )
 
 

@@ -348,6 +348,12 @@ convention = "google"
 # helpers or per-strategy variants.
 [tool.ruff.lint.pylint]
 max-args = 5
+# Pinned explicitly, NOT left to default. ruff defaults
+# max-positional-args to the value of max-args, so raising max-args (see
+# the tracking issue for making that cap binding) would silently raise the
+# positional cap too and undo the keyword-only sweep that made PLR0917
+# suppression-free. This cap stays at 5 whatever max-args becomes.
+max-positional-args = 5
 max-public-methods = 12
 max-statements = 30
 max-branches = 10
@@ -370,6 +376,10 @@ max-complexity = 8
     "SLF001",  # private member access in tests
     "PLC0415", # local imports in test functions
     "TC",      # type-checking imports (fixture type hints)
+    # pytest injects fixtures by parameter name, so a test's positional
+    # count is chosen by the fixture graph rather than by any caller. The
+    # rule has nothing to act on: there is no call site to convert.
+    "PLR0917", # too-many-positional-arguments (fixture injection)
     # Tests carry parametrize values, fixtures, and scaffolding that the
     # tightened ruff rules don't fit; relaxations below.
     "BLE001",  # blind-except in tests (acceptable in test infra)
@@ -442,6 +452,24 @@ max-complexity = 8
     "PLR0915", # too-many-statements
     "INP001",  # implicit namespace packages (some directories lack __init__)
 ]
+# Litestar route handlers whose signature is the endpoint's query surface:
+# the framework binds each query / path / DI parameter by name off the
+# request, so one filter dimension is one parameter and there is no call
+# site to convert to keywords. Enumerated per module rather than globbed
+# over api/controllers/**, so a non-handler helper landing in one of these
+# packages later is not silently exempted too (``_department_health.py``
+# and ``ws.py`` are exactly that, and carry keyword-only signatures).
+"src/synthorg/api/controllers/activities/feed.py" = ["PLR0917"]
+"src/synthorg/api/controllers/approvals/query.py" = ["PLR0917"]
+"src/synthorg/api/controllers/artifacts.py" = ["PLR0917"]
+"src/synthorg/api/controllers/audit.py" = ["PLR0917"]
+"src/synthorg/api/controllers/budget.py" = ["PLR0917"]
+"src/synthorg/api/controllers/coordination_metrics.py" = ["PLR0917"]
+"src/synthorg/api/controllers/plans.py" = ["PLR0917"]
+"src/synthorg/api/controllers/project_brain.py" = ["PLR0917"]
+"src/synthorg/api/controllers/project_docs.py" = ["PLR0917"]
+"src/synthorg/api/controllers/project_knowledge.py" = ["PLR0917"]
+"src/synthorg/api/controllers/tasks.py" = ["PLR0917"]
 "src/synthorg/tools/browser/**/*.py" = [
     # The BrowserTool catches its own BrowserDomainError chain at the
     # execute() boundary and emits a structured ToolExecutionResult.

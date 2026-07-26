@@ -8,10 +8,8 @@ shared planner-call body.
 import json
 import re
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 
 from synthorg.core.normalization import compare_ci
-from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid.step_helpers import (
     call_planner,
     invoke_checkpoint_callback,
@@ -31,15 +29,13 @@ from synthorg.engine.loop_helpers import (
     response_to_message,
 )
 from synthorg.engine.loop_protocol import (
-    BudgetChecker,
     ExecutionResult,
-    ShutdownChecker,
     TerminationReason,
 )
 from synthorg.engine.plan_helpers import update_step_status
+from synthorg.engine.plan_loop_context import StepRunContext, StepRunState
 from synthorg.engine.plan_models import ExecutionPlan, PlanStep, StepStatus
 from synthorg.engine.plan_parsing import _REPLAN_JSON_EXAMPLE
-from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_HYBRID_PROGRESS_SUMMARY,
@@ -51,13 +47,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_PLAN_STEP_FAILED,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider
-
-if TYPE_CHECKING:
-    # ``checkpoint`` package init eagerly pulls ``resume`` -> ``hybrid_loop``;
-    # a runtime import here would cycle back into the mid-import hybrid loop.
-    from synthorg.engine.checkpoint.callback import CheckpointCallback
+from synthorg.providers.models import ChatMessage
 
 logger = get_logger(__name__)
 
@@ -163,48 +153,37 @@ def _parse_replan_decision(content: str) -> bool:
     return False
 
 
-async def run_progress_summary(  # noqa: PLR0913, PLR0917
+async def run_progress_summary(
     config: HybridLoopConfig,
-    checkpoint_callback: CheckpointCallback | None,
-    ctx: AgentContext,
-    provider: CompletionProvider,
-    planner_model: str,
-    completion_config: CompletionConfig,
-    plan: ExecutionPlan,
-    step_idx: int,
-    turns: list[TurnRecord],
-    budget_checker: BudgetChecker | None,
-    shutdown_checker: ShutdownChecker | None,
-) -> tuple[AgentContext, bool] | ExecutionResult:
+    run: StepRunContext,
+    state: StepRunState,
+) -> bool | ExecutionResult:
     """Produce a progress summary and determine if replanning is needed.
+
+    Advances ``state.ctx`` across the summary turn and appends the turn
+    record to ``state.turns``.
 
     Args:
         config: Hybrid loop configuration.
-        checkpoint_callback: Optional checkpoint callback.
-        ctx: Agent context.
-        provider: LLM completion provider.
-        planner_model: Model ID for the planner.
-        completion_config: Completion configuration.
-        plan: Current execution plan.
-        step_idx: Zero-based index of the completed step.
-        turns: Mutable list of turn records.
-        budget_checker: Optional budget exhaustion callback.
-        shutdown_checker: Optional shutdown callback.
+        run: Run-scoped collaborators.
+        state: Mutable loop cursor; ``step_idx`` names the completed step.
 
     Returns:
-        ``(ctx, should_replan)`` on success, or ``ExecutionResult``
-        for termination conditions.
+        ``True`` when the LLM asked for a replan, ``False`` otherwise, or
+        an :class:`ExecutionResult` for termination conditions.
     """
-    if not ctx.has_turns_remaining:
-        return build_result(ctx, TerminationReason.MAX_TURNS, turns)
+    if not state.ctx.has_turns_remaining:
+        return build_result(state.ctx, TerminationReason.MAX_TURNS, state.turns)
 
-    shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
+    shutdown_result = check_shutdown(state.ctx, run.shutdown_checker, state.turns)
     if shutdown_result is not None:
         return shutdown_result
-    budget_result = check_budget(ctx, budget_checker, turns)
+    budget_result = check_budget(state.ctx, run.budget_checker, state.turns)
     if budget_result is not None:
         return budget_result
 
+    plan = state.plan
+    step_idx = state.step_idx
     summary_msg = ChatMessage(
         role=MessageRole.USER,
         content=_build_summary_prompt(
@@ -215,117 +194,98 @@ async def run_progress_summary(  # noqa: PLR0913, PLR0917
             ),
         ),
     )
-    ctx = ctx.with_message(summary_msg)
-    turn_number = ctx.turn_count + 1
+    state.ctx = state.ctx.with_message(summary_msg)
+    turn_number = state.ctx.turn_count + 1
 
     response = await call_provider(
-        ctx,
-        provider,
-        planner_model,
-        None,
-        completion_config,
-        turn_number,
-        turns,
+        state.ctx,
+        run.provider,
+        run.planner_model,
+        tool_defs=None,
+        config=run.completion_config,
+        turn_number=turn_number,
+        turns=state.turns,
     )
     if isinstance(response, ExecutionResult):
         return response
 
-    turns.append(
+    state.turns.append(
         make_turn_record(
             turn_number,
             response,
             call_category=classify_turn(
                 turn_number,
                 response,
-                ctx,
+                state.ctx,
                 is_planning_phase=True,
             ),
             provider_metadata=response.provider_metadata,
         )
     )
 
-    error = check_response_errors(ctx, response, turn_number, turns)
+    error = check_response_errors(state.ctx, response, turn_number, state.turns)
     if error is not None:
         return error
 
-    ctx = ctx.with_turn_completed(
+    state.ctx = state.ctx.with_turn_completed(
         response.usage,
         response_to_message(response),
     )
     logger.info(
         EXECUTION_HYBRID_PROGRESS_SUMMARY,
-        execution_id=ctx.execution_id,
+        execution_id=state.ctx.execution_id,
         turn=turn_number,
         step_completed=step_idx + 1,
     )
 
-    await invoke_checkpoint_callback(checkpoint_callback, ctx, turn_number)
+    await invoke_checkpoint_callback(run.checkpoint_callback, state.ctx, turn_number)
 
     raw_content = response.content or ""
     if not raw_content.strip():
         logger.warning(
             EXECUTION_HYBRID_PROGRESS_SUMMARY_EMPTY,
-            execution_id=ctx.execution_id,
+            execution_id=state.ctx.execution_id,
             note="empty progress summary response",
         )
-    should_replan = _parse_replan_decision(raw_content)
-    return ctx, should_replan
+    return _parse_replan_decision(raw_content)
 
 
-async def attempt_replan(  # noqa: PLR0913, PLR0917
+async def attempt_replan(
     config: HybridLoopConfig,
-    ctx: AgentContext,
-    provider: CompletionProvider,
-    planner_model: str,
-    completion_config: CompletionConfig,
-    plan: ExecutionPlan,
+    run: StepRunContext,
+    state: StepRunState,
     step: PlanStep,
-    step_idx: int,
-    turns: list[TurnRecord],
-    all_plans: list[ExecutionPlan],
-    replans_used: int,
-    budget_checker: BudgetChecker | None,
-    shutdown_checker: ShutdownChecker | None,
     *,
     finalize: _Finalize,
-    checkpoint_callback: CheckpointCallback | None = None,
-) -> tuple[AgentContext, ExecutionPlan, int] | ExecutionResult:
+) -> ExecutionResult | None:
     """Handle a failed step: mark it, check replan budget, replan.
+
+    On success the revised plan is adopted onto ``state`` (plan rebound,
+    replan counter incremented, plan appended to the history).
 
     Args:
         config: Hybrid loop configuration.
-        ctx: Agent context.
-        provider: LLM completion provider.
-        planner_model: Model ID for the planner.
-        completion_config: Completion configuration.
-        plan: Current execution plan.
+        run: Run-scoped collaborators.
+        state: Mutable loop cursor; ``step_idx`` names the failed step.
         step: The failed step.
-        step_idx: Zero-based index of the failed step.
-        turns: Mutable list of turn records.
-        all_plans: Mutable list of all plans generated so far.
-        replans_used: Number of replans used so far.
-        budget_checker: Optional budget exhaustion callback.
-        shutdown_checker: Optional shutdown callback.
         finalize: Callable that attaches hybrid metadata to a result.
-        checkpoint_callback: Optional checkpoint callback to thread
-            to the replanning call.
 
     Returns:
-        ``(ctx, new_plan, replans_used)`` on success, or
-        ``ExecutionResult`` for termination conditions.
+        ``None`` once the revised plan is adopted, or an
+        :class:`ExecutionResult` for termination conditions.
     """
-    plan = update_step_status(plan, step_idx, StepStatus.FAILED)
+    state.plan = update_step_status(state.plan, state.step_idx, StepStatus.FAILED)
     logger.warning(
         EXECUTION_PLAN_STEP_FAILED,
-        execution_id=ctx.execution_id,
+        execution_id=state.ctx.execution_id,
         step_number=step.step_number,
     )
 
-    if replans_used >= config.max_replans:
+    if state.replans_used >= config.max_replans:
         logger.error(
             EXECUTION_PLAN_REPLAN_EXHAUSTED,
-            execution_id=ctx.execution_id,
-            replans_used=replans_used,
+            execution_id=state.ctx.execution_id,
+            replans_used=state.replans_used,
             max_replans=config.max_replans,
         )
         error_msg = (
@@ -334,84 +294,69 @@ async def attempt_replan(  # noqa: PLR0913, PLR0917
         )
         return finalize(
             build_result(
-                ctx,
+                state.ctx,
                 TerminationReason.ERROR,
-                turns,
+                state.turns,
                 error_message=error_msg,
             ),
-            all_plans,
-            replans_used,
+            state.all_plans,
+            state.replans_used,
         )
 
-    if not ctx.has_turns_remaining:
+    if not state.ctx.has_turns_remaining:
         return finalize(
-            build_result(ctx, TerminationReason.MAX_TURNS, turns),
-            all_plans,
-            replans_used,
+            build_result(state.ctx, TerminationReason.MAX_TURNS, state.turns),
+            state.all_plans,
+            state.replans_used,
         )
 
-    shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
+    shutdown_result = check_shutdown(state.ctx, run.shutdown_checker, state.turns)
     if shutdown_result is not None:
-        return finalize(shutdown_result, all_plans, replans_used)
-    budget_result = check_budget(ctx, budget_checker, turns)
+        return finalize(shutdown_result, state.all_plans, state.replans_used)
+    budget_result = check_budget(state.ctx, run.budget_checker, state.turns)
     if budget_result is not None:
-        return finalize(budget_result, all_plans, replans_used)
+        return finalize(budget_result, state.all_plans, state.replans_used)
 
-    replan_result = await do_replan(
-        config,
-        ctx,
-        provider,
-        planner_model,
-        completion_config,
-        plan,
-        step,
-        turns,
-        checkpoint_callback=checkpoint_callback,
-    )
+    replan_result = await do_replan(config, run, state, step)
     if isinstance(replan_result, ExecutionResult):
-        return finalize(replan_result, all_plans, replans_used)
+        return finalize(replan_result, state.all_plans, state.replans_used)
 
-    ctx, new_plan = replan_result
-    replans_used += 1
-    all_plans.append(new_plan)
-    return ctx, new_plan, replans_used
+    state.plan = replan_result
+    state.replans_used += 1
+    state.all_plans.append(state.plan)
+    return None
 
 
-async def do_replan(  # noqa: PLR0913, PLR0917
+async def do_replan(
     config: HybridLoopConfig,
-    ctx: AgentContext,
-    provider: CompletionProvider,
-    planner_model: str,
-    completion_config: CompletionConfig,
-    current_plan: ExecutionPlan,
+    run: StepRunContext,
+    state: StepRunState,
     trigger_step: PlanStep,
-    turns: list[TurnRecord],
     *,
     step_failed: bool = True,
-    checkpoint_callback: CheckpointCallback | None = None,
-) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
+) -> ExecutionPlan | ExecutionResult:
     """Generate a revised plan after a step failure or replan trigger.
+
+    Advances ``state.ctx`` across the planner turn but leaves adopting the
+    returned plan to the caller: the three call sites differ in whether the
+    replan counts against ``max_replans`` and whether a pending steering
+    directive is cleared.
 
     Args:
         config: Hybrid loop configuration.
-        ctx: Agent context.
-        provider: LLM completion provider.
-        planner_model: Model ID for the planner.
-        completion_config: Completion configuration.
-        current_plan: The current execution plan.
+        run: Run-scoped collaborators.
+        state: Mutable loop cursor supplying the current plan and turns.
         trigger_step: The step that triggered replanning.
-        turns: Mutable list of turn records.
         step_failed: Whether the trigger step failed.
-        checkpoint_callback: Optional checkpoint callback to thread
-            to the planner call.
 
     Returns:
-        ``(ctx, new_plan)`` on success, or ``ExecutionResult``
-        for termination conditions.
+        The revised :class:`ExecutionPlan` on success, or an
+        :class:`ExecutionResult` for termination conditions.
     """
+    current_plan = state.plan
     logger.info(
         EXECUTION_PLAN_REPLAN_START,
-        execution_id=ctx.execution_id,
+        execution_id=state.ctx.execution_id,
         trigger_step=trigger_step.step_number,
         step_failed=step_failed,
         revision=current_plan.revision_number,
@@ -450,23 +395,20 @@ async def do_replan(  # noqa: PLR0913, PLR0917
         content=replan_content,
     )
     result = await call_planner(
-        ctx,
-        provider,
-        planner_model,
-        completion_config,
-        turns,
+        run,
+        state.ctx,
+        state.turns,
         replan_msg,
         revision_number=current_plan.revision_number + 1,
-        checkpoint_callback=checkpoint_callback,
     )
     if isinstance(result, ExecutionResult):
         return result
-    ctx, plan = result
+    state.ctx, plan = result
     plan = truncate_plan(plan, config.max_plan_steps)
     logger.info(
         EXECUTION_PLAN_REPLAN_COMPLETE,
-        execution_id=ctx.execution_id,
+        execution_id=state.ctx.execution_id,
         step_count=len(plan.steps),
         revision=plan.revision_number,
     )
-    return ctx, plan
+    return plan

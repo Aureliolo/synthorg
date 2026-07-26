@@ -92,6 +92,7 @@ from .loop_tool_execution import (
     execute_tool_calls,
 )
 from .plan_helpers import update_step_status
+from .plan_loop_context import StepRunContext, StepRunState, StepTurnOutcome
 from .plan_models import (
     ExecutionPlan,
     PlanStep,
@@ -215,65 +216,48 @@ class HybridLoop:
         if cancel_result is not None:
             return self._finalize(cancel_result, [], 0)
         default_model = ctx.identity.model.model_id
-        planner_model = self._config.planner_model or default_model
-        executor_model = self._config.executor_model or default_model
-        default_config = completion_config or CompletionConfig(
-            temperature=ctx.identity.model.temperature,
-            max_tokens=ctx.identity.model.max_tokens,
+        run = StepRunContext(
+            provider=provider,
+            executor_model=self._config.executor_model or default_model,
+            planner_model=self._config.planner_model or default_model,
+            completion_config=completion_config
+            or CompletionConfig(
+                temperature=ctx.identity.model.temperature,
+                max_tokens=ctx.identity.model.max_tokens,
+            ),
+            tool_invoker=tool_invoker,
+            budget_checker=budget_checker,
+            shutdown_checker=shutdown_checker,
+            task_cancellation_checker=task_cancellation_checker,
+            turn_observer=turn_observer,
+            checkpoint_callback=self._checkpoint_callback,
+            streaming_enabled=streaming_enabled,
         )
-        tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
         turns: list[TurnRecord] = []
         all_plans: list[ExecutionPlan] = []
-        replans_used = 0
 
         warn_insufficient_budget(self._config, ctx)
 
         # Planning.
-        plan_result = await self._run_planning_phase(
-            ctx,
-            provider,
-            planner_model,
-            default_config,
-            turns,
-            shutdown_checker,
-            budget_checker,
-        )
+        plan_result = await self._run_planning_phase(run, ctx, turns)
         if isinstance(plan_result, ExecutionResult):
-            return self._finalize(plan_result, all_plans, replans_used)
+            return self._finalize(plan_result, all_plans, 0)
         ctx, plan = plan_result
         all_plans.append(plan)
 
         # Execute steps.
         return await self._run_steps(
-            ctx,
-            provider,
-            executor_model,
-            planner_model,
-            default_config,
-            tool_defs,
-            tool_invoker,
-            plan,
-            turns,
-            all_plans,
-            replans_used,
-            budget_checker,
-            shutdown_checker,
-            task_cancellation_checker,
-            turn_observer,
-            streaming_enabled=streaming_enabled,
+            run,
+            StepRunState(ctx=ctx, plan=plan, turns=turns, all_plans=all_plans),
         )
 
     # -- Phase orchestration -----------------------------------------------
 
-    async def _run_planning_phase(  # noqa: PLR0913, PLR0917
+    async def _run_planning_phase(
         self,
+        run: StepRunContext,
         ctx: AgentContext,
-        provider: CompletionProvider,
-        planner_model: str,
-        config: CompletionConfig,
         turns: list[TurnRecord],
-        shutdown_checker: ShutdownChecker | None,
-        budget_checker: BudgetChecker | None,
     ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
         """Run pre-checks and generate the initial plan.
 
@@ -282,39 +266,18 @@ class HybridLoop:
             and the planner succeeds; the terminal :class:`ExecutionResult`
             when any pre-check trips so the caller bails out early.
         """
-        shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
+        shutdown_result = check_shutdown(ctx, run.shutdown_checker, turns)
         if shutdown_result is not None:
             return shutdown_result
-        budget_result = check_budget(ctx, budget_checker, turns)
+        budget_result = check_budget(ctx, run.budget_checker, turns)
         if budget_result is not None:
             return budget_result
-        return await self._generate_plan(
-            ctx,
-            provider,
-            planner_model,
-            config,
-            turns,
-        )
+        return await self._generate_plan(run, ctx, turns)
 
-    async def _run_steps(  # noqa: PLR0913, PLR0917
+    async def _run_steps(
         self,
-        ctx: AgentContext,
-        provider: CompletionProvider,
-        executor_model: str,
-        planner_model: str,
-        config: CompletionConfig,
-        tool_defs: list[ToolDefinition] | None,
-        tool_invoker: ToolInvokerProtocol | None,
-        plan: ExecutionPlan,
-        turns: list[TurnRecord],
-        all_plans: list[ExecutionPlan],
-        replans_used: int,
-        budget_checker: BudgetChecker | None,
-        shutdown_checker: ShutdownChecker | None,
-        task_cancellation_checker: TaskCancellationChecker | None = None,
-        turn_observer: TurnObserver | None = None,
-        *,
-        streaming_enabled: bool = False,
+        run: StepRunContext,
+        state: StepRunState,
     ) -> ExecutionResult:
         """Iterate through plan steps with checkpointing/replanning.
 
@@ -323,54 +286,40 @@ class HybridLoop:
             (success, budget exhausted, shutdown, cancellation, or replan
             exhaustion).
         """
-        step_idx = 0
         signals: list[StepQualitySignal] = []
-        while step_idx < len(plan.steps):
-            if not ctx.has_turns_remaining:
+        while state.step_idx < len(state.plan.steps):
+            if not state.ctx.has_turns_remaining:
                 break
 
-            step = plan.steps[step_idx]
-            plan = update_step_status(
-                plan,
-                step_idx,
+            step = state.plan.steps[state.step_idx]
+            state.plan = update_step_status(
+                state.plan,
+                state.step_idx,
                 StepStatus.IN_PROGRESS,
             )
             logger.info(
                 EXECUTION_PLAN_STEP_START,
-                execution_id=ctx.execution_id,
+                execution_id=state.ctx.execution_id,
                 step_number=step.step_number,
                 description=step.description,
             )
             await notify_turn_observer(
-                turn_observer, step.step_number, (step.description,)
+                run.turn_observer, step.step_number, (step.description,)
             )
 
-            step_start = len(turns)
-            step_result = await self._execute_step(
-                ctx,
-                provider,
-                executor_model,
-                config,
-                tool_defs,
-                tool_invoker,
-                step,
-                turns,
-                budget_checker,
-                shutdown_checker,
-                task_cancellation_checker,
-                streaming_enabled=streaming_enabled,
-            )
+            step_start = len(state.turns)
+            step_result = await self._execute_step(run, state, step)
 
             if isinstance(step_result, ExecutionResult):
                 # The in-flight step ends here (cancel / shutdown / budget /
                 # stagnation / error). Classify it too so its signal is not
                 # dropped from quality_signals, which the worker health
                 # pipeline consumes downstream.
-                step_turns = tuple(turns[step_start:])
+                step_turns = tuple(state.turns[step_start:])
                 if step_turns:
                     step_signal = await classify_step(
                         self._step_classifier,
-                        step_index=step_idx,
+                        step_index=state.step_idx,
                         step_turns=step_turns,
                         termination_reason=step_result.termination_reason,
                     )
@@ -379,17 +328,17 @@ class HybridLoop:
                 return self._attach_signals(
                     self._finalize(
                         step_result,
-                        all_plans,
-                        replans_used,
+                        state.all_plans,
+                        state.replans_used,
                     ),
                     signals,
                 )
 
-            ctx, step_ok = step_result
+            step_ok = step_result
             step_signal = await classify_step(
                 self._step_classifier,
-                step_index=step_idx,
-                step_turns=tuple(turns[step_start:]),
+                step_index=state.step_idx,
+                step_turns=tuple(state.turns[step_start:]),
                 termination_reason=(
                     TerminationReason.COMPLETED
                     if step_ok
@@ -400,88 +349,40 @@ class HybridLoop:
                 signals.append(step_signal)
 
             if step_ok:
-                outcome = await self._handle_completed_step(
-                    ctx,
-                    provider,
-                    planner_model,
-                    config,
-                    plan,
-                    step,
-                    step_idx,
-                    turns,
-                    all_plans,
-                    replans_used,
-                    budget_checker,
-                    shutdown_checker,
-                )
+                outcome = await self._handle_completed_step(run, state, step)
                 if isinstance(outcome, ExecutionResult):
                     return self._attach_signals(outcome, signals)
-                ctx, plan, replans_used, restart = outcome
+                restart = outcome
                 # A REDIRECT adopted mid-step forces a replan at this safe
                 # boundary so the revised plan honours the directive.
-                if not restart and ctx.pending_steering_replan_id is not None:
-                    steer_out = await self._steering_replan_hybrid(
-                        ctx,
-                        provider,
-                        planner_model,
-                        config,
-                        plan,
-                        step,
-                        turns,
-                        all_plans,
-                        replans_used,
-                    )
-                    if isinstance(steer_out, ExecutionResult):
+                if not restart and state.ctx.pending_steering_replan_id is not None:
+                    steer_out = await self._steering_replan_hybrid(run, state, step)
+                    if steer_out is not None:
                         return self._attach_signals(steer_out, signals)
-                    ctx, plan, replans_used = steer_out
                     restart = True
-                elif restart and ctx.pending_steering_replan_id is not None:
+                elif restart and state.ctx.pending_steering_replan_id is not None:
                     # A completion-triggered replan already re-planned with the
                     # adopted directive in conversation context, so a dedicated
                     # steering replan would be redundant. Clear the pending flag
                     # so it does not linger to fire a stale replan on a later
                     # step or persist into a terminal checkpoint.
-                    ctx = ctx.cleared_pending_replan()
-                if restart:
-                    step_idx = 0
-                    continue
-                step_idx += 1
+                    state.ctx = state.ctx.cleared_pending_replan()
+                state.step_idx = 0 if restart else state.step_idx + 1
                 continue
 
             # Step failed -- attempt re-planning
             replan_out = await attempt_replan(
                 self._config,
-                ctx,
-                provider,
-                planner_model,
-                config,
-                plan,
+                run,
+                state,
                 step,
-                step_idx,
-                turns,
-                all_plans,
-                replans_used,
-                budget_checker,
-                shutdown_checker,
                 finalize=self._finalize,
-                checkpoint_callback=self._checkpoint_callback,
             )
-            if isinstance(replan_out, ExecutionResult):
+            if replan_out is not None:
                 return self._attach_signals(replan_out, signals)
-            ctx, plan, replans_used = replan_out
-            step_idx = 0
+            state.step_idx = 0
 
-        return self._attach_signals(
-            self._build_final_result(
-                ctx,
-                plan,
-                step_idx,
-                turns,
-                all_plans,
-                replans_used,
-            ),
-            signals,
-        )
+        return self._attach_signals(self._build_final_result(state), signals)
 
     @staticmethod
     def _attach_signals(
@@ -498,207 +399,142 @@ class HybridLoop:
             return result
         return result.model_copy(update={"quality_signals": tuple(signals)})
 
-    async def _handle_completed_step(  # noqa: PLR0913, PLR0917
+    async def _handle_completed_step(
         self,
-        ctx: AgentContext,
-        provider: CompletionProvider,
-        planner_model: str,
-        config: CompletionConfig,
-        plan: ExecutionPlan,
+        run: StepRunContext,
+        state: StepRunState,
         step: PlanStep,
-        step_idx: int,
-        turns: list[TurnRecord],
-        all_plans: list[ExecutionPlan],
-        replans_used: int,
-        budget_checker: BudgetChecker | None,
-        shutdown_checker: ShutdownChecker | None,
-    ) -> tuple[AgentContext, ExecutionPlan, int, bool] | ExecutionResult:
+    ) -> bool | ExecutionResult:
         """Handle a completed step: update status, checkpoint, replan.
 
         Returns:
             Either a terminal :class:`ExecutionResult` when the
-            progress summary halts the loop, or
-            ``(ctx, plan, replans_used, restart)`` where ``restart``
-            asks the outer loop to begin from step 0 after a replan.
+            progress summary halts the loop, or a ``restart`` flag asking
+            the outer loop to begin again from step 0 after a replan.
         """
-        plan = update_step_status(
-            plan,
-            step_idx,
+        state.plan = update_step_status(
+            state.plan,
+            state.step_idx,
             StepStatus.COMPLETED,
         )
-        if all_plans:
-            all_plans[-1] = plan
+        if state.all_plans:
+            state.all_plans[-1] = state.plan
         logger.info(
             EXECUTION_PLAN_STEP_COMPLETE,
-            execution_id=ctx.execution_id,
+            execution_id=state.ctx.execution_id,
             step_number=step.step_number,
         )
 
         if not self._config.checkpoint_after_each_step:
-            return ctx, plan, replans_used, False
+            return False
 
-        summary_result = await run_progress_summary(
-            self._config,
-            self._checkpoint_callback,
-            ctx,
-            provider,
-            planner_model,
-            config,
-            plan,
-            step_idx,
-            turns,
-            budget_checker,
-            shutdown_checker,
-        )
+        summary_result = await run_progress_summary(self._config, run, state)
         if isinstance(summary_result, ExecutionResult):
             return self._finalize(
                 summary_result,
-                all_plans,
-                replans_used,
+                state.all_plans,
+                state.replans_used,
             )
-        ctx, should_replan = summary_result
 
         return await self._decide_replan_on_completion(
-            ctx,
-            provider,
-            planner_model,
-            config,
-            plan,
+            run,
+            state,
             step,
-            step_idx,
-            turns,
-            all_plans,
-            replans_used,
-            budget_checker,
-            shutdown_checker,
-            should_replan=should_replan,
+            should_replan=summary_result,
         )
 
-    async def _decide_replan_on_completion(  # noqa: PLR0913, PLR0917
+    async def _decide_replan_on_completion(
         self,
-        ctx: AgentContext,
-        provider: CompletionProvider,
-        planner_model: str,
-        config: CompletionConfig,
-        plan: ExecutionPlan,
+        run: StepRunContext,
+        state: StepRunState,
         step: PlanStep,
-        step_idx: int,
-        turns: list[TurnRecord],
-        all_plans: list[ExecutionPlan],
-        replans_used: int,
-        budget_checker: BudgetChecker | None,
-        shutdown_checker: ShutdownChecker | None,
         *,
         should_replan: bool,
-    ) -> tuple[AgentContext, ExecutionPlan, int, bool] | ExecutionResult:
+    ) -> bool | ExecutionResult:
         """Decide whether to replan after a successful step.
 
         Returns:
-            ``(ctx, plan, replans_used, should_restart)`` or
-            ``ExecutionResult`` for termination conditions.
+            The ``should_restart`` flag, or an :class:`ExecutionResult`
+            for termination conditions.
         """
         if not (
             should_replan
             and self._config.allow_replan_on_completion
-            and replans_used < self._config.max_replans
-            and step_idx < len(plan.steps) - 1
-            and ctx.has_turns_remaining
+            and state.replans_used < self._config.max_replans
+            and state.step_idx < len(state.plan.steps) - 1
+            and state.ctx.has_turns_remaining
         ):
-            return ctx, plan, replans_used, False
+            return False
 
-        shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
+        shutdown_result = check_shutdown(state.ctx, run.shutdown_checker, state.turns)
         if shutdown_result is not None:
-            return self._finalize(shutdown_result, all_plans, replans_used)
-        budget_result = check_budget(ctx, budget_checker, turns)
+            return self._finalize(shutdown_result, state.all_plans, state.replans_used)
+        budget_result = check_budget(state.ctx, run.budget_checker, state.turns)
         if budget_result is not None:
-            return self._finalize(budget_result, all_plans, replans_used)
+            return self._finalize(budget_result, state.all_plans, state.replans_used)
 
         replan_result = await do_replan(
             self._config,
-            ctx,
-            provider,
-            planner_model,
-            config,
-            plan,
+            run,
+            state,
             step,
-            turns,
             step_failed=False,
-            checkpoint_callback=self._checkpoint_callback,
         )
         if isinstance(replan_result, ExecutionResult):
             return self._finalize(
                 replan_result,
-                all_plans,
-                replans_used,
+                state.all_plans,
+                state.replans_used,
             )
-        ctx, plan = replan_result
-        replans_used += 1
-        all_plans.append(plan)
+        state.plan = replan_result
+        state.replans_used += 1
+        state.all_plans.append(state.plan)
         logger.info(
             EXECUTION_HYBRID_REPLAN_DECIDED,
-            execution_id=ctx.execution_id,
+            execution_id=state.ctx.execution_id,
             trigger="completion_summary",
-            replans_used=replans_used,
+            replans_used=state.replans_used,
         )
-        return ctx, plan, replans_used, True
+        return True
 
-    async def _steering_replan_hybrid(  # noqa: PLR0913, PLR0917
+    async def _steering_replan_hybrid(
         self,
-        ctx: AgentContext,
-        provider: CompletionProvider,
-        planner_model: str,
-        config: CompletionConfig,
-        plan: ExecutionPlan,
+        run: StepRunContext,
+        state: StepRunState,
         step: PlanStep,
-        turns: list[TurnRecord],
-        all_plans: list[ExecutionPlan],
-        replans_used: int,
-    ) -> tuple[AgentContext, ExecutionPlan, int] | ExecutionResult:
+    ) -> ExecutionResult | None:
         """Replan after adopting a mid-flight steering REDIRECT.
 
-        The directive is already in ``ctx`` (injected at the turn boundary);
-        this revises the remaining plan to honour it. Operator-driven and
-        consume-once, so it does not count against ``max_replans``; the
-        pending-replan id is cleared here.
+        The directive is already in ``state.ctx`` (injected at the turn
+        boundary); this revises the remaining plan to honour it.
+        Operator-driven and consume-once, so it does not count against
+        ``max_replans``; the pending-replan id is cleared here.
 
         Returns:
-            ``(ctx, new_plan, replans_used)`` on success, or a terminal
+            ``None`` once the revised plan is adopted, or a terminal
             :class:`ExecutionResult`.
         """
         result = await do_replan(
             self._config,
-            ctx,
-            provider,
-            planner_model,
-            config,
-            plan,
+            run,
+            state,
             step,
-            turns,
             step_failed=False,
-            checkpoint_callback=self._checkpoint_callback,
         )
         if isinstance(result, ExecutionResult):
-            return self._finalize(result, all_plans, replans_used)
-        ctx, new_plan = result
-        ctx = ctx.cleared_pending_replan()
-        all_plans.append(new_plan)
+            return self._finalize(result, state.all_plans, state.replans_used)
+        state.plan = result
+        state.ctx = state.ctx.cleared_pending_replan()
+        state.all_plans.append(state.plan)
         logger.info(
             EXECUTION_HYBRID_REPLAN_DECIDED,
-            execution_id=ctx.execution_id,
+            execution_id=state.ctx.execution_id,
             trigger="steering",
-            replans_used=replans_used,
+            replans_used=state.replans_used,
         )
-        return ctx, new_plan, replans_used
+        return None
 
-    def _build_final_result(  # noqa: PLR0913, PLR0917
-        self,
-        ctx: AgentContext,
-        plan: ExecutionPlan,
-        step_idx: int,
-        turns: list[TurnRecord],
-        all_plans: list[ExecutionPlan],
-        replans_used: int,
-    ) -> ExecutionResult:
+    def _build_final_result(self, state: StepRunState) -> ExecutionResult:
         """Build the final result after step iteration completes.
 
         Returns:
@@ -708,46 +544,44 @@ class HybridLoop:
         """
         # Sync live plan into all_plans so final_plan reflects
         # step status changes (COMPLETED, IN_PROGRESS, etc.).
-        if all_plans:
-            all_plans[-1] = plan
+        if state.all_plans:
+            state.all_plans[-1] = state.plan
 
-        if not ctx.has_turns_remaining and step_idx < len(plan.steps):
+        if not state.ctx.has_turns_remaining and state.step_idx < len(state.plan.steps):
             logger.info(
                 EXECUTION_LOOP_TERMINATED,
-                execution_id=ctx.execution_id,
+                execution_id=state.ctx.execution_id,
                 reason=TerminationReason.MAX_TURNS.value,
-                turns=len(turns),
+                turns=len(state.turns),
             )
             return self._finalize(
                 build_result(
-                    ctx,
+                    state.ctx,
                     TerminationReason.MAX_TURNS,
-                    turns,
+                    state.turns,
                 ),
-                all_plans,
-                replans_used,
+                state.all_plans,
+                state.replans_used,
             )
 
         logger.info(
             EXECUTION_LOOP_TERMINATED,
-            execution_id=ctx.execution_id,
+            execution_id=state.ctx.execution_id,
             reason=TerminationReason.COMPLETED.value,
-            turns=len(turns),
+            turns=len(state.turns),
         )
         return self._finalize(
-            build_result(ctx, TerminationReason.COMPLETED, turns),
-            all_plans,
-            replans_used,
+            build_result(state.ctx, TerminationReason.COMPLETED, state.turns),
+            state.all_plans,
+            state.replans_used,
         )
 
     # -- Planning ----------------------------------------------------------
 
     async def _generate_plan(
         self,
+        run: StepRunContext,
         ctx: AgentContext,
-        provider: CompletionProvider,
-        planner_model: str,
-        config: CompletionConfig,
         turns: list[TurnRecord],
     ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
         """Generate an execution plan from the LLM.
@@ -761,15 +595,7 @@ class HybridLoop:
             role=MessageRole.USER,
             content=_PLANNING_PROMPT,
         )
-        result = await call_planner(
-            ctx,
-            provider,
-            planner_model,
-            config,
-            turns,
-            plan_msg,
-            checkpoint_callback=self._checkpoint_callback,
-        )
+        result = await call_planner(run, ctx, turns, plan_msg)
         if isinstance(result, ExecutionResult):
             return result
         ctx, plan = result
@@ -787,93 +613,67 @@ class HybridLoop:
 
     # -- Step execution ----------------------------------------------------
 
-    async def _execute_step(  # noqa: PLR0913, PLR0917
+    async def _execute_step(
         self,
-        ctx: AgentContext,
-        provider: CompletionProvider,
-        executor_model: str,
-        config: CompletionConfig,
-        tool_defs: list[ToolDefinition] | None,
-        tool_invoker: ToolInvokerProtocol | None,
+        run: StepRunContext,
+        state: StepRunState,
         step: PlanStep,
-        turns: list[TurnRecord],
-        budget_checker: BudgetChecker | None,
-        shutdown_checker: ShutdownChecker | None,
-        task_cancellation_checker: TaskCancellationChecker | None = None,
-        *,
-        streaming_enabled: bool = False,
-    ) -> tuple[AgentContext, bool] | ExecutionResult:
+    ) -> bool | ExecutionResult:
         """Execute a single plan step via a mini-ReAct sub-loop.
 
         Returns:
-            ``(ctx, True)`` on success, ``(ctx, False)`` on step
-            failure, or ``ExecutionResult`` for termination.
+            ``True`` on success, ``False`` on step failure, or
+            ``ExecutionResult`` for termination.
         """
-        ctx = ctx.with_message(build_step_message(step))
-        step_start_idx = len(turns)
+        state.ctx = state.ctx.with_message(build_step_message(step))
+        step_start_idx = len(state.turns)
         step_corrections = 0
         # Count COMPLETED turns via ``ctx.turn_count`` delta rather than an
         # independent per-call counter: a mid-turn steering REDIRECT re-issues
         # the turn (``_TurnInterrupted``) without advancing ``ctx.turn_count``,
         # so it must not consume the per-step turn budget.
-        step_start_turn_count = ctx.turn_count
+        step_start_turn_count = state.ctx.turn_count
         max_step_turns = self._config.max_turns_per_step
 
         while (
-            ctx.has_turns_remaining
-            and ctx.turn_count - step_start_turn_count < max_step_turns
+            state.ctx.has_turns_remaining
+            and state.ctx.turn_count - step_start_turn_count < max_step_turns
         ):
             # Refresh tool defs so newly loaded tools appear
-            tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
-            result = await self._run_step_turn(
-                ctx,
-                provider,
-                executor_model,
-                config,
-                tool_defs,
-                tool_invoker,
-                turns,
-                budget_checker,
-                shutdown_checker,
-                task_cancellation_checker,
-                streaming_enabled=streaming_enabled,
-            )
+            tool_defs = get_tool_definitions(run.tool_invoker, state.ctx.loaded_tools)
+            result = await self._run_step_turn(run, state, tool_defs)
 
             if isinstance(result, ExecutionResult):
                 return result
-            if isinstance(result, tuple):
-                ctx, step_ok = result
-                ctx = await self._compact(ctx)
-                return ctx, step_ok
-            ctx = result
-
-            ctx = await self._compact(ctx)
+            state.ctx = await self._compact(state.ctx)
+            if isinstance(result, bool):
+                return result
 
             # Per-step stagnation detection (step-scoped turns)
             stag_outcome = await check_stagnation(
-                ctx,
+                state.ctx,
                 self._stagnation_detector,
-                turns[step_start_idx:],
+                state.turns[step_start_idx:],
                 step_corrections,
                 step_number=step.step_number,
             )
             if isinstance(stag_outcome, ExecutionResult):
                 return stag_outcome.model_copy(
-                    update={"turns": tuple(turns)},
+                    update={"turns": tuple(state.turns)},
                 )
             if isinstance(stag_outcome, tuple):
-                ctx, step_corrections = stag_outcome
+                state.ctx, step_corrections = stag_outcome
 
         # Loop exited without step completion
-        if not ctx.has_turns_remaining:
-            return ctx, False
+        if not state.ctx.has_turns_remaining:
+            return False
         logger.warning(
             EXECUTION_HYBRID_STEP_TURN_LIMIT,
-            execution_id=ctx.execution_id,
+            execution_id=state.ctx.execution_id,
             step_number=step.step_number,
             max_turns_per_step=self._config.max_turns_per_step,
         )
-        return ctx, False
+        return False
 
     async def _compact(self, ctx: AgentContext) -> AgentContext:
         """Run context compaction at turn boundaries.
@@ -890,146 +690,142 @@ class HybridLoop:
         )
         return compacted if compacted is not None else ctx
 
-    async def _run_step_turn(  # noqa: PLR0913, PLR0917
+    async def _run_step_turn(
         self,
-        ctx: AgentContext,
-        provider: CompletionProvider,
-        model: str,
-        config: CompletionConfig,
+        run: StepRunContext,
+        state: StepRunState,
         tool_defs: list[ToolDefinition] | None,
-        tool_invoker: ToolInvokerProtocol | None,
-        turns: list[TurnRecord],
-        budget_checker: BudgetChecker | None,
-        shutdown_checker: ShutdownChecker | None,
-        task_cancellation_checker: TaskCancellationChecker | None = None,
-        *,
-        streaming_enabled: bool = False,
-    ) -> AgentContext | ExecutionResult | tuple[AgentContext, bool]:
+    ) -> StepTurnOutcome | bool | ExecutionResult:
         """Execute a single turn within a step's mini-ReAct sub-loop.
 
         Returns:
-            ``AgentContext`` to continue the loop (also the re-issue path
-            after a mid-turn steering REDIRECT), ``(ctx, bool)`` for step
-            completion, or ``ExecutionResult`` for termination.
+            :attr:`StepTurnOutcome.CONTINUE` to keep the sub-loop running
+            (also the re-issue path after a mid-turn steering REDIRECT), a
+            ``bool`` carrying the step's success once it completes, or an
+            ``ExecutionResult`` for termination.
         """
-        shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
+        shutdown_result = check_shutdown(state.ctx, run.shutdown_checker, state.turns)
         if shutdown_result is not None:
             return shutdown_result
-        budget_result = check_budget(ctx, budget_checker, turns)
+        budget_result = check_budget(state.ctx, run.budget_checker, state.turns)
         if budget_result is not None:
             return budget_result
         cancel_result = await check_task_cancelled(
-            ctx, task_cancellation_checker, turns
+            state.ctx, run.task_cancellation_checker, state.turns
         )
         if cancel_result is not None:
             return cancel_result
         # Adopt pending steering directives before the LLM call so the
         # operator's constraint is in context for this step's turn.
-        steered = await check_steering(ctx, self._steering_inbox)
+        steered = await check_steering(state.ctx, self._steering_inbox)
         if steered is not None:
-            ctx = steered
+            state.ctx = steered
 
-        turn_number = ctx.turn_count + 1
+        turn_number = state.ctx.turn_count + 1
         outcome = await run_provider_turn(
-            ctx,
-            provider,
-            model,
-            tool_defs,
-            config,
-            turn_number,
-            turns,
-            streaming_enabled=streaming_enabled,
-            cancellation_checker=task_cancellation_checker,
+            state.ctx,
+            run.provider,
+            run.executor_model,
+            tool_defs=tool_defs,
+            config=run.completion_config,
+            turn_number=turn_number,
+            turns=state.turns,
+            streaming_enabled=run.streaming_enabled,
+            cancellation_checker=run.task_cancellation_checker,
             steering_inbox=self._steering_inbox,
         )
         if isinstance(outcome, ExecutionResult):
             return outcome
         if isinstance(outcome, _TurnInterrupted):
-            # Re-issue the step turn: returning the context continues the
-            # mini-sub-loop, whose top-of-turn steering check then adopts the
-            # REDIRECT the interrupt fired for.
-            return fold_interrupt_usage(ctx, outcome)
+            # Re-issue the step turn: continuing the mini-sub-loop lets its
+            # top-of-turn steering check adopt the REDIRECT the interrupt
+            # fired for.
+            state.ctx = fold_interrupt_usage(state.ctx, outcome)
+            return StepTurnOutcome.CONTINUE
         response = outcome
 
-        turns.append(
+        state.turns.append(
             make_turn_record(
                 turn_number,
                 response,
-                call_category=classify_turn(turn_number, response, ctx),
+                call_category=classify_turn(turn_number, response, state.ctx),
                 provider_metadata=response.provider_metadata,
             )
         )
 
         error = check_response_errors(
-            ctx,
+            state.ctx,
             response,
             turn_number,
-            turns,
+            state.turns,
         )
         if error is not None:
             return error
 
-        ctx = ctx.with_turn_completed(
+        state.ctx = state.ctx.with_turn_completed(
             response.usage,
             response_to_message(response),
         )
         logger.info(
             EXECUTION_LOOP_TURN_COMPLETE,
-            execution_id=ctx.execution_id,
+            execution_id=state.ctx.execution_id,
             turn=turn_number,
             finish_reason=response.finish_reason.value,
             tool_call_count=len(response.tool_calls),
         )
 
         await invoke_checkpoint_callback(
-            self._checkpoint_callback,
-            ctx,
+            run.checkpoint_callback,
+            state.ctx,
             turn_number,
         )
 
         if not response.tool_calls:
-            return handle_step_completion(ctx, response, turn_number)
+            state.ctx, step_ok = handle_step_completion(
+                state.ctx, response, turn_number
+            )
+            return step_ok
 
         return await self._handle_step_tool_calls(
-            ctx,
-            tool_invoker,
+            run,
+            state,
             response,
             turn_number,
-            turns,
-            shutdown_checker,
         )
 
-    async def _handle_step_tool_calls(  # noqa: PLR0913, PLR0917
+    async def _handle_step_tool_calls(
         self,
-        ctx: AgentContext,
-        tool_invoker: ToolInvokerProtocol | None,
+        run: StepRunContext,
+        state: StepRunState,
         response: CompletionResponse,
         turn_number: int,
-        turns: list[TurnRecord],
-        shutdown_checker: ShutdownChecker | None,
-    ) -> AgentContext | ExecutionResult:
+    ) -> StepTurnOutcome | ExecutionResult:
         """Check shutdown and execute tool calls for a step turn.
 
         Returns:
-            The :class:`AgentContext` propagated from tool execution
-            (with tool outputs appended) or a terminal
+            :attr:`StepTurnOutcome.CONTINUE` once the tool outputs are
+            appended to ``state.ctx``, or a terminal
             :class:`ExecutionResult` when a shutdown intervenes.
         """
-        shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
+        shutdown_result = check_shutdown(state.ctx, run.shutdown_checker, state.turns)
         if shutdown_result is not None:
-            clear_last_turn_tool_calls(turns)
+            clear_last_turn_tool_calls(state.turns)
             return shutdown_result.model_copy(
-                update={"turns": tuple(turns)},
+                update={"turns": tuple(state.turns)},
             )
 
-        return await execute_tool_calls(
-            ctx,
-            tool_invoker,
+        result = await execute_tool_calls(
+            state.ctx,
+            run.tool_invoker,
             response,
             turn_number,
-            turns,
+            state.turns,
             approval_gate=self._approval_gate,
         )
+        if isinstance(result, ExecutionResult):
+            return result
+        state.ctx = result
+        return StepTurnOutcome.CONTINUE
 
     # -- Utilities ---------------------------------------------------------
 

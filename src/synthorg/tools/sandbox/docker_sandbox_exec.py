@@ -640,10 +640,11 @@ class DockerSandboxExecMixin:
     # Command execution via docker exec
     # ------------------------------------------------------------------
 
-    async def _open_exec(  # noqa: PLR0913, PLR0917
+    async def _open_exec(  # noqa: PLR0913
         self,
         docker: aiodocker.Docker,
         handle: ContainerHandle,
+        *,
         command: str,
         args: tuple[str, ...],
         container_cwd: str,
@@ -753,10 +754,10 @@ class DockerSandboxExecMixin:
         exec_obj = await self._open_exec(
             docker,
             handle,
-            command,
-            args,
-            container_cwd,
-            exec_env,
+            command=command,
+            args=args,
+            container_cwd=container_cwd,
+            exec_env=exec_env,
         )
         start_mono = self._clock.monotonic()
         stdout, stderr, timed_out = await self._drain_exec(

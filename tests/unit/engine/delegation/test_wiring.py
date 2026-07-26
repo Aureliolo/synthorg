@@ -85,8 +85,8 @@ class TestRegistryWithDelegateTool:
         registry = registry_with_delegate_tool(
             ToolRegistry([]),
             _NoopRunner(),
-            _resolver(),
-            _identity(),
+            config_resolver=_resolver(),
+            identity=_identity(),
             task_id="task-1",
             project_id="proj-1",
         )
@@ -96,8 +96,8 @@ class TestRegistryWithDelegateTool:
         registry = registry_with_delegate_tool(
             ToolRegistry([]),
             None,
-            _resolver(),
-            _identity(),
+            config_resolver=_resolver(),
+            identity=_identity(),
             task_id="task-1",
             project_id="proj-1",
         )
@@ -107,8 +107,8 @@ class TestRegistryWithDelegateTool:
         registry = registry_with_delegate_tool(
             ToolRegistry([]),
             _NoopRunner(),
-            None,
-            _identity(),
+            config_resolver=None,
+            identity=_identity(),
             task_id="task-1",
             project_id="proj-1",
         )
@@ -118,8 +118,8 @@ class TestRegistryWithDelegateTool:
         registry = registry_with_delegate_tool(
             ToolRegistry([]),
             _NoopRunner(),
-            _resolver(),
-            _identity(),
+            config_resolver=_resolver(),
+            identity=_identity(),
             task_id="task-1",
             project_id=None,
         )
@@ -129,8 +129,8 @@ class TestRegistryWithDelegateTool:
         registry = registry_with_delegate_tool(
             ToolRegistry([]),
             _NoopRunner(),
-            _resolver(),
-            _identity(),
+            config_resolver=_resolver(),
+            identity=_identity(),
             task_id=None,
             project_id="proj-1",
         )

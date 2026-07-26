@@ -8,7 +8,7 @@ runs after persistence connects: ``auto_wire_settings`` (SettingsService +
 dispatcher) and ``auto_wire_ontology``.
 """
 
-from collections.abc import Callable
+from typing import Protocol
 
 from synthorg.api.auto_wire_meetings import MeetingWireResult, auto_wire_meetings
 from synthorg.api.auto_wire_phase1 import Phase1Result, auto_wire_phase1
@@ -44,21 +44,36 @@ __all__ = [
 
 logger = get_logger(__name__)
 
-type SettingsDispatcherBuilder = Callable[
-    [
-        MessageBus | None,
-        SettingsService | None,
-        RootConfig,
-        AppState,
-        BackupService | None,
-        ApprovalTimeoutScheduler | None,
-    ],
-    SettingsChangeDispatcher | None,
-]
-"""Callable that builds the SettingsChangeDispatcher during on-startup wiring."""
+
+class SettingsDispatcherBuilder(Protocol):
+    """Builds the SettingsChangeDispatcher during on-startup wiring.
+
+    A Protocol rather than a ``Callable`` alias because the builder's six
+    same-shaped optional collaborators are keyword-only, which the callable
+    alias form cannot express.
+    """
+
+    def __call__(  # noqa: PLR0913
+        self,
+        *,
+        message_bus: MessageBus | None,
+        settings_service: SettingsService | None,
+        config: RootConfig,
+        app_state: AppState,
+        backup_service: BackupService | None = None,
+        approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None,
+    ) -> SettingsChangeDispatcher | None:
+        """Build the dispatcher, or return ``None`` when it cannot be wired.
+
+        Returns:
+            The wired ``SettingsChangeDispatcher``, or ``None`` when the
+            message bus or settings service is absent.
+        """
+        ...
 
 
-async def auto_wire_settings(  # noqa: PLR0913, PLR0917
+async def auto_wire_settings(  # noqa: PLR0913
+    *,
     persistence: PersistenceBackend,
     message_bus: MessageBus | None,
     effective_config: RootConfig,
@@ -117,12 +132,12 @@ async def auto_wire_settings(  # noqa: PLR0913, PLR0917
     # service that has no running dispatcher.
     try:
         dispatcher = build_dispatcher(
-            message_bus,
-            settings_svc,
-            effective_config,
-            app_state,
-            backup_service,
-            approval_timeout_scheduler,
+            message_bus=message_bus,
+            settings_service=settings_svc,
+            config=effective_config,
+            app_state=app_state,
+            backup_service=backup_service,
+            approval_timeout_scheduler=approval_timeout_scheduler,
         )
     except Exception as exc:
         log_exception_redacted(

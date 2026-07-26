@@ -385,9 +385,9 @@ class AgentEngineRecoveryMixin:
         )
         result = await apply_post_execution_transitions(
             result,
-            agent_id,
-            task_id,
-            self._task_engine,
+            agent_id=agent_id,
+            task_id=task_id,
+            task_engine=self._task_engine,
         )
         logger.info(
             EXECUTION_RESUME_COMPLETE,

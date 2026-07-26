@@ -29,7 +29,6 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
-    ToolDefinition,
 )
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.tools.protocol import ToolInvokerProtocol
@@ -56,6 +55,7 @@ from .loop_protocol import (
 from .plan_helpers import (
     update_step_status,
 )
+from .plan_loop_context import StepRunContext, StepRunState
 from .plan_models import (
     ExecutionPlan,
     PlanExecuteConfig,
@@ -189,71 +189,43 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         if cancel_result is not None:
             return self._finalize(cancel_result, [], 0)
         default_model = ctx.identity.model.model_id
-        planner_model = self._config.planner_model or default_model
-        executor_model = self._config.executor_model or default_model
-        default_config = completion_config or CompletionConfig(
-            temperature=ctx.identity.model.temperature,
-            max_tokens=ctx.identity.model.max_tokens,
+        run = StepRunContext(
+            provider=provider,
+            executor_model=self._config.executor_model or default_model,
+            planner_model=self._config.planner_model or default_model,
+            completion_config=completion_config
+            or CompletionConfig(
+                temperature=ctx.identity.model.temperature,
+                max_tokens=ctx.identity.model.max_tokens,
+            ),
+            tool_invoker=tool_invoker,
+            budget_checker=budget_checker,
+            shutdown_checker=shutdown_checker,
+            task_cancellation_checker=task_cancellation_checker,
+            turn_observer=turn_observer,
+            checkpoint_callback=self._checkpoint_callback,
+            streaming_enabled=streaming_enabled,
         )
-        tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
         turns: list[TurnRecord] = []
         all_plans: list[ExecutionPlan] = []
-        replans_used = 0
 
         # Planning.
-        plan_result = await self._run_planning_phase(
-            ctx,
-            provider,
-            planner_model,
-            default_config,
-            turns,
-            shutdown_checker,
-            budget_checker,
-        )
+        plan_result = await self._run_planning_phase(run, ctx, turns)
         if isinstance(plan_result, ExecutionResult):
-            return self._finalize(plan_result, all_plans, replans_used)
+            return self._finalize(plan_result, all_plans, 0)
         ctx, plan = plan_result
         all_plans.append(plan)
 
         # Execute steps.
         return await self._run_steps(
-            ctx,
-            provider,
-            executor_model,
-            default_config,
-            tool_defs,
-            tool_invoker,
-            plan,
-            turns,
-            all_plans,
-            replans_used,
-            planner_model,
-            budget_checker,
-            shutdown_checker,
-            task_cancellation_checker,
-            turn_observer,
-            streaming_enabled=streaming_enabled,
+            run,
+            StepRunState(ctx=ctx, plan=plan, turns=turns, all_plans=all_plans),
         )
 
-    async def _run_steps(  # noqa: PLR0913, PLR0917
+    async def _run_steps(
         self,
-        ctx: AgentContext,
-        provider: CompletionProvider,
-        executor_model: str,
-        config: CompletionConfig,
-        tool_defs: list[ToolDefinition] | None,
-        tool_invoker: ToolInvokerProtocol | None,
-        plan: ExecutionPlan,
-        turns: list[TurnRecord],
-        all_plans: list[ExecutionPlan],
-        replans_used: int,
-        planner_model: str,
-        budget_checker: BudgetChecker | None,
-        shutdown_checker: ShutdownChecker | None,
-        task_cancellation_checker: TaskCancellationChecker | None = None,
-        turn_observer: TurnObserver | None = None,
-        *,
-        streaming_enabled: bool = False,
+        run: StepRunContext,
+        state: StepRunState,
     ) -> ExecutionResult:
         """Iterate through plan steps, handling failures and replanning.
 
@@ -262,68 +234,54 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             (success, MAX_TURNS, replan exhaustion, shutdown, or
             cancellation).
         """
-        step_idx = 0
         signals: list[StepQualitySignal] = []
-        while step_idx < len(plan.steps):
-            if not ctx.has_turns_remaining:
+        while state.step_idx < len(state.plan.steps):
+            if not state.ctx.has_turns_remaining:
                 break
 
-            step = plan.steps[step_idx]
-            plan = update_step_status(
-                plan,
-                step_idx,
+            step = state.plan.steps[state.step_idx]
+            state.plan = update_step_status(
+                state.plan,
+                state.step_idx,
                 StepStatus.IN_PROGRESS,
             )
             logger.info(
                 EXECUTION_PLAN_STEP_START,
-                execution_id=ctx.execution_id,
+                execution_id=state.ctx.execution_id,
                 step_number=step.step_number,
                 description=step.description,
             )
             await notify_turn_observer(
-                turn_observer, step.step_number, (step.description,)
+                run.turn_observer, step.step_number, (step.description,)
             )
 
-            step_start = len(turns)
-            step_result = await self._execute_step(
-                ctx,
-                provider,
-                executor_model,
-                config,
-                tool_defs,
-                tool_invoker,
-                step,
-                turns,
-                budget_checker,
-                shutdown_checker,
-                task_cancellation_checker,
-                streaming_enabled=streaming_enabled,
-            )
+            step_start = len(state.turns)
+            step_result = await self._execute_step(run, state, step)
 
             if isinstance(step_result, ExecutionResult):
                 # The in-flight step ends here (cancel / shutdown / budget /
                 # stagnation / error). Classify it too so its signal is not
                 # dropped from quality_signals, which the worker health
                 # pipeline consumes downstream.
-                if step_start < len(turns):
+                if step_start < len(state.turns):
                     step_signal = await classify_step(
                         self._step_classifier,
-                        step_index=step_idx,
-                        step_turns=tuple(turns[step_start:]),
+                        step_index=state.step_idx,
+                        step_turns=tuple(state.turns[step_start:]),
                         termination_reason=step_result.termination_reason,
                     )
                     if step_signal is not None:
                         signals.append(step_signal)
                 return self._attach_signals(
-                    self._finalize(step_result, all_plans, replans_used),
+                    self._finalize(step_result, state.all_plans, state.replans_used),
                     signals,
                 )
 
-            ctx, step_ok = step_result
+            step_ok = step_result
             step_signal = await classify_step(
                 self._step_classifier,
-                step_index=step_idx,
-                step_turns=tuple(turns[step_start:]),
+                step_index=state.step_idx,
+                step_turns=tuple(state.turns[step_start:]),
                 termination_reason=(
                     TerminationReason.COMPLETED
                     if step_ok
@@ -334,73 +292,42 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
                 signals.append(step_signal)
 
             if step_ok:
-                plan = update_step_status(
-                    plan,
-                    step_idx,
+                state.plan = update_step_status(
+                    state.plan,
+                    state.step_idx,
                     StepStatus.COMPLETED,
                 )
                 logger.info(
                     EXECUTION_PLAN_STEP_COMPLETE,
-                    execution_id=ctx.execution_id,
+                    execution_id=state.ctx.execution_id,
                     step_number=step.step_number,
                 )
-                step_idx += 1
+                state.step_idx += 1
                 # A REDIRECT adopted mid-step forces a replan at this
                 # safe boundary so the revised plan honours the directive.
-                if ctx.pending_steering_replan_id is not None:
+                if state.ctx.pending_steering_replan_id is not None:
                     steer_out = await steering_replan(
-                        ctx=ctx,
-                        provider=provider,
-                        planner_model=planner_model,
-                        config=config,
-                        plan=plan,
-                        turns=turns,
-                        all_plans=all_plans,
-                        replans_used=replans_used,
+                        run,
+                        state,
                         call_planner=self._call_planner,
                         finalize=self._finalize,
                     )
-                    if isinstance(steer_out, ExecutionResult):
+                    if steer_out is not None:
                         return self._attach_signals(steer_out, signals)
-                    ctx, plan, replans_used = steer_out
-                    step_idx = 0
+                    state.step_idx = 0
                 continue
 
             # Step failed -- attempt re-planning
-            replan_out = await self._attempt_replan(
-                ctx,
-                provider,
-                planner_model,
-                config,
-                plan,
-                step,
-                step_idx,
-                turns,
-                all_plans,
-                replans_used,
-                budget_checker,
-                shutdown_checker,
-            )
-            if isinstance(replan_out, ExecutionResult):
+            replan_out = await self._attempt_replan(run, state, step)
+            if replan_out is not None:
                 return self._attach_signals(replan_out, signals)
-            ctx, plan, replans_used = replan_out
             # The failure replan already incorporates any adopted directive
             # (it is in the conversation), so clear the pending steering
             # replan to avoid a redundant second replan at the next boundary.
-            ctx = ctx.cleared_pending_replan()
-            step_idx = 0
+            state.ctx = state.ctx.cleared_pending_replan()
+            state.step_idx = 0
 
-        return self._attach_signals(
-            self._build_final_result(
-                ctx,
-                plan,
-                step_idx,
-                turns,
-                all_plans,
-                replans_used,
-            ),
-            signals,
-        )
+        return self._attach_signals(self._build_final_result(state), signals)
 
     @staticmethod
     def _attach_signals(
@@ -419,27 +346,17 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
 
     # ── Step execution ──────────────────────────────────────────────
 
-    async def _execute_step(  # noqa: PLR0913, PLR0917
+    async def _execute_step(
         self,
-        ctx: AgentContext,
-        provider: CompletionProvider,
-        executor_model: str,
-        config: CompletionConfig,
-        tool_defs: list[ToolDefinition] | None,
-        tool_invoker: ToolInvokerProtocol | None,
+        run: StepRunContext,
+        state: StepRunState,
         step: PlanStep,
-        turns: list[TurnRecord],
-        budget_checker: BudgetChecker | None,
-        shutdown_checker: ShutdownChecker | None,
-        task_cancellation_checker: TaskCancellationChecker | None = None,
-        *,
-        streaming_enabled: bool = False,
-    ) -> tuple[AgentContext, bool] | ExecutionResult:
+    ) -> bool | ExecutionResult:
         """Execute a single plan step via a mini-ReAct sub-loop.
 
         Returns:
-            ``(ctx, True)`` on success, ``(ctx, False)`` on step failure,
-            or ``ExecutionResult`` for termination conditions.
+            ``True`` on success, ``False`` on step failure, or
+            ``ExecutionResult`` for termination conditions.
         """
         instruction = (
             f"Execute the following step {step.step_number}:\n"
@@ -455,54 +372,34 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             role=MessageRole.USER,
             content=instruction,
         )
-        ctx = ctx.with_message(step_msg)
-        step_start_idx = len(turns)
+        state.ctx = state.ctx.with_message(step_msg)
+        step_start_idx = len(state.turns)
         step_corrections = 0
 
-        while ctx.has_turns_remaining:
+        while state.ctx.has_turns_remaining:
             # Refresh tool defs so newly loaded tools appear
-            tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
-            result = await self._run_step_turn(
-                ctx,
-                provider,
-                executor_model,
-                config,
-                tool_defs,
-                tool_invoker,
-                turns,
-                budget_checker,
-                shutdown_checker,
-                task_cancellation_checker,
-                streaming_enabled=streaming_enabled,
-            )
+            tool_defs = get_tool_definitions(run.tool_invoker, state.ctx.loaded_tools)
+            result = await self._run_step_turn(run, state, tool_defs)
             if isinstance(result, ExecutionResult):
                 return result
-            if isinstance(result, tuple):
-                ctx, step_ok = result
-                compacted = await invoke_compaction(
-                    ctx,
-                    self._compaction_callback,
-                    ctx.turn_count,
-                )
-                if compacted is not None:
-                    ctx = compacted
-                return ctx, step_ok
-            ctx = result
 
             # Context compaction at turn boundaries
             compacted = await invoke_compaction(
-                ctx,
+                state.ctx,
                 self._compaction_callback,
-                ctx.turn_count,
+                state.ctx.turn_count,
             )
             if compacted is not None:
-                ctx = compacted
+                state.ctx = compacted
+
+            if isinstance(result, bool):
+                return result
 
             # Per-step stagnation detection (step-scoped turns only)
             stag_outcome = await check_stagnation(
-                ctx,
+                state.ctx,
                 self._stagnation_detector,
-                turns[step_start_idx:],
+                state.turns[step_start_idx:],
                 step_corrections,
                 step_number=step.step_number,
             )
@@ -510,9 +407,9 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
                 # Rebuild with full turns -- check_stagnation only
                 # received the step-scoped slice.
                 return stag_outcome.model_copy(
-                    update={"turns": tuple(turns)},
+                    update={"turns": tuple(state.turns)},
                 )
             if isinstance(stag_outcome, tuple):
-                ctx, step_corrections = stag_outcome
+                state.ctx, step_corrections = stag_outcome
 
-        return ctx, False
+        return False

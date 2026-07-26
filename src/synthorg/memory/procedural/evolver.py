@@ -174,14 +174,14 @@ class AutonomousSkillEvolver:
         )
         return self._assemble_report(
             cycle_id,
-            window,
-            now,
-            trajectories,
-            patterns,
-            proposals,
-            conflicts,
-            supersessions,
-            skipped,
+            window=window,
+            now=now,
+            trajectories=trajectories,
+            patterns=patterns,
+            proposals=proposals,
+            conflicts=conflicts,
+            supersessions=supersessions,
+            skipped_low_confidence=skipped,
         )
 
     def _collect_proposals(
@@ -256,9 +256,10 @@ class AutonomousSkillEvolver:
 
         return proposals, conflicts, supersessions, skipped_low_confidence
 
-    def _assemble_report(  # noqa: PLR0913, PLR0917
+    def _assemble_report(  # noqa: PLR0913
         self,
         cycle_id: str,
+        *,
         window: timedelta,
         now: datetime,
         trajectories: tuple[AggregatedTrajectory, ...],

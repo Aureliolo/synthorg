@@ -570,12 +570,12 @@ def build_construction_services(
         approval_timeout_config=effective_config.config.approval_timeout,
     )
     settings_dispatcher = _build_settings_dispatcher(
-        message_bus,
-        overrides.settings_service,
-        effective_config,
-        app_state,
-        backup_service,
-        approval_timeout_scheduler,
+        message_bus=message_bus,
+        settings_service=overrides.settings_service,
+        config=effective_config,
+        app_state=app_state,
+        backup_service=backup_service,
+        approval_timeout_scheduler=approval_timeout_scheduler,
     )
     plugins: list[ChannelsPlugin] = [channels_plugin]
     rate_limiter_enabled = resolve_rate_limiter_enabled()

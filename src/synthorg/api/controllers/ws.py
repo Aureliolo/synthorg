@@ -498,8 +498,9 @@ async def _trip_breaker_and_close(
         pass
 
 
-async def _on_event(  # noqa: PLR0913, PLR0917
+async def _on_event(  # noqa: PLR0913
     event_data: bytes,
+    *,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
     queue: asyncio.Queue[bytes],
@@ -1029,10 +1030,10 @@ async def ws_handler(
         """Run event callback."""
         await _on_event(
             event_data,
-            subscribed,
-            filters,
-            outbound_queue,
-            user,
+            subscribed=subscribed,
+            filters=filters,
+            queue=outbound_queue,
+            conn_user=user,
             backpressure=backpressure_tracker,
             socket=socket,
             clock=breaker_clock,

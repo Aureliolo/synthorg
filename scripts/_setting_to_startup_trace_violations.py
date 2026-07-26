@@ -318,9 +318,10 @@ def _build_violation_for_hardcoded_none(
     )
 
 
-def _detect_violation(  # noqa: PLR0913, PLR0917 -- caches passed in to avoid quadratic re-reads
+def _detect_violation(  # noqa: PLR0913 -- caches passed in to avoid quadratic re-reads
     setting: SettingRecord,
     ghosts: list[GhostService],
+    *,
     settings_by_yaml: dict[str, SettingRecord],
     class_index: dict[str, list[Path]],
     class_file_text_cache: dict[Path, str],
@@ -401,10 +402,10 @@ def scan_repo(
         v = _detect_violation(
             setting,
             ghosts,
-            settings_by_yaml,
-            class_index,
-            class_file_text_cache,
-            resolver_consumers_cache,
+            settings_by_yaml=settings_by_yaml,
+            class_index=class_index,
+            class_file_text_cache=class_file_text_cache,
+            resolver_consumers_cache=resolver_consumers_cache,
         )
         if v is not None:
             violations.append(v)

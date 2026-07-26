@@ -108,41 +108,38 @@ class TestHybridLoopReplanPromptContent:
         success vs failure triggers.
         """
         from synthorg.engine.hybrid.replan_helpers import do_replan
+        from synthorg.engine.plan_loop_context import StepRunContext, StepRunState
 
         plan = _make_plan_model()
         step = plan.steps[0]
         cfg = HybridLoopConfig(max_replans=2)
 
-        default_config = CompletionConfig()
+        def _run(provider: MockCompletionProvider) -> StepRunContext:
+            return StepRunContext(
+                provider=provider,
+                executor_model="test-model-001",
+                planner_model="test-model-001",
+                completion_config=CompletionConfig(),
+            )
 
         # Capture messages for step_failed=True
         failure_provider = mock_provider_factory([_single_step_plan()])
-        ctx_fail = _ctx_with_user_msg(sample_agent_context)
         await do_replan(
             cfg,
-            ctx_fail,
-            failure_provider,
-            "test-model-001",
-            default_config,
-            plan,
+            _run(failure_provider),
+            StepRunState(ctx=_ctx_with_user_msg(sample_agent_context), plan=plan),
             step,
-            [],
             step_failed=True,
         )
         failure_messages = failure_provider.recorded_messages[0]
 
         # Capture messages for step_failed=False
         success_provider = mock_provider_factory([_single_step_plan()])
-        ctx_ok = _ctx_with_user_msg(sample_agent_context)
         await do_replan(
             cfg,
-            ctx_ok,
-            success_provider,
-            "test-model-001",
-            default_config,
-            plan,
+            _run(success_provider),
+            StepRunState(ctx=_ctx_with_user_msg(sample_agent_context), plan=plan),
             step,
-            [],
             step_failed=False,
         )
         success_messages = success_provider.recorded_messages[0]

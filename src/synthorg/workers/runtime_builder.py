@@ -382,12 +382,12 @@ async def build_runtime_services(
     engine = await _construct_agent_engine(
         app_state,
         provider,
-        registry,
-        tool_registry,
-        coordination_metrics_collector,
-        external_api_runtime,
-        forge_tools_runtime,
-        chat_tools_runtime,
+        registry=registry,
+        tool_registry=tool_registry,
+        coordination_metrics_collector=coordination_metrics_collector,
+        external_api_runtime=external_api_runtime,
+        forge_tools_runtime=forge_tools_runtime,
+        chat_tools_runtime=chat_tools_runtime,
         flight_recorder_sink=flight_recorder_sink,
         step_classifier=step_classifier,
         classification_detector_timeout_seconds=(

@@ -550,10 +550,10 @@ class AgentEngineErrorsMixin:
             error_execution = await self._build_error_execution(
                 identity,
                 task,
-                agent_id,
-                task_id,
-                error_msg,
-                ctx,
+                agent_id=agent_id,
+                task_id=task_id,
+                error_msg=error_msg,
+                ctx=ctx,
                 completion_config=completion_config,
                 effective_autonomy=effective_autonomy,
                 provider=provider,
@@ -611,15 +611,15 @@ class AgentEngineErrorsMixin:
             )
             raise exc from None
 
-    async def _build_error_execution(  # noqa: PLR0913, PLR0917
+    async def _build_error_execution(  # noqa: PLR0913
         self,
         identity: AgentIdentity,
         task: Task,
+        *,
         agent_id: str,
         task_id: str,
         error_msg: str,
         ctx: AgentContext | None,
-        *,
         completion_config: CompletionConfig | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,

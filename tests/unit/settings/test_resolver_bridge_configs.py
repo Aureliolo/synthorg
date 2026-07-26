@@ -357,7 +357,7 @@ _HAPPY_CASES: tuple[
     _HAPPY_CASES,
     ids=[case[0] for case in _HAPPY_CASES],
 )
-async def test_bridge_config_happy_path(  # noqa: PLR0913, PLR0917
+async def test_bridge_config_happy_path(  # noqa: PLR0913
     resolver: ConfigResolver,
     mock_settings: AsyncMock,
     method_name: str,

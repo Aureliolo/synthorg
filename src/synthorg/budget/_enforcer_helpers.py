@@ -400,9 +400,9 @@ def _build_checker_closure(  # noqa: PLR0913
                 running_cost,
                 monthly_budget,
                 monthly_baseline,
-                thresholds,
-                last_alert,
-                agent_id,
+                thresholds=thresholds,
+                last_alert=last_alert,
+                agent_id=agent_id,
             )
             or _check_daily_limit(
                 running_cost,
@@ -475,10 +475,11 @@ def _check_task_limit(
     return False
 
 
-def _check_monthly_limit(  # noqa: PLR0913, PLR0917
+def _check_monthly_limit(  # noqa: PLR0913
     running_cost: float,
     monthly_budget: float,
     monthly_baseline: float,
+    *,
     thresholds: _AlertThresholds,
     last_alert: list[BudgetAlertLevel],
     agent_id: str,

@@ -105,7 +105,7 @@ class ProjectDocsController(Controller):
     tags = ("project_docs",)
 
     @get(guards=[require_read_access])
-    async def list_docs(  # noqa: PLR0913, PLR0917 -- controller endpoint takes query params per filter dimension
+    async def list_docs(  # noqa: PLR0913 -- controller endpoint takes query params per filter dimension
         self,
         state: State,
         project_id: PathId,

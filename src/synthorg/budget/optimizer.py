@@ -170,9 +170,9 @@ class CostOptimizer(_CostOptimizerRoutingMixin):
                 agent_id,
                 window_costs,
                 now,
-                window_starts,
-                window_duration,
-                self._config,
+                window_starts=window_starts,
+                window_duration=window_duration,
+                config=self._config,
                 currency=self._budget_config.currency,
             )
             if anomaly is not None:

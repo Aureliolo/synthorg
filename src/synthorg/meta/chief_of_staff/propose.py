@@ -344,16 +344,21 @@ class ChiefOfStaffProposer(ProposeActMixin):
 
         if decision.needs_clarification:
             return await self._record_clarification(
-                conversation, decision, routing, outcome.reason, next_sequence + 1, now
+                conversation,
+                decision,
+                routing=routing,
+                routing_reason=outcome.reason,
+                sequence=next_sequence + 1,
+                now=now,
             )
         return await self._act_on_decision(
             conversation,
             args,
-            decision,
-            routing,
-            outcome.reason,
-            next_sequence + 1,
-            now,
+            decision=decision,
+            routing=routing,
+            routing_reason=outcome.reason,
+            sequence=next_sequence + 1,
+            now=now,
         )
 
     async def _resolve_routing(
@@ -545,10 +550,11 @@ class ChiefOfStaffProposer(ProposeActMixin):
             )
             raise ConversationalProposeResponseInvalidError from exc
 
-    async def _record_clarification(  # noqa: PLR0913, PLR0917 -- one turn's record context
+    async def _record_clarification(  # noqa: PLR0913 -- one turn's record context
         self,
         conversation: Conversation,
         decision: ProposeDecision,
+        *,
         routing: RoutingDecision | None,
         routing_reason: RoutingReason,
         sequence: int,

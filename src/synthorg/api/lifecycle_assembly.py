@@ -117,15 +117,15 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         A tuple of (on_startup, on_shutdown) callback lists in run order.
     """
     startup, shutdown = _build_lifecycle(
-        persistence,
-        message_bus,
-        bridge,
-        settings_dispatcher,
-        task_engine,
-        meeting_scheduler,
-        backup_service,
-        approval_timeout_scheduler,
-        app_state,
+        persistence=persistence,
+        message_bus=message_bus,
+        bridge=bridge,
+        settings_dispatcher=settings_dispatcher,
+        task_engine=task_engine,
+        meeting_scheduler=meeting_scheduler,
+        backup_service=backup_service,
+        approval_timeout_scheduler=approval_timeout_scheduler,
+        app_state=app_state,
         should_auto_wire_settings=should_auto_wire_settings,
         effective_config=effective_config,
     )

@@ -78,15 +78,15 @@ class SystemPrompt(BaseModel):
         return self
 
 
-def build_prompt_result(  # noqa: PLR0913, PLR0917
+def build_prompt_result(  # noqa: PLR0913
     content: str,
     estimated: int,
+    *,
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
     company: Company | None,
     org_policies: tuple[str, ...],
     agent: AgentIdentity,
-    *,
     custom_template: bool = False,
     context_budget: str | None = None,
     profile: PromptProfile | None = None,

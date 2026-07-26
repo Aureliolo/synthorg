@@ -72,7 +72,7 @@ class TestHybridCaptureStrategy:
         """Test that name property returns expected value."""
         assert hybrid_strategy.name == "hybrid"
 
-    async def test_delegates_to_failure_strategy_on_recovery(  # noqa: PLR0913, PLR0917
+    async def test_delegates_to_failure_strategy_on_recovery(  # noqa: PLR0913
         self,
         hybrid_strategy: HybridCaptureStrategy,
         failure_strategy: MagicMock,

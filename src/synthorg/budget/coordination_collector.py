@@ -245,10 +245,10 @@ class CoordinationMetricsCollector:
             self._record_baseline(
                 inputs.agent_id,
                 inputs.task_id,
-                turns,
-                error_rate,
-                total_tokens,
-                inputs.execution_result,
+                turns=turns,
+                error_rate=error_rate,
+                total_tokens=total_tokens,
+                execution_result=inputs.execution_result,
             )
             return CoordinationMetrics()
 
@@ -279,10 +279,11 @@ class CoordinationMetricsCollector:
             metrics_computed=0,
         )
 
-    def _record_baseline(  # noqa: PLR0913, PLR0917
+    def _record_baseline(  # noqa: PLR0913
         self,
         agent_id: str,
         task_id: str,
+        *,
         turns: int,
         error_rate: float,
         total_tokens: int,

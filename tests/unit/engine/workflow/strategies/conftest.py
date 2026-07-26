@@ -6,7 +6,8 @@ from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 SECONDS_PER_DAY: float = 86_400.0
 
 
-def make_sprint(  # noqa: PLR0913, PLR0917
+def make_sprint(  # noqa: PLR0913
+    *,
     task_count: int = 10,
     completed_count: int = 0,
     status: SprintStatus = SprintStatus.ACTIVE,
@@ -49,7 +50,8 @@ def make_sprint(  # noqa: PLR0913, PLR0917
     return Sprint.model_validate(kwargs)
 
 
-def make_context(  # noqa: PLR0913, PLR0917
+def make_context(  # noqa: PLR0913
+    *,
     elapsed_seconds: float = 0.0,
     completions_since_last: int = 0,
     total_completions: int = 0,

@@ -66,15 +66,15 @@ def _build_startup_with_failing_settings_autowire(
         failing_auto_wire,
     )
     startup, _shutdown = _build_lifecycle(
-        persistence,
-        bus,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        app_state,
+        persistence=persistence,
+        message_bus=bus,
+        bridge=None,
+        settings_dispatcher=None,
+        task_engine=None,
+        meeting_scheduler=None,
+        backup_service=None,
+        approval_timeout_scheduler=None,
+        app_state=app_state,
         should_auto_wire_settings=True,
         effective_config=root_config,
     )
@@ -332,15 +332,15 @@ class TestAppLifecycle:
 
         with pytest.raises(RuntimeError, match="bus boom"):
             await _safe_startup(
-                persistence,
-                bus,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                app_state,
+                persistence=persistence,
+                message_bus=bus,
+                bridge=None,
+                settings_dispatcher=None,
+                task_engine=None,
+                meeting_scheduler=None,
+                backup_service=None,
+                approval_timeout_scheduler=None,
+                app_state=app_state,
             )
         # Persistence should have been disconnected during cleanup
         assert not persistence.is_connected
@@ -361,7 +361,16 @@ class TestAppLifecycle:
         monkeypatch.setattr(persistence, "disconnect", failing_disconnect)
 
         # Should not raise even when disconnect fails
-        await _safe_shutdown(None, None, None, None, None, None, None, persistence)
+        await _safe_shutdown(
+            task_engine=None,
+            meeting_scheduler=None,
+            backup_service=None,
+            approval_timeout_scheduler=None,
+            settings_dispatcher=None,
+            bridge=None,
+            message_bus=None,
+            persistence=persistence,
+        )
 
     async def test_shutdown_event_logged_before_teardown(
         self,
@@ -385,15 +394,15 @@ class TestAppLifecycle:
             persistence=persistence,
         )
         _startup, shutdown = _build_lifecycle(
-            persistence,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            app_state,
+            persistence=persistence,
+            message_bus=None,
+            bridge=None,
+            settings_dispatcher=None,
+            task_engine=None,
+            meeting_scheduler=None,
+            backup_service=None,
+            approval_timeout_scheduler=None,
+            app_state=app_state,
         )
 
         with structlog.testing.capture_logs() as events:
@@ -439,15 +448,15 @@ class TestAppLifecycle:
 
         with pytest.raises(RuntimeError, match="engine boom"):
             await _safe_startup(
-                persistence,
-                bus,
-                None,
-                None,
-                mock_te,
-                None,
-                None,
-                None,
-                app_state,
+                persistence=persistence,
+                message_bus=bus,
+                bridge=None,
+                settings_dispatcher=None,
+                task_engine=mock_te,
+                meeting_scheduler=None,
+                backup_service=None,
+                approval_timeout_scheduler=None,
+                app_state=app_state,
             )
 
         # Persistence and bus should be cleaned up
@@ -484,15 +493,15 @@ class TestAppLifecycle:
 
         with pytest.raises(RuntimeError, match="dispatcher boom"):
             await _safe_startup(
-                persistence,
-                bus,
-                None,
-                mock_dispatcher,
-                None,
-                None,
-                None,
-                None,
-                app_state,
+                persistence=persistence,
+                message_bus=bus,
+                bridge=None,
+                settings_dispatcher=mock_dispatcher,
+                task_engine=None,
+                meeting_scheduler=None,
+                backup_service=None,
+                approval_timeout_scheduler=None,
+                app_state=app_state,
             )
 
         # Persistence and bus should be cleaned up
@@ -511,7 +520,16 @@ class TestAppLifecycle:
         )
 
         # Should not raise even when task engine stop fails
-        await _safe_shutdown(mock_te, None, None, None, None, None, None, None)
+        await _safe_shutdown(
+            task_engine=mock_te,
+            meeting_scheduler=None,
+            backup_service=None,
+            approval_timeout_scheduler=None,
+            settings_dispatcher=None,
+            bridge=None,
+            message_bus=None,
+            persistence=None,
+        )
 
     async def test_meeting_scheduler_lifecycle(
         self,
@@ -543,19 +561,28 @@ class TestAppLifecycle:
         )
 
         await _safe_startup(
-            persistence,
-            bus,
-            None,
-            None,
-            None,
-            mock_sched,
-            None,
-            None,
-            app_state,
+            persistence=persistence,
+            message_bus=bus,
+            bridge=None,
+            settings_dispatcher=None,
+            task_engine=None,
+            meeting_scheduler=mock_sched,
+            backup_service=None,
+            approval_timeout_scheduler=None,
+            app_state=app_state,
         )
         mock_sched.start.assert_awaited_once()
 
-        await _safe_shutdown(None, mock_sched, None, None, None, None, None, None)
+        await _safe_shutdown(
+            task_engine=None,
+            meeting_scheduler=mock_sched,
+            backup_service=None,
+            approval_timeout_scheduler=None,
+            settings_dispatcher=None,
+            bridge=None,
+            message_bus=None,
+            persistence=None,
+        )
         mock_sched.stop.assert_awaited_once()
 
     async def test_approval_timeout_scheduler_lifecycle(
@@ -588,19 +615,28 @@ class TestAppLifecycle:
         )
 
         await _safe_startup(
-            persistence,
-            bus,
-            None,
-            None,
-            None,
-            None,
-            None,
-            mock_sched,
-            app_state,
+            persistence=persistence,
+            message_bus=bus,
+            bridge=None,
+            settings_dispatcher=None,
+            task_engine=None,
+            meeting_scheduler=None,
+            backup_service=None,
+            approval_timeout_scheduler=mock_sched,
+            app_state=app_state,
         )
         mock_sched.start.assert_awaited_once()
 
-        await _safe_shutdown(None, None, None, mock_sched, None, None, None, None)
+        await _safe_shutdown(
+            task_engine=None,
+            meeting_scheduler=None,
+            backup_service=None,
+            approval_timeout_scheduler=mock_sched,
+            settings_dispatcher=None,
+            bridge=None,
+            message_bus=None,
+            persistence=None,
+        )
         mock_sched.stop.assert_awaited_once()
 
 
@@ -818,12 +854,12 @@ class TestAutoWirePhase2:
         assert app_state.slice(SettingsStateSlice).settings_service is None
 
         dispatcher = await auto_wire_settings(
-            fake_persistence,
-            fake_message_bus,
-            root_config,
-            app_state,
-            None,
-            _build_settings_dispatcher,
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+            effective_config=root_config,
+            app_state=app_state,
+            backup_service=None,
+            build_dispatcher=_build_settings_dispatcher,
         )
 
         assert app_state.slice(SettingsStateSlice).settings_service is not None
@@ -853,12 +889,12 @@ class TestAutoWirePhase2:
             persistence=fake_persistence,
         )
         dispatcher = await auto_wire_settings(
-            fake_persistence,
-            None,
-            root_config,
-            app_state,
-            None,
-            _build_settings_dispatcher,
+            persistence=fake_persistence,
+            message_bus=None,
+            effective_config=root_config,
+            app_state=app_state,
+            backup_service=None,
+            build_dispatcher=_build_settings_dispatcher,
         )
 
         assert app_state.slice(SettingsStateSlice).settings_service is not None
@@ -1032,12 +1068,12 @@ class TestAutoWirePhase2ErrorPaths:
         )
 
         dispatcher = await auto_wire_settings(
-            fake_persistence,
-            fake_message_bus,
-            root_config,
-            app_state,
-            None,
-            _build_settings_dispatcher,
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+            effective_config=root_config,
+            app_state=app_state,
+            backup_service=None,
+            build_dispatcher=_build_settings_dispatcher,
         )
         assert dispatcher is not None
 
@@ -1071,12 +1107,12 @@ class TestAutoWirePhase2ErrorPaths:
 
         with pytest.raises(RuntimeError, match="dispatcher start boom"):
             await auto_wire_settings(
-                fake_persistence,
-                None,
-                root_config,
-                app_state,
-                None,
-                failing_builder,
+                persistence=fake_persistence,
+                message_bus=None,
+                effective_config=root_config,
+                app_state=app_state,
+                backup_service=None,
+                build_dispatcher=failing_builder,
             )
 
         # AppState must not have been mutated
@@ -1105,12 +1141,12 @@ class TestAutoWirePhase2ErrorPaths:
 
         with pytest.raises(SettingsEncryptionError):
             await auto_wire_settings(
-                fake_persistence,
-                None,
-                root_config,
-                app_state,
-                None,
-                lambda *a, **kw: None,
+                persistence=fake_persistence,
+                message_bus=None,
+                effective_config=root_config,
+                app_state=app_state,
+                backup_service=None,
+                build_dispatcher=lambda **kw: None,
             )
 
         # AppState must not have been mutated

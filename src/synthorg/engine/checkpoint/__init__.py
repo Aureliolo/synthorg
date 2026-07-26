@@ -2,6 +2,13 @@
 
 Persists ``AgentContext`` snapshots at configurable turn intervals
 and resumes from the last checkpoint on crash, preserving progress.
+
+``resume`` and ``strategy`` are deliberately not re-exported here: both
+reach into the concrete loop classes, so pulling either into this package
+init makes every importer of the leaf ``CheckpointCallback`` alias drag in
+the whole loop tier, and closes a cold-import cycle back through it. Import
+them directly from ``synthorg.engine.checkpoint.resume`` and
+``synthorg.engine.checkpoint.strategy``, which is what every caller does.
 """
 
 from synthorg.engine.checkpoint.callback import CheckpointCallback
@@ -11,21 +18,11 @@ from synthorg.engine.checkpoint.models import (
     CheckpointConfig,
     Heartbeat,
 )
-from synthorg.engine.checkpoint.resume import (
-    cleanup_checkpoint_artifacts,
-    deserialize_and_reconcile,
-    make_loop_with_callback,
-)
-from synthorg.engine.checkpoint.strategy import CheckpointRecoveryStrategy
 
 __all__ = [
     "Checkpoint",
     "CheckpointCallback",
     "CheckpointConfig",
-    "CheckpointRecoveryStrategy",
     "Heartbeat",
-    "cleanup_checkpoint_artifacts",
-    "deserialize_and_reconcile",
     "make_checkpoint_callback",
-    "make_loop_with_callback",
 ]

@@ -297,7 +297,12 @@ class TestMakeLoopWithCallbackRepos:
     def test_both_repos_none_returns_original(self) -> None:
         loop = ReactLoop()
         result = make_loop_with_callback(
-            loop, None, None, CheckpointConfig(), "agent", "task"
+            loop,
+            checkpoint_repo=None,
+            heartbeat_repo=None,
+            checkpoint_config=CheckpointConfig(),
+            agent_id="agent",
+            task_id="task",
         )
         assert result is loop
 
@@ -305,7 +310,12 @@ class TestMakeLoopWithCallbackRepos:
         loop = ReactLoop()
         hb_repo = AsyncMock()
         result = make_loop_with_callback(
-            loop, None, hb_repo, CheckpointConfig(), "agent", "task"
+            loop,
+            checkpoint_repo=None,
+            heartbeat_repo=hb_repo,
+            checkpoint_config=CheckpointConfig(),
+            agent_id="agent",
+            task_id="task",
         )
         assert result is loop
 
@@ -313,7 +323,12 @@ class TestMakeLoopWithCallbackRepos:
         loop = ReactLoop()
         cp_repo = AsyncMock()
         result = make_loop_with_callback(
-            loop, cp_repo, None, CheckpointConfig(), "agent", "task"
+            loop,
+            checkpoint_repo=cp_repo,
+            heartbeat_repo=None,
+            checkpoint_config=CheckpointConfig(),
+            agent_id="agent",
+            task_id="task",
         )
         assert result is loop
 
@@ -327,11 +342,11 @@ class TestMakeLoopWithCallbackInjection:
         original = ReactLoop()
         result = make_loop_with_callback(
             original,
-            cp_repo,
-            hb_repo,
-            CheckpointConfig(),
-            "agent-1",
-            "task-1",
+            checkpoint_repo=cp_repo,
+            heartbeat_repo=hb_repo,
+            checkpoint_config=CheckpointConfig(),
+            agent_id="agent-1",
+            task_id="task-1",
         )
         assert isinstance(result, ReactLoop)
         assert result is not original
@@ -341,11 +356,11 @@ class TestMakeLoopWithCallbackInjection:
         original = PlanExecuteLoop()
         result = make_loop_with_callback(
             original,
-            cp_repo,
-            hb_repo,
-            CheckpointConfig(),
-            "agent-1",
-            "task-1",
+            checkpoint_repo=cp_repo,
+            heartbeat_repo=hb_repo,
+            checkpoint_config=CheckpointConfig(),
+            agent_id="agent-1",
+            task_id="task-1",
         )
         assert isinstance(result, PlanExecuteLoop)
         assert result is not original
@@ -358,11 +373,11 @@ class TestMakeLoopWithCallbackInjection:
         original = PlanExecuteLoop(config=config)
         result = make_loop_with_callback(
             original,
-            cp_repo,
-            hb_repo,
-            CheckpointConfig(),
-            "agent-1",
-            "task-1",
+            checkpoint_repo=cp_repo,
+            heartbeat_repo=hb_repo,
+            checkpoint_config=CheckpointConfig(),
+            agent_id="agent-1",
+            task_id="task-1",
         )
         assert isinstance(result, PlanExecuteLoop)
         assert result.config is config
@@ -375,11 +390,11 @@ class TestMakeLoopWithCallbackInjection:
         original = ReactLoop(stagnation_detector=detector)
         result = make_loop_with_callback(
             original,
-            cp_repo,
-            hb_repo,
-            CheckpointConfig(),
-            "agent-1",
-            "task-1",
+            checkpoint_repo=cp_repo,
+            heartbeat_repo=hb_repo,
+            checkpoint_config=CheckpointConfig(),
+            agent_id="agent-1",
+            task_id="task-1",
         )
         assert isinstance(result, ReactLoop)
         assert result.stagnation_detector is detector
@@ -392,11 +407,11 @@ class TestMakeLoopWithCallbackInjection:
         original = PlanExecuteLoop(stagnation_detector=detector)
         result = make_loop_with_callback(
             original,
-            cp_repo,
-            hb_repo,
-            CheckpointConfig(),
-            "agent-1",
-            "task-1",
+            checkpoint_repo=cp_repo,
+            heartbeat_repo=hb_repo,
+            checkpoint_config=CheckpointConfig(),
+            agent_id="agent-1",
+            task_id="task-1",
         )
         assert isinstance(result, PlanExecuteLoop)
         assert result.stagnation_detector is detector
@@ -416,11 +431,11 @@ class TestMakeLoopWithCallbackInjection:
         original = CustomLoop()
         result = make_loop_with_callback(
             original,  # type: ignore[arg-type]
-            cp_repo,
-            hb_repo,
-            CheckpointConfig(),
-            "agent-1",
-            "task-1",
+            checkpoint_repo=cp_repo,
+            heartbeat_repo=hb_repo,
+            checkpoint_config=CheckpointConfig(),
+            agent_id="agent-1",
+            task_id="task-1",
         )
         assert result is original  # type: ignore[comparison-overlap]
 

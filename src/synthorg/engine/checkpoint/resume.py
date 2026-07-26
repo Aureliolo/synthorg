@@ -123,8 +123,9 @@ def deserialize_and_reconcile(  # noqa: PLR0913
     return checkpoint_ctx.with_message(reconciliation_msg)
 
 
-def make_loop_with_callback(  # noqa: PLR0913, PLR0917
+def make_loop_with_callback(  # noqa: PLR0913
     loop: ExecutionLoop,
+    *,
     checkpoint_repo: CheckpointRepository | None,
     heartbeat_repo: HeartbeatRepository | None,
     checkpoint_config: CheckpointConfig,

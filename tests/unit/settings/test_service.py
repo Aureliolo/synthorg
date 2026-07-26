@@ -287,7 +287,7 @@ class TestValidation:
         ],
         ids=["non-float", "below-min", "above-max", "bad-enum", "bad-bool"],
     )
-    async def test_rejects_invalid_value(  # noqa: PLR0913, PLR0917
+    async def test_rejects_invalid_value(  # noqa: PLR0913
         self,
         mock_repo: AsyncMock,
         config: _FakeConfig,

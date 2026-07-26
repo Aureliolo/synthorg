@@ -195,7 +195,7 @@ class ArtifactController(Controller):
     tags = ("artifacts",)
 
     @get(guards=[require_read_access])
-    async def list_artifacts(  # noqa: PLR0913, PLR0917
+    async def list_artifacts(  # noqa: PLR0913
         self,
         state: State,
         cursor: CursorParam = None,

@@ -310,11 +310,11 @@ class MeetingOrchestrator:
         result = await self._execute_protocol(
             protocol,
             meeting_id,
-            meeting_type_name,
-            agenda,
-            leader_id,
-            participant_ids,
-            token_budget,
+            meeting_type_name=meeting_type_name,
+            agenda=agenda,
+            leader_id=leader_id,
+            participant_ids=participant_ids,
+            token_budget=token_budget,
             lens_assignments=lens_assignments,
         )
 
@@ -415,16 +415,16 @@ class MeetingOrchestrator:
             return False
         return True
 
-    async def _execute_protocol(  # noqa: PLR0913, PLR0917
+    async def _execute_protocol(  # noqa: PLR0913
         self,
         protocol: MeetingProtocol,
         meeting_id: str,
+        *,
         meeting_type_name: str,
         agenda: MeetingAgenda,
         leader_id: str,
         participant_ids: tuple[str, ...],
         token_budget: int,
-        *,
         lens_assignments: Mapping[str, str] | None = None,
     ) -> MeetingMinutes | MeetingRecord:
         """Run the protocol, catching errors as failure records.
@@ -452,11 +452,11 @@ class MeetingOrchestrator:
         except MeetingBudgetExhaustedError as exc:
             return self._make_failure_record(
                 meeting_id,
-                meeting_type_name,
-                protocol,
-                token_budget,
-                MeetingStatus.BUDGET_EXHAUSTED,
-                exc,
+                meeting_type_name=meeting_type_name,
+                protocol=protocol,
+                token_budget=token_budget,
+                status=MeetingStatus.BUDGET_EXHAUSTED,
+                exc=exc,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
@@ -469,16 +469,17 @@ class MeetingOrchestrator:
                     status = MeetingStatus.BUDGET_EXHAUSTED
             return self._make_failure_record(
                 meeting_id,
-                meeting_type_name,
-                protocol,
-                token_budget,
-                status,
-                exc,
+                meeting_type_name=meeting_type_name,
+                protocol=protocol,
+                token_budget=token_budget,
+                status=status,
+                exc=exc,
             )
 
-    def _make_failure_record(  # noqa: PLR0913, PLR0917
+    def _make_failure_record(  # noqa: PLR0913
         self,
         meeting_id: str,
+        *,
         meeting_type_name: str,
         protocol: MeetingProtocol,
         token_budget: int,

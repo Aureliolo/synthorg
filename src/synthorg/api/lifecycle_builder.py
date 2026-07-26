@@ -78,7 +78,8 @@ def _make_cleanup_done_callback(
     return _callback
 
 
-def _build_lifecycle(  # noqa: PLR0913, PLR0917
+def _build_lifecycle(  # noqa: PLR0913
+    *,
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
@@ -88,7 +89,6 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0917
     backup_service: BackupService | None,
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None,
     app_state: AppState,
-    *,
     should_auto_wire_settings: bool = False,
     effective_config: RootConfig | None = None,
 ) -> tuple[

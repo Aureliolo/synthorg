@@ -427,7 +427,9 @@ def _scan_file(
         if paren_idx is None or paren_idx in seen_offsets:
             continue
         seen_offsets.add(paren_idx)
-        record = _emit_record(text, lines, paren_idx, method, rel, constants)
+        record = _emit_record(
+            text, lines, paren_idx, method=method, rel=rel, constants=constants
+        )
         if record is not None:
             records.append(record)
 
@@ -442,17 +444,20 @@ def _scan_file(
             continue
         seen_offsets.add(paren_idx)
         method = _extract_fetch_method(text, paren_idx) or "GET"
-        record = _emit_record(text, lines, paren_idx, method, rel, constants)
+        record = _emit_record(
+            text, lines, paren_idx, method=method, rel=rel, constants=constants
+        )
         if record is not None:
             records.append(record)
 
     return records
 
 
-def _emit_record(  # noqa: PLR0913, PLR0917 -- helper takes pre-computed scan state
+def _emit_record(  # noqa: PLR0913 -- helper takes pre-computed scan state
     text: str,
     lines: list[str],
     paren_idx: int,
+    *,
     method: str,
     rel: str,
     constants: dict[str, str],

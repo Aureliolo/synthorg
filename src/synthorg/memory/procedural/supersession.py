@@ -101,9 +101,10 @@ class _LogFn(Protocol):
     def __call__(self, event: str, /, **kwargs: object) -> object: ...
 
 
-def _emit_result(  # noqa: PLR0913, PLR0917
+def _emit_result(  # noqa: PLR0913
     verdict: SupersessionVerdict,
     event: str,
+    *,
     log_fn: _LogFn,
     candidate_id: NotBlankStr,
     existing_id: NotBlankStr,
@@ -163,10 +164,10 @@ def evaluate_supersession(
         return _emit_result(
             SupersessionVerdict.PARTIAL,
             SUPERSESSION_PARTIAL,
-            logger.debug,
-            candidate_id,
-            existing_id,
-            "Insufficient condition tokens for comparison",
+            log_fn=logger.debug,
+            candidate_id=candidate_id,
+            existing_id=existing_id,
+            reason="Insufficient condition tokens for comparison",
             condition_similarity="n/a",
             action_similarity="n/a",
         )
@@ -189,10 +190,10 @@ def evaluate_supersession(
         return _emit_result(
             SupersessionVerdict.CONFLICT,
             SUPERSESSION_CONFLICT,
-            logger.info,
-            candidate_id,
-            existing_id,
-            f"Condition similarity {cs} but action similarity "
+            log_fn=logger.info,
+            candidate_id=candidate_id,
+            existing_id=existing_id,
+            reason=f"Condition similarity {cs} but action similarity "
             f"only {as_} (contradictory approaches)",
             condition_similarity=cs,
             action_similarity=as_,
@@ -207,10 +208,10 @@ def evaluate_supersession(
         return _emit_result(
             SupersessionVerdict.FULL,
             SUPERSESSION_FULL,
-            logger.info,
-            candidate_id,
-            existing_id,
-            f"Candidate covers {condition_coverage:.0%} of existing "
+            log_fn=logger.info,
+            candidate_id=candidate_id,
+            existing_id=existing_id,
+            reason=f"Candidate covers {condition_coverage:.0%} of existing "
             f"condition with higher confidence "
             f"({candidate.confidence:.2f} > {existing.confidence:.2f})",
             condition_coverage=f"{condition_coverage:.0%}",
@@ -220,10 +221,10 @@ def evaluate_supersession(
     return _emit_result(
         SupersessionVerdict.PARTIAL,
         SUPERSESSION_PARTIAL,
-        logger.debug,
-        candidate_id,
-        existing_id,
-        f"Partial overlap: condition similarity {cs}, action similarity {as_}",
+        log_fn=logger.debug,
+        candidate_id=candidate_id,
+        existing_id=existing_id,
+        reason=f"Partial overlap: condition similarity {cs}, action similarity {as_}",
         condition_similarity=cs,
         action_similarity=as_,
     )

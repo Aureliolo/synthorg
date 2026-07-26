@@ -419,15 +419,15 @@ def _build_degraded_health(
     )
 
 
-def _build_health_from_data(  # noqa: PLR0913, PLR0917
+def _build_health_from_data(  # noqa: PLR0913
     dept_name: str,
+    *,
     agent_count: int,
     active_count: int,
     cost_records: tuple[CostRecord, ...],
     agent_ids: tuple[str, ...],
     snapshots: tuple[AgentPerformanceSnapshot, ...],
     now: datetime,
-    *,
     total_runs: int = 0,
     success_count: int = 0,
     min_runs: int = _DEFAULT_HEALTH_MIN_RUNS,

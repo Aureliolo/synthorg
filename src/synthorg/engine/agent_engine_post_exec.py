@@ -144,9 +144,9 @@ class AgentEnginePostExecMixin:
         )
         execution_result = await apply_post_execution_transitions(
             execution_result,
-            agent_id,
-            task_id,
-            self._task_engine,
+            agent_id=agent_id,
+            task_id=task_id,
+            task_engine=self._task_engine,
             approval_store=self._approval_store,
             review_gate=self._review_gate,
             review_pipeline=self._review_pipeline,
@@ -488,11 +488,11 @@ class AgentEnginePostExecMixin:
         """
         return make_loop_with_callback(
             loop,
-            self._checkpoint_repo,
-            self._heartbeat_repo,
-            self._checkpoint_config,
-            agent_id,
-            task_id,
+            checkpoint_repo=self._checkpoint_repo,
+            heartbeat_repo=self._heartbeat_repo,
+            checkpoint_config=self._checkpoint_config,
+            agent_id=agent_id,
+            task_id=task_id,
         )
 
     def _make_task_cancellation_checker(

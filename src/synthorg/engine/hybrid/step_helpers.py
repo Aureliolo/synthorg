@@ -6,11 +6,10 @@ the shared planner-call body used by both initial planning and
 re-planning. Stateless free functions only; no instance state.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import current_execution_identity
+from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_helpers import (
@@ -29,6 +28,7 @@ from synthorg.engine.plan_helpers import (
     assess_step_success,
     extract_task_summary,
 )
+from synthorg.engine.plan_loop_context import StepRunContext
 from synthorg.engine.plan_models import ExecutionPlan, PlanStep
 from synthorg.engine.plan_parsing import parse_plan
 from synthorg.engine.prompt_safety import (
@@ -47,13 +47,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_PLAN_STEP_TRUNCATED,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, CompletionConfig, CompletionResponse
-from synthorg.providers.protocol import CompletionProvider
-
-if TYPE_CHECKING:
-    # ``checkpoint`` package init eagerly pulls ``resume`` -> ``hybrid_loop``;
-    # a runtime import here would cycle back into the mid-import hybrid loop.
-    from synthorg.engine.checkpoint.callback import CheckpointCallback
+from synthorg.providers.models import ChatMessage, CompletionResponse
 
 logger = get_logger(__name__)
 
@@ -209,28 +203,27 @@ async def invoke_checkpoint_callback(
         )
 
 
-async def call_planner(  # noqa: PLR0913, PLR0917
+async def call_planner(
+    run: StepRunContext,
     ctx: AgentContext,
-    provider: CompletionProvider,
-    model: str,
-    config: CompletionConfig,
     turns: list[TurnRecord],
     message: ChatMessage,
     *,
     revision_number: int = 0,
-    checkpoint_callback: CheckpointCallback | None = None,
 ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
     """Shared body for plan generation and re-planning.
 
+    Takes ``ctx`` and ``turns`` explicitly rather than a
+    :class:`StepRunState`, because initial planning runs before a plan
+    exists and therefore before the state object can be built.
+
     Args:
+        run: Run-scoped collaborators; the planner model, completion
+            config, and checkpoint callback are read from here.
         ctx: Agent context.
-        provider: LLM completion provider.
-        model: Model ID to use for the call.
-        config: Completion configuration.
         turns: Mutable list of turn records.
         message: The planning message to send.
         revision_number: Plan revision number.
-        checkpoint_callback: Optional checkpoint callback.
 
     Returns:
         ``(ctx, plan)`` on success, or ``ExecutionResult`` on error.
@@ -243,7 +236,13 @@ async def call_planner(  # noqa: PLR0913, PLR0917
     turn_number = ctx.turn_count + 1
 
     response = await call_provider(
-        ctx, provider, model, None, config, turn_number, turns
+        ctx,
+        run.provider,
+        run.planner_model,
+        tool_defs=None,
+        config=run.completion_config,
+        turn_number=turn_number,
+        turns=turns,
     )
     if isinstance(response, ExecutionResult):
         return response
@@ -278,7 +277,7 @@ async def call_planner(  # noqa: PLR0913, PLR0917
         tool_call_count=0,
     )
 
-    await invoke_checkpoint_callback(checkpoint_callback, ctx, turn_number)
+    await invoke_checkpoint_callback(run.checkpoint_callback, ctx, turn_number)
 
     plan = parse_plan(
         response,

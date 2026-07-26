@@ -122,10 +122,11 @@ class ProposeActMixin:
         """
         self._plan_dispatcher = dispatcher
 
-    async def _act_on_decision(  # noqa: PLR0913, PLR0917 -- one turn's full act context
+    async def _act_on_decision(  # noqa: PLR0913 -- one turn's full act context
         self,
         conversation: Conversation,
         args: ProposeArgs,
+        *,
         decision: ProposeDecision,
         routing: RoutingDecision | None,
         routing_reason: RoutingReason,

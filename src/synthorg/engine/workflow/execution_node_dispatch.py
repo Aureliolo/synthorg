@@ -200,11 +200,11 @@ async def _handle_verification(
     verification_execution = process_verification_node(
         ctx.nid,
         ctx.node,
-        ctx.outgoing,
-        ctx.adjacency,
-        ctx.skipped_nodes,
-        ctx.execution_id,
-        verdict,
+        outgoing=ctx.outgoing,
+        adjacency=ctx.adjacency,
+        skipped_nodes=ctx.skipped_nodes,
+        execution_id=ctx.execution_id,
+        verdict=verdict,
     )
     return verification_execution.model_copy(
         update={"node_id": ctx.qualified_id},
@@ -225,11 +225,11 @@ async def _handle_conditional(
     conditional_execution = process_conditional_node(
         ctx.nid,
         ctx.node,
-        ctx.frame_ctx,
-        ctx.outgoing,
-        ctx.adjacency,
-        ctx.skipped_nodes,
-        ctx.execution_id,
+        ctx=ctx.frame_ctx,
+        outgoing=ctx.outgoing,
+        adjacency=ctx.adjacency,
+        skipped_nodes=ctx.skipped_nodes,
+        execution_id=ctx.execution_id,
     )
     return conditional_execution.model_copy(
         update={"node_id": ctx.qualified_id},

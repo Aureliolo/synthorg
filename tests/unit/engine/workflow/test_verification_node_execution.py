@@ -42,11 +42,11 @@ class TestProcessVerificationNode:
         result = process_verification_node(
             "v1",
             node,
-            _outgoing(),
-            _adjacency(),
-            skipped,
-            "exec-1",
-            VerificationVerdict.PASS,
+            outgoing=_outgoing(),
+            adjacency=_adjacency(),
+            skipped_nodes=skipped,
+            execution_id="exec-1",
+            verdict=VerificationVerdict.PASS,
         )
         assert result.status == WorkflowNodeExecutionStatus.COMPLETED
 
@@ -56,11 +56,11 @@ class TestProcessVerificationNode:
         process_verification_node(
             "v1",
             node,
-            _outgoing(),
-            _adjacency(),
-            skipped,
-            "exec-1",
-            VerificationVerdict.PASS,
+            outgoing=_outgoing(),
+            adjacency=_adjacency(),
+            skipped_nodes=skipped,
+            execution_id="exec-1",
+            verdict=VerificationVerdict.PASS,
         )
         assert "fail-target" in skipped
         assert "fail-task" in skipped
@@ -74,11 +74,11 @@ class TestProcessVerificationNode:
         process_verification_node(
             "v1",
             node,
-            _outgoing(),
-            _adjacency(),
-            skipped,
-            "exec-1",
-            VerificationVerdict.FAIL,
+            outgoing=_outgoing(),
+            adjacency=_adjacency(),
+            skipped_nodes=skipped,
+            execution_id="exec-1",
+            verdict=VerificationVerdict.FAIL,
         )
         assert "pass-target" in skipped
         assert "pass-task" in skipped
@@ -92,11 +92,11 @@ class TestProcessVerificationNode:
         process_verification_node(
             "v1",
             node,
-            _outgoing(),
-            _adjacency(),
-            skipped,
-            "exec-1",
-            VerificationVerdict.REFER,
+            outgoing=_outgoing(),
+            adjacency=_adjacency(),
+            skipped_nodes=skipped,
+            execution_id="exec-1",
+            verdict=VerificationVerdict.REFER,
         )
         assert "pass-target" in skipped
         assert "pass-task" in skipped
@@ -118,11 +118,11 @@ class TestProcessVerificationNode:
         result = process_verification_node(
             "v1",
             node,
-            _outgoing(),
-            _adjacency(),
-            skipped,
-            "exec-1",
-            verdict,
+            outgoing=_outgoing(),
+            adjacency=_adjacency(),
+            skipped_nodes=skipped,
+            execution_id="exec-1",
+            verdict=verdict,
         )
         assert result.status == WorkflowNodeExecutionStatus.COMPLETED
         assert result.node_type == WorkflowNodeType.VERIFICATION

@@ -632,14 +632,14 @@ async def _run_shutdown(  # noqa: PLR0913
                 service="audit_chain_persistence",
             )
     await _safe_shutdown(
-        task_engine,
-        meeting_scheduler,
-        backup_service,
-        approval_timeout_scheduler,
-        settings_dispatcher,
-        bridge,
-        message_bus,
-        persistence,
+        task_engine=task_engine,
+        meeting_scheduler=meeting_scheduler,
+        backup_service=backup_service,
+        approval_timeout_scheduler=approval_timeout_scheduler,
+        settings_dispatcher=settings_dispatcher,
+        bridge=bridge,
+        message_bus=message_bus,
+        persistence=persistence,
         performance_tracker=app_state.slice(HrStateSlice).performance_tracker,
         distributed_task_queue=app_state.slice(
             RuntimeStateSlice

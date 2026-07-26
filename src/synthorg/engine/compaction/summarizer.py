@@ -115,7 +115,14 @@ def _do_compaction(
         return None
     head, archivable, recent = prep
     summary_text = _build_text_summary(ctx, archivable, config)
-    return _finalise(ctx, head, archivable, recent, estimator, summary_text)
+    return _finalise(
+        ctx,
+        head=head,
+        archivable=archivable,
+        recent=recent,
+        estimator=estimator,
+        summary_text=summary_text,
+    )
 
 
 async def _do_semantic_compaction(  # noqa: PLR0913 -- ctx + config + estimator + two semantic collaborators + force flag
@@ -159,7 +166,14 @@ async def _do_semantic_compaction(  # noqa: PLR0913 -- ctx + config + estimator 
             agent_id=NotBlankStr(str(ctx.identity.id)),
             archivable=archivable,
         )
-    return _finalise(ctx, head, archivable, recent, estimator, summary_text)
+    return _finalise(
+        ctx,
+        head=head,
+        archivable=archivable,
+        recent=recent,
+        estimator=estimator,
+        summary_text=summary_text,
+    )
 
 
 def _prepare_compaction(
@@ -223,8 +237,9 @@ def _build_text_summary(
     )
 
 
-def _finalise(  # noqa: PLR0913, PLR0917 -- segments + estimator + summary threaded in
+def _finalise(  # noqa: PLR0913 -- segments + estimator + summary threaded in
     ctx: AgentContext,
+    *,
     head: tuple[ChatMessage, ...],
     archivable: tuple[ChatMessage, ...],
     recent: tuple[ChatMessage, ...],
