@@ -1,11 +1,11 @@
 import { apiClient, unwrap } from '../client'
 import type {
+  RecommendationStatus,
   RefreshCycleReportDTO,
   RefreshStatusDTO,
   UpgradeRecommendationDTO,
 } from '@/api/types/recommendations'
 import type { ApiResponse } from '../types/http'
-import type { RecommendationStatus } from '../types/enum-values.gen'
 
 const BASE = '/providers/model-refresh'
 

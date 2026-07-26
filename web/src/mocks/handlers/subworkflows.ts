@@ -7,9 +7,8 @@ import type {
   listVersions,
   searchSubworkflows,
 } from '@/api/endpoints/subworkflows'
-import type { WorkflowDefinition } from '@/api/types/workflows'
+import type { SubworkflowSummary, WorkflowDefinition } from '@/api/types/workflows'
 import { buildWorkflow as buildDomainWorkflow } from './workflows'
-import type { SubworkflowSummary } from '@/api/types/workflows'
 import { apiError, emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 /**

@@ -1,8 +1,9 @@
-import type { ApprovalResponse, RunOutcome } from '@/api/types/approvals'
+import type { ApprovalResponse } from '@/api/types/approvals'
 import type {
   ApprovalRiskLevel,
   ApprovalSource,
   ApprovalStatus,
+  RunOutcome,
   UrgencyLevel,
 } from '@/api/types/enums'
 import type { SemanticColor } from '@/utils/agent-status'

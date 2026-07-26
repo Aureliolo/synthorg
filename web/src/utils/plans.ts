@@ -6,7 +6,7 @@
  * the review surfaces stay declarative and the logic is unit-testable.
  */
 
-import type { Complexity, Stakes, TaskStructure } from '@/api/types/enum-values.gen'
+import type { Complexity, Stakes, TaskStructure } from '@/api/types/enums'
 import type { PlanItem, PlanItemPayload } from '@/api/types/plans'
 import type { StatusPillTone } from '@/components/ui/status-pill'
 import { ROUTES } from '@/router/routes'

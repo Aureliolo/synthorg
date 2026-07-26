@@ -4,7 +4,7 @@ import {
   getRunOutcomeIcon,
   getRunOutcomeLabel,
 } from '@/utils/approvals'
-import type { RunOutcome } from '@/api/types/approvals'
+import type { RunOutcome } from '@/api/types/enums'
 
 export interface RunOutcomeBadgeProps {
   /** The run outcome to display (succeeded / empty / failed). */

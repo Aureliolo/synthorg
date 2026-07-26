@@ -7,7 +7,7 @@
  */
 import { apiClient, paginateAll, unwrap, unwrapPaginated } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
-import type { InterruptResponse, ResumeInterruptRequest } from '@/api/types/cockpit'
+import type { InterruptResponse, ResumeInterruptRequest } from '@/api/types/interrupts'
 
 const INTERRUPTS_PAGE_SIZE = 200
 

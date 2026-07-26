@@ -3,8 +3,12 @@ import { Link } from 'react-router'
 import { ROUTES } from '@/router/routes'
 import { ContentTypeBadge } from '@/components/ui/content-type-badge'
 import { StatPill } from '@/components/ui/stat-pill'
-import { formatFileSize } from '@/utils/format'
-import { formatRelativeTime, formatLabel, formatDateTime } from '@/utils/format'
+import {
+  formatDateTime,
+  formatFileSize,
+  formatLabel,
+  formatRelativeTime,
+} from '@/utils/format'
 import type { Artifact } from '@/api/types/artifacts'
 
 interface ArtifactCardProps {

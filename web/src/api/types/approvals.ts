@@ -18,7 +18,6 @@ export type {
   SafeEvidencePackage,
   SafeEvidencePackageSignature,
 } from './dtos.gen'
-export type { RunOutcome } from './enums'
 
 /** Signature algorithm, derived from the generated DTO so it cannot drift
  *  from the backend ``Literal``. The runtime VALUES tuple stays here because

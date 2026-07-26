@@ -6,10 +6,10 @@ import { computePerformanceCards, generateInsights } from '@/utils/agents'
 import type {
   AgentActivityEvent,
   AgentConfig,
+  AgentHealthResponse,
   AgentPerformanceSummary,
   CareerEvent,
 } from '@/api/types/agents'
-import type { AgentHealthResponse } from '@/api/types/agents'
 import type { Task } from '@/api/types/tasks'
 import type { WsChannel } from '@/api/types/websocket'
 import type { MetricCardProps } from '@/components/ui/metric-card'

@@ -16,12 +16,13 @@ import type {
   VersionSnapshot,
 } from '@/api/endpoints/version-history'
 import type {
+  ActiveAgentSummary,
+  AgentConfig,
   AgentHealthResponse,
   AgentIdentity,
   AgentIdentityDiff,
+  AgentPerformanceSummary,
 } from '@/api/types/agents'
-import type { ActiveAgentSummary } from '@/api/types/agents'
-import type { AgentConfig, AgentPerformanceSummary } from '@/api/types/agents'
 import type { AutonomyLevel } from '@/api/types/enums'
 import { apiError, apiSuccess, emptyPage, emptyPageEnvelope, paginatedFor, successFor } from './helpers'
 

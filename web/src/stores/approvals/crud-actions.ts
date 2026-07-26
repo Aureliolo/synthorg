@@ -4,12 +4,8 @@ import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
-// ApprovalFilters is a frontend-only query helper (not a generated
-// DTO), so it stays imported from its module file. The three DTOs
-// below are generated via OpenAPI and route through the barrel per
-// repo convention.
-import type { ApprovalFilters } from '@/api/types/approvals'
 import type {
+  ApprovalFilters,
   ApprovalResponse,
   ApproveRequest,
   RejectRequest,

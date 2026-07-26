@@ -311,15 +311,15 @@ The following shared components live in `web/src/components/ui/` and form the bu
 |------|------|--------|
 | `AgentRuntimeStatus` | `utils/agent-status.ts` | `"active"`, `"idle"`, `"error"`, `"offline"` |
 | `SemanticColor` | `utils/agent-status.ts` | `"success"`, `"accent"`, `"warning"`, `"danger"` |
-| `TaskStatus` | `api/types` | `"created"`, `"assigned"`, `"in_progress"`, `"in_review"`, `"completed"`, `"blocked"`, `"failed"`, `"interrupted"`, `"suspended"`, `"cancelled"`, `"rejected"`, `"auth_required"` |
-| `Priority` | `api/types` | `"critical"`, `"high"`, `"medium"`, `"low"` |
-| `ProviderHealthStatus` | `api/types` | `"up"`, `"degraded"`, `"down"`, `"unknown"` |
-| `ApprovalStatus` | `api/types` | `"pending"`, `"approved"`, `"rejected"`, `"expired"` |
-| `ApprovalRiskLevel` | `api/types` | `"low"`, `"medium"`, `"high"`, `"critical"` |
-| `UrgencyLevel` | `api/types` | `"critical"`, `"high"`, `"normal"`, `"no_expiry"` |
+| `TaskStatus` | `api/types/enums` | `"created"`, `"assigned"`, `"in_progress"`, `"in_review"`, `"completed"`, `"blocked"`, `"failed"`, `"interrupted"`, `"suspended"`, `"cancelled"`, `"rejected"`, `"auth_required"` |
+| `Priority` | `api/types/enums` | `"critical"`, `"high"`, `"medium"`, `"low"` |
+| `ProviderHealthStatus` | `api/types/providers` | `"up"`, `"degraded"`, `"down"`, `"unknown"` |
+| `ApprovalStatus` | `api/types/enums` | `"pending"`, `"approved"`, `"rejected"`, `"expired"` |
+| `ApprovalRiskLevel` | `api/types/enums` | `"low"`, `"medium"`, `"high"`, `"critical"` |
+| `UrgencyLevel` | `api/types/enums` | `"critical"`, `"high"`, `"normal"`, `"no_expiry"` |
 | `ApprovalPageFilters` | `utils/approvals` | Filter shape: `status?`, `riskLevel?`, `actionType?`, `search?` |
-| `ProjectStatus` | `api/types` | `"planning"`, `"active"`, `"integrating"`, `"evaluating"`, `"on_hold"`, `"completed"`, `"cancelled"` |
-| `ArtifactType` | `api/types` | `"code"`, `"tests"`, `"documentation"` |
+| `ProjectStatus` | `api/types/enums` | `"planning"`, `"active"`, `"integrating"`, `"evaluating"`, `"on_hold"`, `"completed"`, `"cancelled"` |
+| `ArtifactType` | `api/types/enums` | `"code"`, `"tests"`, `"documentation"` |
 
 ### When to Create a New Shared Component
 

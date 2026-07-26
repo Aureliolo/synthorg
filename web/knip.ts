@@ -20,6 +20,9 @@ const config: KnipConfig = {
     'src/__tests__/_types/axios-internal.d.ts',
   ],
   project: ['src/**/*.{ts,tsx}', 'src/**/*.css', 'test-infra/**/*.{ts,tsx}'],
+  // Generated modules are not project files, so nothing here can see an import
+  // that reaches past a barrel straight into one. That gap is covered by the
+  // `no-restricted-imports` pattern in eslint.config.js instead.
   ignore: ['**/*.gen.ts'],
   // `uv` (Python toolchain) backs the api-types generate/check npm scripts.
   ignoreBinaries: ['uv'],
@@ -36,6 +39,12 @@ const config: KnipConfig = {
   // where the `<ComponentName>Props` beside an exported component is surface by
   // rule rather than by consumption. knip honours `@public` unconditionally
   // (`isAlwaysIgnored` in its `util/tag`), so no config is needed here.
+  //
+  // A failure here surfaces at pre-push before CI, which is the intended
+  // ordering, not a coverage gap: `npm run lint:knip` also runs whole-dashboard
+  // and unconditionally in the ci.yml `dashboard-lint` job. The Gates job SKIPs
+  // the `web-checks` hook only because it has no node toolchain, a mapping
+  // `check_local_ci_parity.py` records in `_COVERED_ELSEWHERE` and enforces.
   compilers: {
     css: (text: string) =>
       [...text.matchAll(/@import\s+(?:url\()?['"]?([^'")]+)['"]?\)?/g)]

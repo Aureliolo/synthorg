@@ -24,3 +24,4 @@ export type {
 } from './dtos.gen'
 
 export type { PostureName } from './enum-values.gen'
+export { POSTURE_NAME_VALUES } from './enum-values.gen'

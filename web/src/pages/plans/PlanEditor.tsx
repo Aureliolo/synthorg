@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 
 import type { EditPlanRequest, Plan, PlanItem } from '@/api/types/plans'
-import { COMPLEXITY_VALUES, STAKES_VALUES } from '@/api/types/enum-values.gen'
+import { COMPLEXITY_VALUES, STAKES_VALUES } from '@/api/types/enums'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'

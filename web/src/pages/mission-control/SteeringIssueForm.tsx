@@ -82,7 +82,7 @@ function NarrowingFields({
   disabled,
 }: NarrowingFieldsProps) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid gap-grid-gap sm:grid-cols-2">
       <TagInput
         label="Narrow to tasks (optional)"
         value={taskIds}

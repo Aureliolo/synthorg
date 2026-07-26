@@ -1,4 +1,4 @@
-/** Living-document, doc-block and doc-version types. */
+/** Living-document, doc-block and doc-version types, plus their value tuples. */
 
 export type {
   BulletListBlock,

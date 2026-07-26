@@ -8,7 +8,7 @@
  * is shared 1:1 between backend and frontend.
  */
 
-import type { NotificationSeverity } from '@/api/types/backend-enums.gen'
+import type { NotificationSeverity } from '@/api/types/notifications'
 import type { ToastVariant } from '@/stores/toast'
 
 // ---------------------------------------------------------------------------

@@ -23,9 +23,9 @@ export type {
  * agent's declared department has no backend row) populates it from
  * the dept name.
  *
- * The wire's required-vs-optional shape is now correct out of the
- * generator, so this type only ADDS the optional ``display_name``:
- * it is NOT an ``Omit<Wire, ...> & { ... }`` tightening overlay.
+ * The wire's required-vs-optional shape matches the DTO exactly, so
+ * this type only ADDS the optional ``display_name``: it is NOT an
+ * ``Omit<Wire, ...> & { ... }`` tightening overlay.
  */
 export type Department = WireDepartment & {
   readonly display_name?: string

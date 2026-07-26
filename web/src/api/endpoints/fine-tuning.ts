@@ -15,8 +15,6 @@ import type {
   PreflightResult,
 } from '@/api/types/fine-tuning'
 
-// -- Types -----------------------------------------------------------
-
 /** Pipeline stages considered "active" (in progress). */
 export const ACTIVE_STAGES: ReadonlySet<FineTuneStage> = new Set<FineTuneStage>([
   'generating_data',

@@ -10,8 +10,7 @@ import type {
   testSinkConfig,
   updateSetting,
 } from '@/api/endpoints/settings'
-import type { SecurityConfigImportRequest } from '@/api/types/settings'
-import type { SettingEntry } from '@/api/types/settings'
+import type { SecurityConfigImportRequest, SettingEntry } from '@/api/types/settings'
 import {
   emptyPage,
   paginatedEnvelopeFor,

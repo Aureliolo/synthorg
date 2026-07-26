@@ -5,7 +5,13 @@ import { isCurrencyCode } from '@/utils/currencies'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { resolveAgentModels } from '@/utils/setup-validation'
-import type { NavigationSlice, SliceCreator, WizardMode, WizardStep } from './types'
+import type {
+  NavigationSlice,
+  SetupWizardState,
+  SliceCreator,
+  WizardMode,
+  WizardStep,
+} from './types'
 
 const log = createLogger('setup-wizard:navigation')
 
@@ -69,7 +75,6 @@ export function initialStepsNeedRevalidation(): Record<WizardStep, boolean> {
 }
 
 import type { StoreApi } from 'zustand'
-import type { SetupWizardState } from './types'
 
 type WizSet = StoreApi<SetupWizardState>['setState']
 type WizGet = StoreApi<SetupWizardState>['getState']

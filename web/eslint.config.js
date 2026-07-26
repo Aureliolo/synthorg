@@ -268,8 +268,9 @@ export default tseslint.config(
     // One barrel per name. A generated DTO lives at `@/api/types/<domain>` and
     // nowhere else, so knip's `types` report can prove a re-export dead: a
     // second path to the same name makes every path look unused, which is what
-    // kept that report switched off. These three rules stop the second path
-    // coming back.
+    // kept that report switched off. The rules below stop a second path coming
+    // back, on the import side as well as the export side -- knip cannot help
+    // here at all, because `**/*.gen.ts` sits in its `ignore` list.
     files: ['**/*.ts', '**/*.tsx'],
     rules: {
       'no-restricted-imports': [
@@ -283,13 +284,30 @@ export default tseslint.config(
                 "`@/api/types/agents`, `@/api/types/http`, `@/api/types/errors`.",
             },
           ],
+          patterns: [
+            {
+              group: ['**/*.gen', '@/api/types/*.gen'],
+              message:
+                'Import the name from its `@/api/types/<domain>` barrel, not from the generated ' +
+                'module. Reaching past the barrel gives the name a second path, which is exactly ' +
+                'what knip cannot detect (generated files are in its ignore list).',
+            },
+          ],
         },
       ],
+      // The codemod that collapsed the index barrel emitted one import per
+      // target module rather than merging into an existing one. Separate type
+      // and value imports from a module stay legal -- that split is deliberate
+      // and widespread (`import { create }` + `import type { StoreApi }`).
+      'no-duplicate-imports': ['error', { allowSeparateTypeImports: true }],
     },
   },
   {
     files: ['src/api/types/**'],
     rules: {
+      // This layer is the one place allowed to read the generated modules:
+      // curating them into a named surface is the whole job it does.
+      'no-restricted-imports': 'off',
       'no-restricted-syntax': [
         'error',
         {
@@ -300,6 +318,17 @@ export default tseslint.config(
           message:
             'Do not `export *` from a generated module -- list the names the dashboard imports, ' +
             'so an entry nothing consumes shows up in knip.',
+        },
+        {
+          // A domain module re-exporting from a sibling domain module gives the
+          // name a second barrel. knip is blind to it whenever both paths have
+          // consumers, so each looks legitimately used. Matches any relative
+          // source that is not a generated module, so a future module name
+          // carrying a digit or a capital cannot slip past it.
+          selector: "ExportNamedDeclaration[source.value=/^\\.{1,2}\\/(?!.*\\.gen$)/]",
+          message:
+            'Do not re-export a name from a sibling domain module -- it gives that name a second ' +
+            'barrel. Point consumers at the module that owns it.',
         },
       ],
     },
