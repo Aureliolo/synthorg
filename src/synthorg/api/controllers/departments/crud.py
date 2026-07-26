@@ -278,10 +278,12 @@ class DepartmentController(Controller):
             name,
             data,
         )
-        # Build the response before announcing, best-effort: the reorder has
-        # already committed, so neither a settings failure nor a projection
-        # failure may fail the response the caller is owed or skip the event
-        # subscribers need to resync.
+        # Build the response before announcing: the reorder has already
+        # committed, so ordering decides what a later failure costs. The
+        # provider read degrades to an unavailable status rather than failing
+        # the response, but the projection itself still can, and publishing
+        # first would leave subscribers told of a reorder the caller is shown
+        # as an error.
         providers = await providers_for_capabilities(app_state)
         projected = with_model_capabilities(reordered, providers)
         publish_ws_event(
