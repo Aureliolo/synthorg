@@ -97,6 +97,15 @@ inputs:
   trivy-version:
     description: "Trivy version, WITHOUT a leading `v` (e.g. `0.70.0`). The release download URL adds the `v` prefix; the tarball filename does not."
     required: true
+  github-token:
+    description: >-
+      GITHUB_TOKEN for the artifact REST API, from the caller's
+      `secrets.GITHUB_TOKEN`. Without it `download-artifact` authenticates
+      with the runtime token, whose scope covers only the CURRENT run
+      attempt -- so re-running this job after a failure 404s on the base
+      tarball the first attempt uploaded. The caller must also grant
+      `actions: read`.
+    required: true
 
 outputs:
   ref_amd64:
@@ -153,6 +162,21 @@ runs:
       with:
         platforms: arm64
 
+    # The `docker-container` driver boots BuildKit by pulling moby/buildkit
+    # from Docker Hub, and setup-buildx-action does not retry that pull: a
+    # sub-minute registry timeout fails the whole build job before the
+    # Dockerfile is even read. Pre-pull through the retry-and-mirror ladder
+    # and point the driver at the resulting local tag so the boot never
+    # reaches Docker Hub itself. The `docker` driver used on PRs boots no
+    # BuildKit container, so it needs neither the pull nor the driver-opt.
+    - name: Pull BuildKit image
+      if: github.event_name != 'pull_request'
+      uses: ./.github/actions/docker-pull-resilient
+      with:
+        # renovate: datasource=docker depName=moby/buildkit
+        image: moby/buildkit:buildx-stable-1@sha256:2f5adac4ecd194d9f8c10b7b5d7bceb5186853db1b26e5abd3a657af0b7e26ec
+        local-tag: synthorg-buildkit:buildx-stable-1
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       with:
@@ -161,6 +185,10 @@ runs:
         # enables `type=gha` layer cache + `type=docker` archive output
         # for the tarball handoff on non-PR builds.
         driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
+        # Condition is inverted relative to `driver` above so the non-empty
+        # value sits on the truthy branch: `A && '' || B` would always yield
+        # B, since `''` is falsy and GHA falls through to the `||` arm.
+        driver-opts: ${{ github.event_name != 'pull_request' && 'image=synthorg-buildkit:buildx-stable-1' || '' }}
         cache-binary: false
 
     - name: Download base image artifact (PR only)
@@ -169,6 +197,7 @@ runs:
       with:
         name: ${{ inputs.base-image-artifact-name }}
         path: /tmp
+        github-token: ${{ inputs.github-token }}
 
     - name: Load base image (PR only)
       if: github.event_name == 'pull_request'

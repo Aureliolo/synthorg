@@ -168,6 +168,10 @@ PostToolUse hooks run *after* an agent edit lands, validating the written file: 
 
 The hook layer is fail-closed: the OpenCode plugin treats hook execution errors as denials, so a misbehaving hook script blocks the action rather than letting it through.
 
+## SessionEnd hook (housekeeping, not a gate)
+
+One `SessionEnd` hook in `.claude/settings.json` runs `scripts/run_affected_mypy.py --stop`, which enforces nothing and blocks nothing: it releases the worktree's mypy daemons when a session ends cleanly. Each daemon holds ~2.5GB resident and an open handle on the worktree's `.venv` interpreter, and on Windows that handle makes the directory undeletable (`git worktree remove` fails with `Invalid argument`). The hook cannot cover a session that is killed rather than exited, so it is the fast path only; the daemon's own two-hour idle timeout (`_DAEMON_IDLE_TIMEOUT_SECONDS`) is what guarantees an orphan eventually goes away.
+
 ## Third-party prose / formatting hooks
 
 Three third-party linters run as pre-push hooks on Markdown to enforce style + link integrity without needing custom `check_*.py` scripts. They are listed here for completeness alongside the custom gates above:

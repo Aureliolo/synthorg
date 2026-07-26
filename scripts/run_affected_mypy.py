@@ -165,6 +165,16 @@ _PROCESS_QUERY_TIMEOUT_SECONDS: Final[int] = 30
 # a contended machine, so this bounds a hang rather than pacing a slow build.
 _MYPY_TIMEOUT_SECONDS: Final[int] = 1800
 
+# Idle lifetime of the daemon process itself (dmypy's ``--timeout``), NOT a
+# bound on any one check. A daemon outlives the shell that started it, holding
+# ~2.5GB resident and an open handle on its worktree's interpreter; on Windows
+# that handle makes the worktree undeletable, and ``git worktree remove`` fails
+# with "Invalid argument", which looks nothing like its cause. Nothing can stop
+# a daemon whose session was killed rather than exited, so the daemon has to
+# expire on its own. Two hours outlasts a meeting or a lunch, so a warm daemon
+# is rarely lost mid-session, while one left behind overnight always goes away.
+_DAEMON_IDLE_TIMEOUT_SECONDS: Final[int] = 7200
+
 
 class _Daemon(NamedTuple):
     """One dmypy daemon: the scope it checks and the flags it binds to.
@@ -465,7 +475,12 @@ def _check_daemon(daemon: _Daemon) -> int | None:
     """Check *daemon*'s scope, returning ``None`` if it gave no verdict.
 
     Uses ``run`` rather than ``check`` so the daemon starts on first use and
-    restarts itself whenever the mypy configuration changes.
+    restarts itself whenever the mypy configuration changes. ``--timeout``
+    binds the started daemon's idle lifetime (see
+    ``_DAEMON_IDLE_TIMEOUT_SECONDS``); it is a daemon-management flag rather
+    than a mypy flag, so it does not count towards the flag set whose change
+    forces a rebuild, and a daemon already listening keeps the lifetime it
+    started with until the next ``--stop``.
 
     A daemon killed without cleaning up (a reboot, a machine-wide process
     sweep) leaves a status file pointing at a dead pid. dmypy reports "Daemon
@@ -484,7 +499,15 @@ def _check_daemon(daemon: _Daemon) -> int | None:
     """
     last_code: int | None = None
     for attempt in range(_DAEMON_ATTEMPTS):
-        code = _dmypy(daemon, "run", "--", *daemon.paths, *daemon.extra)
+        code = _dmypy(
+            daemon,
+            "run",
+            "--timeout",
+            str(_DAEMON_IDLE_TIMEOUT_SECONDS),
+            "--",
+            *daemon.paths,
+            *daemon.extra,
+        )
         if code in _CHECK_COMPLETED_CODES:
             if attempt:
                 print(

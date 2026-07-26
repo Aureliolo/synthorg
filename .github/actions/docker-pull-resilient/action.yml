@@ -1,0 +1,108 @@
+name: Docker pull (resilient)
+description: |
+  Pull a Docker Hub image with exponential-backoff retries and a
+  ``mirror.gcr.io`` fallback, then re-tag it to a fixed local tag.
+
+  Docker Hub (registry-1.docker.io) periodically times out from the hosted
+  runners with "context deadline exceeded" or "Client.Timeout exceeded while
+  awaiting headers". Anything that pulls at job runtime without its own retry
+  fails the whole job on a sub-minute blip: a GitHub Actions ``services:``
+  block gives up after three internal attempts, ``setup-buildx-action`` does
+  not retry its BuildKit boot at all, and a bare ``docker run`` gets one shot.
+
+  Retries alone cannot outlast a multi-minute Docker Hub outage, so each
+  attempt also falls back to Google's public Docker Hub mirror
+  (``mirror.gcr.io``) -- a no-auth, no-rate-limit pull-through cache that stays
+  reachable when registry-1.docker.io is down. The fallback ref pins the SAME
+  digest, so the resolved image is byte-identical to the Docker Hub one (the
+  digest pin, and thus the supply-chain guarantee, is preserved).
+
+  Whichever registry serves the pull is re-tagged to ``local-tag`` so the
+  caller is decoupled from the registry it came from. That re-tag is why the
+  local tag is the contract rather than the input ref: a local image cannot be
+  tagged to a digest reference, so a consumer that must name the image (a
+  ``docker run``, a buildx ``driver-opts: image=``, a testcontainers ref) has
+  to be handed a plain tag.
+
+inputs:
+  image:
+    description: |
+      Digest-pinned image reference to pull. A registry host, a tag, and a
+      digest are all optional; a digest-pinned official image
+      (``postgres:18-alpine@sha256:...``) is the intended shape.
+    required: true
+  local-tag:
+    description: |
+      Local tag applied to whichever registry served the pull. This is the
+      reference the caller should use afterwards.
+    required: true
+  attempts:
+    description: Number of (Docker Hub, then mirror) attempts before failing.
+    required: false
+    default: "5"
+
+runs:
+  using: composite
+  steps:
+    - name: Pull image (Docker Hub, mirror.gcr.io fallback, retries)
+      shell: bash
+      env:
+        SRC_IMAGE: ${{ inputs.image }}
+        LOCAL_TAG: ${{ inputs.local-tag }}
+        MAX_ATTEMPTS: ${{ inputs.attempts }}
+      run: |
+        set -euo pipefail
+        # mirror.gcr.io is a pull-through cache for Docker Hub, so the mirror
+        # ref mirrors the Docker Hub repository path. Derive that path (plus the
+        # digest / tag) from the input rather than assuming a digest-pinned
+        # ``library/*`` ref, so a tag-only or non-official override still yields
+        # a valid reference. When the input carries a digest the pin is
+        # preserved (byte-identical image); a tag-only input falls back to the
+        # tag, the best guarantee available without a digest.
+        ref="${SRC_IMAGE}"
+        digest=""
+        if [[ "${ref}" == *"@"* ]]; then
+          digest="${ref##*@}"
+          ref="${ref%@*}"
+        fi
+        # Strip an explicit registry host (a first path segment that looks like
+        # a hostname) so the remainder is the Docker Hub repository path.
+        if [[ "${ref}" == *"/"* ]]; then
+          host="${ref%%/*}"
+          case "${host}" in
+            *.* | *:* | localhost) ref="${ref#*/}" ;;
+          esac
+        fi
+        tag=""
+        if [[ "${ref}" == *":"* ]]; then
+          tag="${ref##*:}"
+          ref="${ref%:*}"
+        fi
+        # Official images live under ``library/`` on Docker Hub and its mirror.
+        if [[ "${ref}" != *"/"* ]]; then
+          ref="library/${ref}"
+        fi
+        if [[ -n "${digest}" ]]; then
+          mirror_ref="mirror.gcr.io/${ref}@${digest}"
+        else
+          mirror_ref="mirror.gcr.io/${ref}:${tag:-latest}"
+        fi
+        for attempt in $(seq 1 "${MAX_ATTEMPTS}"); do
+          if docker pull "${SRC_IMAGE}"; then
+            docker tag "${SRC_IMAGE}" "${LOCAL_TAG}"
+            exit 0
+          fi
+          echo "::warning::Docker Hub pull of ${SRC_IMAGE} failed (attempt ${attempt}/${MAX_ATTEMPTS}); trying mirror.gcr.io"
+          if docker pull "${mirror_ref}"; then
+            docker tag "${mirror_ref}" "${LOCAL_TAG}"
+            echo "::notice::pulled ${SRC_IMAGE} from mirror.gcr.io fallback"
+            exit 0
+          fi
+          if [ "${attempt}" -eq "${MAX_ATTEMPTS}" ]; then
+            echo "::error::pull of ${SRC_IMAGE} failed from Docker Hub and mirror.gcr.io after ${MAX_ATTEMPTS} attempts"
+            exit 1
+          fi
+          backoff=$((10 * (2 ** (attempt - 1))))
+          echo "::warning::both registries failed (attempt ${attempt}/${MAX_ATTEMPTS}); retrying in ${backoff}s"
+          sleep "${backoff}"
+        done

@@ -13,6 +13,11 @@
 # for several minutes. A warm daemon holds ~2.5GB resident per worktree, so
 # `typecheck-stop` reclaims it when moving to another branch. `typecheck-status`
 # reports what is running and how much it costs.
+#
+# A daemon also expires on its own after two hours idle, so one left behind by
+# a closed session releases both the memory and the handle it holds on the
+# worktree's interpreter. `typecheck-stop` is still the way to reclaim it now
+# rather than in two hours, and is required before removing a worktree.
 typecheck:
 	uv run python scripts/run_affected_mypy.py
 

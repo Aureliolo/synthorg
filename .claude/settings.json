@@ -158,6 +158,17 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run python scripts/run_affected_mypy.py --stop",
+            "timeout": 60000
+          }
+        ]
+      }
     ]
   }
 }

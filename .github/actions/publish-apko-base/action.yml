@@ -29,6 +29,15 @@ inputs:
   ghcr-token:
     description: "GITHUB_TOKEN for GHCR"
     required: true
+  github-token:
+    description: >-
+      GITHUB_TOKEN for the artifact REST API, from the caller's
+      `secrets.GITHUB_TOKEN`. Without it `download-artifact` authenticates
+      with the runtime token, whose scope covers only the CURRENT run
+      attempt -- so re-running this job after a failure 404s on the base
+      tarball the first attempt uploaded. The caller must also grant
+      `actions: read`.
+    required: true
 
 outputs:
   digest:
@@ -46,6 +55,7 @@ runs:
       with:
         name: ${{ inputs.artifact-name }}
         path: .
+        github-token: ${{ inputs.github-token }}
 
     # GHCR's token endpoint occasionally exceeds the docker client's default
     # 30s deadline. Drive `docker login` through nick-fields/retry so the
