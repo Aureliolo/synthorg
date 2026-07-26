@@ -791,7 +791,7 @@ jobs:
         run: sudo mkdir -p /work && sudo chown "$(id -u):$(id -g)" /work
 
       - name: Download web-assets apk
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: ./.github/actions/download-artifact
         with:
           name: web-apk-packages
           path: /work
@@ -919,7 +919,7 @@ jobs:
           persist-credentials: false
 
       - name: Download web image tarball
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: ./.github/actions/download-artifact
         with:
           name: web-image-tarball
           path: .
@@ -1517,7 +1517,7 @@ jobs:
       # this job mirrored the rules locally and risked silent drift on
       # future tag-policy changes).
       - name: Download per-job pushed-tag inventories
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: ./.github/actions/download-artifact
         with:
           pattern: pushed-tags-*
           merge-multiple: true
@@ -1593,14 +1593,14 @@ jobs:
       contents: write
     steps:
       - name: Download SBOM artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: ./.github/actions/download-artifact
         with:
           pattern: sbom-*
           merge-multiple: true
           path: sboms
 
       - name: Download fine-tune digest artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: ./.github/actions/download-artifact
         with:
           pattern: fine-tune-*-digest
           merge-multiple: true

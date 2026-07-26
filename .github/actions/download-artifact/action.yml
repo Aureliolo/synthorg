@@ -1,0 +1,163 @@
+name: Download artifact (retry-wrapped)
+description: |
+  ``actions/download-artifact`` with explicit 5-attempt retry at the
+  workflow layer, mirroring ``.github/actions/checkout``.
+
+  Why: the artifact service sits behind an intermediary that
+  intermittently answers ``(403) Forbidden: Error from intermediary``.
+  The action classifies that as non-retryable and aborts, so one blip
+  kills the job and every check downstream of it -- observed taking the
+  required ``CI Pass`` down while the identical job with the identical
+  ``contents: read`` token had passed on the three preceding heads. A
+  genuine permissions denial would fail every time, not once; an
+  intermediary 403 is transient and belongs in a retry ladder.
+
+  This is the artifact analogue of ``.github/actions/checkout`` and
+  ``.github/actions/install-uv``: the house pattern of wrapping every
+  idempotent network fetch in bounded retry rather than trusting a
+  third party's own classifier. Downloading an artifact is idempotent
+  (the same bytes land in the same path), so retry-everything is safe.
+
+  Backoff across the 5 attempts: 5s, 15s, 30s, 60s = 110s total wait
+  floor. Only the final attempt is unguarded, so a genuinely persistent
+  outage still fails CI loud rather than silently yielding an empty
+  download directory.
+
+inputs:
+  name:
+    description: Artifact name. Omit to download every artifact.
+    required: false
+    default: ""
+  path:
+    description: Destination directory. Defaults to the workspace.
+    required: false
+    default: ""
+  pattern:
+    description: Glob matching several artifact names.
+    required: false
+    default: ""
+  merge-multiple:
+    description: Merge matched artifacts into one directory.
+    required: false
+    default: "false"
+  repository:
+    description: Repository owning the artifact (cross-repo downloads).
+    required: false
+    default: ${{ github.repository }}
+  run-id:
+    description: Run that produced the artifact (cross-run downloads).
+    required: false
+    default: ${{ github.run_id }}
+  github-token:
+    # Empty is NOT the same as a token here: the action only takes its
+    # cross-run API path when this is truthy, and falls back to the
+    # in-run runtime token otherwise. Defaulting it to github.token
+    # would silently switch every same-run download onto the API path,
+    # so it stays empty and callers opt in.
+    description: Token for cross-run / cross-repo downloads. Leave empty for same-run.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Download artifact (attempt 1/5)
+      id: attempt1
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      continue-on-error: true
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+        merge-multiple: ${{ inputs.merge-multiple }}
+        repository: ${{ inputs.repository }}
+        run-id: ${{ inputs.run-id }}
+        github-token: ${{ inputs.github-token }}
+
+    # Exponential backoff between attempts (5s, 15s, 30s, 60s = 110s
+    # total). The short head recovers from a one-off intermediary 403;
+    # the longer tail rides out a brief artifact-service degradation.
+    - name: Backoff before attempt 2
+      if: steps.attempt1.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::actions/download-artifact attempt 1 failed; waiting 5s before retry"
+        sleep 5
+
+    - name: Download artifact (attempt 2/5)
+      id: attempt2
+      if: steps.attempt1.outcome == 'failure'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      continue-on-error: true
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+        merge-multiple: ${{ inputs.merge-multiple }}
+        repository: ${{ inputs.repository }}
+        run-id: ${{ inputs.run-id }}
+        github-token: ${{ inputs.github-token }}
+
+    - name: Backoff before attempt 3
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::actions/download-artifact attempt 2 failed; waiting 15s before retry"
+        sleep 15
+
+    - name: Download artifact (attempt 3/5)
+      id: attempt3
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      continue-on-error: true
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+        merge-multiple: ${{ inputs.merge-multiple }}
+        repository: ${{ inputs.repository }}
+        run-id: ${{ inputs.run-id }}
+        github-token: ${{ inputs.github-token }}
+
+    - name: Backoff before attempt 4
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::actions/download-artifact attempt 3 failed; waiting 30s before retry"
+        sleep 30
+
+    - name: Download artifact (attempt 4/5)
+      id: attempt4
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      continue-on-error: true
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+        merge-multiple: ${{ inputs.merge-multiple }}
+        repository: ${{ inputs.repository }}
+        run-id: ${{ inputs.run-id }}
+        github-token: ${{ inputs.github-token }}
+
+    - name: Backoff before attempt 5
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure' && steps.attempt4.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::actions/download-artifact attempt 4 failed; waiting 60s before final retry"
+        sleep 60
+
+    # No ``continue-on-error`` on the final attempt -- if all five fail
+    # the workflow rightly aborts with the underlying error surfaced,
+    # rather than proceeding with an empty download directory.
+    - name: Download artifact (attempt 5/5)
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure' && steps.attempt4.outcome == 'failure'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        pattern: ${{ inputs.pattern }}
+        merge-multiple: ${{ inputs.merge-multiple }}
+        repository: ${{ inputs.repository }}
+        run-id: ${{ inputs.run-id }}
+        github-token: ${{ inputs.github-token }}

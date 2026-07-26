@@ -38,14 +38,24 @@ resilience hardening in this PR cannot silently regress:
    bound, so this gate requires every call site to set it, via step
    ``env:`` or an inline ``VAR=n`` prefix.
 
+4. **A wrapped action is reached only through its wrapper.** Where the
+   ladder lives in a dedicated composite (``.github/actions/checkout``,
+   ``.github/actions/download-artifact``), calling the upstream action
+   directly silently opts out of the retry. ``actions/download-artifact``
+   earned its wrapper when a ``(403) Forbidden: Error from intermediary``
+   -- which the action itself classifies as non-retryable -- killed two
+   jobs and the required ``CI Pass`` with them, on a head whose identical
+   jobs had passed three times before with the same token. Only the paths
+   in ``_WRAPPED_ACTIONS`` may name their upstream action.
+
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
 externally-dependent actions are excluded by design (see ``_EXCLUDED``)
 because they retry internally or are non-blocking feature-advisory.
 
-Invariants 1-2 scan ``.github/workflows/``; invariant 3 also scans
-``.github/actions/*/action.yml``, because every current ``retry_cmd.sh``
-call site lives in a composite action rather than a workflow.
+Invariants 1-2 scan ``.github/workflows/``; invariants 3-4 also scan
+``.github/actions/*/action.yml``, because composite actions both host
+every ``retry_cmd.sh`` call site and can bypass a wrapper themselves.
 
 This is a no-baseline gate: the convention passes clean from day one. If
 it flags an existing workflow, fix the workflow -- do NOT add a baseline.
@@ -70,6 +80,13 @@ _ACTIONS_ROOT = _REPO_ROOT / ".github" / "actions"
 
 _RETRY_HELPER: Final[str] = "retry_cmd.sh"
 _DEADLINE_VAR: Final[str] = "RETRY_CMD_DEADLINE"
+
+# Upstream actions that exactly one in-repo wrapper is allowed to call, so
+# the wrapper's retry ladder cannot be bypassed. Maps the upstream action to
+# the only path permitted to reference it.
+_WRAPPED_ACTIONS: Final[dict[str, str]] = {
+    "actions/download-artifact": ".github/actions/download-artifact/action.yml",
+}
 
 # External upload / OIDC actions that lack internal retry and sit on an
 # important or required path. A step using one MUST be in a fail-closed
@@ -228,6 +245,35 @@ def _check_job_ladders(job_name: str, job: dict[str, object]) -> list[str]:
     return violations
 
 
+def _check_wrapped_action(
+    context: str, rel_path: str, step: dict[str, object]
+) -> list[str]:
+    """Return violations for a step bypassing a wrapper's retry ladder.
+
+    Args:
+        context: Human-readable location (job or composite-action step).
+        rel_path: Repo-relative path of the file being scanned.
+        step: The step mapping.
+
+    Returns:
+        One message when the step calls a wrapped action from outside its
+        wrapper, empty otherwise.
+    """
+    uses = step.get("uses")
+    if not isinstance(uses, str):
+        return []
+    action = _action_id(uses)
+    wrapper = _WRAPPED_ACTIONS.get(action)
+    if wrapper is None or rel_path == wrapper:
+        return []
+    return [
+        (
+            f"{context}: uses `{action}` directly; call `./{Path(wrapper).parent.as_posix()}`"
+            " instead so the retry ladder cannot be bypassed"
+        )
+    ]
+
+
 def _step_env_has_deadline(step: dict[str, object]) -> bool:
     """Return True if the step's ``env:`` sets the deadline."""
     env = step.get("env")
@@ -279,15 +325,16 @@ def _check_retry_deadlines(context: str, step: dict[str, object]) -> list[str]:
     ]
 
 
-def _scan_composite_action(data: dict[str, object]) -> list[str]:
+def _scan_composite_action(data: dict[str, object], rel_path: str) -> list[str]:
     """Return retry-deadline violations for a composite action file.
 
     Composite actions have no ``jobs``; their steps hang off ``runs.steps``.
-    Only invariant 3 applies -- an action cannot declare ``timeout-minutes``
+    Invariants 3 and 4 apply -- an action cannot declare ``timeout-minutes``,
     and the enforced upload actions are not used from one.
 
     Args:
         data: The parsed ``action.yml``.
+        rel_path: Repo-relative path, so a wrapper can exempt itself.
 
     Returns:
         Violation messages, empty when the action is compliant.
@@ -305,11 +352,22 @@ def _scan_composite_action(data: dict[str, object]) -> list[str]:
         name = step.get("name")
         label = str(name) if isinstance(name, str) else f"step {index + 1}"
         violations.extend(_check_retry_deadlines(f"'{label}'", step))
+        violations.extend(_check_wrapped_action(f"'{label}'", rel_path, step))
     return violations
+
+
+def _relative_path(path: Path) -> str:
+    """Return *path* relative to the repo root, or absolute if outside it."""
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(_REPO_ROOT).as_posix()
+    except ValueError:
+        return resolved.as_posix()
 
 
 def _scan_file(path: Path) -> list[str]:
     """Return all violation messages for one workflow file."""
+    rel_path = _relative_path(path)
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (yaml.YAMLError, UnicodeDecodeError) as exc:
@@ -321,7 +379,7 @@ def _scan_file(path: Path) -> list[str]:
         return []
     jobs = data.get("jobs")
     if not isinstance(jobs, dict):
-        return _scan_composite_action(data)
+        return _scan_composite_action(data, rel_path)
     violations: list[str] = []
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
@@ -331,6 +389,7 @@ def _scan_file(path: Path) -> list[str]:
         violations.extend(_check_job_ladders(name, job))
         for step in _job_steps(job):
             violations.extend(_check_retry_deadlines(f"job '{name}'", step))
+            violations.extend(_check_wrapped_action(f"job '{name}'", rel_path, step))
     return violations
 
 
@@ -344,11 +403,7 @@ def _scan_paths(paths: Iterable[Path]) -> int:
         if not violations:
             continue
         failed = True
-        resolved = path.resolve()
-        try:
-            rel = resolved.relative_to(_REPO_ROOT).as_posix()
-        except ValueError:
-            rel = resolved.as_posix()
+        rel = _relative_path(path)
         for message in violations:
             print(f"{rel}: {message}", file=sys.stderr)
     if failed:
@@ -356,9 +411,10 @@ def _scan_paths(paths: Iterable[Path]) -> int:
             "\nCI workflow resilience gate failed. Add timeout-minutes to every"
             " job, wrap every enforced external/OIDC upload action in a"
             " fail-closed retry ladder (see .github/actions/checkout for the"
-            " pattern), and give every retry_cmd.sh call site a"
-            " RETRY_CMD_DEADLINE sized below its job budget. To exclude an"
-            " action deliberately, add it to _EXCLUDED in"
+            " pattern), give every retry_cmd.sh call site a"
+            " RETRY_CMD_DEADLINE sized below its job budget, and reach every"
+            " wrapped action through its wrapper rather than upstream. To"
+            " exclude an action deliberately, add it to _EXCLUDED in"
             " scripts/check_ci_workflow_resilience.py with a reason.",
             file=sys.stderr,
         )
