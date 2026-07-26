@@ -910,7 +910,7 @@ def _no_flags() -> argparse.Namespace:
     argv = sys.argv
     try:
         sys.argv = [_SCRIPT_PATH.name]
-        return _REAL_PARSE_ARGS()
+        return cast("argparse.Namespace", _REAL_PARSE_ARGS())
     finally:
         sys.argv = argv
 
