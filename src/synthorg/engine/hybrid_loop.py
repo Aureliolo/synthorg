@@ -14,7 +14,7 @@ the helper modules already extract the free functions, so the
 residual orchestrator is the cohesive driver.
 """
 
-import copy
+from typing import override
 
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.checkpoint.callback import CheckpointCallback
@@ -31,16 +31,10 @@ from synthorg.observability.events.execution import (
     EXECUTION_HYBRID_STEP_TURN_LIMIT,
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_START,
-    EXECUTION_LOOP_TERMINATED,
-    EXECUTION_PLAN_CREATED,
     EXECUTION_PLAN_STEP_COMPLETE,
     EXECUTION_PLAN_STEP_START,
 )
-from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import (
-    ChatMessage,
-    CompletionConfig,
-)
+from synthorg.providers.models import CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.tools.protocol import ToolInvokerProtocol
 
@@ -59,7 +53,6 @@ from .loop_control_helpers import (
     invoke_compaction,
 )
 from .loop_helpers import (
-    build_result,
     classify_step,
     get_tool_definitions,
     notify_turn_observer,
@@ -73,7 +66,6 @@ from .loop_protocol import (
     TurnObserver,
 )
 from .plan_helpers import (
-    call_planner,
     clear_superseded_directive,
     update_step_status,
 )
@@ -89,13 +81,12 @@ from .plan_models import (
     PlanStep,
     StepStatus,
 )
-from .plan_parsing import _PLANNING_PROMPT
-from .plan_step_turn import PlanStepTurnMixin
+from .plan_phases import PlanPhaseMixin
 
 logger = get_logger(__name__)
 
 
-class HybridLoop(PlanStepTurnMixin):
+class HybridLoop(PlanPhaseMixin):
     """Hybrid Plan + ReAct execution loop.
 
     Plans, then executes each step as a mini-ReAct loop with a
@@ -116,6 +107,8 @@ class HybridLoop(PlanStepTurnMixin):
             polled at each turn boundary and mid-stream; ``None`` disables
             steering for the run.
     """
+
+    _LOOP_TYPE = "hybrid"
 
     def __init__(  # noqa: PLR0913
         self,
@@ -265,27 +258,6 @@ class HybridLoop(PlanStepTurnMixin):
         )
 
     # -- Phase orchestration -----------------------------------------------
-
-    async def _run_planning_phase(
-        self,
-        run: StepRunContext,
-        ctx: AgentContext,
-        turns: list[TurnRecord],
-    ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
-        """Run pre-checks and generate the initial plan.
-
-        Returns:
-            ``(updated_ctx, plan)`` when shutdown / budget checks pass
-            and the planner succeeds; the terminal :class:`ExecutionResult`
-            when any pre-check trips so the caller bails out early.
-        """
-        shutdown_result = check_shutdown(ctx, run.shutdown_checker, turns)
-        if shutdown_result is not None:
-            return shutdown_result
-        budget_result = check_budget(ctx, run.budget_checker, turns)
-        if budget_result is not None:
-            return budget_result
-        return await self._generate_plan(run, ctx, turns)
 
     async def _run_steps(
         self,
@@ -610,81 +582,17 @@ class HybridLoop(PlanStepTurnMixin):
         )
         return None
 
-    def _build_final_result(self, state: StepRunState) -> ExecutionResult:
-        """Build the final result after step iteration completes.
-
-        Returns:
-            The terminal :class:`ExecutionResult`, with a
-            ``MAX_TURNS`` termination reason when turns ran out
-            mid-plan and ``COMPLETED`` otherwise.
-        """
-        # Sync live plan into all_plans so final_plan reflects
-        # step status changes (COMPLETED, IN_PROGRESS, etc.).
-        state.sync_current_plan()
-
-        if not state.ctx.has_turns_remaining and state.step_idx < len(state.plan.steps):
-            logger.info(
-                EXECUTION_LOOP_TERMINATED,
-                execution_id=state.ctx.execution_id,
-                reason=TerminationReason.MAX_TURNS.value,
-                turns=len(state.turns),
-            )
-            return self._finalize(
-                build_result(
-                    state.ctx,
-                    TerminationReason.MAX_TURNS,
-                    state.turns,
-                ),
-                state.all_plans,
-                state.replans_used,
-            )
-
-        logger.info(
-            EXECUTION_LOOP_TERMINATED,
-            execution_id=state.ctx.execution_id,
-            reason=TerminationReason.COMPLETED.value,
-            turns=len(state.turns),
-        )
-        return self._finalize(
-            build_result(state.ctx, TerminationReason.COMPLETED, state.turns),
-            state.all_plans,
-            state.replans_used,
-        )
-
     # -- Planning ----------------------------------------------------------
 
-    async def _generate_plan(
-        self,
-        run: StepRunContext,
-        ctx: AgentContext,
-        turns: list[TurnRecord],
-    ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
-        """Generate an execution plan from the LLM.
+    @override
+    def _apply_plan_limits(self, plan: ExecutionPlan) -> ExecutionPlan:
+        """Cap a generated plan to the configured step ceiling.
 
         Returns:
-            ``(updated_ctx, plan)`` on a successful plan generation,
-            or the terminal :class:`ExecutionResult` propagated from
-            :func:`call_planner` (budget exhaustion, shutdown, etc.).
+            The plan truncated to ``max_plan_steps``, or unchanged when it
+            already fits.
         """
-        plan_msg = ChatMessage(
-            role=MessageRole.USER,
-            content=_PLANNING_PROMPT,
-        )
-        result = await call_planner(run, ctx, turns, plan_msg)
-        if isinstance(result, ExecutionResult):
-            return result
-        ctx, plan = result
-        plan = truncate_plan(
-            plan,
-            self._config.max_plan_steps,
-        )
-        logger.info(
-            EXECUTION_PLAN_CREATED,
-            execution_id=ctx.execution_id,
-            step_count=len(plan.steps),
-            revision=plan.revision_number,
-        )
-        return ctx, plan
+        return truncate_plan(plan, self._config.max_plan_steps)
 
     # -- Step execution ----------------------------------------------------
 
@@ -767,28 +675,3 @@ class HybridLoop(PlanStepTurnMixin):
             ctx.turn_count,
         )
         return compacted if compacted is not None else ctx
-
-    # -- Utilities ---------------------------------------------------------
-
-    @staticmethod
-    def _finalize(
-        result: ExecutionResult,
-        all_plans: list[ExecutionPlan],
-        replans_used: int,
-    ) -> ExecutionResult:
-        """Attach hybrid metadata to the execution result.
-
-        Returns:
-            A copy of ``result`` whose metadata carries the hybrid
-            loop's plan history, final plan dump, and replan count.
-        """
-        metadata = copy.deepcopy(result.metadata)
-        metadata.update(
-            {
-                "loop_type": "hybrid",
-                "plans": [p.model_dump() for p in all_plans],
-                "final_plan": (all_plans[-1].model_dump() if all_plans else None),
-                "replans_used": replans_used,
-            }
-        )
-        return result.model_copy(update={"metadata": metadata})

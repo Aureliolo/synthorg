@@ -1745,7 +1745,7 @@
     "synthorg.providers.cost_recording": 52,
     "synthorg.providers.enums": 111,
     "synthorg.providers.errors": 63,
-    "synthorg.providers.models": 144,
+    "synthorg.providers.models": 145,
     "synthorg.providers.protocol": 96,
     "synthorg.providers.registry": 43,
     "synthorg.providers.state": 39,
@@ -1828,7 +1828,7 @@
     },
     "synthorg.engine.hybrid_loop:HybridLoop": {
       "lcom4": 3,
-      "loc": 591
+      "loc": 494
     },
     "synthorg.engine.initiative.rollup:ProjectRollupService": {
       "lcom4": 1,

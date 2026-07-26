@@ -1,17 +1,14 @@
-"""Planning and re-planning phase for the Plan-and-Execute loop.
+"""Re-planning phase for the Plan-and-Execute loop.
 
-Provides ``PlanExecutePlannerMixin``: the initial plan generation, the
-shared planner LLM call, the failure-driven re-plan, and the replan-
-budget orchestration. Built on :class:`PlanExecuteStepMixin` so it can
-reuse the per-turn checkpoint seam.
+Provides ``PlanExecutePlannerMixin``: the failure-driven re-plan and the
+replan-budget orchestration. The opening planning phase and the terminal
+result shape are shared with ``HybridLoop`` and live in
+:class:`~synthorg.engine.plan_phases.PlanPhaseMixin`.
 """
 
-from synthorg.engine.context import AgentContext
-from synthorg.engine.plan_execute_step_mixin import PlanExecuteStepMixin
-from synthorg.execution.turn import TurnRecord
+from synthorg.engine.plan_phases import PlanPhaseMixin
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
-    EXECUTION_PLAN_CREATED,
     EXECUTION_PLAN_REPLAN_COMPLETE,
     EXECUTION_PLAN_REPLAN_EXHAUSTED,
     EXECUTION_PLAN_REPLAN_START,
@@ -31,37 +28,18 @@ from .loop_protocol import (
 from .plan_helpers import call_planner, update_step_status
 from .plan_loop_context import ReplanTrigger, StepRunContext, StepRunState
 from .plan_models import ExecutionPlan, PlanExecuteConfig, PlanStep, StepStatus
-from .plan_parsing import _PLANNING_PROMPT, _REPLAN_JSON_EXAMPLE
+from .plan_parsing import _REPLAN_JSON_EXAMPLE
 
 logger = get_logger(__name__)
 
 
-class PlanExecutePlannerMixin(PlanExecuteStepMixin):
-    """Planning, re-planning, and replan-budget orchestration."""
+class PlanExecutePlannerMixin(PlanPhaseMixin):
+    """Re-planning and replan-budget orchestration."""
+
+    _LOOP_TYPE = "plan_execute"
 
     # Populated on the concrete ``PlanExecuteLoop`` in ``__init__``.
     _config: PlanExecuteConfig
-
-    async def _run_planning_phase(
-        self,
-        run: StepRunContext,
-        ctx: AgentContext,
-        turns: list[TurnRecord],
-    ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
-        """Run pre-checks and generate the initial plan.
-
-        Returns:
-            ``(updated_ctx, plan)`` when shutdown / budget checks pass
-            and the planner succeeds; a terminal :class:`ExecutionResult`
-            when any pre-check trips so the caller bails out early.
-        """
-        shutdown_result = check_shutdown(ctx, run.shutdown_checker, turns)
-        if shutdown_result is not None:
-            return shutdown_result
-        budget_result = check_budget(ctx, run.budget_checker, turns)
-        if budget_result is not None:
-            return budget_result
-        return await self._generate_plan(run, ctx, turns)
 
     async def _attempt_replan(
         self,
@@ -132,35 +110,6 @@ class PlanExecutePlannerMixin(PlanExecuteStepMixin):
 
         state.record_replan(replan_result)
         return None
-
-    async def _generate_plan(
-        self,
-        run: StepRunContext,
-        ctx: AgentContext,
-        turns: list[TurnRecord],
-    ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
-        """Generate an execution plan from the LLM.
-
-        Returns:
-            ``(updated_ctx, plan)`` on a successful plan generation,
-            or the terminal :class:`ExecutionResult` propagated from
-            the planner call (budget exhaustion, shutdown, etc.).
-        """
-        plan_msg = ChatMessage(
-            role=MessageRole.USER,
-            content=_PLANNING_PROMPT,
-        )
-        result = await call_planner(run, ctx, turns, plan_msg)
-        if isinstance(result, ExecutionResult):
-            return result
-        ctx, plan = result
-        logger.info(
-            EXECUTION_PLAN_CREATED,
-            execution_id=ctx.execution_id,
-            step_count=len(plan.steps),
-            revision=plan.revision_number,
-        )
-        return ctx, plan
 
     async def _replan(
         self,
