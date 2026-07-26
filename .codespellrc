@@ -1,14 +1,19 @@
 [codespell]
 # Codespell configuration: project-wide spelling gate.
 # Skip generated, vendored, and binary content. Patterns are fnmatch on the
-# real filename, so we use ``*package-lock.json`` (path-separator agnostic)
-# to match the lock files on both POSIX and Windows. ``.codespellrc`` is
-# self-skipped so this file's own directives are never scanned as content.
+# real filename, so we use ``*package-lock.json`` and ``*go.sum``
+# (path-separator agnostic) to match the lock and module-hash files in every
+# module directory on both POSIX and Windows. ``go.sum`` is skipped because
+# its base64 module hashes contain arbitrary letter runs the speller reads as
+# prose (a hash ending ``+tE=`` is reported as "the"/"be"/"we"/"to"), and the
+# offending fragment changes on every dependency refresh, so a word-level
+# ignore entry could never hold. ``.codespellrc`` is self-skipped so this
+# file's own directives are never scanned as content.
 # The Vale directories are listed twice (`*/.vale/...` and `.vale/...`):
 # pre-commit invokes codespell with paths that include a `./` (or
 # Windows `.\`) prefix, which the bare `.vale/...` pattern does not
 # match. Keep both forms.
-skip = .venv,.git,.mypy_cache,.ruff_cache,.pytest_cache,.cache,.claude,node_modules,build,dist,htmlcov,coverage,.coverage,logs,*.log,*.log.*,*.lock,*.png,*.svg,*.jpg,*.jpeg,*.ico,*.gif,*.webp,*.pdf,*.bin,*_pb2.py,*.gen.*,*.min.js,*mockServiceWorker.js,_vendor,web/dist,web/build,playwright-report,test-results,storybook-static,site,_site,_audit,*.svg.gz,scripts/_codespell_baseline.txt,*package-lock.json,uv.lock,.codespellrc,.test_durations.*,*/.vale/styles/Google/*,*/.vale/styles/config/vocabularies/British/*,.vale/styles/Google/*,.vale/styles/config/vocabularies/British/*
+skip = .venv,.git,.mypy_cache,.ruff_cache,.pytest_cache,.cache,.claude,node_modules,build,dist,htmlcov,coverage,.coverage,logs,*.log,*.log.*,*.lock,*.png,*.svg,*.jpg,*.jpeg,*.ico,*.gif,*.webp,*.pdf,*.bin,*_pb2.py,*.gen.*,*.min.js,*mockServiceWorker.js,_vendor,web/dist,web/build,playwright-report,test-results,storybook-static,site,_site,_audit,*.svg.gz,scripts/_codespell_baseline.txt,*package-lock.json,uv.lock,*go.sum,.codespellrc,.test_durations.*,*/.vale/styles/Google/*,*/.vale/styles/config/vocabularies/British/*,.vale/styles/Google/*,.vale/styles/config/vocabularies/British/*
 # Project vocabulary lives in .vale/styles/config/vocabularies/SynthOrg/accept.txt (one term per line).
 # Vale (when wired) consumes the same file; sharing it keeps the two spellers in lock-step.
 ignore-words = .vale/styles/config/vocabularies/SynthOrg/accept.txt
