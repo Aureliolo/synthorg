@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -10,6 +11,7 @@ import pytest
 from structlog.testing import capture_logs
 
 from synthorg.config.schema import ProviderConfig
+from synthorg.core.clock import Clock
 from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_SKIPPED as PROBE_SKIPPED,
 )
@@ -41,6 +43,7 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_int
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.network_validator import DnsValidationOk
+from tests._shared import FakeClock
 
 _LOCAL_CONFIG_FIELDS: Mapping[str, object] = {
     "base_url": "http://localhost:11434",
@@ -74,13 +77,14 @@ def _make_local_config(**overrides: object) -> MagicMock:
     return mock
 
 
-def _make_prober(
+def _make_prober(  # noqa: PLR0913 -- explicit DI; all kw-only after the 2nd arg
     tracker: ProviderHealthTracker | None = None,
     configs: dict[str, MagicMock] | None = None,
     *,
     discovery_policy_loader: AsyncMock | None = None,
     interval_seconds: int = 3600,
     enabled: bool = True,
+    clock: Clock | None = None,
 ) -> tuple[ProviderHealthProber, ProviderHealthTracker]:
     """Build a prober with a mock config_resolver.
 
@@ -111,8 +115,18 @@ def _make_prober(
         config_resolver,
         discovery_policy_loader=discovery_policy_loader,
         interval_seconds=interval_seconds,
+        clock=clock,
     )
     return prober, trk
+
+
+def _resolver_of(prober: ProviderHealthProber) -> MagicMock:
+    """The prober's config-resolver double, typed for stub configuration.
+
+    Returns:
+        The mock standing in for :class:`ConfigResolver`.
+    """
+    return cast(MagicMock, prober._config_resolver)
 
 
 def _patch_httpx(
@@ -721,3 +735,69 @@ class TestRecencyGuard:
         )
 
         assert await prober._probed_within_interval("test-local") is True
+
+    async def test_recency_is_measured_on_the_injected_clock(self) -> None:
+        """Virtual time, not wall time, decides the skip.
+
+        Reading the wall clock here would make the guard untestable
+        deterministically and would let a host clock jump change whether
+        a provider is probed.
+        """
+        clock = FakeClock()
+        tracker = ProviderHealthTracker()
+        prober, _ = _make_prober(tracker, interval_seconds=60, clock=clock)
+        await tracker.record(
+            ProviderHealthRecord(
+                provider_name="test-local",
+                timestamp=clock.now(),
+                success=True,
+                response_time_ms=1.0,
+            )
+        )
+
+        assert await prober._probed_within_interval("test-local") is True
+        clock.advance(120)
+        assert await prober._probed_within_interval("test-local") is False
+
+
+@pytest.mark.unit
+class TestStaleProbeGuard:
+    """A result is recorded only while it still describes the live config.
+
+    The periodic sweep and the immediate post-mutation probe can be in
+    flight for the same provider at once, each holding the configuration
+    snapshot it started with. Whichever finishes last would otherwise
+    become the reported health, so a probe of an endpoint the operator
+    has already replaced could win purely on timing.
+    """
+
+    async def test_a_config_change_mid_probe_is_not_recorded(self) -> None:
+        tracker = ProviderHealthTracker()
+        prober, _ = _make_prober(tracker)
+        # Snapshot first, live config second: the probe re-reads the
+        # configs once the request has returned.
+        _resolver_of(prober).get_provider_configs.side_effect = [
+            {"test-local": _make_local_config()},
+            {"test-local": _make_local_config(base_url="http://localhost:11555")},
+        ]
+
+        with _patch_httpx(status_code=200), capture_logs() as logs:
+            await prober.probe_provider("test-local")
+
+        summary = await tracker.get_summary("test-local")
+        assert summary.health_status == ProviderHealthStatus.UNKNOWN
+        assert any(
+            log["event"] == PROBE_SKIPPED and log.get("reason") == "config_changed"
+            for log in logs
+        )
+
+    async def test_an_unchanged_config_still_records(self) -> None:
+        """The guard must not suppress the ordinary path."""
+        tracker = ProviderHealthTracker()
+        prober, _ = _make_prober(tracker)
+
+        with _patch_httpx(status_code=200):
+            await prober.probe_provider("test-local")
+
+        summary = await tracker.get_summary("test-local")
+        assert summary.health_status == ProviderHealthStatus.UP

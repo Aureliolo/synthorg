@@ -10,7 +10,6 @@ reset the probe interval for that provider.
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.config.provider_schema import ProviderConfig
@@ -43,6 +42,7 @@ from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracke
 from synthorg.providers.health_prober_helpers import (
     build_auth_headers,
     build_ping_url,
+    probe_url_is_current,
 )
 from synthorg.providers.health_prober_targets import resolve_probe_target
 from synthorg.settings.enums import SettingNamespace
@@ -394,10 +394,15 @@ class ProviderHealthProber:
         Returns:
             True when a recorded check is newer than the probe interval.
         """
-        summary = await self._health_tracker.get_summary(name)
+        # One time source for both the tracker's window and the elapsed
+        # arithmetic: reading the summary on wall time while measuring
+        # against the seam makes an injected clock silently empty the
+        # window instead of moving the deadline.
+        now = self._clock.now()
+        summary = await self._health_tracker.get_summary(name, now=now)
         if summary.last_check_timestamp is None:
             return False
-        elapsed = (datetime.now(UTC) - summary.last_check_timestamp).total_seconds()
+        elapsed = (now - summary.last_check_timestamp).total_seconds()
         if elapsed >= self._interval:
             return False
         logger.debug(
@@ -416,10 +421,11 @@ class ProviderHealthProber:
         deliberately not applied: an endpoint that just changed must be
         re-probed even if the old one answered moments ago.
 
-        A paused prober, an unknown provider, a gate rejection, or a failed
-        probe is logged and recorded like any cycle probe rather than raised.
-        Resolver, config-read and DNS errors do propagate, so a caller that
-        must not fail on a probe error contains them itself; see
+        A paused prober, an unknown provider, or a gate rejection is logged
+        and skipped; only a completed probe records a result, and an
+        unexpected probe error is logged rather than raised. Resolver,
+        config-read and DNS errors do propagate, so a caller that must not
+        fail on one contains it itself; see
         ``ProviderManagementService._probe_after_mutation``.
         """
         if not await self._resolve_enabled():
@@ -566,9 +572,21 @@ class ProviderHealthProber:
         )
         elapsed_ms, success, error_msg = result
 
+        # The config snapshot this probe started with can go stale while the
+        # request is in flight, and the periodic sweep can be probing the same
+        # provider concurrently with the immediate post-mutation probe. Whoever
+        # records last would otherwise win, pinning health to an endpoint the
+        # operator has already replaced.
+        live = await self._config_resolver.get_provider_configs()
+        if not probe_url_is_current(name, url, live, ollama_port=ollama_port):
+            logger.debug(
+                PROVIDER_HEALTH_PROBE_SKIPPED, provider=name, reason="config_changed"
+            )
+            return
+
         record = ProviderHealthRecord(
             provider_name=name,
-            timestamp=datetime.now(UTC),
+            timestamp=self._clock.now(),
             success=success,
             response_time_ms=round(elapsed_ms, 1),
             error_message=error_msg,
