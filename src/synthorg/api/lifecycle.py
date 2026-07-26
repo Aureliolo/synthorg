@@ -325,6 +325,11 @@ async def _maybe_start_health_prober(
             connection_catalog=provider_credential_catalog_of(app_state),
         )
         await prober.start()
+        if management is not None:
+            # Creating or re-pointing a provider probes it straight away, so a
+            # fresh provider never sits UNKNOWN (indistinguishable from
+            # unreachable) until the next periodic cycle.
+            management.set_probe_requester(prober)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(

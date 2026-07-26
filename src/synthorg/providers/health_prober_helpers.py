@@ -6,9 +6,11 @@ Stateless URL/header/truncation utilities split out of
 budget. No I/O or lifecycle state lives here.
 """
 
+from collections.abc import Mapping
 from typing import Final
 from urllib.parse import urlparse
 
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.core.normalization import strip_trailing_slash
 
 _MAX_ERROR_MESSAGE_LENGTH: Final[int] = 200
@@ -75,6 +77,40 @@ def build_auth_headers(
     if api_key and auth_type in ("api_key", "subscription"):
         return {"Authorization": f"Bearer {api_key}"}
     return {}
+
+
+def probe_url_is_current(
+    name: str,
+    url: str,
+    providers: Mapping[str, ProviderConfig],
+    *,
+    ollama_port: int,
+) -> bool:
+    """Whether *url* still matches what *providers* configures for *name*.
+
+    A probe carries the configuration snapshot it started with for as
+    long as the request is in flight, and two entry points can be in
+    flight at once: the periodic sweep and the immediate probe a
+    provider mutation triggers. Without this check the loser of that
+    race records last, so an endpoint the operator has already replaced
+    can become the reported health state until the next sweep.
+
+    Args:
+        name: Provider name.
+        url: Ping URL the in-flight probe used.
+        providers: Provider configs read back after the probe completed.
+        ollama_port: Resolved ``providers.ollama_default_port``.
+
+    Returns:
+        True when the live configuration still yields *url*.
+    """
+    config = providers.get(name)
+    if config is None or config.base_url is None:
+        return False
+    live = build_ping_url(
+        config.base_url, config.litellm_provider, ollama_port=ollama_port
+    )
+    return live == url
 
 
 def truncate(msg: str, limit: int = _MAX_ERROR_MESSAGE_LENGTH) -> str:

@@ -50,6 +50,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_CONFIG_PERSIST_FAILED,
     PROVIDER_CONNECTION_TESTED,
     PROVIDER_DISCOVERY_FAILED,
+    PROVIDER_HEALTH_PROBE_FAILED,
     PROVIDER_LOCAL_MANAGER_NOT_AVAILABLE,
     PROVIDER_MODEL_CONFIG_UPDATED,
     PROVIDER_NOT_FOUND,
@@ -110,6 +111,7 @@ from synthorg.providers.models import ChatMessage
 from synthorg.providers.presets import (
     get_preset,
 )
+from synthorg.providers.probe_protocol import ProviderProbeRequester
 from synthorg.providers.routing.router import ModelRouter
 from synthorg.providers.routing.selector import ModelCandidateSelector
 from synthorg.settings.resolver import ConfigResolver
@@ -336,6 +338,57 @@ class ProviderManagementService(
             settings_service=settings_service,
             config_resolver=config_resolver,
         )
+        # Injected post-construction: the prober is built during on-startup
+        # wiring, after this service exists. ``None`` leaves a mutation
+        # unprobed rather than failing it.
+        self._probe_requester: ProviderProbeRequester | None = None
+
+    def set_probe_requester(self, requester: ProviderProbeRequester) -> None:
+        """Wire the health prober used to probe a provider on mutation.
+
+        Args:
+            requester: The prober that services an out-of-cycle probe.
+        """
+        self._probe_requester = requester
+
+    async def _probe_after_mutation(self, name: str) -> None:
+        """Probe *name* now so its health reflects the mutation immediately.
+
+        Without this a newly created provider reports UNKNOWN -- rendered
+        identically to a never-reachable one -- until the next periodic cycle,
+        up to the full probe interval later. Best-effort by design: the
+        provider is already persisted, so a probe failure must not turn a
+        successful mutation into an error.
+
+        The probe is awaited on the request, so it carries its own deadline:
+        a mistyped host would otherwise hold the save open for the probe's own
+        connect timeout plus DNS. Timing out costs only the immediate health
+        reading, which the next sweep supplies anyway.
+
+        Raises:
+            asyncio.CancelledError: Propagated immediately so shutdown is not
+                swallowed by the best-effort handler below.
+        """
+        requester = self._probe_requester
+        if requester is None:
+            return
+        try:
+            budget = await self._config_resolver.get_float(
+                "api", "post_mutation_probe_timeout_seconds"
+            )
+            async with asyncio.timeout(budget):
+                await requester.probe_provider(name)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                PROVIDER_HEALTH_PROBE_FAILED,
+                provider=name,
+                note="post-mutation probe failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def list_providers(self) -> Mapping[str, ProviderConfig]:
         """List all configured providers keyed by name.
@@ -448,7 +501,14 @@ class ProviderManagementService(
                     "model_count": len(new_config.models),
                 },
             )
-            return new_config
+        # Probed outside the lock: this is a network round-trip (a 10s HTTP
+        # budget plus DNS resolution), and ``self._lock`` serialises EVERY
+        # mutating entry point on this service, so holding it across the probe
+        # would stall unrelated providers' mutations behind one unreachable
+        # endpoint. The config is already persisted, and the probe re-reads it
+        # itself, so it needs no exclusion.
+        await self._probe_after_mutation(request.name)
+        return new_config
 
     async def update_provider(
         self,
@@ -533,7 +593,11 @@ class ProviderManagementService(
                 event_type="provider_updated",
                 payload=_diff_provider_update(existing, updated),
             )
-            return updated
+        # Outside the lock for the same reason as ``create_provider``: a
+        # re-pointed endpoint must be re-probed, but not while every other
+        # provider mutation waits on the result.
+        await self._probe_after_mutation(name)
+        return updated
 
     async def delete_provider(
         self,

@@ -270,64 +270,6 @@ class SetupCompanyResponse(BaseModel):
         return len(self.agents)
 
 
-class SetupModelRecommendationsResponse(BaseModel):
-    """Wizard model-selection recommendations + candidate lists.
-
-    Lets the setup wizard prefill the coordinator's decomposition model and the
-    memory embedding model with sensible defaults (best-ranked / most-senior
-    catalogue model) while leaving the operator free to override either from
-    the full configured catalogue.
-
-    Attributes:
-        decomposition_recommended: Suggested decomposition model id, if any.
-        decomposition_candidates: All catalogue model ids selectable for it.
-        embedding_recommended: Suggested embedding model id, if any.
-        embedding_recommended_dims: Output dims for the suggested embedder.
-        embedding_candidates: Catalogue model ids that are embedding-capable.
-        research_recommended: Suggested research model id (a capable
-            model), if any. Research uses its own model, not the
-            decomposition model.
-        cos_recommended: Suggested Chief-of-Staff chat model id (a
-            cheaper model for frequent conversational turns), if any.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    decomposition_recommended: NotBlankStr | None = None
-    decomposition_candidates: tuple[str, ...] = ()
-    embedding_recommended: NotBlankStr | None = None
-    embedding_recommended_dims: int | None = Field(default=None, ge=1)
-    embedding_candidates: tuple[str, ...] = ()
-    research_recommended: NotBlankStr | None = None
-    cos_recommended: NotBlankStr | None = None
-    propose_recommended: NotBlankStr | None = None
-    routing_recommended: NotBlankStr | None = None
-    narrative_recommended: NotBlankStr | None = None
-    charter_recommended: NotBlankStr | None = None
-
-    @model_validator(mode="after")
-    def _validate_embedding_pairing(self) -> Self:
-        """Dims and a recommended embedder must be present together.
-
-        Returns:
-            The validated instance (``self``), unchanged.
-
-        Raises:
-            ValueError: When exactly one of ``embedding_recommended`` and
-                ``embedding_recommended_dims`` is set (the wizard cannot
-                prefill a dimension with no model, or vice versa).
-        """
-        if (self.embedding_recommended is None) != (
-            self.embedding_recommended_dims is None
-        ):
-            msg = (
-                "embedding_recommended and embedding_recommended_dims must be "
-                "set together or both omitted"
-            )
-            raise ValueError(msg)
-        return self
-
-
 class SetupAgentRequest(BaseModel):
     """Agent creation payload for first-run setup.
 

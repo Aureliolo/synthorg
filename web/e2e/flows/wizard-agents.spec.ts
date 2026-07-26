@@ -63,13 +63,17 @@ const AGENT: SetupAgentSummary = {
  * the rename flow under test does not touch them.
  */
 const MODEL_RECS: SetupModelRecommendationsResponse = {
+  charter_recommended: null,
   cos_recommended: null,
-  decomposition_candidates: [],
   decomposition_recommended: null,
   embedding_candidates: [],
   embedding_recommended: null,
   embedding_recommended_dims: null,
+  model_ref_candidates: [],
+  narrative_recommended: null,
+  propose_recommended: null,
   research_recommended: null,
+  routing_recommended: null,
 }
 
 /** The company the reconcile hydrates so the Agents step is reachable. */

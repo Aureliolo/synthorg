@@ -8,9 +8,7 @@ import pytest
 from synthorg.api.controllers.setup._embedder_setup import (
     _set_model_if_blank,
     auto_select_embedder,
-    pick_decomposition_model,
     pick_decomposition_model_ref,
-    pick_model_for_tier,
     pick_model_ref_for_tier,
 )
 from synthorg.memory.embedding.rankings import LMEB_RANKINGS
@@ -109,49 +107,6 @@ class TestAutoSelectEmbedder:
 
 
 @pytest.mark.unit
-class TestPickDecompositionModel:
-    def test_prefers_large_tier_agent_model(self) -> None:
-        agents: list[dict[str, object]] = [
-            {"tier": "small", "model": {"model_id": "small-model"}},
-            {"tier": "large", "model": {"model_id": "large-model"}},
-        ]
-        assert pick_decomposition_model(agents) == "large-model"
-
-    def test_falls_back_to_any_agent_with_a_model(self) -> None:
-        agents: list[dict[str, object]] = [
-            {"tier": "small", "model": {"model_id": "only-model"}},
-        ]
-        assert pick_decomposition_model(agents) == "only-model"
-
-    def test_returns_none_without_any_model(self) -> None:
-        assert pick_decomposition_model([{"tier": "large"}]) is None
-        assert pick_decomposition_model([]) is None
-
-
-@pytest.mark.unit
-class TestPickModelForTier:
-    def test_prefers_matching_tier(self) -> None:
-        agents: list[dict[str, object]] = [
-            {"tier": "large", "model": {"model_id": "large-model"}},
-            {"tier": "medium", "model": {"model_id": "medium-model"}},
-            {"tier": "small", "model": {"model_id": "small-model"}},
-        ]
-        assert pick_model_for_tier(agents, "small") == "small-model"
-        assert pick_model_for_tier(agents, "medium") == "medium-model"
-        assert pick_model_for_tier(agents, "large") == "large-model"
-
-    def test_falls_back_to_any_agent_with_a_model(self) -> None:
-        any_only: list[dict[str, object]] = [
-            {"tier": "large", "model": {"model_id": "large-model"}},
-        ]
-        assert pick_model_for_tier(any_only, "small") == "large-model"
-
-    def test_returns_none_without_any_model(self) -> None:
-        assert pick_model_for_tier([{"tier": "small"}], "small") is None
-        assert pick_model_for_tier([], "small") is None
-
-
-@pytest.mark.unit
 class TestPickModelRef:
     def test_decomposition_ref_is_bound(self) -> None:
         # A bound ref carries the agent's own provider so the persisted
@@ -180,6 +135,28 @@ class TestPickModelRef:
     def test_ref_none_without_any_model(self) -> None:
         assert pick_decomposition_model_ref([]) is None
         assert pick_model_ref_for_tier([{"tier": "small"}], "small") is None
+
+    def test_half_bound_agent_does_not_end_the_scan(self) -> None:
+        """A provider with no model id yields no ref, so it must not win.
+
+        Stopping there would report "no bound model" while a fully bound
+        agent sits later in the roster.
+        """
+        agents: list[dict[str, object]] = [
+            {"tier": "small", "model": {"provider": "p1", "model_id": ""}},
+            {"tier": "small", "model": {"provider": "p2", "model_id": "real-model"}},
+        ]
+
+        assert pick_model_ref_for_tier(agents, "small") == _bound("p2", "real-model")
+        assert pick_decomposition_model_ref(agents) == _bound("p2", "real-model")
+
+    def test_model_id_without_a_provider_does_not_end_the_scan(self) -> None:
+        agents: list[dict[str, object]] = [
+            {"tier": "large", "model": {"provider": "", "model_id": "orphan"}},
+            {"tier": "large", "model": {"provider": "p3", "model_id": "bound"}},
+        ]
+
+        assert pick_model_ref_for_tier(agents, "large") == _bound("p3", "bound")
 
 
 @pytest.mark.unit

@@ -191,15 +191,20 @@ def _agent_model(agent: dict[str, object]) -> dict[str, object] | None:
     return None
 
 
-def _agent_model_id(agent: dict[str, object]) -> str | None:
-    """Return an agent's assigned model id, or ``None`` when unset.
+def _is_bound_model(model: dict[str, object]) -> bool:
+    """Whether an assignment names both a provider and a model id.
 
     Returns:
-        The non-blank ``model.model_id`` string, or ``None``.
+        True when both halves are present and non-blank.
     """
-    model = _agent_model(agent)
-    model_id = model.get("model_id") if model else None
-    return model_id if isinstance(model_id, str) else None
+    provider = model.get("provider")
+    model_id = model.get("model_id")
+    return bool(
+        isinstance(provider, str)
+        and provider.strip()
+        and isinstance(model_id, str)
+        and model_id.strip()
+    )
 
 
 def _agent_model_ref(agent: dict[str, object]) -> str | None:
@@ -211,21 +216,17 @@ def _agent_model_ref(agent: dict[str, object]) -> str | None:
     non-blank on the agent's assignment.
 
     Returns:
-        A serialized bound model reference, or ``None``.
+        A serialised bound model reference, or ``None``.
     """
     model = _agent_model(agent)
-    if model is None:
+    if model is None or not _is_bound_model(model):
         return None
-    provider = model.get("provider")
-    model_id = model.get("model_id")
-    if (
-        isinstance(provider, str)
-        and provider.strip()
-        and isinstance(model_id, str)
-        and model_id.strip()
-    ):
-        return serialize_model_ref(ModelRef(provider=provider, model_id=model_id))
-    return None
+    return serialize_model_ref(
+        ModelRef(
+            provider=str(model["provider"]),
+            model_id=str(model["model_id"]),
+        )
+    )
 
 
 def _first_agent_with_model(
@@ -239,9 +240,9 @@ def _first_agent_with_model(
     Args:
         agents: Roster agent dicts to search.
         tier: Preferred tier; matched agents are considered first.
-        require_provider: When ``True``, skip agents whose model carries no
-            bound provider, so a ref-returning caller does not stop at a
-            provider-less agent when a later agent has a bound assignment.
+        require_provider: When ``True``, skip agents whose model is not fully
+            bound, so a ref-returning caller does not stop at an unusable
+            agent when a later agent has a complete assignment.
 
     Returns:
         The chosen agent dict, or ``None`` when none carries a (bound) model.
@@ -252,59 +253,34 @@ def _first_agent_with_model(
             model = _agent_model(agent)
             if model is None:
                 continue
-            provider = model.get("provider")
-            if not require_provider or (isinstance(provider, str) and provider.strip()):
+            # Both halves, matching what ``_agent_model_ref`` demands: an agent
+            # with a provider but no model id yields no ref, so accepting it
+            # here would end the scan on a value the caller cannot use.
+            if not require_provider or _is_bound_model(model):
                 return agent
     return None
-
-
-def pick_model_for_tier(agents: list[dict[str, object]], tier: str) -> str | None:
-    """Choose a roster model id matching *tier*, then any agent's model.
-
-    Prefers an agent already matched to *tier* (so a per-feature model
-    tracks the declared tier policy), falling back to any agent that
-    carries a model assignment. The bare-id form feeds the wizard's
-    model-recommendations endpoint (a UI highlight); settings writes use the
-    ``_ref`` twin so the persisted value carries the provider.
-
-    Returns:
-        A model id, or ``None`` when no agent carries a model.
-    """
-    agent = _first_agent_with_model(agents, tier=tier)
-    return _agent_model_id(agent) if agent else None
 
 
 def pick_model_ref_for_tier(agents: list[dict[str, object]], tier: str) -> str | None:
     """Choose a bound ``{provider, model_id}`` ref for *tier*, then any agent.
 
+    Prefers an agent already matched to *tier* (so a per-feature model tracks
+    the declared tier policy), falling back to any agent carrying a bound
+    assignment.
+
     Returns:
-        A serialized bound model reference, or ``None`` when no agent carries
+        A serialised bound model reference, or ``None`` when no agent carries
         a bound (provider + model) assignment.
     """
     agent = _first_agent_with_model(agents, tier=tier, require_provider=True)
     return _agent_model_ref(agent) if agent else None
 
 
-def pick_decomposition_model(agents: list[dict[str, object]]) -> str | None:
-    """Choose a capable model id for the coordinator's decomposition strategy.
-
-    Prefers a top-tier (``large``) agent's model -- the strongest the catalogue
-    supports -- so the coordinator decomposes work with a capable model,
-    falling back to any agent that carries a model assignment. Bare-id form for
-    the wizard's model-recommendations endpoint (a UI highlight).
-
-    Returns:
-        A model id, or ``None`` when no agent carries a model.
-    """
-    agent = _first_agent_with_model(agents, tier="large")
-    return _agent_model_id(agent) if agent else None
-
-
 def pick_decomposition_model_ref(agents: list[dict[str, object]]) -> str | None:
     """Choose a bound ``{provider, model_id}`` ref for the decomposition model.
 
     Returns:
-        A serialized bound model reference, or ``None`` when no agent carries a
+        A serialised bound model reference, or ``None`` when no agent carries a
         bound assignment.
     """
     agent = _first_agent_with_model(agents, tier="large", require_provider=True)
@@ -376,34 +352,51 @@ async def _set_model_if_blank(
     )
 
 
-async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
-    """Extract model IDs from provider configs for embedding selection.
+async def collect_provider_models(
+    app_state: AppState,
+) -> tuple[tuple[str, str], ...]:
+    """Extract ``(provider, model id)`` pairs from every configured provider.
 
-    Best-effort: returns an empty tuple if config resolver is not
+    The provider-bound source both catalogue reads share. A MODEL_REF picker
+    needs the pair rather than the bare id, because the same model id can be
+    served by more than one provider and a provider-less assignment is
+    rejected at write time.
+
+    Best-effort: returns an empty tuple if the config resolver is not
     available or provider configs cannot be read for a non-critical
-    reason; interpreter-critical errors propagate via
-    ``reraise_critical``.
+    reason; interpreter-critical errors propagate via ``reraise_critical``.
 
     Returns:
-        Tuple of the declared element types.
+        Tuple of ``(provider_name, model_id)`` pairs.
     """
     if app_state.slice(SettingsStateSlice).config_resolver is None:
         return ()
     try:
         configs = await config_resolver_of(app_state).get_provider_configs()
-        ids: list[str] = [
-            str(model.id) for pc in configs.values() for model in pc.models
-        ]
-        return tuple(ids)
+        return tuple(
+            (name, str(model.id)) for name, pc in configs.items() for model in pc.models
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             SETUP_MODEL_ID_COLLECTION_ERROR,
-            check="collect_model_ids",
+            check="collect_provider_models",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return ()
+
+
+async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
+    """Extract model IDs from provider configs for embedding selection.
+
+    The bare-id projection of :func:`collect_provider_models`, for the
+    embedding picker and ranking helpers whose setting is a plain string.
+
+    Returns:
+        Tuple of model ids across all configured providers.
+    """
+    return tuple(model_id for _, model_id in await collect_provider_models(app_state))
 
 
 async def auto_select_embedder(

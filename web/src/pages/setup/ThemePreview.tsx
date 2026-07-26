@@ -6,7 +6,7 @@ import {
   type Transition,
 } from 'motion/react'
 import { cn } from '@/lib/utils'
-import { tweenDefault, tweenFast } from '@/lib/motion'
+import { reducedMotionInstant, tweenDefault, tweenFast } from '@/lib/motion'
 import { MetricCard } from '@/components/ui/metric-card'
 import { AgentCard } from '@/components/ui/agent-card'
 import { DeptHealthBar } from '@/components/ui/dept-health-bar'
@@ -56,7 +56,7 @@ const DEMO_TRANSITION: Record<AnimationPreset, Transition> = {
   minimal: tweenFast,
   'status-driven': tweenDefault,
   spring: { type: 'spring', stiffness: 220, damping: 12 },
-  instant: { duration: 0 },
+  instant: reducedMotionInstant,
   aggressive: { type: 'spring', stiffness: 420, damping: 9 },
 }
 
@@ -89,9 +89,23 @@ const DEMO_VARIANTS: Record<
 
 // Fixed illustration widths for the mock sidebar (preview-only chrome, not
 // the real sidebar-width tokens).
-const SIDEBAR_PREVIEW_WIDTH: Record<'compact' | 'full', string> = {
-  compact: 'w-10',
+const SIDEBAR_PREVIEW_WIDTH: Record<'rail' | 'compact' | 'full', string> = {
+  rail: 'w-10',
+  compact: 'w-20',
   full: 'w-28',
+}
+
+// Mirrors the real sidebar's per-mode shape: ``rail`` is the only desktop mode
+// that hides labels, and ``compact`` differs from a fully expanded sidebar by
+// column width alone.
+const SIDEBAR_PREVIEW_SHAPE: Record<
+  Exclude<SidebarMode, 'hidden'>,
+  { width: keyof typeof SIDEBAR_PREVIEW_WIDTH; labels: boolean }
+> = {
+  rail: { width: 'rail', labels: false },
+  compact: { width: 'compact', labels: true },
+  collapsible: { width: 'full', labels: true },
+  persistent: { width: 'full', labels: true },
 }
 
 const SIDEBAR_NAV = [
@@ -105,10 +119,10 @@ interface SidebarNavItemProps {
   icon: React.ElementType
   label: string
   isActive: boolean
-  isCompact: boolean
+  showLabel: boolean
 }
 
-function SidebarNavItem({ icon: Icon, label, isActive, isCompact }: SidebarNavItemProps) {
+function SidebarNavItem({ icon: Icon, label, isActive, showLabel }: SidebarNavItemProps) {
   return (
     <div
       className={cn(
@@ -117,7 +131,7 @@ function SidebarNavItem({ icon: Icon, label, isActive, isCompact }: SidebarNavIt
       )}
     >
       <Icon className="size-3.5 shrink-0" />
-      {!isCompact && <span className="truncate text-micro">{label}</span>}
+      {showLabel && <span className="truncate text-micro">{label}</span>}
     </div>
   )
 }
@@ -125,14 +139,14 @@ function SidebarNavItem({ icon: Icon, label, isActive, isCompact }: SidebarNavIt
 function SidebarPreview({ mode }: { mode: SidebarMode }) {
   if (mode === 'hidden') return null
 
-  const isCompact = mode === 'compact'
+  const shape = SIDEBAR_PREVIEW_SHAPE[mode]
 
   return (
     <div
       className={cn(
         'flex flex-col gap-2 rounded-lg border border-border bg-bg-surface p-card-snug',
         'transition-[width] duration-[var(--so-transition-default)]',
-        isCompact ? SIDEBAR_PREVIEW_WIDTH.compact : SIDEBAR_PREVIEW_WIDTH.full,
+        SIDEBAR_PREVIEW_WIDTH[shape.width],
       )}
     >
       {SIDEBAR_NAV.map(({ icon, label }) => (
@@ -141,7 +155,7 @@ function SidebarPreview({ mode }: { mode: SidebarMode }) {
           icon={icon}
           label={label}
           isActive={label === 'Overview'}
-          isCompact={isCompact}
+          showLabel={shape.labels}
         />
       ))}
       {mode === 'collapsible' && (

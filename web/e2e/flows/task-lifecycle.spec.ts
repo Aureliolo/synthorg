@@ -106,6 +106,7 @@ test.describe('Task lifecycle critical flow', () => {
       // builds one ``created``-status task that ``STATUS_TO_COLUMN``
       // maps to the ``backlog`` column; the locator must match.
       const seededTask = allTasks[0]
+      if (!seededTask) throw new Error('seed produced no tasks')
       const backlogColumn = page.locator('[data-column-id="backlog"]')
       await expect(backlogColumn).toBeVisible()
       const todoCard = backlogColumn.getByText(seededTask.title).first()

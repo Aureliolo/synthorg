@@ -10,7 +10,6 @@ reset the probe interval for that provider.
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.config.provider_schema import ProviderConfig
@@ -24,6 +23,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_SKIPPED,
     PROVIDER_HEALTH_PROBE_STARTED,
     PROVIDER_HEALTH_PROBE_SUCCESS,
+    PROVIDER_HEALTH_PROBER_CYCLE_COMPLETED,
     PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
     PROVIDER_HEALTH_PROBER_PAUSED,
     PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
@@ -32,11 +32,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBER_STOPPED,
 )
 from synthorg.providers._probe_request import execute_probe
-from synthorg.providers.discovery_policy import (
-    ProviderDiscoveryPolicy,
-    is_url_allowed,
-    resolve_discovery_target,
-)
+from synthorg.providers.discovery_policy import ProviderDiscoveryPolicy
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import (
     ProviderLifecycleConflictError,
@@ -46,7 +42,9 @@ from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracke
 from synthorg.providers.health_prober_helpers import (
     build_auth_headers,
     build_ping_url,
+    probe_url_is_current,
 )
+from synthorg.providers.health_prober_targets import resolve_probe_target
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.network_validator import DnsValidationOk
@@ -379,59 +377,100 @@ class ProviderHealthProber:
                 break  # stop_event was set
             # ``sleep_task`` completed -- next cycle
 
+    async def _load_policy(self) -> ProviderDiscoveryPolicy | None:
+        """Load the current discovery policy, or ``None`` when ungated.
+
+        Returns:
+            The policy from the injected loader, or ``None`` when no loader
+            was wired (the prober then applies no SSRF gate).
+        """
+        if self._discovery_policy_loader is None:
+            return None
+        return await self._discovery_policy_loader()
+
+    async def _probed_within_interval(self, name: str) -> bool:
+        """Whether *name* was probed recently enough to skip this cycle.
+
+        Returns:
+            True when a recorded check is newer than the probe interval.
+        """
+        # One time source for both the tracker's window and the elapsed
+        # arithmetic: reading the summary on wall time while measuring
+        # against the seam makes an injected clock silently empty the
+        # window instead of moving the deadline.
+        now = self._clock.now()
+        summary = await self._health_tracker.get_summary(name, now=now)
+        if summary.last_check_timestamp is None:
+            return False
+        elapsed = (now - summary.last_check_timestamp).total_seconds()
+        if elapsed >= self._interval:
+            return False
+        logger.debug(
+            PROVIDER_HEALTH_PROBE_SKIPPED,
+            provider=name,
+            seconds_since_last=round(elapsed),
+        )
+        return True
+
+    async def probe_provider(self, name: str) -> None:
+        """Probe one provider immediately, outside the cycle cadence.
+
+        Called when a provider is created or its endpoint changes so its
+        health is real straight away rather than UNKNOWN until the next
+        cycle (up to ``interval_seconds`` later). The recency guard is
+        deliberately not applied: an endpoint that just changed must be
+        re-probed even if the old one answered moments ago.
+
+        A paused prober, an unknown provider, or a gate rejection is logged
+        and skipped; only a completed probe records a result, and an
+        unexpected probe error is logged rather than raised. Resolver,
+        config-read and DNS errors do propagate, so a caller that must not
+        fail on one contains it itself; see
+        ``ProviderManagementService._probe_after_mutation``.
+        """
+        if not await self._resolve_enabled():
+            logger.debug(
+                PROVIDER_HEALTH_PROBER_PAUSED,
+                reason="paused_by_setting",
+                provider=name,
+            )
+            return
+        providers = await self._config_resolver.get_provider_configs()
+        config = providers.get(name)
+        if config is None:
+            logger.debug(
+                PROVIDER_HEALTH_PROBE_SKIPPED,
+                provider=name,
+                reason="provider_not_configured",
+            )
+            return
+        ollama_port = await self._config_resolver.get_int(
+            "providers", "ollama_default_port"
+        )
+        target = await resolve_probe_target(
+            name, config, await self._load_policy(), ollama_port=ollama_port
+        )
+        if not target.eligible:
+            return
+        await self._safe_probe_one(
+            name, config, ollama_port=ollama_port, validation=target.validation
+        )
+
     async def _probe_all(self) -> None:
         """Probe all eligible providers in parallel."""
         providers = await self._config_resolver.get_provider_configs()
-        policy: ProviderDiscoveryPolicy | None = None
-        if self._discovery_policy_loader is not None:
-            policy = await self._discovery_policy_loader()
+        policy = await self._load_policy()
         ollama_port = await self._config_resolver.get_int(
             "providers", "ollama_default_port"
         )
         eligible: list[tuple[str, ProviderConfig, DnsValidationOk | None]] = []
         for name, config in providers.items():
-            if config.base_url is None:
-                continue  # cloud providers -- no lightweight ping available
-            url = build_ping_url(
-                config.base_url, config.litellm_provider, ollama_port=ollama_port
+            target = await resolve_probe_target(
+                name, config, policy, ollama_port=ollama_port
             )
-            validation: DnsValidationOk | None = None
-            if policy is not None:
-                if not is_url_allowed(url, policy):
-                    # Skip -- SSRF-blocked providers are in an indeterminate
-                    # state, not a failed one.  UNKNOWN (zero records) is the
-                    # correct health status for them.
-                    logger.warning(
-                        PROVIDER_HEALTH_PROBE_SKIPPED,
-                        provider=name,
-                        reason="url_not_allowed_by_discovery_policy",
-                    )
-                    continue
-                resolved = await resolve_discovery_target(url, policy)
-                if isinstance(resolved, str):
-                    # An allowlisted host whose DNS will not resolve cannot
-                    # be pinned; probing it would reopen the rebinding
-                    # window, so leave it UNKNOWN rather than probe unpinned.
-                    logger.warning(
-                        PROVIDER_HEALTH_PROBE_SKIPPED,
-                        provider=name,
-                        reason="discovery_dns_unresolved",
-                    )
-                    continue
-                validation = resolved
-            summary = await self._health_tracker.get_summary(name)
-            if summary.last_check_timestamp is not None:
-                elapsed = (
-                    datetime.now(UTC) - summary.last_check_timestamp
-                ).total_seconds()
-                if elapsed < self._interval:
-                    logger.debug(
-                        PROVIDER_HEALTH_PROBE_SKIPPED,
-                        provider=name,
-                        seconds_since_last=round(elapsed),
-                    )
-                    continue
-            eligible.append((name, config, validation))
+            if not target.eligible or await self._probed_within_interval(name):
+                continue
+            eligible.append((name, config, target.validation))
         if eligible:
             async with asyncio.TaskGroup() as tg:
                 for name, config, validation in eligible:
@@ -443,6 +482,23 @@ class ProviderHealthProber:
                             validation=validation,
                         )
                     )
+        # A cycle that probes nothing is otherwise indistinguishable from one
+        # that probed everything successfully, so record both counts: an empty
+        # provider map (the state before the first provider is configured)
+        # would otherwise iterate zero times and emit no trace at all. INFO,
+        # not DEBUG: the deployed default is ``info``, so a DEBUG heartbeat
+        # would leave that exact silence in place. One line per cycle at the
+        # default 1800s interval is a heartbeat, not noise.
+        #
+        # After the group, so the event means what its name says: a group that
+        # raises leaves no completion line rather than one that already
+        # claimed success. Outside the ``if``, so a zero-provider sweep still
+        # reports.
+        logger.info(
+            PROVIDER_HEALTH_PROBER_CYCLE_COMPLETED,
+            provider_count=len(providers),
+            eligible_count=len(eligible),
+        )
 
     async def _safe_probe_one(
         self,
@@ -516,9 +572,27 @@ class ProviderHealthProber:
         )
         elapsed_ms, success, error_msg = result
 
+        # The config snapshot this probe started with can go stale while the
+        # request is in flight, and the periodic sweep can be probing the same
+        # provider concurrently with the immediate post-mutation probe. Whoever
+        # records last would otherwise win, pinning health to an endpoint the
+        # operator has already replaced.
+        # The port is re-read alongside the configs: it is the other input to
+        # the ping URL, and for a provider with no explicit litellm_provider
+        # it alone decides root versus /models.
+        live = await self._config_resolver.get_provider_configs()
+        live_port = await self._config_resolver.get_int(
+            "providers", "ollama_default_port"
+        )
+        if not probe_url_is_current(name, url, live, ollama_port=live_port):
+            logger.debug(
+                PROVIDER_HEALTH_PROBE_SKIPPED, provider=name, reason="config_changed"
+            )
+            return
+
         record = ProviderHealthRecord(
             provider_name=name,
-            timestamp=datetime.now(UTC),
+            timestamp=self._clock.now(),
             success=success,
             response_time_ms=round(elapsed_ms, 1),
             error_message=error_msg,

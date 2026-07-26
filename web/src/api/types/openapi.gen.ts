@@ -16644,17 +16644,34 @@ export type components = {
             /** @constant */
             readonly setup_complete: true;
         };
+        /** SetupModelCandidate */
+        readonly SetupModelCandidate: {
+            readonly model_id: string;
+            readonly provider: string;
+            /**
+             * @description The canonical ``{"provider", "model_id"}`` JSON for a settings write.
+             *
+             *     Derived rather than stored so a candidate cannot carry a reference that
+             *     disagrees with its own provider and model. Serialising it here (instead
+             *     of leaving it to the dashboard) keeps one implementation of the
+             *     canonical form, which the ``MODEL_REF`` validator accepts verbatim.
+             *
+             *     Returns:
+             *         The serialised model reference.
+             */
+            readonly ref: string;
+        };
         /** SetupModelRecommendationsResponse */
         readonly SetupModelRecommendationsResponse: {
             readonly charter_recommended: string | null;
             readonly cos_recommended: string | null;
-            /** @default [] */
-            readonly decomposition_candidates: readonly string[];
             readonly decomposition_recommended: string | null;
             /** @default [] */
             readonly embedding_candidates: readonly string[];
             readonly embedding_recommended: string | null;
             readonly embedding_recommended_dims: number | null;
+            /** @default [] */
+            readonly model_ref_candidates: readonly components["schemas"]["SetupModelCandidate"][];
             readonly narrative_recommended: string | null;
             readonly propose_recommended: string | null;
             readonly research_recommended: string | null;

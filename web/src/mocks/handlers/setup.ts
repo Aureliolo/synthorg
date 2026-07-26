@@ -23,6 +23,13 @@ import type {
 } from '@/api/types/setup'
 import { apiSuccess, paginatedEnvelopeFor, successFor } from './helpers'
 
+// Per-feature model settings are MODEL_REF, so a recommendation and every
+// candidate carry the serialized provider-bound ref the settings write needs.
+const MODEL_DEFAULT_REF = JSON.stringify({
+  provider: 'test-provider',
+  model_id: 'model-default',
+})
+
 function buildAgentSummary(
   overrides: Partial<SetupAgentSummary> = {},
 ): SetupAgentSummary {
@@ -138,17 +145,23 @@ export const setupHandlers = [
   http.get('/api/v1/setup/model-recommendations', () =>
     HttpResponse.json(
       successFor<typeof getModelRecommendations>({
-        decomposition_recommended: 'model-default',
-        decomposition_candidates: ['model-default'],
+        decomposition_recommended: MODEL_DEFAULT_REF,
+        model_ref_candidates: [
+          {
+            provider: 'test-provider',
+            model_id: 'model-default',
+            ref: MODEL_DEFAULT_REF,
+          },
+        ],
         embedding_recommended: 'embed-default',
         embedding_recommended_dims: 1024,
         embedding_candidates: ['embed-default'],
-        research_recommended: 'model-default',
-        cos_recommended: 'model-default',
-        propose_recommended: 'model-default',
-        routing_recommended: 'model-default',
-        narrative_recommended: 'model-default',
-        charter_recommended: 'model-default',
+        research_recommended: MODEL_DEFAULT_REF,
+        cos_recommended: MODEL_DEFAULT_REF,
+        propose_recommended: MODEL_DEFAULT_REF,
+        routing_recommended: MODEL_DEFAULT_REF,
+        narrative_recommended: MODEL_DEFAULT_REF,
+        charter_recommended: MODEL_DEFAULT_REF,
       }),
     ),
   ),

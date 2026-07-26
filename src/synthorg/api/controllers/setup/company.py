@@ -19,11 +19,11 @@ from synthorg.api.controllers.setup._embedder_setup import (
     auto_create_template_agents as _auto_create_template_agents,
 )
 from synthorg.api.controllers.setup._embedder_setup import (
-    collect_model_ids as _collect_model_ids,
+    collect_provider_models as _collect_provider_models,
 )
 from synthorg.api.controllers.setup._embedder_setup import (
-    pick_decomposition_model,
-    pick_model_for_tier,
+    pick_decomposition_model_ref,
+    pick_model_ref_for_tier,
 )
 from synthorg.api.controllers.setup._posture_seeding import (
     seed_posture_settings as _seed_posture_settings,
@@ -53,11 +53,14 @@ from synthorg.api.controllers.setup_agents import (
     get_existing_agents,
     normalize_description,
 )
+from synthorg.api.controllers.setup_model_recommendations import (
+    SetupModelCandidate,
+    SetupModelRecommendationsResponse,
+)
 from synthorg.api.controllers.setup_models import (
     SetupAgentSummary,
     SetupCompanyRequest,
     SetupCompanyResponse,
-    SetupModelRecommendationsResponse,
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo, require_read_access
@@ -146,17 +149,32 @@ class SetupCompanyController(Controller):
         app_state: AppState = state.app_state
         settings_svc = settings_service_of(app_state)
         agents = await get_existing_agents(settings_svc)
-        model_ids = await _collect_model_ids(app_state)
+        provider_models = await _collect_provider_models(app_state)
+        model_ids = tuple(model_id for _, model_id in provider_models)
         selection = select_embedding_model(model_ids)
-        capable = pick_decomposition_model(agents)
+        capable = pick_decomposition_model_ref(agents)
 
         def _for(purpose: PromptPurposeId) -> str | None:
-            return pick_model_for_tier(agents, tier_for_purpose(purpose))
+            return pick_model_ref_for_tier(agents, tier_for_purpose(purpose))
+
+        candidates = tuple(
+            SetupModelCandidate(provider=provider, model_id=model_id)
+            for provider, model_id in provider_models
+        )
+        # Recommendations come from the persisted roster, candidates from the
+        # live provider configs, so an agent still assigned a since-removed
+        # provider or model would prefill a ref absent from the options. The
+        # picker preselects by string identity, so that renders as an empty
+        # select holding an invisible value; offer no recommendation instead.
+        offered = frozenset(candidate.ref for candidate in candidates)
+
+        def _offered(ref: str | None) -> str | None:
+            return ref if ref in offered else None
 
         return ApiResponse(
             data=SetupModelRecommendationsResponse(
-                decomposition_recommended=capable,
-                decomposition_candidates=model_ids,
+                decomposition_recommended=_offered(capable),
+                model_ref_candidates=candidates,
                 embedding_recommended=selection.model_id if selection else None,
                 embedding_recommended_dims=(
                     selection.output_dims if selection else None
@@ -165,12 +183,12 @@ class SetupCompanyController(Controller):
                 # Research reuses the capable-model heuristic (its own setting,
                 # not the decomposition model). Each per-feature model is
                 # recommended at its declared tier from the single tier policy.
-                research_recommended=capable,
-                cos_recommended=_for(PromptPurposeId.COS_CHAT),
-                propose_recommended=_for(PromptPurposeId.COS_PROPOSE),
-                routing_recommended=_for(PromptPurposeId.COS_ROUTING),
-                narrative_recommended=_for(PromptPurposeId.COS_NARRATIVE),
-                charter_recommended=_for(PromptPurposeId.CHARTER_INTERVIEW),
+                research_recommended=_offered(capable),
+                cos_recommended=_offered(_for(PromptPurposeId.COS_CHAT)),
+                propose_recommended=_offered(_for(PromptPurposeId.COS_PROPOSE)),
+                routing_recommended=_offered(_for(PromptPurposeId.COS_ROUTING)),
+                narrative_recommended=_offered(_for(PromptPurposeId.COS_NARRATIVE)),
+                charter_recommended=_offered(_for(PromptPurposeId.CHARTER_INTERVIEW)),
             )
         )
 
