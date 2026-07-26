@@ -35,6 +35,13 @@ runs:
         # timeout because retry_cmd retries a non-zero EXIT, not a hang. A
         # per-attempt timeout converts that hang into a retryable 124.
         RETRY_CMD_ATTEMPT_TIMEOUT: "120"
+        # Without a deadline the ladder's worst case is 5 attempts x 120s plus
+        # ~3m45s of backoff -- 825s, longer than every job that installs uv
+        # (600s at most, 300s at least). The reaper would always win, so the
+        # exhaustion error below was unreachable and a stalled CDN surfaced as
+        # an opaque cancelled job. This bounds the ladder well inside the
+        # smallest budget; the healthy path (a few seconds) is untouched.
+        RETRY_CMD_DEADLINE: "150"
       run: | # zizmor: ignore[github-env] -- UV_UNMANAGED_INSTALL / $HOME are static paths, not untrusted input
         # pipefail so a curl failure (transient blip / DNS) propagates: without
         # it the pipe's exit is sh's, which exits 0 on empty EOF input, so

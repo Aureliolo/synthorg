@@ -30,21 +30,28 @@ runs:
     # from PyPI / Astral's index, and a transient CDN / index blip on any
     # of those would otherwise fail the step on a single attempt. This is
     # the Python analogue of go-mod-download-retry; both wrapped commands
-    # are idempotent, so retry-everything is safe. ~3m45s backoff budget.
+    # are idempotent, so retry-everything is safe.
     #
-    # ``uv python install`` is a quick, bounded fetch, so it carries a
+    # Each carries a RETRY_CMD_DEADLINE so the ladder always reports its own
+    # named failure before the enclosing job's timeout-minutes reaps the
+    # runner. Attempts x per-attempt timeout plus backoff is the real worst
+    # case, and an unbounded one is how a stalled download becomes an opaque
+    # cancelled job with no diagnosis.
+    #
+    # ``uv python install`` is a quick, bounded fetch, so it also carries a
     # per-attempt timeout that converts a stalled download into a retry.
-    # ``uv sync`` is deliberately left without one: a cold cross-platform
-    # resolve legitimately runs for minutes, and a per-attempt timeout tight
-    # enough to help within the shorter job budgets would risk killing a
-    # slow-but-progressing sync. Its transient failures already surface as
-    # non-zero exits the retry ladder catches, and the cache above shrinks
-    # the cold-fetch window that a hang could occur in.
+    # ``uv sync`` keeps none of its own: a cold cross-platform resolve
+    # legitimately runs for minutes, and a fixed timeout tight enough to help
+    # within the shorter job budgets would risk killing a slow-but-progressing
+    # sync. Its deadline supplies the bound instead -- retry_cmd clamps each
+    # attempt to the time left, so a hung sync is still killed without
+    # capping a healthy one at some guessed constant.
     - name: Install Python
       shell: bash
       env:
         PYTHON_VERSION: ${{ inputs.python-version }}
         RETRY_CMD_ATTEMPT_TIMEOUT: "180"
+        RETRY_CMD_DEADLINE: "210"
       run: |
         .github/scripts/retry_cmd.sh "uv python install" \
           uv python install "$PYTHON_VERSION"
@@ -53,6 +60,7 @@ runs:
       shell: bash
       env:
         PYTHON_VERSION: ${{ inputs.python-version }}
+        RETRY_CMD_DEADLINE: "240"
       run: |
         .github/scripts/retry_cmd.sh "uv sync --frozen" \
           uv sync --frozen --python "$PYTHON_VERSION"
