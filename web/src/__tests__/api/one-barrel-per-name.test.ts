@@ -70,6 +70,13 @@ const FIXTURES = [
     code: "export type { AgentConfig } from '@/api/types/agents'\n",
   },
   {
+    // The selector originally anchored on `@/api/types/`, but these modules
+    // already import via `../types/http`, so the relative form was an open door.
+    id: 'endpoint-dto-passthrough-relative',
+    file: 'src/api/endpoints/__barrel_probe_f2__.ts',
+    code: "export type { AgentConfig } from '../types/agents'\n",
+  },
+  {
     id: 'endpoint-derived-type',
     file: 'src/api/endpoints/__barrel_probe_g__.ts',
     code:
@@ -166,6 +173,12 @@ describe('one barrel per name', () => {
 
   it('rejects a DTO pass-through re-export from an endpoint module', () => {
     expect(rulesFor('endpoint-dto-passthrough')).toContain('no-restricted-syntax')
+  })
+
+  it('rejects a DTO pass-through written with a relative specifier', () => {
+    expect(rulesFor('endpoint-dto-passthrough-relative')).toContain(
+      'no-restricted-syntax',
+    )
   })
 
   it('lets an endpoint module export a type it derives', () => {

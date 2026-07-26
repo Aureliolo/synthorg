@@ -342,7 +342,11 @@ export default tseslint.config(
           // An endpoint module exports behaviour and the types it derives
           // (`StageVerdict`, `SimulationReport`); DTO shapes come from the type
           // barrel. Re-exporting them here is a third path to the same name.
-          selector: "ExportNamedDeclaration[source.value=/^@\\/api\\/types\\//]",
+          // Both specifier forms have to match: these modules already import
+          // via `../types/http` and `../types/agents`, so an alias-only
+          // selector would be evaded by writing the passthrough relatively.
+          selector:
+            "ExportNamedDeclaration[source.value=/^(@\\/api\\/types\\/|\\.\\.\\/(\\.\\.\\/)?types\\/)/]",
           message:
             'Do not re-export DTO types from an endpoint module -- consumers import them from ' +
             '`@/api/types/<domain>` directly. Endpoint modules export behaviour and their own derived types.',
