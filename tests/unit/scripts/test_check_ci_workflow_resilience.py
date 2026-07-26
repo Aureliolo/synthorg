@@ -84,9 +84,9 @@ _SPARSE_EXCLUDES = "sparse checkout excludes that path"
 _BYPASSES_WRAPPER = "so the retry ladder cannot be bypassed"
 
 
-def _checkout(sparse: str = "") -> str:
+def _checkout(sparse: str = "", uses: str = "actions/checkout@abc") -> str:
     """A checkout step, optionally carrying a ``sparse-checkout`` spec."""
-    step = "      - uses: actions/checkout@abc\n"
+    step = f"      - uses: {uses}\n"
     if not sparse:
         return step
     return f"{step}        with:\n          sparse-checkout: {sparse}\n"
@@ -353,6 +353,43 @@ class TestLocalActionResolution:
         # A local checkout wrapper is an action like any other: it needs a
         # checkout to exist before it can run.
         violations = _scan(tmp_path, _job("      - uses: ./.github/actions/checkout\n"))
+        assert len(violations) == 1
+        assert _NEVER_CHECKS_OUT in violations[0]
+
+    def test_fork_qualified_checkout_wrapper_counts_as_a_checkout(
+        self, tmp_path: Path
+    ) -> None:
+        # The form nearly every job here uses: the in-repo retry wrapper
+        # referenced fork-qualified, which is what a job MUST do while the
+        # workspace is still empty. Failing to recognise it would report every
+        # such job as never checking out.
+        steps = (
+            _checkout(uses="Aureliolo/synthorg/.github/actions/checkout@abc")
+            + "      - uses: ./.github/actions/thing\n"
+        )
+        assert _scan(tmp_path, _job(steps)) == []
+
+    def test_a_wrapper_neighbour_is_not_a_checkout(self, tmp_path: Path) -> None:
+        # The over-approximation this predicate exists to prevent: a substring
+        # test would accept `checkout-legacy` as a checkout and fold its absent
+        # sparse-checkout in as FULL coverage, suppressing every real violation
+        # for the rest of the job. The later local action must still be flagged.
+        steps = (
+            "      - uses: ./.github/actions/checkout-legacy\n"
+            "      - uses: ./.github/actions/thing\n"
+        )
+        violations = _scan(tmp_path, _job(steps))
+        assert len(violations) == 2
+        assert all(_NEVER_CHECKS_OUT in v for v in violations)
+
+    def test_an_unrelated_action_named_checkout_is_not_a_checkout(
+        self, tmp_path: Path
+    ) -> None:
+        steps = (
+            "      - uses: someoneelse/checkout-action@abc\n"
+            "      - uses: ./.github/actions/thing\n"
+        )
+        violations = _scan(tmp_path, _job(steps))
         assert len(violations) == 1
         assert _NEVER_CHECKS_OUT in violations[0]
 

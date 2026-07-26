@@ -45,7 +45,12 @@ hardening they carry cannot silently regress:
    EARLIER checkout in the same job that actually put the action on disk.
    Miss that and the job dies with "Can't find 'action.yml' ... Did you
    forget to run actions/checkout" -- including the subtle case where the
-   job does check out, but sparsely, without the action's path.
+   job does check out, but sparsely, without the action's path. Which steps
+   count as a checkout is decided on the resolved action id
+   (``_is_checkout_action``): upstream ``actions/checkout`` plus the in-repo
+   retry wrapper in either reference form, and nothing that merely resembles
+   one, because a false positive there would fold absent coverage in as full
+   and silently suppress every real violation in the rest of the job.
 
    ``actions/download-artifact`` earned its wrapper when a ``(403)
    Forbidden: Error from intermediary`` -- which the action itself
@@ -88,6 +93,9 @@ _ACTIONS_ROOT = _REPO_ROOT / ".github" / "actions"
 
 _RETRY_HELPER: Final[str] = "retry_cmd.sh"
 _DEADLINE_VAR: Final[str] = "RETRY_CMD_DEADLINE"
+
+_CHECKOUT_ACTION: Final[str] = "actions/checkout"
+_CHECKOUT_WRAPPER_DIR: Final[str] = ".github/actions/checkout"
 
 # Upstream actions that exactly one in-repo wrapper is allowed to call, so
 # the wrapper's retry ladder cannot be bypassed. Maps the upstream action to
@@ -150,6 +158,32 @@ def _action_id(uses: str) -> str:
     is returned as-is minus the version; callers match on prefix.
     """
     return uses.split("@", 1)[0].strip()
+
+
+def _is_checkout_action(uses: str) -> bool:
+    """Return True when ``uses`` refers to a step that checks the repo out.
+
+    Three reference forms count: the upstream ``actions/checkout``, the in-repo
+    retry wrapper referenced locally (``./.github/actions/checkout``), and the
+    same wrapper referenced fork-qualified
+    (``<owner>/<repo>/.github/actions/checkout@<sha>``, the form a job must use
+    when the workspace is not yet populated and which nearly every job here
+    does use).
+
+    Matched on the resolved action id rather than by substring, so a NEIGHBOUR
+    of the wrapper (``./.github/actions/checkout-legacy``) is not mistaken for
+    one: its absent ``sparse-checkout`` would otherwise be folded in as full
+    coverage and suppress every genuine violation in the rest of the job.
+    """
+    action = _action_id(uses).removeprefix("./").rstrip("/")
+    if action == _CHECKOUT_ACTION:
+        return True
+    # Bare equality catches the local form; the ``/``-anchored suffix catches
+    # the fork-qualified one without letting a same-named directory deeper in
+    # some unrelated path match by accident.
+    return action == _CHECKOUT_WRAPPER_DIR or action.endswith(
+        f"/{_CHECKOUT_WRAPPER_DIR}"
+    )
 
 
 def _step_has_continue_on_error(step: dict[str, object]) -> bool:
@@ -495,7 +529,7 @@ def _check_job_steps(job_name: str, rel_path: str, job: dict[str, object]) -> li
         # the two the other way would let the step vouch for itself.
         if is_local:
             violations.extend(_check_local_action_resolvable(job_name, uses, checkout))
-        if "actions/checkout" in uses:
+        if _is_checkout_action(uses):
             checkout.record(step)
         elif not is_local:
             violations.extend(
