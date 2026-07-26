@@ -70,7 +70,7 @@ class CompanyController(Controller):
                 # only needed for the derived capability projection, so a
                 # settings failure there must not cancel the siblings that
                 # carry the payload the caller actually asked for.
-                t_providers = tg.create_task(providers_for_capabilities(resolver))
+                t_providers = tg.create_task(providers_for_capabilities(app_state))
         except ExceptionGroup as eg:
             logger.warning(
                 SETTINGS_FETCH_FAILED,

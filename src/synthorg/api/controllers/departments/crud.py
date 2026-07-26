@@ -281,7 +281,7 @@ class DepartmentController(Controller):
         # Read before announcing, best-effort: the reorder has already
         # committed, so a settings failure here must neither fail the response
         # the caller is owed nor skip the event subscribers need to resync.
-        providers = await providers_for_capabilities(config_resolver_of(app_state))
+        providers = await providers_for_capabilities(app_state)
         publish_ws_event(
             request,
             WsEventType.AGENTS_REORDERED,

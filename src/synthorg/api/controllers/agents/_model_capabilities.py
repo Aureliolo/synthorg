@@ -26,6 +26,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from synthorg.api.state import AppState
 from synthorg.config.agent_schema import AgentConfig
 from synthorg.config.model_metadata import MetadataSource, ModelMetadata
 from synthorg.config.provider_schema import ProviderConfig
@@ -38,7 +39,7 @@ from synthorg.observability.events.api import (
     API_AGENT_MODEL_BINDING_UNRESOLVED,
 )
 from synthorg.settings.errors import SettingsError
-from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -247,9 +248,13 @@ def _resolve_capabilities(
 
 
 async def providers_for_capabilities(
-    resolver: ConfigResolver,
+    app_state: AppState,
 ) -> Mapping[str, ProviderConfig] | None:
     """Read provider config for the capability projection, tolerating failure.
+
+    Takes the app state rather than a resolver so every endpoint that projects
+    capabilities shares one composition point; a caller that resolved its own
+    resolver first would be free to skip the failure handling below.
 
     Model capabilities are derived display data layered onto operations that
     have their own result. On a mutation path the write has already committed
@@ -263,13 +268,13 @@ async def providers_for_capabilities(
     Only the latter makes an unresolved binding meaningless.
 
     Args:
-        resolver: Config resolver to read provider configuration through.
+        app_state: Application state carrying the config resolver.
 
     Returns:
         Configured providers, or ``None`` when they cannot be read.
     """
     try:
-        return await resolver.get_provider_configs()
+        return await config_resolver_of(app_state).get_provider_configs()
     except SettingsError as exc:
         logger.warning(
             API_AGENT_CAPABILITIES_UNAVAILABLE,

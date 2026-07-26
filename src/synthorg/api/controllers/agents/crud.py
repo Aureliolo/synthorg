@@ -2,7 +2,6 @@
 """Agent configuration listing and CRUD mutations at /agents."""
 
 import json
-from collections.abc import Mapping
 
 from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State
@@ -37,7 +36,6 @@ from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
-from synthorg.config.provider_schema import ProviderConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     AGENT_DELETED_AUDIT,
@@ -47,20 +45,6 @@ from synthorg.observability.events.api import (
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
-
-
-async def _providers_for_capabilities(
-    app_state: AppState,
-) -> Mapping[str, ProviderConfig] | None:
-    """Read provider config for the capability projection, tolerating failure.
-
-    Args:
-        app_state: Application state carrying the config resolver.
-
-    Returns:
-        Configured providers, or ``None`` when they cannot be read.
-    """
-    return await providers_for_capabilities(config_resolver_of(app_state))
 
 
 class AgentCrudController(Controller):
@@ -99,7 +83,7 @@ class AgentCrudController(Controller):
             cursor=cursor,
             secret=cursor_secret_of(app_state),
         )
-        providers = await _providers_for_capabilities(app_state)
+        providers = await providers_for_capabilities(app_state)
         return PaginatedResponse(
             data=with_model_capabilities(page, providers),
             pagination=meta,
@@ -125,7 +109,7 @@ class AgentCrudController(Controller):
         """
         app_state: AppState = state.app_state
         found = await _config_agent_by_id(app_state, agent_id)
-        providers = await _providers_for_capabilities(app_state)
+        providers = await providers_for_capabilities(app_state)
         return ApiResponse(data=with_model_capabilities([found], providers)[0])
 
     @post(
@@ -154,7 +138,7 @@ class AgentCrudController(Controller):
         """
         app_state: AppState = state.app_state
         agent = await org_mutation_service_of(app_state).create_agent(data)
-        providers = await _providers_for_capabilities(app_state)
+        providers = await providers_for_capabilities(app_state)
         publish_ws_event(
             request,
             WsEventType.AGENT_CREATED,
@@ -219,7 +203,7 @@ class AgentCrudController(Controller):
         # Resolve capabilities before announcing the change: publishing is
         # fire-and-forget and cannot be retracted, so a failure after it would
         # leave subscribers told while the requester sees an error.
-        providers = await _providers_for_capabilities(app_state)
+        providers = await providers_for_capabilities(app_state)
         publish_ws_event(
             request,
             WsEventType.AGENT_UPDATED,
