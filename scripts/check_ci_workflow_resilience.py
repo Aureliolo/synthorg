@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: CI workflow resilience invariants.
 
-Enforces six invariants across the CI definitions so the resilience
+Enforces seven invariants across the CI definitions so the resilience
 hardening they carry cannot silently regress:
 
 1. **Every job declares ``timeout-minutes``.** A job without it inherits
@@ -96,6 +96,16 @@ hardening they carry cannot silently regress:
    composite call graph by fixpoint, because a ladder nested a level deep is
    still paid by the job's budget.
 
+7. **A resilient-pull ladder's local tag reaches only a consumer that can
+   resolve one.** The ladder's output names an image in the runner's daemon
+   and nowhere else. ``setup-qemu-action`` pulls its ``image:`` input
+   unconditionally, so handing it that tag did not weaken the ladder, it made
+   the step impossible: ``pull access denied for synthorg-binfmt, repository
+   does not exist``. Every arm64 build on main broke, and no PR could show it
+   because the step is gated off on ``pull_request``. A tag may be consumed
+   from a ``run:`` step, or by an action input in ``_LOCAL_TAG_CONSUMERS``; a
+   tag nothing consumes is also flagged, since the ladder then guards nothing.
+
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
 externally-dependent actions are excluded by design (see ``_EXCLUDED``)
@@ -137,6 +147,13 @@ _CHECKOUT_WRAPPER_DIR: Final[str] = ".github/actions/checkout"
 _PULL_ACTION_DIR: Final[str] = ".github/actions/docker-pull-resilient"
 _ATTEMPTS_INPUT: Final[str] = "attempts"
 _PULL_TIMEOUT_INPUT: Final[str] = "pull-timeout-seconds"
+_LOCAL_TAG_INPUT: Final[str] = "local-tag"
+
+# ``uses:`` inputs that resolve against the local daemon. Anything unlisted is
+# assumed to pull, which is fatal for a tag that names no registry repository.
+_LOCAL_TAG_CONSUMERS: Final[dict[str, frozenset[str]]] = {
+    "docker/setup-buildx-action": frozenset({"driver-opts"}),
+}
 # Each attempt pays the per-pull bound twice: Docker Hub, then the mirror.
 _REGISTRIES_PER_ATTEMPT: Final[int] = 2
 _BACKOFF_BASE_SECONDS: Final[int] = 10
@@ -879,6 +896,91 @@ def _check_retry_deadlines(context: str, step: dict[str, object]) -> list[str]:
     ]
 
 
+def _produced_local_tags(steps: list[object]) -> dict[str, int]:
+    """Return each ``local-tag`` the resilient-pull action emits, by step index."""
+    tags: dict[str, int] = {}
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        uses = step.get("uses")
+        if not isinstance(uses, str) or _local_action_dir(uses) != _PULL_ACTION_DIR:
+            continue
+        with_ = step.get("with")
+        tag = with_.get(_LOCAL_TAG_INPUT) if isinstance(with_, dict) else None
+        if isinstance(tag, str) and tag.strip():
+            tags.setdefault(tag.strip(), index)
+    return tags
+
+
+def _shell_text(step: dict[str, object]) -> str:
+    """Return a ``run:`` step's body plus its env values, else the empty string."""
+    if "run" not in step:
+        return ""
+    parts = [str(step.get("run", ""))]
+    env = step.get("env")
+    if isinstance(env, dict):
+        parts.extend(str(value) for value in env.values())
+    return "\n".join(parts)
+
+
+def _check_local_tag_consumers(context: str, steps: list[object]) -> list[str]:
+    """Return violations where a ladder's local tag reaches a pulling consumer.
+
+    The ladder's output exists only in the runner's daemon, so an action that
+    pulls its image input does not merely bypass the ladder: the name resolves
+    to no repository and the step cannot succeed at all.
+
+    Args:
+        context: File or job label, for the message.
+        steps: The step list to walk.
+
+    Returns:
+        One message per pulling consumer, plus one per tag nothing consumes.
+    """
+    tags = _produced_local_tags(steps)
+    if not tags:
+        return []
+    violations: list[str] = []
+    consumed: set[str] = set()
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        uses = step.get("uses")
+        raw_with = step.get("with")
+        with_ = raw_with if isinstance(raw_with, dict) else {}
+        shell_text = _shell_text(step)
+        for tag, producer in tags.items():
+            if index == producer:
+                continue
+            if tag in shell_text:
+                consumed.add(tag)
+            if not isinstance(uses, str):
+                continue
+            action = _action_id(uses)
+            allowed = _LOCAL_TAG_CONSUMERS.get(action, frozenset())
+            for name, value in with_.items():
+                if tag not in str(value):
+                    continue
+                consumed.add(tag)
+                if str(name) in allowed:
+                    continue
+                violations.append(
+                    f"{context}: '{_step_label(step, index)}' passes local tag"
+                    f" '{tag}' to `{action}` input `{name}`, which resolves the"
+                    " reference against a registry, where a local-only tag names"
+                    " no repository. Consume it from a `run:` step, or add the"
+                    f" input to _LOCAL_TAG_CONSUMERS once upstream is confirmed"
+                    " to resolve locally."
+                )
+    violations.extend(
+        f"{context}: pull ladder emits local tag '{tag}' that nothing consumes,"
+        " so the ladder guards no pull."
+        for tag in tags
+        if tag not in consumed
+    )
+    return violations
+
+
 def _scan_composite_action(
     data: dict[str, object], rel_path: str, consumers: frozenset[str]
 ) -> list[str]:
@@ -902,7 +1004,7 @@ def _scan_composite_action(
     steps = runs.get("steps")
     if not isinstance(steps, list):
         return []
-    violations: list[str] = []
+    violations: list[str] = _check_local_tag_consumers("action", steps)
     consumes = False
     for index, step in enumerate(steps):
         if not isinstance(step, dict):
@@ -945,9 +1047,10 @@ def _check_job_steps(job_name: str, rel_path: str, job: dict[str, object]) -> li
     Returns:
         Violation messages, empty when the job is compliant.
     """
-    violations: list[str] = []
+    steps = _job_steps(job)
+    violations: list[str] = _check_local_tag_consumers(f"job '{job_name}'", list(steps))
     checkout = _CheckoutState()
-    for step in _job_steps(job):
+    for step in steps:
         violations.extend(_check_retry_deadlines(f"job '{job_name}'", step))
         uses = step.get("uses")
         if not isinstance(uses, str):
@@ -1040,10 +1143,11 @@ def _scan_paths(paths: Iterable[Path]) -> int:
             " fail-closed retry ladder (see .github/actions/checkout for the"
             " pattern), give every retry_cmd.sh call site a"
             " RETRY_CMD_DEADLINE sized below its job budget, reach every"
-            " wrapped action through its wrapper rather than upstream, and"
+            " wrapped action through its wrapper rather than upstream,"
             " give every artifact-consuming job both `actions: read` and an"
-            " explicit github-token. To exclude an action deliberately, add"
-            " it to _EXCLUDED in scripts/check_ci_workflow_resilience.py"
+            " explicit github-token, and consume every resilient-pull"
+            " local-tag from a `run:` step. To exclude an action deliberately,"
+            " add it to _EXCLUDED in scripts/check_ci_workflow_resilience.py"
             " with a reason.",
             file=sys.stderr,
         )

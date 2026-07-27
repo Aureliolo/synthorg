@@ -6,6 +6,12 @@ name: GHCR Cleanup
 # targets only the reapable tag classes AND carries a belt-and-braces
 # `exclude-tags` regex that protects the release tags regardless.
 #
+# A `keep-*` tag is the operator escape hatch. GitHub permanently refuses to
+# delete a public version past 5000 downloads, and the cleanup action treats
+# that 400 as fatal, so such a version reds the leg every week forever. Tag it
+# (`docker buildx imagetools create --tag <repo>:keep-<reason> <repo>@<digest>`)
+# to move it out of the untagged pass and under this exclusion for good.
+#
 # Reapable classes (see publish-image-loaded metadata config):
 #   - dev builds            X.Y.Z-dev.N (+ floating `dev`)  -> keep newest 5
 #   - PR / scan short-sha   sha-<short>[-amd64|-arm64],
@@ -140,7 +146,7 @@ jobs:
           use-regex: true
           delete-tags: ^\d+\.\d+\.\d+-dev\.\d+$
           keep-n-tagged: 5
-          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev)$
+          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|keep-[a-z0-9._-]+)$
           validate: true
           dry-run: ${{ needs.config.outputs.dry-run }}
 
@@ -158,7 +164,7 @@ jobs:
           use-regex: true
           delete-tags: ^(sha|scan)-[0-9a-f]{6,}(-amd64|-arm64)?$
           older-than: 7 days
-          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$
+          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+|keep-[a-z0-9._-]+)$
           validate: true
           dry-run: ${{ needs.config.outputs.dry-run }}
 
@@ -188,6 +194,6 @@ jobs:
           use-regex: true
           delete-orphaned-images: true
           delete-untagged: true
-          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+)$
+          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+|keep-[a-z0-9._-]+)$
           validate: true
           dry-run: ${{ needs.config.outputs.dry-run }}

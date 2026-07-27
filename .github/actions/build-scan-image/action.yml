@@ -153,11 +153,7 @@ runs:
         sudo docker image prune --all --force
         df -h /
 
-    # Registering the arm64 handlers pulls tonistiigi/binfmt from Docker Hub,
-    # and setup-qemu-action does not retry that pull, so it is pre-pulled
-    # through the retry-and-mirror ladder and pinned. Left un-pinned the action
-    # resolves a floating tag, so a reconnect could also silently change which
-    # binfmt build runs.
+    # Digest-pinned so a reconnect cannot silently change which binfmt runs.
     - name: Pull binfmt image (ARM64 emulation)
       if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
       uses: ./.github/actions/docker-pull-resilient
@@ -166,14 +162,21 @@ runs:
         image: tonistiigi/binfmt:qemu-v9.2.2@sha256:1b804311fe87047a4c96d38b4b3ef6f62fca8cd125265917a9e3dc3c996c39e6
         local-tag: synthorg-binfmt:qemu-v9.2.2
 
-    # Required on non-PR events when building the arm64 tarball on an
-    # amd64 runner. PR builds are amd64-only and skip QEMU.
-    - name: Set up QEMU (ARM64 emulation)
+    # `docker/setup-qemu-action` always pulls its `image:` input, so it cannot
+    # consume the local tag above. `--install` is what it shells out to.
+    - name: Register binfmt handlers (ARM64 emulation)
       if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
-      uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
-      with:
-        platforms: arm64
-        image: synthorg-binfmt:qemu-v9.2.2
+      shell: bash
+      env:
+        BINFMT_IMAGE: synthorg-binfmt:qemu-v9.2.2
+      run: |
+        set -euo pipefail
+        docker run --rm --privileged "${BINFMT_IMAGE}" --install arm64
+        # `--install` exits 0 even when the kernel registered nothing.
+        if [[ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]]; then
+          echo "::error::binfmt qemu-aarch64 handler absent after --install arm64"
+          exit 1
+        fi
 
     # The `docker-container` driver boots BuildKit by pulling moby/buildkit
     # from Docker Hub, and setup-buildx-action does not retry that pull: a
@@ -202,6 +205,12 @@ runs:
         # value sits on the truthy branch: `A && '' || B` would always yield
         # B, since `''` is falsy and GHA falls through to the `||` arm.
         driver-opts: ${{ github.event_name != 'pull_request' && 'image=synthorg-buildkit:buildx-stable-1' || '' }}
+        # BuildKit resolves the `# syntax=` frontend and every `FROM` itself,
+        # outside the `docker pull` the ladder wraps. Digest pins keep the
+        # mirror safe. Ignored by the `docker` driver PR builds use.
+        buildkitd-config-inline: |
+          [registry."docker.io"]
+            mirrors = ["mirror.gcr.io"]
         cache-binary: false
 
     - name: Download base image artifact (PR only)

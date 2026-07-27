@@ -3,7 +3,7 @@
 Loads the script as a module so its private helpers are callable without
 spawning subprocesses.
 
-Covers all six invariants:
+Covers all seven invariants:
 
 * ``timeout-minutes`` required on every job, with the reusable-workflow
   -call exemption (a job whose body is a top-level ``uses:``).
@@ -27,6 +27,9 @@ Covers all six invariants:
 * A resilient-pull ladder's worst case fits inside its job's
   ``timeout-minutes``, resolved per call site and through the composite
   call graph, so the runner cannot reap the job mid-retry.
+* A ladder's ``local-tag`` reaches only a consumer that resolves a local
+  image: a ``run:`` step, or an allowlisted action input. A tag handed to a
+  pulling action, or consumed by nothing at all, is flagged.
 """
 
 import importlib.util
@@ -86,10 +89,19 @@ def _job(
     return f"{head}    steps:\n{steps}"
 
 
-def _pull(*, attempts: str | None = None, seconds: str | None = None) -> str:
+def _pull(
+    *,
+    attempts: str | None = None,
+    seconds: str | None = None,
+    tag: str | None = None,
+) -> str:
     """A resilient-pull step, optionally overriding the ladder inputs."""
     step = "      - uses: ./.github/actions/docker-pull-resilient\n"
-    overrides = {"attempts": attempts, "pull-timeout-seconds": seconds}
+    overrides = {
+        "attempts": attempts,
+        "pull-timeout-seconds": seconds,
+        "local-tag": tag,
+    }
     given = {key: value for key, value in overrides.items() if value is not None}
     if not given:
         return step
@@ -119,6 +131,8 @@ _NO_ACTIONS_READ = "does not grant `actions: read`"
 _DROPS_TOKEN = "dropping the caller's token at this boundary"
 _NO_TOKEN_INPUT = "declares no `github-token` input"
 _LADDER_OVERRUNS = "resilient-pull ladder can run up to"
+_TAG_PULLED = "which resolves the reference against a registry"
+_TAG_ORPHANED = "that nothing consumes"
 
 
 _TOKEN_EXPR = "${{ github.token }}"
@@ -709,6 +723,114 @@ class TestPullLadderBudget:
         worst = _MODULE._ladder_worst_case_seconds(attempts, timeout)  # type: ignore[attr-defined]
         # schema-validate is the tightest caller at 15 minutes.
         assert worst < 15 * 60
+
+
+class TestLocalTagConsumers:
+    """A ladder's local tag must reach only a consumer that resolves one.
+
+    The tag names an image in the runner's daemon and nowhere else, so handing
+    it to an action that pulls its image input does not weaken the ladder, it
+    makes the step impossible.
+    """
+
+    _TAG = "synthorg-binfmt:qemu-v9.2.2"
+
+    def _qemu(self, image: str) -> str:
+        return (
+            "      - uses: docker/setup-qemu-action@abc # v4\n"
+            "        with:\n"
+            f"          image: {image}\n"
+        )
+
+    def test_tag_handed_to_a_pulling_action_flagged(self, tmp_path: Path) -> None:
+        # The #2657 regression: green on every PR because the step is gated
+        # off on pull_request, then 100% broken on main.
+        steps = _checkout() + _pull(tag=self._TAG) + self._qemu(self._TAG)
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG_PULLED in violations[0]
+
+    def test_an_allowlisted_consumer_input_is_clean(self, tmp_path: Path) -> None:
+        steps = (
+            _checkout()
+            + _pull(tag="synthorg-buildkit:buildx-stable-1")
+            + "      - uses: docker/setup-buildx-action@abc # v4\n"
+            "        with:\n"
+            "          driver-opts: image=synthorg-buildkit:buildx-stable-1\n"
+        )
+        assert _scan(tmp_path, _job(steps, minutes=15)) == []
+
+    def test_the_same_action_on_a_different_input_is_flagged(
+        self, tmp_path: Path
+    ) -> None:
+        # The allowlist is per input, not per action: driver-opts resolves
+        # locally, an image input on the same action would not.
+        steps = (
+            _checkout()
+            + _pull(tag=self._TAG)
+            + "      - uses: docker/setup-buildx-action@abc # v4\n"
+            "        with:\n"
+            f"          image: {self._TAG}\n"
+        )
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG_PULLED in violations[0]
+
+    def test_consumption_from_a_run_step_is_clean(self, tmp_path: Path) -> None:
+        steps = (
+            _checkout()
+            + _pull(tag=self._TAG)
+            + f"      - run: docker run --rm --privileged {self._TAG} --install arm64\n"
+        )
+        assert _scan(tmp_path, _job(steps, minutes=15)) == []
+
+    def test_consumption_through_a_run_step_env_is_clean(self, tmp_path: Path) -> None:
+        steps = (
+            _checkout()
+            + _pull(tag=self._TAG)
+            + '      - run: docker run --rm --privileged "${BINFMT}" --install arm64\n'
+            "        env:\n"
+            f"          BINFMT: {self._TAG}\n"
+        )
+        assert _scan(tmp_path, _job(steps, minutes=15)) == []
+
+    def test_env_on_a_uses_step_does_not_count_as_consumption(
+        self, tmp_path: Path
+    ) -> None:
+        # env on a `uses:` step feeds the action's process, not a shell that
+        # could resolve the tag, so it must not vouch for the ladder.
+        steps = (
+            _checkout() + _pull(tag=self._TAG) + "      - uses: some/action@abc # v1\n"
+            "        env:\n"
+            f"          BINFMT: {self._TAG}\n"
+        )
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG_ORPHANED in violations[0]
+
+    def test_a_tag_nothing_consumes_is_flagged(self, tmp_path: Path) -> None:
+        steps = _checkout() + _pull(tag="synthorg-orphan:never-used")
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG_ORPHANED in violations[0]
+
+    def test_a_ladder_without_a_local_tag_is_unaffected(self, tmp_path: Path) -> None:
+        assert _scan(tmp_path, _job(_checkout() + _pull(), minutes=15)) == []
+
+    def test_the_composite_form_is_scanned_too(self, tmp_path: Path) -> None:
+        # Every live call site lives in a composite, so the wiring there is
+        # the one that actually has to hold.
+        steps = (
+            "    - uses: ./.github/actions/docker-pull-resilient\n"
+            "      with:\n"
+            f"        local-tag: {self._TAG}\n"
+            "    - uses: docker/setup-qemu-action@abc # v4\n"
+            "      with:\n"
+            f"        image: {self._TAG}\n"
+        )
+        violations = _scan(tmp_path, _composite(steps))
+        assert len(violations) == 1
+        assert _TAG_PULLED in violations[0]
 
 
 class TestScanFileEdgeCases:
