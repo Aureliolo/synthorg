@@ -224,7 +224,7 @@ def build_conversational_actor(
     )
 
 
-def build_operator_console(  # noqa: PLR0913 -- injected console dependencies
+def build_operator_console(
     chief_of_staff_config: ChiefOfStaffConfig,
     *,
     engine: AgentEngine,

@@ -210,7 +210,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         "_tool_provider",
     )
 
-    def __init__(  # noqa: PLR0913 -- keyword-only dependency injection
+    def __init__(
         self,
         *,
         provider_selector: ProviderSelector,

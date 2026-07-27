@@ -100,7 +100,7 @@ class AuditLog:
         """Total entries ever recorded (including evicted)."""
         return self._total_recorded
 
-    def query(  # noqa: PLR0913
+    def query(
         self,
         *,
         agent_id: str | None = None,

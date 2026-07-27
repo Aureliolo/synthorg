@@ -60,7 +60,7 @@ class DispatchResult(BaseModel):
 class TopologyDispatcher(Protocol):
     """Protocol for topology-specific dispatch strategies."""
 
-    async def dispatch(  # noqa: PLR0913 -- dispatch contract surface
+    async def dispatch(
         self,
         *,
         decomposition_result: DecompositionResult,

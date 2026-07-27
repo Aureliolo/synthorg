@@ -101,7 +101,7 @@ class _FakeAggregateRepo:
         self._store.increment_calls += 1
         return self._aggregate(project_id, cost, input_tokens, output_tokens)
 
-    async def increment_if_unseen(  # noqa: PLR0913 -- mirrors the real signature
+    async def increment_if_unseen(
         self,
         project_id: str,
         cost: float,

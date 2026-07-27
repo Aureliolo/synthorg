@@ -232,7 +232,7 @@ class OperatorConsoleService:
             memory) instead of losing it.
     """
 
-    def __init__(  # noqa: PLR0913 -- injected console dependencies
+    def __init__(
         self,
         *,
         engine: AgentEngine,

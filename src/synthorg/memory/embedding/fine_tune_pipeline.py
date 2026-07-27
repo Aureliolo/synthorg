@@ -111,7 +111,7 @@ async def _read_eval_metrics(out_dir: str) -> EvalMetrics:
         raise FineTuneStageExecutionError(msg) from exc
 
 
-async def _run_torch_stage(  # noqa: PLR0913 -- stage collaborators threaded explicitly
+async def _run_torch_stage(
     run: FineTuneRun,
     *,
     executor: StageExecutor,
@@ -137,7 +137,7 @@ async def _run_torch_stage(  # noqa: PLR0913 -- stage collaborators threaded exp
     return await hooks.complete_stage(run, stage_key)
 
 
-async def _generate_stage(  # noqa: PLR0913 -- stage collaborators threaded explicitly
+async def _generate_stage(
     run: FineTuneRun,
     *,
     out_dir: str,
@@ -167,7 +167,7 @@ async def _generate_stage(  # noqa: PLR0913 -- stage collaborators threaded expl
     return run, train_path, val_path
 
 
-async def _evaluate_stage(  # noqa: PLR0913 -- stage collaborators threaded explicitly
+async def _evaluate_stage(
     run: FineTuneRun,
     *,
     executor: StageExecutor,
@@ -217,7 +217,7 @@ async def _evaluate_stage(  # noqa: PLR0913 -- stage collaborators threaded expl
     return run, None
 
 
-async def _deploy_stage(  # noqa: PLR0913 -- stage collaborators threaded explicitly
+async def _deploy_stage(
     run: FineTuneRun,
     *,
     cfg: FineTuneRunConfig,

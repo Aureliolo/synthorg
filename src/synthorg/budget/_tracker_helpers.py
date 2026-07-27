@@ -54,7 +54,7 @@ def _validate_time_range(
     validate_time_range(start, end, event=BUDGET_TIME_RANGE_INVALID)
 
 
-def _filter_records(  # noqa: PLR0913
+def _filter_records(
     records: Sequence[CostRecord],
     *,
     agent_id: NotBlankStr | None = None,

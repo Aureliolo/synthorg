@@ -61,7 +61,7 @@ def _provider(*models: ProviderModelConfig) -> dict[str, ProviderConfig]:
     return {_PROVIDER: ProviderConfig(auth_type=AuthType.NONE, models=models)}
 
 
-def _model(  # noqa: PLR0913 -- keyword-only test factory
+def _model(
     model_id: str,
     *,
     alias: str | None = None,

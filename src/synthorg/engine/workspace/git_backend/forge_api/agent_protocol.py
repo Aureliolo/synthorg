@@ -99,7 +99,7 @@ class ForgeAgentApiClient(Protocol):
         """Create ``new_branch`` pointing at ``from_ref`` and return it."""
         ...
 
-    async def write_file(  # noqa: PLR0913 -- forge contents-API fields
+    async def write_file(
         self,
         *,
         owner: NotBlankStr,
@@ -175,7 +175,7 @@ class ForgeAgentApiClient(Protocol):
         """List pull requests (ordered as the forge returns them by default)."""
         ...
 
-    async def create_pull_request(  # noqa: PLR0913 -- forge PR fields
+    async def create_pull_request(
         self,
         *,
         owner: NotBlankStr,
@@ -200,7 +200,7 @@ class ForgeAgentApiClient(Protocol):
         """Add a discussion comment to a pull request and return it."""
         ...
 
-    async def review_pull_request(  # noqa: PLR0913 -- forge review fields
+    async def review_pull_request(
         self,
         *,
         owner: NotBlankStr,

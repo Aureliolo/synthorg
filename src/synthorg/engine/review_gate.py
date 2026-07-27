@@ -533,7 +533,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             normalized_reason=normalized_reason,
         )
 
-    async def _apply_decision(  # noqa: PLR0913
+    async def _apply_decision(
         self,
         *,
         task: Task,

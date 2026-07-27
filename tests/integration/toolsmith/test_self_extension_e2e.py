@@ -91,7 +91,7 @@ _AUTHORING_RESPONSE = json.dumps(
 class _LocalPythonSandbox:
     """SandboxBackend that runs ``python -c`` synchronously via subprocess."""
 
-    async def execute(  # noqa: PLR0913
+    async def execute(
         self,
         *,
         command: str,

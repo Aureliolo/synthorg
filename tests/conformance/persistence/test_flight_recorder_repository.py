@@ -17,7 +17,7 @@ from synthorg.persistence.protocol import PersistenceBackend
 pytestmark = pytest.mark.integration
 
 
-def _frame(  # noqa: PLR0913 -- test fixture builder with keyword-only overrides
+def _frame(
     *,
     frame_id: str = "frm-001",
     execution_id: str = "exec-001",

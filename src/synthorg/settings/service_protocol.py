@@ -56,7 +56,7 @@ class SettingsServiceProtocol(Protocol):
         """Read a value and its ``updated_at`` token for compare-and-set."""
         ...
 
-    async def set(  # noqa: PLR0913 -- write knobs: CAS + import-source + governance
+    async def set(
         self,
         namespace: str,
         key: str,

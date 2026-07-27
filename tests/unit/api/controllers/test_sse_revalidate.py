@@ -64,7 +64,7 @@ def _auth_user(
     )
 
 
-def _make_app_state(  # noqa: PLR0913
+def _make_app_state(
     *,
     persisted_user: User | None,
     raise_on_get: bool = False,

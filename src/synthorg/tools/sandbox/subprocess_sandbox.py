@@ -272,7 +272,7 @@ class SubprocessSandbox(_EnvFilterMixin):
                 f"[sandbox] process did not terminate after {grace}s kill grace"
             ).encode()
 
-    async def execute(  # noqa: PLR0913
+    async def execute(
         self,
         *,
         command: str,

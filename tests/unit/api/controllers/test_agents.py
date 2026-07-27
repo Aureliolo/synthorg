@@ -182,7 +182,7 @@ def _make_identity(
     )
 
 
-def _make_task_metric(  # noqa: PLR0913
+def _make_task_metric(
     *,
     completed_at: datetime = _NOW,
     agent_id: str = _AGENT_ID,
@@ -206,7 +206,7 @@ def _make_task_metric(  # noqa: PLR0913
     )
 
 
-def _make_lifecycle_event(  # noqa: PLR0913
+def _make_lifecycle_event(
     *,
     event_type: LifecycleEventType = LifecycleEventType.HIRED,
     timestamp: datetime = _NOW,

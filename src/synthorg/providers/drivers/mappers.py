@@ -212,7 +212,7 @@ def map_finish_reason(reason: str | None) -> FinishReason:
     return result
 
 
-def normalize_empty_finish(  # noqa: PLR0913 -- keyword-only completion fields
+def normalize_empty_finish(
     *,
     content: str | None,
     tool_calls: tuple[ToolCall, ...],

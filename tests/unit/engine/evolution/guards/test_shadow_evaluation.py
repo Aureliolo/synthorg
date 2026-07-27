@@ -595,7 +595,7 @@ def _flatten_exceptions(exc: BaseException) -> list[BaseException]:
 class TestShadowEvaluationGuardBoundaries:
     """Exercise the tolerance comparisons at their exact boundaries."""
 
-    async def _run_with_scores(  # noqa: PLR0913
+    async def _run_with_scores(
         self,
         *,
         baseline_score: float,

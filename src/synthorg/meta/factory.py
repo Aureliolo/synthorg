@@ -302,7 +302,7 @@ def build_confidence_adjuster(
     assert_never(strategy)
 
 
-def build_rollout_strategies(  # noqa: PLR0913
+def build_rollout_strategies(
     config: SelfImprovementConfig | None = None,
     *,
     clock: Clock | None = None,
@@ -371,7 +371,7 @@ def build_rollout_strategies(  # noqa: PLR0913
     return MappingProxyType(strategies)
 
 
-def build_rollback_executor(  # noqa: PLR0913
+def build_rollback_executor(
     *,
     config_mutator: ConfigMutator,
     prompt_mutator: PromptMutator,

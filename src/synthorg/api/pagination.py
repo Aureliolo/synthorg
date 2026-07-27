@@ -165,7 +165,7 @@ def paginate_cursor[T](
     return page, meta
 
 
-def encode_repo_seek_meta(  # noqa: PLR0913 -- every arg tracks a distinct pagination input
+def encode_repo_seek_meta(
     *,
     offset: int,
     page_len: int,

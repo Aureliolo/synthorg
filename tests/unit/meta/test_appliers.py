@@ -321,7 +321,7 @@ class TestConfigApplier:
 
 
 class _FakePromptContext:
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         roles: frozenset[str] = frozenset(),
@@ -653,7 +653,7 @@ class TestPromptApplier:
 
 
 class _FakeArchContext:
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         roles: frozenset[str] = frozenset(),

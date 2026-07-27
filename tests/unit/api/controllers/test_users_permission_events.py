@@ -22,7 +22,7 @@ from tests._shared import LoopAsyncClient
 from tests.unit.api.fakes import FakePersistenceBackend
 
 
-def _seed_target_user(  # noqa: PLR0913 -- six fixture kwargs are all defaults
+def _seed_target_user(
     fake_persistence: FakePersistenceBackend,
     *,
     user_id: str = "target-user-perm",

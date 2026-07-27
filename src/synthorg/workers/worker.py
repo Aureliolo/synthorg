@@ -123,7 +123,7 @@ class Worker:
             ``expires_at`` timestamps. Inject ``FakeClock`` in tests.
     """
 
-    def __init__(  # noqa: PLR0913 -- canonical worker construction surface
+    def __init__(
         self,
         *,
         queue_config: QueueConfig,

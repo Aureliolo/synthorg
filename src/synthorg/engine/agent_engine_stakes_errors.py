@@ -119,7 +119,7 @@ class AgentEngineStakesErrorsMixin:
             provider=provider,
         )
 
-    def _build_stakes_parked_result(  # noqa: PLR0913 -- keyword-only assembly inputs
+    def _build_stakes_parked_result(
         self,
         *,
         identity: AgentIdentity,
@@ -170,7 +170,7 @@ class AgentEngineStakesErrorsMixin:
             )
             return None
 
-    async def _park_stakes_unavailable(  # noqa: PLR0913 -- keyword-only park inputs
+    async def _park_stakes_unavailable(
         self,
         *,
         exc: StakesModelUnavailableError,

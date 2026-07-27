@@ -72,7 +72,7 @@ class HttpBatchHandler(logging.Handler):
         max_retries: Number of retries on HTTP failure.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         url: str,
         *,

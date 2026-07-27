@@ -124,7 +124,7 @@ class ActivityFeedService:
         "_tool_invocation_tracker",
     )
 
-    def __init__(  # noqa: PLR0913 -- one optional arg per injected source
+    def __init__(
         self,
         *,
         performance_tracker: PerformanceTracker,

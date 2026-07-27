@@ -486,7 +486,7 @@ class FakeAuditRepository:
         }
         return before - len(self._entries)
 
-    async def query_jsonb_contains(  # noqa: PLR0913
+    async def query_jsonb_contains(
         self,
         column: str,
         value: dict[str, object] | list[object],
@@ -500,7 +500,7 @@ class FakeAuditRepository:
         del column, value, since, until, limit, offset
         raise JsonbQueryUnsupportedError
 
-    async def query_jsonb_key_exists(  # noqa: PLR0913
+    async def query_jsonb_key_exists(
         self,
         column: str,
         key: str,

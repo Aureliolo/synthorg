@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     import aiosqlite
 
 
-def _make_context(  # noqa: PLR0913
+def _make_context(
     *,
     parked_id: str | None = None,
     execution_id: str = "exec-001",

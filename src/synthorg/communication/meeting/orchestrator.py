@@ -117,7 +117,7 @@ class MeetingOrchestrator:
         "_task_creator",
     )
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         protocol_registry: Mapping[MeetingProtocolType, MeetingProtocol],
@@ -154,7 +154,7 @@ class MeetingOrchestrator:
         """
         self._conflict_escalation_hook = hook
 
-    async def run_meeting(  # noqa: PLR0913
+    async def run_meeting(
         self,
         *,
         meeting_type_name: str,
@@ -274,7 +274,7 @@ class MeetingOrchestrator:
         )
         return cancelled_record
 
-    async def _run_and_record(  # noqa: PLR0913
+    async def _run_and_record(
         self,
         *,
         meeting_id: str,
@@ -415,7 +415,7 @@ class MeetingOrchestrator:
             return False
         return True
 
-    async def _execute_protocol(  # noqa: PLR0913
+    async def _execute_protocol(
         self,
         protocol: MeetingProtocol,
         meeting_id: str,
@@ -476,7 +476,7 @@ class MeetingOrchestrator:
                 exc=exc,
             )
 
-    def _make_failure_record(  # noqa: PLR0913
+    def _make_failure_record(
         self,
         meeting_id: str,
         *,

@@ -43,7 +43,7 @@ class _FakeSandbox:
     def __init__(self, result: SandboxResult) -> None:
         self._result = result
 
-    async def execute(  # noqa: PLR0913
+    async def execute(
         self,
         *,
         command: str,

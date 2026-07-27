@@ -20,7 +20,7 @@ from synthorg.security.redteam.models import (
 pytestmark = pytest.mark.integration
 
 
-def _record(  # noqa: PLR0913 -- test fixture builder with keyword-only overrides
+def _record(
     *,
     execution_id: str = "exec-001",
     task_id: str = "task-001",

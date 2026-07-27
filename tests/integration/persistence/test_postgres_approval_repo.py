@@ -34,7 +34,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.slow]
 _FIXED_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
-def _make_item(  # noqa: PLR0913 -- test factory with explicit knobs
+def _make_item(
     *,
     approval_id: str = "approval-pg-0001",
     status: ApprovalStatus = ApprovalStatus.PENDING,

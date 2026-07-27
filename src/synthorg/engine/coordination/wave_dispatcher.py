@@ -70,7 +70,7 @@ class WaveDispatcher:
         self._topology_label = topology_label
         self._orchestrator_strategy = orchestrator_strategy
 
-    async def dispatch(  # noqa: PLR0913 -- dispatch contract surface
+    async def dispatch(
         self,
         *,
         decomposition_result: DecompositionResult,

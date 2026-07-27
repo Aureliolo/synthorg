@@ -421,7 +421,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         finally:
             stop.set()
 
-    async def _update_terminal(  # noqa: PLR0913
+    async def _update_terminal(
         self,
         escalation_id: str,
         *,

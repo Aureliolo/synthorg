@@ -351,7 +351,7 @@ def _build_context(
     )
 
 
-async def build_approval_contexts(  # noqa: PLR0913 -- injected resolvers, all required
+async def build_approval_contexts(
     items: Sequence[ApprovalItem],
     *,
     get_task: TaskGetter,

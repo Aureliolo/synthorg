@@ -35,7 +35,7 @@ from tests.unit.engine.workflow.test_subworkflow_registry import (
 _DEFAULT_TS = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 
 
-def _make_minimal_definition(  # noqa: PLR0913
+def _make_minimal_definition(
     *,
     definition_id: str,
     nodes: tuple[WorkflowNode, ...],

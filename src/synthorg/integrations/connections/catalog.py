@@ -303,7 +303,7 @@ class ConnectionCatalog(
             1 for c in self._cache.values() if c.connection_type == connection_type
         )
 
-    def _build_update_candidate(  # noqa: PLR0913 -- one kwarg per patchable field
+    def _build_update_candidate(
         self,
         *,
         base_url: str | _UnsetType | None,
@@ -361,7 +361,7 @@ class ConnectionCatalog(
             )
         return candidate
 
-    async def update(  # noqa: PLR0913 -- one kwarg per independently-patchable field
+    async def update(
         self,
         name: str,
         *,

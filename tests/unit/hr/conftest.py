@@ -32,7 +32,7 @@ def _default_model_config() -> ModelConfig:
 # ── Builder Functions ───────────────────────────────────────────
 
 
-def make_agent_identity(  # noqa: PLR0913
+def make_agent_identity(
     *,
     agent_id: str | None = None,
     name: str = "test-agent",
@@ -67,7 +67,7 @@ def make_agent_identity(  # noqa: PLR0913
 make_test_identity = make_agent_identity
 
 
-def make_candidate_card(  # noqa: PLR0913
+def make_candidate_card(
     *,
     name: str = "candidate-agent",
     role: str = "developer",
@@ -145,7 +145,7 @@ def make_firing_request(
     )
 
 
-def make_task(  # noqa: PLR0913
+def make_task(
     *,
     task_id: str = "task-001",
     title: str = "Test task",

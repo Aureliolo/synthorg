@@ -42,7 +42,7 @@ def _repo(backend: PersistenceBackend) -> AlertRepository:
     raise ValueError(msg)
 
 
-def _alert(  # noqa: PLR0913 -- test fixture builder, one kwarg per Alert field
+def _alert(
     *,
     severity: RuleSeverity = RuleSeverity.WARNING,
     alert_type: str = "inflection",

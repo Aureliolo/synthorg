@@ -54,7 +54,7 @@ from synthorg.settings.subscribers import (
 logger = get_logger(__name__)
 
 
-def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscriber the dispatcher carries
+def _build_settings_dispatcher(
     *,
     message_bus: MessageBus | None,
     settings_service: SettingsService | None,

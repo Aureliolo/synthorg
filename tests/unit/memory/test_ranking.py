@@ -19,7 +19,7 @@ from synthorg.memory.ranking_rrf import fuse_ranked_lists
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 
-def _make_entry(  # noqa: PLR0913
+def _make_entry(
     *,
     entry_id: str = "mem-1",
     agent_id: str = "agent-1",

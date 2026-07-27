@@ -48,7 +48,7 @@ def _repo(backend: PersistenceBackend) -> AbTestRepository:
     raise ValueError(msg)
 
 
-def _record(  # noqa: PLR0913
+def _record(
     *,
     record_id: str = "proposal-1",
     name: str = "ab_test proposal-1",

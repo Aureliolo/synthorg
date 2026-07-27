@@ -33,7 +33,7 @@ class BaseWebTool(BaseTool, ABC):
     request timeout.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         name: str,

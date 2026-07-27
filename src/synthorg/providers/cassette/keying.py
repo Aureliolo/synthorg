@@ -74,7 +74,7 @@ class CassetteRequestKey(BaseModel):
     )
 
 
-def request_hash(  # noqa: PLR0913 -- request dimensions are intrinsic
+def request_hash(
     *,
     method: CassetteMethod,
     provider: str,

@@ -72,7 +72,7 @@ def _connection(
     )
 
 
-def _deps(  # noqa: PLR0913 -- test helper mirrors the tool's collaborators
+def _deps(
     *,
     conn: Connection | None,
     store: ApprovalStore | None = None,

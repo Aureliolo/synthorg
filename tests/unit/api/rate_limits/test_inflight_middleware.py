@@ -74,7 +74,7 @@ def _make_test_app(  # type: ignore[explicit-any]  # litestar route-handler unio
     )
 
 
-def _fire_concurrent_posts(  # noqa: PLR0913 -- test helper with optional knobs
+def _fire_concurrent_posts(
     client: TestClient[Litestar],
     path: str,
     count: int,

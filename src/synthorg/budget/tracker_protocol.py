@@ -68,7 +68,7 @@ class CostTrackerProtocol(Protocol):
         """Sum cost for a single project, optionally time-filtered."""
         ...
 
-    async def get_records(  # noqa: PLR0913 -- orthogonal filters + pagination
+    async def get_records(
         self,
         *,
         agent_id: str | None = None,
@@ -91,7 +91,7 @@ class CostTrackerProtocol(Protocol):
         """
         ...
 
-    async def collect_records(  # noqa: PLR0913 -- orthogonal filters
+    async def collect_records(
         self,
         *,
         agent_id: str | None = None,
@@ -152,7 +152,7 @@ class CostTrackerProtocol(Protocol):
         ...
 
 
-async def collect_all_records(  # noqa: PLR0913 -- orthogonal record filters
+async def collect_all_records(
     tracker: CostTrackerProtocol,
     *,
     agent_id: str | None = None,

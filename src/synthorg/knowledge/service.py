@@ -387,7 +387,7 @@ class KnowledgeService:
             msg = "source URI escapes the configured knowledge.repo_root"
             raise KnowledgeValidationError(msg)
 
-    async def _run_ingest(  # noqa: PLR0913 -- cohesive ingest inputs
+    async def _run_ingest(
         self,
         *,
         source_id: NotBlankStr,
@@ -500,7 +500,7 @@ class KnowledgeService:
         )
         return indexed
 
-    def _provisional(  # noqa: PLR0913 -- cohesive source fields
+    def _provisional(
         self,
         *,
         source_id: NotBlankStr,

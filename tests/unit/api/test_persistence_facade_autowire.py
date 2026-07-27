@@ -32,7 +32,7 @@ from tests._shared import make_app_state, mock_of
 pytestmark = pytest.mark.unit
 
 
-def _app_state(  # noqa: PLR0913 -- independent per-facade dependency flags
+def _app_state(
     *,
     with_auth: bool = False,
     with_backup: bool = False,

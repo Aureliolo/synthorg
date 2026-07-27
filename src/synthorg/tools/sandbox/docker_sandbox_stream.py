@@ -129,7 +129,7 @@ class DockerSandboxStreamMixin:
             """Stop + remove a container and its sidecar; untrack both."""
             ...
 
-    async def stream_container_task(  # noqa: PLR0913 -- streaming spawn surface
+    async def stream_container_task(
         self,
         *,
         command: NotBlankStr,

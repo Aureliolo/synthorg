@@ -100,7 +100,7 @@ async def _count_refresh_token_rows(
     return int(row[0]) if row is not None else 0
 
 
-async def _seed_user_with_dependencies(  # noqa: PLR0913
+async def _seed_user_with_dependencies(
     *,
     on_disk_backend: SQLitePersistenceBackend,
     user_id: str,

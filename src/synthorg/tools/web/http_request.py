@@ -132,7 +132,7 @@ class HttpRequestTool(BaseWebTool):
             validation=validation,
         )
 
-    async def _perform_request(  # noqa: PLR0913
+    async def _perform_request(
         self,
         url: str,
         method: str,

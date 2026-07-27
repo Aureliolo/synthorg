@@ -46,7 +46,7 @@ class _HasAgentContext(Protocol):
         ...
 
 
-def _build_context(  # noqa: PLR0913 -- keyword-only DI
+def _build_context(
     *,
     ctx: AgentContext,
     identity: AgentIdentity,
@@ -98,7 +98,7 @@ def _inject_authority_header(
     )
 
 
-async def apply_before_agent(  # noqa: PLR0913 -- keyword-only DI
+async def apply_before_agent(
     chain: AgentMiddlewareChain | None,
     *,
     ctx: AgentContext,
@@ -131,7 +131,7 @@ async def apply_before_agent(  # noqa: PLR0913 -- keyword-only DI
     return _inject_authority_header(result.agent_context, result.metadata)
 
 
-async def apply_after_agent(  # noqa: PLR0913 -- keyword-only DI
+async def apply_after_agent(
     chain: AgentMiddlewareChain | None,
     *,
     ctx: AgentContext,
@@ -164,7 +164,7 @@ async def apply_after_agent(  # noqa: PLR0913 -- keyword-only DI
     await chain.run_after_agent(mw_ctx)
 
 
-async def run_with_agent_middleware[R: _HasAgentContext](  # noqa: PLR0913
+async def run_with_agent_middleware[R: _HasAgentContext](
     chain: AgentMiddlewareChain | None,
     *,
     loop_runner: Callable[[AgentContext], Awaitable[R]],

@@ -71,7 +71,7 @@ def _redact_source_ref(source_ref: str) -> str:
 class BrownfieldImportService:
     """Orchestrates importing, mapping, and indexing an existing codebase."""
 
-    def __init__(  # noqa: PLR0913 -- collaborators are the orchestration boundary
+    def __init__(
         self,
         *,
         workspace_service: ProjectWorkspaceService,

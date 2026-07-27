@@ -51,7 +51,7 @@ class HealthJudge:
             raise ValueError(msg)
         self._quality_threshold = quality_degradation_threshold
 
-    def emit_ticket(  # noqa: PLR0913
+    def emit_ticket(
         self,
         *,
         termination_reason: TerminationReason,

@@ -20,7 +20,7 @@ from synthorg.core.types import NotBlankStr
 pytestmark = pytest.mark.unit
 
 
-def _metrics(  # noqa: PLR0913 -- orthogonal per-run measurements
+def _metrics(
     *,
     total_turns: int = 5,
     duration_seconds: float = 10.0,

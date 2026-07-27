@@ -134,7 +134,7 @@ def make_ollama_config() -> dict[str, ProviderConfig]:
 # ── Response builders (real litellm objects) ──────────────────────
 
 
-def build_model_response(  # noqa: PLR0913
+def build_model_response(
     *,
     content: str | None = "Hello! How can I help?",
     tool_calls: list[JsonDict] | None = None,
@@ -225,7 +225,7 @@ def build_usage_chunk(
     )
 
 
-def build_tool_call_delta_chunk(  # noqa: PLR0913
+def build_tool_call_delta_chunk(
     *,
     index: int = 0,
     call_id: str | None = None,

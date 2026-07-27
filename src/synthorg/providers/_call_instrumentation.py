@@ -217,7 +217,7 @@ async def record_image_cost_if_in_scope(
         )
 
 
-def record_call_failure(  # noqa: PLR0913
+def record_call_failure(
     span: _SpanSink,
     exc: Exception,
     *,

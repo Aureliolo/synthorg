@@ -67,7 +67,7 @@ def _build_dynamic_tool_repo(
     )
 
 
-def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith runtime dependencies
+def _build_toolsmith_runtime(
     *,
     si_config: SelfImprovementConfig,
     provider_registry: ProviderRegistry,

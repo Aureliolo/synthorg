@@ -124,7 +124,7 @@ class PostgresEscalationNotifySubscriber:
     :class:`EscalationExpirationSweeper` eventually reaps stale rows.
     """
 
-    def __init__(  # noqa: PLR0913 -- subscriber wiring (positional-only refactor would be churn)
+    def __init__(
         self,
         repo: EscalationQueueStore,
         registry: PendingFuturesRegistry,

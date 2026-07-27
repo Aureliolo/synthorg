@@ -184,7 +184,7 @@ class ConnectionApprovalGate:
     type, the gate is a no-op (returns ``None`` to proceed).
     """
 
-    def __init__(  # noqa: PLR0913 -- governance collaborators are all required
+    def __init__(
         self,
         *,
         approval_store: ApprovalStoreProtocol,

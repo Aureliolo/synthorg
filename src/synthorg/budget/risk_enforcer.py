@@ -116,7 +116,7 @@ class BudgetEnforcerRiskMixin:
 
         return RiskCheckResult(risk_units=projected)
 
-    def _enforce_risk_limit(  # noqa: PLR0913
+    def _enforce_risk_limit(
         self,
         limit: float,
         current: float,

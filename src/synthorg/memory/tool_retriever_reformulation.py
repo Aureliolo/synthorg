@@ -93,7 +93,7 @@ class ToolBasedReformulationMixin:
             agent_id=agent_id,
         )
 
-    async def _reformulation_loop(  # noqa: PLR0913
+    async def _reformulation_loop(
         self,
         *,
         reformulator: QueryReformulator,
@@ -187,7 +187,7 @@ class ToolBasedReformulationMixin:
         )
         return _truncate_entries(entries, limit)
 
-    async def _run_reformulation_step(  # noqa: PLR0913
+    async def _run_reformulation_step(
         self,
         *,
         reformulator: QueryReformulator,

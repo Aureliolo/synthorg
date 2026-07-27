@@ -277,7 +277,7 @@ def _select_loader(
 # ── Public API ─────────────────────────────────────────────────
 
 
-async def classify_execution_errors(  # noqa: PLR0913
+async def classify_execution_errors(
     execution_result: ExecutionResult,
     agent_id: NotBlankStr,
     task_id: NotBlankStr,
@@ -349,7 +349,7 @@ async def classify_execution_errors(  # noqa: PLR0913
     return result
 
 
-async def _classify_safely(  # noqa: PLR0913
+async def _classify_safely(
     execution_result: ExecutionResult,
     agent_id: str,
     task_id: str,
@@ -435,7 +435,7 @@ async def _dispatch_to_sinks(
             )
 
 
-async def _run_pipeline(  # noqa: PLR0913
+async def _run_pipeline(
     execution_result: ExecutionResult,
     agent_id: str,
     task_id: str,
@@ -499,7 +499,7 @@ async def _run_pipeline(  # noqa: PLR0913
     return classification
 
 
-async def _run_detectors_by_scope(  # noqa: PLR0913
+async def _run_detectors_by_scope(
     all_detectors: tuple[Detector, ...],
     execution_result: ExecutionResult,
     agent_id: str,
@@ -581,7 +581,7 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
     return all_findings, checked_categories
 
 
-async def _safe_detect(  # noqa: PLR0913
+async def _safe_detect(
     detector: Detector,
     context: DetectionContext,
     agent_id: str,

@@ -120,7 +120,7 @@ class CallAnalyticsService:
             has_dispatcher=notification_dispatcher is not None,
         )
 
-    async def get_aggregation(  # noqa: PLR0913 -- orthogonal record filters
+    async def get_aggregation(
         self,
         *,
         agent_id: str | None = None,

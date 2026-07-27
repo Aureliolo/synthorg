@@ -27,7 +27,7 @@ def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
     return migrated_db
 
 
-def _make_lifecycle_event(  # noqa: PLR0913
+def _make_lifecycle_event(
     *,
     agent_id: str = "agent-001",
     agent_name: str = "Alice",
@@ -78,7 +78,7 @@ def _make_task_metric(  # noqa: PLR0913
     )
 
 
-def _make_collab_metric(  # noqa: PLR0913
+def _make_collab_metric(
     *,
     agent_id: str = "agent-001",
     delegation_success: bool | None = True,

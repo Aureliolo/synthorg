@@ -31,7 +31,7 @@ def _window() -> tuple[datetime, datetime]:
     return _NOW - timedelta(days=7), _NOW + timedelta(hours=1)
 
 
-def _decision(  # noqa: PLR0913
+def _decision(
     *,
     decision_id: str = "d-001",
     action_type: ScalingActionType = ScalingActionType.HIRE,

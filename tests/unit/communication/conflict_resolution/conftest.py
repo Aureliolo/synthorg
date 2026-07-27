@@ -24,7 +24,7 @@ from tests._shared import as_uuid, sid
 _NOW = datetime(2026, 3, 8, 12, 0, tzinfo=UTC)
 
 
-def make_position(  # noqa: PLR0913
+def make_position(
     *,
     agent_id: str = "agent-a",
     department: str = "engineering",
@@ -44,7 +44,7 @@ def make_position(  # noqa: PLR0913
     )
 
 
-def make_conflict(  # noqa: PLR0913
+def make_conflict(
     *,
     conflict_id: str = "conflict-test12345",
     conflict_type: ConflictType = ConflictType.ARCHITECTURE,
@@ -77,7 +77,7 @@ def make_conflict(  # noqa: PLR0913
 _DEFAULT_OUTCOME = ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
 
 
-def make_resolution(  # noqa: PLR0913
+def make_resolution(
     *,
     conflict_id: str = "conflict-test12345",
     outcome: ConflictResolutionOutcome = _DEFAULT_OUTCOME,

@@ -54,7 +54,7 @@ class ContextDependentDispatcher:
     def __init__(self, *, clock: Clock | None = None) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
-    async def dispatch(  # noqa: PLR0913 -- dispatch contract surface
+    async def dispatch(
         self,
         *,
         decomposition_result: DecompositionResult,
@@ -116,7 +116,7 @@ class ContextDependentDispatcher:
 
         return self._build_result(all_waves, all_workspaces, merge_results, all_phases)
 
-    async def _setup_wave(  # noqa: PLR0913
+    async def _setup_wave(
         self,
         wave_idx: int,
         group: ParallelExecutionGroup,

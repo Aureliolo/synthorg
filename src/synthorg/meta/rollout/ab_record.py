@@ -53,7 +53,7 @@ class AbTestRecordSink(Protocol):
         ...
 
 
-async def persist_ab_test_record(  # noqa: PLR0913
+async def persist_ab_test_record(
     sink: AbTestRecordSink,
     *,
     proposal_id: UUID,

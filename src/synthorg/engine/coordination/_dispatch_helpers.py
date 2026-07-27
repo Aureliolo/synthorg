@@ -193,7 +193,7 @@ async def _merge_group_via_push_queue(
     )
 
 
-async def merge_workspaces(  # noqa: PLR0913 -- project/repo routing inputs
+async def merge_workspaces(
     workspace_service: WorkspaceIsolationService,
     workspaces: tuple[Workspace, ...],
     *,

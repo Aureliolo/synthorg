@@ -115,7 +115,7 @@ class DesktopTool(BaseTool):
 
     args_model: ClassVar[type[BaseModel] | None] = DesktopToolArgs
 
-    def __init__(  # noqa: PLR0913 -- DI seam: sandbox, driver, settings, clock injected
+    def __init__(
         self,
         *,
         sandbox: SandboxBackend,

@@ -190,7 +190,7 @@ class GatewayService:
                 yield frame
         yield _SSE_DONE
 
-    async def _drive_stream(  # noqa: PLR0913 -- streaming needs the full request context
+    async def _drive_stream(
         self,
         provider: CompletionProvider,
         *,

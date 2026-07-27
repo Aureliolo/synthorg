@@ -86,7 +86,7 @@ class KnowledgeSynthesizer:
         """Pinned model + sampling for this prompt class."""
         return pin_for(self._PURPOSE_ID)
 
-    def __init__(  # noqa: PLR0913 -- injected synthesis collaborators
+    def __init__(
         self,
         *,
         provider: CompletionProvider,

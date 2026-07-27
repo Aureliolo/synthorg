@@ -16,7 +16,7 @@ _HEADERS = make_auth_headers("ceo")
 _DUMMY_HASH = "a" * 64
 
 
-def _make_entry(  # noqa: PLR0913
+def _make_entry(
     *,
     entry_id: str = "e-1",
     agent_id: str | None = "agent-a",

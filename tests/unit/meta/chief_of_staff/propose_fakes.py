@@ -36,7 +36,7 @@ from tests._shared.scripted_provider import ScriptedProvider
 START = datetime(2026, 5, 19, 9, 0, 0, tzinfo=UTC)
 
 
-def make_identity(  # noqa: PLR0913 -- test identity builder: many independent knobs
+def make_identity(
     *,
     name: str,
     role: str,
@@ -82,7 +82,7 @@ async def build_registry(*identities: AgentIdentity) -> AgentRegistryService:
     return registry
 
 
-def build_proposer(  # noqa: PLR0913 -- test builder: independent DI knobs
+def build_proposer(
     *,
     provider: ScriptedProvider,
     config: ChiefOfStaffConfig | None = None,

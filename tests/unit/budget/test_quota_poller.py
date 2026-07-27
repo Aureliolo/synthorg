@@ -12,7 +12,7 @@ from synthorg.notifications.dispatcher import NotificationDispatcher
 from tests._shared.fake_clock import FakeClock
 
 
-def _snapshot(  # noqa: PLR0913
+def _snapshot(
     provider: str = "test-provider",
     *,
     window: QuotaWindow = QuotaWindow.PER_MINUTE,

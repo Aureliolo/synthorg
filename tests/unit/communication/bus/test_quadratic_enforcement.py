@@ -31,7 +31,7 @@ class _RecordingSink:
         self.alerts.append((title, body))
 
 
-def _config(  # noqa: PLR0913 -- keyword-only test config builder
+def _config(
     *,
     strategy: QuadraticEnforcementStrategy,
     max_agent_connections: int = 50,

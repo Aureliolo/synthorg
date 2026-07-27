@@ -232,7 +232,7 @@ async def preflight_review_gate(
         raise
 
 
-async def try_review_gate_transition(  # noqa: PLR0913
+async def try_review_gate_transition(
     review_gate: ReviewGateService,
     approval_id: str,
     task_id: str,
@@ -345,7 +345,7 @@ async def try_review_gate_transition(  # noqa: PLR0913
         raise
 
 
-async def signal_resume_intent(  # noqa: PLR0913
+async def signal_resume_intent(
     app_state: AppState,
     approval_id: str,
     *,

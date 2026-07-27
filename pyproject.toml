@@ -347,7 +347,12 @@ convention = "google"
 # exceeding these caps usually signal a missing decomposition into
 # helpers or per-strategy variants.
 [tool.ruff.lint.pylint]
-max-args = 5
+# The residue above this cap is a closed list:
+# scripts/check_argument_count_suppression.py holds every `# noqa: PLR0913`
+# against a shrink-only baseline and refuses to let this number climb. A cap
+# whose escape hatch stays open is a decoration, not a cap, so the two ship
+# together; raising this alone would just make 8 the next 5.
+max-args = 8
 # Pinned explicitly, NOT left to default: ruff defaults
 # max-positional-args to whatever max-args is, so leaving it implicit ties
 # the positional cap to a knob that governs a different concern. A wide

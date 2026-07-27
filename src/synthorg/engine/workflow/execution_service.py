@@ -277,7 +277,7 @@ class WorkflowExecutionService:
 
         return definition
 
-    async def _walk_frame(  # noqa: PLR0913
+    async def _walk_frame(
         self,
         *,
         definition: WorkflowDefinition,

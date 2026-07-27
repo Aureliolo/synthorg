@@ -22,7 +22,7 @@ pytestmark = pytest.mark.unit
 class _RecordingHook:
     """A ServiceLifecycleHook double recording start/stop into a shared log."""
 
-    def __init__(  # noqa: PLR0913 -- test double exposes one flag per behaviour
+    def __init__(
         self,
         name: str,
         log: list[str],

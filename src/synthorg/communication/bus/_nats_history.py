@@ -199,7 +199,7 @@ def try_parse_matching(raw: Msg, subject: str) -> Message | None:
         return None
 
 
-async def scan_stream_for_subject(  # noqa: PLR0913
+async def scan_stream_for_subject(
     state: _NatsState,
     js: JetStreamContext | None,
     *,

@@ -39,7 +39,7 @@ pytestmark = pytest.mark.integration
 _FAKE_HASH = "a" * 64
 
 
-def _entry(  # noqa: PLR0913
+def _entry(
     entry_id: str = "audit-1",
     *,
     timestamp: datetime | None = None,

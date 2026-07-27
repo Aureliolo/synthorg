@@ -396,7 +396,7 @@ class A2AClient(SkillNegotiationMixin):
             )
             raise A2AClientError(msg, peer_name=peer_name) from exc
 
-    async def _send_request(  # noqa: PLR0913 -- request + error context + pin pair
+    async def _send_request(
         self,
         url: str,
         rpc_req: JsonRpcRequest,

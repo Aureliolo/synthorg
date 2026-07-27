@@ -50,7 +50,7 @@ class AsyncCycleScheduler(ABC):
     :meth:`_resolve_cycle_enabled` / :meth:`_log_cycle_paused`.
     """
 
-    def __init__(  # noqa: PLR0913 -- event vocabulary + lifecycle policy knobs
+    def __init__(
         self,
         *,
         interval_seconds: float,

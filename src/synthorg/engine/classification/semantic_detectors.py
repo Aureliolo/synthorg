@@ -132,7 +132,7 @@ class _BaseSemanticDetector(ABC):
     def supported_scopes(self) -> frozenset[DetectionScope]:
         """Detection scopes this detector can operate on."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         provider: CompletionProvider,

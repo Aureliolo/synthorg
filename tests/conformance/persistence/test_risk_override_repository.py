@@ -21,7 +21,7 @@ _EXPIRES = _NOW + timedelta(hours=24)
 _PAST = _NOW - timedelta(hours=1)
 
 
-def _override(  # noqa: PLR0913
+def _override(
     *,
     override_id: str = "ovr-001",
     action_type: str = "spend:approve",

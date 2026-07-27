@@ -81,7 +81,7 @@ class CoordinationService:
         )
         return record
 
-    async def list_metrics(  # noqa: PLR0913 -- page bounds + 4 store filters
+    async def list_metrics(
         self,
         *,
         offset: int,

@@ -103,7 +103,7 @@ class OtlpHandler(logging.Handler):
             hiccup would otherwise drop a whole batch permanently.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         endpoint: str,
         *,

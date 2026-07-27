@@ -127,7 +127,7 @@ def _expand_agents(
     return expanded
 
 
-def _expand_single_agent(  # noqa: PLR0913
+def _expand_single_agent(
     agent: dict[str, object],
     idx: int,
     used_names: set[str],

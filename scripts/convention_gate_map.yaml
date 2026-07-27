@@ -91,6 +91,11 @@ mandatory_rules:
     header: No Hardcoded Values
     gate: scripts/check_no_magic_numbers.py
 
+  - id: claude-md::argument-count-cap
+    file: CLAUDE.md
+    header: Argument-Count Cap
+    gate: scripts/check_argument_count_suppression.py
+
   - id: claude-md::explicit-provider-binding
     file: CLAUDE.md
     header: Explicit Provider Binding

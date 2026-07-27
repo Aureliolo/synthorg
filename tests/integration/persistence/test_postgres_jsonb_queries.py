@@ -23,7 +23,7 @@ from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.models import AuditEntry
 
 
-def _make_audit_entry(  # noqa: PLR0913
+def _make_audit_entry(
     *,
     entry_id: str,
     matched_rules: tuple[str, ...] = (),

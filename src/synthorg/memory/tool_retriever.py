@@ -172,7 +172,7 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
         "_sufficiency_checker",
     )
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         backend: MemoryBackend,

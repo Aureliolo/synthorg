@@ -55,7 +55,7 @@ async def _ensure_user(
     )
 
 
-async def _make_session(  # noqa: PLR0913 -- scenario builder wants full control
+async def _make_session(
     backend: PersistenceBackend,
     session_id: str = "sess_1",
     user_id: str = "user_alice",

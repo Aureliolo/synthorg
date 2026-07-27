@@ -42,7 +42,7 @@ from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.core.company import Company
 
 
-def build_conflict_resolution_service(  # noqa: PLR0913 -- keyword-only collaborator DI
+def build_conflict_resolution_service(
     *,
     config: ConflictResolutionConfig,
     company: Company,

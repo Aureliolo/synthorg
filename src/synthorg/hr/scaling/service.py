@@ -121,7 +121,7 @@ class ScalingService:
             execution.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         strategies: tuple[ScalingStrategy, ...],

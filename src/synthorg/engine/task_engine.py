@@ -893,7 +893,7 @@ class TaskEngine(TaskEngineLoopsMixin):
             )
             raise TaskInternalError(msg) from exc
 
-    async def list_tasks(  # noqa: PLR0913
+    async def list_tasks(
         self,
         *,
         status: TaskStatus | None = None,

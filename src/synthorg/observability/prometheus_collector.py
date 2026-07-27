@@ -330,7 +330,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         )
 
     @staticmethod
-    async def _merge_and_update_snapshot(  # noqa: PLR0913 -- one kwarg per label source, each carried forward independently
+    async def _merge_and_update_snapshot(
         *,
         agent_ids: frozenset[str] | None,
         wf_ids: frozenset[str] | None,

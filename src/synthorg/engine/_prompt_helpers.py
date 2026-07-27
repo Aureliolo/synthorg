@@ -369,7 +369,7 @@ def _make_trim_info(
     )
 
 
-def build_core_context(  # noqa: PLR0913
+def build_core_context(
     agent: AgentIdentity,
     role: Role | None,
     effective_autonomy: EffectiveAutonomy | None = None,

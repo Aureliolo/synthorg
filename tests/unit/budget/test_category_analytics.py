@@ -16,7 +16,7 @@ from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.tracker import CostTracker
 
 
-def _record(  # noqa: PLR0913
+def _record(
     *,
     category: LLMCallCategory | None = None,
     cost: float = 0.01,

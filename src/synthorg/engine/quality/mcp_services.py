@@ -1,4 +1,4 @@
-# ruff: noqa: D102, PLR0913
+# ruff: noqa: D102
 """Quality facades for the MCP handler layer.
 
 Three facades: QualityFacadeService wraps the performance tracker's

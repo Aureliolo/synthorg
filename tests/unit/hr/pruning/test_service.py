@@ -151,7 +151,7 @@ def offboarding() -> FakeOffboardingService:
     return FakeOffboardingService()
 
 
-def _make_service(  # noqa: PLR0913
+def _make_service(
     *,
     policies: tuple[object, ...] = (),
     registry: AgentRegistryService | None = None,

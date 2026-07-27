@@ -326,7 +326,7 @@ def _status_of(task: Task | None) -> TaskStatus:
     return TaskStatus.BLOCKED if task is None else task.status
 
 
-async def compute_status_rollup(  # noqa: PLR0913
+async def compute_status_rollup(
     *,
     decomposition_service: DecompositionService,
     task_engine: TaskEngine | None,

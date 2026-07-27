@@ -82,7 +82,7 @@ def _validate_inheritance_chain(
         raise TemplateInheritanceError(msg)
 
 
-def render_parent_config(  # noqa: PLR0913
+def render_parent_config(
     *,
     parent_name: str,
     child_id: str,

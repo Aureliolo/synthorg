@@ -51,7 +51,7 @@ class MeetingWireResult(NamedTuple):
     ceremony_scheduler: CeremonyScheduler | None
 
 
-def auto_wire_meetings(  # noqa: PLR0913 -- meeting wiring needs the full dep set
+def auto_wire_meetings(
     *,
     effective_config: RootConfig,
     meeting_orchestrator: MeetingOrchestrator | None,

@@ -87,7 +87,7 @@ class ArtifactService:
         """Return a single artifact by id, or ``None`` when missing."""
         return await self._repo.get(artifact_id)
 
-    async def create(  # noqa: PLR0913
+    async def create(
         self,
         *,
         artifact_type: ArtifactType,

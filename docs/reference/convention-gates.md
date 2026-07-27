@@ -21,6 +21,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | Gate (`scripts/`) | Stages | Scope | Scan | Changed-file? | Baseline | Verdict |
 | --- | --- | --- | --- | --- | --- | --- |
 | `check_architecture_drift.py` | push | `src/synthorg/` | full | no | `data/architecture_report.json` | keep |
+| `check_argument_count_suppression.py` | push | whole tree (via ruff) | full | no | `argument_count_suppression_baseline.txt` | add |
 | `check_backend_enums_ts_in_sync.py` | commit+push | `ws_models.py` + `notifications/models.py` + `observability/enums.py` + `*.gen.ts` | full | no | none | keep |
 | `check_backend_regional_defaults.py` | PostToolUse | backend region/currency edits | n/a | n/a | none | harden |
 | `check_baseline_growth.py` | commit+push | `scripts/*_baseline.{txt,json}` | staged | yes | guards baselines | keep |
@@ -123,7 +124,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->101<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->102<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 
@@ -145,6 +146,7 @@ Most gates scan `src/synthorg/` only. Those that walk additional trees encode ev
 - `check_frozen_model_extra_forbid.py`: `src/synthorg/` AND `tests/`. The project-wide `extra="forbid"` rule applies equally to test fixtures, so the gate walks both trees in a single pass. The same gate also enforces `allow_inf_nan=False` on every frozen model, but scoped to `src/synthorg/` only (test fixtures are exempt from the inf/nan assertion). The `extra` check auto-exempts `@computed_field`-only models; the `allow_inf_nan` check does not. Per-line opt-outs: `# lint-allow: frozen-extra-forbid -- <reason>` and `# lint-allow: frozen-allow-inf-nan -- <reason>`.
 - `check_persistence_boundary.py`, `check_no_review_origin_in_code.py`, `check_no_migration_framing.py`, `check_docstring_completeness.py`: `src/synthorg/` AND `tests/`.
 - `check_dead_api_endpoints.py`: `src/synthorg/api/` AND `web/src/` (frontend / backend route parity).
+- `check_argument_count_suppression.py`: the whole tree, by delegating discovery to `ruff` itself rather than walking files. Its scope is therefore whatever `ruff check .` covers, and it cannot drift from ruff's own argument counting.
 
 ## PreToolUse hooks (Claude Code + OpenCode)
 
@@ -206,6 +208,21 @@ class TsaError(Exception):  # lint-allow: domain-error-hierarchy -- RFC 3161 int
 ```
 
 The justification after `--` is mandatory and must be non-empty. The gate also accepts a frozen baseline file (`scripts/domain_error_hierarchy_baseline.txt`) listing violations a rollout has not yet reached. The baseline shrinks monotonically: any entry that no longer maps to a real violation is reported as drift, so the file cannot harbour stale rows.
+
+## Argument-count-suppression gate
+
+`scripts/check_argument_count_suppression.py` is the one gate in this inventory with **no per-line opt-out**, and that is the point of it. `[tool.ruff.lint.pylint] max-args` only means something when the set of functions allowed to exceed it is finite and shrinking; left to `# noqa: PLR0913` alone the marker is freely addable, so a cap suppressed hundreds of times reports nothing and prevents nothing.
+
+The gate does not count arguments itself. It runs `ruff` twice over the tree: once with `--ignore-noqa` and `lint.per-file-ignores={}` (every over-cap function, however it is suppressed) and once plain (the ones `ruff` reports on its own). The difference is the suppressed set; reading the reported line then says whether a per-line marker or a blanket did the suppressing. Delegating the count means the gate cannot drift from `ruff` on `self` / `cls` exclusion, `*` and `**` handling, `@overload`, or decorators.
+
+Four invariants hold:
+
+1. `max-args` stays at or below 8 and `max-positional-args` stays pinned at exactly 5. Lowering either is always allowed. The positional pin is load-bearing on its own, because `ruff` defaults `max-positional-args` to whatever `max-args` is: an implicit positional cap silently widens whenever the other one does.
+2. Nothing disables the rule wholesale, whether through `lint.ignore`, `lint.extend-ignore`, or a `per-file-ignores` entry. Prefixes count, so `"PL"` is rejected exactly like the full code.
+3. Every over-cap function carries a per-line marker rather than a file-level `# ruff: noqa` blanket, which is otherwise invisible to reviewers reading a diff.
+4. Every per-line marker already appears in `scripts/argument_count_suppression_baseline.txt`, keyed `path::qualname` (`pkg/mod.py::Class.method`). The qualified name rather than a line number keeps a long-lived list stable: a `path:lineno:col` key would go stale on any unrelated edit above a marker, turning every neighbouring PR into a baseline regeneration.
+
+Adding a suppression therefore means regenerating that baseline, which `check_baseline_growth.py` blocks at commit time without an `ALLOW_BASELINE_GROWTH=1` approval. A stale entry that no longer maps to a suppressed function is reported as drift rather than tolerated: an entry outliving the function would silently pre-authorise a future suppression reusing the same name.
 
 ## Registration procedure
 

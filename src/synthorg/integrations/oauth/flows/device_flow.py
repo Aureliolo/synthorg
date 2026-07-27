@@ -57,7 +57,7 @@ class DeviceFlowResult:
         "verification_uri_complete",
     )
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         device_code: str,

@@ -137,7 +137,7 @@ class AgentMessenger:
             agent_name=agent_name,
         )
 
-    async def send_message(  # noqa: PLR0913
+    async def send_message(
         self,
         *,
         to: str,

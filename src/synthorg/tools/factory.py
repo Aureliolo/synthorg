@@ -459,7 +459,7 @@ _DEFAULT_ARCHITECT_AGENT_ID: Final[str] = "knowledge-architect"
 _DEFAULT_ARCHITECT_AUTONOMY: Final[AutonomyLevel] = AutonomyLevel.SUPERVISED
 
 
-def _build_knowledge_architect_tools(  # noqa: PLR0913
+def _build_knowledge_architect_tools(
     *,
     org_backend: OrgMemoryBackend | None,
     fact_store: OrgFactRepository | None,

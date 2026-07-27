@@ -83,7 +83,7 @@ SteeringNotifier = Callable[[str, Mapping[str, object]], Awaitable[None]]
 class SteeringService:
     """The single write path for mid-flight steering directives."""
 
-    def __init__(  # noqa: PLR0913 -- collaborator wiring
+    def __init__(
         self,
         *,
         brain_service: ProjectBrainService,
@@ -102,7 +102,7 @@ class SteeringService:
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._propose_candidate_limit = propose_candidate_limit
 
-    async def issue(  # noqa: PLR0913 -- explicit directive fields
+    async def issue(
         self,
         *,
         project_id: NotBlankStr,
@@ -223,7 +223,7 @@ class SteeringService:
         ]
         return tuple(directives)
 
-    async def _record_directive(  # noqa: PLR0913 -- explicit directive fields
+    async def _record_directive(
         self,
         *,
         project_id: NotBlankStr,
@@ -266,7 +266,7 @@ class SteeringService:
         )
         return directive_id
 
-    async def _handle_supersession(  # noqa: PLR0913 -- explicit directive fields
+    async def _handle_supersession(
         self,
         *,
         project_id: NotBlankStr,

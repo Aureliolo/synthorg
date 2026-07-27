@@ -110,7 +110,7 @@ class HybridLoop(PlanPhaseMixin):
 
     _LOOP_TYPE = "hybrid"
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         config: HybridLoopConfig | None = None,
         checkpoint_callback: CheckpointCallback | None = None,

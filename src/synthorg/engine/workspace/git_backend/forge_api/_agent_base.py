@@ -144,7 +144,7 @@ class ForgeAgentBase(BaseForgeClient, ABC):
             page += 1
         return tuple(collected[:limit])
 
-    async def write_file(  # noqa: PLR0913 -- forge contents-API fields
+    async def write_file(
         self,
         *,
         owner: NotBlankStr,
@@ -291,7 +291,7 @@ class ForgeAgentBase(BaseForgeClient, ABC):
         """Open a new issue and return it."""
 
     @abstractmethod
-    async def create_pull_request(  # noqa: PLR0913 -- forge PR fields
+    async def create_pull_request(
         self,
         *,
         owner: NotBlankStr,
@@ -316,7 +316,7 @@ class ForgeAgentBase(BaseForgeClient, ABC):
         """Create ``new_branch`` pointing at ``from_ref`` and return it."""
 
     @abstractmethod
-    async def review_pull_request(  # noqa: PLR0913 -- forge review fields
+    async def review_pull_request(
         self,
         *,
         owner: NotBlankStr,

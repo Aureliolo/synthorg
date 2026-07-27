@@ -275,7 +275,7 @@ class AgentEngineErrorsMixin:
         )
         return new_provider, new_identity
 
-    async def _handle_budget_error(  # noqa: PLR0913
+    async def _handle_budget_error(
         self,
         *,
         exc: BudgetExhaustedError,
@@ -367,7 +367,7 @@ class AgentEngineErrorsMixin:
             )
             raise exc from None
 
-    async def _park_hard_ceiling(  # noqa: PLR0913
+    async def _park_hard_ceiling(
         self,
         *,
         exc: RunHardCeilingExceededError,

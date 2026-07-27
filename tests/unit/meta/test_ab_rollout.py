@@ -86,7 +86,7 @@ def _proposal(
     )
 
 
-def _group_metrics(  # noqa: PLR0913
+def _group_metrics(
     group: ABTestGroup,
     *,
     quality: float = 7.5,

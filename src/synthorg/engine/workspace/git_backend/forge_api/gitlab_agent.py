@@ -234,7 +234,7 @@ class GitLabAgentForgeClient(GitLabForgeClient):
         logger.info(FORGE_API_BRANCH_CREATED, branch=str(new_branch))
         return branch
 
-    async def write_file(  # noqa: PLR0913 -- forge contents-API fields
+    async def write_file(
         self,
         *,
         owner: NotBlankStr,
@@ -438,7 +438,7 @@ class GitLabAgentForgeClient(GitLabForgeClient):
             for item in _as_list(resp.json())
         )
 
-    async def create_pull_request(  # noqa: PLR0913 -- forge PR fields
+    async def create_pull_request(
         self,
         *,
         owner: NotBlankStr,
@@ -514,7 +514,7 @@ class GitLabAgentForgeClient(GitLabForgeClient):
         raise_for_forge_status(resp, action=action)
         return gl.comment_from(gl.parse_gitlab(resp.json(), gl.GlNote, what="note"))
 
-    async def review_pull_request(  # noqa: PLR0913 -- forge review fields
+    async def review_pull_request(
         self,
         *,
         owner: NotBlankStr,

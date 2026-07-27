@@ -211,7 +211,7 @@ async def task_engine(
     await engine.stop()
 
 
-async def _build_pipeline(  # noqa: PLR0913 -- test builder with keyword-only knobs
+async def _build_pipeline(
     *,
     persistence: FakePersistenceBackend,
     task_engine: TaskEngine,

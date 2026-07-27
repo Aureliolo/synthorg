@@ -58,7 +58,7 @@ def _coerce_positive_int(
         raise
 
 
-def build_training_service(  # noqa: PLR0913
+def build_training_service(
     config: TrainingConfig,
     *,
     memory_backend: MemoryBackend,

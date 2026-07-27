@@ -203,7 +203,7 @@ async def _wire(app_state: AppState) -> None:
     )
 
 
-def _build_rollback_executor(  # noqa: PLR0913
+def _build_rollback_executor(
     *,
     app_state: AppState,
     config: SelfImprovementConfig,

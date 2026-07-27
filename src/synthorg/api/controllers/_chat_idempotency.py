@@ -65,7 +65,7 @@ def chat_request_fingerprint(model: BaseModel) -> str:
     return hashlib.sha256(model.model_dump_json().encode("utf-8")).hexdigest()
 
 
-async def run_chat_idempotent(  # noqa: PLR0913 -- idempotency plumbing seam
+async def run_chat_idempotent(
     app_state: AppState,
     *,
     scope: str,

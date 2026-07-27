@@ -162,7 +162,7 @@ async def _resolve_fine_tune_thresholds(
     )
 
 
-def _run_preflight_checks(  # noqa: PLR0913 -- flat tunable thresholds + injected probe
+def _run_preflight_checks(
     request: FineTuneRequest,
     *,
     min_required: int = FINE_TUNE_MIN_DOCS_REQUIRED,

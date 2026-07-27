@@ -61,7 +61,7 @@ class HealthMonitoringPipeline:
         self._triage = triage
         self._dispatcher = notification_dispatcher
 
-    async def process(  # noqa: PLR0913
+    async def process(
         self,
         *,
         termination_reason: TerminationReason,
@@ -102,7 +102,7 @@ class HealthMonitoringPipeline:
             )
             return None
 
-    async def _process_inner(  # noqa: PLR0913
+    async def _process_inner(
         self,
         *,
         termination_reason: TerminationReason,

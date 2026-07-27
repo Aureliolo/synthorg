@@ -498,7 +498,7 @@ class AgentEngine(
             hub, task_id=task_id, agent_id=agent_id, reason=TerminationReason.ERROR
         )
 
-    async def run(  # noqa: PLR0913
+    async def run(
         self,
         *,
         identity: AgentIdentity,

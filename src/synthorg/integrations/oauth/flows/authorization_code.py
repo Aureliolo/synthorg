@@ -166,7 +166,7 @@ class AuthorizationCodeFlow:
         """Whether this flow produces refresh tokens."""
         return True
 
-    async def start_flow(  # noqa: PLR0913
+    async def start_flow(
         self,
         *,
         auth_url: str,
@@ -222,7 +222,7 @@ class AuthorizationCodeFlow:
         logger.info(OAUTH_FLOW_STARTED, grant_type="authorization_code")
         return authorization_url, oauth_state
 
-    async def exchange_code(  # noqa: PLR0913
+    async def exchange_code(
         self,
         *,
         token_url: str,

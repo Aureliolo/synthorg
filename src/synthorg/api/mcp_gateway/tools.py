@@ -373,7 +373,7 @@ def visible_tool_names(
     return frozenset(visible)
 
 
-async def invoke_credentialed_tool(  # noqa: PLR0913 -- scope + validate + dispatch surface
+async def invoke_credentialed_tool(
     name: str,
     arguments: dict[str, object],
     *,

@@ -15,7 +15,7 @@ from synthorg.persistence.protocol import PersistenceBackend
 pytestmark = pytest.mark.integration
 
 
-def _record(  # noqa: PLR0913 -- keyword-only test builder
+def _record(
     *,
     record_id: str = "kur-001",
     task_id: str = "task-001",

@@ -90,7 +90,7 @@ class ProjectBrainService:
         "_writer",
     )
 
-    def __init__(  # noqa: PLR0913 -- engine entry point composes every collaborator
+    def __init__(
         self,
         *,
         repo: ProjectBrainRepository,
@@ -361,7 +361,7 @@ class ProjectBrainService:
         """Return the latest revision of one entry, or ``None`` if absent."""
         return await self._repo.get_current(project_id, entry_id)
 
-    async def list_current(  # noqa: PLR0913 -- filter dimensions are explicit
+    async def list_current(
         self,
         *,
         project_id: NotBlankStr,
@@ -385,7 +385,7 @@ class ProjectBrainService:
         rows = await self._repo.list_current(spec, limit=limit, offset=offset)
         return tuple(entry_to_summary(row) for row in rows)
 
-    async def list_current_entries(  # noqa: PLR0913 -- filter dimensions explicit
+    async def list_current_entries(
         self,
         *,
         project_id: NotBlankStr,
@@ -413,7 +413,7 @@ class ProjectBrainService:
         )
         return await self._repo.list_current(spec, limit=limit, offset=offset)
 
-    async def count_current(  # noqa: PLR0913 -- filter dimensions are explicit
+    async def count_current(
         self,
         *,
         project_id: NotBlankStr,

@@ -19,7 +19,7 @@ class SandboxBackend(Protocol):
     Subprocess and Docker are built-in backends.
     """
 
-    async def execute(  # noqa: PLR0913
+    async def execute(
         self,
         *,
         command: str,

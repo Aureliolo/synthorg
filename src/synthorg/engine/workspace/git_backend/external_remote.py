@@ -178,7 +178,7 @@ def _redact_stderr(text: str) -> str:
 class ExternalRemoteGitBackend:
     """Forge-remote git backend resolved via the connection catalog."""
 
-    def __init__(  # noqa: PLR0913 -- forge + retry config is the boundary surface
+    def __init__(
         self,
         *,
         connection_name: str,

@@ -34,7 +34,7 @@ from tests._shared import as_pk, as_uuid, sid
 _DEFAULT_TS = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
 
 
-def _make_subworkflow(  # noqa: PLR0913
+def _make_subworkflow(
     *,
     subworkflow_id: str = "sub-finance-close",
     version: str = "1.0.0",

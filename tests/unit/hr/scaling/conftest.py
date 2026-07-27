@@ -35,7 +35,7 @@ def make_signal(
     )
 
 
-def make_context(  # noqa: PLR0913
+def make_context(
     *,
     agent_ids: tuple[str, ...] = (
         "agent-001",

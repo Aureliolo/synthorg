@@ -12,7 +12,7 @@ types back from ``models`` (which would close an import cycle); only the
 from synthorg.providers.enums import StreamEventType
 
 
-def validate_stream_chunk_fields(  # noqa: PLR0913 -- one arg per validated chunk field
+def validate_stream_chunk_fields(
     *,
     event_type: StreamEventType,
     content: object,

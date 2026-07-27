@@ -287,7 +287,7 @@ async def _store_and_materialize(
     return memory_id
 
 
-async def propose_procedural_memory(  # noqa: PLR0913
+async def propose_procedural_memory(
     execution_result: ExecutionResult,
     recovery_result: RecoveryResult,
     agent_id: NotBlankStr,

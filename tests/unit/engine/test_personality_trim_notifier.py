@@ -86,7 +86,7 @@ class TestPersonalityTrimNotifier:
             (True, 10, True, False, 0),
         ],
     )
-    async def test_run_notifier_matrix(  # noqa: PLR0913
+    async def test_run_notifier_matrix(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,

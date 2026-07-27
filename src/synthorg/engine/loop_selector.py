@@ -266,7 +266,7 @@ def _apply_hybrid_fallback(
     return loop_type
 
 
-def select_loop_type(  # noqa: PLR0913
+def select_loop_type(
     *,
     complexity: Complexity,
     rules: tuple[AutoLoopRule, ...],
@@ -304,7 +304,7 @@ def select_loop_type(  # noqa: PLR0913
     return _apply_hybrid_fallback(loop_type, hybrid_fallback)
 
 
-def _build_react_loop(  # noqa: PLR0913
+def _build_react_loop(
     *,
     checkpoint_callback: CheckpointCallback | None = None,
     approval_gate: ApprovalGate | None = None,
@@ -330,7 +330,7 @@ def _build_react_loop(  # noqa: PLR0913
     )
 
 
-def _build_plan_execute_loop(  # noqa: PLR0913
+def _build_plan_execute_loop(
     *,
     checkpoint_callback: CheckpointCallback | None = None,
     approval_gate: ApprovalGate | None = None,
@@ -358,7 +358,7 @@ def _build_plan_execute_loop(  # noqa: PLR0913
     )
 
 
-def _build_hybrid_loop(  # noqa: PLR0913
+def _build_hybrid_loop(
     *,
     checkpoint_callback: CheckpointCallback | None = None,
     approval_gate: ApprovalGate | None = None,

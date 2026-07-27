@@ -163,7 +163,7 @@ class LlmPlanItemReplyService:
         """Pinned model + sampling for this prompt class."""
         return pin_for(self._PURPOSE_ID)
 
-    def __init__(  # noqa: PLR0913 -- DI seam: independently-wired knobs
+    def __init__(
         self,
         *,
         provider: CompletionProvider,
@@ -427,7 +427,7 @@ def _resolve_reply_provider(
         return None, ref.model_id
 
 
-def build_plan_item_reply_service(  # noqa: PLR0913 -- boot wiring deps
+def build_plan_item_reply_service(
     *,
     reply_model: str,
     temperature: float,

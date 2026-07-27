@@ -47,7 +47,7 @@ def resolve_tracker_currency(tracker: CostTrackerProtocol | None) -> CurrencyCod
     return currency
 
 
-async def record_execution_costs(  # noqa: PLR0913
+async def record_execution_costs(
     result: ExecutionResult,
     identity: AgentIdentity,
     agent_id: str,

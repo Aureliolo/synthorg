@@ -77,7 +77,7 @@ class AgentEngineRecoveryMixin:
     _checkpoint_repo: CheckpointRepository | None
     _heartbeat_repo: HeartbeatRepository | None
 
-    async def _apply_recovery(  # noqa: PLR0913
+    async def _apply_recovery(
         self,
         execution_result: ExecutionResult,
         identity: AgentIdentity,
@@ -302,7 +302,7 @@ class AgentEngineRecoveryMixin:
         )
         return result, checkpoint_ctx.execution_id
 
-    async def _execute_resumed_loop(  # noqa: PLR0913
+    async def _execute_resumed_loop(
         self,
         checkpoint_ctx: AgentContext,
         agent_id: str,
@@ -358,7 +358,7 @@ class AgentEngineRecoveryMixin:
         )
         return result
 
-    async def _finalize_resume(  # noqa: PLR0913
+    async def _finalize_resume(
         self,
         result: ExecutionResult,
         identity: AgentIdentity,

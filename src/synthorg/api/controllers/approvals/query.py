@@ -52,7 +52,7 @@ class ApprovalsQueryController(Controller):
             per_op_rate_limit_from_policy("approvals.list", key="user"),
         ]
     )
-    async def list_approvals(  # noqa: PLR0913
+    async def list_approvals(
         self,
         state: State,
         status: Annotated[

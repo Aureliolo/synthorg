@@ -67,7 +67,7 @@ class ApprovalGate:
             resume is not possible.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         park_service: ParkService,

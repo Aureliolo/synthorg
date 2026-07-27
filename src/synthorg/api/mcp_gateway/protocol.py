@@ -29,7 +29,7 @@ _METHOD_NOT_FOUND: Final[int] = -32601
 _INVALID_PARAMS: Final[int] = -32602
 
 
-async def dispatch_mcp(  # noqa: PLR0913 -- scoping + dispatch surface
+async def dispatch_mcp(
     message: dict[str, object],
     *,
     ctx: CredentialedToolContext,
@@ -87,7 +87,7 @@ def _initialize_result() -> dict[str, object]:
     }
 
 
-async def _tools_call(  # noqa: PLR0913 -- scoping + dispatch surface
+async def _tools_call(
     message_id: object,
     params: object,
     *,

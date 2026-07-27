@@ -68,7 +68,7 @@ def _approval(title: str) -> ApprovalItem:
     )
 
 
-def _reader(  # noqa: PLR0913 -- read-model fixture spanning four surfaces
+def _reader(
     *,
     in_progress: tuple[Task, ...] = (),
     in_progress_total: int | None = None,

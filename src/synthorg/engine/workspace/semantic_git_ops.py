@@ -248,7 +248,7 @@ async def get_base_sources(
     return sources
 
 
-async def run_semantic_analysis(  # noqa: PLR0913
+async def run_semantic_analysis(
     *,
     run_git: GitRunner,
     config: SemanticAnalysisConfig,
@@ -337,7 +337,7 @@ async def _resolve_branch_point(
     return branch_point
 
 
-async def _do_analysis(  # noqa: PLR0913
+async def _do_analysis(
     *,
     run_git: GitRunner,
     config: SemanticAnalysisConfig,

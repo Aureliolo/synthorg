@@ -112,7 +112,7 @@ async def _live_capture_enabled(
         return boot_value
 
 
-async def try_capture_distillation(  # noqa: PLR0913 -- explicit-deps hook contract
+async def try_capture_distillation(
     execution_result: ExecutionResult,
     agent_id: str,
     task_id: str,
@@ -189,7 +189,7 @@ async def try_capture_distillation(  # noqa: PLR0913 -- explicit-deps hook contr
         )
 
 
-async def try_procedural_memory(  # noqa: PLR0913
+async def try_procedural_memory(
     execution_result: ExecutionResult,
     recovery_result: RecoveryResult | None,
     agent_id: str,
@@ -273,7 +273,7 @@ async def try_procedural_memory(  # noqa: PLR0913
         )
 
 
-async def try_capture_success(  # noqa: PLR0913
+async def try_capture_success(
     execution_result: ExecutionResult,
     recovery_result: RecoveryResult | None,
     agent_id: str,

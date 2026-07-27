@@ -132,7 +132,7 @@ class DockerSandbox(
         workspace: Absolute path to the workspace root directory.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         config: DockerSandboxConfig | None = None,
@@ -719,7 +719,7 @@ class DockerSandbox(
             )
         await self._destroy_handle(handle)
 
-    async def execute(  # noqa: PLR0913
+    async def execute(
         self,
         *,
         command: str,

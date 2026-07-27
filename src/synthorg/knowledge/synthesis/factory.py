@@ -27,7 +27,7 @@ shipped implementation; the synthesiser cites chunks by reference id and a
 binder validates every citation resolves before the answer is emitted."""
 
 
-def build_knowledge_synthesizer(  # noqa: PLR0913 -- injected synthesis collaborators
+def build_knowledge_synthesizer(
     *,
     kind: str = "llm",
     provider: CompletionProvider,

@@ -92,7 +92,7 @@ def _is_deferred_expression(value: object, *, direction: str = "") -> bool:
     return value.startswith(("@parent.", "@child."))
 
 
-def _check_bindings_against_declarations(  # noqa: PLR0913
+def _check_bindings_against_declarations(
     *,
     node_id: str,
     ref_label: str,
@@ -166,7 +166,7 @@ def _check_bindings_against_declarations(  # noqa: PLR0913
     return errors
 
 
-def _check_subworkflow_io_for_node(  # noqa: PLR0913
+def _check_subworkflow_io_for_node(
     *,
     node_id: str,
     subworkflow_id: str,

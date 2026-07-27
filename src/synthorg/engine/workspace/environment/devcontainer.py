@@ -122,7 +122,7 @@ def _is_transient_build_failure(outcome: BuildOutcome) -> bool:
 class DevcontainerEnvironmentStrategy:
     """Devcontainer (sealed-image) strategy; Docker backend only."""
 
-    def __init__(  # noqa: PLR0913 -- image builder + build-retry tuning is the boundary surface
+    def __init__(
         self,
         *,
         image_builder: ImageBuilder,

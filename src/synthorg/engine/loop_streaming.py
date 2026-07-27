@@ -230,7 +230,7 @@ class _StreamAccumulator:
     finish_reason: FinishReason | None = None
 
 
-async def _check_interrupt(  # noqa: PLR0913
+async def _check_interrupt(
     ctx: AgentContext,
     turn_number: int,
     usage: TokenUsage,
@@ -268,7 +268,7 @@ async def _check_interrupt(  # noqa: PLR0913
     return None
 
 
-async def _drain_stream(  # noqa: PLR0913
+async def _drain_stream(
     stream: AsyncIterator[StreamChunk],
     acc: _StreamAccumulator,
     ctx: AgentContext,

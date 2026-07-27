@@ -77,7 +77,7 @@ def _make_local_config(**overrides: object) -> MagicMock:
     return mock
 
 
-def _make_prober(  # noqa: PLR0913 -- explicit DI; all kw-only after the 2nd arg
+def _make_prober(
     tracker: ProviderHealthTracker | None = None,
     configs: dict[str, MagicMock] | None = None,
     *,

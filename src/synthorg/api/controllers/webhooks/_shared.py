@@ -304,7 +304,7 @@ async def _publish_webhook_event_and_log(
     return {"status": "accepted", "event_type": event_type}
 
 
-async def _publish_with_durable_idempotency(  # noqa: PLR0913
+async def _publish_with_durable_idempotency(
     *,
     state: State,
     connection_name: str,

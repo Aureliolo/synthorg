@@ -32,7 +32,7 @@ from synthorg.tools.protocol import ToolInvokerProtocol
 class ApplyRecovery(Protocol):
     """Signature of ``AgentEngineRecoveryMixin._apply_recovery``."""
 
-    async def __call__(  # noqa: PLR0913
+    async def __call__(
         self,
         execution_result: ExecutionResult,
         identity: AgentIdentity,
@@ -117,7 +117,7 @@ class Execute(Protocol):
 class HandleBudgetError(Protocol):
     """Signature of ``AgentEngineErrorsMixin._handle_budget_error``."""
 
-    async def __call__(  # noqa: PLR0913
+    async def __call__(
         self,
         *,
         exc: BudgetExhaustedError,

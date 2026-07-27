@@ -183,7 +183,7 @@ def find_skipped_nodes(
     return skipped
 
 
-def process_conditional_node(  # noqa: PLR0913
+def process_conditional_node(
     nid: str,
     node: WorkflowNode,
     *,
@@ -423,7 +423,7 @@ async def process_task_node(  # noqa: PLR0913
     )
 
 
-def process_verification_node(  # noqa: PLR0913
+def process_verification_node(
     nid: str,
     node: WorkflowNode,
     *,

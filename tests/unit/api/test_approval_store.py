@@ -16,7 +16,7 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _make_item(  # noqa: PLR0913
+def _make_item(
     *,
     approval_id: str = "approval-001",
     action_type: str = "code:merge",

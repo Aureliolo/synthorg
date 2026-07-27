@@ -152,7 +152,7 @@ class MixedCurrencyAggregationError(DomainError):
         "Cannot aggregate cost values across different currencies"
     )
 
-    def __init__(  # noqa: PLR0913 -- one optional id per scope dimension
+    def __init__(
         self,
         msg: str | None = None,
         *,
@@ -204,7 +204,7 @@ class RunHardCeilingExceededError(BudgetExhaustedError):
     error_code: ClassVar[ErrorCode] = ErrorCode.RUN_HARD_CEILING_EXCEEDED
     default_message: ClassVar[str] = "Run hard ceiling exceeded"
 
-    def __init__(  # noqa: PLR0913 -- carries the values the resume UI renders
+    def __init__(
         self,
         msg: str,
         *,

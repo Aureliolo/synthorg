@@ -112,7 +112,7 @@ class SprintService:
         "_tasks",
     )
 
-    def __init__(  # noqa: PLR0913 -- service needs its full dependency set
+    def __init__(
         self,
         *,
         sprint_repository: SprintRepository,

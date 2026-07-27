@@ -217,7 +217,7 @@ class CodeChunker:
             return self._line_windows(path=path, lines=lines)
         return tuple(pieces)
 
-    def _emit_lines(  # noqa: PLR0913 -- cohesive line-range emit params
+    def _emit_lines(
         self,
         pieces: list[ChunkPiece],
         *,
@@ -278,7 +278,7 @@ class CodeChunker:
                 symbol=symbol,
             )
 
-    def _flush_window(  # noqa: PLR0913 -- cohesive window-flush params
+    def _flush_window(
         self,
         pieces: list[ChunkPiece],
         *,

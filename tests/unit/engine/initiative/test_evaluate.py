@@ -120,7 +120,7 @@ def _report(outcome: CriterionOutcome) -> EvaluationReport:
     )
 
 
-async def _seed(  # noqa: PLR0913 -- keyword-only collaborator injection
+async def _seed(
     *,
     plan: Plan | None = None,
     project: Project | None = None,

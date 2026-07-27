@@ -300,7 +300,7 @@ class TrainingPlan(BaseModel):
         return self
 
     @classmethod
-    def build(  # noqa: PLR0913 -- typed builder mirrors the model's onboarding fields
+    def build(
         cls,
         *,
         new_agent_id: str,

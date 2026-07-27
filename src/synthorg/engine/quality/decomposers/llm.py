@@ -652,7 +652,7 @@ class LLMCriteriaDecomposer:
             )
         return tuple(kept)
 
-    def _accept_probe(  # noqa: PLR0913
+    def _accept_probe(
         self,
         raw: object,
         *,

@@ -29,7 +29,7 @@ _NOW = datetime(2026, 7, 20, 12, 0, tzinfo=UTC)
 _AGENT = NotBlankStr("agent-1")
 
 
-def _entry(  # noqa: PLR0913 -- a fixture builder; each field is one test axis
+def _entry(
     memory_id: str,
     content: str,
     *,

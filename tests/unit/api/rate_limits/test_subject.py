@@ -30,7 +30,7 @@ from tests._shared import AsgiDict
 pytestmark = pytest.mark.unit
 
 
-def _connection(  # type: ignore[explicit-any]  # MagicMock duck-types ASGIConnection  # noqa: PLR0913 -- test builder with many optional knobs
+def _connection(  # type: ignore[explicit-any]  # MagicMock duck-types ASGIConnection
     *,
     peer: str | None = "203.0.113.5",
     headers: dict[str, str] | None = None,

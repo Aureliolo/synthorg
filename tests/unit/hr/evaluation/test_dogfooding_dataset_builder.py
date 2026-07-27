@@ -12,7 +12,7 @@ from synthorg.hr.evaluation.dogfooding_dataset_builder import (
 )
 
 
-def _make_record(  # noqa: PLR0913
+def _make_record(
     *,
     agent_id: str = "agent-1",
     task_id: str = "task-1",

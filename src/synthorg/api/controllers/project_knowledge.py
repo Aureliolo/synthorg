@@ -95,7 +95,7 @@ class ProjectKnowledgeController(Controller):
     tags = ("project_knowledge",)
 
     @get(guards=[require_read_access])
-    async def list_sources(  # noqa: PLR0913 -- endpoint takes a query param per filter dimension
+    async def list_sources(
         self,
         state: State,
         project_id: PathId,

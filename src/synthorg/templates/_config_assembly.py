@@ -117,7 +117,7 @@ def _build_workflow_dict(
     return workflow_dict
 
 
-def _build_config_dict(  # noqa: PLR0913
+def _build_config_dict(
     rendered_data: dict[str, object],
     template: CompanyTemplate,
     variables: dict[str, object],

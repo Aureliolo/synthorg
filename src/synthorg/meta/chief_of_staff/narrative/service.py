@@ -60,7 +60,7 @@ class ChiefOfStaffNarrator:
         "_synthesiser",
     )
 
-    def __init__(  # noqa: PLR0913 -- DI seam: independently-wired collaborators
+    def __init__(
         self,
         *,
         reader: NarrativeReader,

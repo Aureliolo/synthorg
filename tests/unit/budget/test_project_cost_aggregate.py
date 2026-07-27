@@ -136,7 +136,7 @@ class TestProjectCostAggregate:
             ) -> None:
                 _ = currency
 
-            async def increment_if_unseen(  # noqa: PLR0913 -- mirrors protocol
+            async def increment_if_unseen(
                 self,
                 project_id: str,
                 cost: float,

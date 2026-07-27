@@ -101,7 +101,7 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
             steering for the run.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         config: PlanExecuteConfig | None = None,
         checkpoint_callback: CheckpointCallback | None = None,

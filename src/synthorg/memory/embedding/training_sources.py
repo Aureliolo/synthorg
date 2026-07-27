@@ -158,7 +158,7 @@ class TrajectoryTrainingDataSource:
         per_agent_memory_limit: Upper bound on memories pulled per agent.
     """
 
-    def __init__(  # noqa: PLR0913 -- deps plus scan bounds threaded for testability
+    def __init__(
         self,
         *,
         memory_backend: MemoryBackend,

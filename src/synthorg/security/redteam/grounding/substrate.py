@@ -501,7 +501,7 @@ class KnowledgeSubstrateGroundingChecker:
             purpose=self.entailment_metadata.prompt_class_id,
         )
 
-    async def _run_completion(  # noqa: PLR0913 -- orthogonal completion inputs + purpose
+    async def _run_completion(
         self,
         context: GroundingSubstrateContext,
         execution_id: NotBlankStr,

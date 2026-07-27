@@ -195,7 +195,7 @@ class HiringService:
             raise HiringError(msg)
         return request
 
-    async def create_request(  # noqa: PLR0913
+    async def create_request(
         self,
         *,
         requested_by: NotBlankStr,

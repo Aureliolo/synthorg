@@ -125,7 +125,7 @@ def _do_compaction(
     )
 
 
-async def _do_semantic_compaction(  # noqa: PLR0913 -- ctx + config + estimator + two semantic collaborators + force flag
+async def _do_semantic_compaction(
     ctx: AgentContext,
     config: CompactionConfig,
     estimator: PromptTokenEstimator,
@@ -237,7 +237,7 @@ def _build_text_summary(
     )
 
 
-def _finalise(  # noqa: PLR0913 -- segments + estimator + summary threaded in
+def _finalise(
     ctx: AgentContext,
     *,
     head: tuple[ChatMessage, ...],
@@ -311,7 +311,7 @@ def _split_conversation(
     return head, archivable, recent
 
 
-def _compress(  # noqa: PLR0913
+def _compress(
     ctx: AgentContext,
     head: tuple[ChatMessage, ...],
     archivable: tuple[ChatMessage, ...],

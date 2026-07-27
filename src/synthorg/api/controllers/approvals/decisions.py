@@ -95,7 +95,7 @@ def _request_fingerprint(model: BaseModel) -> str:
     return hashlib.sha256(model.model_dump_json().encode("utf-8")).hexdigest()
 
 
-async def _decide_idempotent(  # noqa: PLR0913
+async def _decide_idempotent(
     app_state: AppState,
     *,
     scope: str,

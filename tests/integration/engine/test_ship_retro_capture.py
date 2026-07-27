@@ -51,7 +51,7 @@ pytestmark = pytest.mark.integration
 _LEAD_ID = as_uuid("retro-lead")
 
 
-def _service(  # noqa: PLR0913 -- keyword-only test-fixture defaults
+def _service(
     *,
     org_backend: OrgMemoryBackend,
     provider: CompletionProvider,

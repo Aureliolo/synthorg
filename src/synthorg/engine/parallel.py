@@ -266,7 +266,7 @@ class ParallelExecutor:
                 exception_count=len(eg.exceptions),
             )
 
-    async def _run_guarded(  # noqa: PLR0913
+    async def _run_guarded(
         self,
         *,
         assignment: AgentAssignment,
@@ -465,7 +465,7 @@ class ParallelExecutor:
             error=safe_error_description(exc),
         )
 
-    def _record_fatal_outcome(  # noqa: PLR0913
+    def _record_fatal_outcome(
         self,
         exc: MemoryError | RecursionError,
         assignment: AgentAssignment,

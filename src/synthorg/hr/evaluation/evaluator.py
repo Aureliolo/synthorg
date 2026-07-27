@@ -72,7 +72,7 @@ class EvaluationService:
             consulted by ``_get_pillar_configs``.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         tracker: PerformanceTracker,

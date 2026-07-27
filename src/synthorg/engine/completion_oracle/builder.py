@@ -105,7 +105,7 @@ class CompletionOracleRuntime(NamedTuple):
     min_stakes: Stakes
 
 
-def build_completion_oracle_runtime(  # noqa: PLR0913 -- boot-time inputs, all required
+def build_completion_oracle_runtime(
     *,
     config: CompletionOracleConfig,
     engine: AgentEngine,

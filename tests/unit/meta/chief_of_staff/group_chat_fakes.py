@@ -280,7 +280,7 @@ def build_group_chat_service(
     return service, conv_repo, turn_repo, participant_repo
 
 
-def build_group_chat_with_invites(  # noqa: PLR0913 -- test builder: many independent knobs
+def build_group_chat_with_invites(
     *,
     agent_caller: ScriptedAgentCaller,
     registry: AgentRegistryService,

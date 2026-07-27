@@ -133,7 +133,7 @@ async def _read_json_body(request: Request[object, object, State]) -> dict[str, 
     return parsed
 
 
-async def _stream_response(  # noqa: PLR0913 -- forwards the pipeline call surface
+async def _stream_response(
     service: GatewayService,
     *,
     token: str,

@@ -200,7 +200,7 @@ def build_escalation_queue_store(
     return factory(config, persistence)
 
 
-def build_escalation_notify_subscriber(  # noqa: PLR0913 -- factory threading
+def build_escalation_notify_subscriber(
     config: EscalationQueueConfig,
     store: EscalationQueueStore,
     registry: PendingFuturesRegistry,

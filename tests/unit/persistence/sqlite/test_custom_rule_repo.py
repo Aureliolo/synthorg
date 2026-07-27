@@ -31,7 +31,7 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _make_rule(  # noqa: PLR0913
+def _make_rule(
     *,
     name: str = "test-rule",
     metric_path: str = "performance.avg_quality_score",

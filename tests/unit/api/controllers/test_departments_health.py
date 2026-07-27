@@ -112,7 +112,7 @@ def _make_task_metric(
     )
 
 
-async def _build_dept_client(  # noqa: PLR0913 -- optional injectable test deps
+async def _build_dept_client(
     *,
     fake_message_bus: FakeMessageBus,
     config: RootConfig,

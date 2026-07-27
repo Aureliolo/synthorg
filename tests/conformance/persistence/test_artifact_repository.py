@@ -12,7 +12,7 @@ from synthorg.persistence.protocol import PersistenceBackend
 pytestmark = pytest.mark.integration
 
 
-def _artifact(  # noqa: PLR0913
+def _artifact(
     *,
     artifact_id: str = "artifact-001",
     artifact_type: ArtifactType = ArtifactType.CODE,

@@ -82,7 +82,7 @@ class PushQueueCoordinator:
         "_worker",
     )
 
-    def __init__(  # noqa: PLR0913 -- distinct collaborators; all required
+    def __init__(
         self,
         *,
         project_id: NotBlankStr,

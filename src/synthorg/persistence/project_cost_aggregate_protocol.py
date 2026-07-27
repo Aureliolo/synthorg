@@ -73,7 +73,7 @@ class ProjectCostAggregateRepository(Protocol):
         """
         ...
 
-    async def increment_if_unseen(  # noqa: PLR0913 -- aggregate + dedup params
+    async def increment_if_unseen(
         self,
         project_id: NotBlankStr,
         cost: float,

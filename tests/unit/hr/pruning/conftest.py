@@ -70,7 +70,7 @@ def make_trend_result(
     )
 
 
-def make_performance_snapshot(  # noqa: PLR0913
+def make_performance_snapshot(
     *,
     agent_id: str = "agent-001",
     computed_at: AwareDatetime | None = None,

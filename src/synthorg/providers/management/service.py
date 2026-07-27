@@ -310,7 +310,7 @@ class ProviderManagementService(
         """Pinned model + sampling for this prompt class."""
         return pin_for(self._PURPOSE_ID)
 
-    def __init__(  # noqa: PLR0913 -- explicit DI; all kw-only and optional after the 4th arg
+    def __init__(
         self,
         *,
         settings_service: SettingsService,

@@ -129,7 +129,7 @@ async def _seed_conversation(
     )
 
 
-def _make_invite(  # noqa: PLR0913 -- test builder: many independent knobs
+def _make_invite(
     *,
     invite_id: str = "inv-001",
     conversation_id: str = "conv-001",

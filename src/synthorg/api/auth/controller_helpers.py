@@ -52,7 +52,7 @@ logger = get_logger(__name__)
 _PWD_CHANGE_EXEMPT_SUFFIXES = ("/auth/change-password", "/auth/me")
 
 
-async def make_session_cookies(  # noqa: PLR0913
+async def make_session_cookies(
     token: str,
     expires_in: int,
     config: AuthConfig,

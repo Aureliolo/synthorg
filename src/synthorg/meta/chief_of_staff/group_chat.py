@@ -493,7 +493,7 @@ class GroupChatService:
             pending_invites=tuple(pending_invites),
         )
 
-    async def _maybe_park_invite(  # noqa: PLR0913 -- one invite's full context
+    async def _maybe_park_invite(
         self,
         conversation: Conversation,
         participant: ConversationParticipant,

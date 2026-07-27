@@ -15,7 +15,7 @@ from synthorg.observability import get_logger
 logger = get_logger(__name__)
 
 
-def require_resource_or_404[T](  # noqa: PLR0913 -- intentional rich kwargs surface
+def require_resource_or_404[T](
     resource: T | None,
     *,
     resource_type: LiteralString,

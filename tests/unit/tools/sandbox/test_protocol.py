@@ -17,7 +17,7 @@ pytestmark = pytest.mark.unit
 class _FakeSandbox:
     """Minimal fake that satisfies the SandboxBackend protocol."""
 
-    async def execute(  # noqa: PLR0913 -- mirrors the SandboxBackend protocol
+    async def execute(
         self,
         *,
         command: str,
