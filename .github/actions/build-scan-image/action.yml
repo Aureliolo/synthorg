@@ -153,11 +153,7 @@ runs:
         sudo docker image prune --all --force
         df -h /
 
-    # Registering the arm64 handlers pulls tonistiigi/binfmt from Docker Hub,
-    # and setup-qemu-action does not retry that pull, so it is pre-pulled
-    # through the retry-and-mirror ladder and pinned. Left un-pinned the action
-    # resolves a floating tag, so a reconnect could also silently change which
-    # binfmt build runs.
+    # Digest-pinned so a reconnect cannot silently change which binfmt runs.
     - name: Pull binfmt image (ARM64 emulation)
       if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
       uses: ./.github/actions/docker-pull-resilient
@@ -166,14 +162,26 @@ runs:
         image: tonistiigi/binfmt:qemu-v9.2.2@sha256:1b804311fe87047a4c96d38b4b3ef6f62fca8cd125265917a9e3dc3c996c39e6
         local-tag: synthorg-binfmt:qemu-v9.2.2
 
-    # Required on non-PR events when building the arm64 tarball on an
-    # amd64 runner. PR builds are amd64-only and skip QEMU.
-    - name: Set up QEMU (ARM64 emulation)
+    # `docker/setup-qemu-action` always pulls its `image:` input, so it cannot
+    # consume the local tag above. `--install` is what it shells out to.
+    - name: Register binfmt handlers (ARM64 emulation)
       if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
-      uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
-      with:
-        platforms: arm64
-        image: synthorg-binfmt:qemu-v9.2.2
+      shell: bash
+      env:
+        BINFMT_IMAGE: synthorg-binfmt:qemu-v9.2.2
+      run: |
+        set -euo pipefail
+        docker run --rm --privileged "${BINFMT_IMAGE}" --install arm64
+        # `--install` exits 0 even when the kernel registered nothing, and a
+        # registered handler can still be disabled, which surfaces much later
+        # as an exec-format error inside an arm64 RUN. The entry's first line
+        # is literally `enabled` or `disabled`, so assert on that, not on the
+        # file merely existing.
+        handler=/proc/sys/fs/binfmt_misc/qemu-aarch64
+        if [[ ! -e "${handler}" ]] || ! grep -qx enabled "${handler}"; then
+          echo "::error::binfmt qemu-aarch64 handler missing or disabled after --install arm64"
+          exit 1
+        fi
 
     # The `docker-container` driver boots BuildKit by pulling moby/buildkit
     # from Docker Hub, and setup-buildx-action does not retry that pull: a
@@ -202,6 +210,15 @@ runs:
         # value sits on the truthy branch: `A && '' || B` would always yield
         # B, since `''` is falsy and GHA falls through to the `||` arm.
         driver-opts: ${{ github.event_name != 'pull_request' && 'image=synthorg-buildkit:buildx-stable-1' || '' }}
+        # BuildKit resolves the `# syntax=` frontend and every `FROM` itself,
+        # outside the `docker pull` the ladder wraps. This covers only the
+        # docker.io refs (the frontend and the builder-stage bases); the
+        # GHCR-hosted `BASE_IMAGE` final stage never touches it. Digest pins
+        # on both keep either path safe. Ignored by the `docker` driver PR
+        # builds use.
+        buildkitd-config-inline: |
+          [registry."docker.io"]
+            mirrors = ["mirror.gcr.io"]
         cache-binary: false
 
     - name: Download base image artifact (PR only)
@@ -239,6 +256,7 @@ runs:
     # amd64 image in the local daemon for scanning. No tarball is
     # persisted -- PR builds never feed the publish-image action.
     - name: Build image (PR, loaded for scan)
+      id: build-pr
       if: github.event_name == 'pull_request'
       uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
       with:
@@ -259,6 +277,7 @@ runs:
     # (docker-archive format requires one manifest), so we emit two
     # tarballs and reassemble the multi-arch manifest at push time.
     - name: Build amd64 tarball (non-PR)
+      id: build-amd64
       if: github.event_name != 'pull_request'
       uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
       with:
@@ -274,8 +293,13 @@ runs:
         cache-to: ${{ inputs.cache-scope != '' && format('type=gha,mode=max,scope={0}-amd64', inputs.cache-scope) || 'type=gha,mode=max,scope=amd64' }}
         platforms: linux/amd64
 
+    # `!cancelled()` rather than the implicit success chain: this load is what
+    # the amd64 gate keys off, so it has to be reached even when a sibling
+    # arch already failed. Its own build is still required, or the load would
+    # report a missing tarball instead of the build error that caused it.
     - name: Load amd64 image for scanning (non-PR)
-      if: github.event_name != 'pull_request'
+      id: load-amd64
+      if: ${{ !cancelled() && steps.build-amd64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -283,6 +307,7 @@ runs:
         docker load -i "/tmp/scan-image-${IMAGE_NAME}-amd64.tar"
 
     - name: Build arm64 tarball (non-PR, multi-arch)
+      id: build-arm64
       if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
       uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
       with:
@@ -302,7 +327,8 @@ runs:
     # action). Both architectures go through the same Trivy + CIS gate
     # before publish-image pushes them, so neither arch ships unscanned.
     - name: Load arm64 image for scanning (non-PR, multi-arch)
-      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      id: load-arm64
+      if: ${{ !cancelled() && steps.build-arm64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -315,6 +341,9 @@ runs:
     # multi-arch manifest never includes bytes that bypassed the gate.
     - name: Compute scan image refs
       id: scan-ref
+      # Reads only inputs and github.sha, so it must not inherit a load
+      # failure: the per-arch gates below need these refs to decide anything.
+      if: ${{ !cancelled() }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -367,7 +396,13 @@ runs:
     # point Trivy's scratch (export temp via TMPDIR + vuln-db cache via
     # TRIVY_CACHE_DIR) there. Created unconditionally so every image scans the
     # same way, not just the disk-pressured fine-tune variants.
+    # Both setup steps carry `!cancelled()` for the same reason the loads do:
+    # left on the default success chain they are skipped by any earlier
+    # failure, and a per-arch gate that legitimately passes then runs Trivy
+    # that was never installed, burying the real error under `command not
+    # found`. Every consumer below additionally requires the install itself.
     - name: Provision Trivy scratch on /mnt
+      if: ${{ !cancelled() }}
       shell: bash
       run: |
         sudo mkdir -p /mnt/trivy-tmp /mnt/trivy-cache
@@ -375,6 +410,8 @@ runs:
         df -h /mnt /
 
     - name: Install Trivy
+      id: install-trivy
+      if: ${{ !cancelled() }}
       shell: bash
       env:
         TRIVY_VERSION: ${{ inputs.trivy-version }}
@@ -388,7 +425,16 @@ runs:
     # Trivy JSON + SARIF + CIS benchmark per arch. JSON feeds
     # evaluate-scan.sh (fails on CRITICAL, warns on HIGH). SARIF goes to
     # GitHub Security for both arches with distinct categories.
+    #
+    # Each arch's scan and gate keys off the step that produced ITS image,
+    # never the implicit success chain, so one arch cannot silently cost the
+    # other its vulnerability gate: an arm64 load failure would otherwise skip
+    # the amd64 gate for a healthy amd64 image, and an amd64 CRITICAL would
+    # skip the arm64 gate entirely. Keying off `scan-ref` would not achieve
+    # that either, since it runs after both loads and so inherits either
+    # failure.
     - name: Trivy scan (amd64)
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -400,6 +446,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Evaluate Trivy results (amd64)
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -407,7 +454,7 @@ runs:
       run: scripts/evaluate-scan.sh --verbose "trivy-${IMAGE_NAME}-amd64.json" "$DISPLAY_NAME"
 
     - name: Trivy scan (arm64)
-      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && steps.load-arm64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -419,7 +466,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Evaluate Trivy results (arm64)
-      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && steps.load-arm64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -435,8 +482,11 @@ runs:
         retention-days: 30
         if-no-files-found: ignore
 
+    # Not `always()`: after a failed build Trivy is never installed and there
+    # is nothing to scan, so the `command not found` lands BELOW the real
+    # error and masks it.
     - name: Trivy SARIF scan (amd64)
-      if: always()
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -448,7 +498,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Upload SARIF amd64 to GitHub Security
-      if: always()
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       # Cosmetic Security-tab upload, NOT a required check, and the real
       # vulnerability gate is the separate `Evaluate Trivy results` step
       # above (which stays loud). A transient code-scanning API 401/5xx must
@@ -460,7 +510,7 @@ runs:
         category: trivy-${{ inputs.image-name }}-amd64
 
     - name: Trivy SARIF scan (arm64)
-      if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && steps.load-arm64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -472,7 +522,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Upload SARIF arm64 to GitHub Security
-      if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && steps.load-arm64.outcome == 'success' }}
       # See the amd64 upload above: cosmetic, non-gating, re-uploads next run.
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
@@ -480,13 +530,16 @@ runs:
         sarif_file: trivy-${{ inputs.image-name }}-arm64.sarif
         category: trivy-${{ inputs.image-name }}-arm64
 
+    # No Trivy dependency here: cis-scan is a separate tool, so gating it on
+    # the Trivy install would couple two independent checks.
     - name: CIS Docker Benchmark (amd64)
+      if: ${{ !cancelled() && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       uses: ./.github/actions/cis-scan
       with:
         image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
 
     - name: CIS Docker Benchmark (arm64)
-      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      if: ${{ !cancelled() && steps.load-arm64.outcome == 'success' }}
       uses: ./.github/actions/cis-scan
       with:
         image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}

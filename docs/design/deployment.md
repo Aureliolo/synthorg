@@ -54,6 +54,7 @@ Published and dev images accumulate in GHCR on every build, so `ghcr-cleanup.yml
 | Dev build | `0.8.4-dev.5`, floating `dev` | Newest 5 kept; older deleted |
 | PR / scan | `sha-<short>`, `sha-<short>-amd64`, `scan-<full>-amd64` | Deleted after 7 days |
 | Orphaned referrer | cosign `sha256-<digest>`, untagged attestation | Deleted once its parent image is gone |
+| Operator hold | `keep-<reason>` | Kept forever; the escape hatch for a version the packages API refuses to delete |
 
 The signatures, attestations, and multi-arch platform children of any kept image are retained automatically; `validate: true` asserts no surviving multi-arch image lost a child after each pass. The job ships in dry-run and only deletes once the repository variable `GHCR_CLEANUP_ENABLED=true` is set. See the **GHCR Cleanup** CI entry in [claude-reference.md](../reference/claude-reference.md) for workflow detail.
 

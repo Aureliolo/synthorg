@@ -365,7 +365,10 @@ repos:
         # wrapper, and are the transitive artifact consumers invariant 5
         # resolves through. Without it, an action-only edit never triggers the
         # gate that judges it.
-        files: ^(\.github/(workflows|actions)/.*\.ya?ml|scripts/check_ci_workflow_resilience\.py|\.pre-commit-config\.yaml)$
+        # `docker/**/Dockerfile` is in scope because invariant 8 lives there:
+        # the buildx docker.io mirror is only safe while every reference
+        # BuildKit resolves itself carries a digest.
+        files: ^(\.github/(workflows|actions)/.*\.ya?ml|docker/(.*/)?Dockerfile|scripts/check_ci_workflow_resilience\.py|\.pre-commit-config\.yaml)$
         # pass_filenames: false so the hook always re-scans every workflow
         # regardless of which file in `files:` triggered it (same rationale
         # as workflow-tag-lifecycle above): an edit limited to the checker
