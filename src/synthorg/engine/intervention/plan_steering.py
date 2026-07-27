@@ -7,9 +7,15 @@ are at their size budgets) as a free function that receives the loop's planner
 and finalize callables, keeping it decoupled from the loop class internals.
 """
 
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import ExecutionResult
+from synthorg.engine.plan_loop_context import (
+    ReplanTrigger,
+    StepRunContext,
+    StepRunState,
+)
 from synthorg.engine.plan_models import ExecutionPlan, StepStatus
 from synthorg.engine.plan_parsing import _REPLAN_JSON_EXAMPLE
 from synthorg.engine.prompt_safety import (
@@ -24,14 +30,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_PLAN_REPLAN_START,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider
-
-if TYPE_CHECKING:
-    # A module-level loop_protocol import cycles here. ``ExecutionResult``
-    # is needed only for annotations; the runtime path discriminates on the
-    # tuple shape (see ``steering_replan``), so no runtime import is required.
-    from synthorg.engine.loop_protocol import ExecutionResult
+from synthorg.providers.models import ChatMessage
 
 logger = get_logger(__name__)
 
@@ -39,12 +38,10 @@ logger = get_logger(__name__)
 class _PlannerCall(Protocol):
     """The loop's ``_call_planner`` bound method."""
 
-    async def __call__(  # noqa: PLR0913, PLR0917
+    async def __call__(
         self,
+        run: StepRunContext,
         ctx: AgentContext,
-        provider: CompletionProvider,
-        model: str,
-        config: CompletionConfig,
         turns: list[TurnRecord],
         message: ChatMessage,
         *,
@@ -63,35 +60,33 @@ class _Finalize(Protocol):
     ) -> ExecutionResult: ...
 
 
-async def steering_replan(  # noqa: PLR0913
+async def steering_replan(
+    run: StepRunContext,
+    state: StepRunState,
     *,
-    ctx: AgentContext,
-    provider: CompletionProvider,
-    planner_model: str,
-    config: CompletionConfig,
-    plan: ExecutionPlan,
-    turns: list[TurnRecord],
-    all_plans: list[ExecutionPlan],
-    replans_used: int,
     call_planner: _PlannerCall,
     finalize: _Finalize,
-) -> tuple[AgentContext, ExecutionPlan, int] | ExecutionResult:
+) -> ExecutionResult | None:
     """Replan after adopting a mid-flight steering REDIRECT.
 
-    The directive is already in ``ctx`` (injected at the turn boundary); this
-    revises the plan for the remaining work to honour it. Unlike a failure
-    replan it does not count against ``max_replans`` because it is
-    operator-driven and consume-once (the directive id is cleared here).
+    The directive is already in ``state.ctx`` (injected at the turn
+    boundary); this revises the plan for the remaining work to honour it.
+    Unlike a failure replan it does not count against ``max_replans``
+    because it is operator-driven and consume-once (the directive id is
+    cleared here).
 
     Returns:
-        ``(ctx, new_plan, replans_used)`` on a successful replan with the
-        pending-replan flag cleared, or a terminal :class:`ExecutionResult`.
+        ``None`` once the revised plan is adopted onto ``state`` with the
+        pending-replan flag cleared, or a terminal
+        :class:`ExecutionResult`.
     """
+    plan = state.plan
     logger.info(
         EXECUTION_PLAN_REPLAN_START,
-        execution_id=ctx.execution_id,
-        trigger="steering",
-        directive_id=ctx.pending_steering_replan_id,
+        execution_id=state.ctx.execution_id,
+        trigger=ReplanTrigger.STEERING.value,
+        step_number=state.step_idx + 1,
+        directive_id=state.ctx.pending_steering_replan_id,
         revision=plan.revision_number,
     )
     completed_summary = (
@@ -118,27 +113,21 @@ async def steering_replan(  # noqa: PLR0913
     )
     replan_msg = ChatMessage(role=MessageRole.USER, content=replan_content)
     result = await call_planner(
-        ctx,
-        provider,
-        planner_model,
-        config,
-        turns,
+        run,
+        state.ctx,
+        state.turns,
         replan_msg,
         revision_number=plan.revision_number + 1,
     )
-    # ``call_planner`` returns either the ``(ctx, plan)`` continuation
-    # tuple or a terminal ``ExecutionResult``. Discriminate on the tuple
-    # shape so this module needs no runtime import of ``ExecutionResult``
-    # (a module-level ``loop_protocol`` import would cycle here).
-    if not isinstance(result, tuple):
-        return finalize(result, all_plans, replans_used)
-    ctx, new_plan = result
-    ctx = ctx.cleared_pending_replan()
-    all_plans.append(new_plan)
+    if isinstance(result, ExecutionResult):
+        return finalize(result, state.all_plans, state.replans_used)
+    state.ctx, new_plan = result
+    state.ctx = state.ctx.cleared_pending_replan()
+    state.record_replan(new_plan, counts_against_budget=False)
     logger.info(
         EXECUTION_PLAN_REPLAN_COMPLETE,
-        execution_id=ctx.execution_id,
+        execution_id=state.ctx.execution_id,
         step_count=len(new_plan.steps),
         revision=new_plan.revision_number,
     )
-    return ctx, new_plan, replans_used
+    return None

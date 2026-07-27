@@ -49,10 +49,10 @@ if TYPE_CHECKING:
         Checkpoint,
         CheckpointCallback,
         CheckpointConfig,
-        CheckpointRecoveryStrategy,
         Heartbeat,
         make_checkpoint_callback,
     )
+    from synthorg.engine.checkpoint.strategy import CheckpointRecoveryStrategy
     from synthorg.engine.classification import (
         ClassificationResult,
         ErrorFinding,
@@ -346,7 +346,7 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
     "CheckpointCallback": ("synthorg.engine.checkpoint", "CheckpointCallback"),
     "CheckpointConfig": ("synthorg.engine.checkpoint", "CheckpointConfig"),
     "CheckpointRecoveryStrategy": (
-        "synthorg.engine.checkpoint",
+        "synthorg.engine.checkpoint.strategy",
         "CheckpointRecoveryStrategy",
     ),
     "Heartbeat": ("synthorg.engine.checkpoint", "Heartbeat"),

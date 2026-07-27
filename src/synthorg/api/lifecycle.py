@@ -118,7 +118,8 @@ complete after the drain gate flips. Exceeding this budget is logged at WARNING
 """
 
 
-async def _safe_shutdown(  # noqa: PLR0913, PLR0917
+async def _safe_shutdown(  # noqa: PLR0913
+    *,
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,

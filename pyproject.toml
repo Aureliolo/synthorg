@@ -348,6 +348,13 @@ convention = "google"
 # helpers or per-strategy variants.
 [tool.ruff.lint.pylint]
 max-args = 5
+# Pinned explicitly, NOT left to default: ruff defaults
+# max-positional-args to whatever max-args is, so leaving it implicit ties
+# the positional cap to a knob that governs a different concern. A wide
+# signature is acceptable when every argument is named at the call site; a
+# wide POSITIONAL signature is what lets two same-typed arguments swap
+# silently. This cap stays at 5 whatever max-args becomes.
+max-positional-args = 5
 max-public-methods = 12
 max-statements = 30
 max-branches = 10
@@ -442,6 +449,37 @@ max-complexity = 8
     "PLR0915", # too-many-statements
     "INP001",  # implicit namespace packages (some directories lack __init__)
 ]
+# Litestar route handlers whose signature is the endpoint's query surface:
+# the framework binds each query / path / DI parameter by name off the
+# request, so one filter dimension is one parameter and there is no call
+# site to convert to keywords. Enumerated per module rather than globbed
+# over api/controllers/**, so a non-handler helper landing in one of these
+# packages later is not silently exempted too (``_department_health.py``
+# and ``ws.py`` are exactly that, and carry keyword-only signatures).
+"src/synthorg/api/controllers/activities/feed.py" = ["PLR0917"]
+"src/synthorg/api/controllers/approvals/query.py" = ["PLR0917"]
+"src/synthorg/api/controllers/artifacts.py" = ["PLR0917"]
+"src/synthorg/api/controllers/audit.py" = ["PLR0917"]
+"src/synthorg/api/controllers/budget.py" = ["PLR0917"]
+"src/synthorg/api/controllers/coordination_metrics.py" = ["PLR0917"]
+"src/synthorg/api/controllers/plans.py" = ["PLR0917"]
+"src/synthorg/api/controllers/project_brain.py" = ["PLR0917"]
+"src/synthorg/api/controllers/project_docs.py" = ["PLR0917"]
+"src/synthorg/api/controllers/project_knowledge.py" = ["PLR0917"]
+"src/synthorg/api/controllers/tasks.py" = ["PLR0917"]
+# Test modules whose signatures pytest or Hypothesis fills by parameter
+# name: a fixture graph or a ``@given`` / ``@pytest.mark.parametrize``
+# decorator chooses the positional count, so there is no call site to
+# convert. Enumerated per module rather than globbed over tests/**, for
+# the same reason as the controllers above: a blanket test-tree ignore
+# would let an ordinary helper skip the cap silently.
+"tests/unit/api/conftest.py" = ["PLR0917"]
+"tests/unit/api/controllers/test_agent_identity_versions.py" = ["PLR0917"]
+"tests/unit/core/test_task_properties.py" = ["PLR0917"]
+"tests/unit/memory/procedural/capture/test_hybrid_capture.py" = ["PLR0917"]
+"tests/unit/meta/mcp/test_handlers_infrastructure.py" = ["PLR0917"]
+"tests/unit/settings/test_resolver_bridge_configs.py" = ["PLR0917"]
+"tests/unit/settings/test_service.py" = ["PLR0917"]
 "src/synthorg/tools/browser/**/*.py" = [
     # The BrowserTool catches its own BrowserDomainError chain at the
     # execute() boundary and emits a structured ToolExecutionResult.

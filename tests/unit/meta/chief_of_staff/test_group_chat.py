@@ -2,6 +2,7 @@
 
 import asyncio
 from typing import override
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -9,6 +10,7 @@ from synthorg.communication.conversation.enums import (
     ConversationRole,
     ConversationStatus,
 )
+from synthorg.communication.meeting._token_tracker import TokenTracker
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.middleware.s1_constraints import AuthorityDeferenceGuard
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
@@ -18,7 +20,12 @@ from synthorg.meta.chief_of_staff.enums import (
     GroupChatTruncationReason,
 )
 from synthorg.meta.chief_of_staff.group_chat import GroupChatService
-from synthorg.meta.chief_of_staff.group_models import GroupConverseArgs
+from synthorg.meta.chief_of_staff.group_invite import GroupInviteCoordinator
+from synthorg.meta.chief_of_staff.group_models import (
+    GroupContribution,
+    GroupConverseArgs,
+)
+from synthorg.meta.chief_of_staff.prompts import GROUP_CONTRIBUTION_PROMPT
 from synthorg.meta.errors import (
     ConversationClosedError,
     ConversationNotFoundError,
@@ -26,12 +33,14 @@ from synthorg.meta.errors import (
     GroupParticipantLimitError,
     GroupParticipantUnknownError,
 )
+from tests._shared import mock_of
 from tests.unit.meta.chief_of_staff.group_chat_fakes import (
     FakeParticipantRepo,
     ScriptedAgentCaller,
     build_group_chat_service,
 )
 from tests.unit.meta.chief_of_staff.propose_fakes import (
+    START,
     FakeConversationRepo,
     FakeTurnRepo,
     build_registry,
@@ -118,6 +127,75 @@ class TestGroupChatRound:
         # Third agent sees both prior contributions.
         assert "From a budget angle" in third_prompt
         assert "Strategically this aligns" in third_prompt
+
+    async def test_invite_gate_reads_the_untruncated_history(self) -> None:
+        """``already_spoke`` comes from ``history``, the prompt from the window.
+
+        Both are ``tuple[ConversationTurn, ...]``, so a transposition
+        type-checks cleanly and would only show up as an invited agent
+        being re-greeted once its first turn aged out of the render
+        window. Driving them apart is what makes the swap observable.
+        """
+        (
+            service,
+            caller,
+            conv_repo,
+            turn_repo,
+            participant_repo,
+            ids,
+        ) = await _three_agent_service()
+        result = await service.converse(
+            GroupConverseArgs(
+                message=NotBlankStr("How should we approach the new product?"),
+                created_by=NotBlankStr("user-1"),
+                participants=tuple(ids),
+            )
+        )
+        conversation = await conv_repo.get(str(result.conversation_id))
+        assert conversation is not None
+        speaker = next(
+            p for p in participant_repo.items.values() if p.agent_id == ids[0]
+        )
+        turns = sorted(turn_repo.turns, key=lambda t: t.sequence)
+        # The first agent's round-one contribution, and the newest turn.
+        spoke_already = next(t for t in turns if t.author_agent_id == ids[0])
+        latest = turns[-1]
+        caller.calls.clear()
+        coordinator = mock_of[GroupInviteCoordinator](
+            contribution_prompt=Mock(
+                spec=GroupInviteCoordinator.contribution_prompt,
+                return_value=GROUP_CONTRIBUTION_PROMPT,
+            ),
+            invited_preamble=AsyncMock(
+                spec=GroupInviteCoordinator.invited_preamble,
+                return_value=None,
+            ),
+            parse_contribution=Mock(
+                spec=GroupInviteCoordinator.parse_contribution,
+                return_value=GroupContribution(message="Noted.", invite=None),
+            ),
+        )
+
+        await service._dispatch_contribution(
+            conversation,
+            speaker,
+            history=(spoke_already, latest),
+            render_history=(latest,),  # the older turn aged out of the window
+            prior_contributions=[],
+            sequence=len(turns) + 1,
+            max_tokens=256,
+            tracker=TokenTracker(budget=10_000),
+            now=START,
+            invite_coordinator=coordinator,
+        )
+
+        # The gate saw the full history, so the agent counts as having spoken.
+        assert coordinator.invited_preamble.await_args is not None
+        assert coordinator.invited_preamble.await_args.kwargs["already_spoke"] is True
+        # The prompt rendered only the window, so the aged-out turn is absent.
+        prompt = caller.calls[0][1]
+        assert spoke_already.content not in prompt
+        assert latest.content in prompt
 
     async def test_human_message_fenced_as_task_data(self) -> None:
         service, caller, _, _, _, ids = await _three_agent_service()

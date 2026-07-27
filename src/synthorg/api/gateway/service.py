@@ -178,16 +178,22 @@ class GatewayService:
         # provider connection / skewing cost attribution.
         async with contextlib.aclosing(
             self._drive_stream(
-                provider, parsed, claims, cost_tracker, response_id, created
+                provider,
+                parsed=parsed,
+                claims=claims,
+                cost_tracker=cost_tracker,
+                response_id=response_id,
+                created=created,
             )
         ) as frames:
             async for frame in frames:
                 yield frame
         yield _SSE_DONE
 
-    async def _drive_stream(  # noqa: PLR0913, PLR0917 -- streaming needs the full request context
+    async def _drive_stream(  # noqa: PLR0913 -- streaming needs the full request context
         self,
         provider: CompletionProvider,
+        *,
         parsed: ParsedChatRequest,
         claims: GatewayTokenClaims,
         cost_tracker: CostTrackerProtocol | None,

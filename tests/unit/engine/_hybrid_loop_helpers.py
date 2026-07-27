@@ -10,14 +10,17 @@ from pydantic import JsonValue
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
+from synthorg.engine.plan_loop_context import StepRunContext, StepRunState
 from synthorg.engine.plan_models import ExecutionPlan, PlanStep
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
+    CompletionConfig,
     CompletionResponse,
     TokenUsage,
     ToolCall,
 )
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
@@ -182,3 +185,37 @@ def _make_plan_model() -> ExecutionPlan:
         ),
         original_task_summary="test task",
     )
+
+
+def _step_run_context(
+    provider: CompletionProvider,
+    *,
+    executor_model: str = "example-medium-001",
+    planner_model: str = "example-large-001",
+) -> StepRunContext:
+    """Build a StepRunContext for a helper called outside a loop.
+
+    Returns:
+        A context wired to *provider* with distinct executor and planner
+        model ids, so a test asserting on which model a call used cannot
+        pass by accident.
+    """
+    return StepRunContext(
+        provider=provider,
+        executor_model=executor_model,
+        planner_model=planner_model,
+        completion_config=CompletionConfig(),
+    )
+
+
+def _step_run_state(
+    ctx: AgentContext,
+    plan: ExecutionPlan,
+) -> StepRunState:
+    """Build a StepRunState with its own fresh accumulators.
+
+    Returns:
+        A state whose ``turns`` and ``all_plans`` are new lists, so a helper
+        driven directly cannot append into another test's history.
+    """
+    return StepRunState(ctx=ctx, plan=plan, turns=[], all_plans=[])

@@ -237,7 +237,12 @@ class CharterDispatcher:
             raise
 
         await self._stamp_approved(
-            charter, forecast, result.task_id, project_id, approved_by, now
+            charter,
+            forecast,
+            task_id=result.task_id,
+            project_id=project_id,
+            approved_by=approved_by,
+            now=now,
         )
         await self._close_conversation(charter.conversation_id, now)
         if result.is_success:
@@ -422,10 +427,11 @@ class CharterDispatcher:
             plan_required=True,
         )
 
-    async def _stamp_approved(  # noqa: PLR0913, PLR0917 -- dispatch provenance columns
+    async def _stamp_approved(  # noqa: PLR0913 -- dispatch provenance columns
         self,
         charter: ProjectCharter,
         forecast: Forecast,
+        *,
         task_id: NotBlankStr,
         project_id: NotBlankStr,
         approved_by: NotBlankStr,

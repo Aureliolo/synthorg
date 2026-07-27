@@ -332,15 +332,15 @@ async def _drain_stream(  # noqa: PLR0913
     return None
 
 
-async def stream_provider(  # noqa: PLR0913, PLR0917
+async def stream_provider(  # noqa: PLR0913
     ctx: AgentContext,
     provider: CompletionProvider,
     model_id: str,
+    *,
     tool_defs: list[ToolDefinition] | None,
     config: CompletionConfig,
     turn_number: int,
     turns: list[TurnRecord],
-    *,
     cancellation_checker: TaskCancellationChecker | None,
     steering_inbox: SteeringInbox | None,
 ) -> CompletionResponse | ExecutionResult | _TurnInterrupted:
@@ -462,15 +462,15 @@ def fold_interrupt_usage(
     return _fold_usage(ctx, interrupted.partial_usage)
 
 
-async def run_provider_turn(  # noqa: PLR0913, PLR0917
+async def run_provider_turn(  # noqa: PLR0913
     ctx: AgentContext,
     provider: CompletionProvider,
     model_id: str,
+    *,
     tool_defs: list[ToolDefinition] | None,
     config: CompletionConfig,
     turn_number: int,
     turns: list[TurnRecord],
-    *,
     streaming_enabled: bool,
     cancellation_checker: TaskCancellationChecker | None,
     steering_inbox: SteeringInbox | None,
@@ -491,13 +491,19 @@ async def run_provider_turn(  # noqa: PLR0913, PLR0917
             ctx,
             provider,
             model_id,
-            tool_defs,
-            config,
-            turn_number,
-            turns,
+            tool_defs=tool_defs,
+            config=config,
+            turn_number=turn_number,
+            turns=turns,
             cancellation_checker=cancellation_checker,
             steering_inbox=steering_inbox,
         )
     return await call_provider(
-        ctx, provider, model_id, tool_defs, config, turn_number, turns
+        ctx,
+        provider,
+        model_id,
+        tool_defs=tool_defs,
+        config=config,
+        turn_number=turn_number,
+        turns=turns,
     )

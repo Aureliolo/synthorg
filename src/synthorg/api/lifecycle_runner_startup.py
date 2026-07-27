@@ -308,15 +308,15 @@ async def _run_startup(  # noqa: PLR0913
     app_state.shutdown_manager.reset()
     app_state.shutdown_requested.clear()
     await _safe_startup(
-        persistence,
-        message_bus,
-        bridge,
-        settings_dispatcher,
-        task_engine,
-        meeting_scheduler,
-        backup_service,
-        approval_timeout_scheduler,
-        app_state,
+        persistence=persistence,
+        message_bus=message_bus,
+        bridge=bridge,
+        settings_dispatcher=settings_dispatcher,
+        task_engine=task_engine,
+        meeting_scheduler=meeting_scheduler,
+        backup_service=backup_service,
+        approval_timeout_scheduler=approval_timeout_scheduler,
+        app_state=app_state,
     )
 
     # Install POSIX SIGTERM/SIGINT handlers.  Logs the incoming signal and
@@ -417,13 +417,13 @@ async def _run_startup(  # noqa: PLR0913
             from synthorg.api.auto_wire import auto_wire_settings  # noqa: PLC0415
 
             tasks.auto_wired_dispatcher = await auto_wire_settings(
-                persistence,
-                message_bus,
-                effective_config,
-                app_state,
-                backup_service,
-                _build_settings_dispatcher,
-                approval_timeout_scheduler,
+                persistence=persistence,
+                message_bus=message_bus,
+                effective_config=effective_config,
+                app_state=app_state,
+                backup_service=backup_service,
+                build_dispatcher=_build_settings_dispatcher,
+                approval_timeout_scheduler=approval_timeout_scheduler,
             )
         except Exception as exc:
             reraise_critical(exc)
@@ -434,14 +434,14 @@ async def _run_startup(  # noqa: PLR0913
                 logger, API_APP_STARTUP, exc, detail="settings_auto_wire_failed"
             )
             await _safe_shutdown(
-                task_engine,
-                meeting_scheduler,
-                backup_service,
-                approval_timeout_scheduler,
-                settings_dispatcher,
-                bridge,
-                message_bus,
-                persistence,
+                task_engine=task_engine,
+                meeting_scheduler=meeting_scheduler,
+                backup_service=backup_service,
+                approval_timeout_scheduler=approval_timeout_scheduler,
+                settings_dispatcher=settings_dispatcher,
+                bridge=bridge,
+                message_bus=message_bus,
+                persistence=persistence,
                 performance_tracker=app_state.slice(HrStateSlice).performance_tracker,
                 distributed_task_queue=app_state.slice(
                     RuntimeStateSlice
@@ -483,14 +483,14 @@ async def _run_startup(  # noqa: PLR0913
             detail="workflow_observer_auto_wire_failed",
         )
         await _safe_shutdown(
-            task_engine,
-            meeting_scheduler,
-            backup_service,
-            approval_timeout_scheduler,
-            settings_dispatcher,
-            bridge,
-            message_bus,
-            persistence,
+            task_engine=task_engine,
+            meeting_scheduler=meeting_scheduler,
+            backup_service=backup_service,
+            approval_timeout_scheduler=approval_timeout_scheduler,
+            settings_dispatcher=settings_dispatcher,
+            bridge=bridge,
+            message_bus=message_bus,
+            persistence=persistence,
             performance_tracker=app_state.slice(HrStateSlice).performance_tracker,
             distributed_task_queue=app_state.slice(
                 RuntimeStateSlice

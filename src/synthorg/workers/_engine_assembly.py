@@ -475,16 +475,16 @@ def _build_compaction_callback(
     )
 
 
-async def _construct_agent_engine(  # noqa: PLR0913, PLR0917 -- boot collaborators threaded in
+async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
     app_state: AppState,
     provider: CompletionProvider,
+    *,
     registry: ProviderRegistry,
     tool_registry: ToolRegistry,
     coordination_metrics_collector: CoordinationMetricsCollector | None,
     external_api_runtime: ExternalApiRuntime | None = None,
     forge_tools_runtime: ForgeToolsRuntime | None = None,
     chat_tools_runtime: ChatToolsRuntime | None = None,
-    *,
     flight_recorder_sink: FlightRecorderSink | None = None,
     step_classifier: StepQualityClassifier | None = None,
     classification_detector_timeout_seconds: float | None = None,

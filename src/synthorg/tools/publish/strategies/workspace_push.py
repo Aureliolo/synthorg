@@ -234,11 +234,11 @@ class WorkspacePushStrategy:
         uploaded, root_bytes, root_media = await self._push_graph(
             client,
             layout_dir,
-            index,
-            index_bytes,
-            manifests,
-            budget,
-            request.max_manifest_bytes,
+            index=index,
+            index_bytes=index_bytes,
+            manifests=manifests,
+            budget=budget,
+            manifest_cap=request.max_manifest_bytes,
         )
         stored = await client.put_manifest(
             tag=request.dest_tag, raw=root_bytes, media_type=root_media
@@ -281,9 +281,10 @@ class WorkspacePushStrategy:
         return layout_dir
 
     @staticmethod
-    async def _push_graph(  # noqa: PLR0913, PLR0917 -- the layout graph is threaded as one unit
+    async def _push_graph(  # noqa: PLR0913 -- the layout graph is threaded as one unit
         client: RegistryApiClient,
         layout_dir: Path,
+        *,
         index: dict[str, object],
         index_bytes: bytes,
         manifests: list[object],

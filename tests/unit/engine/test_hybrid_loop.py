@@ -20,6 +20,7 @@ from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.quality.classifier import RuleBasedStepClassifier
+from synthorg.engine.quality.models import StepQuality
 from synthorg.providers.models import CompletionResponse
 
 from ._hybrid_loop_helpers import (
@@ -27,6 +28,7 @@ from ._hybrid_loop_helpers import (
     _make_invoker,
     _multi_step_plan,
     _single_step_plan,
+    _step_fail_response,
     _stop_response,
     _summary_response,
     _tool_use_response,
@@ -162,6 +164,37 @@ class TestHybridLoopBasic:
         assert result.termination_reason == TerminationReason.COMPLETED
         assert len(result.quality_signals) == 3
         assert [s.step_index for s in result.quality_signals] == [0, 1, 2]
+
+    async def test_provider_anomaly_signals_incorrect_not_exhausted(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A step the provider botched is INCORRECT, not a spent budget.
+
+        Turns remain when the step fails here, so reporting it under
+        MAX_TURNS would tell the quality pipeline the step merely ran out
+        of room rather than that the provider returned an unusable turn.
+        """
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        cfg = HybridLoopConfig(checkpoint_after_each_step=False, max_replans=0)
+        provider = mock_provider_factory(
+            [
+                _single_step_plan(),
+                _step_fail_response(),  # TOOL_USE with no tool calls
+            ]
+        )
+        loop = HybridLoop(config=cfg, step_classifier=RuleBasedStepClassifier())
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.ERROR
+        assert len(result.quality_signals) == 1
+        signal = result.quality_signals[0]
+        assert signal.quality == StepQuality.INCORRECT
+        assert "ERROR" in signal.reason
+        # Turns were still available, so this was never a budget problem.
+        assert result.context.has_turns_remaining
 
     async def test_no_summary_when_disabled(
         self,

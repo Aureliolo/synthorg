@@ -208,10 +208,10 @@ class DefaultThresholdRecommender:
         return _build_recommendation(
             pattern,
             metric_name,
-            current_default,
-            recommended,
-            confidence,
-            rationale,
+            current_default=current_default,
+            recommended=recommended,
+            confidence=confidence,
+            rationale=rationale,
         )
 
     def _recommend_tighten(
@@ -243,16 +243,17 @@ class DefaultThresholdRecommender:
         return _build_recommendation(
             pattern,
             metric_name,
-            current_default,
-            recommended,
-            confidence,
-            rationale,
+            current_default=current_default,
+            recommended=recommended,
+            confidence=confidence,
+            rationale=rationale,
         )
 
 
-def _build_recommendation(  # noqa: PLR0913, PLR0917
+def _build_recommendation(  # noqa: PLR0913
     pattern: AggregatedPattern,
     metric_name: str,
+    *,
     current_default: float,
     recommended: float,
     confidence: float,

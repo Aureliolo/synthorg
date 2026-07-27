@@ -439,9 +439,10 @@ def _is_claims_provider_value(
     return scope is not None and expr.id in proven.get(scope, set())
 
 
-def _call_arg_carries_provider(  # noqa: PLR0913, PLR0917 -- threads the shared analysis state
+def _call_arg_carries_provider(  # noqa: PLR0913 -- threads the shared analysis state
     call: ast.Call,
     index: int,
+    *,
     enclosing: _EnclosingMap,
     claims_names: frozenset[str],
     alias_cache: _AliasCache,
@@ -511,7 +512,12 @@ def _prove_provider_flow(
                     continue
                 if all(
                     _call_arg_carries_provider(
-                        call, index, enclosing, claims_names, alias_cache, proven
+                        call,
+                        index,
+                        enclosing=enclosing,
+                        claims_names=claims_names,
+                        alias_cache=alias_cache,
+                        proven=proven,
                     )
                     for call in calls
                 ):

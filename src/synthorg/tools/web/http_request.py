@@ -124,13 +124,19 @@ class HttpRequestTool(BaseWebTool):
         )
 
         return await self._perform_request(
-            url, method, headers, body, timeout, validation
+            url,
+            method,
+            headers=headers,
+            body=body,
+            timeout=timeout,
+            validation=validation,
         )
 
-    async def _perform_request(  # noqa: PLR0913, PLR0917
+    async def _perform_request(  # noqa: PLR0913
         self,
         url: str,
         method: str,
+        *,
         headers: dict[str, str],
         body: str | None,
         timeout: float,  # noqa: ASYNC109  -- passed to httpx, not asyncio

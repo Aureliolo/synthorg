@@ -94,8 +94,9 @@ async def transition_task_if_needed(
     return ctx
 
 
-async def apply_post_execution_transitions(  # noqa: PLR0913, PLR0917 -- post-exec collaborators
+async def apply_post_execution_transitions(  # noqa: PLR0913 -- post-exec collaborators
     execution_result: ExecutionResult,
+    *,
     agent_id: str,
     task_id: str,
     task_engine: TaskEngine | None,
@@ -164,7 +165,12 @@ async def apply_post_execution_transitions(  # noqa: PLR0913, PLR0917 -- post-ex
     # transition also guards a COMPLETED that slipped through from another loop.
     if reason == TerminationReason.NO_OP and not justified and empty_run_fails:
         return await _transition_to_failed(
-            execution_result, ctx, agent_id, task_id, task_engine, approval_store
+            execution_result,
+            ctx,
+            agent_id=agent_id,
+            task_id=task_id,
+            task_engine=task_engine,
+            approval_store=approval_store,
         )
 
     if reason not in (TerminationReason.COMPLETED, TerminationReason.NO_OP):
@@ -177,18 +183,23 @@ async def apply_post_execution_transitions(  # noqa: PLR0913, PLR0917 -- post-ex
         and empty_run_fails
     ):
         return await _transition_to_failed(
-            execution_result, ctx, agent_id, task_id, task_engine, approval_store
+            execution_result,
+            ctx,
+            agent_id=agent_id,
+            task_id=task_id,
+            task_engine=task_engine,
+            approval_store=approval_store,
         )
 
     return await _transition_to_review(
         execution_result,
         ctx,
-        agent_id,
-        task_id,
-        task_engine,
-        approval_store,
-        review_gate,
-        review_pipeline,
+        agent_id=agent_id,
+        task_id=task_id,
+        task_engine=task_engine,
+        approval_store=approval_store,
+        review_gate=review_gate,
+        review_pipeline=review_pipeline,
     )
 
 
@@ -275,9 +286,10 @@ async def _transition_and_sync(  # noqa: PLR0913
     return ctx, synced
 
 
-async def _transition_to_review(  # noqa: PLR0913, PLR0917 -- post-exec collaborators
+async def _transition_to_review(  # noqa: PLR0913 -- post-exec collaborators
     execution_result: ExecutionResult,
     ctx: AgentContext,
+    *,
     agent_id: str,
     task_id: str,
     task_engine: TaskEngine | None,
@@ -349,9 +361,10 @@ async def _transition_to_review(  # noqa: PLR0913, PLR0917 -- post-exec collabor
     return execution_result.model_copy(update={"context": ctx})
 
 
-async def _transition_to_failed(  # noqa: PLR0913, PLR0917 -- post-exec collaborators
+async def _transition_to_failed(  # noqa: PLR0913 -- post-exec collaborators
     execution_result: ExecutionResult,
     ctx: AgentContext,
+    *,
     agent_id: str,
     task_id: str,
     task_engine: TaskEngine | None,

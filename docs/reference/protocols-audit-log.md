@@ -11,14 +11,19 @@ This is the dated cleanup history behind the evergreen [Protocols Audit](protoco
 
 Issue [#1864](https://github.com/Aureliolo/synthorg/issues/1864) hand-reviewed every REMOVE row below. The verification protocol was: (1) re-grep the protocol name across `src/synthorg/` and `tests/`, (2) inspect sibling files in the same directory for structural impls, (3) confirm whether a factory dispatch dict / config discriminator / multi-slot injection / vendor-agnostic design exists. The script's `impl=0` reliably under-counts these patterns.
 
-### Deleted (2 protocols)
+### Deleted (1 protocol)
 
-The script's classification matched reality: zero structural impls, zero consumers (or single-file Callable seam).
+The script's classification matched reality: zero structural impls, zero consumers.
 
 | Path | Line | Name | Outcome |
 |---|---|---|---|
-| api/auto_wire.py | 93 | `BuildDispatcherFn` | Deleted. Collapsed to `Callable[..., SettingsChangeDispatcher \| None]` at the single annotation site (`auto_wire_settings`). |
 | communication/event_stream/consumer.py | 15 | `EventStreamConsumer` | Deleted. File removed (zero refs anywhere in repo). |
+
+### Restored as a Protocol (1)
+
+| Path | Name | Outcome |
+|---|---|---|
+| api/auto_wire.py | `SettingsDispatcherBuilder` | A `Callable[...]` alias cannot mark a parameter keyword-only or give it a default, and the builder needs both, so the seam is a `Protocol` with a keyword-only `__call__`. Not `@runtime_checkable`: it is consumed as a typed value at one production call site, never type-discriminated at runtime. |
 
 ### Audit re-flagged to KEEP (44 protocols)
 

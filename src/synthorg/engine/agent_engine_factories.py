@@ -352,32 +352,32 @@ class AgentEngineFactoriesMixin:
         registry = registry_with_external_api_tool(
             registry,
             self._external_api_runtime,
-            self._approval_store,
-            identity,
+            approval_store=self._approval_store,
+            identity=identity,
             task_id=task_id,
             effective_autonomy=effective_autonomy,
         )
         registry = registry_with_forge_tools(
             registry,
             self._forge_tools_runtime,
-            self._approval_store,
-            identity,
+            approval_store=self._approval_store,
+            identity=identity,
             task_id=task_id,
             effective_autonomy=effective_autonomy,
         )
         registry = registry_with_chat_tools(
             registry,
             self._chat_tools_runtime,
-            self._approval_store,
-            identity,
+            approval_store=self._approval_store,
+            identity=identity,
             task_id=task_id,
             effective_autonomy=effective_autonomy,
         )
         registry = registry_with_delegate_tool(
             registry,
             self._sub_agent_runner,
-            self._config_resolver,
-            identity,
+            config_resolver=self._config_resolver,
+            identity=identity,
             task_id=task_id,
             project_id=project_id,
         )

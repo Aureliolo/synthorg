@@ -312,10 +312,10 @@ class ParallelExecutor:
             self._record_fatal_outcome(
                 exc,
                 assignment,
-                group,
-                outcomes,
-                fatal_errors,
-                progress,
+                group=group,
+                outcomes=outcomes,
+                fatal_errors=fatal_errors,
+                progress=progress,
             )
         except Exception as exc:
             self._record_error_outcome(
@@ -465,10 +465,11 @@ class ParallelExecutor:
             error=safe_error_description(exc),
         )
 
-    def _record_fatal_outcome(  # noqa: PLR0913, PLR0917
+    def _record_fatal_outcome(  # noqa: PLR0913
         self,
         exc: MemoryError | RecursionError,
         assignment: AgentAssignment,
+        *,
         group: ParallelExecutionGroup,
         outcomes: dict[str, AgentOutcome],
         fatal_errors: list[Exception],

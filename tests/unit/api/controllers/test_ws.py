@@ -685,10 +685,10 @@ class TestOutboundPipeline:
 
         await _on_event(
             event_data,
-            {"tasks"},
-            {},
-            queue,
-            _TEST_USER,
+            subscribed={"tasks"},
+            filters={},
+            queue=queue,
+            conn_user=_TEST_USER,
         )
 
         assert queue.empty()
@@ -713,10 +713,10 @@ class TestOutboundPipeline:
 
         await _on_event(
             event_data,
-            {"tasks"},
-            {},
-            queue,
-            _TEST_USER,
+            subscribed={"tasks"},
+            filters={},
+            queue=queue,
+            conn_user=_TEST_USER,
         )
 
         assert queue.qsize() == 1
@@ -747,10 +747,10 @@ class TestOutboundPipeline:
         for idx in range(5):
             await _on_event(
                 make_event(idx),
-                {"tasks"},
-                {},
-                queue,
-                _TEST_USER,
+                subscribed={"tasks"},
+                filters={},
+                queue=queue,
+                conn_user=_TEST_USER,
             )
 
         assert queue.qsize() == 2
@@ -786,10 +786,10 @@ class TestOutboundPipeline:
         for idx in range(_WS_BACKPRESSURE_DROP_THRESHOLD + 1):
             await _on_event(
                 make_event(idx),
-                {"tasks"},
-                {},
-                queue,
-                _TEST_USER,
+                subscribed={"tasks"},
+                filters={},
+                queue=queue,
+                conn_user=_TEST_USER,
                 backpressure=tracker,
                 socket=socket,
             )
@@ -825,20 +825,20 @@ class TestOutboundPipeline:
         # Fill the queue.
         await _on_event(
             make_event(0),
-            {"tasks"},
-            {},
-            queue,
-            _TEST_USER,
+            subscribed={"tasks"},
+            filters={},
+            queue=queue,
+            conn_user=_TEST_USER,
             backpressure=tracker,
             socket=socket,
         )
         # Drop while full.
         await _on_event(
             make_event(1),
-            {"tasks"},
-            {},
-            queue,
-            _TEST_USER,
+            subscribed={"tasks"},
+            filters={},
+            queue=queue,
+            conn_user=_TEST_USER,
             backpressure=tracker,
             socket=socket,
         )
@@ -848,10 +848,10 @@ class TestOutboundPipeline:
         # Successful enqueue resets the counter.
         await _on_event(
             make_event(2),
-            {"tasks"},
-            {},
-            queue,
-            _TEST_USER,
+            subscribed={"tasks"},
+            filters={},
+            queue=queue,
+            conn_user=_TEST_USER,
             backpressure=tracker,
             socket=socket,
         )
@@ -889,20 +889,20 @@ class TestOutboundPipeline:
         # Fill the queue, then record a drop -- consecutive_drops = 1.
         await _on_event(
             make_event(0),
-            {"tasks"},
-            {},
-            queue,
-            _TEST_USER,
+            subscribed={"tasks"},
+            filters={},
+            queue=queue,
+            conn_user=_TEST_USER,
             backpressure=tracker,
             socket=socket,
             clock=clock,
         )
         await _on_event(
             make_event(1),
-            {"tasks"},
-            {},
-            queue,
-            _TEST_USER,
+            subscribed={"tasks"},
+            filters={},
+            queue=queue,
+            conn_user=_TEST_USER,
             backpressure=tracker,
             socket=socket,
             clock=clock,
@@ -915,10 +915,10 @@ class TestOutboundPipeline:
 
         await _on_event(
             make_event(2),
-            {"tasks"},
-            {},
-            queue,
-            _TEST_USER,
+            subscribed={"tasks"},
+            filters={},
+            queue=queue,
+            conn_user=_TEST_USER,
             backpressure=tracker,
             socket=socket,
             clock=clock,

@@ -456,15 +456,15 @@ class GroupChatService:
                 break
             contribution, invite_req = await self._dispatch_contribution(
                 conversation,
-                history,
-                render_history,
-                contributions,
                 participant,
-                sequence,
-                call_max_tokens,
-                tracker,
-                now,
-                invite_coordinator,
+                history=history,
+                render_history=render_history,
+                prior_contributions=contributions,
+                sequence=sequence,
+                max_tokens=call_max_tokens,
+                tracker=tracker,
+                now=now,
+                invite_coordinator=invite_coordinator,
             )
             if contribution is None:
                 skipped.append(participant.agent_id)
@@ -473,10 +473,10 @@ class GroupChatService:
             await self._maybe_park_invite(
                 conversation,
                 participant,
-                invite_req,
-                pending_invites,
-                now,
-                invite_coordinator,
+                invite_req=invite_req,
+                pending_invites=pending_invites,
+                now=now,
+                invite_coordinator=invite_coordinator,
             )
             sequence += 1
             total_turns += 1
@@ -493,10 +493,11 @@ class GroupChatService:
             pending_invites=tuple(pending_invites),
         )
 
-    async def _maybe_park_invite(  # noqa: PLR0913, PLR0917 -- one invite's full context
+    async def _maybe_park_invite(  # noqa: PLR0913 -- one invite's full context
         self,
         conversation: Conversation,
         participant: ConversationParticipant,
+        *,
         invite_req: InviteRequest | None,
         pending_invites: list[PendingInviteSummary],
         now: datetime,
@@ -525,13 +526,14 @@ class GroupChatService:
         if summary is not None:
             pending_invites.append(summary)
 
-    async def _dispatch_contribution(  # noqa: PLR0913, PLR0917 -- one contribution's full context
+    async def _dispatch_contribution(  # noqa: PLR0913 -- one contribution's full context
         self,
         conversation: Conversation,
+        participant: ConversationParticipant,
+        *,
         history: tuple[ConversationTurn, ...],
         render_history: tuple[ConversationTurn, ...],
         prior_contributions: list[AttributedContribution],
-        participant: ConversationParticipant,
         sequence: int,
         max_tokens: int,
         tracker: TokenTracker,

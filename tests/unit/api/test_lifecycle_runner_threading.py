@@ -41,15 +41,15 @@ class TestLifecycleTasksThreading:
             persistence=persistence,
         )
         startup, shutdown = _build_lifecycle(
-            persistence,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            app_state,
+            persistence=persistence,
+            message_bus=None,
+            bridge=None,
+            settings_dispatcher=None,
+            task_engine=None,
+            meeting_scheduler=None,
+            backup_service=None,
+            approval_timeout_scheduler=None,
+            app_state=app_state,
         )
         try:
             await startup[0]()

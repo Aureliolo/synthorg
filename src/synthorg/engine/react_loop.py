@@ -7,11 +7,11 @@ check for LLM errors -> update context -> handle completion or
 """
 
 import asyncio
-from typing import TYPE_CHECKING
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.quality.classifier import StepQualityClassifier
@@ -71,13 +71,6 @@ from .loop_tool_execution import (
     clear_last_turn_tool_calls,
     execute_tool_calls,
 )
-
-if TYPE_CHECKING:
-    # checkpoint.callback's package init imports checkpoint.resume, which
-    # imports ReactLoop; importing it at runtime here would close a
-    # react_loop <-> checkpoint.resume cold cycle. The alias resolves
-    # structurally for the __init__ signature.
-    from synthorg.engine.checkpoint.callback import CheckpointCallback
 
 logger = get_logger(__name__)
 
@@ -313,10 +306,10 @@ class ReactLoop:
                 ctx,
                 provider,
                 model_id,
-                tool_defs,
-                config,
-                turn_number,
-                turns,
+                tool_defs=tool_defs,
+                config=config,
+                turn_number=turn_number,
+                turns=turns,
                 streaming_enabled=streaming_enabled,
                 cancellation_checker=task_cancellation_checker,
                 steering_inbox=self._steering_inbox,
@@ -343,10 +336,10 @@ class ReactLoop:
             result = await self._process_turn_response(
                 ctx,
                 response,
-                turn_number,
-                turns,
-                tool_invoker,
-                shutdown_checker,
+                turn_number=turn_number,
+                turns=turns,
+                tool_invoker=tool_invoker,
+                shutdown_checker=shutdown_checker,
             )
             if isinstance(result, ExecutionResult):
                 return await self._attach_whole_run_signals(result, turns)
@@ -418,10 +411,11 @@ class ReactLoop:
             [],
         )
 
-    async def _process_turn_response(  # noqa: PLR0913, PLR0917
+    async def _process_turn_response(  # noqa: PLR0913
         self,
         ctx: AgentContext,
         response: CompletionResponse,
+        *,
         turn_number: int,
         turns: list[TurnRecord],
         tool_invoker: ToolInvokerProtocol | None,

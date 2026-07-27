@@ -55,7 +55,7 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 
 | Path | Line | Name | rc | impl | testuse | Recommendation | Notes |
 |---|---|---|---|---|---|---|---|
-| api/auto_wire.py | 93 | `BuildDispatcherFn` | 0 | 0 | 0 | REMOVE | Internal typing seam; auto-wire callsite can use `Callable[..., ...]` directly. |
+| api/auto_wire.py | 48 | `SettingsDispatcherBuilder` | 0 | 1 | 1 | KEEP | Every parameter is keyword-only and two carry defaults, neither of which a `Callable[...]` alias can express. |
 | api/lifecycle.py | 86 | `_AsyncStartStop` | 0 | 0 | 0 | REVIEW | Private typing seam; verify whether lifecycle helpers need it as a structural surface. |
 | api/rate_limits/inflight_protocol.py | 18 | `InflightStore` | 1 | 1 | 0 | KEEP | Pluggable `Store` (factory-registered). |
 | api/rate_limits/protocol.py | 49 | `SlidingWindowStore` | 1 | 1 | 0 | KEEP | Pluggable `Store` (factory-registered). |

@@ -95,10 +95,10 @@ class BudgetEnforcerRiskMixin:
                     limit,
                     await get_risk(),
                     projected,
-                    event,
-                    label,
-                    agent_id,
-                    task_id,
+                    event=event,
+                    label=label,
+                    agent_id=agent_id,
+                    task_id=task_id,
                 )
         except RiskBudgetExhaustedError:
             raise
@@ -116,11 +116,12 @@ class BudgetEnforcerRiskMixin:
 
         return RiskCheckResult(risk_units=projected)
 
-    def _enforce_risk_limit(  # noqa: PLR0913, PLR0917
+    def _enforce_risk_limit(  # noqa: PLR0913
         self,
         limit: float,
         current: float,
         projected: float,
+        *,
         event: str,
         label: str,
         agent_id: str,

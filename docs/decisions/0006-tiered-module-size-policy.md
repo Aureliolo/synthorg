@@ -149,6 +149,7 @@ All baseline-driven, all wired into `.pre-commit-config.yaml`:
 ```toml
 [tool.ruff.lint.pylint]
 max-args = 5
+max-positional-args = 5
 max-public-methods = 12
 max-statements = 30
 max-branches = 10

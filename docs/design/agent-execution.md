@@ -40,7 +40,11 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
 `execute(...) -> ExecutionResult`
 :   Runs the loop to completion, accepting `AgentContext`,
     `CompletionProvider`, optional `ToolInvoker`, optional `BudgetChecker`,
-    optional `ShutdownChecker`, and optional `CompletionConfig`.
+    optional `ShutdownChecker`, optional `CompletionConfig`, optional
+    `TaskCancellationChecker` (operator cancellation and supersession),
+    optional `TurnObserver` (per-step progress for the AG-UI stream), and
+    `streaming_enabled` (streams each turn and makes it interruptible
+    mid-flight for cancellation and steering REDIRECT).
 
 **Supporting models:**
 

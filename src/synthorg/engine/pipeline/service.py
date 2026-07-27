@@ -362,7 +362,12 @@ class DefaultWorkPipeline:
             elif work_item.leaf_required:
                 verdict = RoutingVerdict.LEAF
             outcome = await self._execute_selected_path(
-                work_item, task, agents, verdict, phases, owner
+                work_item,
+                task,
+                agents=agents,
+                verdict=verdict,
+                phases=phases,
+                owner=owner,
             )
         except Exception as exc:
             reraise_critical(exc)
@@ -397,10 +402,11 @@ class DefaultWorkPipeline:
         await self._try_generate_narrative(work_item, task)
         return result
 
-    async def _execute_selected_path(  # noqa: PLR0913, PLR0917 -- one routed dispatch fan-out
+    async def _execute_selected_path(  # noqa: PLR0913 -- one routed dispatch fan-out
         self,
         work_item: WorkItem,
         task: Task,
+        *,
         agents: tuple[AgentIdentity, ...],
         verdict: RoutingVerdict,
         phases: list[WorkPhaseResult],

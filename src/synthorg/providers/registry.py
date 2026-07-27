@@ -284,11 +284,11 @@ class ProviderRegistry:
                 # contract for no benefit.
                 return cls._build_cassette_registry(
                     providers,
-                    {},
-                    overrides,
-                    cassette,
-                    connection_catalog,
-                    retry_max_attempts,
+                    defaults={},
+                    overrides=overrides,
+                    cassette=cassette,
+                    connection_catalog=connection_catalog,
+                    retry_max_attempts=retry_max_attempts,
                 )
 
         from .drivers.litellm_driver import (  # noqa: PLC0415
@@ -315,11 +315,11 @@ class ProviderRegistry:
         if cassette is not None and cassette.is_active:
             return cls._build_cassette_registry(
                 providers,
-                defaults,
-                overrides,
-                cassette,
-                connection_catalog,
-                retry_max_attempts,
+                defaults=defaults,
+                overrides=overrides,
+                cassette=cassette,
+                connection_catalog=connection_catalog,
+                retry_max_attempts=retry_max_attempts,
             )
 
         drivers: dict[str, BaseCompletionProvider] = {}
@@ -327,10 +327,10 @@ class ProviderRegistry:
             drivers[name] = _build_driver(
                 name,
                 config,
-                defaults,
-                overrides,
-                connection_catalog,
-                retry_max_attempts,
+                defaults=defaults,
+                overrides=overrides,
+                connection_catalog=connection_catalog,
+                retry_max_attempts=retry_max_attempts,
             )
 
         logger.info(
@@ -341,9 +341,10 @@ class ProviderRegistry:
         return cls(drivers)
 
     @classmethod
-    def _build_cassette_registry(  # noqa: PLR0913, PLR0917 -- build modifiers, all internal
+    def _build_cassette_registry(  # noqa: PLR0913 -- build modifiers, all internal
         cls,
         providers: Mapping[str, ProviderConfig],
+        *,
         defaults: dict[str, type[BaseCompletionProvider]],
         overrides: dict[str, object],
         cassette: CassetteConfig,
@@ -388,10 +389,10 @@ class ProviderRegistry:
                 else _build_driver(
                     name,
                     config,
-                    defaults,
-                    overrides,
-                    connection_catalog,
-                    retry_max_attempts,
+                    defaults=defaults,
+                    overrides=overrides,
+                    connection_catalog=connection_catalog,
+                    retry_max_attempts=retry_max_attempts,
                 )
             )
             drivers[name] = CassetteCompletionProvider(
@@ -450,9 +451,10 @@ def _apply_global_retry_default(
     )
 
 
-def _build_driver(  # noqa: PLR0913, PLR0917 -- build modifiers, all internal
+def _build_driver(  # noqa: PLR0913 -- build modifiers, all internal
     name: str,
     config: ProviderConfig,
+    *,
     defaults: dict[str, type[BaseCompletionProvider]],
     overrides: dict[str, object],
     connection_catalog: ConnectionCatalog | None = None,
