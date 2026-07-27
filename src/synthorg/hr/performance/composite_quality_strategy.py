@@ -71,7 +71,7 @@ class CompositeQualityStrategy:
 
     _WEIGHT_TOLERANCE: float = 1e-6
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         ci_strategy: QualityScoringStrategy,

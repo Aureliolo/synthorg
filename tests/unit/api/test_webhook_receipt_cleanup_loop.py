@@ -61,7 +61,7 @@ def _make_connection(
     )
 
 
-def _build_app_state(  # noqa: PLR0913 -- each kwarg controls a distinct stub axis
+def _build_app_state(
     *,
     has_persistence: bool = True,
     has_config_resolver: bool = True,

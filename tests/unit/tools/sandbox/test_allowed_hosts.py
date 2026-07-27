@@ -17,7 +17,7 @@ def _container_config(sandbox: DockerSandbox, **kwargs: Any) -> JsonDict:  # typ
     return cast(JsonDict, sandbox._build_container_config(**kwargs))
 
 
-def _build_config(  # noqa: PLR0913
+def _build_config(
     tmp_path: Path,
     *,
     network: Literal["none", "bridge", "host"] = "bridge",

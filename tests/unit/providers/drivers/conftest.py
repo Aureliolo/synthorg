@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 # ── Sample ProviderConfig ────────────────────────────────────────
 
 
-def make_provider_config(  # noqa: PLR0913
+def make_provider_config(
     *,
     driver: str = "litellm",
     connection_name: str | None = "conn-test",
@@ -56,7 +56,7 @@ def make_provider_config(  # noqa: PLR0913
 # ── Mock LiteLLM response objects ────────────────────────────────
 
 
-def make_mock_response(  # noqa: PLR0913
+def make_mock_response(
     *,
     content: str | None = "Hello! How can I help?",
     tool_calls: list[MagicMock] | None = None,

@@ -147,7 +147,7 @@ class AutonomyWorkflow:
             base_metadata=base_metadata,
         )
 
-    async def _handle_pending(  # noqa: PLR0913
+    async def _handle_pending(
         self,
         *,
         key: str,
@@ -207,7 +207,7 @@ class AutonomyWorkflow:
             approval_id=approval_id if approval_enqueued else None,
         )
 
-    async def _handle_granted(  # noqa: PLR0913
+    async def _handle_granted(
         self,
         *,
         agent_id: NotBlankStr,

@@ -17,7 +17,7 @@ from synthorg.observability.events.delegation import DELEGATION_RECORD_EVICTED
 _NOW = datetime(2026, 3, 24, 12, 0, 0, tzinfo=UTC)
 
 
-def _make_record(  # noqa: PLR0913
+def _make_record(
     *,
     delegation_id: str = "del-001",
     delegator_id: str = "agent-manager",

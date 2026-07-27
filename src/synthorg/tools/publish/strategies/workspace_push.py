@@ -281,7 +281,7 @@ class WorkspacePushStrategy:
         return layout_dir
 
     @staticmethod
-    async def _push_graph(  # noqa: PLR0913 -- the layout graph is threaded as one unit
+    async def _push_graph(
         client: RegistryApiClient,
         layout_dir: Path,
         *,

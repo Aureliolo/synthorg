@@ -14,7 +14,7 @@ from tests._shared import as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 
 
-def _make_plan(  # noqa: PLR0913
+def _make_plan(
     *,
     plan_id: str = "plan-001",
     agent_id: str = "agent-new-001",

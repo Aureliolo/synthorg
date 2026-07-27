@@ -60,7 +60,7 @@ class Phase1Result(NamedTuple):
     distributed_backend_services: DistributedBackendServicesHandle | None
 
 
-def auto_wire_phase1(  # noqa: PLR0913
+def auto_wire_phase1(
     *,
     effective_config: RootConfig,
     persistence: PersistenceBackend | None,

@@ -101,7 +101,7 @@ class _BaseGitTool(BaseTool, ABC):
         workspace: Absolute path to the agent's workspace directory.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         name: str,

@@ -257,7 +257,7 @@ def _build_verification_stage(
     return VerificationReviewStage(decomposer=decomposer_impl, grader=grader_impl)
 
 
-def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
+def _build_intake_with_fallback(
     *,
     requested_strategy: str,
     model: str | None,
@@ -319,7 +319,7 @@ def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
         return strategy, requested_strategy
 
 
-def _build_simulation_components(  # noqa: PLR0913 -- keyword-only resolved choices
+def _build_simulation_components(
     app_state: AppState,
     *,
     requested_strategy: str,

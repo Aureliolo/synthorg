@@ -96,7 +96,7 @@ async def _get_cached_card(
         return card_data
 
 
-async def _put_cached_card(  # noqa: PLR0913 -- cache identity + TTL + bound
+async def _put_cached_card(
     cache_key: str,
     card_data: dict[str, JsonValue],
     ttl: int,

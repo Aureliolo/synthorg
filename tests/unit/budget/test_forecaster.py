@@ -19,7 +19,7 @@ pytestmark = pytest.mark.unit
 _FIXED_NOW = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
 
 
-def _config(  # noqa: PLR0913 -- test helper exposes every static prior knob
+def _config(
     *,
     prior_large: float = 0.10,
     prior_medium: float = 0.03,

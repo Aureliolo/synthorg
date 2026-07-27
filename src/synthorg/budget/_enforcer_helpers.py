@@ -415,7 +415,7 @@ def _build_checker_closure(  # noqa: PLR0913
     return _check
 
 
-def _raise_hard_ceiling(  # noqa: PLR0913 -- error carries every payload field
+def _raise_hard_ceiling(
     *,
     running_cost: float,
     hard_ceiling: float,
@@ -475,7 +475,7 @@ def _check_task_limit(
     return False
 
 
-def _check_monthly_limit(  # noqa: PLR0913
+def _check_monthly_limit(
     running_cost: float,
     monthly_budget: float,
     monthly_baseline: float,

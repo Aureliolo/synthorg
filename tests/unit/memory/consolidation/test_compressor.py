@@ -142,7 +142,7 @@ class TestExperienceCompressorProtocol:
     @pytest.mark.unit
     def test_protocol_is_runtime_checkable(self) -> None:
         class _StubCompressor:
-            async def compress(  # noqa: PLR0913
+            async def compress(
                 self,
                 prompt: str,
                 output: str,

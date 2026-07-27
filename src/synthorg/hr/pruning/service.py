@@ -102,7 +102,7 @@ class PruningService:
             in-memory-only behaviour.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         policies: tuple[PruningPolicy, ...],
@@ -621,7 +621,7 @@ class PruningService:
         return True
 
     @staticmethod
-    def _build_approval_item(  # noqa: PLR0913
+    def _build_approval_item(
         approval_id: NotBlankStr,
         agent: AgentIdentity,
         *,

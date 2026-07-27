@@ -572,7 +572,7 @@ class DockerSandboxExecMixin:
             raise SandboxStartError(msg) from exc
         return container_id
 
-    async def _create_keepalive_handle(  # noqa: PLR0913 -- mount + lifecycle inputs
+    async def _create_keepalive_handle(
         self,
         *,
         docker: aiodocker.Docker,
@@ -640,7 +640,7 @@ class DockerSandboxExecMixin:
     # Command execution via docker exec
     # ------------------------------------------------------------------
 
-    async def _open_exec(  # noqa: PLR0913
+    async def _open_exec(
         self,
         docker: aiodocker.Docker,
         handle: ContainerHandle,
@@ -722,7 +722,7 @@ class DockerSandboxExecMixin:
             await self._safe_close_stream(stream)
         return stdout, stderr, timed_out
 
-    async def _exec_command(  # noqa: PLR0913
+    async def _exec_command(
         self,
         *,
         docker: aiodocker.Docker,

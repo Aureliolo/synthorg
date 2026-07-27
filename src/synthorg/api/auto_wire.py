@@ -56,7 +56,7 @@ class SettingsDispatcherBuilder(Protocol):
     ``backup_service`` and ``approval_timeout_scheduler`` may be omitted.
     """
 
-    def __call__(  # noqa: PLR0913
+    def __call__(
         self,
         *,
         message_bus: MessageBus | None,
@@ -75,7 +75,7 @@ class SettingsDispatcherBuilder(Protocol):
         ...
 
 
-async def auto_wire_settings(  # noqa: PLR0913
+async def auto_wire_settings(
     *,
     persistence: PersistenceBackend,
     message_bus: MessageBus | None,

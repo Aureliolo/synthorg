@@ -54,7 +54,7 @@ class ScalingContextBuilder:
         self._skill = skill_source
         self._benchmark = benchmark_source
 
-    async def build(  # noqa: PLR0913 -- one kwargs slot per signal source
+    async def build(
         self,
         *,
         agent_ids: tuple[NotBlankStr, ...],

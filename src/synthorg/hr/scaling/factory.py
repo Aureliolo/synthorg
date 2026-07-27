@@ -305,7 +305,7 @@ def create_scaling_trigger(config: ScalingConfig) -> ScalingTrigger:
     return trigger
 
 
-def build_scaling_service(  # noqa: PLR0913 -- explicit DI of the scaling service collaborators
+def build_scaling_service(
     config: ScalingConfig,
     *,
     hiring_service: HiringService | None = None,

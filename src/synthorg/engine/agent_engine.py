@@ -40,6 +40,7 @@ from synthorg.engine.agent_engine_post_exec import AgentEnginePostExecMixin
 from synthorg.engine.agent_engine_recovery import AgentEngineRecoveryMixin
 from synthorg.engine.agent_engine_resume import AgentEngineResumeMixin
 from synthorg.engine.agent_engine_stakes_errors import AgentEngineStakesErrorsMixin
+from synthorg.engine.agent_execute_request import AgentExecuteRequest
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
@@ -153,7 +154,6 @@ if TYPE_CHECKING:
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
     from synthorg.tools.forge._runtime import ForgeToolsRuntime
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
-    from synthorg.tools.protocol import ToolInvokerProtocol
     from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
@@ -498,7 +498,7 @@ class AgentEngine(
             hub, task_id=task_id, agent_id=agent_id, reason=TerminationReason.ERROR
         )
 
-    async def run(  # noqa: PLR0913
+    async def run(
         self,
         *,
         identity: AgentIdentity,
@@ -715,19 +715,21 @@ class AgentEngine(
                     project_id=task.project,
                 ):
                     return await self._execute(
-                        identity=identity,
-                        task=task,
-                        agent_id=agent_id,
-                        task_id=task_id,
-                        completion_config=completion_config,
-                        ctx=ctx,
-                        system_prompt=system_prompt,
-                        start=start,
-                        timeout_seconds=timeout_seconds,
-                        tool_invoker=tool_invoker,
-                        effective_autonomy=effective_autonomy,
-                        provider=provider,
-                        project_budget=_project_budget,
+                        AgentExecuteRequest(
+                            identity=identity,
+                            task=task,
+                            agent_id=agent_id,
+                            task_id=task_id,
+                            completion_config=completion_config,
+                            ctx=ctx,
+                            system_prompt=system_prompt,
+                            start=start,
+                            timeout_seconds=timeout_seconds,
+                            tool_invoker=tool_invoker,
+                            effective_autonomy=effective_autonomy,
+                            provider=provider,
+                            project_budget=_project_budget,
+                        )
                     )
             except (MemoryError, RecursionError) as exc:
                 log_exception_redacted(
@@ -798,23 +800,7 @@ class AgentEngine(
                 )
 
     @override
-    async def _execute(
-        self,
-        *,
-        identity: AgentIdentity,
-        task: Task,
-        agent_id: str,
-        task_id: str,
-        completion_config: CompletionConfig | None,
-        ctx: AgentContext,
-        system_prompt: SystemPrompt,
-        start: float,
-        timeout_seconds: float | None = None,
-        tool_invoker: ToolInvokerProtocol | None = None,
-        effective_autonomy: EffectiveAutonomy | None = None,
-        provider: CompletionProvider | None = None,
-        project_budget: float = 0.0,
-    ) -> AgentRunResult:
+    async def _execute(self, request: AgentExecuteRequest) -> AgentRunResult:
         """Run execution loop, record costs, apply transitions, and build result.
 
         Returns:
@@ -822,6 +808,19 @@ class AgentEngine(
             recovery decision (when one fired), and post-execution
             telemetry for the orchestrator.
         """
+        identity = request.identity
+        task = request.task
+        agent_id = request.agent_id
+        task_id = request.task_id
+        completion_config = request.completion_config
+        ctx = request.ctx
+        system_prompt = request.system_prompt
+        start = request.start
+        timeout_seconds = request.timeout_seconds
+        tool_invoker = request.tool_invoker
+        effective_autonomy = request.effective_autonomy
+        provider = request.provider
+        project_budget = request.project_budget
         with _tracer.start_as_current_span(
             "agent.execution",
             attributes={

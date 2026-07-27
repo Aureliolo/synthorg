@@ -144,7 +144,7 @@ class SQLiteIdempotencyRepository:
         ) as cursor:
             return await cursor.fetchone()
 
-    async def _claim_under_lock(  # noqa: PLR0913
+    async def _claim_under_lock(
         self,
         *,
         scope: NotBlankStr,
@@ -233,7 +233,7 @@ class SQLiteIdempotencyRepository:
             ),
         )
 
-    async def _insert_in_flight_row(  # noqa: PLR0913
+    async def _insert_in_flight_row(
         self,
         *,
         scope: NotBlankStr,

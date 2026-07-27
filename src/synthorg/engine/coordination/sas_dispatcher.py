@@ -25,7 +25,7 @@ class SasDispatcher:
     def __init__(self, *, clock: Clock | None = None) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
-    async def dispatch(  # noqa: PLR0913 -- dispatch contract surface
+    async def dispatch(
         self,
         *,
         decomposition_result: DecompositionResult,

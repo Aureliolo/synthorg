@@ -49,7 +49,7 @@ _REVISION_RE = re.compile(r"\br(\d+)\b")
 _GIT_AUTHOR = NotBlankStr("SynthOrg Project Brain")
 
 
-def build_filter_spec(  # noqa: PLR0913 -- filter dimensions are explicit
+def build_filter_spec(
     *,
     project_id: NotBlankStr,
     entry_kind: BrainEntryKind | None = None,

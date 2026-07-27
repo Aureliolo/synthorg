@@ -365,7 +365,7 @@ class BudgetController(Controller):
         return ApiResponse(data=budget)
 
     @get("/records")
-    async def list_cost_records(  # noqa: PLR0913 -- orthogonal filters + pagination
+    async def list_cost_records(
         self,
         state: State,
         agent_id: Annotated[

@@ -21,7 +21,7 @@ pytestmark = pytest.mark.integration
 _NOW = datetime(2026, 6, 2, 12, 0, tzinfo=UTC)
 
 
-def _receipt(  # noqa: PLR0913 -- keyword-only test builder
+def _receipt(
     *,
     receipt_id: str = "rcpt-001",
     task_id: str = "task-001",

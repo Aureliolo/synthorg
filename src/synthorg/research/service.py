@@ -60,7 +60,7 @@ logger = get_logger(__name__)
 class ResearchService:
     """Orchestrates the multi-source research pipeline for one brief."""
 
-    def __init__(  # noqa: PLR0913 -- injected pipeline collaborators
+    def __init__(
         self,
         *,
         planner: QueryPlanner,

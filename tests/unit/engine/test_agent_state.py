@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 _NOW = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
 
 
-def _make_executing_state(  # noqa: PLR0913
+def _make_executing_state(
     *,
     agent_id: str = "agent-001",
     execution_id: str = "exec-001",

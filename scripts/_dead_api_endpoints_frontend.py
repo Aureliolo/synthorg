@@ -453,7 +453,7 @@ def _scan_file(
     return records
 
 
-def _emit_record(  # noqa: PLR0913 -- helper takes pre-computed scan state
+def _emit_record(
     text: str,
     lines: list[str],
     paren_idx: int,

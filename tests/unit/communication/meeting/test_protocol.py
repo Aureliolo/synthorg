@@ -25,7 +25,7 @@ class TestMeetingProtocolInterface:
 
     def test_conforming_class_is_instance(self) -> None:
         class _MockProtocol:
-            async def run(  # noqa: PLR0913
+            async def run(
                 self,
                 *,
                 meeting_id: str,

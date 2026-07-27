@@ -35,7 +35,7 @@ from tests._shared import as_pk, as_uuid, sid
 pytestmark = pytest.mark.integration
 
 
-def _connection(  # noqa: PLR0913
+def _connection(
     name: str = "github-bot",
     *,
     connection_type: ConnectionType = ConnectionType.GITHUB,
@@ -365,7 +365,7 @@ class TestConnectionSecretRepository:
         assert deleted is False
 
 
-def _state(  # noqa: PLR0913
+def _state(
     *,
     state_token: str = "state-abc",  # noqa: S107
     connection_name: str = "github-bot",

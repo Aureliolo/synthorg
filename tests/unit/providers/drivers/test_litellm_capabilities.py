@@ -15,7 +15,7 @@ from synthorg.providers.drivers.litellm_capabilities import build_capabilities
 pytestmark = pytest.mark.unit
 
 
-def _config(  # noqa: PLR0913 -- keyword-only test factory
+def _config(
     model_id: str,
     *,
     tools: bool = False,

@@ -226,7 +226,7 @@ class ScriptedProvider:
         return {model: copy.deepcopy(self._capabilities) for model in models}
 
 
-def build_tool_call_response(  # noqa: PLR0913
+def build_tool_call_response(
     tool_name: str,
     tool_arguments: dict[str, JsonValue],
     *,

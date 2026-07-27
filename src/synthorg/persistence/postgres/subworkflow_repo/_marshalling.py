@@ -96,7 +96,7 @@ def deserialize_row(row: DictRow, context_id: str) -> WorkflowDefinition:
         raise MalformedRowError(msg) from exc
 
 
-def extract_references(  # noqa: PLR0913
+def extract_references(
     rows: Iterable[DictRow],
     subworkflow_id: str,
     version: str | None,

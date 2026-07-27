@@ -73,7 +73,7 @@ def _make_decision(
     )
 
 
-def _make_service(  # noqa: PLR0913 -- keyword-only test collaborator DI
+def _make_service(
     *,
     proposals: tuple[AdaptationProposal, ...] = (),
     guard_approves: bool = True,

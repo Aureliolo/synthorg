@@ -59,7 +59,7 @@ def _new_approval_id() -> NotBlankStr:
     return NotBlankStr(str(uuid.uuid4()))
 
 
-async def park_steering(  # noqa: PLR0913 -- intake collaborators threaded in
+async def park_steering(
     *,
     approval_store: ApprovalStoreProtocol,
     conversation: Conversation,

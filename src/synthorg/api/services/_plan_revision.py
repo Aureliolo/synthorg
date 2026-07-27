@@ -121,7 +121,7 @@ def extended_history(plan: Plan) -> tuple[PlanVersionSnapshot, ...]:
     return (*plan.version_history, snapshot(plan))[-MAX_PLAN_VERSION_HISTORY:]
 
 
-def build_successor(  # noqa: PLR0913 -- keyword-only successor provenance
+def build_successor(
     existing: Plan,
     *,
     items: tuple[PlanItem, ...],

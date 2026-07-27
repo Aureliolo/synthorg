@@ -23,7 +23,7 @@ from tests._shared.persistence import make_private_write_context
 pytestmark = pytest.mark.unit
 
 
-def _make_row(  # noqa: PLR0913 -- test factory with explicit knobs
+def _make_row(
     *,
     preset_name: object = "test-cloud-provider",
     default_models: object = None,

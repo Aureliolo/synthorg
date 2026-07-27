@@ -1,4 +1,3 @@
-# ruff: noqa: PLR0913
 # module-kind: service
 """In-process OAuth provider registry facade."""
 

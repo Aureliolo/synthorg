@@ -94,7 +94,7 @@ class CharterInterviewService(CharterCrudMixin):
             ``None`` provider (or a failing one) falls back to *config*.
     """
 
-    def __init__(  # noqa: PLR0913 -- DI seam: independently-wired collaborators
+    def __init__(
         self,
         *,
         strategy: CharterInterviewStrategy,

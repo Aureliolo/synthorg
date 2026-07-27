@@ -26,7 +26,7 @@ from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 
 
-def _make_entry(  # noqa: PLR0913
+def _make_entry(
     *,
     entry_id: str = "mem-1",
     agent_id: str = "agent-1",

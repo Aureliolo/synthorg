@@ -23,7 +23,7 @@ from synthorg.tools.invocation_record import ToolInvocationRecord
 _NOW = datetime(2026, 3, 24, 12, 0, 0, tzinfo=UTC)
 
 
-def _make_lifecycle_event(  # noqa: PLR0913
+def _make_lifecycle_event(
     *,
     event_type: LifecycleEventType = LifecycleEventType.HIRED,
     timestamp: datetime = _NOW,
@@ -44,7 +44,7 @@ def _make_lifecycle_event(  # noqa: PLR0913
     )
 
 
-def _make_task_metric(  # noqa: PLR0913
+def _make_task_metric(
     *,
     started_at: datetime | None = None,
     completed_at: datetime = _NOW,
@@ -72,7 +72,7 @@ def _make_task_metric(  # noqa: PLR0913
     )
 
 
-def _make_cost_record(  # noqa: PLR0913
+def _make_cost_record(
     *,
     agent_id: str = "agent-001",
     task_id: str = "task-001",
@@ -96,7 +96,7 @@ def _make_cost_record(  # noqa: PLR0913
     )
 
 
-def _make_tool_invocation(  # noqa: PLR0913
+def _make_tool_invocation(
     *,
     agent_id: str = "agent-001",
     task_id: str | None = "task-001",
@@ -115,7 +115,7 @@ def _make_tool_invocation(  # noqa: PLR0913
     )
 
 
-def _make_delegation_record(  # noqa: PLR0913
+def _make_delegation_record(
     *,
     delegation_id: str = "del-001",
     delegator_id: str = "agent-manager",

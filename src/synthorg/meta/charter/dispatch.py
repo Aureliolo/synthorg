@@ -137,7 +137,7 @@ class CharterDispatcher:
         clock: Injectable time source.
     """
 
-    def __init__(  # noqa: PLR0913 -- DI seam: independently-wired collaborators
+    def __init__(
         self,
         *,
         charter_repo: CharterRepository,
@@ -427,7 +427,7 @@ class CharterDispatcher:
             plan_required=True,
         )
 
-    async def _stamp_approved(  # noqa: PLR0913 -- dispatch provenance columns
+    async def _stamp_approved(
         self,
         charter: ProjectCharter,
         forecast: Forecast,

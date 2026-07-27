@@ -90,7 +90,7 @@ class TrainingService:
     # service instance spawned once per app state, so we keep the
     # flexible instance dict.
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         selector: SourceSelector,

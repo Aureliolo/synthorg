@@ -102,7 +102,7 @@ class FineTuneContainerRunner:
     def __init__(self, *, clock: Clock | None = None) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
-    async def run_stage(  # noqa: PLR0913 -- stage collaborators threaded explicitly
+    async def run_stage(
         self,
         *,
         stage: FineTuneStage,
@@ -135,7 +135,7 @@ class FineTuneContainerRunner:
         finally:
             await docker.close()
 
-    async def _run_stage_with_client(  # noqa: PLR0913 -- stage collaborators threaded explicitly
+    async def _run_stage_with_client(
         self,
         docker: aiodocker.Docker,
         *,
@@ -379,7 +379,7 @@ class FineTuneContainerRunner:
             raise FineTuneStageExecutionError(msg) from exc
         return client
 
-    async def _supervise(  # noqa: PLR0913 -- stage collaborators threaded explicitly
+    async def _supervise(
         self,
         container: aiodocker.containers.DockerContainer,
         *,
@@ -436,7 +436,7 @@ class FineTuneContainerRunner:
             container_id=container.id[:_SHORT_ID_LEN],
         )
 
-    async def _watch_until_exit(  # noqa: PLR0913 -- stage collaborators threaded explicitly
+    async def _watch_until_exit(
         self,
         container: aiodocker.containers.DockerContainer,
         exit_task: asyncio.Task[int],

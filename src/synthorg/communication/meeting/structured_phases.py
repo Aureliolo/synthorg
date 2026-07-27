@@ -118,7 +118,7 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
         """Return the protocol type."""
         return MeetingProtocolType.STRUCTURED_PHASES
 
-    async def run(  # noqa: PLR0913
+    async def run(
         self,
         *,
         meeting_id: str,
@@ -325,7 +325,7 @@ class StructuredPhasesProtocol(StructuredPhaseRunnersMixin):
             )
         return detected
 
-    async def _maybe_append_premortem(  # noqa: PLR0913
+    async def _maybe_append_premortem(
         self,
         *,
         meeting_id: str,

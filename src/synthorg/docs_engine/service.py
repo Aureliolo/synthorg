@@ -114,7 +114,7 @@ class DocsService:
         "_writer",
     )
 
-    def __init__(  # noqa: PLR0913 -- engine entry point composes every collaborator
+    def __init__(
         self,
         *,
         repo: DocsRepository,
@@ -137,7 +137,7 @@ class DocsService:
         # silently overwrite one another; evicts the lock once idle.
         self._write_locks: RefcountedLockMap[NotBlankStr] = RefcountedLockMap()
 
-    async def write_doc(  # noqa: PLR0913 -- doc fields are intentionally explicit
+    async def write_doc(
         self,
         *,
         project_id: NotBlankStr,

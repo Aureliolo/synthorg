@@ -101,7 +101,7 @@ def _full_snapshot(  # noqa: PLR0913
     )
 
 
-def _make_definition(  # noqa: PLR0913
+def _make_definition(
     *,
     name: str = "test-rule",
     description: str = "A test rule",

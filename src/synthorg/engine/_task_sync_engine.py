@@ -24,7 +24,7 @@ from synthorg.observability.events.execution import (
 logger = get_logger(__name__)
 
 
-async def sync_to_task_engine(  # noqa: PLR0913
+async def sync_to_task_engine(
     task_engine: TaskEngine | None,
     *,
     target_status: TaskStatus,

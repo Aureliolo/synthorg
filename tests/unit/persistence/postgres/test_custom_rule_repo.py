@@ -38,7 +38,7 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _make_rule(  # noqa: PLR0913 -- test builder accepts full spec
+def _make_rule(
     *,
     rule_id: UUID | None = None,
     name: str = "pg-test-rule",

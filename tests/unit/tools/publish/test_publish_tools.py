@@ -62,7 +62,7 @@ def _actor() -> AgentIdentity:
     )
 
 
-def _connection(  # noqa: PLR0913 -- test helper mirrors the connection record
+def _connection(
     *,
     name: str = _TARGET,
     ctype: ConnectionType = ConnectionType.REGISTRY,
@@ -100,7 +100,7 @@ def _auto_approve(action: str) -> EffectiveAutonomy:
     )
 
 
-def _deps(  # noqa: PLR0913 -- test helper threads the deps bundle
+def _deps(
     *,
     conn: Connection | None,
     store: ApprovalStore | None = None,

@@ -644,7 +644,7 @@ class SettingsService:
             return "", ""
         return setting_value.value, setting_value.updated_at or ""
 
-    async def set(  # noqa: PLR0913 -- write knobs: CAS + import-source + governance
+    async def set(
         self,
         namespace: str,
         key: str,
@@ -683,7 +683,7 @@ class SettingsService:
                 governance=governance,
             )
 
-    async def _set(  # noqa: PLR0913 -- write knobs: CAS + import-source + governance
+    async def _set(
         self,
         namespace: str,
         key: str,

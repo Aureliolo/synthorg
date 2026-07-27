@@ -15,6 +15,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.agent_execute_request import AgentExecuteRequest
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import TerminationReason
@@ -102,7 +103,7 @@ class TestResumeParkedRun:
         provider = mock_provider_factory([_make_completion_response()])
         engine = AgentEngine(provider=provider)
 
-        async def _exhaust(**_kwargs: object) -> AgentRunResult:
+        async def _exhaust(_request: AgentExecuteRequest) -> AgentRunResult:
             msg = "monthly hard stop crossed"
             raise BudgetExhaustedError(msg)
 

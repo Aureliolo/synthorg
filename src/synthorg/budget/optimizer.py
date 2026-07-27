@@ -374,7 +374,7 @@ class CostOptimizer(_CostOptimizerRoutingMixin):
 
     # ── Private helpers ──────────────────────────────────────────
 
-    def _check_denial(  # noqa: PLR0913
+    def _check_denial(
         self,
         *,
         agent_id: str,

@@ -49,7 +49,7 @@ def _require_base_url(base_url: str) -> str:
     return base_url
 
 
-def _build_oci(  # noqa: PLR0913 -- connection facts threaded into one client
+def _build_oci(
     *,
     base_url: str,
     repository: NotBlankStr,
@@ -83,7 +83,7 @@ def registry_api_supported(provider: RegistryProvider) -> bool:
     return provider in _REGISTRY
 
 
-def build_registry_api_client(  # noqa: PLR0913 -- connection facts into one client
+def build_registry_api_client(
     *,
     provider: RegistryProvider,
     base_url: str,

@@ -39,7 +39,7 @@ def _make_plan(
     )
 
 
-def _make_result(  # noqa: PLR0913
+def _make_result(
     *,
     result_id: str = "result-001",
     plan_id: str = "plan-001",

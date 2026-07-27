@@ -57,7 +57,7 @@ async def _no_op_write_context() -> AsyncIterator[None]:
     yield
 
 
-def _entry(  # noqa: PLR0913 -- a fixture builder; each field is one test axis
+def _entry(
     memory_id: str,
     content: str,
     *,

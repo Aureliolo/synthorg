@@ -121,7 +121,7 @@ class RedTeamRuntime(NamedTuple):
     on_missing_deliverable: Literal["block", "skip"]
 
 
-def build_red_team_runtime(  # noqa: PLR0913 -- boot-time builder inputs, all required
+def build_red_team_runtime(
     *,
     config: RedTeamConfig,
     engine: AgentEngine,

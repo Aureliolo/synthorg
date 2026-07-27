@@ -86,7 +86,7 @@ class StateMachine[S: _HasValue]:
             spaces when not supplied.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         transitions: Mapping[S, frozenset[S]],
         *,

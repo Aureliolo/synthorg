@@ -131,7 +131,7 @@ def _compute_window_costs(
     return tuple(costs)
 
 
-def _detect_spike_anomaly(  # noqa: PLR0913
+def _detect_spike_anomaly(
     agent_id: str,
     window_costs: tuple[float, ...],
     now: datetime,
@@ -311,7 +311,7 @@ def _find_most_used_model(
     return max(pair_counts, key=lambda p: pair_counts[p])
 
 
-def _build_downgrade_recommendation(  # noqa: PLR0913 -- keyword-only; provider scopes resolution to the agent's bound pair
+def _build_downgrade_recommendation(
     *,
     agent_id: str,
     provider: str,

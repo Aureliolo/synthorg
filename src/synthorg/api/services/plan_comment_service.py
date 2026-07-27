@@ -75,7 +75,7 @@ class PlanCommentService:
             limit=limit,
         )
 
-    async def add_comment(  # noqa: PLR0913 -- comment payload fields
+    async def add_comment(
         self,
         *,
         plan_id: NotBlankStr,

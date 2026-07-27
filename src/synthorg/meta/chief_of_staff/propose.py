@@ -550,7 +550,7 @@ class ChiefOfStaffProposer(ProposeActMixin):
             )
             raise ConversationalProposeResponseInvalidError from exc
 
-    async def _record_clarification(  # noqa: PLR0913 -- one turn's record context
+    async def _record_clarification(
         self,
         conversation: Conversation,
         decision: ProposeDecision,

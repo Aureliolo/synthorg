@@ -114,7 +114,7 @@ class AgentEnginePostExecMixin:
     # below. The concrete class owns the assignment.
     _clock: Clock
 
-    async def _post_execution_pipeline(  # noqa: PLR0913
+    async def _post_execution_pipeline(
         self,
         execution_result: ExecutionResult,
         identity: AgentIdentity,
@@ -222,7 +222,7 @@ class AgentEnginePostExecMixin:
         )
         return execution_result
 
-    async def _handle_error_recovery(  # noqa: PLR0913
+    async def _handle_error_recovery(
         self,
         execution_result: ExecutionResult,
         identity: AgentIdentity,

@@ -25,7 +25,7 @@ from synthorg.workers.worker import TaskExecutor, Worker
 logger = get_logger(__name__)
 
 
-async def run_worker_pool(  # noqa: PLR0913 -- canonical worker-pool entry point
+async def run_worker_pool(
     *,
     queue_config: QueueConfig,
     task_queue: JetStreamTaskQueue,

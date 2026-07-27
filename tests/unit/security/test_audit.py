@@ -12,7 +12,7 @@ from synthorg.security.models import AuditEntry, AuditVerdictStr
 # ── Helpers ───────────────────────────────────────────────────────
 
 
-def _make_entry(  # noqa: PLR0913
+def _make_entry(
     *,
     entry_id: str = "entry-1",
     agent_id: str | None = "agent-a",

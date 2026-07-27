@@ -102,7 +102,7 @@ class PremortemExecutor(Protocol):
     failure modes, and hidden assumptions.
     """
 
-    async def execute(  # noqa: PLR0913
+    async def execute(
         self,
         *,
         synthesis_text: str,
@@ -141,7 +141,7 @@ class DefaultPremortemExecutor:
     into a unified output.
     """
 
-    async def execute(  # noqa: PLR0913
+    async def execute(
         self,
         *,
         synthesis_text: str,

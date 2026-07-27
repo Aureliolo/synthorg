@@ -66,7 +66,7 @@ class ContextInjectionStrategy:
     the full pipeline: retrieve → rank → budget-fit → format.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         backend: MemoryBackend,
@@ -227,7 +227,7 @@ class ContextInjectionStrategy:
             )
             return ()
 
-    async def _execute_pipeline(  # noqa: PLR0913 -- one query axis per parameter
+    async def _execute_pipeline(
         self,
         *,
         agent_id: NotBlankStr,

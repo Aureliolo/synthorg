@@ -365,7 +365,7 @@ class _FakeAuditRepository:
         del cutoff
         return 0
 
-    async def query_jsonb_contains(  # noqa: PLR0913
+    async def query_jsonb_contains(
         self,
         column: str,
         value: dict[str, object] | list[object],
@@ -378,7 +378,7 @@ class _FakeAuditRepository:
         del column, value, since, until, limit, offset
         return ((), 0)
 
-    async def query_jsonb_key_exists(  # noqa: PLR0913
+    async def query_jsonb_key_exists(
         self,
         column: str,
         key: str,

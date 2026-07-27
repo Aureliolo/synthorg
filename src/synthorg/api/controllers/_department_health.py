@@ -471,7 +471,7 @@ def _build_health_from_data(  # noqa: PLR0913
     )
 
 
-async def assemble_department_health(  # noqa: PLR0913 -- health data sources
+async def assemble_department_health(
     app_state: AppState,
     dept_name: str,
     dept_agents: tuple[AgentConfig, ...],

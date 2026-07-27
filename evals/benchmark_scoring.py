@@ -112,7 +112,7 @@ def score_record_from_scorecard(
     )
 
 
-async def score_model_from_cassette(  # noqa: PLR0913 -- explicit per-model recording inputs
+async def score_model_from_cassette(
     *,
     model_id: NotBlankStr,
     company_config: Path,

@@ -84,7 +84,7 @@ def deploy_api_supported(platform: DeployPlatform) -> bool:
     return platform in _REGISTRY
 
 
-def build_deploy_api_client(  # noqa: PLR0913 -- connection facts threaded into one client
+def build_deploy_api_client(
     *,
     platform: DeployPlatform,
     base_url: str,

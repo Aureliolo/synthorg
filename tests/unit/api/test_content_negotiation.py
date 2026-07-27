@@ -27,7 +27,7 @@ _PROBLEM_JSON = "application/problem+json"
 class TestContentNegotiation:
     """Tests for application/problem+json content negotiation."""
 
-    def _assert_problem_detail(  # noqa: PLR0913
+    def _assert_problem_detail(
         self,
         body: JsonDict,
         *,

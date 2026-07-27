@@ -80,7 +80,7 @@ class MeetingProtocol(Protocol):
     papers, structured phases with discussion).
     """
 
-    async def run(  # noqa: PLR0913
+    async def run(
         self,
         *,
         meeting_id: str,

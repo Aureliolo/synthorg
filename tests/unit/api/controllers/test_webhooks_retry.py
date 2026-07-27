@@ -68,7 +68,7 @@ async def _passthrough_run_idempotent(
 _retry_receipt_fn = WebhooksRetryController.retry_receipt.fn
 
 
-def _make_receipt(  # noqa: PLR0913 -- kw-only test fixture builder
+def _make_receipt(
     *,
     receipt_id: str = _RCPT_ID,
     connection_name: str = "conn-a",

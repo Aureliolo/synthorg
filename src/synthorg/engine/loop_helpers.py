@@ -114,7 +114,7 @@ async def notify_turn_observer(
         )
 
 
-async def call_provider(  # noqa: PLR0913
+async def call_provider(
     ctx: AgentContext,
     provider: CompletionProvider,
     model_id: str,
@@ -286,7 +286,7 @@ def response_to_message(response: CompletionResponse) -> ChatMessage:
     )
 
 
-def make_turn_record(  # noqa: PLR0913
+def make_turn_record(
     turn_number: int,
     response: CompletionResponse,
     *,
@@ -445,7 +445,7 @@ def classify_turn(
     return classify_call(classification_ctx)
 
 
-def build_result(  # noqa: PLR0913
+def build_result(
     ctx: AgentContext,
     reason: TerminationReason,
     turns: list[TurnRecord],

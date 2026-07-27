@@ -1046,7 +1046,7 @@ def _seed_test_users(
         backend._users._users[user.id] = user
 
 
-def make_task(  # noqa: PLR0913
+def make_task(
     *,
     task_id: str = "task-001",
     title: str = "Test task",

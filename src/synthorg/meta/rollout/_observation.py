@@ -168,7 +168,7 @@ def _window_closed_result(
     )
 
 
-async def observe_until_verdict(  # noqa: PLR0913
+async def observe_until_verdict(
     *,
     proposal: ImprovementProposal,
     baseline: OrgSignalSnapshot,

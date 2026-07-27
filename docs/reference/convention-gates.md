@@ -21,6 +21,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | Gate (`scripts/`) | Stages | Scope | Scan | Changed-file? | Baseline | Verdict |
 | --- | --- | --- | --- | --- | --- | --- |
 | `check_architecture_drift.py` | push | `src/synthorg/` | full | no | `data/architecture_report.json` | keep |
+| `check_argument_count_suppression.py` | push | whole tree (via ruff) | full | no | `argument_count_suppression_baseline.txt` | add |
 | `check_backend_enums_ts_in_sync.py` | commit+push | `ws_models.py` + `notifications/models.py` + `observability/enums.py` + `*.gen.ts` | full | no | none | keep |
 | `check_backend_regional_defaults.py` | PostToolUse | backend region/currency edits | n/a | n/a | none | harden |
 | `check_baseline_growth.py` | commit+push | `scripts/*_baseline.{txt,json}` | staged | yes | guards baselines | keep |
@@ -123,7 +124,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->101<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->102<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 
@@ -145,6 +146,7 @@ Most gates scan `src/synthorg/` only. Those that walk additional trees encode ev
 - `check_frozen_model_extra_forbid.py`: `src/synthorg/` AND `tests/`. The project-wide `extra="forbid"` rule applies equally to test fixtures, so the gate walks both trees in a single pass. The same gate also enforces `allow_inf_nan=False` on every frozen model, but scoped to `src/synthorg/` only (test fixtures are exempt from the inf/nan assertion). The `extra` check auto-exempts `@computed_field`-only models; the `allow_inf_nan` check does not. Per-line opt-outs: `# lint-allow: frozen-extra-forbid -- <reason>` and `# lint-allow: frozen-allow-inf-nan -- <reason>`.
 - `check_persistence_boundary.py`, `check_no_review_origin_in_code.py`, `check_no_migration_framing.py`, `check_docstring_completeness.py`: `src/synthorg/` AND `tests/`.
 - `check_dead_api_endpoints.py`: `src/synthorg/api/` AND `web/src/` (frontend / backend route parity).
+- `check_argument_count_suppression.py`: the whole tree, enumerated with `git ls-files` and parsed directly. Deliberately NOT scoped to what `ruff` walks, since pruning that walk is one of the bypasses it exists to close.
 
 ## PreToolUse hooks (Claude Code + OpenCode)
 
@@ -206,6 +208,24 @@ class TsaError(Exception):  # lint-allow: domain-error-hierarchy -- RFC 3161 int
 ```
 
 The justification after `--` is mandatory and must be non-empty. The gate also accepts a frozen baseline file (`scripts/domain_error_hierarchy_baseline.txt`) listing violations a rollout has not yet reached. The baseline shrinks monotonically: any entry that no longer maps to a real violation is reported as drift, so the file cannot harbour stale rows.
+
+## Argument-count-suppression gate
+
+`scripts/check_argument_count_suppression.py` is the one gate in this inventory with **no per-line opt-out**, and that is the point of it. `[tool.ruff.lint.pylint] max-args` only means something when the set of functions allowed to exceed it is finite and shrinking; left to `# noqa: PLR0913` alone the marker is freely addable, so a cap suppressed hundreds of times reports nothing and prevents nothing.
+
+The population is derived from the AST of every tracked `*.py` (`scripts/_argument_count_sites.py`), not from what `ruff` reports. Treating the `ruff` diagnostic set as the whole population fails in two directions: `ruff` exempts a method decorated with `@typing.override` from `PLR0913` **syntactically**, with no base class required and no type inference involved, and it never visits a file pruned by `[tool.ruff] exclude` / `extend-exclude` or by any `.gitignore` pattern. Either way an over-cap function produces no diagnostic, which an over-trusting gate reads as clean. That is not hypothetical: three such methods existed in this tree when the gate was written, one of them taking thirteen arguments, and none appeared in the first baseline drawn from `ruff` output alone.
+
+So `ruff` classifies and the gate decides scope. Two `ruff` passes run, one with every suppression and pruning mechanism neutralised and one plain, and each AST candidate is placed against them: reported plainly is `UNSUPPRESSED`, a file-level blanket is `BLANKET`, a marker naming the rule on the reported line is `PER_LINE`, and a candidate neither pass mentions is `RULE_EXEMPT`. The parameter count mirrors `PLR0913` exactly, validated whole-tree against `ruff` with zero divergence in either direction beyond the decorator exemptions.
+
+Five invariants hold:
+
+1. `max-args` stays at or below 8; lowering it is a tightening and always allowed, and discovery then runs against the lower number so the gate looks for exactly what `ruff` enforces. `max-positional-args` stays pinned at exactly 5, neither raised nor lowered, because `ruff` defaults it to whatever `max-args` is: an implicit positional cap silently widens whenever the other one does.
+2. Neither `PLR0913` nor `PLR0917` is disabled tree-wide through `lint.ignore` or `lint.extend-ignore`. Prefixes count, so `"PL"` is rejected exactly like the full code. A `per-file-ignores` entry is NOT rejected: discovery sees the function whatever the config says, so a path-glob exemption changes only how a site is classified, and the function still needs its baseline row. That is what lets the framework-shaped Litestar route handlers and pytest fixture graphs keep their `PLR0917` exemptions while staying on the ledger.
+3. The effective configuration stays where the gate reads it. A `[tool.ruff] extend` key, or any `ruff.toml` / `.ruff.toml` / `pyproject.toml` below the repository root, is rejected: both relocate settings the gate would otherwise never see.
+4. Every function over either cap appears in `scripts/argument_count_suppression_baseline.txt`, keyed `path::qualname::arity`. The qualified name rather than a line number keeps a long-lived list stable, since a `path:lineno:col` key would go stale on any unrelated edit above a marker. The arity is part of the identity because a name alone is not one: without it, deleting a baselined function and writing an unrelated one under the same name inherits the old approval, and an approved function can grow from six parameters to sixty with no baseline diff at all. Two candidates minting the same key is itself rejected, so one entry can never authorise two functions.
+5. A file-level `# ruff: noqa` covering either rule is never legal, and cannot be baselined.
+
+Adding an entry therefore means regenerating the baseline, which `check_baseline_growth.py` blocks at commit time without an `ALLOW_BASELINE_GROWTH=1` approval. A stale entry is reported as drift rather than tolerated: an entry outliving its function would silently pre-authorise a future suppression reusing the same identity. A scan that could not be trusted never writes: `ruff` emits at least `[]` whenever it actually ran, so blank output means it did not run, and `--update` refuses to overwrite a good baseline on the strength of a scan that failed.
 
 ## Registration procedure
 

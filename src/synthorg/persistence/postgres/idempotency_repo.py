@@ -181,7 +181,7 @@ class PostgresIdempotencyRepository:
         )
         raise QueryError(msg)
 
-    async def _attempt_insert(  # noqa: PLR0913
+    async def _attempt_insert(
         self,
         cur: AsyncCursor[DictRow],
         *,
@@ -258,7 +258,7 @@ class PostgresIdempotencyRepository:
         # Expired OR failed -- caller will reclaim with a fresh lease.
         return (IdempotencyOutcome.FRESH, None, None)
 
-    async def _reclaim_update(  # noqa: PLR0913
+    async def _reclaim_update(
         self,
         cur: AsyncCursor[DictRow],
         *,

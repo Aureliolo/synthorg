@@ -123,7 +123,7 @@ class MeetingScheduler:
         "_tasks",
     )
 
-    def __init__(  # noqa: PLR0913 -- scheduler wiring needs the full dep set
+    def __init__(
         self,
         *,
         config: MeetingsConfig,

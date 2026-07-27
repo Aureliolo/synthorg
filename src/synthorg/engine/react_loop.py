@@ -108,7 +108,7 @@ class ReactLoop:
             disables it. Purely observational.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         checkpoint_callback: CheckpointCallback | None = None,
         *,
@@ -411,7 +411,7 @@ class ReactLoop:
             [],
         )
 
-    async def _process_turn_response(  # noqa: PLR0913
+    async def _process_turn_response(
         self,
         ctx: AgentContext,
         response: CompletionResponse,

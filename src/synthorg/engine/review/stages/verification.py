@@ -80,7 +80,7 @@ class VerificationReviewStage:
 
     _NAME: str = "verification"
 
-    def __init__(  # noqa: PLR0913 -- DI seam: two strategies + evaluator identity + rubric lookup + clock
+    def __init__(
         self,
         *,
         decomposer: CriteriaDecomposer,

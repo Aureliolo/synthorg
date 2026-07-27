@@ -14,7 +14,7 @@ from synthorg.hr.evaluation.models import (
 from synthorg.hr.performance.models import AgentPerformanceSnapshot, WindowMetrics
 
 
-def make_pillar_score(  # noqa: PLR0913
+def make_pillar_score(
     *,
     pillar: EvaluationPillar = EvaluationPillar.INTELLIGENCE,
     score: float = 7.5,
@@ -60,7 +60,7 @@ def make_interaction_feedback(  # noqa: PLR0913
     )
 
 
-def make_resilience_metrics(  # noqa: PLR0913
+def make_resilience_metrics(
     *,
     total_tasks: int = 20,
     failed_tasks: int = 3,

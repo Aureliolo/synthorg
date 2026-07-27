@@ -18,6 +18,7 @@ from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.task import Task
+from synthorg.engine.agent_execute_request import AgentExecuteRequest
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionLoop, ExecutionResult
 from synthorg.engine.prompt import SystemPrompt
@@ -26,13 +27,12 @@ from synthorg.engine.run_result import AgentRunResult
 from synthorg.providers.models import CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.tools.invoker import ToolInvoker
-from synthorg.tools.protocol import ToolInvokerProtocol
 
 
 class ApplyRecovery(Protocol):
     """Signature of ``AgentEngineRecoveryMixin._apply_recovery``."""
 
-    async def __call__(  # noqa: PLR0913
+    async def __call__(
         self,
         execution_result: ExecutionResult,
         identity: AgentIdentity,
@@ -95,29 +95,13 @@ class MakeToolInvoker(Protocol):
 class Execute(Protocol):
     """Signature of ``AgentEngine._execute``."""
 
-    async def __call__(  # noqa: PLR0913
-        self,
-        *,
-        identity: AgentIdentity,
-        task: Task,
-        agent_id: str,
-        task_id: str,
-        completion_config: CompletionConfig | None,
-        ctx: AgentContext,
-        system_prompt: SystemPrompt,
-        start: float,
-        timeout_seconds: float | None = ...,
-        tool_invoker: ToolInvokerProtocol | None = ...,
-        effective_autonomy: EffectiveAutonomy | None = ...,
-        provider: CompletionProvider | None = ...,
-        project_budget: float = ...,
-    ) -> AgentRunResult: ...
+    async def __call__(self, request: AgentExecuteRequest) -> AgentRunResult: ...
 
 
 class HandleBudgetError(Protocol):
     """Signature of ``AgentEngineErrorsMixin._handle_budget_error``."""
 
-    async def __call__(  # noqa: PLR0913
+    async def __call__(
         self,
         *,
         exc: BudgetExhaustedError,

@@ -95,7 +95,7 @@ async def store_guarded_items(
     return tuple(stored_counts)
 
 
-async def _store_items_for_type(  # noqa: PLR0913
+async def _store_items_for_type(
     plan: TrainingPlan,
     ct: ContentType,
     items: tuple[TrainingItem, ...],
@@ -133,7 +133,7 @@ async def _store_items_for_type(  # noqa: PLR0913
     return sum(1 for task in store_tasks if task.result())
 
 
-async def _store_one_item(  # noqa: PLR0913
+async def _store_one_item(
     plan: TrainingPlan,
     ct: ContentType,
     category: MemoryCategory,

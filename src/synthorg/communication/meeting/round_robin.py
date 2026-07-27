@@ -135,7 +135,7 @@ class RoundRobinProtocol:
         """Return the protocol type."""
         return MeetingProtocolType.ROUND_ROBIN
 
-    async def run(  # noqa: PLR0913
+    async def run(
         self,
         *,
         meeting_id: str,
@@ -267,7 +267,7 @@ class RoundRobinProtocol:
             ended_at=ended_at,
         )
 
-    async def _run_discussion_rounds(  # noqa: PLR0913
+    async def _run_discussion_rounds(
         self,
         *,
         meeting_id: str,
@@ -436,7 +436,7 @@ class RoundRobinProtocol:
 
         return contribution
 
-    async def _run_summary(  # noqa: PLR0913
+    async def _run_summary(
         self,
         *,
         meeting_id: str,

@@ -157,7 +157,7 @@ def _decision_entry() -> BrainEntry:
     )
 
 
-def _reader(  # noqa: PLR0913 -- test builder with keyword-only knobs
+def _reader(
     *,
     task: Task | None,
     aggregate: FlightRecorderFrameAggregate,

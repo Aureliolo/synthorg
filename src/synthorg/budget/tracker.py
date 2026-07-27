@@ -117,7 +117,7 @@ class CostTracker(CostTrackerSummaryMixin):
         ValueError: If *auto_prune_threshold* < 1.
     """
 
-    def __init__(  # noqa: PLR0913 -- composable construction surface; all kwargs optional
+    def __init__(
         self,
         *,
         budget_config: BudgetConfig | None = None,
@@ -645,7 +645,7 @@ class CostTracker(CostTrackerSummaryMixin):
         async with self._get_lock():
             return len(self._records)
 
-    async def get_records(  # noqa: PLR0913 -- orthogonal filters + pagination
+    async def get_records(
         self,
         *,
         agent_id: str | None = None,
@@ -711,7 +711,7 @@ class CostTracker(CostTrackerSummaryMixin):
         )
         return matched[offset : offset + limit]
 
-    async def collect_records(  # noqa: PLR0913 -- orthogonal filters
+    async def collect_records(
         self,
         *,
         agent_id: str | None = None,

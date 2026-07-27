@@ -60,7 +60,7 @@ class ExperienceCompressor(Protocol):
     of strategic decisions from raw traces on a held-out test set.
     """
 
-    async def compress(  # noqa: PLR0913
+    async def compress(
         self,
         prompt: NotBlankStr,
         output: NotBlankStr,
@@ -169,7 +169,7 @@ class LLMExperienceCompressor:
         self._config = config
         self._cost_tracker = cost_tracker
 
-    async def compress(  # noqa: PLR0913
+    async def compress(
         self,
         prompt: NotBlankStr,
         output: NotBlankStr,

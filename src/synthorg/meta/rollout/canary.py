@@ -84,7 +84,7 @@ class CanarySubsetRollout:
         thresholds: Regression thresholds for the detector.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         canary_fraction: float = _DEFAULT_CANARY_FRACTION,

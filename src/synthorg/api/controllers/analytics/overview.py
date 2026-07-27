@@ -201,7 +201,7 @@ async def _collect_trend_sources(
     return metrics, events, approvals
 
 
-async def _assemble_overview(  # noqa: PLR0913
+async def _assemble_overview(
     app_state: AppState,
     *,
     all_tasks: Sequence[Task],

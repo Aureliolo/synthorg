@@ -88,7 +88,7 @@ class AgentEngineContextMixin:
     _project_repo: ProjectRepository | None
     _memory_injection_strategy: MemoryInjectionStrategy | None
 
-    async def _prepare_context(  # noqa: PLR0913
+    async def _prepare_context(
         self,
         *,
         identity: AgentIdentity,

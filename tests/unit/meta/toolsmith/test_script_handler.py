@@ -46,7 +46,7 @@ class _FakeSandbox:
         self._result = result
         self.last_call: JsonDict | None = None
 
-    async def execute(  # noqa: PLR0913
+    async def execute(
         self,
         *,
         command: str,

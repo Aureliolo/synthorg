@@ -116,7 +116,7 @@ class HumanEscalationResolver:
             it through the resolver wiring).
     """
 
-    def __init__(  # noqa: PLR0913 -- keyword-only collaborator DI
+    def __init__(
         self,
         *,
         store: EscalationQueueStore | None = None,

@@ -21,7 +21,7 @@ from synthorg.persistence.protocol import PersistenceBackend
 pytestmark = pytest.mark.integration
 
 
-def _event(  # noqa: PLR0913 -- test factory with explicit knobs
+def _event(
     *,
     provider_name: str = "cloud-test",
     event_type: str = "provider_updated",

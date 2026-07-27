@@ -126,7 +126,7 @@ class ReadFileTool(BaseFileSystemTool):
             return 0, ToolExecutionResult(content=msg, is_error=True)
         return stat_result.st_size, None
 
-    async def _perform_read(  # noqa: PLR0913
+    async def _perform_read(
         self,
         user_path: str,
         resolved: Path,

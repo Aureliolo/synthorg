@@ -182,7 +182,7 @@ async def collect_sidecar_logs(
     return parsed
 
 
-async def ship_container_logs(  # noqa: PLR0913
+async def ship_container_logs(
     *,
     config: ContainerLogShippingConfig,
     container_id: str,

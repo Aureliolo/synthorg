@@ -79,7 +79,7 @@ class MemoryConsolidationService:
             standalone when the settings layer is not wired in.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         backend: MemoryBackend,

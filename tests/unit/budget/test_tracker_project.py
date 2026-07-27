@@ -15,7 +15,7 @@ from synthorg.persistence.project_cost_aggregate_protocol import (
 from .conftest import make_cost_record
 
 
-def _make_project_record(  # noqa: PLR0913
+def _make_project_record(
     *,
     project_id: str = "proj-1",
     agent_id: str = "alice",
@@ -216,7 +216,7 @@ class _PinningRepo:
             last_updated=datetime.now(UTC),
         )
 
-    async def increment_if_unseen(  # noqa: PLR0913 -- mirrors the real signature
+    async def increment_if_unseen(
         self,
         project_id: str,
         cost: float,

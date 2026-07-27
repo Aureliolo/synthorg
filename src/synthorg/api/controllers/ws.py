@@ -498,7 +498,7 @@ async def _trip_breaker_and_close(
         pass
 
 
-async def _on_event(  # noqa: PLR0913
+async def _on_event(
     event_data: bytes,
     *,
     subscribed: set[str],
@@ -1113,7 +1113,7 @@ async def ws_handler(
             )
 
 
-async def _receive_loop(  # noqa: PLR0913 -- optional backpressure + clock + timeout kwargs
+async def _receive_loop(
     socket: WebSocket[object, object, State],
     subscribed: set[str],
     filters: dict[str, dict[str, str]],

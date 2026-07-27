@@ -194,7 +194,7 @@ class TeamService:
         )
         return view
 
-    async def update_team(  # noqa: PLR0913 -- one kwarg per patchable team field
+    async def update_team(
         self,
         *,
         department: NotBlankStr,

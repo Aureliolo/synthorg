@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from synthorg.budget.baseline_store import BaselineRecord, BaselineStore
 
 
-def _record(  # noqa: PLR0913
+def _record(
     *,
     agent_id: str = "agent-1",
     task_id: str = "task-1",

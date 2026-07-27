@@ -41,7 +41,7 @@ from synthorg.providers.models import ChatMessage
 logger = get_logger(__name__)
 
 
-def deserialize_and_reconcile(  # noqa: PLR0913
+def deserialize_and_reconcile(
     checkpoint_json: str,
     error_message: str,
     agent_id: str,
@@ -123,7 +123,7 @@ def deserialize_and_reconcile(  # noqa: PLR0913
     return checkpoint_ctx.with_message(reconciliation_msg)
 
 
-def make_loop_with_callback(  # noqa: PLR0913
+def make_loop_with_callback(
     loop: ExecutionLoop,
     *,
     checkpoint_repo: CheckpointRepository | None,

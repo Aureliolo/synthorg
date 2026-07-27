@@ -115,7 +115,7 @@ def _approval(
 _UNSET: Any = object()  # type: ignore[explicit-any]
 
 
-async def _seed(  # noqa: PLR0913 -- test seam composing several independent knobs
+async def _seed(
     *,
     source: ApprovalSource = ApprovalSource.PLAN_REVIEW,
     task: Task | None,

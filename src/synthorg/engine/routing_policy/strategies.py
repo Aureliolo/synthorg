@@ -192,7 +192,7 @@ class StakesAwareStrategy:
                 return candidate
         return None
 
-    def _build_decision(  # noqa: PLR0913 -- keyword-only assembly inputs
+    def _build_decision(
         self,
         *,
         identity: AgentIdentity,

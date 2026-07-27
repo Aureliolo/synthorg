@@ -181,7 +181,7 @@ class CoordinationMetricsCollector:
             ``SystemClock``; tests inject ``FakeClock``.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         config: CoordinationMetricsConfig,
@@ -279,7 +279,7 @@ class CoordinationMetricsCollector:
             metrics_computed=0,
         )
 
-    def _record_baseline(  # noqa: PLR0913
+    def _record_baseline(
         self,
         agent_id: str,
         task_id: str,
@@ -314,7 +314,7 @@ class CoordinationMetricsCollector:
         self._baseline_store.record(baseline)
         self._log_single_agent_completed(agent_id, task_id)
 
-    async def _collect_multi_agent(  # noqa: PLR0913
+    async def _collect_multi_agent(
         self,
         *,
         turns: int,
@@ -350,7 +350,7 @@ class CoordinationMetricsCollector:
         self._record_metrics(task_id, team_size, metrics)
         return metrics
 
-    async def _compute_all_metrics(  # noqa: PLR0913
+    async def _compute_all_metrics(
         self,
         *,
         turns: int,

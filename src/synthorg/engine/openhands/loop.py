@@ -207,7 +207,7 @@ class OpenHandsLoop:
             project_id=project_id,
         )
 
-    async def _handle_event(  # noqa: PLR0913 -- boundary-check surface
+    async def _handle_event(
         self,
         event: OpenHandsEvent,
         state: _RunState,

@@ -43,7 +43,7 @@ _DEFAULT_VOLUME_CAPS = (
 )
 
 
-def _make_plan(  # noqa: PLR0913
+def _make_plan(
     *,
     new_agent_id: str = "new-agent-1",
     skip_training: bool = False,

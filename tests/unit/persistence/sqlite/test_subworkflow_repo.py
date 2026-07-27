@@ -72,7 +72,7 @@ def _make_edges() -> tuple[WorkflowEdge, ...]:
     )
 
 
-def _make_subworkflow(  # noqa: PLR0913
+def _make_subworkflow(
     *,
     subworkflow_id: str = "sub-quarterly-close",
     version: str = "1.0.0",

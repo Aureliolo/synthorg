@@ -272,7 +272,7 @@ class OciRegistryClient(BaseRegistryClient):
         )
 
 
-def build_oci_client(  # noqa: PLR0913 -- connection facts threaded into one client
+def build_oci_client(
     *,
     base_url: str,
     repository: NotBlankStr,

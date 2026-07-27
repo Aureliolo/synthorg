@@ -149,7 +149,7 @@ class ReplanTriggerService:
         "_task_engine",
     )
 
-    def __init__(  # noqa: PLR0913 -- keyword-only dependency injection
+    def __init__(
         self,
         *,
         persistence: PersistenceBackend,

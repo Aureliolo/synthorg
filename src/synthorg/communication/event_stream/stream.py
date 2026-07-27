@@ -177,7 +177,7 @@ class EventStreamHub:
         "_subscribers",
     )
 
-    def __init__(  # noqa: PLR0913 -- tunable bounds for queue / dedup / history
+    def __init__(
         self,
         max_queue_size: int = _DEFAULT_MAX_QUEUE_SIZE,
         *,

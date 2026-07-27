@@ -330,7 +330,7 @@ def mock_provider_factory() -> type[MockCompletionProvider]:
 _DEFAULT_CREATED_AT = datetime(2026, 3, 8, tzinfo=UTC)
 
 
-def make_workspace(  # noqa: PLR0913
+def make_workspace(
     *,
     workspace_id: str = "ws-001",
     task_id: str = "task-1",
@@ -357,7 +357,7 @@ def make_workspace(  # noqa: PLR0913
     )
 
 
-def make_merge_result(  # noqa: PLR0913
+def make_merge_result(
     *,
     workspace_id: str = "ws-001",
     branch_name: str = "workspace/task-1",

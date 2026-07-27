@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 GateOutcome = tuple[TaskStatus, str, str, bool]
 
 
-def apply_output_policy_gate(  # noqa: PLR0913 -- gate inputs, all required
+def apply_output_policy_gate(
     *,
     deliverable: RedTeamReviewInput | None,
     task: Task,
@@ -122,7 +122,7 @@ def to_oracle_input(
     )
 
 
-async def apply_build_test_gate(  # noqa: PLR0913 -- gate inputs, all required
+async def apply_build_test_gate(
     *,
     gate: BuildTestOracle | None,
     records: CodeExecutionRecordRepository | None,
@@ -161,7 +161,7 @@ async def apply_build_test_gate(  # noqa: PLR0913 -- gate inputs, all required
     )
 
 
-async def apply_completion_oracle_gate(  # noqa: PLR0913 -- gate inputs, all required
+async def apply_completion_oracle_gate(
     *,
     gate: CompletionOracleGate | None,
     review_input: CompletionOracleReviewInput | None,
@@ -230,7 +230,7 @@ async def apply_completion_oracle_gate(  # noqa: PLR0913 -- gate inputs, all req
     )
 
 
-async def apply_oracle_review_stage(  # noqa: PLR0913 -- stage inputs, all required
+async def apply_oracle_review_stage(
     *,
     completion_oracle_gate: CompletionOracleGate | None,
     completion_oracle_shadow_mode: bool,

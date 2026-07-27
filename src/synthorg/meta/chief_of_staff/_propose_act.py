@@ -122,7 +122,7 @@ class ProposeActMixin:
         """
         self._plan_dispatcher = dispatcher
 
-    async def _act_on_decision(  # noqa: PLR0913 -- one turn's full act context
+    async def _act_on_decision(
         self,
         conversation: Conversation,
         args: ProposeArgs,

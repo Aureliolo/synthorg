@@ -28,7 +28,7 @@ class JsonbQueryCapability[RowT](Protocol):
     directly without an ``isinstance`` capability probe.
     """
 
-    async def query_jsonb_contains(  # noqa: PLR0913
+    async def query_jsonb_contains(
         self,
         column: str,
         value: dict[str, object] | list[object],
@@ -56,7 +56,7 @@ class JsonbQueryCapability[RowT](Protocol):
         """
         ...
 
-    async def query_jsonb_key_exists(  # noqa: PLR0913
+    async def query_jsonb_key_exists(
         self,
         column: str,
         key: str,

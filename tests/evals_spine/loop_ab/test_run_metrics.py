@@ -37,7 +37,7 @@ def _identity() -> AgentIdentity:
     )
 
 
-def _turn(  # noqa: PLR0913 -- orthogonal per-turn knobs the rubric reads
+def _turn(
     number: int,
     *,
     input_tokens: int = 10,

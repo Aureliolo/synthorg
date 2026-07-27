@@ -296,7 +296,7 @@ class RiskTracker:
 # ── Module-level pure helpers ────────────────────────────────────
 
 
-def _filter_records(  # noqa: PLR0913
+def _filter_records(
     records: list[RiskRecord],
     *,
     agent_id: str | None = None,

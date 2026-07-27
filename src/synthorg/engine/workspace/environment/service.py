@@ -68,7 +68,7 @@ class EnvironmentService:
         "_strategy",
     )
 
-    def __init__(  # noqa: PLR0913 -- injected service collaborators, all keyword-only
+    def __init__(
         self,
         *,
         repo: ProjectEnvironmentRepository,

@@ -89,7 +89,7 @@ def make_fake_repo(
     return tmp_path
 
 
-def setting_registration(  # noqa: PLR0913 -- fixture builder; each kwarg maps to a SettingDefinition field
+def setting_registration(
     namespace_member: str,
     key: str,
     *,

@@ -156,7 +156,7 @@ def _wire_quadratic_alert_sink(
     )
 
 
-def _wire_communication_services(  # noqa: PLR0913 -- keyword-only collaborator DI
+def _wire_communication_services(
     app_state: AppState,
     *,
     effective_config: RootConfig,

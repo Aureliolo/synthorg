@@ -136,7 +136,7 @@ class InMemorySharedStore:
         return False
 
 
-def _make_entry(  # noqa: PLR0913
+def _make_entry(
     *,
     entry_id: str,
     agent_id: str = "agent-1",

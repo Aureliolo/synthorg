@@ -145,7 +145,7 @@ class EfficiencyRatios(BaseModel):
     )
 
 
-def compute_efficiency_ratios(  # noqa: PLR0913
+def compute_efficiency_ratios(
     *,
     baseline: IdealTrajectoryBaseline,
     observed_steps: int,

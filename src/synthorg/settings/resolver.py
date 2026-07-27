@@ -392,7 +392,7 @@ class ConfigResolver:
             msg = f"Setting {namespace}/{key} has an invalid JSON value"
             raise ValueError(msg) from exc
 
-    async def _resolve_json_setting[ContainerT](  # noqa: PLR0913 -- generic seam
+    async def _resolve_json_setting[ContainerT](
         self,
         namespace: str,
         key: str,

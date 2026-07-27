@@ -61,7 +61,7 @@ class StructuredPhaseRunnersMixin:
     _config: StructuredPhasesConfig
     _conflict_detector: ConflictDetector
 
-    async def _run_input_gathering(  # noqa: PLR0913
+    async def _run_input_gathering(
         self,
         *,
         meeting_id: str,
@@ -429,7 +429,7 @@ class StructuredPhaseRunnersMixin:
 
         return turn_number, round_contributions, round_discussion
 
-    async def _run_synthesis(  # noqa: PLR0913
+    async def _run_synthesis(
         self,
         *,
         meeting_id: str,

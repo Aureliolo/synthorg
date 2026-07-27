@@ -1090,7 +1090,7 @@ class TestAgentEnginePromptTokenRatioWarning:
         ],
         ids=["high_ratio", "low_ratio"],
     )
-    async def test_prompt_token_ratio_warning(  # noqa: PLR0913
+    async def test_prompt_token_ratio_warning(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,

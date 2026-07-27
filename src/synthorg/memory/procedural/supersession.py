@@ -101,7 +101,7 @@ class _LogFn(Protocol):
     def __call__(self, event: str, /, **kwargs: object) -> object: ...
 
 
-def _emit_result(  # noqa: PLR0913
+def _emit_result(
     verdict: SupersessionVerdict,
     event: str,
     *,

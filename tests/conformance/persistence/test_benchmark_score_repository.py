@@ -56,7 +56,7 @@ def _repo(backend: PersistenceBackend) -> BenchmarkScoreRepository:
     raise ValueError(msg)
 
 
-def _make_record(  # noqa: PLR0913 -- test helper carries every record field
+def _make_record(
     *,
     model_id: str = "example-large-001",
     score: float = 92.0,

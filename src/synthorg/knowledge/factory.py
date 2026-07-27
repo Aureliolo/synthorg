@@ -18,7 +18,7 @@ from synthorg.memory.protocol import MemoryBackend
 from synthorg.persistence.protocol import PersistenceBackend
 
 
-def build_knowledge_service(  # noqa: PLR0913 -- cohesive boot-time wiring
+def build_knowledge_service(
     *,
     memory_backend: MemoryBackend,
     persistence: PersistenceBackend,

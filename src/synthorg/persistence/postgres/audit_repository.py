@@ -220,7 +220,7 @@ class PostgresAuditRepository:
             )
             raise QueryError(msg)
 
-    def _build_query_clause(  # noqa: PLR0913
+    def _build_query_clause(
         self,
         *,
         agent_id: NotBlankStr | None,
@@ -326,7 +326,7 @@ class PostgresAuditRepository:
             params.append(until.astimezone(UTC))
         return conditions, params
 
-    async def _jsonb_query(  # noqa: PLR0913
+    async def _jsonb_query(
         self,
         extra_condition: str,
         extra_params: list[object],
@@ -384,7 +384,7 @@ class PostgresAuditRepository:
         entries = tuple(self._row_to_entry(row) for row in rows)
         return entries, total
 
-    async def query_jsonb_contains(  # noqa: PLR0913
+    async def query_jsonb_contains(
         self,
         column: str,
         value: dict[str, object] | list[object],
@@ -413,7 +413,7 @@ class PostgresAuditRepository:
             offset=offset,
         )
 
-    async def query_jsonb_key_exists(  # noqa: PLR0913
+    async def query_jsonb_key_exists(
         self,
         column: str,
         key: str,

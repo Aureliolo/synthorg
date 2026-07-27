@@ -428,7 +428,7 @@ class ProviderCapabilitiesMixin:
             models=tuple(new_models),
         )
 
-    async def flag_models_stale(  # noqa: PLR0913 -- stale-flag dimensions are intrinsic
+    async def flag_models_stale(
         self: _ServiceProtocol,
         name: str,
         *,

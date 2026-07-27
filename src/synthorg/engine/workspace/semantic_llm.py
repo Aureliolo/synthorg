@@ -218,7 +218,7 @@ class LlmSemanticAnalyzer:
                 return result
         return ()  # pragma: no cover
 
-    async def _attempt_once(  # noqa: PLR0913
+    async def _attempt_once(
         self,
         *,
         workspace: Workspace,

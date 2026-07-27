@@ -43,7 +43,7 @@ logger = get_logger(__name__)
 class DeliverableReceiptService:
     """Build, store, render, and validate deliverable receipts."""
 
-    def __init__(  # noqa: PLR0913 -- composition seam wiring every collaborator
+    def __init__(
         self,
         *,
         receipts: DeliverableReceiptRepository,

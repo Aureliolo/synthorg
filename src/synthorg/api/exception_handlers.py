@@ -234,7 +234,7 @@ def _build_error_response(
     )
 
 
-def _build_problem_detail_response(  # noqa: PLR0913
+def _build_problem_detail_response(
     *,
     detail: str,
     error_code: ErrorCode,
@@ -267,7 +267,7 @@ def _build_problem_detail_response(  # noqa: PLR0913
     )
 
 
-def _build_response(  # noqa: PLR0913
+def _build_response(
     request: Request[object, object, State],
     *,
     detail: str,

@@ -14,7 +14,7 @@ from synthorg.engine.recovery import (
 from synthorg.engine.stagnation.models import StagnationResult, StagnationVerdict
 
 
-def _make_recovery_result(  # noqa: PLR0913
+def _make_recovery_result(
     ctx: AgentContext,
     *,
     failure_category: FailureCategory = FailureCategory.TOOL_FAILURE,

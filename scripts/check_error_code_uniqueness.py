@@ -213,7 +213,7 @@ class _ClassEntry:
 
     __slots__ = ("bases", "code", "key", "lineno", "name", "rel", "suppressed")
 
-    def __init__(  # noqa: PLR0913 -- frozen dataclass-style init; keyword-only
+    def __init__(
         self,
         *,
         rel: str,

@@ -104,7 +104,7 @@ def _make_parameters(
     return schema
 
 
-def tool_def(  # noqa: PLR0913
+def tool_def(
     domain: str,
     action: str,
     description: str,
@@ -145,7 +145,7 @@ def tool_def(  # noqa: PLR0913
     )
 
 
-def read_tool(  # noqa: PLR0913
+def read_tool(
     domain: str,
     action: str,
     description: str,
@@ -180,7 +180,7 @@ def read_tool(  # noqa: PLR0913
     )
 
 
-def write_tool(  # noqa: PLR0913
+def write_tool(
     domain: str,
     action: str,
     description: str,
@@ -215,7 +215,7 @@ def write_tool(  # noqa: PLR0913
     )
 
 
-def admin_tool(  # noqa: PLR0913
+def admin_tool(
     domain: str,
     action: str,
     description: str,

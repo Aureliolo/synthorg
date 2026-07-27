@@ -476,7 +476,7 @@ async def _build_runtime_coordinator(
     return coordinator, scorer, decomp_provider, decomposition_model
 
 
-async def _build_runtime_work_pipeline(  # noqa: PLR0913 -- keyword-only DI
+async def _build_runtime_work_pipeline(
     app_state: AppState,
     *,
     scorer: AgentTaskScorer,

@@ -163,7 +163,7 @@ def _bound_cost_context(value: CostRecordingContext | None) -> Iterator[None]:
 
 
 @asynccontextmanager
-async def cost_recording_scope(  # noqa: PLR0913
+async def cost_recording_scope(
     *,
     cost_tracker: CostTrackerProtocol | None,
     agent_id: NotBlankStr,
@@ -472,7 +472,7 @@ async def emit_cost_record_from_context(
     )
 
 
-def _build_cost_record_from_usage(  # noqa: PLR0913 -- keyword-only record fields
+def _build_cost_record_from_usage(
     ctx: CostRecordingContext,
     usage: TokenUsage,
     *,
@@ -513,7 +513,7 @@ def _build_cost_record_from_usage(  # noqa: PLR0913 -- keyword-only record field
     )
 
 
-async def emit_cost_record_from_usage(  # noqa: PLR0913 -- keyword-only record fields
+async def emit_cost_record_from_usage(
     ctx: CostRecordingContext,
     usage: TokenUsage,
     *,

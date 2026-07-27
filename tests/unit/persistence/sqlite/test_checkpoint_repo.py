@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def _make_checkpoint(  # noqa: PLR0913
+def _make_checkpoint(
     *,
     checkpoint_id: str = "cp-001",
     execution_id: str = "exec-001",

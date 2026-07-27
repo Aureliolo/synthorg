@@ -375,7 +375,7 @@ class RevertBranchHandler:
 # -- Factory --------------------------------------------------------------
 
 
-def default_rollback_handlers(  # noqa: PLR0913
+def default_rollback_handlers(
     *,
     config: ConfigMutator,
     prompt: PromptMutator,

@@ -92,7 +92,7 @@ class ProviderHealthProber:
         "_task",
     )
 
-    def __init__(  # noqa: PLR0913 -- explicit DI; all kw-only after the 2nd arg
+    def __init__(
         self,
         health_tracker: ProviderHealthTracker,
         config_resolver: ConfigResolver,

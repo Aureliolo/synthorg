@@ -43,7 +43,7 @@ _MODULE = _load_script_module()
 # ── Synthetic-project helpers ─────────────────────────────────
 
 
-def _make_fake_repo(  # noqa: PLR0913 -- declarative fixture builder
+def _make_fake_repo(
     tmp_path: Path,
     *,
     controllers: dict[str, str] | None = None,

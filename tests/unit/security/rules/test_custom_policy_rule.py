@@ -33,7 +33,7 @@ def _ctx(
     )
 
 
-def _policy(  # noqa: PLR0913
+def _policy(
     *,
     name: str = "test-policy",
     action_types: tuple[str, ...] = ("code:write",),

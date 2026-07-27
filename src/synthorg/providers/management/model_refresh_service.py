@@ -100,7 +100,7 @@ class RefreshCycleReport(BaseModel):
 class ModelRefreshService:
     """Drives a single reconcile pass over every configured provider."""
 
-    def __init__(  # noqa: PLR0913 -- collaborator seams are injected explicitly
+    def __init__(
         self,
         *,
         mgmt_service: ProviderManagementService,

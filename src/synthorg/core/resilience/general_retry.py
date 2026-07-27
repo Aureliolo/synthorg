@@ -123,7 +123,7 @@ class GeneralRetryHandler:
             sleep effectively forever; both surface here.
     """
 
-    def __init__(  # noqa: PLR0913 -- 7 named params is the irreducible config surface
+    def __init__(
         self,
         *,
         retryable: Callable[[Exception], bool],

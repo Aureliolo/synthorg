@@ -40,7 +40,7 @@ def _execution_result(*turns: MagicMock) -> MagicMock:
     return result
 
 
-async def _collect(  # noqa: PLR0913
+async def _collect(
     collector: CoordinationMetricsCollector,
     *,
     execution_result: ExecutionResult,

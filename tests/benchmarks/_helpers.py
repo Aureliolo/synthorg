@@ -52,7 +52,7 @@ def make_memory_entry(
     )
 
 
-def make_cost_record(  # noqa: PLR0913
+def make_cost_record(
     idx: int,
     *,
     agent_id: str = "agent-1",

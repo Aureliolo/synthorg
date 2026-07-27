@@ -98,7 +98,7 @@ def make_calibration_record(  # noqa: PLR0913
     )
 
 
-def make_collaboration_override(  # noqa: PLR0913
+def make_collaboration_override(
     *,
     agent_id: str = "agent-001",
     score: float = 8.0,
@@ -118,7 +118,7 @@ def make_collaboration_override(  # noqa: PLR0913
     )
 
 
-def make_quality_override(  # noqa: PLR0913
+def make_quality_override(
     *,
     agent_id: str = "agent-001",
     score: float = 8.0,

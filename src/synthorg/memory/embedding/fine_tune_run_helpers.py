@@ -32,7 +32,7 @@ _DEFAULT_BASE_MODEL: Final[str] = "all-MiniLM-L6-v2"
 _DEFAULT_OUTPUT_DIR: Final[str] = "/data/fine-tune"
 
 
-async def generate_run_training_data(  # noqa: PLR0913 -- deps threaded for testability
+async def generate_run_training_data(
     cfg: FineTuneRunConfig,
     out_dir: str,
     *,

@@ -195,7 +195,7 @@ class SupervisorRouter:
         """Pinned model + sampling for the reflective-retry prompt class."""
         return pin_for(self._RETRY_PURPOSE_ID)
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         provider: CompletionProvider,

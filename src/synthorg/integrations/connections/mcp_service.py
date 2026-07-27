@@ -65,7 +65,7 @@ class ConnectionService:
         """Return a connection by name or ``None``."""
         return await self._catalog.get(name)
 
-    async def create_connection(  # noqa: PLR0913
+    async def create_connection(
         self,
         *,
         name: NotBlankStr,

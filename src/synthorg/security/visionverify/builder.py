@@ -20,7 +20,7 @@ from synthorg.security.visionverify.protocol import VisionVerifierGate
 type TierResolver = Callable[[ModelTier], str | None]
 
 
-def build_vision_verifier_gate(  # noqa: PLR0913 -- verifier deps are intrinsic
+def build_vision_verifier_gate(
     config: VisionVerifyConfig,
     *,
     workspace: Path,

@@ -213,7 +213,7 @@ def _judged_rubric_ids(briefs: tuple[Brief, ...]) -> tuple[str, ...]:
     return tuple(seen)
 
 
-def _build_brief_result(  # noqa: PLR0913 -- orthogonal per-brief scorecard inputs
+def _build_brief_result(
     brief: Brief,
     *,
     grade: int,
@@ -345,7 +345,7 @@ def _select_provider(
     )
 
 
-async def _score_briefs(  # noqa: PLR0913
+async def _score_briefs(
     engine: AgentEngine,
     briefs: tuple[Brief, ...],
     *,
@@ -588,7 +588,7 @@ def _emit(scorecard: Scorecard, out_dir: Path) -> None:
     write_scorecard_md(scorecard, out_dir)
 
 
-def run_benchmark(  # noqa: PLR0913
+def run_benchmark(
     *,
     company_config: Path,
     brief_suite: Path,

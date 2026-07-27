@@ -222,7 +222,7 @@ class WebhookReceiptService:
         )
         return {**result, "receipt_id": str(receipt.id)}
 
-    async def _transition(  # noqa: PLR0913 -- transition fields, all internal
+    async def _transition(
         self,
         receipt: WebhookReceipt,
         *,

@@ -31,7 +31,7 @@ pytestmark = pytest.mark.unit
 class _FakeExtractor:
     """Stub MetricExtractor for isolated composite testing."""
 
-    def __init__(  # noqa: PLR0913 -- test stub; explicit kwargs are clearer than a config object
+    def __init__(
         self,
         *,
         pillar: EvaluationPillar = EvaluationPillar.RESILIENCE,

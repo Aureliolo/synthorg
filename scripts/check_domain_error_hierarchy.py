@@ -219,7 +219,7 @@ class _ClassEntry:
 
     __slots__ = ("bases", "lineno", "module", "name", "rel", "suppressed")
 
-    def __init__(  # noqa: PLR0913 -- frozen dataclass-style init; keyword-only would clutter every callsite
+    def __init__(
         self,
         rel: str,
         lineno: int,

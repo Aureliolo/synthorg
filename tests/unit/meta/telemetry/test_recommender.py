@@ -24,7 +24,7 @@ from synthorg.meta.telemetry.recommender import (
 pytestmark = pytest.mark.unit
 
 
-def _make_event(  # noqa: PLR0913
+def _make_event(
     *,
     deployment_id: str = "d-0",
     source_rule: str = "coordination_overhead",

@@ -354,7 +354,7 @@ def redact_cost_events(
 # ── Timeline builders ────────────────────────────────────────────
 
 
-def merge_activity_timeline(  # noqa: PLR0913
+def merge_activity_timeline(
     lifecycle_events: tuple[AgentLifecycleEvent, ...],
     task_metrics: tuple[TaskMetricRecord, ...],
     *,

@@ -148,7 +148,7 @@ All baseline-driven, all wired into `.pre-commit-config.yaml`:
 
 ```toml
 [tool.ruff.lint.pylint]
-max-args = 5
+max-args = 8
 max-positional-args = 5
 max-public-methods = 12
 max-statements = 30
@@ -165,6 +165,14 @@ New selects: `BLE`, `G`, `ERA`, `INP`, `DOC`. `DOC201/202/501` were
 introduced under a broad per-file-ignore on `src/synthorg/**`, since
 drained so they enforce across all of `src/synthorg/` (Exemption Ledger
 Section F).
+
+`max-args` opened at 5 and sat there suppressed 755 times, which made
+`PLR0913` report nothing at all. It is now 8 with the residue held as a
+closed, shrink-only list by
+`scripts/check_argument_count_suppression.py` (Exemption Ledger
+Section F). `max-positional-args` is a separate concern and stays at 5
+whatever `max-args` becomes: `ruff` defaults it to `max-args`, so the pin
+has to be explicit or the positional cap widens by inheritance.
 
 ### Mypy strict++
 
@@ -411,6 +419,7 @@ and closed for the project to reach 100% strict enforcement.
 | Mypy `deprecated` (3 sites) | Issue #2060: "Mypy deprecated-API cleanup" | Trivial |
 | Mypy strict++ overrides on `tests.*` | Issue #2061, sliced into sub-issues #2116, #2117, #2118, #2119, #2120, #2121 (see Section F.1 below for the breakdown by lifted error code). RESOLVED: every sub-issue landed; #2121 dropped the last block, so the entire `tests.*` override is gone and `tests.*` inherits the global strict++ bar. | Small to Very Large per sub-issue (see F.1) |
 | Ruff `ERA001` (13 sites, all false positives) | Issue #2063: "Remove commented-out code (ERA001)" (RESOLVED: per-file-ignore dropped, code-shaped comments reworded) | Small |
+| Ruff `PLR0913` / `PLR0917` (779 per-line `# noqa` markers across 531 files, so the cap enforced nothing) | Issues #2642 + #2660 (RESOLVED: #2642 retired the positional half, introducing a shared run-context object for the two plan loops, per-file-ignores for the framework-injected Litestar and pytest signatures, and an explicit `max-positional-args = 5` pin so the positional cap stops inheriting from `max-args`; `PLR0917` is at zero markers. #2660 then raised `max-args` to 8, drained the 587 markers `RUF100` made redundant across 423 files, and shipped `scripts/check_argument_count_suppression.py`, which holds the 168-site residue as a shrink-only `path::qualname` baseline with no per-line opt-out and rejects any raise of the cap, any wholesale ignore, and any file-level blanket) | Large (2 PRs) |
 | Ruff `DOC201/202/501` on `src/synthorg/**` | Issue #2065: "Docstring Returns/Raises backfill + interrogate threshold flip" (RESOLVED: brace-expansion per-file-ignore deleted; `DOC201/202/501` now enforced across all of `src/synthorg/` except `tests/` and `scripts/`) | Large |
 | Interrogate `fail_under` 90 -> 95 | Same as DOC backfill (RESOLVED: `[tool.interrogate] fail-under` flipped to 95) | Medium |
 | ESLint `complexity / max-lines / max-lines-per-function / max-params` exempted on `src/**/*.{ts,tsx}` | EPIC #2066: "Web component-size ratchet: decompose oversized React components", sliced into 4 sub-issues: #2092 (Foundation: utils + hooks + lib), #2093 (Stores incl. websocket), #2094 (Components + API types/endpoints), #2095 (Pages + override deletion). The override block at `web/eslint.config.js:146-217` grows an `ignores:` list per sub-issue; PR D deletes the block. (RESOLVED: all sub-issues landed; the Pages tranche shipped as #2095 (D1) → D2a → #2141 (D2b), which deleted the `src/**/*.{ts,tsx}` override block entirely. The four caps now apply globally across `web/src/**`; the only surviving exemptions are `components/ui/**` (disables `max-lines-per-function` for cva variants) and the test/bench globs (disable all four).) | Large (4 PRs filed) |

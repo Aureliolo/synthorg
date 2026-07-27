@@ -10,7 +10,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.memory.recall_request import MemoryRecallRequest
 
 
-def recall_request(  # noqa: PLR0913 -- a builder; each field is one test axis
+def recall_request(
     *,
     agent_id: str = "agent-1",
     query: str = "query",

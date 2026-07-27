@@ -107,7 +107,7 @@ def _task(item_id: str, status: TaskStatus) -> Task:
     )
 
 
-async def _seed(  # noqa: PLR0913 -- keyword-only collaborator injection
+async def _seed(
     plan: Plan,
     *tasks: Task,
     project_status: ProjectStatus = ProjectStatus.ACTIVE,

@@ -57,7 +57,7 @@ def _approval_repo(backend: PersistenceBackend) -> ApprovalRepository:
     raise ValueError(msg)
 
 
-def _make_item(  # noqa: PLR0913
+def _make_item(
     *,
     approval_id: str = "approval-001",
     status: ApprovalStatus = ApprovalStatus.PENDING,

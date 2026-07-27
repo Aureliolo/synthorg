@@ -1,4 +1,4 @@
-# ruff: noqa: EM101, PLR0913
+# ruff: noqa: EM101
 # module-kind: service
 """Artifact-index facade over ``ArtifactStorageBackend``."""
 

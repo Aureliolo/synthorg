@@ -27,7 +27,7 @@ def _project(project_id: str = "proj-1") -> Project:
     return Project(id=as_uuid(project_id), name=NotBlankStr("Demo"))
 
 
-def _source(  # noqa: PLR0913 -- test helper takes one kwarg per field
+def _source(
     *,
     source_id: str = "src-1",
     source_type: SourceType = SourceType.PDF,

@@ -107,7 +107,7 @@ async def generate_image_via_litellm(  # noqa: PLR0913 -- keyword-only driver st
     )
 
 
-def build_image_kwargs(  # noqa: PLR0913 -- keyword-only driver state
+def build_image_kwargs(
     *,
     provider_config: ProviderConfig,
     resolved_credentials: dict[str, str] | None,

@@ -28,7 +28,7 @@ from tests.unit.api.fakes import FakeProjectBrainRepository
 _PROJECT = NotBlankStr("proj-001")
 
 
-def _steering_entry(  # noqa: PLR0913 -- explicit envelope fields for clarity
+def _steering_entry(
     *,
     entry_id: str,
     kind: InterventionKind = InterventionKind.REDIRECT,

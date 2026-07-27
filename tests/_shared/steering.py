@@ -31,7 +31,7 @@ class FakeBrainService:
         self._repo = repo
         self._clock = clock
 
-    async def append_entry(  # noqa: PLR0913 -- mirrors the real signature
+    async def append_entry(
         self,
         *,
         project_id: NotBlankStr,

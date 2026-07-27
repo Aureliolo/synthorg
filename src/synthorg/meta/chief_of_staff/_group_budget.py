@@ -34,7 +34,7 @@ def round_bound(
     return None
 
 
-def bounded_call_max_tokens(  # noqa: PLR0913 -- budget inputs, all independent
+def bounded_call_max_tokens(
     history_tokens: int,
     prior_contributions: list[AttributedContribution],
     *,

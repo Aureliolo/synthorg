@@ -19,7 +19,7 @@ from synthorg.providers.cassette.mode import CassetteConfig
 from synthorg.security.redteam.protocol import RedTeamReportRepository
 
 
-def build_deliverable_receipt_service(  # noqa: PLR0913 -- cohesive boot wiring
+def build_deliverable_receipt_service(
     *,
     persistence: PersistenceBackend,
     docs_service: DocsService,

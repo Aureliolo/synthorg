@@ -65,7 +65,7 @@ class AgentEngineChatActionMixin:
     _make_tool_invoker: MakeToolInvoker
     _shutdown_checker: ShutdownChecker | None
 
-    async def run_chat_action(  # noqa: PLR0913 -- keyword-only run knobs
+    async def run_chat_action(
         self,
         *,
         identity: AgentIdentity,
@@ -112,7 +112,7 @@ class AgentEngineChatActionMixin:
         )
         return result
 
-    async def run_chat_action_session(  # noqa: PLR0913 -- keyword-only run knobs
+    async def run_chat_action_session(
         self,
         *,
         identity: AgentIdentity,

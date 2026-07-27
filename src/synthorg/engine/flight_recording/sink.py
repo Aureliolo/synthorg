@@ -176,7 +176,7 @@ def _classify_decision(turn: TurnRecord) -> str:
     return turn.finish_reason.value
 
 
-def build_frames(  # noqa: PLR0913 -- keyword-only frame builder, all required
+def build_frames(
     execution_result: ExecutionResult,
     *,
     execution_id: str,
@@ -248,7 +248,7 @@ def _response_for_turn(
     return None
 
 
-def _frame_for_turn(  # noqa: PLR0913 -- per-turn frame fields, all required
+def _frame_for_turn(
     turn: TurnRecord,
     *,
     execution_id: str,

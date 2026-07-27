@@ -126,7 +126,7 @@ class GroupInviteCoordinator:
         clock: Injectable time source (defaults to ``SystemClock``).
     """
 
-    def __init__(  # noqa: PLR0913 -- DI seam: independently-wired collaborators
+    def __init__(
         self,
         *,
         invite_repo: ConversationInviteRepository,
@@ -339,7 +339,7 @@ class GroupInviteCoordinator:
         )
         return len(existing) > 0
 
-    async def _park(  # noqa: PLR0913 -- one parked invite's full context
+    async def _park(
         self,
         *,
         conversation_id: NotBlankStr,
@@ -414,7 +414,7 @@ class GroupInviteCoordinator:
             reason=reason,
         )
 
-    def _build_approval_item(  # noqa: PLR0913 -- ApprovalItem field set is broad
+    def _build_approval_item(
         self,
         *,
         approval_id: NotBlankStr,

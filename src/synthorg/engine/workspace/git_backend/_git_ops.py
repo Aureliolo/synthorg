@@ -358,7 +358,7 @@ async def import_source_into_worktree(
     return NotBlankStr(head)
 
 
-async def init_working_tree_with_remote(  # noqa: PLR0913 -- irreducible git-init params
+async def init_working_tree_with_remote(
     workspace_path: Path,
     *,
     default_branch: str,

@@ -50,7 +50,7 @@ def _repo(backend: PersistenceBackend) -> ActivePrincipleRepository:
     raise ValueError(msg)
 
 
-def _principle(  # noqa: PLR0913
+def _principle(
     *,
     principle_id: str = "principle-1",
     scope: str = "all",

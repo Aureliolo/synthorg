@@ -207,7 +207,7 @@ class EmailSenderTool(BaseCommunicationTool):
         )
 
     @staticmethod
-    def _send_sync(  # noqa: PLR0913
+    def _send_sync(
         *,
         email_config: EmailConfig,
         to_addrs: list[str],

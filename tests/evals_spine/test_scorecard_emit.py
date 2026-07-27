@@ -21,7 +21,7 @@ from evals.scoring.aggregate import PenaltyEntry
 pytestmark = pytest.mark.unit
 
 
-def _brief_result(  # noqa: PLR0913 -- test fixture; keeping the kw-only knobs explicit
+def _brief_result(
     *,
     brief_id: str = "BRIEF_001",
     grade: int = 90,

@@ -53,7 +53,7 @@ class ActivityController(Controller):
         guards=[per_op_rate_limit_from_policy("activities.list", key="user")],
         opt=per_op_concurrency_from_policy("activities.list", key="user"),
     )
-    async def list_activities(  # noqa: PLR0913
+    async def list_activities(
         self,
         request: Request[object, object, State],
         state: State,

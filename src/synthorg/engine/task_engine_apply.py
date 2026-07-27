@@ -60,7 +60,7 @@ logger = get_logger(__name__)
 # ── Dispatch ─────────────────────────────────────────────────────
 
 
-async def dispatch(  # noqa: PLR0913 -- engine mutation-apply collaborators
+async def dispatch(
     mutation: TaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
@@ -113,7 +113,7 @@ async def dispatch(  # noqa: PLR0913 -- engine mutation-apply collaborators
 # ── Apply methods ────────────────────────────────────────────────
 
 
-async def apply_create(  # noqa: PLR0913 -- engine mutation-apply collaborators
+async def apply_create(
     mutation: CreateTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
@@ -286,7 +286,7 @@ async def apply_update(
     )
 
 
-async def apply_transition(  # noqa: PLR0913 -- engine mutation-apply collaborators
+async def apply_transition(
     mutation: TransitionTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,
@@ -493,7 +493,7 @@ async def apply_delete(
     )
 
 
-async def apply_cancel(  # noqa: PLR0913 -- engine mutation-apply collaborators
+async def apply_cancel(
     mutation: CancelTaskMutation,
     persistence: PersistenceBackend,
     versions: VersionTracker,

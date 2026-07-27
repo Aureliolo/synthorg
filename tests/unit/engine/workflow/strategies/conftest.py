@@ -6,7 +6,7 @@ from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 SECONDS_PER_DAY: float = 86_400.0
 
 
-def make_sprint(  # noqa: PLR0913
+def make_sprint(
     *,
     task_count: int = 10,
     completed_count: int = 0,

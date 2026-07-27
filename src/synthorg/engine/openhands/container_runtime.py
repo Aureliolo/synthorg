@@ -52,7 +52,7 @@ class SandboxStreamer(Protocol):
     heavyweight backend, keeping the engine off the sandbox internals.
     """
 
-    def stream_container_task(  # noqa: PLR0913 -- mirrors the backend surface
+    def stream_container_task(
         self,
         *,
         command: NotBlankStr,

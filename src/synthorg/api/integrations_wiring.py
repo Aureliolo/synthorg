@@ -223,7 +223,7 @@ def wire_rate_limit_coordinator_factory(
     )
 
 
-def auto_wire_integrations(  # noqa: PLR0913
+def auto_wire_integrations(
     *,
     effective_config: RootConfig,
     persistence: PersistenceBackend | None,

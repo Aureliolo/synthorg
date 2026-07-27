@@ -15,7 +15,7 @@ from synthorg.settings.type_validators import (
 _UNSET = "__UNSET__"
 
 
-def _make_definition(  # noqa: PLR0913
+def _make_definition(
     *,
     setting_type: SettingType = SettingType.STRING,
     default: str | None = _UNSET,

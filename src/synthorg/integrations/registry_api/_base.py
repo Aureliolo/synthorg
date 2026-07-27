@@ -56,7 +56,7 @@ class BaseRegistryClient:
     a 401 and caches the bearer for subsequent calls.
     """
 
-    def __init__(  # noqa: PLR0913 -- connection facts threaded into one client
+    def __init__(
         self,
         *,
         api_base_url: str,
@@ -134,7 +134,7 @@ class BaseRegistryClient:
             msg = f"registry {field} is not a usable path segment"
             raise RegistryApiClientError(msg) from exc
 
-    async def _send(  # noqa: PLR0913 -- one HTTP request surface, threaded whole
+    async def _send(
         self,
         method: str,
         url: str,
@@ -170,7 +170,7 @@ class BaseRegistryClient:
             msg = f"registry transport error while attempting to {action}"
             raise RegistryApiError(msg) from exc
 
-    async def _request(  # noqa: PLR0913 -- one HTTP request surface, threaded whole
+    async def _request(
         self,
         method: str,
         url: str,

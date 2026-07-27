@@ -250,7 +250,7 @@ class DefaultThresholdRecommender:
         )
 
 
-def _build_recommendation(  # noqa: PLR0913
+def _build_recommendation(
     pattern: AggregatedPattern,
     metric_name: str,
     *,

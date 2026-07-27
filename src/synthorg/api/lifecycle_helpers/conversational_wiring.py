@@ -406,7 +406,7 @@ def _wire_multi_voice_router(
         )
 
 
-async def wire_chief_of_staff_proposer(  # noqa: PLR0913 -- boot wiring deps
+async def wire_chief_of_staff_proposer(
     app_state: AppState,
     *,
     provider_registry: ProviderRegistry | None,

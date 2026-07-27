@@ -96,7 +96,7 @@ async def comparable_entries(
         return ()
 
 
-async def gate_archival_write(  # noqa: PLR0913 -- the gate's full input surface
+async def gate_archival_write(
     backend: MemoryBackend,
     agent_id: NotBlankStr,
     content: NotBlankStr,

@@ -569,7 +569,7 @@ async def _fetch_json_trusted(
     )
 
 
-async def _fetch_json(  # noqa: PLR0913 -- SSRF-validated fetch: url + logging + auth + body + strict is the irreducible surface
+async def _fetch_json(
     url: str,
     preset_name: str | None,
     *,

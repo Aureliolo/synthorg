@@ -205,7 +205,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
     return target, transition_reason, event, approved
 
 
-async def apply_red_team_gate(  # noqa: PLR0913 -- gate inputs, all required
+async def apply_red_team_gate(
     *,
     gate: RedTeamGate | None,
     on_missing_deliverable: Literal["block", "skip"],
@@ -284,7 +284,7 @@ async def apply_red_team_gate(  # noqa: PLR0913 -- gate inputs, all required
     )
 
 
-async def apply_vision_gate(  # noqa: PLR0913 -- gate inputs, all required
+async def apply_vision_gate(
     *,
     gate: VisionVerifierGate | None,
     task_id: str,

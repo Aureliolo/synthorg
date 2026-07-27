@@ -371,7 +371,7 @@ def _score_rows(rows: tuple[LoopBriefRow, ...]) -> tuple[LoopBriefRow, ...]:
     )
 
 
-async def run_matrix(  # noqa: PLR0913 -- orthogonal matrix inputs
+async def run_matrix(
     *,
     manifest: LoopAbManifest,
     briefs: tuple[Brief, ...],

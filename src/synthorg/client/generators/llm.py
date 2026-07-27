@@ -61,7 +61,7 @@ class LLMGenerator:
         """Pinned model + sampling for this prompt class."""
         return pin_for(self._PURPOSE_ID)
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         provider: CompletionProvider,

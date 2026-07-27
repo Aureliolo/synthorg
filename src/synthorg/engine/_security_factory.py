@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def make_security_interceptor(  # noqa: PLR0913
+def make_security_interceptor(
     security_config: SecurityConfig | None,
     audit_log: AuditLog,
     *,
@@ -368,7 +368,7 @@ def registry_with_decision_tool(
     return _registry_with_tool_appended(tool_registry, decision_tool)
 
 
-def registry_with_human_input_tools(  # noqa: PLR0913 -- run-scoped wiring inputs
+def registry_with_human_input_tools(
     tool_registry: ToolRegistry,
     approval_store: ApprovalStoreProtocol | None,
     identity: AgentIdentity,
@@ -398,7 +398,7 @@ def registry_with_human_input_tools(  # noqa: PLR0913 -- run-scoped wiring input
     return registry
 
 
-def registry_with_external_api_tool(  # noqa: PLR0913 -- run-scoped wiring inputs
+def registry_with_external_api_tool(
     tool_registry: ToolRegistry,
     runtime: ExternalApiRuntime | None,
     *,

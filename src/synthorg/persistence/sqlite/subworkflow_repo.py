@@ -148,7 +148,7 @@ def _deserialize_row(
         raise MalformedRowError(msg) from exc
 
 
-def _extract_references(  # noqa: PLR0913
+def _extract_references(
     rows: Iterable[aiosqlite.Row],
     subworkflow_id: str,
     version: str | None,

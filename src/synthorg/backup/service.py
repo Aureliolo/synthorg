@@ -293,7 +293,7 @@ class BackupService(BackupServiceArchiveMixin):
             raise
         return manifest
 
-    async def _execute_backup(  # noqa: PLR0913
+    async def _execute_backup(
         self,
         *,
         backup_id: str,
@@ -389,7 +389,7 @@ class BackupService(BackupServiceArchiveMixin):
         )
         return manifest
 
-    async def _finalize_backup(  # noqa: PLR0913
+    async def _finalize_backup(
         self,
         *,
         backup_id: str,

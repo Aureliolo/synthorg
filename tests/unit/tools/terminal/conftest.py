@@ -30,7 +30,7 @@ class MockSandbox:
         self.last_command: str | None = None
         self.last_args: tuple[str, ...] | None = None
 
-    async def execute(  # noqa: PLR0913
+    async def execute(
         self,
         *,
         command: str,

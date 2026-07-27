@@ -33,7 +33,7 @@ class BaseTerminalTool(BaseTool, ABC):
     command validation via allow/blocklist.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         name: str,

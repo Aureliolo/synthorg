@@ -395,7 +395,7 @@ def _scan_documents(source_dir: str) -> list[tuple[str, str]]:
     return results
 
 
-async def generate_training_data(  # noqa: PLR0913
+async def generate_training_data(
     source_dir: str,
     output_dir: str,
     *,
@@ -463,7 +463,7 @@ async def generate_training_data(  # noqa: PLR0913
 # -- Stage 2: Hard negative mining ------------------------------------
 
 
-async def mine_hard_negatives(  # noqa: PLR0913
+async def mine_hard_negatives(
     training_data_path: str,
     base_model: str,
     output_dir: str,
@@ -516,7 +516,7 @@ async def mine_hard_negatives(  # noqa: PLR0913
     return await _persist_triples(triples, output_dir)
 
 
-async def _mine_negatives_from_pairs(  # noqa: PLR0913
+async def _mine_negatives_from_pairs(
     *,
     model: object,
     model_name: str,
@@ -553,7 +553,7 @@ _HARD_NEGATIVE_MARGIN_RATIO: Final[float] = 0.95
 _CANCELLATION_CHECK_INTERVAL: Final[int] = 50
 
 
-async def _select_hard_negatives(  # noqa: PLR0913
+async def _select_hard_negatives(
     *,
     queries: list[str],
     passages: list[str],
@@ -770,7 +770,7 @@ def _build_training_examples(
 # -- Stage 4: Evaluation ----------------------------------------------
 
 
-async def evaluate_checkpoint(  # noqa: PLR0913
+async def evaluate_checkpoint(
     checkpoint_path: str,
     base_model: str,
     validation_data_path: str,
@@ -827,7 +827,7 @@ def _report_progress(callback: ProgressCallback | None, value: float) -> None:
         callback(value)
 
 
-async def _run_eval_pipeline(  # noqa: PLR0913
+async def _run_eval_pipeline(
     *,
     checkpoint_path: str,
     base_model: str,
@@ -884,7 +884,7 @@ async def _run_eval_pipeline(  # noqa: PLR0913
     return metrics
 
 
-async def _persist_eval_metrics(  # noqa: PLR0913
+async def _persist_eval_metrics(
     *,
     ft_q_embs: object,
     ft_p_embs: object,

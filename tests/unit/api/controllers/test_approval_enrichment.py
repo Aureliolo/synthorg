@@ -74,7 +74,7 @@ def _artifact(artifact_id: str, *, task_id: str) -> Artifact:
     )
 
 
-async def _resolve(  # noqa: PLR0913 -- test fixture assembling injected fakes
+async def _resolve(
     items: Sequence[ApprovalItem],
     *,
     tasks: dict[str, Task] | None = None,

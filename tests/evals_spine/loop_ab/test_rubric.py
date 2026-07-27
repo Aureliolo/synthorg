@@ -32,7 +32,7 @@ from synthorg.core.types import NotBlankStr
 pytestmark = pytest.mark.unit
 
 
-def _aggregate(  # noqa: PLR0913 -- orthogonal per-loop measurements
+def _aggregate(
     loop_type: str,
     *,
     correctness: float = 100.0,

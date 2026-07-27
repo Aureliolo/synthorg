@@ -37,7 +37,7 @@ def _test_identity() -> AgentIdentity:
     )
 
 
-def _make_run_result(  # noqa: PLR0913
+def _make_run_result(
     *,
     termination_reason: TerminationReason = TerminationReason.COMPLETED,
     turns: tuple[TurnRecord, ...] = (),

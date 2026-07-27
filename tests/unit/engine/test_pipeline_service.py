@@ -132,7 +132,7 @@ def _project(*, lead: str | None = None) -> Project:
     )
 
 
-def _pipeline(  # noqa: PLR0913 -- test builder with keyword-only knobs
+def _pipeline(
     *,
     intake_result: IntakeResult,
     task: Task | None,

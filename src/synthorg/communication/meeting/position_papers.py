@@ -117,7 +117,7 @@ class PositionPapersProtocol:
         """Return the protocol type."""
         return MeetingProtocolType.POSITION_PAPERS
 
-    async def run(  # noqa: PLR0913
+    async def run(
         self,
         *,
         meeting_id: str,
@@ -212,7 +212,7 @@ class PositionPapersProtocol:
             ended_at=ended_at,
         )
 
-    async def _collect_position_papers(  # noqa: PLR0913
+    async def _collect_position_papers(
         self,
         *,
         meeting_id: str,
@@ -354,7 +354,7 @@ class PositionPapersProtocol:
 
         return papers, paper_contributions
 
-    async def _run_synthesis(  # noqa: PLR0913
+    async def _run_synthesis(
         self,
         *,
         meeting_id: str,

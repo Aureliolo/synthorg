@@ -34,7 +34,7 @@ _FUTURE = _NOW + timedelta(hours=24)
 _PAST = _NOW - timedelta(hours=1)
 
 
-def _make_override(  # noqa: PLR0913
+def _make_override(
     *,
     action_type: str = "code:write",
     original: ApprovalRiskLevel = ApprovalRiskLevel.MEDIUM,

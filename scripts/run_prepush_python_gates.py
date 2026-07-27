@@ -155,6 +155,7 @@ _GATES: tuple[str, ...] = (
     "check_no_implicit_state_attribute",
     "check_feature_index_freshness",
     "check_no_ruff100_self_cloak",
+    "check_argument_count_suppression",
     "check_doc_numeric_macros",
 )
 

@@ -24,7 +24,7 @@ def _project(project_id: str = "proj-1") -> Project:
     return Project(id=as_uuid(project_id), name=NotBlankStr("Demo"))
 
 
-def _meta(  # noqa: PLR0913 -- test helper takes one kwarg per metadata field
+def _meta(
     *,
     project_id: str = "proj-1",
     slug: str = "q2-status",
