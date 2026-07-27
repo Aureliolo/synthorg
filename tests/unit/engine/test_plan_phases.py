@@ -21,6 +21,7 @@ from synthorg.engine.plan_phases import PlanPhaseMixin
 pytestmark = pytest.mark.unit
 
 _SHARED_METHODS = (
+    "get_loop_type",
     "_run_planning_phase",
     "_generate_plan",
     "_build_final_result",
@@ -118,6 +119,27 @@ class TestFinalizeMetadata:
         finalized = loop_cls._finalize(result, [_plan(1)], 0)
 
         assert finalized.metadata["loop_type"] == expected
+
+    @pytest.mark.parametrize(
+        "loop_cls",
+        [HybridLoop, PlanExecuteLoop],
+        ids=["hybrid", "plan_execute"],
+    )
+    def test_protocol_accessor_returns_the_same_tag(
+        self,
+        sample_agent_context: AgentContext,
+        loop_cls: type[HybridLoop] | type[PlanExecuteLoop],
+    ) -> None:
+        # A consumer filtering runs may read either the protocol accessor or
+        # the result metadata, so the two must never drift.
+        result = ExecutionResult(
+            context=sample_agent_context,
+            termination_reason=TerminationReason.COMPLETED,
+        )
+
+        finalized = loop_cls._finalize(result, [], 0)
+
+        assert loop_cls().get_loop_type() == finalized.metadata["loop_type"]
 
     def test_plan_history_and_replan_count_ride_along(
         self,

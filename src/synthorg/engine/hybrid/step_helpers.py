@@ -1,18 +1,14 @@
 """Step-execution helpers for the Hybrid Plan + ReAct loop.
 
-Covers plan truncation, per-step instruction-message assembly,
-turn-completion handling, budget warnings, checkpoint dispatch, and
-the shared planner-call body used by both initial planning and
-re-planning. Stateless free functions only; no instance state.
+Covers plan truncation, per-step instruction-message assembly, and the
+turn-budget warning. Stateless free functions only; no instance state.
+The per-turn machinery both plan loops share lives in
+:mod:`synthorg.engine.plan_step_turn`.
 """
 
-from synthorg.core.completion_enums import FinishReason
 from synthorg.core.execution_identity import current_execution_identity
 from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_models import HybridLoopConfig
-from synthorg.engine.plan_helpers import (
-    assess_step_success,
-)
 from synthorg.engine.plan_models import ExecutionPlan, PlanStep
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -23,11 +19,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_HYBRID_PLAN_TRUNCATED,
     EXECUTION_HYBRID_TURN_BUDGET_WARNING,
-    EXECUTION_PLAN_STEP_TOOL_USE_EMPTY,
-    EXECUTION_PLAN_STEP_TRUNCATED,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, CompletionResponse
+from synthorg.providers.models import ChatMessage
 
 logger = get_logger(__name__)
 
@@ -87,44 +81,6 @@ def build_step_message(step: PlanStep) -> ChatMessage:
         role=MessageRole.USER,
         content=instruction,
     )
-
-
-def handle_step_completion(
-    ctx: AgentContext,
-    response: CompletionResponse,
-    turn_number: int,
-) -> tuple[AgentContext, bool]:
-    """Assess step success and log truncation if applicable.
-
-    Args:
-        ctx: Agent context.
-        response: LLM completion response for the step.
-        turn_number: Current turn number for logging.
-
-    Returns:
-        ``(ctx, success)`` where *success* indicates step completion.
-    """
-    if response.finish_reason == FinishReason.TOOL_USE:
-        # Its own event, not the routine per-turn one: a consumer filtering
-        # for turn completions would otherwise get this error under the same
-        # name with an entirely different field set.
-        logger.error(
-            EXECUTION_PLAN_STEP_TOOL_USE_EMPTY,
-            execution_id=ctx.execution_id,
-            turn=turn_number,
-            finish_reason=response.finish_reason.value,
-            error="Provider returned TOOL_USE with no tool calls",
-        )
-        return ctx, False
-    success = assess_step_success(response)
-    if response.finish_reason == FinishReason.MAX_TOKENS:
-        logger.warning(
-            EXECUTION_PLAN_STEP_TRUNCATED,
-            execution_id=ctx.execution_id,
-            turn=turn_number,
-            truncated=True,
-        )
-    return ctx, success
 
 
 def warn_insufficient_budget(

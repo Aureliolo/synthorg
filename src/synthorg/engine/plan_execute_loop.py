@@ -145,10 +145,6 @@ class PlanExecuteLoop(PlanExecutePlannerMixin):
         """Return the steering inbox, or ``None``."""
         return self._steering_inbox
 
-    def get_loop_type(self) -> str:
-        """Return the loop type identifier."""
-        return "plan_execute"
-
     async def execute(  # noqa: PLR0913
         self,
         *,

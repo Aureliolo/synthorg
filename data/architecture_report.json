@@ -578,8 +578,8 @@
     },
     "src/synthorg/engine/plan_execute_loop.py": {
       "cap": 500,
-      "loc": 425,
-      "ratio": 0.85,
+      "loc": 422,
+      "ratio": 0.844,
       "tier": "code"
     },
     "src/synthorg/engine/quality/decomposers/llm.py": {
@@ -1627,7 +1627,7 @@
     "synthorg.core.autonomy_enums": 45,
     "synthorg.core.boundary": 69,
     "synthorg.core.clock": 258,
-    "synthorg.core.completion_enums": 23,
+    "synthorg.core.completion_enums": 22,
     "synthorg.core.critical_errors": 706,
     "synthorg.core.domain_errors": 268,
     "synthorg.core.effective_autonomy": 32,
@@ -1828,7 +1828,7 @@
     },
     "synthorg.engine.hybrid_loop:HybridLoop": {
       "lcom4": 3,
-      "loc": 494
+      "loc": 491
     },
     "synthorg.engine.initiative.rollup:ProjectRollupService": {
       "lcom4": 1,

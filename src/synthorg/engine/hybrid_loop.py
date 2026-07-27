@@ -154,10 +154,6 @@ class HybridLoop(PlanPhaseMixin):
         """Return the steering inbox, or ``None``."""
         return self._steering_inbox
 
-    def get_loop_type(self) -> str:
-        """Return the loop type identifier."""
-        return "hybrid"
-
     async def execute(  # noqa: PLR0913
         self,
         *,
@@ -535,7 +531,7 @@ class HybridLoop(PlanPhaseMixin):
         logger.info(
             EXECUTION_HYBRID_REPLAN_DECIDED,
             execution_id=state.ctx.execution_id,
-            trigger="completion_summary",
+            trigger=ReplanTrigger.COMPLETION_SUMMARY.value,
             step_number=step.step_number,
             replans_used=state.replans_used,
         )
@@ -575,7 +571,7 @@ class HybridLoop(PlanPhaseMixin):
         logger.info(
             EXECUTION_HYBRID_REPLAN_DECIDED,
             execution_id=state.ctx.execution_id,
-            trigger="steering",
+            trigger=ReplanTrigger.STEERING.value,
             directive_id=directive_id,
             step_number=step.step_number,
             replans_used=state.replans_used,

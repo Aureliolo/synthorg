@@ -41,6 +41,16 @@ class PlanPhaseMixin(PlanStepTurnMixin):
     # is a per-loop value rather than something derived from the class name.
     _LOOP_TYPE: str
 
+    def get_loop_type(self) -> str:
+        """Return the loop type identifier.
+
+        Returns:
+            The loop's ``_LOOP_TYPE``, the same tag ``_finalize`` writes into
+            the result metadata, so the protocol accessor and the metadata
+            can never drift apart.
+        """
+        return self._LOOP_TYPE
+
     async def _run_planning_phase(
         self,
         run: StepRunContext,
@@ -114,27 +124,18 @@ class PlanPhaseMixin(PlanStepTurnMixin):
         # status changes (COMPLETED, IN_PROGRESS, etc.).
         state.sync_current_plan()
 
-        if not state.ctx.has_turns_remaining and state.step_idx < len(state.plan.steps):
-            logger.info(
-                EXECUTION_LOOP_TERMINATED,
-                execution_id=state.ctx.execution_id,
-                reason=TerminationReason.MAX_TURNS.value,
-                turns=len(state.turns),
-            )
-            return self._finalize(
-                build_result(state.ctx, TerminationReason.MAX_TURNS, state.turns),
-                state.all_plans,
-                state.replans_used,
-            )
-
+        ran_out = not state.ctx.has_turns_remaining and state.step_idx < len(
+            state.plan.steps
+        )
+        reason = TerminationReason.MAX_TURNS if ran_out else TerminationReason.COMPLETED
         logger.info(
             EXECUTION_LOOP_TERMINATED,
             execution_id=state.ctx.execution_id,
-            reason=TerminationReason.COMPLETED.value,
+            reason=reason.value,
             turns=len(state.turns),
         )
         return self._finalize(
-            build_result(state.ctx, TerminationReason.COMPLETED, state.turns),
+            build_result(state.ctx, reason, state.turns),
             state.all_plans,
             state.replans_used,
         )

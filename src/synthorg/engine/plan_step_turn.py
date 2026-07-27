@@ -186,9 +186,7 @@ class PlanStepTurnMixin:
         )
 
         if not response.tool_calls:
-            state.ctx, step_ok = self._handle_step_completion(
-                state.ctx, response, turn_number
-            )
+            step_ok = self._step_succeeded(state.ctx, response, turn_number)
             return StepTurnOutcome.from_success(success=step_ok)
 
         return await self._handle_step_tool_calls(
@@ -198,17 +196,18 @@ class PlanStepTurnMixin:
             turn_number,
         )
 
-    def _handle_step_completion(
+    def _step_succeeded(
         self,
         ctx: AgentContext,
         response: CompletionResponse,
         turn_number: int,
-    ) -> tuple[AgentContext, bool]:
+    ) -> bool:
         """Assess step success and log the two provider anomalies.
 
         Returns:
-            ``(ctx, success)``: the unchanged context and the step's
-            success flag from :func:`assess_step_success`.
+            The step's success flag from :func:`assess_step_success`, or
+            ``False`` when the provider closed on ``TOOL_USE`` without
+            actually asking for a tool.
         """
         if response.finish_reason == FinishReason.TOOL_USE:
             # Its own event, not the routine per-turn one: a consumer
@@ -221,8 +220,7 @@ class PlanStepTurnMixin:
                 finish_reason=response.finish_reason.value,
                 error="Provider returned TOOL_USE with no tool calls",
             )
-            return ctx, False
-        success = assess_step_success(response)
+            return False
         if response.finish_reason == FinishReason.MAX_TOKENS:
             logger.warning(
                 EXECUTION_PLAN_STEP_TRUNCATED,
@@ -230,7 +228,7 @@ class PlanStepTurnMixin:
                 turn=turn_number,
                 truncated=True,
             )
-        return ctx, success
+        return assess_step_success(response)
 
     async def _handle_step_tool_calls(
         self,
