@@ -14,12 +14,8 @@ name: GHCR Cleanup
 # children were already pruned cannot be re-pushed, so it needs the API delete
 # to succeed instead.
 #
-# Reapable classes (see publish-image-loaded metadata config):
-#   - dev builds            X.Y.Z-dev.N (+ floating `dev`)  -> keep newest 5
-#   - PR / scan short-sha   sha-<short>[-amd64|-arm64],
-#                           scan-<full>[-amd64|-arm64]      -> delete > 7 days
-#   - orphaned referrers    cosign sha256-<digest> + untagged whose parent
-#                           image was deleted above         -> reap
+# Three passes below: dev builds, PR/scan images, orphans. Each carries its
+# own regex and rationale.
 #
 # Runs weekly on its own schedule (and on manual dispatch for the one-time
 # backfill of the historical ~61k versions), fully decoupled from the
@@ -148,7 +144,7 @@ jobs:
           use-regex: true
           delete-tags: ^\d+\.\d+\.\d+-dev\.\d+$
           keep-n-tagged: 5
-          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|keep-[a-z0-9._-]+)$
+          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|keep-[A-Za-z0-9._-]+)$
           validate: true
           dry-run: ${{ needs.config.outputs.dry-run }}
 
@@ -166,7 +162,7 @@ jobs:
           use-regex: true
           delete-tags: ^(sha|scan)-[0-9a-f]{6,}(-amd64|-arm64)?$
           older-than: 7 days
-          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+|keep-[a-z0-9._-]+)$
+          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+|keep-[A-Za-z0-9._-]+)$
           validate: true
           dry-run: ${{ needs.config.outputs.dry-run }}
 
@@ -196,6 +192,6 @@ jobs:
           use-regex: true
           delete-orphaned-images: true
           delete-untagged: true
-          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+|keep-[a-z0-9._-]+)$
+          exclude-tags: ^(\d+\.\d+\.\d+|\d+\.\d+|latest|dev|\d+\.\d+\.\d+-dev\.\d+|keep-[A-Za-z0-9._-]+)$
           validate: true
           dry-run: ${{ needs.config.outputs.dry-run }}

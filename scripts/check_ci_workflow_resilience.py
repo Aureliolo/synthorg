@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: CI workflow resilience invariants.
 
-Enforces seven invariants across the CI definitions so the resilience
+Enforces eight invariants across the CI definitions so the resilience
 hardening they carry cannot silently regress:
 
 1. **Every job declares ``timeout-minutes``.** A job without it inherits
@@ -98,13 +98,29 @@ hardening they carry cannot silently regress:
 
 7. **A resilient-pull ladder's local tag reaches only a consumer that can
    resolve one.** The ladder's output names an image in the runner's daemon
-   and nowhere else. ``setup-qemu-action`` pulls its ``image:`` input
-   unconditionally, so handing it that tag did not weaken the ladder, it made
-   the step impossible: ``pull access denied for synthorg-binfmt, repository
-   does not exist``. Every arm64 build on main broke, and no PR could show it
-   because the step is gated off on ``pull_request``. A tag may be consumed
-   from a ``run:`` step, or by an action input in ``_LOCAL_TAG_CONSUMERS``; a
-   tag nothing consumes is also flagged, since the ladder then guards nothing.
+   and nowhere else, so an action that pulls its image input unconditionally
+   (``setup-qemu-action`` does) is not merely bypassing the ladder: the name
+   resolves to no repository, and the step becomes impossible rather than
+   merely unprotected. Only a static check catches that, because such steps
+   are typically gated off ``pull_request`` and so never run before main.
+
+   A tag may be consumed from a ``run:`` step that follows its producer, or by
+   an action input in ``_LOCAL_TAG_CONSUMERS``. Matching is by whole token and
+   exact value, never substring, so one tag cannot vouch for another that
+   merely contains it. A tag nothing consumes is flagged (the ladder then
+   guards nothing), and a ``${{ }}``-valued tag is flagged outright, since
+   matching unevaluated text would let an aliased spelling pass silently.
+
+8. **Every Dockerfile reference BuildKit resolves itself is digest-pinned.**
+   The buildx driver mirrors ``docker.io`` through ``mirror.gcr.io`` so a
+   Docker Hub stall cannot kill a build after the pull ladder already saved
+   the driver boot. That substitution is safe only because the ``# syntax=``
+   frontend, every ``FROM``, and every ``COPY --from=`` carry a digest: a
+   mirror serving different content then fails verification instead of being
+   trusted. The property lives in ``docker/**/Dockerfile``, not in the
+   workflow that enables the mirror, so nothing else can enforce it, and a new
+   Dockerfile with a tag-only base would silently reopen the gap. Build stages
+   and ``${...}`` build args are exempt: neither resolves against a registry.
 
 The enforced set is deliberately narrow: the external upload/OIDC actions
 that lack their own retry AND sit on an important / required path. Other
@@ -127,8 +143,9 @@ Usage::
 """
 
 import argparse
+import re
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Final
 
@@ -148,9 +165,25 @@ _PULL_ACTION_DIR: Final[str] = ".github/actions/docker-pull-resilient"
 _ATTEMPTS_INPUT: Final[str] = "attempts"
 _PULL_TIMEOUT_INPUT: Final[str] = "pull-timeout-seconds"
 _LOCAL_TAG_INPUT: Final[str] = "local-tag"
+_EXPRESSION_MARKER: Final[str] = "${{"
 
-# ``uses:`` inputs that resolve against the local daemon. Anything unlisted is
-# assumed to pull, which is fatal for a tag that names no registry repository.
+_DOCKER_DIR: Final[str] = "docker"
+_DOCKERFILE_NAME: Final[str] = "Dockerfile"
+_SYNTAX_PREFIX: Final[str] = "# syntax="
+_COPY_FROM_FLAG: Final[str] = "--from="
+_DIGEST_MARKER: Final[str] = "@sha256:"
+# ``FROM <ref> AS <name>`` is the shortest aliased form.
+_FROM_ALIAS_WORDS: Final[int] = 3
+# Delimiters around an image reference in either a shell body or a `with:`
+# value: `driver-opts: image=<tag>` and a `${{ ... && 'image=<tag>' }}`
+# expression both have to yield the bare tag as one token.
+_TOKEN_SPLIT: Final[re.Pattern[str]] = re.compile(r"""[\s;|&()<>=,"'`]+""")
+
+# ``uses:`` inputs that resolve against the local daemon: buildx's
+# docker-container driver attempts a registry pull but falls back to an
+# already-present local image ("pulling failed, using local image ..."). An
+# unlisted input is assumed to pull outright, which is fatal for a tag naming
+# no registry repository.
 _LOCAL_TAG_CONSUMERS: Final[dict[str, frozenset[str]]] = {
     "docker/setup-buildx-action": frozenset({"driver-opts"}),
 }
@@ -181,7 +214,6 @@ _WRAPPED_ACTIONS: Final[dict[str, str]] = {
 # ``owner/name`` (or ``owner/name/subpath``) prefix of the ``uses:`` ref.
 _ENFORCED_ACTIONS: Final[frozenset[str]] = frozenset(
     {
-        # The incident: OIDC getIDToken() 503 crashed the coverage upload.
         "codecov/codecov-action",
         # Required check (CodSpeed Pass); same OIDC class, would block PR
         # merges if a CodSpeed 503 went unguarded.
@@ -896,14 +928,22 @@ def _check_retry_deadlines(context: str, step: dict[str, object]) -> list[str]:
     ]
 
 
-def _produced_local_tags(steps: list[object]) -> dict[str, int]:
-    """Return each ``local-tag`` the resilient-pull action emits, by step index."""
+def _is_pull_producer(step: dict[str, object]) -> bool:
+    """Return True when the step is a resilient-pull call."""
+    uses = step.get("uses")
+    return isinstance(uses, str) and _local_action_dir(uses) == _PULL_ACTION_DIR
+
+
+def _produced_local_tags(steps: Sequence[object]) -> dict[str, int]:
+    """Return each ``local-tag`` the ladder emits, by FIRST producing index.
+
+    First rather than last: with two producers of one tag the image is in the
+    daemon from the earlier one onward, so that is the index a consumer has to
+    follow to be valid.
+    """
     tags: dict[str, int] = {}
     for index, step in enumerate(steps):
-        if not isinstance(step, dict):
-            continue
-        uses = step.get("uses")
-        if not isinstance(uses, str) or _local_action_dir(uses) != _PULL_ACTION_DIR:
+        if not isinstance(step, dict) or not _is_pull_producer(step):
             continue
         with_ = step.get("with")
         tag = with_.get(_LOCAL_TAG_INPUT) if isinstance(with_, dict) else None
@@ -912,18 +952,82 @@ def _produced_local_tags(steps: list[object]) -> dict[str, int]:
     return tags
 
 
-def _shell_text(step: dict[str, object]) -> str:
-    """Return a ``run:`` step's body plus its env values, else the empty string."""
+def _mentions_tag(text: str, tag: str) -> bool:
+    """Return True when *text* references *tag* as a whole token.
+
+    Substring matching would let one tag vouch for another whose name merely
+    contains it (``:qemu-v9.2.2`` inside ``:qemu-v9.2.20``), masking a real
+    orphan and inventing a violation against correct wiring.
+    """
+    return any(token == tag for token in _TOKEN_SPLIT.split(text))
+
+
+def _consumes_in_shell(step: dict[str, object], tag: str) -> bool:
+    """Return True when a ``run:`` step resolves *tag* itself.
+
+    ``env:`` counts only on a ``run:`` step: on a ``uses:`` step it feeds the
+    action's process, not a shell that could resolve a local image.
+    """
     if "run" not in step:
-        return ""
-    parts = [str(step.get("run", ""))]
+        return False
+    if _mentions_tag(str(step.get("run", "")), tag):
+        return True
     env = step.get("env")
-    if isinstance(env, dict):
-        parts.extend(str(value) for value in env.values())
-    return "\n".join(parts)
+    if not isinstance(env, dict):
+        return False
+    return any(_mentions_tag(str(value), tag) for value in env.values())
 
 
-def _check_local_tag_consumers(context: str, steps: list[object]) -> list[str]:
+def _step_tag_violations(
+    prefix: str,
+    step: dict[str, object],
+    index: int,
+    tags: dict[str, int],
+    consumed: set[str],
+) -> list[str]:
+    """Return violations for one step's use of any produced local tag.
+
+    Args:
+        prefix: Message prefix, already terminated, or empty.
+        step: The step mapping.
+        index: The step's position, judged against each tag's producer.
+        tags: Produced tag to first producing index.
+        consumed: Mutated with every tag this step resolves.
+
+    Returns:
+        One message per tag handed to an input that pulls.
+    """
+    uses = step.get("uses")
+    action = _action_id(uses) if isinstance(uses, str) else ""
+    allowed = _LOCAL_TAG_CONSUMERS.get(action, frozenset())
+    raw_with = step.get("with")
+    with_ = raw_with if isinstance(raw_with, dict) else {}
+    violations: list[str] = []
+    for tag, producer in tags.items():
+        # A reference before the producer names an image the daemon does not
+        # hold yet, so it cannot vouch for the ladder.
+        if index <= producer:
+            continue
+        if _consumes_in_shell(step, tag):
+            consumed.add(tag)
+        for name, value in with_.items():
+            if not _mentions_tag(str(value), tag):
+                continue
+            consumed.add(tag)
+            if str(name) in allowed:
+                continue
+            violations.append(
+                f"{prefix}'{_step_label(step, index)}' passes local tag"
+                f" '{tag}' to `{action}` input `{name}`, which resolves the"
+                " reference against a registry, where a local-only tag names"
+                " no repository. Consume it from a `run:` step, or add the"
+                " input to _LOCAL_TAG_CONSUMERS once upstream is confirmed"
+                " to resolve locally."
+            )
+    return violations
+
+
+def _check_local_tag_consumers(context: str, steps: Sequence[object]) -> list[str]:
     """Return violations where a ladder's local tag reaches a pulling consumer.
 
     The ladder's output exists only in the runner's daemon, so an action that
@@ -931,52 +1035,36 @@ def _check_local_tag_consumers(context: str, steps: list[object]) -> list[str]:
     to no repository and the step cannot succeed at all.
 
     Args:
-        context: File or job label, for the message.
+        context: Job label, or empty for a composite (the printer already
+            names the file).
         steps: The step list to walk.
 
     Returns:
-        One message per pulling consumer, plus one per tag nothing consumes.
+        A message per pulling consumer, per unresolvable tag, and per tag
+        nothing consumes.
     """
     tags = _produced_local_tags(steps)
     if not tags:
         return []
-    violations: list[str] = []
+    prefix = f"{context}: " if context else ""
+    # Fail closed on an expression: matching it to a consumer means comparing
+    # unevaluated text, so an aliased spelling would silently pass.
+    violations = [
+        f"{prefix}pull ladder emits local tag '{tag}' as an unresolved"
+        " expression, so no consumer can be matched statically. Pass a literal."
+        for tag in tags
+        if _EXPRESSION_MARKER in tag
+    ]
     consumed: set[str] = set()
     for index, step in enumerate(steps):
-        if not isinstance(step, dict):
+        if not isinstance(step, dict) or _is_pull_producer(step):
             continue
-        uses = step.get("uses")
-        raw_with = step.get("with")
-        with_ = raw_with if isinstance(raw_with, dict) else {}
-        shell_text = _shell_text(step)
-        for tag, producer in tags.items():
-            if index == producer:
-                continue
-            if tag in shell_text:
-                consumed.add(tag)
-            if not isinstance(uses, str):
-                continue
-            action = _action_id(uses)
-            allowed = _LOCAL_TAG_CONSUMERS.get(action, frozenset())
-            for name, value in with_.items():
-                if tag not in str(value):
-                    continue
-                consumed.add(tag)
-                if str(name) in allowed:
-                    continue
-                violations.append(
-                    f"{context}: '{_step_label(step, index)}' passes local tag"
-                    f" '{tag}' to `{action}` input `{name}`, which resolves the"
-                    " reference against a registry, where a local-only tag names"
-                    " no repository. Consume it from a `run:` step, or add the"
-                    f" input to _LOCAL_TAG_CONSUMERS once upstream is confirmed"
-                    " to resolve locally."
-                )
+        violations.extend(_step_tag_violations(prefix, step, index, tags, consumed))
     violations.extend(
-        f"{context}: pull ladder emits local tag '{tag}' that nothing consumes,"
+        f"{prefix}pull ladder emits local tag '{tag}' that nothing consumes,"
         " so the ladder guards no pull."
         for tag in tags
-        if tag not in consumed
+        if tag not in consumed and _EXPRESSION_MARKER not in tag
     )
     return violations
 
@@ -1004,7 +1092,7 @@ def _scan_composite_action(
     steps = runs.get("steps")
     if not isinstance(steps, list):
         return []
-    violations: list[str] = _check_local_tag_consumers("action", steps)
+    violations: list[str] = _check_local_tag_consumers("", steps)
     consumes = False
     for index, step in enumerate(steps):
         if not isinstance(step, dict):
@@ -1048,7 +1136,7 @@ def _check_job_steps(job_name: str, rel_path: str, job: dict[str, object]) -> li
         Violation messages, empty when the job is compliant.
     """
     steps = _job_steps(job)
-    violations: list[str] = _check_local_tag_consumers(f"job '{job_name}'", list(steps))
+    violations: list[str] = _check_local_tag_consumers(f"job '{job_name}'", steps)
     checkout = _CheckoutState()
     for step in steps:
         violations.extend(_check_retry_deadlines(f"job '{job_name}'", step))
@@ -1122,10 +1210,78 @@ def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]
     return violations
 
 
+def _dockerfile_refs(text: str) -> list[tuple[int, str]]:
+    """Return ``(line number, image reference)`` for every pinnable reference.
+
+    Build stages and ``${...}`` build args are excluded: neither resolves
+    against a registry, so neither can carry a digest.
+    """
+    stages: set[str] = set()
+    refs: list[tuple[int, str]] = []
+    for number, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if line.startswith(_SYNTAX_PREFIX):
+            refs.append((number, line.removeprefix(_SYNTAX_PREFIX).strip()))
+            continue
+        words = line.split()
+        if not words:
+            continue
+        keyword = words[0].upper()
+        if keyword == "FROM":
+            operands = [word for word in words[1:] if not word.startswith("--")]
+            if not operands:
+                continue
+            ref = operands[0]
+            if len(operands) >= _FROM_ALIAS_WORDS and operands[1].upper() == "AS":
+                stages.add(operands[2])
+            if ref not in stages and not ref.startswith("${"):
+                refs.append((number, ref))
+        elif keyword == "COPY":
+            for word in words[1:]:
+                if not word.startswith(_COPY_FROM_FLAG):
+                    continue
+                ref = word.removeprefix(_COPY_FROM_FLAG)
+                if ref not in stages and not ref.isdigit() and not ref.startswith("${"):
+                    refs.append((number, ref))
+    return refs
+
+
+def _check_dockerfile_digest_pins() -> list[str]:
+    """Return violations where a Dockerfile reference is not digest-pinned.
+
+    Invariant 8. The docker.io registry mirror configured on the buildx driver
+    is only safe because every reference BuildKit resolves itself is pinned by
+    digest: a mirror serving different content then fails verification instead
+    of being trusted. That property lives in the Dockerfiles, not the workflow
+    that enables the mirror, so nothing else can enforce it.
+    """
+    root = _REPO_ROOT / _DOCKER_DIR
+    if not root.exists():
+        return []
+    violations: list[str] = []
+    for path in sorted(root.rglob(_DOCKERFILE_NAME)):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError, UnicodeDecodeError:
+            continue
+        violations.extend(
+            f"{_relative_path(path)}:{number}: '{ref}' is not digest-pinned."
+            " BuildKit resolves this itself, outside the pull ladder, so a"
+            " mirrored registry could serve different content undetected."
+            " Append `@sha256:<digest>`."
+            for number, ref in _dockerfile_refs(text)
+            if _DIGEST_MARKER not in ref
+        )
+    return violations
+
+
 def _scan_paths(paths: Iterable[Path]) -> int:
     """Scan each path; print violations; return the shell exit code."""
     failed = False
     consumers = _artifact_consumer_dirs()
+    for message in _check_dockerfile_digest_pins():
+        failed = True
+        print(message, file=sys.stderr)
     for path in paths:
         if not path.exists() or path.suffix not in (".yml", ".yaml"):
             continue
@@ -1145,8 +1301,9 @@ def _scan_paths(paths: Iterable[Path]) -> int:
             " RETRY_CMD_DEADLINE sized below its job budget, reach every"
             " wrapped action through its wrapper rather than upstream,"
             " give every artifact-consuming job both `actions: read` and an"
-            " explicit github-token, and consume every resilient-pull"
-            " local-tag from a `run:` step. To exclude an action deliberately,"
+            " explicit github-token, consume every resilient-pull local-tag"
+            " from a `run:` step, and digest-pin every Dockerfile reference."
+            " To exclude an action deliberately,"
             " add it to _EXCLUDED in scripts/check_ci_workflow_resilience.py"
             " with a reason.",
             file=sys.stderr,

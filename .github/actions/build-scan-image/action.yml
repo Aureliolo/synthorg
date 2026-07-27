@@ -172,9 +172,14 @@ runs:
       run: |
         set -euo pipefail
         docker run --rm --privileged "${BINFMT_IMAGE}" --install arm64
-        # `--install` exits 0 even when the kernel registered nothing.
-        if [[ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]]; then
-          echo "::error::binfmt qemu-aarch64 handler absent after --install arm64"
+        # `--install` exits 0 even when the kernel registered nothing, and a
+        # registered handler can still be disabled, which surfaces much later
+        # as an exec-format error inside an arm64 RUN. The entry's first line
+        # is literally `enabled` or `disabled`, so assert on that, not on the
+        # file merely existing.
+        handler=/proc/sys/fs/binfmt_misc/qemu-aarch64
+        if [[ ! -e "${handler}" ]] || ! grep -qx enabled "${handler}"; then
+          echo "::error::binfmt qemu-aarch64 handler missing or disabled after --install arm64"
           exit 1
         fi
 
@@ -206,8 +211,11 @@ runs:
         # B, since `''` is falsy and GHA falls through to the `||` arm.
         driver-opts: ${{ github.event_name != 'pull_request' && 'image=synthorg-buildkit:buildx-stable-1' || '' }}
         # BuildKit resolves the `# syntax=` frontend and every `FROM` itself,
-        # outside the `docker pull` the ladder wraps. Digest pins keep the
-        # mirror safe. Ignored by the `docker` driver PR builds use.
+        # outside the `docker pull` the ladder wraps. This covers only the
+        # docker.io refs (the frontend and the builder-stage bases); the
+        # GHCR-hosted `BASE_IMAGE` final stage never touches it. Digest pins
+        # on both keep either path safe. Ignored by the `docker` driver PR
+        # builds use.
         buildkitd-config-inline: |
           [registry."docker.io"]
             mirrors = ["mirror.gcr.io"]
@@ -397,7 +405,14 @@ runs:
     # Trivy JSON + SARIF + CIS benchmark per arch. JSON feeds
     # evaluate-scan.sh (fails on CRITICAL, warns on HIGH). SARIF goes to
     # GitHub Security for both arches with distinct categories.
+    #
+    # Each arch's scan and gate keys off `scan-ref` rather than the implicit
+    # success chain, so one arch cannot silently cost the other its
+    # vulnerability gate: an arm64 load failure would otherwise skip the amd64
+    # gate for a healthy amd64 image, and an amd64 CRITICAL would skip the
+    # arm64 gate entirely for that run.
     - name: Trivy scan (amd64)
+      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -409,6 +424,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Evaluate Trivy results (amd64)
+      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -416,7 +432,7 @@ runs:
       run: scripts/evaluate-scan.sh --verbose "trivy-${IMAGE_NAME}-amd64.json" "$DISPLAY_NAME"
 
     - name: Trivy scan (arm64)
-      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -428,7 +444,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Evaluate Trivy results (arm64)
-      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -444,8 +460,11 @@ runs:
         retention-days: 30
         if-no-files-found: ignore
 
+    # Not `always()`: after a failed build Trivy is never installed and there
+    # is nothing to scan, so the `command not found` lands BELOW the real
+    # error and masks it.
     - name: Trivy SARIF scan (amd64)
-      if: always()
+      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -457,7 +476,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Upload SARIF amd64 to GitHub Security
-      if: always()
+      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' }}
       # Cosmetic Security-tab upload, NOT a required check, and the real
       # vulnerability gate is the separate `Evaluate Trivy results` step
       # above (which stays loud). A transient code-scanning API 401/5xx must
@@ -469,7 +488,7 @@ runs:
         category: trivy-${{ inputs.image-name }}-amd64
 
     - name: Trivy SARIF scan (arm64)
-      if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -481,7 +500,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Upload SARIF arm64 to GitHub Security
-      if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true' }}
       # See the amd64 upload above: cosmetic, non-gating, re-uploads next run.
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
