@@ -6,11 +6,13 @@ name: GHCR Cleanup
 # targets only the reapable tag classes AND carries a belt-and-braces
 # `exclude-tags` regex that protects the release tags regardless.
 #
-# A `keep-*` tag is the operator escape hatch. GitHub permanently refuses to
-# delete a public version past 5000 downloads, and the cleanup action treats
-# that 400 as fatal, so such a version reds the leg every week forever. Tag it
-# (`docker buildx imagetools create --tag <repo>:keep-<reason> <repo>@<digest>`)
-# to move it out of the untagged pass and under this exclusion for good.
+# A `keep-*` tag is the operator escape hatch for a version the API refuses to
+# delete (the action treats that 400 as fatal, so it reds the leg every week
+# forever). Tag it out of the untagged pass with
+# `docker buildx imagetools create --tag <repo>:keep-<reason> <repo>@<digest>`.
+# That only works while every child manifest still exists: an index whose
+# children were already pruned cannot be re-pushed, so it needs the API delete
+# to succeed instead.
 #
 # Reapable classes (see publish-image-loaded metadata config):
 #   - dev builds            X.Y.Z-dev.N (+ floating `dev`)  -> keep newest 5
