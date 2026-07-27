@@ -65,7 +65,7 @@ literature:
 
 1. **Recall wide** from two orthogonal signals: dense vector similarity and
    BM25 over the inverted index, fused by Reciprocal Rank Fusion
-   ([Cormack et al., SIGIR 2009](https://dl.acm.org/doi/10.1145/1571941.1572114)).
+   ([Cormack et al., SIGIR 2009](https://cormack.uwaterloo.ca/cormacksigir09-rrf.pdf)).
    RRF operates on ranks, so it sidesteps the score-normalisation problem that
    makes a weighted sum of cosine distance and BM25 unreliable. Each arm is
    over-fetched before fusion so a document ranked mid-list by one signal can
