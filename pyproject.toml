@@ -348,10 +348,10 @@ convention = "google"
 # helpers or per-strategy variants.
 [tool.ruff.lint.pylint]
 # The residue above this cap is a closed list:
-# scripts/check_argument_count_suppression.py holds every `# noqa: PLR0913`
+# scripts/check_argument_count_suppression.py holds every over-cap function
 # against a shrink-only baseline and refuses to let this number climb. A cap
-# whose escape hatch stays open is a decoration, not a cap, so the two ship
-# together; raising this alone would just make 8 the next 5.
+# whose escape hatch stays freely usable enforces nothing, however low the
+# number is, so the two only mean something together.
 max-args = 8
 # Pinned explicitly, NOT left to default: ruff defaults
 # max-positional-args to whatever max-args is, so leaving it implicit ties

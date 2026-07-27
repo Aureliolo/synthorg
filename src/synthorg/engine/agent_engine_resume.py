@@ -15,6 +15,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine.agent_execute_request import AgentExecuteRequest
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
@@ -284,18 +285,20 @@ class AgentEngineResumeMixin:
             # before the approval park.
             with resumed_run_scope():
                 result = await self._execute(
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    completion_config=None,
-                    ctx=ctx,
-                    system_prompt=system_prompt,
-                    start=start,
-                    timeout_seconds=timeout_seconds,
-                    tool_invoker=tool_invoker,
-                    effective_autonomy=effective_autonomy,
-                    provider=self._provider,
+                    AgentExecuteRequest(
+                        identity=identity,
+                        task=task,
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        completion_config=None,
+                        ctx=ctx,
+                        system_prompt=system_prompt,
+                        start=start,
+                        timeout_seconds=timeout_seconds,
+                        tool_invoker=tool_invoker,
+                        effective_autonomy=effective_autonomy,
+                        provider=self._provider,
+                    )
                 )
         except BudgetExhaustedError as exc:
             return await self._handle_budget_error(

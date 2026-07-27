@@ -6,56 +6,58 @@ functions allowed to exceed it is finite and shrinking. Left to ``# noqa``
 alone the cap is decorative: the marker is freely addable, so a cap
 suppressed hundreds of times reports nothing and prevents nothing.
 
-This gate closes every route around the cap:
+Where the population comes from
+-------------------------------
+The candidate set is derived here, from the AST of every tracked ``*.py``
+file (see :mod:`_argument_count_sites`), NOT from what ``ruff`` reports.
+Trusting the ``ruff`` diagnostic set as the whole population fails in two
+directions: ``ruff`` exempts ``@typing.override`` methods from ``PLR0913``
+syntactically, and it never visits a file pruned by ``exclude`` /
+``extend-exclude`` / ``.gitignore``. Either way an over-cap function
+produces no diagnostic, which an over-trusting gate reads as "clean".
 
-1. **The cap itself cannot be raised.** ``max-args`` must stay at or below
-   ``_MAX_ARGS_CEILING`` and ``max-positional-args`` must stay pinned at
-   ``_MAX_POSITIONAL_ARGS``. Lowering either is always allowed. Quietly
-   raising ``max-args`` until the residue disappears is the primary failure
-   mode this exists to stop, and the positional pin is load-bearing on its
-   own: ruff defaults ``max-positional-args`` to whatever ``max-args`` is,
-   so an unpinned positional cap silently follows the wider one.
-2. **PLR0913 cannot be disabled wholesale**, by ``lint.ignore`` /
-   ``lint.extend-ignore`` or by a ``per-file-ignores`` entry. (Deleting
-   ``"PL"`` from ``lint.select`` is not guarded here: that disables twenty
-   other pylint rules across the whole tree, which is loud rather than
-   stealthy.)
-3. **Every over-cap function carries a per-line marker**, never a file-level
-   ``# ruff: noqa`` blanket. ``RUF100`` does not police file-level
-   directives, so a stale blanket is otherwise invisible.
-4. **Every per-line marker is in the baseline.** A site absent from
-   ``scripts/argument_count_suppression_baseline.txt`` fails, and the
-   generic ``check_baseline_growth.py`` pre-commit hook keeps that file
-   shrink-only, so a new suppression cannot land without an explicit,
-   approved regeneration.
+So ``ruff`` classifies, this gate decides who is in scope. Two ``ruff``
+passes run over the tree: one with every suppression mechanism neutralised,
+one plain. A candidate present in neither is :attr:`SiteStatus.RULE_EXEMPT`
+and still needs an approved baseline entry.
+
+Invariants
+----------
+1. **The cap cannot be raised.** ``max-args`` stays at or below
+   ``_MAX_ARGS_CEILING``; lowering it is a tightening and always allowed.
+   ``max-positional-args`` stays pinned at exactly ``_MAX_POSITIONAL_ARGS``,
+   neither raised nor lowered: ``ruff`` defaults it to ``max-args``, so an
+   unpinned positional cap silently widens with the other one.
+2. **Neither rule can be disabled wholesale**, by ``lint.ignore`` /
+   ``extend-ignore`` or by a ``per-file-ignores`` entry, for ``PLR0913`` or
+   for ``PLR0917``. Prefix selectors count, so ``"PL"`` is rejected too.
+3. **Configuration cannot be relocated out of view.** A ``[tool.ruff]
+   extend`` key, or any ``ruff.toml`` / ``.ruff.toml`` / ``pyproject.toml``
+   below the root, is rejected: both move the effective config somewhere
+   this gate does not read.
+4. **Every over-cap function is accounted for.** A per-line marker, or a
+   ``ruff`` exemption, is legal only when the site already appears in
+   ``scripts/argument_count_suppression_baseline.txt``. A file-level
+   ``# ruff: noqa`` blanket is never legal.
+5. **The baseline holds no stale entry.** An entry outliving its function
+   would silently pre-authorise a future suppression reusing its identity.
 
 There is deliberately no ``# lint-allow:`` opt-out. The baseline is the only
-escape, and it is the one a human has to approve.
-
-Detection
----------
-Ruff answers the "is this function over the cap" question, not this gate:
-reimplementing the count (``self`` / ``cls`` exclusion, ``*`` and ``**``
-handling, ``@overload``, decorators) would drift from ruff's own semantics
-the moment either side changed. The gate runs ruff twice over the tree:
-
-* with ``--ignore-noqa`` and ``lint.per-file-ignores={}``, giving every
-  over-cap function regardless of how it is suppressed;
-* plain, giving the ones ruff itself would already report.
-
-A site in the first set but not the second is suppressed. Reading the
-reported line then says how: a ``# noqa`` naming PLR0913 is a per-line
-marker (baseline-governed); anything else is a blanket (rejected).
+escape, and ``check_baseline_growth.py`` blocks it from growing without an
+explicit ``ALLOW_BASELINE_GROWTH=1`` approval.
 
 Baseline
 --------
-``scripts/argument_count_suppression_baseline.txt`` lists the per-line
-suppressed sites as ``path::qualname`` (``pkg/mod.py::Class.method``). The
-key is the qualified name rather than a line number on purpose: this list is
-long-lived, and a ``path:lineno:col`` key would go stale on any unrelated
-edit above one of the markers, turning every neighbouring PR into a baseline
-regeneration. Regenerate (rare; requires explicit user approval) with
-``--update``.
+Entries are ``path::qualname::arity``. The qualified name rather than a line
+number because this list is long-lived and a ``path:lineno:col`` key would go
+stale on any unrelated edit above the marker. The arity because a name alone
+is not an identity: without it, deleting a baselined function and writing an
+unrelated one under the same name inherits the old approval, and an approved
+function can grow from six parameters to sixty with no baseline diff. Two
+candidates minting the same key is itself rejected, so one entry can never
+authorise two functions.
+
+Regenerate (rare; requires explicit user approval) with ``--update``.
 
 Usage::
 
@@ -63,36 +65,50 @@ Usage::
     uv run python scripts/check_argument_count_suppression.py --update
 
 Exit codes:
-    0 -- the cap pins hold and every over-cap site is a baseline entry.
-    1 -- a new or unbaselined suppression, or a raised cap.
-    2 -- configuration error (bad ``--repo-root``, unreadable or malformed
-         baseline, a source file that could not be read or parsed, ruff
-         failing to run, or a stale baseline entry -- fail-closed).
+    0 -- every over-cap function is a baseline entry and the config holds.
+    1 -- an unbaselined suppression or exemption, a blanket, a raised cap, a
+         disabled rule, or relocated configuration.
+    2 -- the scan could not be trusted (bad ``--repo-root``, unreadable or
+         malformed baseline, unreadable or unparseable source, ``ruff``
+         failing to run, a colliding baseline key, or a stale entry).
 """
 
 import argparse
-import ast
 import json
 import re
 import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
-from typing import Final, override
+from typing import Final
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _argument_count_sites import (  # type: ignore[import-not-found]
+        Candidate,
+        FileScan,
+        SiteStatus,
+        find_nested_ruff_configs,
+        scan_source,
+    )
     from _gate_source import (  # type: ignore[import-not-found]
         GateSourceError,
         read_and_parse,
     )
 else:
+    from scripts._argument_count_sites import (
+        Candidate,
+        FileScan,
+        SiteStatus,
+        find_nested_ruff_configs,
+        scan_source,
+    )
     from scripts._gate_source import GateSourceError, read_and_parse
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _RULE: Final[str] = "PLR0913"
+_POSITIONAL_RULE: Final[str] = "PLR0917"
 _BASELINE_REL: Final[str] = "scripts/argument_count_suppression_baseline.txt"
 
 # The cap this gate holds the line at. ``max-args`` may be lowered below it
@@ -104,26 +120,40 @@ _MAX_ARGS_CEILING: Final[int] = 8
 # lets two same-typed arguments swap silently.
 _MAX_POSITIONAL_ARGS: Final[int] = 5
 
-# A per-line suppression naming the rule, in any of ruff's accepted
-# spellings, with or without trailing rationale text after a double dash.
+# Bounded so a wedged child cannot hang the push. The pooled gate runner kills
+# only its own direct workers, so a subprocess grandchild would be orphaned
+# rather than reaped, and its serial path (PREPUSH_GATE_JOBS=1) has no batch
+# timeout at all.
+_RUFF_TIMEOUT_SECONDS: Final[float] = 120.0
+# Enough of a crashing child's stderr to diagnose it, not enough to drown the
+# hook log in a panic backtrace.
+_STDERR_EXCERPT_CHARS: Final[int] = 2000
+
+# The suppression keyword is case-insensitive to ruff, but rule codes are NOT:
+# an upper-case keyword is honoured, a lower-case rule code is not. Matching
+# the keyword case-insensitively while keeping the code exact mirrors that.
 _PER_LINE_MARKER_RE: Final[re.Pattern[str]] = re.compile(
-    r"#\s*noqa\s*:\s*[A-Z0-9, ]*\b" + _RULE + r"\b",
+    r"#\s*(?i:noqa)\s*:\s*[A-Za-z0-9, ]*\b" + _RULE + r"\b",
 )
-_BASELINE_ENTRY_RE: Final[re.Pattern[str]] = re.compile(r"^[^:]+\.py::[\w.]+$")
+_BASELINE_ENTRY_RE: Final[re.Pattern[str]] = re.compile(r"^[^:]+\.py::[\w.]+::\d+$")
 
 _BASELINE_HEADER: Final[str] = f"""\
-# Functions exceeding [tool.ruff.lint.pylint] max-args that carry a per-line
-# `# noqa: {_RULE}` marker. Each line is `path::qualname` (POSIX path, dotted
-# qualified name) sorted in deterministic order.
+# Functions whose parameter count exceeds [tool.ruff.lint.pylint] max-args.
+# Each line is `path::qualname::arity` (POSIX path, dotted qualified name,
+# parameter count as {_RULE} counts it) sorted in deterministic order.
 #
-# scripts/check_argument_count_suppression.py reads this file to allow the
-# suppression at these exact functions. A marker NOT in this list fails the
+# scripts/check_argument_count_suppression.py reads this file to allow these
+# exact functions. Anything over the cap and NOT in this list fails the
 # pre-push hook, and check_baseline_growth.py rejects any commit that makes
 # the list longer. The list shrinks monotonically: an entry drops out once
 # its function is decomposed back under the cap.
 #
-# There is no per-line opt-out. Adding a suppression means regenerating this
-# file, which needs explicit user approval:
+# The arity is part of the identity on purpose: widening an already-approved
+# signature mints a new key, so it costs a fresh approval rather than riding
+# the old one.
+#
+# There is no per-line opt-out. Adding an entry means regenerating this file,
+# which needs explicit user approval:
 #   uv run python scripts/check_argument_count_suppression.py --update
 """
 
@@ -136,70 +166,68 @@ class RuffInvocationError(Exception):
     """Raised when the ruff subprocess could not be run or understood."""
 
 
-class Suppression(StrEnum):
-    """How an over-cap function is currently kept out of ruff's output."""
-
-    PER_LINE = "per-line"
-    BLANKET = "blanket"
-    NONE = "none"
-
-
 @dataclass(frozen=True)
 class _Site:
-    """One function whose parameter count exceeds ``max-args``."""
+    """An over-cap function together with how ruff currently treats it."""
 
-    rel: str
-    lineno: int
-    qualname: str
-    suppression: Suppression
+    candidate: Candidate
+    status: SiteStatus
 
-    def __post_init__(self) -> None:
-        """Reject coordinates the scan can never legally produce.
+    @property
+    def key(self) -> str:
+        """Return the baseline identity, for a site the baseline can hold.
 
-        Surfaces a scan-loop bug immediately rather than letting an invalid
-        key reach the baseline, where it would only fail much later on
-        round-trip.
+        Returns:
+            The ``path::qualname::arity`` key.
 
         Raises:
-            ValueError: If ``rel`` or ``qualname`` is empty, or ``lineno`` < 1.
+            ValueError: If the site is unsuppressed or blanket-suppressed.
+                Neither is baselineable, and minting a plausible key for one
+                is precisely the laundering this gate exists to prevent.
         """
-        if not self.rel:
-            msg = "rel must not be empty"
+        if self.status not in {SiteStatus.PER_LINE, SiteStatus.RULE_EXEMPT}:
+            msg = (
+                f"{self.candidate.rel}:{self.candidate.lineno}: a "
+                f"{self.status} site has no baseline identity"
+            )
             raise ValueError(msg)
-        if not self.qualname:
-            msg = f"{self.rel}:{self.lineno}: qualname must not be empty"
-            raise ValueError(msg)
-        if self.lineno < 1:
-            msg = f"lineno must be >= 1, got {self.lineno}"
-            raise ValueError(msg)
-
-    def baseline_key(self) -> str:
-        """Return the ``path::qualname`` baseline identity for this site."""
-        return f"{self.rel}::{self.qualname}"
+        # Bound through a local so the dual-import shim (which types the
+        # sibling module as Any on the non-package branch) cannot widen this.
+        key: str = self.candidate.key
+        return key
 
     def message(self) -> str:
         """Return the human-facing violation message."""
-        if self.suppression is Suppression.BLANKET:
-            detail = (
-                f"suppressed by a file-level '# ruff: noqa' or a "
+        where = f"{self.candidate.rel}:{self.candidate.lineno}"
+        breach = (
+            f"{self.candidate.arg_count} arguments"
+            if self.candidate.over_arg_cap
+            else f"{self.candidate.positional_count} positional arguments"
+        )
+        what = f"{self.candidate.qualname}() takes {breach}"
+        detail = {
+            SiteStatus.BLANKET: (
+                f"and is suppressed by a file-level '# ruff: noqa' or a "
                 f"per-file-ignores entry. A blanket exemption cannot be "
-                f"baselined; suppress the one function with a per-line "
-                f"'# noqa: {_RULE}' or decompose it"
-            )
-        elif self.suppression is Suppression.NONE:
-            detail = (
-                "exceeds max-args and is not suppressed at all "
-                "(ruff reports it directly). Decompose it, or bundle the "
-                "parameters into a params object"
-            )
-        else:
-            detail = (
-                "carries a per-line marker that is not in "
-                f"{_BASELINE_REL}. The suppression list is closed: decompose "
-                "the function, or regenerate the baseline with explicit "
-                "approval"
-            )
-        return f"{self.rel}:{self.lineno}: {self.qualname}() {detail}."
+                f"baselined: suppress the one function with a per-line "
+                f"'# noqa: {_RULE}', or decompose it"
+            ),
+            SiteStatus.UNSUPPRESSED: (
+                "and is not suppressed at all, so ruff reports it directly. "
+                "Decompose it, or bundle the parameters into a params object"
+            ),
+            SiteStatus.RULE_EXEMPT: (
+                f"and is exempt from {_RULE} by decorator, so ruff never "
+                f"reports it and a '# noqa' here would itself be dead. It "
+                f"still needs a baseline entry, or decompose it"
+            ),
+            SiteStatus.PER_LINE: (
+                f"and carries a per-line marker that is not in "
+                f"{_BASELINE_REL}. The list is closed: decompose it, or "
+                f"regenerate the baseline with explicit approval"
+            ),
+        }[self.status]
+        return f"{where}: {what} {detail}."
 
 
 def _resolve_project_root(repo_root: Path | None) -> Path:
@@ -210,7 +238,7 @@ def _resolve_project_root(repo_root: Path | None) -> Path:
 
     Raises:
         ProjectRootError: If *repo_root* cannot be resolved to an existing
-            path, or resolves to something that is not a directory.
+            directory.
     """
     if repo_root is None:
         return _REPO_ROOT
@@ -230,237 +258,271 @@ def _baseline_path(project_root: Path) -> Path:
     return project_root / _BASELINE_REL
 
 
+def _tracked_files(project_root: Path) -> list[str]:
+    """Return every tracked path, POSIX-relative to *project_root*.
+
+    Returns:
+        The tracked paths, sorted.
+
+    Raises:
+        GateSourceError: If ``git`` cannot be run or fails. Unlike a file
+            scan that can fall back to ``rglob``, the population itself must
+            be exact: a silently narrower list would understate the universe,
+            which is the failure this gate exists to prevent.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z"],
+            check=True,
+            capture_output=True,
+            cwd=project_root,
+            timeout=_RUFF_TIMEOUT_SECONDS,
+        )
+    except (subprocess.SubprocessError, OSError) as exc:
+        msg = f"could not enumerate tracked files ({type(exc).__name__}: {exc})"
+        raise GateSourceError(msg) from exc
+    out = result.stdout.decode("utf-8", errors="replace")
+    return sorted(p for p in out.split("\0") if p)
+
+
 # ── ruff invocation ─────────────────────────────────────────────
 
 
-def _run_ruff(project_root: Path, *, neutralise: bool) -> list[tuple[str, int]]:
-    """Return ``(relative_path, lineno)`` for every PLR0913 site ruff reports.
-
-    With *neutralise* the scan ignores both ``# noqa`` directives and the
-    project's ``per-file-ignores``, so it reports every over-cap function
-    whether or not it is currently suppressed. Without it, the scan is what
-    ruff would report on its own.
-
-    Args:
-        project_root: Directory to run ruff in.
-        neutralise: Whether to disable the suppression mechanisms.
-
-    Returns:
-        One entry per reported diagnostic, paths relative to *project_root*.
-
-    Raises:
-        RuffInvocationError: If ruff cannot be spawned, exits with a code
-            other than "clean" or "violations found", or emits output this
-            gate cannot parse. Every one of those is a fail-closed condition:
-            an empty result would otherwise read as "no violations".
-    """
-    argv = [
+def _ruff_argv(*extra: str) -> list[str]:
+    """Return the ruff command line with *extra* appended."""
+    return [
         sys.executable,
         "-m",
         "ruff",
         "check",
         ".",
         "--select",
-        _RULE,
+        f"{_RULE},{_POSITIONAL_RULE}",
         "--output-format",
         "json",
+        *extra,
     ]
+
+
+def _run_ruff(project_root: Path, *, neutralise: bool) -> list[tuple[str, int]]:
+    """Return ``(relative_path, lineno)`` for every site ruff reports.
+
+    With *neutralise*, every suppression and discovery mechanism this gate
+    knows about is switched off, so the scan reports over-cap functions
+    whether or not the project config would hide them. Without it, the scan
+    is what ruff would say on its own.
+
+    Args:
+        project_root: Directory to run ruff in.
+        neutralise: Whether to disable suppression and pruning.
+
+    Returns:
+        One entry per reported diagnostic.
+
+    Raises:
+        RuffInvocationError: If ruff cannot be spawned, times out, exits with
+            a code other than clean-or-violations, produces output this gate
+            cannot parse, or produces no output at all. Every one of those is
+            fail-closed: an empty result would otherwise read as "no
+            violations".
+    """
+    extra: list[str] = []
     if neutralise:
-        argv += ["--ignore-noqa", "--config", "lint.per-file-ignores={}"]
+        extra = [
+            "--ignore-noqa",
+            "--config",
+            "lint.per-file-ignores={}",
+            "--config",
+            "lint.extend-per-file-ignores={}",
+            "--config",
+            "exclude=[]",
+            "--config",
+            "extend-exclude=[]",
+            "--config",
+            "respect-gitignore=false",
+        ]
+    pass_name = "neutralised" if neutralise else "plain"
     try:
         result = subprocess.run(
-            argv,
+            _ruff_argv(*extra),
             check=False,
             capture_output=True,
             text=True,
             encoding="utf-8",
             cwd=project_root,
+            timeout=_RUFF_TIMEOUT_SECONDS,
         )
-    except OSError as exc:
-        msg = f"could not run ruff ({type(exc).__name__}: {exc})"
+    except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError) as exc:
+        msg = f"{pass_name} ruff run failed ({type(exc).__name__}: {exc})"
         raise RuffInvocationError(msg) from exc
     # 0 = clean, 1 = violations found. Anything else is ruff itself failing.
     if result.returncode not in {0, 1}:
-        msg = (
-            f"ruff exited {result.returncode}: {result.stderr.strip() or '<no stderr>'}"
-        )
+        excerpt = result.stderr.strip()[:_STDERR_EXCERPT_CHARS] or "<no stderr>"
+        msg = f"{pass_name} ruff run exited {result.returncode}: {excerpt}"
         raise RuffInvocationError(msg)
-    return _parse_ruff_json(result.stdout, project_root)
+    if result.stderr.strip():
+        # Warnings on an otherwise-successful run are how version skew first
+        # shows up (a deprecated --config spelling, a schema change). Silently
+        # dropping them hides the drift until it eventually breaks the run.
+        print(
+            f"check_argument_count_suppression: {pass_name} ruff run warned: "
+            f"{result.stderr.strip()[:_STDERR_EXCERPT_CHARS]}",
+            file=sys.stderr,
+        )
+    return _parse_ruff_json(result.stdout, project_root, pass_name)
 
 
-def _parse_ruff_json(stdout: str, project_root: Path) -> list[tuple[str, int]]:
-    """Decode ruff's JSON output into ``(relative_path, lineno)`` pairs.
+def _parse_ruff_json(
+    stdout: str,
+    project_root: Path,
+    pass_name: str,
+) -> list[tuple[str, int]]:
+    """Decode ruff JSON output into ``(relative_path, lineno)`` pairs.
 
     Returns:
         One entry per diagnostic, in ruff's own order.
 
     Raises:
-        RuffInvocationError: If the payload is not the expected shape, or a
-            reported path lies outside *project_root*.
+        RuffInvocationError: If the payload is absent, not the expected
+            shape, or names a path outside *project_root*. Blank output is
+            NOT "no violations": with ``--output-format json`` ruff emits at
+            least ``[]`` whenever it actually ran, so blank means it did not.
+            ``python -m ruff`` exits 1 with blank stdout when ruff is not
+            importable, which is the same exit code as "violations found".
     """
     if not stdout.strip():
-        return []
+        msg = (
+            f"{pass_name} ruff run produced no output; ruff emits at least "
+            f"'[]' when it runs, so it did not run at all (is it installed "
+            f"for {sys.executable}?)"
+        )
+        raise RuffInvocationError(msg)
     try:
         payload = json.loads(stdout)
     except json.JSONDecodeError as exc:
-        msg = f"could not parse ruff JSON output: {exc}"
+        msg = f"could not parse {pass_name} ruff output: {exc}"
         raise RuffInvocationError(msg) from exc
     if not isinstance(payload, list):
         msg = f"expected a JSON list from ruff, got {type(payload).__name__}"
         raise RuffInvocationError(msg)
-    sites: list[tuple[str, int]] = []
-    for item in payload:
-        if not isinstance(item, dict):
-            msg = f"expected a JSON object per diagnostic, got {item!r}"
-            raise RuffInvocationError(msg)
-        filename = item.get("filename")
-        location = item.get("location")
-        if not isinstance(filename, str) or not isinstance(location, dict):
-            msg = f"diagnostic missing filename/location: {item!r}"
-            raise RuffInvocationError(msg)
-        row = location.get("row")
-        if not isinstance(row, int):
-            msg = f"diagnostic has a non-integer row: {item!r}"
-            raise RuffInvocationError(msg)
-        absolute = Path(filename)
-        if not absolute.is_relative_to(project_root):
-            msg = f"ruff reported a path outside the project root: {filename}"
-            raise RuffInvocationError(msg)
-        sites.append((absolute.relative_to(project_root).as_posix(), row))
-    return sites
+    return [_parse_one_diagnostic(item, project_root) for item in payload]
 
 
-# ── qualified-name resolution ───────────────────────────────────
-
-
-class _QualnameIndex(ast.NodeVisitor):
-    """Maps every line ruff can anchor a function diagnostic to its qualname.
-
-    Both the ``def`` line and each decorator line are recorded: ruff anchors
-    ``PLR0913`` at the function name, but a decorated definition can report
-    against the decorator instead, and guessing wrong would silently drop a
-    site from the scan.
-    """
-
-    def __init__(self) -> None:
-        self._stack: list[str] = []
-        self.by_line: dict[int, str] = {}
-
-    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
-        self._stack.append(node.name)
-        qualname = ".".join(self._stack)
-        self.by_line[node.lineno] = qualname
-        for decorator in node.decorator_list:
-            self.by_line[decorator.lineno] = qualname
-        self.generic_visit(node)
-        self._stack.pop()
-
-    @override
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        """Record a synchronous function and descend into its body."""
-        self._visit_function(node)
-
-    @override
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        """Record an async function and descend into its body."""
-        self._visit_function(node)
-
-    @override
-    def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        """Push the class name so its methods qualify as ``Class.method``."""
-        self._stack.append(node.name)
-        self.generic_visit(node)
-        self._stack.pop()
-
-
-@dataclass(frozen=True)
-class _FileIndex:
-    """The per-file lookups the classification pass needs."""
-
-    lines: tuple[str, ...]
-    qualnames: dict[int, str]
-
-
-def _index_file(path: Path) -> _FileIndex:
-    """Read and index one source file.
+def _parse_one_diagnostic(item: object, project_root: Path) -> tuple[str, int]:
+    """Decode one ruff diagnostic.
 
     Returns:
-        Its physical lines plus the line-to-qualname map.
+        Its ``(relative_path, lineno)``.
 
     Raises:
-        GateSourceError: If the file cannot be read or parsed (fail-closed).
+        RuffInvocationError: If the shape is wrong or the path escapes the
+            project root.
     """
-    text, tree = read_and_parse(path)
-    index = _QualnameIndex()
-    index.visit(tree)
-    return _FileIndex(lines=tuple(text.splitlines()), qualnames=index.by_line)
+    if not isinstance(item, dict):
+        msg = f"expected a JSON object per diagnostic, got {item!r}"
+        raise RuffInvocationError(msg)
+    filename = item.get("filename")
+    location = item.get("location")
+    if not isinstance(filename, str) or not isinstance(location, dict):
+        msg = f"diagnostic missing filename/location: {item!r}"
+        raise RuffInvocationError(msg)
+    row = location.get("row")
+    if not isinstance(row, int):
+        msg = f"diagnostic has a non-integer row: {item!r}"
+        raise RuffInvocationError(msg)
+    absolute = Path(filename)
+    if not absolute.is_relative_to(project_root):
+        msg = f"ruff reported a path outside the project root: {filename}"
+        raise RuffInvocationError(msg)
+    return (absolute.relative_to(project_root).as_posix(), row)
 
 
-def _classify(
-    project_root: Path,
-    reported: list[tuple[str, int]],
+# ── scanning ────────────────────────────────────────────────────
+
+
+def _effective_caps(project_root: Path) -> tuple[int, int]:
+    """Return the ``(max-args, max-positional-args)`` the project configures.
+
+    Discovery runs against the CONFIGURED caps rather than this gate's own
+    ceiling, so lowering ``max-args`` genuinely tightens the population
+    instead of leaving the gate looking for breaches of a wider bar than
+    ruff enforces. ``_check_config_pins`` separately refuses a configured
+    cap above the ceiling, so the two can never diverge upward.
+
+    Returns:
+        The configured pair, falling back to the gate's own constants when a
+        value is missing or malformed (the pin check reports that
+        separately).
+    """
+    try:
+        _, _, pylint = _load_ruff_tables(project_root)
+    except ValueError:
+        return (_MAX_ARGS_CEILING, _MAX_POSITIONAL_ARGS)
+    max_args = pylint.get("max-args")
+    positional = pylint.get("max-positional-args")
+    arg_cap = (
+        max_args
+        if isinstance(max_args, int) and not isinstance(max_args, bool)
+        else _MAX_ARGS_CEILING
+    )
+    positional_cap = (
+        positional
+        if isinstance(positional, int) and not isinstance(positional, bool)
+        else _MAX_POSITIONAL_ARGS
+    )
+    return (min(arg_cap, _MAX_ARGS_CEILING), min(positional_cap, _MAX_POSITIONAL_ARGS))
+
+
+def _scan_files(project_root: Path) -> dict[str, FileScan]:
+    """Return the per-file candidate scan for every tracked source file.
+
+    Returns:
+        A mapping of relative path to its scan.
+
+    Raises:
+        GateSourceError: If any file cannot be read or parsed (fail-closed).
+    """
+    arg_cap, positional_cap = _effective_caps(project_root)
+    scans: dict[str, FileScan] = {}
+    for rel in _tracked_files(project_root):
+        if not rel.endswith(".py"):
+            continue
+        path = project_root / rel
+        if not path.is_file():
+            continue
+        text, tree = read_and_parse(path)
+        scans[rel] = scan_source(rel, text, tree, arg_cap, positional_cap)
+    return scans
+
+
+def _status_of(
+    candidate: Candidate,
+    scan: FileScan,
+    reported: set[tuple[str, int]],
     unsuppressed: set[tuple[str, int]],
-) -> list[_Site]:
-    """Resolve each reported diagnostic to a named, classified site.
-
-    Args:
-        project_root: Directory the relative paths are anchored at.
-        reported: Every over-cap function, suppression neutralised.
-        unsuppressed: The subset ruff reports without any neutralisation.
+) -> SiteStatus:
+    """Classify one candidate against what the two ruff passes reported.
 
     Returns:
-        One :class:`_Site` per diagnostic.
-
-    Raises:
-        GateSourceError: If a reported file cannot be read or parsed, or a
-            reported line resolves to no function at all (which would mean
-            the qualname index and ruff disagree about the tree).
+        ``UNSUPPRESSED`` when ruff reports it on its own, ``RULE_EXEMPT``
+        when neither pass mentions it, ``PER_LINE`` when the reported line
+        carries a marker naming the rule, and ``BLANKET`` otherwise.
     """
-    cache: dict[str, _FileIndex] = {}
-    sites: list[_Site] = []
-    for rel, lineno in reported:
-        index = cache.get(rel)
-        if index is None:
-            index = _index_file(project_root / rel)
-            cache[rel] = index
-        qualname = index.qualnames.get(lineno)
-        if qualname is None:
-            msg = (
-                f"{rel}:{lineno}: ruff reported {_RULE} at a line that "
-                f"resolves to no function definition"
-            )
-            raise GateSourceError(msg)
-        sites.append(
-            _Site(
-                rel=rel,
-                lineno=lineno,
-                qualname=qualname,
-                suppression=_suppression_of(
-                    index, lineno, (rel, lineno) in unsuppressed
-                ),
-            )
-        )
-    return sites
-
-
-def _suppression_of(
-    index: _FileIndex,
-    lineno: int,
-    is_unsuppressed: bool,  # noqa: FBT001
-) -> Suppression:
-    """Classify how the site at *lineno* is kept out of ruff's plain output.
-
-    Returns:
-        ``NONE`` when ruff reports it anyway, ``PER_LINE`` when the reported
-        line carries a ``# noqa`` naming the rule, and ``BLANKET`` otherwise
-        (a file-level ``# ruff: noqa`` or a ``per-file-ignores`` entry).
-    """
-    if is_unsuppressed:
-        return Suppression.NONE
-    line = index.lines[lineno - 1] if lineno <= len(index.lines) else ""
-    if _PER_LINE_MARKER_RE.search(line):
-        return Suppression.PER_LINE
-    return Suppression.BLANKET
+    coord = (candidate.rel, candidate.lineno)
+    if coord in unsuppressed:
+        return SiteStatus.UNSUPPRESSED
+    if scan.has_blanket:
+        return SiteStatus.BLANKET
+    line = (
+        scan.lines[candidate.lineno - 1] if candidate.lineno <= len(scan.lines) else ""
+    )
+    if coord in reported and _PER_LINE_MARKER_RE.search(line):
+        return SiteStatus.PER_LINE
+    # Not reported by either pass and no file-level blanket: ruff exempts it
+    # (an @override decorator) or a per-file-ignores entry covers the rule it
+    # breaches. Both are declared, reviewable exemptions rather than a blanket,
+    # so the site stays baselineable and lands on the ledger.
+    return SiteStatus.RULE_EXEMPT
 
 
 def _scan(project_root: Path) -> list[_Site]:
@@ -470,22 +532,63 @@ def _scan(project_root: Path) -> list[_Site]:
         One :class:`_Site` per over-cap function definition.
 
     Raises:
-        RuffInvocationError: If ruff could not be run or understood.
-        GateSourceError: If a reported source file could not be read.
+        RuffInvocationError: If either ruff pass could not be trusted.
+        GateSourceError: If a source file could not be read or parsed.
     """
-    reported = _run_ruff(project_root, neutralise=True)
+    scans = _scan_files(project_root)
+    reported = set(_run_ruff(project_root, neutralise=True))
     unsuppressed = set(_run_ruff(project_root, neutralise=False))
-    return _classify(project_root, reported, unsuppressed)
+    return [
+        _Site(
+            candidate=candidate,
+            status=_status_of(candidate, scan, reported, unsuppressed),
+        )
+        for scan in scans.values()
+        for candidate in scan.candidates
+    ]
+
+
+def _collisions(sites: list[_Site]) -> list[str]:
+    """Return a message per baseline key claimed by more than one site.
+
+    A key that is not unique means one approved entry silently authorises
+    several functions, including ones added after the approval. The gate
+    refuses to operate on a key space it cannot trust rather than quietly
+    covering the extras.
+
+    Returns:
+        One message per colliding key, sorted.
+    """
+    by_key: dict[str, list[_Site]] = {}
+    for site in sites:
+        if site.status in {SiteStatus.PER_LINE, SiteStatus.RULE_EXEMPT}:
+            by_key.setdefault(site.key, []).append(site)
+    messages: list[str] = []
+    for key, group in sorted(by_key.items()):
+        if len(group) == 1:
+            continue
+        lines = ", ".join(
+            str(s.candidate.lineno)
+            for s in sorted(group, key=lambda s: s.candidate.lineno)
+        )
+        messages.append(
+            f"{key}: claimed by {len(group)} definitions (lines {lines}). One "
+            f"baseline entry cannot authorise several functions; rename or "
+            f"decompose so each has its own identity."
+        )
+    return messages
 
 
 # ── ruff configuration pins ─────────────────────────────────────
 
 
-def _load_pylint_config(project_root: Path) -> tuple[dict[str, object], ...]:
-    """Return the ``[tool.ruff.lint]`` and ``[tool.ruff.lint.pylint]`` tables.
+def _load_ruff_tables(
+    project_root: Path,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    """Return the ``[tool.ruff]``, ``[...lint]`` and ``[...lint.pylint]`` tables.
 
     Returns:
-        A ``(lint, pylint)`` pair; either is empty when absent.
+        A ``(ruff, lint, pylint)`` triple; any missing table is empty.
 
     Raises:
         ValueError: If ``pyproject.toml`` is missing or unparseable, so a
@@ -498,88 +601,203 @@ def _load_pylint_config(project_root: Path) -> tuple[dict[str, object], ...]:
     except (OSError, tomllib.TOMLDecodeError) as exc:
         msg = f"could not read pyproject.toml ({type(exc).__name__}: {exc})"
         raise ValueError(msg) from exc
-    node: object = payload
-    for key in ("tool", "ruff", "lint"):
-        node = node.get(key, {}) if isinstance(node, dict) else {}
-    lint = node if isinstance(node, dict) else {}
-    pylint = lint.get("pylint", {})
-    return (lint, pylint if isinstance(pylint, dict) else {})
+    tool = payload.get("tool", {})
+    ruff = tool.get("ruff", {}) if isinstance(tool, dict) else {}
+    ruff_table = ruff if isinstance(ruff, dict) else {}
+    lint = ruff_table.get("lint", {})
+    lint_table = lint if isinstance(lint, dict) else {}
+    pylint = lint_table.get("pylint", {})
+    return (ruff_table, lint_table, pylint if isinstance(pylint, dict) else {})
 
 
-def _disables_rule(codes: object) -> bool:
-    """Whether *codes* contains an entry that would silence the rule.
+def _disables_rule(codes: object, rule: str) -> bool:
+    """Whether *codes* contains an entry that would silence *rule*.
 
     A prefix silences everything under it, so ``"PL"`` disables ``PLR0913``
-    just as surely as the full code does.
+    just as surely as the full code does. A non-list value reads as "does not
+    disable": ruff rejects a malformed ``ignore`` / ``per-file-ignores`` shape
+    at its own config-parse stage, so such a config never reaches a passing
+    scan anyway.
 
     Returns:
-        ``True`` when any entry is a prefix of (or equal to) the rule code.
+        ``True`` when any entry is a prefix of (or equal to) *rule*.
     """
     if not isinstance(codes, list):
         return False
     return any(
-        isinstance(code, str) and code and _RULE.startswith(code) for code in codes
+        isinstance(code, str) and code and rule.startswith(code) for code in codes
     )
 
 
-def _check_config_pins(project_root: Path) -> list[str]:
-    """Return one message per broken ruff-configuration pin.
+def _check_cap_pins(pylint: dict[str, object]) -> list[str]:
+    """Return one message per broken numeric cap pin."""
+    problems: list[str] = []
+    max_args = pylint.get("max-args")
+    # ``bool`` subclasses ``int``, so a stray ``max-args = true`` would pass a
+    # bare isinstance check and compare below the ceiling.
+    within_ceiling = (
+        isinstance(max_args, int)
+        and not isinstance(max_args, bool)
+        and max_args <= _MAX_ARGS_CEILING
+    )
+    if not within_ceiling:
+        problems.append(
+            f"[tool.ruff.lint.pylint] max-args must be an integer at or below "
+            f"{_MAX_ARGS_CEILING}, got {max_args!r}. Raising the cap until the "
+            f"residue disappears is what this gate exists to stop; lowering it "
+            f"is always allowed."
+        )
+    positional = pylint.get("max-positional-args")
+    if positional != _MAX_POSITIONAL_ARGS or isinstance(positional, bool):
+        problems.append(
+            f"[tool.ruff.lint.pylint] max-positional-args must stay pinned at "
+            f"exactly {_MAX_POSITIONAL_ARGS}, got {positional!r}. Ruff defaults "
+            f"it to max-args, so an unpinned positional cap widens with it."
+        )
+    return problems
+
+
+def _check_rule_reachable(lint: dict[str, object]) -> list[str]:
+    """Return one message per config entry that disables a rule tree-wide.
+
+    Only the global keys are rejected. A ``per-file-ignores`` entry is no
+    longer a hiding place: candidates come from the AST, so a path-glob
+    exemption changes how a site is CLASSIFIED but never whether the gate
+    sees it, and every such function still needs a baseline entry. That is
+    what lets the framework-shaped Litestar and pytest signatures keep their
+    ``PLR0917`` exemptions (a route handler's query surface is its
+    parameters, and a fixture graph chooses its own positional count) while
+    staying on the ledger.
+
+    A tree-wide ignore is still rejected: it would collapse every candidate
+    to ``RULE_EXEMPT`` at once, which is a config change nobody should make
+    by accident.
 
     Returns:
-        An empty list when the cap pins hold and nothing disables the rule.
+        One message per global ignore covering either rule.
+    """
+    return [
+        f"[tool.ruff.lint] {key} disables {rule} for the whole tree."
+        for rule in (_RULE, _POSITIONAL_RULE)
+        for key in ("ignore", "extend-ignore")
+        if _disables_rule(lint.get(key), rule)
+    ]
+
+
+def _check_config_located(
+    ruff: dict[str, object],
+    project_root: Path,
+    tracked: list[str],
+) -> list[str]:
+    """Return one message per way the effective config could move out of view."""
+    problems: list[str] = []
+    if "extend" in ruff:
+        problems.append(
+            f"[tool.ruff] extend = {ruff['extend']!r} moves configuration into "
+            f"another file this gate does not read, where an extend-ignore "
+            f"could silence the rule invisibly. Inline the settings instead."
+        )
+    problems.extend(
+        f"{rel}: a ruff config below the repository root overrides the cap for "
+        f"its subtree, and the ruff default select does not include the pylint "
+        f"family at all. Remove it, or fold its settings into the root config."
+        for rel in find_nested_ruff_configs(project_root, tracked)
+    )
+    return problems
+
+
+def _check_ruff_pin(project_root: Path) -> list[str]:
+    """Return a message when the resolved ruff is not the pinned version.
+
+    What counts as over-cap, and which decorators are exempt, are both ruff
+    behaviours. A lockfile drift would redefine them with no other signal, so
+    the gate says so rather than silently measuring something new.
+
+    Returns:
+        One message when the versions disagree, empty otherwise.
+    """
+    _, _, _ = _load_ruff_tables(project_root)
+    pinned = _pinned_ruff_version(project_root)
+    if pinned is None:
+        return []
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "ruff", "--version"],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=project_root,
+            timeout=_RUFF_TIMEOUT_SECONDS,
+        )
+    except OSError, subprocess.TimeoutExpired, UnicodeDecodeError:
+        return ["could not resolve the ruff version to compare against the pin."]
+    resolved = result.stdout.strip().removeprefix("ruff").strip()
+    if resolved != pinned:
+        message = (
+            f"ruff resolves to {resolved!r} but pyproject.toml pins {pinned!r}. "
+            f"What counts as over-cap is a ruff behaviour, so a drifted "
+            f"version measures something this baseline was not drawn against."
+        )
+        return [message]
+    return []
+
+
+def _pinned_ruff_version(project_root: Path) -> str | None:
+    """Return the ``ruff==<version>`` pin from the dev dependency group.
+
+    Returns:
+        The pinned version, or ``None`` when no exact pin is declared.
+    """
+    try:
+        with (project_root / "pyproject.toml").open("rb") as handle:
+            payload = tomllib.load(handle)
+    except OSError, tomllib.TOMLDecodeError:
+        return None
+    groups = payload.get("dependency-groups", {})
+    if not isinstance(groups, dict):
+        return None
+    for entries in groups.values():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if isinstance(entry, str) and entry.startswith("ruff=="):
+                return entry.removeprefix("ruff==").strip()
+    return None
+
+
+def _check_config_pins(project_root: Path, tracked: list[str]) -> list[str]:
+    """Return one message per broken ruff-configuration invariant.
+
+    Returns:
+        An empty list when the caps hold, both rules stay reachable, and the
+        effective configuration lives where this gate reads it.
 
     Raises:
         ValueError: If ``pyproject.toml`` could not be read or parsed.
     """
-    lint, pylint = _load_pylint_config(project_root)
-    problems: list[str] = []
-    max_args = pylint.get("max-args")
-    if not isinstance(max_args, int) or max_args > _MAX_ARGS_CEILING:
-        problems.append(
-            f"[tool.ruff.lint.pylint] max-args must be an integer at or below "
-            f"{_MAX_ARGS_CEILING}, got {max_args!r}. Raising the cap until the "
-            f"residue disappears is exactly what this gate exists to stop; "
-            f"lowering it is always allowed."
-        )
-    positional = pylint.get("max-positional-args")
-    if positional != _MAX_POSITIONAL_ARGS:
-        problems.append(
-            f"[tool.ruff.lint.pylint] max-positional-args must stay pinned at "
-            f"{_MAX_POSITIONAL_ARGS}, got {positional!r}. Ruff defaults it to "
-            f"max-args, so an unpinned positional cap silently widens with it."
-        )
-    problems.extend(
-        f"[tool.ruff.lint] {key} disables {_RULE} for the whole tree."
-        for key in ("ignore", "extend-ignore")
-        if _disables_rule(lint.get(key))
-    )
-    for key in ("per-file-ignores", "extend-per-file-ignores"):
-        table = lint.get(key)
-        if not isinstance(table, dict):
-            continue
-        problems.extend(
-            f"[tool.ruff.lint.{key}] entry {pattern!r} disables {_RULE}. A "
-            f"path-glob exemption is a blanket wearing config clothes; "
-            f"suppress the individual functions instead."
-            for pattern, codes in table.items()
-            if _disables_rule(codes)
-        )
-    return problems
+    ruff, lint, pylint = _load_ruff_tables(project_root)
+    return [
+        *_check_cap_pins(pylint),
+        *_check_rule_reachable(lint),
+        *_check_config_located(ruff, project_root, tracked),
+        *_check_ruff_pin(project_root),
+    ]
 
 
 # ── baseline ────────────────────────────────────────────────────
 
 
 def _load_baseline(path: Path) -> set[str]:
-    """Return the set of allowlisted ``path::qualname`` baseline entries.
+    """Return the allowlisted ``path::qualname::arity`` baseline entries.
 
     Returns:
         The frozen baseline entries (empty when the file is absent).
 
     Raises:
-        ValueError: On malformed/duplicate entries or an unreadable file, so
-            a corrupt baseline fails the gate loud rather than passing a
-            silently-truncated allowlist.
+        ValueError: On malformed or duplicate entries, or an unreadable file,
+            so a corrupt baseline fails loud rather than passing a silently
+            truncated allowlist.
     """
     if not path.exists():
         return set()
@@ -596,8 +814,8 @@ def _load_baseline(path: Path) -> set[str]:
             continue
         if not _BASELINE_ENTRY_RE.match(stripped):
             errors.append(
-                f"{_BASELINE_REL}:{lineno}: malformed entry "
-                f"(expected 'path::qualname', got {stripped!r})"
+                f"{_BASELINE_REL}:{lineno}: malformed entry (expected "
+                f"'path::qualname::arity', got {stripped!r})"
             )
             continue
         if stripped in entries:
@@ -618,9 +836,13 @@ def _load_baseline(path: Path) -> set[str]:
 
 
 def _write_baseline(sites: list[_Site], path: Path) -> None:
-    """Sort + write the per-line-suppressed *sites* as a baseline file."""
+    """Sort + write the baselineable *sites* as a baseline file."""
     keys = sorted(
-        {s.baseline_key() for s in sites if s.suppression is Suppression.PER_LINE}
+        {
+            s.key
+            for s in sites
+            if s.status in {SiteStatus.PER_LINE, SiteStatus.RULE_EXEMPT}
+        }
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_BASELINE_HEADER + "\n".join(keys) + "\n", encoding="utf-8")
@@ -632,14 +854,29 @@ def _write_baseline(sites: list[_Site], path: Path) -> None:
 def cmd_update(project_root: Path) -> int:
     """Regenerate the baseline from the current tree.
 
+    The scan runs to completion BEFORE anything is written: a scan that could
+    not be trusted must never overwrite a good baseline with a short one,
+    which would look like a legitimate shrink to every downstream guard.
+
     Returns:
         ``0`` on success, ``2`` if the scan or the write failed.
     """
     try:
+        tracked = _tracked_files(project_root)
         sites = _scan(project_root)
     except (GateSourceError, RuffInvocationError) as exc:
-        print(f"check_argument_count_suppression: {exc}", file=sys.stderr)
+        print(
+            f"check_argument_count_suppression: {exc}\nBaseline left untouched.",
+            file=sys.stderr,
+        )
         return 2
+    collisions = _collisions(sites)
+    if collisions:
+        for message in collisions:
+            print(message, file=sys.stderr)
+        print("\nBaseline left untouched.", file=sys.stderr)
+        return 2
+    del tracked
     baseline_path = _baseline_path(project_root)
     try:
         _write_baseline(sites, baseline_path)
@@ -650,14 +887,17 @@ def cmd_update(project_root: Path) -> int:
             file=sys.stderr,
         )
         return 2
-    kept = sum(1 for s in sites if s.suppression is Suppression.PER_LINE)
-    rejected = len(sites) - kept
-    print(f"Wrote {kept} entries to {_BASELINE_REL}.", file=sys.stderr)
+    kept = [
+        s for s in sites if s.status in {SiteStatus.PER_LINE, SiteStatus.RULE_EXEMPT}
+    ]
+    rejected = [s for s in sites if s not in kept]
+    print(f"Wrote {len({s.key for s in kept})} entries to {_BASELINE_REL}.")
+    for site in sorted(rejected, key=lambda s: (s.candidate.rel, s.candidate.lineno)):
+        print(f"  omitted (not baselineable): {site.message()}")
     if rejected:
         print(
-            f"{rejected} over-cap site(s) are NOT baseline-eligible (blanket "
-            f"or unsuppressed) and were omitted; the gate still fails on "
-            f"them.",
+            f"\n{len(rejected)} over-cap site(s) are not baseline-eligible and "
+            f"were omitted; the gate still fails on them.",
             file=sys.stderr,
         )
     return 0
@@ -669,9 +909,9 @@ def _report_stale(stale: list[str]) -> None:
         print(f"{_BASELINE_REL}: stale baseline entry {entry}", file=sys.stderr)
     print(
         f"\n{len(stale)} baseline entr"
-        f"{'y' if len(stale) == 1 else 'ies'} no longer match a suppressed "
+        f"{'y' if len(stale) == 1 else 'ies'} no longer match an over-cap "
         "function. An entry that outlives its function would silently "
-        "pre-authorise a future suppression reusing the same name. Remove "
+        "pre-authorise a future suppression reusing the same identity. Remove "
         "the stale line(s), or regenerate with 'uv run python scripts/"
         "check_argument_count_suppression.py --update'.",
         file=sys.stderr,
@@ -679,17 +919,21 @@ def _report_stale(stale: list[str]) -> None:
 
 
 def cmd_scan(project_root: Path) -> int:
-    """Check the config pins and the suppression list against the baseline.
+    """Check the config pins and every over-cap site against the baseline.
 
     Returns:
-        ``0`` when clean, ``1`` on a broken pin or a new suppression, ``2``
-        on a read/parse, ruff, or stale-baseline error.
+        ``0`` when clean, ``1`` on a broken pin or an unaccounted site, ``2``
+        when the scan itself could not be trusted.
     """
     try:
-        pin_problems = _check_config_pins(project_root)
+        tracked = _tracked_files(project_root)
+        pin_problems = _check_config_pins(project_root, tracked)
         baseline = _load_baseline(_baseline_path(project_root))
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
+        return 2
+    except GateSourceError as exc:
+        print(f"check_argument_count_suppression: {exc}", file=sys.stderr)
         return 2
     try:
         sites = _scan(project_root)
@@ -697,8 +941,16 @@ def cmd_scan(project_root: Path) -> int:
         print(f"check_argument_count_suppression: {exc}", file=sys.stderr)
         return 2
 
+    collisions = _collisions(sites)
+    if collisions:
+        for message in collisions:
+            print(message, file=sys.stderr)
+        return 2
+
     live_keys = {
-        s.baseline_key() for s in sites if s.suppression is Suppression.PER_LINE
+        s.key
+        for s in sites
+        if s.status in {SiteStatus.PER_LINE, SiteStatus.RULE_EXEMPT}
     }
     stale = sorted(baseline - live_keys)
     if stale:
@@ -708,19 +960,24 @@ def cmd_scan(project_root: Path) -> int:
     violations = [
         s
         for s in sites
-        if s.suppression is not Suppression.PER_LINE or s.baseline_key() not in baseline
+        if s.status not in {SiteStatus.PER_LINE, SiteStatus.RULE_EXEMPT}
+        or s.key not in baseline
     ]
     if not pin_problems and not violations:
         return 0
+    # Both streams carry findings for an exit-1 run, so every finding goes to
+    # stdout and stderr keeps only the summary. A pin-only failure would
+    # otherwise print nothing to stdout at all, making a real violation
+    # indistinguishable by stream from a broken scan.
     for problem in pin_problems:
-        print(problem, file=sys.stderr)
-    for site in sorted(violations, key=lambda s: (s.rel, s.lineno)):
+        print(problem)
+    for site in sorted(violations, key=lambda s: (s.candidate.rel, s.candidate.lineno)):
         print(site.message())
     print(
         f"\n{len(pin_problems)} configuration problem(s) and "
-        f"{len(violations)} unbaselined argument-count suppression(s). The "
-        f"cap is closed by design: there is no per-line opt-out, and the "
-        f"baseline may only shrink.",
+        f"{len(violations)} unaccounted over-cap function(s). The cap is "
+        f"closed by design: there is no per-line opt-out, and the baseline "
+        f"may only shrink.",
         file=sys.stderr,
     )
     return 1
@@ -730,7 +987,7 @@ def main(argv: list[str] | None = None) -> int:
     """CLI entry point.
 
     Returns:
-        The gate exit code (0 clean, 1 violation, 2 configuration error).
+        The gate exit code (0 clean, 1 violation, 2 untrustworthy scan).
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
