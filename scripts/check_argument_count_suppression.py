@@ -8,18 +8,28 @@ suppressed hundreds of times reports nothing and prevents nothing.
 
 Where the population comes from
 -------------------------------
-The candidate set is derived here, from the AST of every tracked ``*.py``
-file (see :mod:`_argument_count_sites`), NOT from what ``ruff`` reports.
-Trusting the ``ruff`` diagnostic set as the whole population fails in two
-directions: ``ruff`` exempts ``@typing.override`` methods from ``PLR0913``
+The candidate set is derived here, from the AST (see
+:mod:`_argument_count_sites`), NOT from what ``ruff`` reports. Trusting the
+``ruff`` diagnostic set as the whole population fails in two directions:
+``ruff`` exempts ``@typing.override`` methods from ``PLR0913``
 syntactically, and it never visits a file pruned by ``exclude`` /
 ``extend-exclude`` / ``.gitignore``. Either way an over-cap function
 produces no diagnostic, which an over-trusting gate reads as "clean".
 
 So ``ruff`` classifies, this gate decides who is in scope. Two ``ruff``
-passes run over the tree: one with every suppression mechanism neutralised,
-one plain. A candidate present in neither is :attr:`SiteStatus.RULE_EXEMPT`
-and still needs an approved baseline entry.
+passes run over the tree: one with every suppression mechanism neutralised
+and the caps forced to match discovery's, one plain. A candidate present in
+neither is :attr:`SiteStatus.RULE_EXEMPT` and still needs an approved
+baseline entry.
+
+Ruff's answers also bound the parse. Parsing all seven thousand tracked
+files costs twenty seconds, and nearly all of them provably hold nothing:
+a file ruff walked, did not report at discovery's caps, and which never
+mentions the exempting decorator cannot contain a candidate. The first of
+those three conditions is why :func:`_visited_files` exists. An inline
+``--config exclude=[]`` does not un-prune the walk, so "ruff said nothing"
+and "ruff looked" are genuinely different facts, and conflating them would
+drop every excluded file from the population without a word.
 
 Invariants
 ----------
@@ -90,6 +100,7 @@ if __package__ in {None, ""}:
         FileScan,
         SiteStatus,
         find_nested_ruff_configs,
+        may_be_rule_exempt,
         scan_source,
     )
     from _gate_source import (  # type: ignore[import-not-found]
@@ -102,6 +113,7 @@ else:
         FileScan,
         SiteStatus,
         find_nested_ruff_configs,
+        may_be_rule_exempt,
         scan_source,
     )
     from scripts._gate_source import GateSourceError, read_and_parse
@@ -288,12 +300,31 @@ def _tracked_files(project_root: Path) -> list[str]:
 # ── ruff invocation ─────────────────────────────────────────────
 
 
+def _ruff_command() -> list[str]:
+    """Return the argv prefix that runs the venv's pinned ruff.
+
+    The console script beside the interpreter, when it exists, rather than
+    ``python -m ruff``: both resolve the same pinned ruff out of the same
+    environment, but the module form pays a full CPython startup on every
+    spawn. The gate spawns three per run and its own test suite drives it
+    dozens of times, so the difference is most of a minute across a push.
+
+    Returns:
+        The console-script path, or the ``python -m ruff`` fallback for an
+        install that has no script (a bare ``pip install --no-scripts``, or a
+        vendored ruff imported as a module).
+    """
+    name = "ruff.exe" if sys.platform == "win32" else "ruff"
+    script = Path(sys.executable).parent / name
+    if script.is_file():
+        return [str(script)]
+    return [sys.executable, "-m", "ruff"]
+
+
 def _ruff_argv(*extra: str) -> list[str]:
     """Return the ruff command line with *extra* appended."""
     return [
-        sys.executable,
-        "-m",
-        "ruff",
+        *_ruff_command(),
         "check",
         ".",
         "--select",
@@ -304,17 +335,96 @@ def _ruff_argv(*extra: str) -> list[str]:
     ]
 
 
-def _run_ruff(project_root: Path, *, neutralise: bool) -> list[tuple[str, int]]:
-    """Return ``(relative_path, lineno)`` for every site ruff reports.
+def _visited_files(project_root: Path) -> frozenset[str]:
+    """Return the paths ruff's own walk reaches, as ruff reports them.
 
-    With *neutralise*, every suppression and discovery mechanism this gate
-    knows about is switched off, so the scan reports over-cap functions
-    whether or not the project config would hide them. Without it, the scan
-    is what ruff would say on its own.
+    Asked rather than inferred. An inline ``--config exclude=[]`` does NOT
+    un-prune the walk (ruff resolves exclusions during traversal, so a pruned
+    directory is never opened whatever the override says), and reimplementing
+    the exclusion semantics here would be a second source of truth free to
+    drift from the first. ``--show-files`` is ruff answering for itself.
+
+    Returns:
+        Project-relative POSIX paths. Empty when ruff printed nothing, which
+        makes every file count as pruned and so parsed: slow, never blind.
+
+    Raises:
+        RuffInvocationError: If ruff could not be run or exited abnormally.
+    """
+    try:
+        result = subprocess.run(
+            [*_ruff_command(), "check", ".", "--show-files"],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=project_root,
+            timeout=_RUFF_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError) as exc:
+        msg = f"could not enumerate ruff's files ({type(exc).__name__}: {exc})"
+        raise RuffInvocationError(msg) from exc
+    if result.returncode not in {0, 1}:
+        excerpt = result.stderr.strip()[:_STDERR_EXCERPT_CHARS] or "<no stderr>"
+        msg = f"ruff --show-files exited {result.returncode}: {excerpt}"
+        raise RuffInvocationError(msg)
+    visited: set[str] = set()
+    for line in result.stdout.splitlines():
+        candidate = Path(line.strip())
+        if line.strip() and candidate.is_relative_to(project_root):
+            visited.add(candidate.relative_to(project_root).as_posix())
+    return frozenset(visited)
+
+
+def _neutralised_argv(caps: tuple[int, int]) -> list[str]:
+    """Return the flags that switch off every way a site could hide.
+
+    The caps are forced rather than inherited so ruff's population and the
+    AST's are the same population by construction. Without that, a
+    ``pyproject.toml`` configuring a cap above the ceiling would have ruff
+    reporting against the wide bar while discovery counted against the narrow
+    one, and the difference would be sites the scan never classified.
+
+    Args:
+        caps: The ``(max-args, max-positional-args)`` pair discovery uses.
+
+    Returns:
+        The extra ruff arguments for the neutralised pass.
+    """
+    arg_cap, positional_cap = caps
+    return [
+        "--ignore-noqa",
+        "--config",
+        "lint.per-file-ignores={}",
+        "--config",
+        "lint.extend-per-file-ignores={}",
+        "--config",
+        "exclude=[]",
+        "--config",
+        "extend-exclude=[]",
+        "--config",
+        "respect-gitignore=false",
+        "--config",
+        f"lint.pylint.max-args={arg_cap}",
+        "--config",
+        f"lint.pylint.max-positional-args={positional_cap}",
+    ]
+
+
+def _run_ruff(
+    project_root: Path,
+    *,
+    extra: list[str],
+    label: str,
+) -> list[tuple[str, int]]:
+    """Return ``(relative_path, lineno)`` for every site ruff reports.
 
     Args:
         project_root: Directory to run ruff in.
-        neutralise: Whether to disable suppression and pruning.
+        extra: Extra arguments; :func:`_neutralised_argv` for the pass that
+            must see through every suppression, empty for the pass that
+            reports what ruff would say on its own.
+        label: Which pass this is, for diagnostics.
 
     Returns:
         One entry per reported diagnostic.
@@ -326,22 +436,6 @@ def _run_ruff(project_root: Path, *, neutralise: bool) -> list[tuple[str, int]]:
             fail-closed: an empty result would otherwise read as "no
             violations".
     """
-    extra: list[str] = []
-    if neutralise:
-        extra = [
-            "--ignore-noqa",
-            "--config",
-            "lint.per-file-ignores={}",
-            "--config",
-            "lint.extend-per-file-ignores={}",
-            "--config",
-            "exclude=[]",
-            "--config",
-            "extend-exclude=[]",
-            "--config",
-            "respect-gitignore=false",
-        ]
-    pass_name = "neutralised" if neutralise else "plain"
     try:
         result = subprocess.run(
             _ruff_argv(*extra),
@@ -353,29 +447,29 @@ def _run_ruff(project_root: Path, *, neutralise: bool) -> list[tuple[str, int]]:
             timeout=_RUFF_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError) as exc:
-        msg = f"{pass_name} ruff run failed ({type(exc).__name__}: {exc})"
+        msg = f"{label} ruff run failed ({type(exc).__name__}: {exc})"
         raise RuffInvocationError(msg) from exc
     # 0 = clean, 1 = violations found. Anything else is ruff itself failing.
     if result.returncode not in {0, 1}:
         excerpt = result.stderr.strip()[:_STDERR_EXCERPT_CHARS] or "<no stderr>"
-        msg = f"{pass_name} ruff run exited {result.returncode}: {excerpt}"
+        msg = f"{label} ruff run exited {result.returncode}: {excerpt}"
         raise RuffInvocationError(msg)
     if result.stderr.strip():
         # Warnings on an otherwise-successful run are how version skew first
         # shows up (a deprecated --config spelling, a schema change). Silently
         # dropping them hides the drift until it eventually breaks the run.
         print(
-            f"check_argument_count_suppression: {pass_name} ruff run warned: "
+            f"check_argument_count_suppression: {label} ruff run warned: "
             f"{result.stderr.strip()[:_STDERR_EXCERPT_CHARS]}",
             file=sys.stderr,
         )
-    return _parse_ruff_json(result.stdout, project_root, pass_name)
+    return _parse_ruff_json(result.stdout, project_root, label)
 
 
 def _parse_ruff_json(
     stdout: str,
     project_root: Path,
-    pass_name: str,
+    label: str,
 ) -> list[tuple[str, int]]:
     """Decode ruff JSON output into ``(relative_path, lineno)`` pairs.
 
@@ -392,7 +486,7 @@ def _parse_ruff_json(
     """
     if not stdout.strip():
         msg = (
-            f"{pass_name} ruff run produced no output; ruff emits at least "
+            f"{label} ruff run produced no output; ruff emits at least "
             f"'[]' when it runs, so it did not run at all (is it installed "
             f"for {sys.executable}?)"
         )
@@ -400,7 +494,7 @@ def _parse_ruff_json(
     try:
         payload = json.loads(stdout)
     except json.JSONDecodeError as exc:
-        msg = f"could not parse {pass_name} ruff output: {exc}"
+        msg = f"could not parse {label} ruff output: {exc}"
         raise RuffInvocationError(msg) from exc
     if not isinstance(payload, list):
         msg = f"expected a JSON list from ruff, got {type(payload).__name__}"
@@ -473,22 +567,84 @@ def _effective_caps(project_root: Path) -> tuple[int, int]:
     return (min(arg_cap, _MAX_ARGS_CEILING), min(positional_cap, _MAX_POSITIONAL_ARGS))
 
 
-def _scan_files(project_root: Path) -> dict[str, FileScan]:
-    """Return the per-file candidate scan for every tracked source file.
+def _read_bytes(path: Path) -> bytes:
+    """Return the undecoded contents of *path*.
 
     Returns:
-        A mapping of relative path to its scan.
+        The raw bytes.
 
     Raises:
-        GateSourceError: If any file cannot be read or parsed (fail-closed).
+        GateSourceError: If the file cannot be read, so an unreadable file
+            fails the scan rather than being silently skipped.
     """
-    arg_cap, positional_cap = _effective_caps(project_root)
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        msg = f"{path}: could not read source: {exc}"
+        raise GateSourceError(msg) from exc
+
+
+def _needs_parse(
+    rel: str,
+    path: Path,
+    reported_files: frozenset[str],
+    visited: frozenset[str],
+) -> bool:
+    """Whether *rel* could hold a candidate, and so must be parsed.
+
+    A file is provably candidate-free only when all three hold: ruff visited
+    it (so it was actually examined), ruff did not report it at discovery's
+    caps (so nothing in it is over the bar), and it does not mention the
+    exempting decorator (the one thing ruff declines to report). Anything
+    else gets parsed. The tests pin each of the three, because getting this
+    wrong loses sites silently rather than loudly.
+
+    Returns:
+        ``True`` when the file must be parsed to be classified.
+
+    Raises:
+        GateSourceError: If the file cannot be read.
+    """
+    if rel in reported_files or rel not in visited:
+        return True
+    # Bound through a local so the dual-import shim (which types the sibling
+    # module as Any on the non-package branch) cannot widen this.
+    exempt: bool = may_be_rule_exempt(_read_bytes(path))
+    return exempt
+
+
+def _scan_files(
+    project_root: Path,
+    caps: tuple[int, int],
+    reported_files: frozenset[str],
+    visited: frozenset[str],
+) -> dict[str, FileScan]:
+    """Return the per-file candidate scan for every tracked file that needs one.
+
+    Args:
+        project_root: The tree to scan.
+        caps: The ``(max-args, max-positional-args)`` pair a candidate exceeds.
+        reported_files: Paths the neutralised ruff pass reported on.
+        visited: Paths ruff's own walk reaches.
+
+    Returns:
+        A mapping of relative path to its scan, for the files that can hold a
+        candidate. A file :func:`_needs_parse` rules out contributes nothing
+        and is absent.
+
+    Raises:
+        GateSourceError: If a file that must be parsed cannot be read or
+            parsed (fail-closed).
+    """
+    arg_cap, positional_cap = caps
     scans: dict[str, FileScan] = {}
     for rel in _tracked_files(project_root):
         if not rel.endswith(".py"):
             continue
         path = project_root / rel
         if not path.is_file():
+            continue
+        if not _needs_parse(rel, path, reported_files, visited):
             continue
         text, tree = read_and_parse(path)
         scans[rel] = scan_source(rel, text, tree, arg_cap, positional_cap)
@@ -535,9 +691,23 @@ def _scan(project_root: Path) -> list[_Site]:
         RuffInvocationError: If either ruff pass could not be trusted.
         GateSourceError: If a source file could not be read or parsed.
     """
-    scans = _scan_files(project_root)
-    reported = set(_run_ruff(project_root, neutralise=True))
-    unsuppressed = set(_run_ruff(project_root, neutralise=False))
+    caps = _effective_caps(project_root)
+    reported = set(
+        _run_ruff(
+            project_root,
+            extra=_neutralised_argv(caps),
+            label="neutralised",
+        )
+    )
+    unsuppressed = set(_run_ruff(project_root, extra=[], label="plain"))
+    # Ruff runs first because its answers are what bound the parse: which
+    # files it flagged, and which it walked at all.
+    scans = _scan_files(
+        project_root,
+        caps,
+        frozenset(rel for rel, _ in reported),
+        _visited_files(project_root),
+    )
     return [
         _Site(
             candidate=candidate,
@@ -722,7 +892,7 @@ def _check_ruff_pin(project_root: Path) -> list[str]:
         return []
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "ruff", "--version"],
+            [*_ruff_command(), "--version"],
             check=False,
             capture_output=True,
             text=True,

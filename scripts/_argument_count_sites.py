@@ -15,12 +15,18 @@ population is wrong in two directions at once:
   directory walk, and a pruned file produces no diagnostics whether or not it
   contains a violation.
 
-So this module derives the population itself, from the AST of every tracked
-``*.py`` file, and the gate diffs that against what ``ruff`` reported. A
-candidate ``ruff`` never mentioned is not "clean": it is
-:attr:`SiteStatus.RULE_EXEMPT`, and it needs an approved baseline entry exactly
-like a suppressed one. That inverts the trust relationship: ``ruff`` classifies,
-this module decides who is in scope.
+So this module derives the population itself, from the AST, and the gate diffs
+that against what ``ruff`` reported. A candidate ``ruff`` never mentioned is not
+"clean": it is :attr:`SiteStatus.RULE_EXEMPT`, and it needs an approved baseline
+entry exactly like a suppressed one. That inverts the trust relationship:
+``ruff`` classifies, this module decides who is in scope.
+
+Parsing every tracked file to find that population costs twenty seconds, which
+is most of a gate that otherwise runs in one. It is also unnecessary: of the
+files ``ruff`` walked and did not report, the only ones that can still hide a
+candidate are the ones it exempts by decorator, and :func:`may_be_rule_exempt`
+rules those out by inspection. The gate combines that with ``ruff``'s own list
+of walked files to skip the ~80% of the tree that provably holds nothing.
 
 The parameter count here mirrors what ``PLR0913`` counts: positional-only plus
 ordinary plus keyword-only, excluding ``*args`` / ``**kwargs``, and excluding
@@ -37,7 +43,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Final, override
+from typing import Final
 
 _STATIC_METHOD: Final[str] = "staticmethod"
 _OVERRIDE: Final[str] = "override"
@@ -178,8 +184,59 @@ def is_rule_exempt(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return _OVERRIDE in _decorator_names(node)
 
 
-class _CandidateWalker(ast.NodeVisitor):
-    """Collects over-cap function definitions with their qualified names."""
+def may_be_rule_exempt(raw: bytes) -> bool:
+    """Return whether *raw* could possibly contain a decorator-exempt function.
+
+    A cheap pre-filter for the one population the gate's neutralised ``ruff``
+    pass cannot report for itself. It over-approximates on purpose: a ``False``
+    must mean the file provably holds no exemption, because the caller skips
+    parsing on the strength of it.
+
+    Sound for the aliased form too. ``ruff`` resolves the decorator
+    semantically, so ``from typing import override as _o`` followed by ``@_o``
+    is exempt to ``ruff`` even though :func:`is_rule_exempt` matches only the
+    bare final name. Scanning the raw bytes catches it anyway, because the
+    import that binds the alias has to spell the original out.
+
+    Args:
+        raw: The undecoded file contents. Bytes rather than text so the check
+            costs a read and a substring scan, with no decode.
+
+    Returns:
+        ``True`` when the file mentions the exempting decorator anywhere.
+    """
+    return _OVERRIDE.encode() in raw
+
+
+def _statement_blocks(stmt: ast.stmt) -> Iterator[list[ast.stmt]]:
+    """Yield the nested statement blocks of *stmt*.
+
+    Every field a statement can hang a suite off: the ``if`` / ``for`` /
+    ``while`` / ``with`` bodies and their ``else``, a ``try``'s handlers and
+    ``finally``, and a ``match``'s cases.
+
+    Yields:
+        Each nested block, in no particular order.
+    """
+    for field in ("body", "orelse", "finalbody"):
+        block = getattr(stmt, field, None)
+        if isinstance(block, list):
+            yield block
+    for handler in getattr(stmt, "handlers", []):
+        yield handler.body
+    for case in getattr(stmt, "cases", []):
+        yield case.body
+
+
+class _CandidateWalker:
+    """Collects over-cap function definitions with their qualified names.
+
+    Walks statement blocks directly rather than subclassing
+    :class:`ast.NodeVisitor`, whose ``generic_visit`` descends into every
+    expression node in the file. A ``def`` is a statement and can only appear
+    in a suite, so the millions of expression nodes in a large tree are all
+    dead weight; skipping them is several seconds across the repository.
+    """
 
     def __init__(self, rel: str, arg_cap: int, positional_cap: int) -> None:
         self._rel = rel
@@ -229,23 +286,27 @@ class _CandidateWalker(ast.NodeVisitor):
                 )
                 if is_rule_exempt(node):
                     self.exempt_lines.add(node.lineno)
-            self.generic_visit(node)
+            self.walk(node.body)
 
-    @override
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        """Record a synchronous function and descend into its body."""
-        self._visit_function(node)
+    def walk(self, body: list[ast.stmt]) -> None:
+        """Record every function definition reachable from *body*.
 
-    @override
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        """Record an async function and descend into its body."""
-        self._visit_function(node)
+        A plain statement keeps the surrounding scope: a ``def`` guarded by
+        ``if TYPE_CHECKING:`` inside a class body is still a method, so only
+        a class or a function pushes a new frame.
 
-    @override
-    def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        """Push the class name so its methods qualify as ``Class.method``."""
-        with self._scope(node.name, in_class=True):
-            self.generic_visit(node)
+        Args:
+            body: The suite to walk.
+        """
+        for stmt in body:
+            if isinstance(stmt, ast.ClassDef):
+                with self._scope(stmt.name, in_class=True):
+                    self.walk(stmt.body)
+            elif isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef):
+                self._visit_function(stmt)
+            else:
+                for block in _statement_blocks(stmt):
+                    self.walk(block)
 
 
 _FILE_LEVEL_DIRECTIVE_RE: Final[re.Pattern[str]] = re.compile(
@@ -314,7 +375,7 @@ def scan_source(
         exempts by decorator.
     """
     walker = _CandidateWalker(rel, arg_cap, positional_cap)
-    walker.visit(tree)
+    walker.walk(tree.body)
     return FileScan(
         candidates=tuple(walker.candidates),
         lines=tuple(text.splitlines()),

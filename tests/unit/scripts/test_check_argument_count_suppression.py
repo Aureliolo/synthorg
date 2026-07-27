@@ -10,8 +10,9 @@ the real pinned ``ruff`` over it, so the counting under test is the genuine
 article rather than a reimplementation that could drift.
 
 The subprocess-failure tests monkeypatch ``subprocess.run`` instead, because
-the failure that matters most (``python -m ruff`` exiting 1 with blank stdout
-when ruff is not importable) cannot be produced with a real ruff present.
+the failure that matters most (ruff exiting 1 with blank stdout when it is not
+importable, which is the same exit code as "violations found") cannot be
+produced with a real ruff present.
 """
 
 import importlib.util
@@ -615,8 +616,11 @@ class TestRuffInvocationFailures:
         def _fake_run(argv: list[str], **kwargs: object) -> object:
             # Only the ruff invocations are broken. The gate also shells out
             # to git to enumerate its population, and breaking that would
-            # test a different failure entirely.
-            if "ruff" not in argv:
+            # test a different failure entirely. Both spellings the gate can
+            # resolve count: the venv console script it prefers, and the
+            # `python -m ruff` fallback.
+            invokes_ruff = "ruff" in argv or Path(argv[0]).stem == "ruff"
+            if not invokes_ruff:
                 return real_run(argv, **kwargs)  # type: ignore[call-overload]
             return subprocess.CompletedProcess(
                 args=argv,
@@ -632,8 +636,8 @@ class TestRuffInvocationFailures:
         project: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        # `python -m ruff` exits 1 with blank stdout when ruff is not
-        # importable, which is the same exit code as "violations found".
+        # Ruff exits 1 with blank stdout when it is not importable, which is
+        # the same exit code as "violations found".
         _write_module(project, "pkg/m.py", _WIDE_FUNCTION.format(marker=_MARKER))
         _init_git(project)
         self._break_ruff(monkeypatch, returncode=1, stdout="")
