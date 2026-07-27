@@ -1,9 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type {
   cancelFineTune,
-  CheckpointRecord,
   deployCheckpoint,
-  FineTuneStatus,
   getFineTuneStatus,
   listCheckpoints,
   listRuns,
@@ -12,6 +10,7 @@ import type {
   runPreflight,
   startFineTune,
 } from '@/api/endpoints/fine-tuning'
+import type { CheckpointRecord, FineTuneStatus } from '@/api/types/fine-tuning'
 import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'

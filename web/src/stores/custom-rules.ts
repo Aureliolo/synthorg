@@ -9,12 +9,14 @@ import {
   previewRule,
   toggleCustomRule,
   updateCustomRule,
-  type CreateCustomRuleRequest,
   type CustomRule,
   type MetricDescriptor,
   type PreviewResult,
-  type PreviewRuleRequest,
 } from '@/api/endpoints/custom-rules'
+import type {
+  CreateCustomRuleRequest,
+  PreviewRuleRequest,
+} from '@/api/types/custom-rules'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'

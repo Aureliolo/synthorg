@@ -1,8 +1,10 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
-import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
-import { PriorityBadge } from '@/components/ui/task-status-indicator'
+import {
+  PriorityBadge,
+  TaskStatusIndicator,
+} from '@/components/ui/task-status-indicator'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { EmptyState } from '@/components/ui/empty-state'
 import { getTaskTypeLabel } from '@/utils/tasks'

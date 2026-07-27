@@ -5,10 +5,9 @@ import type {
   getLatestTrainingPlan,
   getTrainingResult,
   previewTrainingPlan,
-  TrainingPlanResponse,
-  TrainingResultResponse,
   updateTrainingOverrides,
 } from '@/api/endpoints/training'
+import type { TrainingPlanResponse, TrainingResultResponse } from '@/api/types/training'
 import { successFor } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'

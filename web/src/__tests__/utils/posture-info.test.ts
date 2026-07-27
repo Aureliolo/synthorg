@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { POSTURE_INFO } from '@/utils/posture-info'
-import { POSTURE_NAME_VALUES } from '@/api/types/enum-values.gen'
+import { POSTURE_NAME_VALUES } from '@/api/types/setup'
 
 describe('POSTURE_INFO', () => {
   it('has an entry for every generated posture name', () => {

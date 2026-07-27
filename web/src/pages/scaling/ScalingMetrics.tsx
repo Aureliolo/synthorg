@@ -4,7 +4,7 @@ import type {
   ScalingDecisionResponse,
   ScalingSignalResponse,
   ScalingStrategyResponse,
-} from '@/api/endpoints/scaling'
+} from '@/api/types/scaling'
 
 interface ScalingMetricsProps {
   strategies: readonly ScalingStrategyResponse[]

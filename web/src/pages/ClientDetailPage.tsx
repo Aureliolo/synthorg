@@ -2,12 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router'
 import { Smile, Users } from 'lucide-react'
 
-import {
-  getClient,
-  getClientSatisfaction,
-  type ClientProfile,
-  type SatisfactionHistory,
-} from '@/api/endpoints/clients'
+import { getClient, getClientSatisfaction } from '@/api/endpoints/clients'
+import type { ClientProfile, SatisfactionHistory } from '@/api/types/clients'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { DetailNavBar } from '@/components/ui/detail-nav-bar'
 import { ErrorBanner } from '@/components/ui/error-banner'

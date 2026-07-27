@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { deriveHealthSubsystemStates } from '@/components/ui/health-popover/derive-subsystem-states'
 import type { LoadState } from '@/components/ui/health-popover/health-popover.utils'
-import type { MemoryHealth } from '@/api/types/dtos.gen'
+import type { MemoryHealth } from '@/api/types/system'
 
 const FETCHED_AT = new Date('2099-01-01T10:00:00.000Z')
 

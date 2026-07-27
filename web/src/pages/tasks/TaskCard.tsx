@@ -2,8 +2,10 @@ import { memo, useEffect, useRef, type Ref } from 'react'
 import { Clock, GitBranch } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
-import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
-import { PriorityBadge } from '@/components/ui/task-status-indicator'
+import {
+  PriorityBadge,
+  TaskStatusIndicator,
+} from '@/components/ui/task-status-indicator'
 import { useFlash } from '@/hooks/useFlash'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatCurrency } from '@/utils/format'

@@ -1,4 +1,4 @@
-import type { HumanRole } from '@/api/types/enum-values.gen'
+import type { HumanRole } from '@/api/types/enums'
 
 /**
  * Roles permitted to perform privileged mutations that the backend gates on a

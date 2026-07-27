@@ -19,30 +19,6 @@ import type {
   UpdateClientRequest,
 } from '@/api/types/clients'
 
-// DTO shapes are owned by the domain barrel (`@/api/types/clients`,
-// regenerated from the backend OpenAPI schema). Re-export the ones
-// callers consume so the import site stays `@/api/endpoints/clients`
-// without hand-maintaining the shapes here.
-export type {
-  ClientProfile,
-  ClientRequest,
-  CreateClientRequest,
-  CreateRequestPayload,
-  PipelineResult,
-  RequestStatus,
-  ReviewStageResult,
-  SatisfactionHistory,
-  SatisfactionPoint,
-  ScopingPayload,
-  SimulationConfig,
-  SimulationMetrics,
-  SimulationStatusResponse,
-  StageDecisionPayload,
-  StageDecisionResult,
-  TaskRequirement,
-  UpdateClientRequest,
-} from '@/api/types/clients'
-
 // Derived from the generated stage result; not a hand-maintained
 // duplicate (the verdict literal union has no standalone DTO).
 export type StageVerdict = ReviewStageResult['verdict']

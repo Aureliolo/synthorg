@@ -89,6 +89,13 @@ _MAX_WAIT_STATUS: Final[int] = 255
 # drain is exactly the bug, and trading one hang for another would be absurd.
 _DRAIN_TIMEOUT_SECONDS: Final[int] = 10
 _TREE_KILL_TIMEOUT_SECONDS: Final[int] = 30
+# Windows caps a ``CreateProcess`` command line at 32767 characters, and a
+# push whose changed set is large enough to breach it is exactly the push a
+# gate must not silently drop. Leave headroom for the resolved interpreter
+# path and the tool's own flags; past this a file-taking tool switches to its
+# whole configured scope, which is a superset of the changed set, so the gate
+# can only ever over-enforce.
+_MAX_ARGV_CHARS: Final[int] = 30_000
 
 
 def _terminate_tree(process: subprocess.Popen[str]) -> None:
@@ -137,11 +144,16 @@ class _Tool:
             union of its tools' interests, so a file-taking tool must
             re-filter: handing ESLint a ``package.json`` that only ``knip``
             cares about would fail the run on an unlintable path.
+        whole_scope: Paths standing in for the matched list when that list
+            is too long to pass as arguments. Must be a superset of anything
+            ``filename_pattern`` can match, so falling back widens what the
+            tool inspects and never narrows it.
     """
 
     name: str
     argv: tuple[str, ...]
     filename_pattern: re.Pattern[str] | None = None
+    whole_scope: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """Reject a malformed declaration at import time.
@@ -150,13 +162,29 @@ class _Tool:
         surfaces as an IndexError inside a worker thread, mid-push.
 
         Raises:
-            ValueError: When the name is blank or the argv is empty.
+            ValueError: When the name is blank, the argv is empty, a
+                ``whole_scope`` entry is blank (which would hand the tool the
+                working directory and lint the entire repository), or a tool
+                takes filenames without declaring somewhere to fall back to.
         """
         if not self.name.strip():
             msg = "_Tool.name must not be blank"
             raise ValueError(msg)
         if not self.argv:
             msg = f"_Tool.argv must not be empty (tool {self.name!r})"
+            raise ValueError(msg)
+        if any(not path.strip() for path in self.whole_scope):
+            msg = f"_Tool.whole_scope must not hold a blank path (tool {self.name!r})"
+            raise ValueError(msg)
+        if self.filename_pattern is not None and not self.whole_scope:
+            # Without a fallback, an over-long path list has nowhere to go but
+            # truncation, which is a gate reporting success on files it never
+            # read. Structural here rather than in a per-group test, so a tool
+            # added to some future group cannot reopen it.
+            msg = (
+                f"_Tool.whole_scope is required when filename_pattern is set "
+                f"(tool {self.name!r})"
+            )
             raise ValueError(msg)
 
 
@@ -175,6 +203,7 @@ class _Result:
     output: str
     seconds: float
     skipped: bool = False
+    scope_note: str = ""
 
     @property
     def ok(self) -> bool:
@@ -194,7 +223,7 @@ class _Result:
         return (
             f"{self.name} skipped"
             if self.skipped
-            else (f"{self.name} {self.seconds:.1f}s")
+            else (f"{self.name} {self.seconds:.1f}s{self.scope_note}")
         )
 
 
@@ -219,12 +248,16 @@ _GROUPS: Final[Mapping[str, tuple[_Tool, ...]]] = MappingProxyType(
             _Tool(
                 "eslint",
                 (
-                    "npm",
-                    "--prefix",
-                    "web",
-                    "exec",
-                    "--",
-                    "eslint",
+                    # Straight to ESLint's entry point rather than through
+                    # ``npm --prefix web exec``. npm ships as ``npm.cmd``, so
+                    # that form routes the whole path list through cmd.exe,
+                    # whose command line caps at 8191 characters -- roughly a
+                    # hundred web paths, which a single refactor clears
+                    # easily. ESLint resolves flat config upward from each
+                    # linted file, so ``web/eslint.config.js`` still applies
+                    # with the runner's working directory at the repo root.
+                    "node",
+                    "web/node_modules/eslint/bin/eslint.js",
                     "--max-warnings",
                     "0",
                     # A changed set can include generated files (``*.gen.ts``)
@@ -237,6 +270,7 @@ _GROUPS: Final[Mapping[str, tuple[_Tool, ...]]] = MappingProxyType(
                     "--no-warn-ignored",
                 ),
                 filename_pattern=_ESLINT_FILES,
+                whole_scope=("web/src", "web/test-infra"),
             ),
             _Tool("knip", ("npm", "--prefix", "web", "run", "lint:knip")),
             _Tool("circular", ("npm", "--prefix", "web", "run", "lint:circular")),
@@ -267,6 +301,18 @@ def _validate_groups(groups: Mapping[str, tuple[_Tool, ...]]) -> None:
 _validate_groups(_GROUPS)
 
 
+def _argv_chars(argv: Sequence[str], paths: Sequence[str]) -> int:
+    """Return the command-line length the OS would see for ``argv`` + ``paths``.
+
+    One separator per argument, which is what the quoting a spawn applies
+    costs at minimum; ``_MAX_ARGV_CHARS`` carries the headroom for the rest.
+
+    Returns:
+        The approximate character count of the joined command line.
+    """
+    return sum(len(arg) + 1 for arg in (*argv, *paths))
+
+
 def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
     """Run one tool and capture its combined output.
 
@@ -280,6 +326,7 @@ def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
         The tool's :class:`_Result`.
     """
     argv = list(tool.argv)
+    scope_note = ""
     if tool.filename_pattern is not None:
         matched = [f for f in filenames if tool.filename_pattern.match(f)]
         if not matched:
@@ -294,7 +341,16 @@ def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
         # beginning with a dash cannot be read as an option -- is not
         # actually in force anywhere.
         argv.append("--")
-        argv.extend(matched)
+        paths = matched
+        if _argv_chars(argv, matched) > _MAX_ARGV_CHARS and tool.whole_scope:
+            # Too many paths to hand over one at a time. The alternatives are
+            # to drop files (a gate that stops enforcing without saying so) or
+            # to split into several runs (each paying ESLint's project-service
+            # warmup again, on the push budget). Widening to the configured
+            # scope keeps every changed file covered in one invocation.
+            paths = list(tool.whole_scope)
+            scope_note = f" (whole scope: {len(matched)} paths too long to pass)"
+        argv.extend(paths)
     # Windows ships ``npm`` as ``npm.cmd``; CreateProcess will not resolve
     # the bare name, and ``shell=True`` would hand the shell a path list
     # taken from git output. Resolving on PATH keeps the argv form exact.
@@ -345,6 +401,7 @@ def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
                     f"with its process tree; the push must not wait on a "
                     f"wedged tool, so this reads as a failure.{detail}",
                     time.monotonic() - started,
+                    scope_note=scope_note,
                 )
             returncode = process.returncode
     except OSError as exc:
@@ -362,6 +419,7 @@ def _run(tool: _Tool, filenames: Sequence[str]) -> _Result:
         returncode,
         stdout + stderr,
         elapsed,
+        scope_note=scope_note,
     )
 
 

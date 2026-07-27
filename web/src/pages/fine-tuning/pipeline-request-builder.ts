@@ -1,7 +1,4 @@
-import type {
-  FineTuneDataSourceType,
-  FineTuneRequest,
-} from '@/api/endpoints/fine-tuning'
+import type { FineTuneDataSourceType, FineTuneRequest } from '@/api/types/fine-tuning'
 
 export interface PipelineFormState {
   sourceDir: string

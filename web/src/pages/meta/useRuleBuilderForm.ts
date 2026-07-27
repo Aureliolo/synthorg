@@ -2,14 +2,13 @@ import { useMemo, useRef, useState } from 'react'
 
 import { createLogger } from '@/lib/logger'
 import { useCustomRulesStore } from '@/stores/custom-rules'
+import type { CustomRule, MetricDescriptor } from '@/api/endpoints/custom-rules'
 import type {
   Comparator,
   CreateCustomRuleRequest,
-  CustomRule,
-  MetricDescriptor,
   ProposalAltitude,
   RuleSeverity,
-} from '@/api/endpoints/custom-rules'
+} from '@/api/types/custom-rules'
 
 const log = createLogger('rule-builder-form')
 

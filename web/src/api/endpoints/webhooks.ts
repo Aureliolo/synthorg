@@ -5,8 +5,6 @@ import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../cli
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 import type { WebhookReceipt } from '@/api/types/integrations'
 
-export type { WebhookReceipt }
-
 /**
  * GET /webhooks/{connection_name}/activity
  *

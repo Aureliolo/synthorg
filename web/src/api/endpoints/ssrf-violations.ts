@@ -11,8 +11,8 @@ import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../cli
 import type {
   ResolveSsrfViolationRequest,
   SsrfViolationDTO,
+  SsrfViolationStatus,
 } from '@/api/types/ssrf-violations'
-import type { SsrfViolationStatus } from '../types/enum-values.gen'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 const BASE = '/providers/ssrf-violations'

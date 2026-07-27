@@ -7,14 +7,13 @@ import { useToastStore } from '@/stores/toast'
 import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
 import type { PaginatedResult } from '@/api/client'
 import { server } from '@/test-setup'
+import type { listCheckpoints, listRuns } from '@/api/endpoints/fine-tuning'
 import type {
   CheckpointRecord,
   FineTuneRun,
   FineTuneStatus,
-  listCheckpoints,
-  listRuns,
   PreflightResult,
-} from '@/api/endpoints/fine-tuning'
+} from '@/api/types/fine-tuning'
 
 const BASE_STATUS: FineTuneStatus = {
   run_id: 'run-1',

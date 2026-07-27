@@ -14,10 +14,12 @@ import type {
 } from '@/api/endpoints/budget'
 import type {
   AgentSpending,
+  AnalyticsAggregation,
   BudgetConfig,
+  Forecast,
+  ParetoFrontier,
   PromptClassBreakdown,
 } from '@/api/types/budget'
-import type { AnalyticsAggregation, Forecast, ParetoFrontier } from '@/api/types/budget'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
 

@@ -6,3 +6,5 @@ export type {
   RefreshStatusDTO,
   UpgradeRecommendationDTO,
 } from './dtos.gen'
+
+export type { RecommendationStatus } from './enum-values.gen'

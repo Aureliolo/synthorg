@@ -21,13 +21,7 @@ import {
 export type { CitedRecord } from './cited-records'
 // The unified conversational turn lives in its own module to keep this file
 // under its size budget; re-exported here so callers keep one import surface.
-export {
-  postTurn,
-  streamTurn,
-  type PostTurnOptions,
-  type StreamTurnHandlers,
-  type StreamTurnOutcome,
-} from './meta-turn'
+export { postTurn, streamTurn, type PostTurnOptions, type StreamTurnOutcome } from './meta-turn'
 
 // -- Types -------------------------------------------------------------------
 

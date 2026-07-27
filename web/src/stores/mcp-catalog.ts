@@ -4,11 +4,7 @@ import { createInstallActions } from './mcp-catalog/install-actions'
 import { createListActions } from './mcp-catalog/list-actions'
 import type { InstallContext, McpCatalogState } from './mcp-catalog/types'
 
-export type {
-  InstallContext,
-  InstallFlowState,
-  McpCatalogState,
-} from './mcp-catalog/types'
+export type { McpCatalogState } from './mcp-catalog/types'
 
 const EMPTY_INSTALL_CONTEXT: InstallContext = {
   entryId: null,

@@ -1,9 +1,6 @@
 import { http, HttpResponse } from 'msw'
-import type {
-  listWebhookActivity,
-  retryWebhookReceipt,
-  WebhookReceipt,
-} from '@/api/endpoints/webhooks'
+import type { listWebhookActivity, retryWebhookReceipt } from '@/api/endpoints/webhooks'
+import type { WebhookReceipt } from '@/api/types/integrations'
 import { emptyPage, paginatedFor, successFor } from './helpers'
 
 /**

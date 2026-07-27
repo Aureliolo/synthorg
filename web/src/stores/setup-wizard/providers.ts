@@ -9,14 +9,11 @@ import {
   testConnection,
 } from '@/api/endpoints/providers'
 import { createLogger } from '@/lib/logger'
-// ProviderConfig is the dashboard overlay (Omit + add over the wire
-// ProviderResponse from dtos.gen), so it stays imported from
-// ``@/api/types/providers``; the barrel only carries the wire shape.
-import type { ProviderConfig } from '@/api/types/providers'
 import type {
   CreateFromPresetRequest,
   CreateProviderRequest,
   ProbePresetResponse,
+  ProviderConfig,
 } from '@/api/types/providers'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'

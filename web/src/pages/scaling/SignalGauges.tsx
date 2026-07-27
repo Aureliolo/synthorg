@@ -3,7 +3,7 @@ import { Activity } from 'lucide-react'
 
 import { ProgressGauge } from '@/components/ui/progress-gauge'
 import { SectionCard } from '@/components/ui/section-card'
-import type { ScalingSignalResponse } from '@/api/endpoints/scaling'
+import type { ScalingSignalResponse } from '@/api/types/scaling'
 
 interface SignalGaugesProps {
   signals: readonly ScalingSignalResponse[]

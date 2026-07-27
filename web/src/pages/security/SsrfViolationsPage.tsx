@@ -17,8 +17,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusPill, type StatusPillTone } from '@/components/ui/status-pill'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
-import type { SsrfViolationDTO } from '@/api/types/ssrf-violations'
-import type { SsrfViolationStatus } from '@/api/types/enum-values.gen'
+import type { SsrfViolationDTO, SsrfViolationStatus } from '@/api/types/ssrf-violations'
 import {
   SSRF_STATUS_OPTIONS,
   useSsrfViolations,

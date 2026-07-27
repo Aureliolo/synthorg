@@ -20,25 +20,31 @@ const config: KnipConfig = {
     'src/__tests__/_types/axios-internal.d.ts',
   ],
   project: ['src/**/*.{ts,tsx}', 'src/**/*.css', 'test-infra/**/*.{ts,tsx}'],
+  // Generated modules are not project files, so nothing here can see an import
+  // that reaches past a barrel straight into one. That gap is covered by the
+  // `no-restricted-imports` pattern in eslint.config.js instead.
   ignore: ['**/*.gen.ts'],
   // `uv` (Python toolchain) backs the api-types generate/check npm scripts.
   ignoreBinaries: ['uv'],
   // `openapi-typescript` runs as `npx openapi-typescript` inside
   // scripts/generate_dto_types_ts.py, a Python subprocess Knip cannot trace.
-  ignoreDependencies: ['@types/.*', 'openapi-typescript'],
+  ignoreDependencies: ['openapi-typescript'],
   // `<ComponentName>Props` interfaces are exported for greppability even when
   // only referenced in their own file (web/CLAUDE.md design-system rule).
   ignoreExportsUsedInFile: { interface: true, type: true },
-  // The `types` report is off because it cannot distinguish dead code from a
-  // deliberate barrel surface, and this codebase is built on the latter: DTO
-  // shapes are re-exported from `@/api/endpoints/*` so callers have one import
-  // site, and every component barrel re-exports its `<ComponentName>Props` --
-  // both MANDATORY in web/CLAUDE.md. knip reports such a re-export whenever
-  // consumers import the type from its defining module instead of through the
-  // barrel, which is a style question, not a defect: every type it flagged was
-  // live. Scoping this per path was equivalent to switching it off, since the
-  // barrels span nearly all of `src/`. Every other issue type stays armed.
-  exclude: ['types'],
+  // The `types` report is armed, and stays meaningful because a name has one
+  // barrel: DTO shapes come from `@/api/types/<domain>` and nowhere else, so a
+  // re-export nothing reaches through really is dead. The sole sanctioned
+  // suppression is a `/** @public */` tag on a component sub-package barrel,
+  // where the `<ComponentName>Props` beside an exported component is surface by
+  // rule rather than by consumption. knip honours `@public` unconditionally
+  // (`isAlwaysIgnored` in its `util/tag`), so no config is needed here.
+  //
+  // A failure here surfaces at pre-push before CI, which is the intended
+  // ordering, not a coverage gap: `npm run lint:knip` also runs whole-dashboard
+  // and unconditionally in the ci.yml `dashboard-lint` job. The Gates job SKIPs
+  // the `web-checks` hook only because it has no node toolchain, a mapping
+  // `check_local_ci_parity.py` records in `_COVERED_ELSEWHERE` and enforces.
   compilers: {
     css: (text: string) =>
       [...text.matchAll(/@import\s+(?:url\()?['"]?([^'")]+)['"]?\)?/g)]

@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import { PlanStatusBadge } from '@/components/ui/plan-status-badge'
 import { ProjectStatusBadge } from '@/components/ui/project-status-badge'
-import { PLAN_STATUS_VALUES, PROJECT_STATUS_VALUES } from '@/api/types/enum-values.gen'
+import { PROJECT_STATUS_VALUES } from '@/api/types/enums'
+import { PLAN_STATUS_VALUES } from '@/api/types/plans'
 
 describe('PlanStatusBadge', () => {
   it.each(PLAN_STATUS_VALUES)('renders a label for %s', (status) => {

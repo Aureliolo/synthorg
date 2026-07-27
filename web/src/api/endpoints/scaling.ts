@@ -12,14 +12,6 @@ import type {
   ScalingStrategyResponse,
 } from '@/api/types/scaling'
 
-// -- Response types ----------------------------------------------------------
-
-export type {
-  ScalingDecisionResponse,
-  ScalingSignalResponse,
-  ScalingStrategyResponse,
-}
-
 // -- API functions -----------------------------------------------------------
 
 export async function getScalingStrategies(): Promise<ScalingStrategyResponse[]> {

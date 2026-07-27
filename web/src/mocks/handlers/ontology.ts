@@ -2,7 +2,6 @@ import { http, HttpResponse } from 'msw'
 import type {
   createEntity,
   deriveOntology,
-  EntityResponse,
   getEntity,
   getVersionManifest,
   listDriftReports,
@@ -11,7 +10,11 @@ import type {
   triggerDriftCheck,
   updateEntity,
 } from '@/api/endpoints/ontology'
-import type { EntityListMeta, EntityListResponse } from '@/api/types/ontology'
+import type {
+  EntityListMeta,
+  EntityListResponse,
+  EntityResponse,
+} from '@/api/types/ontology'
 import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'

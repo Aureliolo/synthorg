@@ -6,7 +6,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useProjectsStore } from '@/stores/projects'
 import { useUserRole } from '@/stores/auth'
 import { makeEnumParser } from '@/utils/type-guards'
-import { AUTONOMY_LEVEL_VALUES } from '@/api/types/enum-values.gen'
+import { AUTONOMY_LEVEL_VALUES } from '@/api/types/enums'
 import type { AutonomyLevel } from '@/api/types/enums'
 import type { Project } from '@/api/types/projects'
 

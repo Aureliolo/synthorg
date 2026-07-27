@@ -3,13 +3,12 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { SliderField } from '@/components/ui/slider-field'
+import type { CustomRule, MetricDescriptor } from '@/api/endpoints/custom-rules'
 import type {
   Comparator,
-  CustomRule,
-  MetricDescriptor,
   ProposalAltitude,
   RuleSeverity,
-} from '@/api/endpoints/custom-rules'
+} from '@/api/types/custom-rules'
 
 import { RulePreviewPanel } from './RulePreviewPanel'
 import {

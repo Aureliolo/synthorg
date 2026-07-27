@@ -1,6 +1,5 @@
 import type { StoreApi } from 'zustand'
-import type { AutonomyLevel } from '@/api/types/enums'
-import type { ProjectStatus } from '@/api/types/enums'
+import type { AutonomyLevel, ProjectStatus } from '@/api/types/enums'
 import type {
   CreateProjectRequest,
   Project,

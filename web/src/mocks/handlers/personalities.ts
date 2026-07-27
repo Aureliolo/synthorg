@@ -9,7 +9,7 @@ import type {
 import type {
   PresetDetailResponse,
   PresetSummaryResponse,
-} from '@/api/types/dtos.gen'
+} from '@/api/types/personalities'
 import { paginatedFor, successFor, voidSuccess } from './helpers'
 
 function summary(overrides: Partial<PresetSummaryResponse> = {}): PresetSummaryResponse {

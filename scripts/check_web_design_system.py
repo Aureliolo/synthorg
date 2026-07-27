@@ -532,6 +532,51 @@ def check_missing_story(file_path: Path, project_root: Path) -> list[str]:
     ]
 
 
+def check_subpackage_barrel_boundary(
+    content: str, file_path: Path, project_root: Path
+) -> list[str]:
+    """Check a `components/ui/<name>/index.ts` barrel exports only its boundary.
+
+    The barrel is the package boundary: the components a consumer can render
+    plus their ``<ComponentName>Props``. A helper type, or the Props of a
+    sub-component the barrel does not export, is unreachable surface that
+    knip cannot prove dead once the barrel re-exports it, so it stays
+    internal and siblings import it from the module that defines it.
+
+    Returns:
+        One warning per exported name that is neither a component nor the
+        Props of a component the same barrel exports.
+    """
+    rel_path = file_path.relative_to(project_root)
+    parts = rel_path.parts
+    if not ("components" in parts and "ui" in parts and file_path.name == "index.ts"):
+        return []
+
+    values: set[str] = set()
+    types: set[str] = set()
+    for block_kind, block in re.findall(
+        r"export\s+(type\s+)?\{([^}]*)\}", content, re.DOTALL
+    ):
+        for raw in block.split(","):
+            specifier = raw.strip()
+            if not specifier:
+                continue
+            # A block-level ``export type {`` marks every specifier a type;
+            # inside a value block each one carries its own ``type`` prefix.
+            is_type = bool(block_kind) or specifier.startswith("type ")
+            # ``export { X as Y }`` publishes Y, so the alias is the surface.
+            name = specifier.removeprefix("type ").strip().split(" as ")[-1].strip()
+            (types if is_type else values).add(name)
+
+    return [
+        f"  {rel_path}: sub-package barrel exports `{name}`, which is neither a "
+        f"component nor the Props of one it exports -- keep it internal and "
+        f"import it from the module that defines it."
+        for name in sorted(types)
+        if not (name.endswith("Props") and name.removesuffix("Props") in values)
+    ]
+
+
 def _check_status_dot(content: str, content_lower: str, rel_path: Path) -> list[str]:
     """Check for inline status dot patterns that should use StatusBadge."""
     patterns = [
@@ -716,6 +761,9 @@ def check_file(file_path: Path, project_root: Path) -> list[str]:
     )
     all_warnings.extend(check_usd_field_names(content, file_path, project_root))
     all_warnings.extend(check_missing_story(file_path, project_root))
+    all_warnings.extend(
+        check_subpackage_barrel_boundary(content, file_path, project_root),
+    )
     all_warnings.extend(check_duplicate_patterns(content, file_path, project_root))
     all_warnings.extend(propose_shared_components(content, file_path, project_root))
 

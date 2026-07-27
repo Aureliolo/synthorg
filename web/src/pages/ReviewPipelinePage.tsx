@@ -10,10 +10,9 @@ import {
 import {
   decideReviewStage,
   getReviewPipeline,
-  type PipelineResult,
-  type ReviewStageResult,
   type StageVerdict,
 } from '@/api/endpoints/clients'
+import type { PipelineResult, ReviewStageResult } from '@/api/types/clients'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'

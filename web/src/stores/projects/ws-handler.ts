@@ -1,7 +1,7 @@
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { sanitizeWsEnumOrNull, sanitizeWsString } from '@/utils/ws-sanitize'
-import { AUTONOMY_LEVEL_VALUES } from '@/api/types/enum-values.gen'
+import { AUTONOMY_LEVEL_VALUES } from '@/api/types/enums'
 import type { AutonomyLevel } from '@/api/types/enums'
 import type { WsEvent } from '@/api/types/websocket'
 import type { ProjectsGet, ProjectsSet } from './types'

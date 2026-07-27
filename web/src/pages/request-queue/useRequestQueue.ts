@@ -5,9 +5,8 @@ import {
   listRequests,
   rejectRequest,
   scopeRequest,
-  type ClientRequest,
-  type RequestStatus,
 } from '@/api/endpoints/clients'
+import type { ClientRequest, RequestStatus } from '@/api/types/clients'
 import { useCapabilities } from '@/hooks/useCapabilities'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'

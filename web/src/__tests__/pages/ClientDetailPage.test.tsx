@@ -4,7 +4,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { apiError, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { renderRoutes } from '@/__tests__/test-utils'
-import type { ClientProfile, getClientSatisfaction } from '@/api/endpoints/clients'
+import type { getClientSatisfaction } from '@/api/endpoints/clients'
+import type { ClientProfile } from '@/api/types/clients'
 
 let clients: readonly ClientProfile[]
 

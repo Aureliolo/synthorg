@@ -268,9 +268,9 @@ export default tseslint.config(
     // One barrel per name. A generated DTO lives at `@/api/types/<domain>` and
     // nowhere else, so knip's `types` report can prove a re-export dead: a
     // second path to the same name makes every path look unused, which is what
-    // kept that report switched off. Deleting the index barrel already makes
-    // the old path a resolution failure; this turns that into a message that
-    // names the replacement, and stops the barrel being recreated.
+    // kept that report switched off. The rules below stop a second path coming
+    // back, on the import side as well as the export side -- knip cannot help
+    // here at all, because `**/*.gen.ts` sits in its `ignore` list.
     files: ['**/*.ts', '**/*.tsx'],
     rules: {
       'no-restricted-imports': [
@@ -284,6 +284,77 @@ export default tseslint.config(
                 "`@/api/types/agents`, `@/api/types/http`, `@/api/types/errors`.",
             },
           ],
+          patterns: [
+            {
+              group: ['**/*.gen', '@/api/types/*.gen'],
+              message:
+                'Import the name from its `@/api/types/<domain>` barrel, not from the generated ' +
+                'module. Reaching past the barrel gives the name a second path, which is exactly ' +
+                'what knip cannot detect (generated files are in its ignore list).',
+            },
+          ],
+        },
+      ],
+      // The codemod that collapsed the index barrel emitted one import per
+      // target module rather than merging into an existing one. Separate type
+      // and value imports from a module stay legal -- that split is deliberate
+      // and widespread (`import { create }` + `import type { StoreApi }`).
+      'no-duplicate-imports': ['error', { allowSeparateTypeImports: true }],
+    },
+  },
+  {
+    files: ['src/api/types/**'],
+    rules: {
+      // This layer is the one place allowed to read the generated modules:
+      // curating them into a named surface is the whole job it does.
+      'no-restricted-imports': 'off',
+      'no-restricted-syntax': [
+        'error',
+        {
+          // A wildcard over the generated modules re-creates the uncurated
+          // index barrel: it can never be reported unused, so it hides drift
+          // instead of surfacing it. List the names the dashboard imports.
+          selector: "ExportAllDeclaration[source.value=/\\.gen$/]",
+          message:
+            'Do not `export *` from a generated module -- list the names the dashboard imports, ' +
+            'so an entry nothing consumes shows up in knip.',
+        },
+        {
+          // A domain module re-exporting from a sibling domain module gives the
+          // name a second barrel. knip is blind to it whenever both paths have
+          // consumers, so each looks legitimately used. Both specifier forms
+          // have to match: `no-restricted-imports` is off for this scope, so a
+          // relative-only anchor would leave `@/api/types/enums` as an open
+          // door to the very shape the rule exists to close. Excluding the
+          // generated modules is what lets a barrel curate them, and matching
+          // any other source means a future module name carrying a digit or a
+          // capital cannot slip past either.
+          selector:
+            "ExportNamedDeclaration[source.value=/^(@\\/api\\/types\\/|\\.{1,2}\\/)(?!.*\\.gen$)/]",
+          message:
+            'Do not re-export a name from a sibling domain module -- it gives that name a second ' +
+            'barrel. Point consumers at the module that owns it.',
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/api/endpoints/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          // An endpoint module exports behaviour and the types it derives
+          // (`StageVerdict`, `SimulationReport`); DTO shapes come from the type
+          // barrel. Re-exporting them here is a third path to the same name.
+          // Both specifier forms have to match: these modules already import
+          // via `../types/http` and `../types/agents`, so an alias-only
+          // selector would be evaded by writing the passthrough relatively.
+          selector:
+            "ExportNamedDeclaration[source.value=/^(@\\/api\\/types\\/|\\.\\.\\/(\\.\\.\\/)?types\\/)/]",
+          message:
+            'Do not re-export DTO types from an endpoint module -- consumers import them from ' +
+            '`@/api/types/<domain>` directly. Endpoint modules export behaviour and their own derived types.',
         },
       ],
     },

@@ -6,7 +6,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SkeletonTable } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import type { DriftReportResponse } from '@/api/endpoints/ontology'
+import type { DriftReportResponse } from '@/api/types/ontology'
 
 const RECOMMENDATION_STYLES = {
   no_action: 'text-success',

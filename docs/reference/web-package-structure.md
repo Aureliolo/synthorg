@@ -11,7 +11,7 @@ On-demand reference for the React dashboard's directory layout. The short summar
 
 ```text
 web/src/
-  api/            # Axios client (`client.ts`), endpoint modules (`endpoints/`, 57 modules), and narrow-domain types under `types/` (27 files, no barrel `index.ts`; consumers import directly from `@/api/types/<domain>`)
+  api/            # Axios client (`client.ts`), endpoint modules (`endpoints/`, 67 modules), and narrow-domain types under `types/` (53 hand-written modules; there is no barrel `index.ts` and consumers import from `@/api/types/<domain>`, one barrel per name)
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar with external link support, status bar); feature dirs added as pages are built
   hooks/          # React hooks (auth, login lockout, WebSocket, polling, freshness gate, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, settings keyboard shortcuts, communication edges, artifact / project data composition, useWorkflowsData, useBulkSelection, useEmptyStateProps)
   lib/            # Utilities (cn() class merging, semantic color mappers), Motion presets, CSP nonce reader, structured logger factory
@@ -23,6 +23,21 @@ web/src/
   utils/          # Constants, error handling, formatting, logging
   __tests__/      # Vitest unit + property tests (mirrors src/ structure)
 ```
+
+### One barrel per name
+
+A generated DTO or enum is reachable from exactly one module: `@/api/types/<domain>`. `api/types/<x>.ts` mirrors `api/endpoints/<x>.ts`, except where an existing module already owns the concept (`UserResponse` sits in `auth.ts`, `WebhookReceipt` and `InstalledEntry` in `integrations.ts`).
+
+Four shapes are banned because each re-creates a second path to the same name, and a name reachable two ways can never be reported unused:
+
+- No `api/types/index.ts`, and no `export *` from a `.gen` module. Both hide drift instead of surfacing it: list the names the dashboard imports and add a new one in the same commit as its consumer.
+- No importing a `.gen` module from outside `api/types/`. `api/types/` is the only layer allowed to read generated output; everywhere else goes through the barrel that curates it.
+- No DTO pass-through in an endpoint module. Those export behaviour plus the types they derive (`clients.ts`'s `StageVerdict`, `SimulationReport`); DTO shapes come from the type barrel.
+- No convenience alias re-exporting a name that already has a home elsewhere, including from a sibling domain module.
+
+This is what keeps knip's `types` report armed and honest, so a re-export nothing consumes fails the build rather than accumulating. Note knip cannot see the second and fourth shapes at all: generated files sit in its `ignore` list, and a name with two live barrels looks used from both. ESLint covers what knip structurally cannot, via `no-restricted-imports` (paths + patterns), `no-duplicate-imports`, and `no-restricted-syntax` selectors banning a `.gen` wildcard, a sibling-domain re-export and an endpoint DTO pass-through. The two re-export selectors match the path-alias form as well as the relative one, since `no-restricted-imports` is off inside `api/types/` and an alias-only bypass would reopen the shape. `web/src/__tests__/api/one-barrel-per-name.test.ts` asserts each rule still fires, since a mistyped selector would otherwise pass silently forever.
+
+The hand-written modules that are not DTO groupings keep their own paths: `http.ts` (the `ApiResponse<T>` / `PaginatedResponse<T>` envelopes), `errors.ts` (the `ErrorCode` taxonomy), `enums.ts` (generated enum tuples plus type guards) and the `websocket/` sub-package.
 
 ### Store slicing patterns
 

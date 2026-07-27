@@ -49,8 +49,10 @@ export {
   type Priority,
   type ProjectStatus,
   type RunOutcome,
+  type Stakes,
   type TaskSource,
   type TaskStatus,
+  type TaskStructure,
   type TaskType,
   type UrgencyLevel,
 } from './enum-values.gen'

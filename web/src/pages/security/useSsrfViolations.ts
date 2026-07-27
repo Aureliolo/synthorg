@@ -7,8 +7,8 @@ import type { EmptyStateProps } from '@/components/ui/empty-state'
 import type {
   ResolveSsrfViolationRequest,
   SsrfViolationDTO,
+  SsrfViolationStatus,
 } from '@/api/types/ssrf-violations'
-import type { SsrfViolationStatus } from '@/api/types/enum-values.gen'
 import { hasPrivilegedRole } from '@/utils/roles'
 
 export type StatusFilterValue = SsrfViolationStatus | 'all'

@@ -5,7 +5,7 @@
  * and provides filtered/sorted data.
  */
 import { useCallback, useEffect, useMemo } from 'react'
-import type { EntityResponse, DriftReportResponse } from '@/api/endpoints/ontology'
+import type { DriftReportResponse, EntityResponse } from '@/api/types/ontology'
 import { usePolling } from '@/hooks/usePolling'
 import { useOntologyStore } from '@/stores/ontology'
 

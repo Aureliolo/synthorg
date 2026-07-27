@@ -4,7 +4,8 @@ import { createLogger } from '@/lib/logger'
 import { useCustomRulesStore } from '@/stores/custom-rules'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
-import type { Comparator, PreviewResult } from '@/api/endpoints/custom-rules'
+import type { PreviewResult } from '@/api/endpoints/custom-rules'
+import type { Comparator } from '@/api/types/custom-rules'
 
 const log = createLogger('rule-preview-panel')
 const PREVIEW_DEBOUNCE_MS = 300

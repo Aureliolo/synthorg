@@ -11,10 +11,12 @@ import {
   previewTrainingPlan,
   updateTrainingOverrides,
   type CreateTrainingPlanRequest,
-  type TrainingPlanResponse,
-  type TrainingResultResponse,
-  type UpdateTrainingOverridesRequest,
 } from '@/api/endpoints/training'
+import type {
+  TrainingPlanResponse,
+  TrainingResultResponse,
+  UpdateTrainingOverridesRequest,
+} from '@/api/types/training'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'

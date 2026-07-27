@@ -2,10 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
-import type {
-  FineTuneDataSourceType,
-  FineTuneRequest,
-} from '@/api/endpoints/fine-tuning'
+import type { FineTuneDataSourceType, FineTuneRequest } from '@/api/types/fine-tuning'
 import { useFineTuningStore } from '@/stores/fine-tuning'
 
 import { buildStartRequest } from './pipeline-request-builder'

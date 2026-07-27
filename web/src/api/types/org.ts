@@ -2,7 +2,7 @@
 
 import type { AgentConfig } from './agents'
 import type { Department as WireDepartment } from './dtos.gen'
-import type { AutonomyLevel, DepartmentName } from './enums'
+import type { AutonomyLevel } from './enums'
 
 export type {
   CreateAgentOrgRequest,
@@ -23,9 +23,9 @@ export type {
  * agent's declared department has no backend row) populates it from
  * the dept name.
  *
- * The wire's required-vs-optional shape is now correct out of the
- * generator, so this type only ADDS the optional ``display_name``:
- * it is NOT an ``Omit<Wire, ...> & { ... }`` tightening overlay.
+ * The wire's required-vs-optional shape matches the DTO exactly, so
+ * this type only ADDS the optional ``display_name``: it is NOT an
+ * ``Omit<Wire, ...> & { ... }`` tightening overlay.
  */
 export type Department = WireDepartment & {
   readonly display_name?: string
@@ -60,6 +60,3 @@ export interface CompanyConfig {
   readonly agents: readonly AgentConfig[]
   readonly departments: readonly Department[]
 }
-
-/** Convenience type aliases used by older import paths. */
-export type { AutonomyLevel, DepartmentName }

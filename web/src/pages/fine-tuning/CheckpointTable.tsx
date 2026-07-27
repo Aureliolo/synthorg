@@ -2,7 +2,7 @@ import { memo, useCallback, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 
-import type { CheckpointRecord } from '@/api/endpoints/fine-tuning'
+import type { CheckpointRecord } from '@/api/types/fine-tuning'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'

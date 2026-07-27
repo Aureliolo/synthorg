@@ -1,4 +1,4 @@
-/** Project-brain entry, version and search types. */
+/** Project-brain entry, version and search types, plus their value tuples. */
 
 export type {
   BrainEntry,

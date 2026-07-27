@@ -15,7 +15,7 @@ import type { ConfirmHandler } from '@/components/ui/confirm-dialog'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { formatNumber } from '@/utils/format'
 import { EntityCard } from './EntityCard'
-import type { EntityResponse } from '@/api/endpoints/ontology'
+import type { EntityResponse } from '@/api/types/ontology'
 import type { EntitySortKey } from '@/stores/ontology'
 
 const TIER_OPTIONS = [

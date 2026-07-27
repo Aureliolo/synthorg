@@ -4,8 +4,8 @@ import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { apiError, buildConnection, emptyPage, paginatedFor, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
-import type { Connection } from '@/api/types/integrations'
-import type { listWebhookActivity, WebhookReceipt } from '@/api/endpoints/webhooks'
+import type { Connection, WebhookReceipt } from '@/api/types/integrations'
+import type { listWebhookActivity } from '@/api/endpoints/webhooks'
 import { retryWebhookReceipt } from '@/api/endpoints/webhooks'
 
 let connections: readonly Connection[]

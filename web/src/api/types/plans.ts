@@ -3,6 +3,7 @@
 import type { PlanStatus } from './enum-values.gen'
 
 export type { PlanStatus } from './enum-values.gen'
+export { PLAN_STATUS_VALUES } from './enum-values.gen'
 export type {
   EditPlanRequest,
   Plan,

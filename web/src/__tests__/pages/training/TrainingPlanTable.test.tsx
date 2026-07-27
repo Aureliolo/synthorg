@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 
-import type { TrainingPlanResponse } from '@/api/endpoints/training'
+import type { TrainingPlanResponse } from '@/api/types/training'
 import {
   TrainingPlanTable,
   type TrainingPlanRow,

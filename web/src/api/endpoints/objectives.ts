@@ -5,8 +5,6 @@ import type {
   SubmitObjectivePayload as SubmitObjectivePayloadWire,
 } from '@/api/types/plans'
 
-export type { SubmitObjectiveAck }
-
 // ``acceptance_criteria`` is required in the generated wire type (default
 // ``[]``); the dialog omits it so the backend applies that default. Derive
 // from the generated shape (no field/type drift) and keep it optional here.

@@ -7,8 +7,6 @@ import type {
   McpInstallResponse,
 } from '../types/integrations'
 
-export type { InstalledEntry }
-
 export async function browseMcpCatalog(
   params?: PaginationParams,
 ): Promise<PaginatedResult<McpCatalogEntry>> {

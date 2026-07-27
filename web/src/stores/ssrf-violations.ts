@@ -20,8 +20,8 @@ import { sanitizeForLog } from '@/utils/logging'
 import type {
   ResolveSsrfViolationRequest,
   SsrfViolationDTO,
+  SsrfViolationStatus,
 } from '@/api/types/ssrf-violations'
-import type { SsrfViolationStatus } from '@/api/types/enum-values.gen'
 
 const log = createLogger('ssrf-violations')
 

@@ -1,4 +1,4 @@
-import type { TaskStructure } from '@/api/types/enum-values.gen'
+import type { TaskStructure } from '@/api/types/enums'
 import { MetricCard } from '@/components/ui/metric-card'
 import type { PlanStats } from '@/utils/plans'
 
