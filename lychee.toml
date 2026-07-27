@@ -45,8 +45,7 @@ include_mail = false
 # (anti-bot 403) or rate limit aggressively (429). These are NOT link
 # rot -- the URLs are real and resolvable in a normal browser -- so
 # excluding here keeps the weekly report from filing bogus issues.
-# Research-paper citations are exempt on separate grounds, spelled out
-# at their block below.
+# Research-paper citations are exempt on separate grounds; see below.
 exclude = [
     '^https?://localhost',
     '^https?://127\.0\.0\.1',
@@ -84,14 +83,13 @@ exclude = [
     # probe with a connection error; the URL is real and resolves in a
     # browser. Same shape as docs.sigstore.dev / slsa.dev above.
     '^https?://fast-check\.dev(/|$)',
-    # Research-paper citations are provenance, not navigation: they record
-    # where an idea came from, and the paper stays findable by title and DOI
-    # on some other host once a given mirror goes away. So these are exempt
-    # from rot tracking outright, unlike the anti-bot entries above, which
-    # are live URLs lychee merely cannot see. arxiv.org carries most of the
-    # citations; cormack.uwaterloo.ca hosts the author copy of the RRF paper
-    # cited from the memory design. doi.org and dl.acm.org are the canonical
-    # fallbacks for the same papers and answer lychee's GET with a hard 403.
+    # Research-paper citations are provenance, not navigation: the paper
+    # stays findable by title and DOI once a mirror goes away, so these are
+    # exempt from rot tracking outright, unlike the anti-bot entries above
+    # (live URLs lychee merely cannot see). arxiv.org and cormack.uwaterloo.ca
+    # are cited today. doi.org and dl.acm.org are listed ahead of any link
+    # reaching them because both answer lychee's GET with a hard 403, so the
+    # first citation routed through either would fail the weekly run outright.
     '^https?://arxiv\.org/',
     '^https?://cormack\.uwaterloo\.ca/',
     '^https?://doi\.org/',
