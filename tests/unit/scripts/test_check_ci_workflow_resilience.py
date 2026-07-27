@@ -945,7 +945,8 @@ class TestDockerfileDigestPins:
     _DIGEST = "@sha256:" + "0" * 64
 
     def _refs(self, text: str) -> list[tuple[int, str]]:
-        return _MODULE._dockerfile_refs(text)  # type: ignore[attr-defined]
+        refs: list[tuple[int, str]] = _MODULE._dockerfile_refs(text)  # type: ignore[attr-defined]
+        return refs
 
     def test_syntax_from_and_copy_from_are_all_collected(self) -> None:
         text = (
