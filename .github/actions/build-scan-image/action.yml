@@ -277,6 +277,7 @@ runs:
     # (docker-archive format requires one manifest), so we emit two
     # tarballs and reassemble the multi-arch manifest at push time.
     - name: Build amd64 tarball (non-PR)
+      id: build-amd64
       if: github.event_name != 'pull_request'
       uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
       with:
@@ -294,10 +295,11 @@ runs:
 
     # `!cancelled()` rather than the implicit success chain: this load is what
     # the amd64 gate keys off, so it has to be reached even when a sibling
-    # arch already failed.
+    # arch already failed. Its own build is still required, or the load would
+    # report a missing tarball instead of the build error that caused it.
     - name: Load amd64 image for scanning (non-PR)
       id: load-amd64
-      if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+      if: ${{ !cancelled() && steps.build-amd64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -305,6 +307,7 @@ runs:
         docker load -i "/tmp/scan-image-${IMAGE_NAME}-amd64.tar"
 
     - name: Build arm64 tarball (non-PR, multi-arch)
+      id: build-arm64
       if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
       uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
       with:
@@ -325,7 +328,7 @@ runs:
     # before publish-image pushes them, so neither arch ships unscanned.
     - name: Load arm64 image for scanning (non-PR, multi-arch)
       id: load-arm64
-      if: ${{ !cancelled() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true' }}
+      if: ${{ !cancelled() && steps.build-arm64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -393,7 +396,13 @@ runs:
     # point Trivy's scratch (export temp via TMPDIR + vuln-db cache via
     # TRIVY_CACHE_DIR) there. Created unconditionally so every image scans the
     # same way, not just the disk-pressured fine-tune variants.
+    # Both setup steps carry `!cancelled()` for the same reason the loads do:
+    # left on the default success chain they are skipped by any earlier
+    # failure, and a per-arch gate that legitimately passes then runs Trivy
+    # that was never installed, burying the real error under `command not
+    # found`. Every consumer below additionally requires the install itself.
     - name: Provision Trivy scratch on /mnt
+      if: ${{ !cancelled() }}
       shell: bash
       run: |
         sudo mkdir -p /mnt/trivy-tmp /mnt/trivy-cache
@@ -401,6 +410,8 @@ runs:
         df -h /mnt /
 
     - name: Install Trivy
+      id: install-trivy
+      if: ${{ !cancelled() }}
       shell: bash
       env:
         TRIVY_VERSION: ${{ inputs.trivy-version }}
@@ -423,7 +434,7 @@ runs:
     # that either, since it runs after both loads and so inherits either
     # failure.
     - name: Trivy scan (amd64)
-      if: ${{ !cancelled() && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -435,7 +446,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Evaluate Trivy results (amd64)
-      if: ${{ !cancelled() && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -443,7 +454,7 @@ runs:
       run: scripts/evaluate-scan.sh --verbose "trivy-${IMAGE_NAME}-amd64.json" "$DISPLAY_NAME"
 
     - name: Trivy scan (arm64)
-      if: ${{ !cancelled() && steps.load-arm64.outcome == 'success' }}
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && steps.load-arm64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -455,7 +466,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Evaluate Trivy results (arm64)
-      if: ${{ !cancelled() && steps.load-arm64.outcome == 'success' }}
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && steps.load-arm64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -475,7 +486,7 @@ runs:
     # is nothing to scan, so the `command not found` lands BELOW the real
     # error and masks it.
     - name: Trivy SARIF scan (amd64)
-      if: ${{ !cancelled() && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -487,7 +498,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Upload SARIF amd64 to GitHub Security
-      if: ${{ !cancelled() && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       # Cosmetic Security-tab upload, NOT a required check, and the real
       # vulnerability gate is the separate `Evaluate Trivy results` step
       # above (which stays loud). A transient code-scanning API 401/5xx must
@@ -499,7 +510,7 @@ runs:
         category: trivy-${{ inputs.image-name }}-amd64
 
     - name: Trivy SARIF scan (arm64)
-      if: ${{ !cancelled() && steps.load-arm64.outcome == 'success' }}
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && steps.load-arm64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -511,7 +522,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Upload SARIF arm64 to GitHub Security
-      if: ${{ !cancelled() && steps.load-arm64.outcome == 'success' }}
+      if: ${{ !cancelled() && steps.install-trivy.outcome == 'success' && steps.load-arm64.outcome == 'success' }}
       # See the amd64 upload above: cosmetic, non-gating, re-uploads next run.
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
@@ -519,6 +530,8 @@ runs:
         sarif_file: trivy-${{ inputs.image-name }}-arm64.sarif
         category: trivy-${{ inputs.image-name }}-arm64
 
+    # No Trivy dependency here: cis-scan is a separate tool, so gating it on
+    # the Trivy install would couple two independent checks.
     - name: CIS Docker Benchmark (amd64)
       if: ${{ !cancelled() && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       uses: ./.github/actions/cis-scan
