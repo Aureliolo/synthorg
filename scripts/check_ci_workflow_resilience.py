@@ -171,6 +171,8 @@ _DOCKER_DIR: Final[str] = "docker"
 _DOCKERFILE_NAME: Final[str] = "Dockerfile"
 _SYNTAX_PREFIX: Final[str] = "# syntax="
 _COPY_FROM_FLAG: Final[str] = "--from="
+# Both `${VAR}` and the equally legal bare `$VAR` spelling.
+_BUILD_ARG_PREFIX: Final[str] = "$"
 _DIGEST_MARKER: Final[str] = "@sha256:"
 # ``FROM <ref> AS <name>`` is the shortest aliased form.
 _FROM_ALIAS_WORDS: Final[int] = 3
@@ -1213,8 +1215,9 @@ def _scan_file(path: Path, consumers: frozenset[str] | None = None) -> list[str]
 def _dockerfile_refs(text: str) -> list[tuple[int, str]]:
     """Return ``(line number, image reference)`` for every pinnable reference.
 
-    Build stages and ``${...}`` build args are excluded: neither resolves
-    against a registry, so neither can carry a digest.
+    Build stages and build-arg references (``${VAR}`` or bare ``$VAR``) are
+    excluded: neither resolves against a registry, so neither can carry a
+    digest.
     """
     stages: set[str] = set()
     refs: list[tuple[int, str]] = []
@@ -1234,14 +1237,18 @@ def _dockerfile_refs(text: str) -> list[tuple[int, str]]:
             ref = operands[0]
             if len(operands) >= _FROM_ALIAS_WORDS and operands[1].upper() == "AS":
                 stages.add(operands[2])
-            if ref not in stages and not ref.startswith("${"):
+            if ref not in stages and not ref.startswith(_BUILD_ARG_PREFIX):
                 refs.append((number, ref))
         elif keyword == "COPY":
             for word in words[1:]:
                 if not word.startswith(_COPY_FROM_FLAG):
                     continue
                 ref = word.removeprefix(_COPY_FROM_FLAG)
-                if ref not in stages and not ref.isdigit() and not ref.startswith("${"):
+                if (
+                    ref not in stages
+                    and not ref.isdigit()
+                    and not ref.startswith(_BUILD_ARG_PREFIX)
+                ):
                     refs.append((number, ref))
     return refs
 

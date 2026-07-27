@@ -971,8 +971,19 @@ class TestDockerfileDigestPins:
             f"python:3.14-slim{self._DIGEST}"
         ]
 
-    def test_a_build_arg_base_is_exempt(self) -> None:
-        assert self._refs("FROM ${BASE_IMAGE}\n") == []
+    @pytest.mark.parametrize(
+        "line",
+        [
+            pytest.param("FROM ${BASE_IMAGE}\n", id="from-braced"),
+            pytest.param("FROM $BASE_IMAGE\n", id="from-bare"),
+            pytest.param("COPY --from=${STAGE} /app /app\n", id="copy-braced"),
+            pytest.param("COPY --from=$STAGE /app /app\n", id="copy-bare"),
+        ],
+    )
+    def test_a_build_arg_reference_is_exempt(self, line: str) -> None:
+        # Both spellings are legal Dockerfile syntax and neither resolves
+        # against a registry, so neither can carry a digest.
+        assert self._refs(line) == []
 
     def test_a_numeric_copy_from_index_is_exempt(self) -> None:
         assert self._refs("COPY --from=0 /app /app\n") == []

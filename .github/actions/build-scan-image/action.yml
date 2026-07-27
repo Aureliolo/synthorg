@@ -256,6 +256,7 @@ runs:
     # amd64 image in the local daemon for scanning. No tarball is
     # persisted -- PR builds never feed the publish-image action.
     - name: Build image (PR, loaded for scan)
+      id: build-pr
       if: github.event_name == 'pull_request'
       uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
       with:
@@ -291,8 +292,12 @@ runs:
         cache-to: ${{ inputs.cache-scope != '' && format('type=gha,mode=max,scope={0}-amd64', inputs.cache-scope) || 'type=gha,mode=max,scope=amd64' }}
         platforms: linux/amd64
 
+    # `!cancelled()` rather than the implicit success chain: this load is what
+    # the amd64 gate keys off, so it has to be reached even when a sibling
+    # arch already failed.
     - name: Load amd64 image for scanning (non-PR)
-      if: github.event_name != 'pull_request'
+      id: load-amd64
+      if: ${{ !cancelled() && github.event_name != 'pull_request' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -319,7 +324,8 @@ runs:
     # action). Both architectures go through the same Trivy + CIS gate
     # before publish-image pushes them, so neither arch ships unscanned.
     - name: Load arm64 image for scanning (non-PR, multi-arch)
-      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      id: load-arm64
+      if: ${{ !cancelled() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -332,6 +338,9 @@ runs:
     # multi-arch manifest never includes bytes that bypassed the gate.
     - name: Compute scan image refs
       id: scan-ref
+      # Reads only inputs and github.sha, so it must not inherit a load
+      # failure: the per-arch gates below need these refs to decide anything.
+      if: ${{ !cancelled() }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -406,13 +415,15 @@ runs:
     # evaluate-scan.sh (fails on CRITICAL, warns on HIGH). SARIF goes to
     # GitHub Security for both arches with distinct categories.
     #
-    # Each arch's scan and gate keys off `scan-ref` rather than the implicit
-    # success chain, so one arch cannot silently cost the other its
-    # vulnerability gate: an arm64 load failure would otherwise skip the amd64
-    # gate for a healthy amd64 image, and an amd64 CRITICAL would skip the
-    # arm64 gate entirely for that run.
+    # Each arch's scan and gate keys off the step that produced ITS image,
+    # never the implicit success chain, so one arch cannot silently cost the
+    # other its vulnerability gate: an arm64 load failure would otherwise skip
+    # the amd64 gate for a healthy amd64 image, and an amd64 CRITICAL would
+    # skip the arm64 gate entirely. Keying off `scan-ref` would not achieve
+    # that either, since it runs after both loads and so inherits either
+    # failure.
     - name: Trivy scan (amd64)
-      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' }}
+      if: ${{ !cancelled() && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -424,7 +435,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Evaluate Trivy results (amd64)
-      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' }}
+      if: ${{ !cancelled() && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -432,7 +443,7 @@ runs:
       run: scripts/evaluate-scan.sh --verbose "trivy-${IMAGE_NAME}-amd64.json" "$DISPLAY_NAME"
 
     - name: Trivy scan (arm64)
-      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true' }}
+      if: ${{ !cancelled() && steps.load-arm64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -444,7 +455,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Evaluate Trivy results (arm64)
-      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true' }}
+      if: ${{ !cancelled() && steps.load-arm64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -464,7 +475,7 @@ runs:
     # is nothing to scan, so the `command not found` lands BELOW the real
     # error and masks it.
     - name: Trivy SARIF scan (amd64)
-      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' }}
+      if: ${{ !cancelled() && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -476,7 +487,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Upload SARIF amd64 to GitHub Security
-      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' }}
+      if: ${{ !cancelled() && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       # Cosmetic Security-tab upload, NOT a required check, and the real
       # vulnerability gate is the separate `Evaluate Trivy results` step
       # above (which stays loud). A transient code-scanning API 401/5xx must
@@ -488,7 +499,7 @@ runs:
         category: trivy-${{ inputs.image-name }}-amd64
 
     - name: Trivy SARIF scan (arm64)
-      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true' }}
+      if: ${{ !cancelled() && steps.load-arm64.outcome == 'success' }}
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
@@ -500,7 +511,7 @@ runs:
           --exit-code 0 --severity CRITICAL,HIGH --ignorefile .github/.trivyignore.yaml
 
     - name: Upload SARIF arm64 to GitHub Security
-      if: ${{ !cancelled() && steps.scan-ref.outcome == 'success' && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true' }}
+      if: ${{ !cancelled() && steps.load-arm64.outcome == 'success' }}
       # See the amd64 upload above: cosmetic, non-gating, re-uploads next run.
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
@@ -509,12 +520,13 @@ runs:
         category: trivy-${{ inputs.image-name }}-arm64
 
     - name: CIS Docker Benchmark (amd64)
+      if: ${{ !cancelled() && (steps.build-pr.outcome == 'success' || steps.load-amd64.outcome == 'success') }}
       uses: ./.github/actions/cis-scan
       with:
         image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
 
     - name: CIS Docker Benchmark (arm64)
-      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      if: ${{ !cancelled() && steps.load-arm64.outcome == 'success' }}
       uses: ./.github/actions/cis-scan
       with:
         image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
