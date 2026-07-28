@@ -262,13 +262,45 @@ class _Result:
         return "violation"
 
 
+def _resolve_candidate(raw: str) -> str | None:
+    """Resolve one spelling of *raw* to a repo-relative POSIX path.
+
+    ``_REPO_ROOT / candidate`` needs no ``is_absolute`` branch: joining a path
+    with an absolute right-hand operand already discards the left one.
+
+    Containment is proven before any further filesystem access, so a path
+    pointing outside the repo is never stat-ed at all.
+
+    Args:
+        raw: One candidate spelling of the edited path.
+
+    Returns:
+        The repo-relative POSIX path, or ``None`` when the candidate is not a
+        file inside the repo or the OS refuses to resolve it.
+    """
+    try:
+        resolved = (_REPO_ROOT / Path(raw)).resolve()
+    except OSError, ValueError:
+        # POSIX raises ``ValueError`` on an embedded NUL where Windows just
+        # fails the later ``is_file``; ``OSError`` covers a reserved Windows
+        # device name or an unreachable network path. None of it is something
+        # a gate can have an opinion about.
+        return None
+    if not resolved.is_relative_to(_REPO_ROOT):
+        return None
+    if not resolved.is_file():
+        return None
+    return resolved.relative_to(_REPO_ROOT).as_posix()
+
+
 def _relative_path(raw: str) -> str | None:
     """Return *raw* as a repo-relative POSIX path, or ``None`` if outside.
 
-    ``_REPO_ROOT / candidate`` needs no ``is_absolute`` branch: joining a path
-    with an absolute right-hand operand already discards the left one. The
-    ``as_posix()`` normalisation is what lets a native Windows backslash path
-    from the hook payload reach ``applies_to`` in the form its roots use.
+    A backslash is a path separator on Windows and an ordinary filename
+    character on POSIX, so a native Windows payload path routes on Windows and
+    resolves to nothing on Linux. The backslash-swapped retry runs second so a
+    genuine POSIX filename containing a backslash still wins on its own
+    spelling.
 
     Args:
         raw: Path from the hook payload or the CLI.
@@ -278,18 +310,10 @@ def _relative_path(raw: str) -> str | None:
         one that no longer exists (the edit was a delete), or one the OS
         refuses to resolve.
     """
-    try:
-        resolved = (_REPO_ROOT / Path(raw)).resolve()
-    except OSError:
-        # An embedded NUL, a reserved Windows device name, or an unreachable
-        # network path. Not something any gate can have an opinion about.
-        return None
-    if not resolved.is_file():
-        return None
-    try:
-        return resolved.relative_to(_REPO_ROOT).as_posix()
-    except ValueError:
-        return None
+    direct = _resolve_candidate(raw)
+    if direct is not None or "\\" not in raw:
+        return direct
+    return _resolve_candidate(raw.replace("\\", "/"))
 
 
 def _run_gate(gate: _Gate, rel: str) -> _Result:

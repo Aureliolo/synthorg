@@ -847,7 +847,7 @@ def cmd_scan(
         print(str(exc), file=sys.stderr)
         return 2
     try:
-        if files:
+        if files is not None:
             hits = [
                 hit
                 for path, rel in _select_scoped_files(project_root, files, roots)

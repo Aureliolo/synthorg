@@ -43,7 +43,7 @@
  */
 
 import type { Plugin } from "@opencode-ai/plugin";
-import { spawnSync, execSync } from "child_process";
+import { spawnSync, execFileSync } from "child_process";
 
 /** Discriminated result of running a hook script.
  *
@@ -568,12 +568,15 @@ export const SynthOrgHooks: Plugin = async ({ $, worktree }) => {
           // distros that ship no unversioned `python`.
           //
           // `err.stdout` is read FIRST because every one of these scripts
-          // prints its findings to stdout, and Node's execSync puts child
-          // stdout on `error.stdout` while `error.message` carries only
-          // "Command failed: ..." -- reading message first loses the findings.
+          // prints its findings to stdout, and Node puts child stdout on
+          // `error.stdout` while `error.message` carries only "Command failed:
+          // ..." -- reading message first loses the findings.
+          //
+          // `execFileSync` rather than a command string: no shell is involved,
+          // so a script path can never be reinterpreted as shell syntax.
           const runAudit = (script: string, timeout: number, label: string) => {
             try {
-              execSync(`python3 ${script}`, {
+              execFileSync("python3", [script], {
                 input: hookPayload,
                 timeout,
                 encoding: "utf-8",
@@ -637,9 +640,9 @@ export const SynthOrgHooks: Plugin = async ({ $, worktree }) => {
       if (event.type !== "server.instance.disposed") {
         return;
       }
-      // Awaited rather than execSync: a synchronous call here would block the
-      // plugin event loop for as long as the stop takes, on the one path
-      // where everything else is trying to shut down.
+      // Awaited rather than spawned synchronously: a blocking call here would
+      // hold the plugin event loop for as long as the stop takes, on the one
+      // path where everything else is trying to shut down.
       //
       // Pinned to `worktree` because the command names the script relatively:
       // inheriting the plugin process's directory would either miss the

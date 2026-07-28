@@ -313,7 +313,7 @@ def _gather(argv_files: list[str] | None) -> list[tuple[Path, int, str, str]] | 
         (which the caller reports as an unusable scan rather than a clean one).
     """
     violations: list[tuple[Path, int, str, str]] = []
-    if argv_files:
+    if argv_files is not None:
         for path, check_inf_nan in _select_scoped_files(REPO_ROOT, argv_files):
             violations.extend(_walk(path, check_inf_nan=check_inf_nan))
         return violations

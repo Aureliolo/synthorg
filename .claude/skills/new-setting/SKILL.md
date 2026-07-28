@@ -38,6 +38,13 @@ If the answer is not obvious from the setting's purpose, ask the user with
 `AskUserQuestion` and lead with Cat-1 as Recommended: it is the only category
 that produces a knob an operator can actually turn without a redeploy.
 
+## Phase 1b: Get the plan accepted before writing anything
+
+Planning is MANDATORY. Present the chosen category, the namespace and key, the
+default, and where the consumer will read it, then wait for accept or deny. The
+category is the one decision that cannot be mechanically fixed later, so it is
+also the one worth confirming before any of the five downstream edits exist.
+
 ## Phase 2: Register the definition
 
 Settings live in `src/synthorg/settings/definitions/<namespace>.py`, one module
@@ -138,11 +145,20 @@ uv run python scripts/check_frozen_model_extra_forbid.py --files <edited files>
 Then the tests covering the consumer. Do not run the full suite here; the
 pre-push hook scopes and runs it.
 
+## Phase 7: Review before merging
+
+Post-Implementation Review is MANDATORY: commit, push, and run
+`/pre-pr-review`, then `babysit-pr` on the PR until it squash merges. A setting
+lands in an operator-facing surface and in the precedence chain at once, which
+is exactly the shape a second pass catches.
+
 ## Definition of done
 
 - [ ] Precedence category chosen deliberately, Cat-1 unless there is a reason
+- [ ] Plan accepted before the definition was registered
 - [ ] Definition registered, with a `description` an operator can act on
 - [ ] Hot-reloadable, or `restart_required` carries a per-line justification
 - [ ] Consumer reachable from boot, reading through `ConfigResolver`
 - [ ] The literal it replaces is gone
 - [ ] The five gates above pass
+- [ ] `/pre-pr-review` run, and the PR babysat to a squash merge

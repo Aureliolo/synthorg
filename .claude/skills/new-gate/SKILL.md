@@ -43,6 +43,14 @@ Then decide the **opt-out shape**, because it determines the gate's structure:
 If both a baseline and a per-line opt-out apply, take both: the baseline absorbs
 history, the marker handles the future.
 
+## Phase 1b: Get the plan accepted before writing anything
+
+Planning is MANDATORY, and Phase 1 has just produced the whole plan: the rule,
+its opt-out shape, and whether it needs a baseline. Present that for accept or
+deny and wait. Doing it here rather than after Phase 2 is the point: the opt-out
+shape determines the gate's structure, so a denial after the script exists
+throws the script away.
+
 ## Phase 2: Write the gate
 
 Gates live at `scripts/check_<name>.py`. Reuse the shared helpers rather than
@@ -83,8 +91,8 @@ Two mutually exclusive options, per the registration procedure:
   `scripts/run_prepush_python_gates.py`. The single `consolidated-python-gates`
   hook runs every entry across a bounded worker pool. Do **not** also add a
   per-gate pre-push hook; that is what the consolidation exists to avoid.
-  Gate contract: it must be stateless with respect to its siblings, since they
-  share reused workers.
+  Gate contract: it must be independent of its siblings, since they share
+  reused workers.
 - **Also needed at pre-commit**: give it its own `.pre-commit-config.yaml` entry
   with `stages: [pre-commit, pre-push]`.
 
@@ -139,12 +147,21 @@ existing code needs a baseline decision made deliberately in Phase 1, not
 discovered at push time. Surface the count to the user and let them choose
 between a baseline and fixing the violations; do not quietly baseline them.
 
+## Phase 7: Review before merging
+
+Post-Implementation Review is MANDATORY and a gate PR is not exempt: commit,
+push, and run `/pre-pr-review`, then `babysit-pr` on the PR until it squash
+merges. A gate is enforcement code every later PR has to live with, so shipping
+it unreviewed compounds rather than saves.
+
 ## Definition of done
 
 - [ ] Rule is genuinely statically decidable (or it is an `exempt` entry instead)
+- [ ] Plan accepted before the gate was written
 - [ ] Gate exits `2` when it cannot trust its own scan
 - [ ] Wired to `_GATES` or to its own pre-commit entry, not both
 - [ ] `convention_gate_map.yaml` entry present
 - [ ] Inventory table row plus count-macro bump
 - [ ] Tests cover clean, violating, opt-out, bare-opt-out, and unreadable input
 - [ ] Whole-tree run is clean, or the baseline decision was the user's
+- [ ] `/pre-pr-review` run, and the PR babysat to a squash merge

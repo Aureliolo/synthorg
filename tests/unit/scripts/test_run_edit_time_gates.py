@@ -104,11 +104,18 @@ def _sandbox(tmp_path: Path, rel: str, source: str) -> Path:
     the dispatcher builds their argv from ``_SCRIPTS_DIR`` rather than from
     ``_REPO_ROOT``: the tree being scanned and the tree the gates live in are
     separate concerns, and only the former is redirected here.
+
+    The root is resolved because the dispatcher compares a resolved candidate
+    against it; ``tmp_path`` is not resolved by pytest, so on a platform whose
+    temp directory is reached through a symlink (macOS ``/var``, a Windows
+    junction) an unresolved root would fail containment for a reason that has
+    nothing to do with the dispatcher.
     """
-    target = tmp_path / rel
+    root = tmp_path.resolve()
+    target = root / rel
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(source, encoding="utf-8")
-    return tmp_path
+    return root
 
 
 class TestRouting:

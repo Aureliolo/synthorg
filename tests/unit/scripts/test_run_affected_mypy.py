@@ -1054,6 +1054,52 @@ def test_stop_escalates_to_a_hard_kill_when_the_graceful_stop_stalls(
     assert "kill" in commands
 
 
+def test_stop_reports_the_reason_when_the_hard_kill_also_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A daemon that survives both attempts must exit non-zero, and say why.
+
+    This is the branch callers act on: a caller reclaiming memory before a
+    heavy build would otherwise be told the stop succeeded while the process is
+    still resident and still holding the worktree open.
+    """
+
+    def _fake_result(
+        _daemon: object, command: str, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str] | None:
+        stderr = "stop refused\n" if command == "stop" else "kill refused\n"
+        return subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr=stderr
+        )
+
+    monkeypatch.setattr(_MODULE, "_dmypy_result", _fake_result)
+    monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: None)
+    monkeypatch.setattr(_MODULE, "_process_rss_mb", lambda _pid: None)
+    monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)
+
+    assert _MODULE._stop() == 1
+    assert "stop refused" in capsys.readouterr().err
+
+
+def test_stop_failure_detail_is_never_blank(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Both streams empty must still produce a reason, not a dangling dash."""
+
+    def _fake_result(
+        _daemon: object, _command: str, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str] | None:
+        return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
+
+    monkeypatch.setattr(_MODULE, "_dmypy_result", _fake_result)
+    monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: None)
+    monkeypatch.setattr(_MODULE, "_process_rss_mb", lambda _pid: None)
+    monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)
+
+    assert _MODULE._stop() == 1
+    assert "no detail reported" in capsys.readouterr().err
+
+
 def test_full_runs_the_cold_ci_scope_without_a_daemon(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

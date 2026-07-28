@@ -49,13 +49,11 @@ if [[ -t 0 ]]; then
     exit 0
 fi
 
-# ``|| true`` keeps ``set -e`` from aborting, but the read status is checked
-# separately: an I/O error on stdin is a different thing from the harness
-# sending nothing, and collapsing the two would hide a real failure.
-PAYLOAD=$(cat || true)
-CAT_STATUS=$?
-if [[ ${CAT_STATUS} -ne 0 ]]; then
-    printf 'rewarm_mypy_after_sync: could not read the hook payload from stdin (exit %s); no re-warm attempted.\n' "${CAT_STATUS}" >&2
+# Guarded in the ``if`` condition so ``set -e`` does not abort while the read
+# status stays observable: an I/O error on stdin is a different thing from the
+# harness sending nothing, and collapsing the two would hide a real failure.
+if ! PAYLOAD=$(cat); then
+    printf 'rewarm_mypy_after_sync: could not read the hook payload from stdin; no re-warm attempted.\n' >&2
     exit 0
 fi
 if [[ -z "${PAYLOAD}" ]]; then
@@ -121,6 +119,15 @@ fi
 if ! LOG_DIR=$(git rev-parse --git-path synthorg-hooks 2>/dev/null); then
     printf 'rewarm_mypy_after_sync: could not resolve the git dir for the hook log; no re-warm attempted.\n' >&2
     exit 0
+fi
+# ``--git-path`` answers relative to the caller's cwd, which the harness owns
+# and this script never changes. Anchoring to the worktree root is what keeps
+# the log beside the marker that run_affected_mypy.py::_rewarm_marker resolves
+# against its own repo root, so the stale-failure report names a log that
+# actually exists. Git Bash answers with a drive-letter absolute path rather
+# than a leading slash, so both spellings count as already-anchored.
+if [[ "${LOG_DIR}" != /* && "${LOG_DIR}" != ?:[/\\]* ]]; then
+    LOG_DIR="${REPO_ROOT_DIR}/${LOG_DIR}"
 fi
 if ! mkdir -p "${LOG_DIR}" 2>/dev/null; then
     printf 'rewarm_mypy_after_sync: could not create %s; no re-warm attempted.\n' "${LOG_DIR}" >&2

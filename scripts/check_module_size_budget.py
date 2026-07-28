@@ -178,7 +178,7 @@ def check(
     violations: list[Violation] = []
     targets = (
         _select_scoped_files(project_root, files)
-        if files
+        if files is not None
         else _iter_source_files(project_root)
     )
     for path in targets:

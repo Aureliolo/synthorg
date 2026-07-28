@@ -1031,11 +1031,13 @@ def _stop_one(daemon: _Daemon) -> tuple[int, str | None]:
         print(f"{daemon.label}: not running")
         return 0, None
 
+    # A ``dmypy stop`` can fail with both streams empty, and the one line whose
+    # job is to say why must not come out blank.
     detail = (
         _first_line(result.stderr) or _first_line(result.stdout)
         if result is not None
         else "timed out"
-    )
+    ) or "no detail reported"
     killed = _dmypy_result(
         daemon, "kill", quiet=True, timeout=_PROCESS_QUERY_TIMEOUT_SECONDS
     )

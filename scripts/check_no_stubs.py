@@ -348,7 +348,9 @@ def _run(repo_root: Path, files: list[str] | None = None) -> int:
     """
     violations: list[Violation] = []
     targets = (
-        _select_scoped_files(repo_root, files) if files else _iter_py_files(repo_root)
+        _select_scoped_files(repo_root, files)
+        if files is not None
+        else _iter_py_files(repo_root)
     )
     for py in targets:
         violations.extend(_scan_file(py, repo_root))
