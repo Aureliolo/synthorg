@@ -16,7 +16,7 @@ import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol, cast, override
 
 import pytest
 
@@ -416,6 +416,7 @@ class TestGroupDispatch:
         class _RendezvousProcess(_FakeProcess):
             """A tool that finishes only once every sibling has started."""
 
+            @override
             def communicate(self, timeout: float | None = None) -> tuple[str, str]:
                 """Block until the whole group has arrived.
 
