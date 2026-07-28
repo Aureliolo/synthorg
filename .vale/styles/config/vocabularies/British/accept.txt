@@ -153,6 +153,10 @@
 (?i)normalises
 (?i)normalising
 (?i)normalisation
+(?i)renormalise
+(?i)renormalised
+(?i)renormalises
+(?i)renormalising
 (?i)familiarise
 (?i)familiarised
 (?i)familiarises
