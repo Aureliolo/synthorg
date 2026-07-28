@@ -40,14 +40,26 @@ methods.
 | `slack` | `token`, `signing_secret` | `POST auth.test` |
 | `smtp` | `host`, `port`, `username`, `password` | SMTP EHLO |
 | `database` | `dialect`, `host`, `port`, `username`, `password`, `database` | `SELECT 1` |
-| `generic_http` | `base_url`, `token` / `api_key` | `HEAD base_url` |
+| `generic_http` | `vendor`, `base_url` (custom only), `token` | preset probe, else `HEAD base_url` |
 | `oauth_app` | `client_id`, `client_secret`, `auth_url`, `token_url` | N/A |
 | `a2a_peer` | `base_url`, `auth_scheme`, scheme credentials (`api_key` / `bearer_token` / `client_id` + `client_secret` / mTLS `cert_path` + `key_path`), `signing_secret` | N/A |
 | `llm_provider` | `api_key` | N/A |
 | `tunnel` | `auth_token` | N/A |
 | `deploy` | `token`, `base_url`, `platform`, `environment`, `project` | `HEAD base_url` |
 
-The authoritative per-field metadata (label, input type, required/secret flags, capture mode, placement) for every type lives in the backend registry `integrations/connections/field_metadata.py`, exposed read-only via `GET /api/v1/connections/types` and the `connections.field_metadata` MCP tool; the dashboard form and the operator console both render from it.
+The authoritative per-field metadata (label, input type, required/secret flags, capture mode, placement, conditionality) for every type lives in the backend registry `integrations/connections/field_metadata.py`, exposed read-only via `GET /api/v1/connections/types` and the `connections.field_metadata` MCP tool; the dashboard form and the operator console both render from it.
+
+#### Conditional fields
+
+A field can declare `visible_when` / `required_when`: a predicate over another field's current value. A hidden field is not rendered, not validated, and not submitted. This keeps conditional form logic in the payload the backend serves rather than hardcoded in one client, which is what the pure-API-consumer rule demands and what lets the console prompt exactly what the dashboard shows. The two live rules are a database host being pointless for the embedded dialect, and an A2A credential only applying to the auth scheme that uses it.
+
+#### Vendor presets
+
+`ConnectionType` names a protocol and credential *shape*, never a vendor: a bespoke member exists only where there is vendor-specific behaviour to hang off it (an authenticator, a webhook verifier, a tool family). A service that is an API key over HTTPS has none of that, so it lands on `generic_http` and its identity rides in the record's `metadata` as a `vendor` preset, exactly as a deploy platform or registry provider does.
+
+The preset (`integrations/connections/http_vendor.py`) owns the endpoint, the auth header and template, and the health probe's path and query. That single registry is what the connection create path, the health probe and the native web-search provider all read, so a search call and its connection's health check can never disagree about where a service is or how it authenticates. Choosing a preset means the operator is never asked for a base URL the platform already knows; `custom` is the escape hatch that asks for one.
+
+Real vendor names are confined to this declarative registry, the same exemption the LLM provider presets take.
 
 ### Secret Storage
 
@@ -253,8 +265,12 @@ Per-type health check implementations with a background `HealthProberService`.
   HEAD (GET fallback) of the connection `base_url`. When a `ConnectionCatalog`
   is bound (`bind_catalog`) the probe resolves the connection's credentials
   and sends them as auth headers, so a configured-but-broken credential
-  reports `UNHEALTHY` rather than false-greening on mere reachability. This is
-  the connection type the native web-search feature binds its API key to.
+  reports `UNHEALTHY` rather than false-greening on mere reachability. A vendor
+  preset supplies both the header its API actually accepts and the query the
+  endpoint needs to answer: probing a search API with the generic `X-API-Key`
+  and no query is a 4xx however valid the key, which would report every
+  correctly-configured connection as unhealthy. This is the connection type the
+  native web-search feature binds its API key to.
 
 The stdio MCP bridge exposes a parallel liveness surface:
 `MCPToolFactory.server_statuses` records each server's last connect outcome,
@@ -348,7 +364,7 @@ Providers:
 
 - **Cloudflare quick tunnel** (default): needs no account; runs `cloudflared tunnel --url` and scrapes the ephemeral `https://*.trycloudflare.com` URL. Binary resolution: `PATH`, then `bin/` under the shared tunnel state dir, then (unless `integrations.tunnel.cloudflared_download_enabled: false`) an HTTPS download of the official Cloudflare GitHub release asset.
 - **ngrok**: wraps pyngrok; requires an auth token (ERR_NGROK_4018 refuses anonymous sessions). The token is dashboard-managed: pasted on the tunnel card, stored in the encrypted connection catalog as a `tunnel-ngrok` connection (`ConnectionType.TUNNEL`), and resolved fresh at every start. The env var named in `integrations.tunnel.auth_token_env` (default `NGROK_AUTHTOKEN`) is the headless fallback only.
-- **Dev Tunnels**: drives the `devtunnel` CLI, resolved like `cloudflared` (`PATH`, then `bin/` under the state dir, then, unless `devtunnel_download_enabled: false`, an HTTPS download from Microsoft's fixed `aka.ms/TunnelsCliDownload/*` asset URLs; the licence forbids redistribution, not a runtime download by the operator's own deployment). The product is named "Dev Tunnels"; GitHub is only the sign-in method. The credential is a GitHub device-code login (`POST /device-login` returns the verification URL + one-time code; the CLI completes and stores the login itself). Microsoft offers no credential-injection API (every token-minting command requires an already-logged-in CLI), so unlike the ngrok token the login cannot live in the encrypted catalog; on POSIX the adapter instead confines the login cache owned by the CLI, overriding `HOME` to a private owner-only `devtunnels-home/` under the state dir. Because it stores no token, the manager seeds a read-only, no-secret `tunnel-devtunnels` `Connection` (empty credentials, `health_check_enabled=False`) lazily at status/first-login so it still appears in the Connections list and is health-checked through the generic tunnel status lookup alongside ngrok.
+- **Dev Tunnels**: drives the `devtunnel` CLI, resolved like `cloudflared` (`PATH`, then `bin/` under the state dir, then, unless `devtunnel_download_enabled: false`, an HTTPS download from Microsoft's fixed `aka.ms/TunnelsCliDownload/*` asset URLs; the licence forbids redistribution, not a runtime download by the operator's own deployment). The product is named "Dev Tunnels"; GitHub is only the sign-in method. The credential is a GitHub device-code login (`POST /device-login` returns the verification URL + one-time code; the CLI completes and stores the login itself). Microsoft offers no credential-injection API (every token-minting command requires an already-logged-in CLI), so unlike the ngrok token the login cannot live in the encrypted catalog; on POSIX the adapter instead confines the login cache owned by the CLI, overriding `HOME` to a private owner-only `devtunnels-home/` under the state dir. Because it stores no token, the manager seeds a read-only, no-secret `tunnel-devtunnels` `Connection` (empty credentials, `health_check_enabled=False`) when the operator begins the device login, so it still appears in the Connections list and is health-checked through the generic tunnel status lookup alongside ngrok. Only the login mints it: the status endpoint is a read, and the dashboard polls it, so seeding there would both create a connection the operator never asked for and recreate one they had just deleted.
 
 The manager is wired **unconditionally** (not gated by `integrations.enabled`) so the dashboard tunnel card is always functional; the tunneled port is the API's own resolved `api.server_port`. Credential storage requires connected persistence (the catalog); everything else works without it.
 

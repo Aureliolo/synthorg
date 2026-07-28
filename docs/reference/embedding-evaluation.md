@@ -139,12 +139,27 @@ otherwise auto-selects an LMEB-ranked model from the providers actually availabl
 memory:
   embedder_provider: "example-provider"
   embedder_model: "example-embedding-001"
-  embedder_dims: 3584          # must match the model's output dimensionality
+  embedder_dims: 3584          # the model's output width, or an MRL truncation of it
 ```
 
-A `dims` value that disagrees with the model is a hard startup failure rather than a
-warning: vectors of the wrong width corrupt recall silently, which is far worse than
-not booting.
+A `dims` value the model cannot produce is a hard failure rather than a warning:
+vectors of the wrong width corrupt recall silently, which is far worse than not
+booting. Setting `embedder_dims` *below* the model's output is the one sanctioned
+mismatch: an explicitly pinned narrower width truncates each vector to its leading
+components and renormalises it, which is how a Matryoshka-trained model is used at
+a smaller width. Truncating a model that was not MRL-trained degrades recall, so
+this only ever happens on the operator's explicit instruction, never by inference.
+
+### Dense index width ceilings
+
+pgvector indexes at most 2000 dimensions with a full-precision `vector` and 4000
+with a half-precision `halfvec`, so the Postgres backend picks the element type
+from the configured width: `vector` at or below 2000, `halfvec` up to 4000. Above
+4000 no approximate index can be built at all; the dense column is still created
+and dense search still runs, as an exact scan over the corpus, reported at ERROR
+with `memory.dense_index.unavailable`. Recall stays semantic either way, but a
+width above the ceiling reads every row per query: pin `memory.embedder_dims` at
+or below 2000 on an MRL-capable model, or choose a narrower embedder.
 
 Changing the embedding model after deployment invalidates every stored vector, because
 embeddings from different models are not comparable. The dense index is therefore keyed

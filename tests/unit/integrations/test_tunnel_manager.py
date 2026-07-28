@@ -1,5 +1,6 @@
 """Tests for the multi-provider ``TunnelManager`` facade."""
 
+from pathlib import Path
 from typing import override
 from unittest.mock import AsyncMock
 
@@ -7,12 +8,17 @@ import pytest
 
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.errors import ConnectionNotFoundError, TunnelError
+from synthorg.integrations.tunnel.devtunnels_adapter import DevTunnelsAdapter
 from synthorg.integrations.tunnel.manager import (
     TunnelManager,
     credential_connection_name,
 )
 from synthorg.integrations.tunnel.ngrok_adapter import NgrokAdapter
-from synthorg.integrations.tunnel.protocol import TunnelCredentialKind
+from synthorg.integrations.tunnel.protocol import (
+    DeviceLoginPrompt,
+    TunnelAdapter,
+    TunnelCredentialKind,
+)
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
@@ -67,7 +73,7 @@ class FakeAdapter:
 
 
 def _manager(
-    *adapters: FakeAdapter,
+    *adapters: TunnelAdapter,
     selected: str | None = None,
     catalog: ConnectionCatalog | None = None,
 ) -> TunnelManager:
@@ -219,7 +225,7 @@ class TestCredentials:
 
     async def test_ngrok_adapter_reads_catalog_token_through_manager(self) -> None:
         catalog = mock_of[ConnectionCatalog](
-            get_credentials=AsyncMock(return_value={"auth_token": "cat-token"}),
+            get_credentials_or_none=AsyncMock(return_value={"auth_token": "cat-token"}),
         )
         ngrok = NgrokAdapter(auth_token_env="SYNTHORG_TEST_UNSET_TOKEN", port=3001)
         manager = TunnelManager(adapters=(FakeAdapter("cloudflare"), ngrok))
@@ -231,13 +237,27 @@ class TestCredentials:
             selection_source=_selection, catalog_source=lambda: catalog
         )
         assert await ngrok.credential_configured() is True
-        catalog.get_credentials.assert_awaited_with(credential_connection_name("ngrok"))
+        catalog.get_credentials_or_none.assert_awaited_with(
+            credential_connection_name("ngrok")
+        )
+
+
+def _devtunnels_adapter(tmp_path: Path, prompt: DeviceLoginPrompt) -> DevTunnelsAdapter:
+    """A real adapter (``begin_device_login`` type-checks the concrete class)."""
+    adapter = DevTunnelsAdapter(
+        port=3001,
+        download_enabled=False,
+        binary_dir=tmp_path,
+        home_dir=tmp_path,
+    )
+    adapter.begin_login = AsyncMock(return_value=prompt)  # type: ignore[method-assign]
+    return adapter
 
 
 class TestDeviceLoginConnectionSeed:
-    """A device-login provider seeds a read-only, no-secret catalog row."""
+    """A device-login provider's catalog row is minted by the login, not a read."""
 
-    async def test_snapshot_seeds_missing_device_login_connection(self) -> None:
+    async def test_status_read_never_writes(self) -> None:
         catalog = mock_of[ConnectionCatalog](
             get=AsyncMock(return_value=None),
             create=AsyncMock(return_value=None),
@@ -248,6 +268,25 @@ class TestDeviceLoginConnectionSeed:
         manager = _manager(FakeAdapter("cloudflare"), devtunnels, catalog=catalog)
 
         await manager.snapshot()
+        await manager.provider_status("devtunnels")
+
+        # The dashboard polls both on a timer: a connection minted here would
+        # reappear moments after the operator deleted it.
+        catalog.create.assert_not_called()
+
+    async def test_device_login_seeds_missing_connection(self, tmp_path: Path) -> None:
+        catalog = mock_of[ConnectionCatalog](
+            get=AsyncMock(return_value=None),
+            create=AsyncMock(return_value=None),
+        )
+        prompt = DeviceLoginPrompt(
+            verification_uri="https://example.test/login",
+            user_code="ABCD-1234",
+        )
+        devtunnels = _devtunnels_adapter(tmp_path, prompt)
+        manager = _manager(FakeAdapter("cloudflare"), devtunnels, catalog=catalog)
+
+        assert await manager.begin_device_login("devtunnels") == prompt
 
         catalog.create.assert_awaited_once()
         kwargs = catalog.create.await_args.kwargs
@@ -255,42 +294,35 @@ class TestDeviceLoginConnectionSeed:
         assert kwargs["credentials"] == {}
         assert kwargs["health_check_enabled"] is False
 
-    async def test_seed_is_idempotent_when_already_present(self) -> None:
+    async def test_seed_is_idempotent_when_already_present(
+        self, tmp_path: Path
+    ) -> None:
         # get returns a truthy row: the manager only checks it is not None
         # before deciding the connection already exists.
         catalog = mock_of[ConnectionCatalog](
             get=AsyncMock(return_value=object()),
             create=AsyncMock(return_value=None),
         )
-        devtunnels = FakeAdapter(
-            "devtunnels", credential_kind=TunnelCredentialKind.DEVICE_LOGIN
+        prompt = DeviceLoginPrompt(
+            verification_uri="https://example.test/login",
+            user_code="ABCD-1234",
         )
+        devtunnels = _devtunnels_adapter(tmp_path, prompt)
         manager = _manager(FakeAdapter("cloudflare"), devtunnels, catalog=catalog)
 
-        await manager.provider_status("devtunnels")
+        await manager.begin_device_login("devtunnels")
 
         catalog.create.assert_not_called()
 
-    async def test_token_provider_is_not_seeded(self) -> None:
-        catalog = mock_of[ConnectionCatalog](
-            get=AsyncMock(return_value=None),
-            create=AsyncMock(return_value=None),
+    async def test_seed_skipped_without_catalog(self, tmp_path: Path) -> None:
+        prompt = DeviceLoginPrompt(
+            verification_uri="https://example.test/login",
+            user_code="ABCD-1234",
         )
-        ngrok = FakeAdapter("ngrok", credential_kind=TunnelCredentialKind.TOKEN)
-        manager = _manager(FakeAdapter("cloudflare"), ngrok, catalog=catalog)
-
-        await manager.provider_status("ngrok")
-
-        catalog.create.assert_not_called()
-
-    async def test_seed_skipped_without_catalog(self) -> None:
-        devtunnels = FakeAdapter(
-            "devtunnels", credential_kind=TunnelCredentialKind.DEVICE_LOGIN
-        )
+        devtunnels = _devtunnels_adapter(tmp_path, prompt)
         manager = _manager(FakeAdapter("cloudflare"), devtunnels, catalog=None)
         # No catalog wired -> no crash, the row appears once persistence is up.
-        snapshot = await manager.snapshot()
-        assert snapshot.selected_provider == "cloudflare"
+        assert await manager.begin_device_login("devtunnels") == prompt
 
 
 class TestDeviceLogin:

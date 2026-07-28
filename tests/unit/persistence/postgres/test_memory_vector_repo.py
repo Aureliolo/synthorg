@@ -29,6 +29,12 @@ from synthorg.observability.events.memory import (
     MEMORY_DENSE_INDEX_PERMISSION_DENIED,
     MEMORY_DENSE_INDEX_UNAVAILABLE,
 )
+from synthorg.persistence.postgres._memory_vector_sql import (
+    HNSW_HALFVEC_MAX_DIMENSIONS,
+    HNSW_VECTOR_MAX_DIMENSIONS,
+    create_vector_index,
+    dense_column_spec,
+)
 from synthorg.persistence.postgres.memory_vector_repo import (
     PostgresMemoryVectorRepository,
 )
@@ -198,6 +204,70 @@ class TestExtensionDegradation:
 
         assert repo.supports_dense_search is False
         assert log == []
+
+
+class TestDenseWidthStrategy:
+    """Storage and indexing follow pgvector's per-type HNSW ceilings."""
+
+    def test_full_precision_below_the_vector_ceiling(self) -> None:
+        spec = dense_column_spec(HNSW_VECTOR_MAX_DIMENSIONS)
+
+        assert spec.element_type == "vector"
+        assert spec.indexable is True
+        assert spec.name == f"embedding_{HNSW_VECTOR_MAX_DIMENSIONS}"
+
+    def test_half_precision_between_the_ceilings(self) -> None:
+        spec = dense_column_spec(HNSW_VECTOR_MAX_DIMENSIONS + 1)
+
+        assert spec.element_type == "halfvec"
+        assert spec.indexable is True
+        # A distinct name: ADD COLUMN IF NOT EXISTS would otherwise keep a
+        # full-precision column an earlier build left at the same width.
+        assert spec.name.startswith("embedding_h")
+
+    def test_above_every_ceiling_is_unindexable(self) -> None:
+        spec = dense_column_spec(HNSW_HALFVEC_MAX_DIMENSIONS + 1)
+
+        assert spec.indexable is False
+        with pytest.raises(ValueError, match="HNSW ceiling"):
+            create_vector_index(spec)
+
+    async def test_unindexable_width_still_supports_dense_search(self) -> None:
+        log: list[tuple[str, object]] = []
+        repo = PostgresMemoryVectorRepository(_pool_over(_recording_connection(log)))
+
+        with capture_logs() as logs:
+            await repo.ensure_ready(HNSW_HALFVEC_MAX_DIMENSIONS + 1)
+
+        # Exact scan beats no semantic recall at all, so the column is built
+        # and dense search stays on; the missing index is reported loudly.
+        assert repo.supports_dense_search is True
+        assert not [s for s, _ in log if s.startswith("CREATE INDEX")]
+        assert [s for s, _ in log if "ADD COLUMN" in s]
+        assert [
+            entry
+            for entry in logs
+            if entry.get("event") == MEMORY_DENSE_INDEX_UNAVAILABLE
+            and entry.get("log_level") == "error"
+        ]
+
+    async def test_half_precision_width_binds_halfvec(self) -> None:
+        log: list[tuple[str, object]] = []
+        repo = PostgresMemoryVectorRepository(_pool_over(_recording_connection(log)))
+        width = HNSW_VECTOR_MAX_DIMENSIONS + 1
+        await repo.ensure_ready(width)
+        log.clear()
+
+        await repo.search_dense(
+            MemoryVectorSearchSpec(
+                agent_id=_AGENT,
+                embedding=(0.0,) * width,
+                limit=5,
+            )
+        )
+
+        statement, _params = log[-1]
+        assert "<-> %s::halfvec" in statement
 
 
 class _FailingCursor:

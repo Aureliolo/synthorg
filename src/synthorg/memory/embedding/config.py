@@ -33,6 +33,12 @@ class EmbedderConfig(BaseModel):
         dims: Vector width. Changing this invalidates every stored
             vector and must be treated as a re-index, never as a widening
             of the existing index.
+        dims_explicit: Whether ``dims`` came from an operator override
+            rather than the model's catalogued output width. An operator
+            who asks for fewer dimensions than the model emits is using
+            its Matryoshka representation, so the embedder truncates to
+            the requested width; the same mismatch without that intent is
+            a misconfiguration and stays a hard failure.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -43,6 +49,10 @@ class EmbedderConfig(BaseModel):
         default=DEFAULT_EMBEDDING_DIMENSIONS,
         ge=1,
         description="Embedding vector dimensions",
+    )
+    dims_explicit: bool = Field(
+        default=False,
+        description="Whether dims was set by an operator override",
     )
 
 

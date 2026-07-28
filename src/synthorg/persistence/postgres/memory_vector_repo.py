@@ -73,12 +73,17 @@ class PostgresMemoryVectorRepository:
         return self._dense_ready
 
     @property
+    def _dense(self) -> sql.DenseColumnSpec:
+        """Storage strategy for the configured embedding width."""
+        return sql.dense_column_spec(self._dimensions or 0)
+
+    @property
     def _vector_column(self) -> LiteralString:
         """Dimension-suffixed name of the dense column."""
-        return sql.vector_column(self._dimensions or 0)
+        return self._dense.name
 
     async def ensure_ready(self, dimensions: int | None = None) -> None:
-        """Add the dense column and its HNSW index for *dimensions*.
+        """Add the dense column and, where the width allows, its HNSW index.
 
         Never raises: a pgvector extension that is absent degrades recall
         rather than taking down persistence for every other feature. The
@@ -94,52 +99,76 @@ class PostgresMemoryVectorRepository:
                 self._dimensions = dimensions
             if self._dimensions is None or self._dense_ready:
                 return
+            spec = self._dense
             try:
                 async with self._pool.connection() as conn:
-                    # CREATE INDEX CONCURRENTLY cannot run inside a
-                    # transaction block, and a plain CREATE INDEX would
-                    # hold a lock that blocks memory writes for the whole
-                    # build on an established corpus. Autocommit first,
-                    # before any statement opens a transaction.
-                    original_autocommit = bool(getattr(conn, "autocommit", False))
-                    await conn.set_autocommit(True)
-                    try:
-                        # Serialise builders across processes/pods sharing
-                        # this database: CONCURRENTLY + IF NOT EXISTS is not
-                        # race-free between two simultaneous builds, and a
-                        # crash mid-build can leave an INVALID index. A
-                        # session advisory lock keyed on the column lets at
-                        # most one process build a given width at a time.
-                        await conn.execute(
-                            sql.ACQUIRE_INDEX_BUILD_LOCK, (self._vector_column,)
-                        )
-                        try:
-                            await self._ensure_extension(conn)
-                            await conn.execute(
-                                sql.add_vector_column(
-                                    self._vector_column, self._dimensions
-                                )
-                            )
-                            await conn.execute(
-                                sql.create_vector_index(self._vector_column)
-                            )
-                        finally:
-                            await conn.execute(
-                                sql.RELEASE_INDEX_BUILD_LOCK, (self._vector_column,)
-                            )
-                    finally:
-                        await conn.set_autocommit(original_autocommit)
+                    await self._build_dense_column(conn, spec)
             except psycopg.Error as exc:
                 logger.warning(
                     MEMORY_DENSE_INDEX_UNAVAILABLE,
                     dimensions=self._dimensions,
+                    element_type=spec.element_type,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
                 return
             self._dense_ready = True
-            logger.info(MEMORY_DENSE_INDEX_READY, dimensions=self._dimensions)
+            if spec.indexable:
+                logger.info(
+                    MEMORY_DENSE_INDEX_READY,
+                    dimensions=self._dimensions,
+                    element_type=spec.element_type,
+                )
+            else:
+                # Dense recall still works here, by exact scan: only the ANN
+                # index is out of reach. That is worth an ERROR because every
+                # query now reads the whole corpus, and worth keeping rather
+                # than refusing because exact search beats no semantic recall.
+                logger.error(
+                    MEMORY_DENSE_INDEX_UNAVAILABLE,
+                    dimensions=self._dimensions,
+                    note=(
+                        "width exceeds every pgvector HNSW ceiling (vector "
+                        f"{sql.HNSW_VECTOR_MAX_DIMENSIONS}, halfvec "
+                        f"{sql.HNSW_HALFVEC_MAX_DIMENSIONS}); dense search "
+                        "runs as an exact scan. Set memory.embedder_dims at "
+                        "or below the ceiling, or choose a narrower embedder."
+                    ),
+                )
             await self._report_orphaned_widths()
+
+    async def _build_dense_column(
+        self,
+        conn: _PoolConnection,
+        spec: sql.DenseColumnSpec,
+    ) -> None:
+        """Create the dense column and index under the build lock.
+
+        Raises:
+            psycopg.Error: If any DDL statement fails.
+        """
+        # CREATE INDEX CONCURRENTLY cannot run inside a transaction block,
+        # and a plain CREATE INDEX would hold a lock that blocks memory
+        # writes for the whole build on an established corpus. Autocommit
+        # first, before any statement opens a transaction.
+        original_autocommit = bool(getattr(conn, "autocommit", False))
+        await conn.set_autocommit(True)
+        try:
+            # Serialise builders across processes/pods sharing this
+            # database: CONCURRENTLY + IF NOT EXISTS is not race-free
+            # between two simultaneous builds, and a crash mid-build can
+            # leave an INVALID index. A session advisory lock keyed on the
+            # column lets at most one process build a given width at a time.
+            await conn.execute(sql.ACQUIRE_INDEX_BUILD_LOCK, (spec.name,))
+            try:
+                await self._ensure_extension(conn)
+                await conn.execute(sql.add_vector_column(spec))
+                if spec.indexable:
+                    await conn.execute(sql.create_vector_index(spec))
+            finally:
+                await conn.execute(sql.RELEASE_INDEX_BUILD_LOCK, (spec.name,))
+        finally:
+            await conn.set_autocommit(original_autocommit)
 
     async def _ensure_extension(self, conn: _PoolConnection) -> None:
         """Install pgvector, distinguishing "absent" from "not permitted".
@@ -250,7 +279,7 @@ class PostgresMemoryVectorRepository:
                     # clears the vector rather than keeping one that
                     # describes text the entry no longer holds.
                     await conn.execute(
-                        sql.set_vector(self._vector_column),
+                        sql.set_vector(self._dense),
                         (
                             sql.encode_vector(embedding)
                             if embedding is not None
@@ -338,7 +367,7 @@ class PostgresMemoryVectorRepository:
                 await conn.execute(sql.SET_DENSE_ITERATIVE_SCAN)
                 await conn.execute(sql.SET_DENSE_EF_SEARCH)
                 cursor = await conn.cursor(row_factory=dict_row).execute(
-                    sql.dense_match(self._vector_column, where),
+                    sql.dense_match(self._dense, where),
                     (sql.encode_vector(spec.embedding), *params, spec.limit),
                 )
                 rows = await cursor.fetchall()

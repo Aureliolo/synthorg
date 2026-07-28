@@ -28,10 +28,39 @@ pytestmark = pytest.mark.unit
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCRIPT = _REPO_ROOT / "scripts" / "git-hooks" / "_run-hook.sh"
 
-_BASH = shutil.which("bash")
+
+def _native_bash() -> str | None:
+    """A ``bash`` that can execute a script given by its Windows path.
+
+    On a default Windows PATH ``shutil.which("bash")`` finds WSL's
+    ``system32\\bash.EXE`` first, and that bash resolves paths inside the
+    Linux filesystem: handed ``C:\\...\\_run-hook.sh`` it strips the
+    backslashes and exits 127 before running a line. Git Bash translates the
+    same path, as does any POSIX bash, so the WSL shim is skipped rather than
+    reported as a wrapper failure.
+
+    Returns:
+        The interpreter path, or ``None`` when only the WSL shim is present.
+    """
+    system_root = Path(os.environ.get("SYSTEMROOT", "C:/Windows")).resolve()
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry:
+            continue
+        found = shutil.which("bash", path=entry)
+        if found is None:
+            continue
+        candidate = Path(found).resolve()
+        if system_root in candidate.parents:
+            continue
+        return str(candidate)
+    return None
+
+
+_BASH = _native_bash()
 _GIT = shutil.which("git")
 _BASH_AVAILABLE = pytest.mark.skipif(
-    _BASH is None or _GIT is None, reason="bash and git are both required"
+    _BASH is None or _GIT is None,
+    reason="a non-WSL bash and git are both required",
 )
 
 # The wrapper compares whole elapsed seconds, so a sub-second test run is

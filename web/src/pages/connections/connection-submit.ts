@@ -9,7 +9,7 @@ import {
 import {
   type ConnectionFieldSpec,
   type ResolvedConnectionSpec,
-  validateA2APeerCredentials,
+  isFieldVisible,
   validateConnectionField,
   validateConnectionName,
 } from './connection-fields'
@@ -46,23 +46,25 @@ function parseRetentionDays(raw: string): RetentionResult {
   return { ok: true, value: parsed }
 }
 
-function applyA2APeerErrors(form: ConnectionFormState, next: Record<string, string | null>): void {
-  const scheme = form.credentials['auth_scheme'] ?? 'api_key'
-  const schemeErrors = validateA2APeerCredentials(scheme, form.credentials)
-  for (const [key, msg] of Object.entries(schemeErrors)) {
-    const errorKey = key === '_scheme' ? 'auth_scheme' : key
-    if (!next[errorKey]) next[errorKey] = msg
-  }
+/**
+ * Every field's current value, whatever its placement.
+ *
+ * A field's condition can point at one in another bucket (a metadata-placed
+ * vendor governing the top-level base URL), so conditions are evaluated
+ * against the whole form rather than the bucket a field happens to sit in.
+ */
+export function allFormValues(form: ConnectionFormState): Record<string, string> {
+  return { ...form.topLevel, ...form.metadata, ...form.credentials }
 }
 
 function collectFieldErrors(
   fields: readonly ConnectionFieldSpec[],
   values: Record<string, string>,
-  dialect: string | undefined,
+  all: Record<string, string>,
   into: Record<string, string | null>,
 ): void {
   for (const field of fields) {
-    into[field.key] = validateConnectionField(field, values[field.key] ?? '', dialect)
+    into[field.key] = validateConnectionField(field, values[field.key] ?? '', all)
   }
 }
 
@@ -71,35 +73,54 @@ function validateConnectionForm(
   spec: ResolvedConnectionSpec,
   mode: Mode,
 ): Record<string, string | null> {
-  const dialect = form.type === 'database' ? (form.credentials['dialect'] ?? '') : undefined
+  const all = allFormValues(form)
   const next: Record<string, string | null> = {}
   if (mode === 'create') next['name'] = validateConnectionName(form.name)
-  collectFieldErrors(spec.topLevelFields, form.topLevel, dialect, next)
+  collectFieldErrors(spec.topLevelFields, form.topLevel, all, next)
   // Metadata lives on the record and is editable in both modes, so validate
   // it whether creating or editing (credentials only exist at create time).
-  collectFieldErrors(spec.metadataFields, form.metadata, dialect, next)
+  collectFieldErrors(spec.metadataFields, form.metadata, all, next)
   if (mode === 'create') {
-    collectFieldErrors(spec.credentialFields, form.credentials, dialect, next)
-    if (form.type === 'a2a_peer') applyA2APeerErrors(form, next)
+    collectFieldErrors(spec.credentialFields, form.credentials, all, next)
   }
   return next
 }
 
 /**
  * Collect the non-blank metadata field values into the record's metadata map.
- * Only fields the type actually declares are sent, so a stale value left in
- * form state from a previous type never leaks onto the connection.
+ * Only fields the type actually declares and currently shows are sent, so
+ * neither a stale value from a previously selected type nor one typed before
+ * a condition hid the field leaks onto the connection.
  */
 function collectMetadata(
   form: ConnectionFormState,
   spec: ResolvedConnectionSpec,
 ): Record<string, string> {
+  const all = allFormValues(form)
   const metadata: Record<string, string> = {}
   for (const field of spec.metadataFields) {
+    if (!isFieldVisible(field, all)) continue
     const raw = form.metadata[field.key]?.trim()
     if (raw) metadata[field.key] = raw
   }
   return metadata
+}
+
+/**
+ * The base URL to submit, or ``null`` when the field does not currently apply.
+ *
+ * A vendor preset supplies its own endpoint and hides the field; a URL typed
+ * before that switch must not ride along, or the operator would silently
+ * override the preset with a stale value.
+ */
+function submittedBaseUrl(
+  form: ConnectionFormState,
+  spec: ResolvedConnectionSpec,
+): string | null {
+  const all = allFormValues(form)
+  const field = spec.topLevelFields.find((f) => f.key === 'base_url')
+  if (field && !isFieldVisible(field, all)) return null
+  return form.topLevel['base_url']?.trim() || null
 }
 
 interface ResolvedCredentials {
@@ -127,9 +148,11 @@ async function resolveCredentials(
   draftId: string,
   captureSecret: CaptureSecret,
 ): Promise<ResolvedCredentials | null> {
+  const all = allFormValues(form)
   const credentials: Record<string, string> = {}
   const handles: Record<string, string> = {}
   for (const field of spec.credentialFields) {
+    if (!isFieldVisible(field, all)) continue
     const raw = form.credentials[field.key]
     if (raw === undefined || raw === '') continue
     if (field.secret) {
@@ -166,7 +189,7 @@ function buildCreateBody(
     auth_method: spec.defaultAuthMethod,
     credentials: resolved.credentials,
     credential_handles: resolved.handles,
-    base_url: form.topLevel['base_url']?.trim() || null,
+    base_url: submittedBaseUrl(form, spec),
     metadata: collectMetadata(form, spec),
     health_check_enabled: true,
     sensitive: form.sensitive,
@@ -187,7 +210,7 @@ function buildUpdateBody(
   retentionValue: number | null,
 ): UpdateConnectionRequest {
   return {
-    base_url: form.topLevel['base_url']?.trim() || null,
+    base_url: submittedBaseUrl(form, spec),
     metadata: collectMetadata(form, spec),
     sensitive: form.sensitive,
     ...(supportsWebhook ? { webhook_receipt_retention_days: retentionValue } : {}),

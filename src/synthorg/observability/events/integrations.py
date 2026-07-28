@@ -265,3 +265,8 @@ REGISTRY_API_BLOB_UPLOADED: Final[str] = "integrations.registry_api.blob_uploade
 REGISTRY_TARGET_METADATA_UNRECOGNISED: Final[str] = (
     "integrations.registry_target.metadata_unrecognised"
 )
+
+# -- HTTP vendor-preset metadata resolution events -----------------------
+HTTP_VENDOR_METADATA_UNRECOGNISED: Final[str] = (
+    "integrations.http_vendor.metadata_unrecognised"
+)

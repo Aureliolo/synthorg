@@ -294,7 +294,10 @@ class TestCatalogInstall:
         service = CatalogService()
         repo = InMemoryMcpInstallationRepository()
         catalog = FakeConnectionCatalog()
-        catalog.add(_make_connection("primary-search", ConnectionType.GENERIC_HTTP))
+        catalog.add(
+            _make_connection("primary-search", ConnectionType.GENERIC_HTTP),
+            {"token": "k"},
+        )
 
         result = await service.install(
             "brave-search-mcp",
@@ -306,6 +309,26 @@ class TestCatalogInstall:
         stored = await repo.get(NotBlankStr("brave-search-mcp"))
         assert stored is not None
         assert stored.connection_name == "primary-search"
+
+    async def test_install_without_the_mapped_credential_is_refused(self) -> None:
+        # The connection exists and is the right type, but stores nothing
+        # under the field the entry maps: injection would be a silent no-op
+        # and the server would launch unauthenticated.
+        service = CatalogService()
+        repo = InMemoryMcpInstallationRepository()
+        catalog = FakeConnectionCatalog()
+        catalog.add(
+            _make_connection("primary-search", ConnectionType.GENERIC_HTTP),
+            {"api_key": "k"},
+        )
+
+        with pytest.raises(InvalidConnectionAuthError, match="unauthenticated"):
+            await service.install(
+                "brave-search-mcp",
+                "primary-search",
+                connection_catalog=catalog,  # type: ignore[arg-type]
+                installations_repo=repo,
+            )
 
     async def test_install_idempotent(self, tmp_path: Path) -> None:
         service = _connectionless_catalog(tmp_path)
@@ -381,7 +404,7 @@ class TestCatalogInstall:
         catalog = FakeConnectionCatalog()
         catalog.add(
             _make_connection("pg-conn", ConnectionType.DATABASE),
-            creds={"dialect": "postgres"},
+            creds={"dialect": "postgres", "password": "pw"},
         )
         result = await service.install(
             "test-db-mcp",
@@ -417,7 +440,7 @@ class TestCatalogInstall:
         catalog = FakeConnectionCatalog()
         catalog.add(
             _make_connection("pg-conn", ConnectionType.DATABASE),
-            creds={"dialect": "  postgres  "},
+            creds={"dialect": "  postgres  ", "password": "pw"},
         )
         result = await service.install(
             "test-db-mcp",
@@ -471,7 +494,7 @@ class TestInstallMerge:
         # The connection name is recorded on an explicit field (secrets are
         # resolved and injected at connect time, never persisted here).
         assert server.connection_name == "primary-search"
-        assert server.credential_env_map == {"api_key": "BRAVE_API_KEY"}
+        assert server.credential_env_map == {"token": "BRAVE_API_KEY"}
         assert "SYNTHORG_CONNECTION" not in server.env
 
     async def test_installation_to_server_connectionless(self, tmp_path: Path) -> None:

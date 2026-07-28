@@ -7,6 +7,7 @@ import httpx
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.http_vendor import resolve_vendor
 from synthorg.integrations.connections.models import (
     Connection,
     ConnectionStatus,
@@ -19,7 +20,7 @@ from synthorg.observability.events.integrations import (
     HEALTH_CHECK_PASSED,
 )
 from synthorg.tools._dns_pinning import PinnedDnsTransport
-from synthorg.tools.external_api._credentials import build_auth_headers
+from synthorg.tools.external_api._credentials import build_connection_auth_headers
 from synthorg.tools.external_api.errors import ExternalApiCredentialError
 from synthorg.tools.network_validator import (
     DnsValidationOk,
@@ -28,6 +29,32 @@ from synthorg.tools.network_validator import (
 )
 
 logger = get_logger(__name__)
+
+
+def _probe_target(connection: Connection) -> tuple[str, dict[str, str]]:
+    """Resolve the URL and query the probe should use.
+
+    A vendor preset can name a path and the parameters its API needs to
+    answer at all: probing a search endpoint with no query returns a 4xx
+    whatever the credential, which would report every correctly-configured
+    connection as unhealthy. Both come from the code-defined preset, never
+    from operator input, so composing them adds no SSRF surface beyond the
+    host the pre-flight already validated.
+
+    Returns:
+        The probe URL and its query parameters (empty for a plain probe).
+    """
+    base = connection.base_url or ""
+    preset = resolve_vendor(connection.metadata)
+    if preset is None:
+        return base, {}
+    url = (
+        f"{base.rstrip('/')}/{preset.health_path.lstrip('/')}"
+        if (preset.health_path)
+        else base
+    )
+    return url, dict(preset.health_params)
+
 
 _TIMEOUT: Final[float] = 10.0
 _ERROR_THRESHOLD: Final[int] = 400
@@ -91,7 +118,7 @@ class GenericHttpHealthCheck:
             return {}
         try:
             credentials = await self._catalog.get_credentials(connection.name)
-            return build_auth_headers(connection.auth_method, credentials)
+            return build_connection_auth_headers(connection, credentials)
         except ExternalApiCredentialError, SecretRetrievalError:
             return None
 
@@ -158,6 +185,7 @@ class GenericHttpHealthCheck:
                 hostname=validation.hostname,
                 ip=validation.resolved_ips[0],
             )
+        url, params = _probe_target(connection)
         try:
             # ``follow_redirects=False`` is the httpx default but pinned
             # explicitly: the SSRF pre-flight only validates the initial
@@ -168,9 +196,14 @@ class GenericHttpHealthCheck:
                 follow_redirects=False,
                 transport=transport,
             ) as client:
-                resp = await client.head(connection.base_url, headers=headers)
-                if resp.status_code in (_METHOD_NOT_ALLOWED, _NOT_IMPLEMENTED):
-                    resp = await client.get(connection.base_url, headers=headers)
+                if params:
+                    # A vendor that declares probe parameters needs them to
+                    # answer at all, and only a GET carries them meaningfully.
+                    resp = await client.get(url, headers=headers, params=params)
+                else:
+                    resp = await client.head(url, headers=headers)
+                    if resp.status_code in (_METHOD_NOT_ALLOWED, _NOT_IMPLEMENTED):
+                        resp = await client.get(url, headers=headers)
             elapsed = (self._clock.monotonic() - start) * 1000
             if resp.status_code < _ERROR_THRESHOLD:
                 logger.info(

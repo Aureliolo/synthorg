@@ -371,6 +371,12 @@ class CatalogService:
                         reason=msg,
                     )
                     raise InvalidConnectionAuthError(msg)
+            await self._require_mapped_credentials(
+                entry_id,
+                entry,
+                connection_name,
+                connection_catalog,
+            )
             resolved_connection_name = conn.name
         elif connection_name:
             # Entry does not require a connection; ignore and warn.
@@ -400,6 +406,45 @@ class CatalogService:
             connection_name=installation.connection_name,
             tool_count=len(entry.capabilities),
         )
+
+    async def _require_mapped_credentials(
+        self,
+        entry_id: str,
+        entry: CatalogEntry,
+        connection_name: str,
+        connection_catalog: ConnectionCatalog,
+    ) -> None:
+        """Refuse an install whose connection lacks a mapped credential field.
+
+        ``credential_env_map`` is resolved by exact field name at connect
+        time, with no aliasing: a connection that stores the key under a
+        different name injects nothing and the server starts unauthenticated,
+        surfacing only as an opaque upstream auth failure much later. The
+        entry-side half of this guard is above (an entry that binds a
+        connection must declare a map); this is the connection-side half.
+
+        Raises:
+            InvalidConnectionAuthError: If any mapped field is absent.
+        """
+        credentials = await connection_catalog.get_credentials(connection_name)
+        missing = sorted(
+            field for field in entry.credential_env_map if not credentials.get(field)
+        )
+        if not missing:
+            return
+        msg = (
+            f"Connection '{connection_name}' has no "
+            f"{', '.join(repr(field) for field in missing)} credential, which "
+            f"catalog entry '{entry_id}' needs; the server would start "
+            f"unauthenticated"
+        )
+        logger.warning(
+            MCP_SERVER_INSTALL_VALIDATION_FAILED,
+            entry_id=entry_id,
+            connection_name=connection_name,
+            reason=msg,
+        )
+        raise InvalidConnectionAuthError(msg)
 
     async def uninstall(
         self,

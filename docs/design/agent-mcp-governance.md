@@ -83,6 +83,22 @@ package resolving a newer version, so the pin is a distinct control.
 
 `check_mcp_server_config_pinned.py` guards the validator against removal.
 
+## Catalog credential binding
+
+A catalog entry's `credential_env_map` maps a bound connection's credential
+field to the environment variable its MCP server reads. Injection is an
+exact field-name lookup at connect time with no aliasing, so an entry naming
+a field the required connection type never stores injects nothing: the
+server launches unauthenticated, the only signal is a warning nobody is
+watching for, and the failure resurfaces much later as an opaque upstream
+auth error.
+
+Two checks close that gap from both sides. `CatalogService.install` refuses
+a bound connection missing any mapped field, naming the field, rather than
+recording an installation that can only fail. `check_catalog_credential_fields.py`
+compares every bundled entry against the field registry, because the entry
+and the fields live in different files and nothing else notices them drift.
+
 ## Destructive external-MCP auto-escalation
 
 Every MCP call already flows through the same `ToolInvoker` security

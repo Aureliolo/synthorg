@@ -29,6 +29,10 @@ class CredentialResolverMixin:
     if TYPE_CHECKING:
         _secret_backend: SecretBackend
 
+        async def get(self, name: str) -> Connection | None:
+            """Load a connection or return ``None`` (provided by the host)."""
+            ...
+
         async def get_or_raise(self, name: str) -> Connection:
             """Load a connection or raise (provided by the host class)."""
             ...
@@ -52,6 +56,32 @@ class CredentialResolverMixin:
                 or cannot be decoded.
         """
         conn = await self.get_or_raise(name)
+        return await self._resolve_credentials_for(conn)
+
+    async def get_credentials_or_none(self, name: str) -> dict[str, str] | None:
+        """Retrieve decrypted credentials, or ``None`` when unconfigured.
+
+        The quiet counterpart to :meth:`get_credentials`, for callers whose
+        "no such connection" is a routine state rather than a fault: a probe
+        asking whether an optional integration has been set up yet runs on
+        every dashboard poll, and routing it through the raising variant
+        turns a normal answer into a stream of exceptions.
+
+        Args:
+            name: Connection name to resolve credentials for.
+
+        Returns:
+            The merged plaintext credential dict, or ``None`` when no
+            connection with that name exists.
+
+        Raises:
+            SecretRetrievalError: If the connection exists but a referenced
+                secret is missing or cannot be decoded. A broken secret is a
+                fault even when absence is not.
+        """
+        conn = await self.get(name)
+        if conn is None:
+            return None
         return await self._resolve_credentials_for(conn)
 
     async def _resolve_credentials_for(

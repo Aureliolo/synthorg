@@ -20,8 +20,9 @@ import { useConnectionsStore } from '@/stores/connections'
 import {
   type ConnectionFieldSpec,
   type ResolvedConnectionSpec,
+  isFieldVisible,
 } from './connection-fields'
-import { isForgeConnectionType } from './connection-submit'
+import { allFormValues, isForgeConnectionType } from './connection-submit'
 import { RepoScopePicker } from './RepoScopePicker'
 import { TypeBadge } from './TypeBadge'
 import { type ConnectionForm, type Mode, useConnectionForm } from './useConnectionForm'
@@ -182,23 +183,34 @@ function ConnectionFormHeader({
 interface FieldListProps {
   fields: readonly ConnectionFieldSpec[]
   values: Record<string, string>
+  /** Every field's value, whatever its placement, for condition lookups. */
+  allValues: Record<string, string>
   errors: Record<string, string | null>
   submitted: boolean
   onChange: (key: string, value: string) => void
 }
 
-function ConnectionFieldList({ fields, values, errors, submitted, onChange }: FieldListProps) {
+function ConnectionFieldList({
+  fields,
+  values,
+  allValues,
+  errors,
+  submitted,
+  onChange,
+}: FieldListProps) {
   return (
     <>
-      {fields.map((field) =>
-        renderField(
-          field,
-          values[field.key] ?? '',
-          submitted ? (errors[field.key] ?? null) : null,
-          (value) => onChange(field.key, value),
-          false,
-        ),
-      )}
+      {fields
+        .filter((field) => isFieldVisible(field, allValues))
+        .map((field) =>
+          renderField(
+            field,
+            values[field.key] ?? '',
+            submitted ? (errors[field.key] ?? null) : null,
+            (value) => onChange(field.key, value),
+            false,
+          ),
+        )}
     </>
   )
 }
@@ -241,6 +253,54 @@ function RepoScopeField({ f, mode }: { f: ConnectionForm; mode: Mode }) {
   )
 }
 
+function ConnectionFieldSections({
+  f,
+  spec,
+  mode,
+}: {
+  f: ConnectionForm
+  spec: ResolvedConnectionSpec
+  mode: Mode
+}) {
+  const allValues = allFormValues(f.form)
+  return (
+    <>
+      {/* Metadata fields sit on the connection record (non-secret) and stay
+          editable after creation, so they render in both modes. They come
+          first because a vendor preset governs whether the fields below it
+          apply at all. */}
+      <ConnectionFieldList
+        fields={spec.metadataFields}
+        values={f.form.metadata}
+        allValues={allValues}
+        errors={f.errors}
+        submitted={f.submitted}
+        onChange={(key, value) => f.handleFieldChange('metadata', key, value)}
+      />
+
+      <ConnectionFieldList
+        fields={spec.topLevelFields}
+        values={f.form.topLevel}
+        allValues={allValues}
+        errors={f.errors}
+        submitted={f.submitted}
+        onChange={(key, value) => f.handleFieldChange('topLevel', key, value)}
+      />
+
+      {mode === 'create' && (
+        <ConnectionFieldList
+          fields={spec.credentialFields}
+          values={f.form.credentials}
+          allValues={allValues}
+          errors={f.errors}
+          submitted={f.submitted}
+          onChange={(key, value) => f.handleFieldChange('credentials', key, value)}
+        />
+      )}
+    </>
+  )
+}
+
 function ConnectionFormFields({
   f,
   spec,
@@ -272,33 +332,7 @@ function ConnectionFormFields({
         />
       )}
 
-      <ConnectionFieldList
-        fields={spec.topLevelFields}
-        values={f.form.topLevel}
-        errors={f.errors}
-        submitted={f.submitted}
-        onChange={(key, value) => f.handleFieldChange('topLevel', key, value)}
-      />
-
-      {/* Metadata fields sit on the connection record (non-secret) and stay
-          editable after creation, so they render in both modes. */}
-      <ConnectionFieldList
-        fields={spec.metadataFields}
-        values={f.form.metadata}
-        errors={f.errors}
-        submitted={f.submitted}
-        onChange={(key, value) => f.handleFieldChange('metadata', key, value)}
-      />
-
-      {mode === 'create' && (
-        <ConnectionFieldList
-          fields={spec.credentialFields}
-          values={f.form.credentials}
-          errors={f.errors}
-          submitted={f.submitted}
-          onChange={(key, value) => f.handleFieldChange('credentials', key, value)}
-        />
-      )}
+      <ConnectionFieldSections f={f} spec={spec} mode={mode} />
 
       {mode === 'edit' && (
         <p className="rounded-md bg-surface p-card text-xs text-text-muted">

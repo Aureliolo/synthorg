@@ -190,8 +190,6 @@ class TunnelManager:
             per-provider readiness).
         """
         selected = await self._selected_id()
-        for adapter in self._adapters.values():
-            await self._ensure_device_login_connection(adapter)
         statuses = [await self._status_of(a) for a in self._adapters.values()]
         return TunnelSnapshot(
             public_url=await self.get_url(),
@@ -209,7 +207,6 @@ class TunnelManager:
         adapter = self._adapters.get(provider_id)
         if adapter is None:
             return None
-        await self._ensure_device_login_connection(adapter)
         return await self._status_of(adapter)
 
     async def store_token(self, provider_id: str, token: str) -> None:
@@ -345,9 +342,14 @@ class TunnelManager:
         :meth:`store_token`; a device-login provider stores no secret, so
         without this seed it would never appear in the Connections list. The
         row carries no credentials and is health-checked through the tunnel
-        status lookup, not a generic HTTP probe. Idempotent and best-effort:
-        an already-seeded row, a missing catalog (persistence not yet up), or
-        a create race is swallowed so a status/login read never fails on it.
+        status lookup, not a generic HTTP probe.
+
+        Only :meth:`begin_device_login` may call this. Seeding from a status
+        read would mint a connection the operator never asked for and silently
+        recreate one they had just deleted, since the dashboard polls status.
+        Idempotent and best-effort: an already-seeded row, a missing catalog
+        (persistence not yet up), or a create race is swallowed so the login
+        call never fails on it.
         """
         if adapter.credential_kind is not TunnelCredentialKind.DEVICE_LOGIN:
             return
@@ -390,11 +392,10 @@ class TunnelManager:
         catalog = self._catalog_source() if self._catalog_source else None
         if catalog is None:
             return None
-        try:
-            creds = await catalog.get_credentials(
-                credential_connection_name(provider_id)
-            )
-        except ConnectionNotFoundError:
+        creds = await catalog.get_credentials_or_none(
+            credential_connection_name(provider_id)
+        )
+        if creds is None:
             return None
         return creds.get(_TOKEN_CREDENTIAL_KEY)
 

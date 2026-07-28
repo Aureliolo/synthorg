@@ -146,7 +146,9 @@ class ConnectionCatalog(
             connection_type: Service type.
             auth_method: How credentials are provided.
             credentials: Plaintext credentials (encrypted before storage).
-            base_url: Optional base URL.
+            base_url: Optional base URL. A ``generic_http`` connection whose
+                metadata names a vendor preset inherits that preset's
+                endpoint when this is left unset.
             metadata: Optional user tags.
             health_check_enabled: Whether to probe health.
             webhook_receipt_retention_days: Optional per-connection override
@@ -174,17 +176,23 @@ class ConnectionCatalog(
                 msg = f"Connection '{name}' already exists"
                 raise DuplicateConnectionError(msg)
 
+            resolved_base_url = self._resolve_base_url(
+                connection_type,
+                base_url,
+                metadata,
+            )
             self._validate_credentials_for_create(
                 name,
                 connection_type,
                 credentials,
+                resolved_base_url,
             )
             secret_id = str(uuid4())
             connection = self._build_connection(
                 name=name,
                 connection_type=connection_type,
                 auth_method=auth_method,
-                base_url=base_url,
+                base_url=resolved_base_url,
                 secret_id=secret_id,
                 metadata=metadata,
                 health_check_enabled=health_check_enabled,
@@ -205,6 +213,7 @@ class ConnectionCatalog(
             )
             return connection
 
+    @override
     async def get(self, name: str) -> Connection | None:
         """Retrieve a connection by name.
 
@@ -227,7 +236,12 @@ class ConnectionCatalog(
         """
         conn = await self.get(name)
         if conn is None:
-            logger.warning(CONNECTION_NOT_FOUND, connection_name=name)
+            # DEBUG, not WARNING: the raise is the signal, and every caller
+            # for whom an absent connection is exceptional already reports it
+            # with its own context. Warning here spoke for all of them, so an
+            # optional integration nobody has configured logged a warning on
+            # every poll that asked whether it was configured.
+            logger.debug(CONNECTION_NOT_FOUND, connection_name=name)
             msg = f"Connection '{name}' not found"
             raise ConnectionNotFoundError(msg)
         return conn

@@ -136,6 +136,11 @@ mandatory_rules:
     header: MCP Server NPM Pin
     gate: scripts/check_mcp_server_config_pinned.py
 
+  - id: claude-md::catalog-credential-binding
+    file: CLAUDE.md
+    header: Catalog Credential Binding
+    gate: scripts/check_catalog_credential_fields.py
+
   - id: claude-md::error-code-uniqueness
     file: CLAUDE.md
     header: Error-Code Uniqueness

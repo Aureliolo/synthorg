@@ -9437,8 +9437,10 @@ export type components = {
             readonly placement: components["schemas"]["FieldPlacement"];
             /** @default false */
             readonly required: boolean;
+            readonly required_when: components["schemas"]["FieldCondition"] | null;
             /** @default false */
             readonly secret: boolean;
+            readonly visible_when: components["schemas"]["FieldCondition"] | null;
         };
         /** ConnectionHealth */
         readonly ConnectionHealth: {
@@ -11154,6 +11156,11 @@ export type components = {
             readonly variant: string;
             /** @description Relative selection weight */
             readonly weight: number;
+        };
+        /** FieldCondition */
+        readonly FieldCondition: {
+            readonly field: string;
+            readonly values: readonly string[];
         };
         /**
          * FieldInputType

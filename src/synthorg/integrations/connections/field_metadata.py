@@ -9,19 +9,22 @@ setup flow and the dashboard connection form read this one definition (the
 dashboard is a pure API consumer via ``GET /connections/types``), so the
 console prompts, the rendered form, and the create call all agree.
 
-The ``required`` flag here is a prompting hint. The authoritative validation
-stays with each type's :class:`ConnectionAuthenticator.validate_credentials`
-(which also encodes conditional rules such as "a database host is required
-unless the dialect is sqlite"); the registry only guarantees that every field
-an authenticator can reference is present here.
+The ``required`` flag here is a prompting hint, and ``visible_when`` /
+``required_when`` extend it to fields that only apply once another has been
+answered (a database host is pointless for the embedded dialect; a base URL is
+pointless once a vendor preset supplies one). The authoritative validation
+stays with each type's :class:`ConnectionAuthenticator.validate_credentials`;
+the registry only guarantees that every field an authenticator can reference is
+present here, and that a consumer can render the same conditional form the
+console prompts without hardcoding the rules itself.
 """
 
 from collections.abc import Iterable
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Self
+from typing import Final, Self
 
-from pydantic import BaseModel, ConfigDict, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.deploy_target import (
@@ -30,7 +33,15 @@ from synthorg.integrations.connections.deploy_target import (
     DeployEnvironment,
     DeployPlatform,
 )
-from synthorg.integrations.connections.models import AuthMethod, ConnectionType
+from synthorg.integrations.connections.http_vendor import (
+    METADATA_KEY_VENDOR,
+    HttpVendor,
+)
+from synthorg.integrations.connections.models import (
+    VALID_DIALECTS,
+    AuthMethod,
+    ConnectionType,
+)
 from synthorg.integrations.connections.registry_target import (
     METADATA_KEY_AUTH_HOST,
     METADATA_KEY_CHANNEL,
@@ -69,8 +80,46 @@ class SecretCaptureMode(StrEnum):
     OAUTH_REDIRECT = "oauth_redirect"  # hosted OAuth authorize flow
 
 
+class FieldCondition(BaseModel):
+    """A predicate over another field's current value.
+
+    Some fields only make sense once another has been answered: an embedded
+    database dialect needs no host, and a vendor-preset endpoint needs no
+    base URL. The dashboard is a pure API consumer, so that logic belongs in
+    the metadata the backend serves rather than in hardcoded client-side
+    sets, which is where it lived before and which no other consumer of the
+    API could see.
+
+    Attributes:
+        field: Name of the field whose value is examined. Must name another
+            field of the same connection type.
+        values: Values that satisfy the condition. Compared case-sensitively
+            after trimming, matching how the create call stores them.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    field: NotBlankStr
+    values: tuple[str, ...] = Field(min_length=1)
+
+    def is_met(self, current: str | None) -> bool:
+        """Whether *current* satisfies this condition.
+
+        Returns:
+            ``True`` when the trimmed value is one of :attr:`values`.
+        """
+        return (current or "").strip() in self.values
+
+
 class ConnectionFieldMetadata(BaseModel):
-    """Declarative metadata for one connection field."""
+    """Declarative metadata for one connection field.
+
+    Attributes:
+        visible_when: Show the field only while this condition holds. A
+            hidden field is neither rendered nor submitted.
+        required_when: Require the field only while this condition holds,
+            on top of the unconditional :attr:`required` flag.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
@@ -84,6 +133,8 @@ class ConnectionFieldMetadata(BaseModel):
     help_text: str = ""
     placeholder: str = ""
     options: tuple[NotBlankStr, ...] = ()
+    visible_when: FieldCondition | None = None
+    required_when: FieldCondition | None = None
 
     @model_validator(mode="after")
     def _secret_capture_mode_consistent(self) -> Self:
@@ -168,6 +219,44 @@ class ConnectionTypeMetadata(BaseModel):
         if len(names) != len(set(names)):
             msg = f"duplicate field name in {self.connection_type.value!r} metadata"
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _conditions_reference_declared_fields(self) -> Self:
+        """Every condition names another field of this same type.
+
+        A condition on a field that does not exist can never be met, so the
+        dependent field would silently vanish from the form (or never be
+        required) with nothing to point at. Caught at import instead.
+
+        Returns:
+            ``self`` when every condition resolves.
+
+        Raises:
+            ValueError: If a condition names an unknown or self-referential
+                field.
+        """
+        names = {f.name for f in self.fields}
+        for field in self.fields:
+            for kind, condition in (
+                ("visible_when", field.visible_when),
+                ("required_when", field.required_when),
+            ):
+                if condition is None:
+                    continue
+                if condition.field == field.name:
+                    msg = (
+                        f"{field.name!r} {kind} refers to itself in "
+                        f"{self.connection_type.value!r} metadata"
+                    )
+                    raise ValueError(msg)
+                if condition.field not in names:
+                    msg = (
+                        f"{field.name!r} {kind} refers to unknown field "
+                        f"{condition.field!r} in "
+                        f"{self.connection_type.value!r} metadata"
+                    )
+                    raise ValueError(msg)
         return self
 
     @computed_field
@@ -364,6 +453,13 @@ _SMTP = ConnectionTypeMetadata(
     ),
 )
 
+# SQLite is a file, so it needs no host, port, or account. Every other
+# supported dialect is reached over the network and needs all four.
+_NETWORKED_DIALECT: Final = FieldCondition(
+    field=NotBlankStr("dialect"),
+    values=tuple(sorted(VALID_DIALECTS - {"sqlite"})),
+)
+
 _DATABASE = ConnectionTypeMetadata(
     connection_type=ConnectionType.DATABASE,
     label=NotBlankStr("Database"),
@@ -390,6 +486,7 @@ _DATABASE = ConnectionTypeMetadata(
             input_type=FieldInputType.TEXT,
             placement=FieldPlacement.CREDENTIAL,
             required=False,
+            required_when=_NETWORKED_DIALECT,
             help_text="Not required for SQLite",
         ),
         ConnectionFieldMetadata(
@@ -398,6 +495,7 @@ _DATABASE = ConnectionTypeMetadata(
             input_type=FieldInputType.NUMBER,
             placement=FieldPlacement.CREDENTIAL,
             required=False,
+            required_when=_NETWORKED_DIALECT,
         ),
         ConnectionFieldMetadata(
             name=NotBlankStr("username"),
@@ -405,6 +503,7 @@ _DATABASE = ConnectionTypeMetadata(
             input_type=FieldInputType.TEXT,
             placement=FieldPlacement.CREDENTIAL,
             required=False,
+            required_when=_NETWORKED_DIALECT,
         ),
         ConnectionFieldMetadata(
             name=NotBlankStr("password"),
@@ -412,6 +511,7 @@ _DATABASE = ConnectionTypeMetadata(
             input_type=FieldInputType.PASSWORD,
             placement=FieldPlacement.CREDENTIAL,
             required=False,
+            required_when=_NETWORKED_DIALECT,
             secret=True,
             capture_mode=SecretCaptureMode.MASKED_FIELD,
         ),
@@ -425,18 +525,41 @@ _DATABASE = ConnectionTypeMetadata(
     ),
 )
 
+# Only a custom endpoint needs the operator to supply a URL and accept the
+# generic auth header; every preset carries both.
+_CUSTOM_VENDOR: Final = FieldCondition(
+    field=NotBlankStr(METADATA_KEY_VENDOR),
+    values=(HttpVendor.CUSTOM.value,),
+)
+
 _GENERIC_HTTP = ConnectionTypeMetadata(
     connection_type=ConnectionType.GENERIC_HTTP,
     label=NotBlankStr("Generic HTTP"),
-    description="Any REST or HTTP API with an API key or bearer token.",
+    description="A known service, or any REST API with an API key or token.",
     default_auth_method=AuthMethod.API_KEY,
     fields=(
+        ConnectionFieldMetadata(
+            name=NotBlankStr(METADATA_KEY_VENDOR),
+            label=NotBlankStr("Service"),
+            input_type=FieldInputType.SELECT,
+            placement=FieldPlacement.METADATA,
+            required=True,
+            options=tuple(NotBlankStr(vendor.value) for vendor in HttpVendor),
+            help_text=(
+                "A known service supplies its own endpoint and auth header. "
+                "Choose 'custom' for any other API."
+            ),
+        ),
         ConnectionFieldMetadata(
             name=NotBlankStr("base_url"),
             label=NotBlankStr("Base URL"),
             input_type=FieldInputType.URL,
             placement=FieldPlacement.BASE_URL,
-            required=True,
+            required=False,
+            # A preset already knows the endpoint, so asking for it invites
+            # an operator to paste one that nothing reads.
+            visible_when=_CUSTOM_VENDOR,
+            required_when=_CUSTOM_VENDOR,
             placeholder="https://api.example.com",
         ),
         _token(label="API Key / Token"),
@@ -482,6 +605,24 @@ _OAUTH_APP = ConnectionTypeMetadata(
     ),
 )
 
+#: Scheme the A2A authenticator assumes when the operator picks none.
+_A2A_DEFAULT_SCHEME: Final[str] = "api_key"
+
+
+def _a2a_scheme(scheme: str) -> FieldCondition:
+    """Require a credential only for the A2A auth scheme that uses it.
+
+    The default scheme also matches an unset value, mirroring the
+    authenticator's ``credentials.get("auth_scheme", "api_key")``: leaving the
+    selector alone must demand the same credential the backend will.
+
+    Returns:
+        A condition over the peer's selected ``auth_scheme``.
+    """
+    values = (scheme, "") if scheme == _A2A_DEFAULT_SCHEME else (scheme,)
+    return FieldCondition(field=NotBlankStr("auth_scheme"), values=values)
+
+
 _A2A_PEER = ConnectionTypeMetadata(
     connection_type=ConnectionType.A2A_PEER,
     label=NotBlankStr("A2A Peer"),
@@ -518,6 +659,7 @@ _A2A_PEER = ConnectionTypeMetadata(
             input_type=FieldInputType.PASSWORD,
             placement=FieldPlacement.CREDENTIAL,
             required=False,
+            required_when=_a2a_scheme("api_key"),
             secret=True,
             capture_mode=SecretCaptureMode.MASKED_FIELD,
             help_text="Shared secret (required for api_key scheme)",
@@ -528,6 +670,7 @@ _A2A_PEER = ConnectionTypeMetadata(
             input_type=FieldInputType.PASSWORD,
             placement=FieldPlacement.CREDENTIAL,
             required=False,
+            required_when=_a2a_scheme("bearer"),
             secret=True,
             capture_mode=SecretCaptureMode.MASKED_FIELD,
             help_text="Access token (required for bearer scheme)",
@@ -538,6 +681,7 @@ _A2A_PEER = ConnectionTypeMetadata(
             input_type=FieldInputType.TEXT,
             placement=FieldPlacement.CREDENTIAL,
             required=False,
+            required_when=_a2a_scheme("oauth2"),
             help_text="Client ID (required for oauth2 scheme)",
         ),
         ConnectionFieldMetadata(
@@ -546,6 +690,7 @@ _A2A_PEER = ConnectionTypeMetadata(
             input_type=FieldInputType.PASSWORD,
             placement=FieldPlacement.CREDENTIAL,
             required=False,
+            required_when=_a2a_scheme("oauth2"),
             secret=True,
             capture_mode=SecretCaptureMode.MASKED_FIELD,
             help_text="Client secret (required for oauth2 scheme)",
@@ -556,6 +701,7 @@ _A2A_PEER = ConnectionTypeMetadata(
             input_type=FieldInputType.TEXT,
             placement=FieldPlacement.CREDENTIAL,
             required=False,
+            required_when=_a2a_scheme("mtls"),
             help_text="Path to client certificate (required for mtls scheme)",
         ),
         ConnectionFieldMetadata(
@@ -564,6 +710,7 @@ _A2A_PEER = ConnectionTypeMetadata(
             input_type=FieldInputType.TEXT,
             placement=FieldPlacement.CREDENTIAL,
             required=False,
+            required_when=_a2a_scheme("mtls"),
             help_text="Path to client private key (required for mtls scheme)",
         ),
         ConnectionFieldMetadata(

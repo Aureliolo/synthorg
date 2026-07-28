@@ -1,29 +1,39 @@
 # module-kind: declarative
-"""Vendor presets for the native HTTP web-search provider.
+"""Search-request presets for the native HTTP web-search provider.
 
 :class:`~synthorg.tools.web.providers.http_search_provider.HttpWebSearchProvider`
-is vendor-agnostic; every provider-specific detail (endpoint, auth header,
-request shape, response field names, result cap) lives here as data. Real
-vendor names are confined to this declarative preset registry, the same
-exemption the LLM provider presets take (:mod:`synthorg.providers.presets`).
+is vendor-agnostic; every provider-specific detail (request shape, response
+field names, result cap) lives here as data.
+
+The endpoint and auth header are NOT restated here: they are the same facts a
+connection needs, and they live once in
+:mod:`synthorg.integrations.connections.http_vendor`. Two copies would let a
+search call and its connection's health probe disagree about where the service
+is or how it authenticates, which is exactly the drift that made a working key
+read as unhealthy.
 
 Response shape per provider (the only thing that differs beyond auth):
 
-* brave: ``GET`` ``?q=&count=``, key in ``X-Subscription-Token``; results at
-  ``web.results[]`` with ``title`` / ``url`` / ``description``.
-* tavily: ``POST`` ``{query, max_results}``, ``Authorization: Bearer``; results
-  at ``results[]`` with ``title`` / ``url`` / ``content``.
-* exa: ``POST`` ``{query, numResults, contents}``, key in ``x-api-key``;
-  results at ``results[]`` with ``title`` / ``url`` / ``text``.
+* brave: ``GET`` ``?q=&count=``; results at ``web.results[]`` with ``title`` /
+  ``url`` / ``description``.
+* tavily: ``POST`` ``{query, max_results}``; results at ``results[]`` with
+  ``title`` / ``url`` / ``content``.
+* exa: ``POST`` ``{query, numResults, contents}``; results at ``results[]``
+  with ``title`` / ``url`` / ``text``.
 """
 
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, computed_field
 
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.http_vendor import (
+    HTTP_VENDOR_PRESETS,
+    HttpVendor,
+    HttpVendorPreset,
+)
 
 SearchMethod = Literal["GET", "POST"]
 
@@ -32,13 +42,10 @@ class SearchProviderPreset(BaseModel):
     """Declarative description of one search provider's REST contract.
 
     Attributes:
-        id: Stable provider discriminator (the settings enum value).
-        endpoint: Absolute HTTPS search endpoint.
+        vendor: The shared vendor identity, which owns the endpoint and the
+            auth header. The settings enum value is this vendor's id.
         method: HTTP verb; ``GET`` carries params in the query string,
             ``POST`` carries them in a JSON body.
-        auth_header: Header name the API key is sent under.
-        auth_template: Value template for the auth header; ``{key}`` is
-            substituted with the resolved API key (e.g. ``"Bearer {key}"``).
         query_key: Param/body key carrying the search query string.
         count_key: Param/body key carrying the result count, or ``None`` if
             the provider takes no count parameter.
@@ -55,11 +62,8 @@ class SearchProviderPreset(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr
-    endpoint: NotBlankStr
+    vendor: HttpVendorPreset
     method: SearchMethod
-    auth_header: NotBlankStr
-    auth_template: NotBlankStr = "{key}"
     query_key: NotBlankStr
     count_key: NotBlankStr | None = None
     extra: dict[str, JsonValue] = Field(default_factory=dict)
@@ -69,12 +73,30 @@ class SearchProviderPreset(BaseModel):
     url_key: NotBlankStr = "url"
     snippet_key: NotBlankStr
 
+    @computed_field
+    @property
+    def id(self) -> str:
+        """Settings discriminator; the vendor id, never a second spelling."""
+        return self.vendor.id
+
+    @computed_field
+    @property
+    def endpoint(self) -> str:
+        """Absolute HTTPS search endpoint, owned by the vendor preset."""
+        return self.vendor.base_url
+
+    def auth_headers(self, key: str) -> dict[str, str]:
+        """Render the vendor's auth header for *key*.
+
+        Returns:
+            A single-entry header mapping. Carries a secret: never log it.
+        """
+        return self.vendor.auth_headers(key)
+
 
 _BRAVE: Final = SearchProviderPreset(
-    id="brave",
-    endpoint="https://api.search.brave.com/res/v1/web/search",
+    vendor=HTTP_VENDOR_PRESETS[HttpVendor.BRAVE],
     method="GET",
-    auth_header="X-Subscription-Token",
     query_key="q",
     count_key="count",
     max_results_cap=20,
@@ -83,11 +105,8 @@ _BRAVE: Final = SearchProviderPreset(
 )
 
 _TAVILY: Final = SearchProviderPreset(
-    id="tavily",
-    endpoint="https://api.tavily.com/search",
+    vendor=HTTP_VENDOR_PRESETS[HttpVendor.TAVILY],
     method="POST",
-    auth_header="Authorization",
-    auth_template="Bearer {key}",
     query_key="query",
     count_key="max_results",
     max_results_cap=20,
@@ -96,10 +115,8 @@ _TAVILY: Final = SearchProviderPreset(
 )
 
 _EXA: Final = SearchProviderPreset(
-    id="exa",
-    endpoint="https://api.exa.ai/search",
+    vendor=HTTP_VENDOR_PRESETS[HttpVendor.EXA],
     method="POST",
-    auth_header="x-api-key",
     query_key="query",
     count_key="numResults",
     extra={"type": "auto", "contents": {"text": {"maxCharacters": 800}}},

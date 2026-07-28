@@ -8,7 +8,8 @@ convention (``token``, ``api_key``, ``username``, ``password``,
 
 import base64
 
-from synthorg.integrations.connections.models import AuthMethod
+from synthorg.integrations.connections.http_vendor import resolve_vendor
+from synthorg.integrations.connections.models import AuthMethod, Connection
 from synthorg.tools.external_api.errors import ExternalApiCredentialError
 
 
@@ -60,3 +61,41 @@ def build_auth_headers(
             if header_name and header_value:
                 return {header_name: header_value}
             return {}
+
+
+def build_connection_auth_headers(
+    connection: Connection,
+    credentials: dict[str, str],
+) -> dict[str, str]:
+    """Return the auth headers for *connection*, honouring its vendor preset.
+
+    A vendor names the header its API actually accepts, which is rarely the
+    generic ``X-API-Key`` guess: sending the wrong one reads as an invalid
+    credential, so a correctly-configured connection would report unhealthy.
+    An explicit ``header_name``/``header_value`` pair still wins, since an
+    operator who spelled the header out means it.
+
+    Args:
+        connection: The connection whose metadata may name a vendor preset.
+        credentials: Decrypted credential fields.
+
+    Returns:
+        Header name/value pairs to merge into the request.
+
+    Raises:
+        ExternalApiCredentialError: If no usable credential is present.
+    """
+    if credentials.get("header_name") and credentials.get("header_value"):
+        return build_auth_headers(connection.auth_method, credentials)
+    preset = resolve_vendor(connection.metadata)
+    if preset is None:
+        return build_auth_headers(connection.auth_method, credentials)
+    key = (
+        credentials.get("api_key")
+        or credentials.get("token")
+        or credentials.get("access_token")
+    )
+    if not key:
+        msg = f"{preset.label} connection has no api_key/token credential"
+        raise ExternalApiCredentialError(msg)
+    return preset.auth_headers(key)

@@ -58,6 +58,16 @@ def _merge_override(
     )
 
 
+def _dims_overridden(*overrides: EmbedderOverrideConfig | None) -> bool:
+    """Whether any override in the chain set the vector width itself.
+
+    Returns:
+        ``True`` when an operator pinned ``dims`` rather than inheriting the
+        auto-selected model's catalogued width.
+    """
+    return any(o is not None and o.dims is not None for o in overrides)
+
+
 def _auto_select_from_lmeb(
     available_models: tuple[str, ...],
     tier: DeploymentTier,
@@ -137,6 +147,7 @@ def resolve_embedder_config(
         fallback_model=model,
         fallback_dims=dims,
     )
+    dims_explicit = _dims_overridden(memory_config.embedder, settings_override)
 
     if model is None or dims is None:
         logger.warning(
@@ -171,4 +182,5 @@ def resolve_embedder_config(
         provider=provider,
         model=model,
         dims=dims,
+        dims_explicit=dims_explicit,
     )

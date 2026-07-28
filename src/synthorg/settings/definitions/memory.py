@@ -1,10 +1,18 @@
 """Memory namespace setting definitions (fine-tune group in memory_fine_tune)."""
 
+from typing import Final
+
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
 
 _r = get_registry()
+
+# pgvector stores at most this many dimensions per vector, whatever the
+# element type, so a wider setting cannot produce a usable dense column on
+# either backend. Restated here rather than imported: a setting definition
+# must not reach into the persistence layer to validate itself.
+_DENSE_STORAGE_MAX_DIMENSIONS: Final[int] = 16000
 
 _r.register(
     SettingDefinition(
@@ -96,11 +104,15 @@ _r.register(
         default=None,
         description=(
             "Override embedding vector dimensions (advanced). Applies on"
-            " the next restart."
+            " the next restart. At or below 2000 the dense index is exact;"
+            " up to 4000 it is built at half precision; above that no"
+            " approximate index can be built and every dense search reads"
+            " the whole corpus."
         ),
         group="Embedding",
         level=SettingLevel.ADVANCED,
         min_value=1,
+        max_value=_DENSE_STORAGE_MAX_DIMENSIONS,
         restart_required=True,
     )
 )

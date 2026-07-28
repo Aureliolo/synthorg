@@ -395,6 +395,21 @@ provider must serve the fine-tuned model under this identifier.
     every stored vector: the store provisions a fresh dimension-suffixed index
     rather than silently mixing incomparable vectors into the existing one.
 
+The configured width also decides how Postgres stores and indexes the column,
+because pgvector caps an HNSW index at 2000 dimensions for a full-precision
+`vector` and 4000 for a half-precision `halfvec`. At or below 2000 the column
+is exact and indexed; up to 4000 it is indexed at half precision; above that no
+approximate index can be built at all, so the column is still created and dense
+search still runs as an exact scan over the corpus, reported at ERROR. Recall
+stays semantic in every case, but an unindexed width reads every row per query.
+
+Setting `embedder_dims` *below* the model's own output width is the one
+sanctioned mismatch: the embedder truncates each vector to its leading
+components and renormalises, which is how a Matryoshka-trained model is used at
+a smaller width and how a model wider than the index ceiling is brought under
+it. Truncating a model that was not MRL-trained degrades recall, so this only
+ever happens on the operator's explicit instruction, never by inference.
+
 **Container execution:** when `FineTuneExecutionConfig.backend` is `"docker"`, each
 torch-bound pipeline stage (hard-negative mining, training, evaluation) runs inside an
 ephemeral one-shot `synthorg-fine-tune-gpu` (default) or `synthorg-fine-tune-cpu`

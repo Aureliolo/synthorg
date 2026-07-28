@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { ConnectionTypeMetadata } from '@/api/types/integrations'
 import {
   type ConnectionFieldSpec,
+  conditionMet,
   connectionTypeLabel,
   resolveConnectionSpec,
-  validateA2APeerCredentials,
   validateConnectionField,
   validateConnectionName,
 } from '@/pages/connections/connection-fields'
@@ -28,6 +28,8 @@ const databaseMeta: ConnectionTypeMetadata = {
       placeholder: '',
       help_text: '',
       capture_mode: null,
+      visible_when: null,
+      required_when: null,
     },
     {
       name: 'dialect',
@@ -40,6 +42,8 @@ const databaseMeta: ConnectionTypeMetadata = {
       placeholder: '',
       help_text: '',
       capture_mode: null,
+      visible_when: null,
+      required_when: null,
     },
     {
       name: 'password',
@@ -52,6 +56,8 @@ const databaseMeta: ConnectionTypeMetadata = {
       placeholder: '',
       help_text: '',
       capture_mode: 'masked_field',
+      visible_when: null,
+      required_when: null,
     },
   ],
 }
@@ -75,6 +81,8 @@ const deployMeta: ConnectionTypeMetadata = {
       placeholder: '',
       help_text: '',
       capture_mode: 'masked_field',
+      visible_when: null,
+      required_when: null,
     },
     {
       name: 'base_url',
@@ -87,6 +95,8 @@ const deployMeta: ConnectionTypeMetadata = {
       placeholder: '',
       help_text: '',
       capture_mode: null,
+      visible_when: null,
+      required_when: null,
     },
     {
       name: 'platform',
@@ -99,6 +109,8 @@ const deployMeta: ConnectionTypeMetadata = {
       placeholder: '',
       help_text: '',
       capture_mode: null,
+      visible_when: null,
+      required_when: null,
     },
     {
       name: 'environment',
@@ -111,6 +123,8 @@ const deployMeta: ConnectionTypeMetadata = {
       placeholder: '',
       help_text: '',
       capture_mode: null,
+      visible_when: null,
+      required_when: null,
     },
     {
       name: 'project',
@@ -123,6 +137,8 @@ const deployMeta: ConnectionTypeMetadata = {
       placeholder: '',
       help_text: '',
       capture_mode: null,
+      visible_when: null,
+      required_when: null,
     },
   ],
 }
@@ -152,6 +168,8 @@ const secretMetadataMeta: ConnectionTypeMetadata = {
       placeholder: '',
       help_text: '',
       capture_mode: 'masked_field',
+      visible_when: null,
+      required_when: null,
     },
   ],
 }
@@ -222,28 +240,53 @@ describe('validateConnectionField', () => {
     expect(validateConnectionField(dialectSpec, '   ')).toBe('Dialect is required')
   })
 
-  it('requires database server fields for a networked dialect but not sqlite', () => {
+  it('requires a field only while its backend condition holds', () => {
+    // The rule lives in the served metadata, not in a client-side set: the
+    // form never decides which dialects need a host.
     const hostSpec: ConnectionFieldSpec = {
       key: 'host',
       label: 'Host',
       type: 'text',
       required: false,
       secret: false,
+      requiredWhen: { field: 'dialect', values: ['postgres', 'mysql'] },
     }
-    expect(validateConnectionField(hostSpec, '', 'postgres')).toBe('Host is required')
-    expect(validateConnectionField(hostSpec, '', 'sqlite')).toBeNull()
+    expect(validateConnectionField(hostSpec, '', { dialect: 'postgres' })).toBe(
+      'Host is required',
+    )
+    expect(validateConnectionField(hostSpec, '', { dialect: 'sqlite' })).toBeNull()
+    expect(validateConnectionField(hostSpec, '', {})).toBeNull()
+  })
+
+  it('skips a hidden field entirely', () => {
+    const urlSpec: ConnectionFieldSpec = {
+      key: 'base_url',
+      label: 'Base URL',
+      type: 'url',
+      required: true,
+      secret: false,
+      visibleWhen: { field: 'vendor', values: ['custom'] },
+    }
+    // Hidden: neither required nor URL-validated, because it does not apply.
+    expect(validateConnectionField(urlSpec, '', { vendor: 'brave' })).toBeNull()
+    expect(validateConnectionField(urlSpec, 'not a url', { vendor: 'brave' })).toBeNull()
+    expect(validateConnectionField(urlSpec, '', { vendor: 'custom' })).toBe(
+      'Base URL is required',
+    )
   })
 })
 
-describe('validateA2APeerCredentials', () => {
-  it('requires the api_key for the api_key scheme', () => {
-    const errors = validateA2APeerCredentials('api_key', {})
-    expect(errors['api_key']).toMatch(/Required/)
+describe('conditionMet', () => {
+  it('holds when the condition is absent', () => {
+    expect(conditionMet(undefined, {})).toBe(true)
   })
 
-  it('passes when the scheme requirements are met', () => {
-    const errors = validateA2APeerCredentials('bearer', { access_token: 'tok' })
-    expect(errors).toEqual({})
+  it('trims the compared value', () => {
+    expect(conditionMet({ field: 'v', values: ['brave'] }, { v: '  brave  ' })).toBe(true)
+  })
+
+  it('fails for an unset dependency', () => {
+    expect(conditionMet({ field: 'v', values: ['brave'] }, {})).toBe(false)
   })
 })
 

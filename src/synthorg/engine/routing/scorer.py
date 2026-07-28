@@ -35,6 +35,10 @@ logger = get_logger(__name__)
 # a documented design envelope, not an operator-tunable knob.
 _DOC_WEIGHT_SUM_MAX: Final[float] = 0.9
 _WEIGHT_SUM_WARN_CEILING: Final[float] = 1.1
+# The field defaults sum to 0.9000000000000001 in binary floating point, so an
+# exact ``>`` comparison makes the stock configuration warn about itself. The
+# tolerance is far below any weight an operator can express.
+_WEIGHT_SUM_TOLERANCE: Final[float] = 1e-9
 
 
 class RoutingScorerConfig(BaseModel):
@@ -79,7 +83,7 @@ class RoutingScorerConfig(BaseModel):
             + self.tag_match_bonus
             + self.role_match_bonus
         )
-        if weight_sum > _DOC_WEIGHT_SUM_MAX:
+        if weight_sum > _DOC_WEIGHT_SUM_MAX + _WEIGHT_SUM_TOLERANCE:
             logger.warning(
                 TASK_ROUTING_SCORER_INVALID_CONFIG,
                 weight_sum=weight_sum,

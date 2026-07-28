@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.http_vendor import resolve_vendor
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
@@ -47,21 +48,33 @@ class ConnectionCreateMixin:
         name: str,
         connection_type: ConnectionType,
         credentials: dict[str, str],
+        base_url: str | None = None,
     ) -> None:
         """Validate credentials via the type's authenticator before persist.
+
+        ``base_url`` is a top-level column, not a credential, but an
+        authenticator that requires one has to see it: callers reach this
+        through the REST create schema, which carries the two separately.
+        Merging it into the validation view (never into the stored secret)
+        keeps the authenticator the single boundary without asking every
+        caller to duplicate the value.
 
         Args:
             name: Connection name (for error attribution).
             connection_type: Service type whose authenticator validates.
             credentials: Plaintext credentials to validate.
+            base_url: The connection's resolved base URL, when it has one.
 
         Raises:
             InvalidConnectionAuthError: If the type's authenticator
                 rejects the supplied credentials.
         """
         authenticator = get_authenticator(connection_type)
+        view = dict(credentials)
+        if base_url and "base_url" not in view:
+            view["base_url"] = base_url
         try:
-            authenticator.validate_credentials(credentials)
+            authenticator.validate_credentials(view)
         except InvalidConnectionAuthError:
             logger.warning(
                 CONNECTION_VALIDATION_FAILED,
@@ -69,6 +82,28 @@ class ConnectionCreateMixin:
                 connection_type=connection_type,
             )
             raise
+
+    def _resolve_base_url(
+        self,
+        connection_type: ConnectionType,
+        base_url: str | None,
+        metadata: dict[str, str] | None,
+    ) -> str | None:
+        """Fill in a vendor preset's endpoint when the operator gave none.
+
+        A preset already knows where its service lives, so the form never
+        asks. Persisting the resolved URL rather than leaving the column
+        null keeps the health probe, the governed external-access tool and
+        the connections list working off one value.
+
+        Returns:
+            The explicit URL when given, else the declared vendor's endpoint,
+            else ``None``.
+        """
+        if base_url or connection_type is not ConnectionType.GENERIC_HTTP:
+            return base_url
+        preset = resolve_vendor(metadata or {})
+        return preset.base_url if preset is not None else None
 
     def _build_connection(  # noqa: PLR0913
         self,

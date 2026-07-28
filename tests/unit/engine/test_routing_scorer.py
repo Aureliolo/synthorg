@@ -454,6 +454,23 @@ class TestRoutingScorerConfigInjection:
         assert config.min_score == pytest.approx(0.2)
 
     @pytest.mark.unit
+    def test_weight_sum_validator_stays_silent_on_stock_defaults(self) -> None:
+        """The shipped defaults must not warn about themselves.
+
+        ``0.4 + 0.2 + 0.1 + 0.2`` is 0.9000000000000001 in binary floating
+        point, so an exact ``>`` against the documented 0.9 envelope fires on
+        every construction of the default config.
+        """
+        with capture_logs() as logs:
+            RoutingScorerConfig()
+        warns = [
+            entry
+            for entry in logs
+            if entry.get("event") == TASK_ROUTING_SCORER_INVALID_CONFIG
+        ]
+        assert not warns, f"stock defaults warned about themselves (logs={logs})"
+
+    @pytest.mark.unit
     def test_weight_sum_validator_warns_on_excessive_weights(self) -> None:
         """Sum above the documented ceiling logs a warning but does not raise."""
         # All weights at 0.4 -> sum = 1.6, well above both the

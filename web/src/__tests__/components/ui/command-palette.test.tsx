@@ -72,6 +72,22 @@ describe('CommandPalette', () => {
     expect(screen.getByPlaceholderText('Search commands...')).toBeInTheDocument()
   })
 
+  it('ignores a synthetic keydown carrying no key', () => {
+    const onError = vi.fn()
+    window.addEventListener('error', onError)
+    render(<CommandPalette />)
+
+    // A plain Event, the shape third-party widgets and browser autofill
+    // dispatch: ``key`` is absent despite the DOM types promising a string.
+    // jsdom reports a listener throw as a window error rather than rethrowing
+    // out of dispatchEvent, which is the same channel that toasts the operator.
+    document.dispatchEvent(new Event('keydown', { bubbles: true }))
+
+    expect(onError).not.toHaveBeenCalled()
+    expect(screen.queryByPlaceholderText('Search commands...')).not.toBeInTheDocument()
+    window.removeEventListener('error', onError)
+  })
+
   it('closes on Escape', async () => {
     const user = userEvent.setup()
     _setOpen(true)
