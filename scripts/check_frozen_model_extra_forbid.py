@@ -44,10 +44,17 @@ Exit codes:
     2 -- internal error parsing a source file.
 """
 
+import argparse
 import ast
 import re
 import sys
 from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_scope import select_scoped_files  # type: ignore[import-not-found]
+else:
+    from scripts._gate_scope import select_scoped_files
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = REPO_ROOT / "src" / "synthorg"
@@ -246,56 +253,125 @@ def _check_allow_inf_nan(
     violations.append((path, node.lineno, node.name, "allow-inf-nan"))
 
 
-def main() -> int:
-    """Walk the tree and report frozen models missing a required flag."""
+def _select_scoped_files(repo_root: Path, files: list[str]) -> list[tuple[Path, bool]]:
+    """Return ``(path, check_inf_nan)`` for the in-scope subset of *files*.
+
+    The ``allow_inf_nan`` assertion is scoped to ``src/synthorg/`` while the
+    ``extra="forbid"`` one also covers ``tests/``, so the per-file flag comes
+    from which root the path matched, exactly as the whole-tree walk derives it
+    from which root it is walking.
+
+    Args:
+        repo_root: Resolved repository root.
+        files: Caller-supplied paths, absolute or repo-relative.
+
+    Returns:
+        Paths to scan, each with its per-root inf/nan flag.
+    """
+    result = select_scoped_files(
+        files,
+        project_root=repo_root,
+        roots=[SRC_DIR, TEST_DIR],
+        suffixes=frozenset({".py"}),
+    )
+    if not result.selected:
+        print(
+            f"check_frozen_model_extra_forbid: {result.skipped} path(s) "
+            "supplied, none under src/synthorg/ or tests/; nothing scanned.",
+            file=sys.stderr,
+        )
+    return [(scoped.path, scoped.root == SRC_DIR) for scoped in result.selected]
+
+
+def _report(
+    violations: list[tuple[Path, int, str, str]],
+    kind: str,
+    heading: str,
+    guidance: str,
+) -> None:
+    """Print every *kind* violation under *heading*, followed by *guidance*."""
+    matching = [v for v in violations if v[3] == kind]
+    if not matching:
+        return
+    print(f"{len(matching)} {heading}", file=sys.stderr)
+    for path, lineno, name, _ in matching:
+        print(
+            f"  {path.relative_to(REPO_ROOT)}:{lineno}  class {name}",
+            file=sys.stderr,
+        )
+    print(f"\n{guidance}", file=sys.stderr)
+
+
+def _gather(argv_files: list[str] | None) -> list[tuple[Path, int, str, str]] | None:
+    """Return every violation, or ``None`` when a scan root is missing.
+
+    Args:
+        argv_files: Restrict the scan to these paths; ``None`` walks both roots.
+
+    Returns:
+        The violations found, or ``None`` if a required scan root is absent
+        (which the caller reports as an unusable scan rather than a clean one).
+    """
+    violations: list[tuple[Path, int, str, str]] = []
+    if argv_files is not None:
+        for path, check_inf_nan in _select_scoped_files(REPO_ROOT, argv_files):
+            violations.extend(_walk(path, check_inf_nan=check_inf_nan))
+        return violations
     for scan_root in (SRC_DIR, TEST_DIR):
         if not scan_root.is_dir():
             print(f"{scan_root} does not exist", file=sys.stderr)
-            return 2
-    violations: list[tuple[Path, int, str, str]] = []
+            return None
     for scan_root in (SRC_DIR, TEST_DIR):
-        check_inf_nan = scan_root == SRC_DIR
         for path in sorted(scan_root.rglob("*.py")):
-            violations.extend(_walk(path, check_inf_nan=check_inf_nan))
+            violations.extend(_walk(path, check_inf_nan=scan_root == SRC_DIR))
+    return violations
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Walk the tree and report frozen models missing a required flag.
+
+    Args:
+        argv: Argument list; ``None`` reads ``sys.argv``.
+
+    Returns:
+        ``0`` clean, ``1`` on violations, ``2`` when a scan root is missing.
+    """
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        default=None,
+        help=(
+            "Scan only these files instead of src/synthorg/ + tests/. Paths "
+            "outside both roots are skipped. Used by the agent-time "
+            "PostToolUse dispatcher; the pre-push run always scans in full."
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    violations = _gather(args.files)
+    if violations is None:
+        return 2
     if not violations:
         return 0
-    forbid = [v for v in violations if v[3] == "extra-forbid"]
-    inf_nan = [v for v in violations if v[3] == "allow-inf-nan"]
-    if forbid:
-        print(
-            f'{len(forbid)} frozen model(s) missing extra="forbid":',
-            file=sys.stderr,
-        )
-        for path, lineno, name, _ in forbid:
-            print(
-                f"  {path.relative_to(REPO_ROOT)}:{lineno}  class {name}",
-                file=sys.stderr,
-            )
-        print(
-            '\nAdd ``extra="forbid"`` to each frozen ConfigDict. A model '
-            "that declares a @computed_field is auto-exempt. Genuine "
-            "exceptions use a per-line opt-out: "
-            "``# lint-allow: frozen-extra-forbid -- <reason>`` on the "
-            "class definition line.",
-            file=sys.stderr,
-        )
-    if inf_nan:
-        print(
-            f"{len(inf_nan)} frozen model(s) missing allow_inf_nan=False:",
-            file=sys.stderr,
-        )
-        for path, lineno, name, _ in inf_nan:
-            print(
-                f"  {path.relative_to(REPO_ROOT)}:{lineno}  class {name}",
-                file=sys.stderr,
-            )
-        print(
-            "\nAdd ``allow_inf_nan=False`` to each frozen ConfigDict under "
-            "src/synthorg/. Genuine inf/nan-accepting models use a per-line "
-            "opt-out: ``# lint-allow: frozen-allow-inf-nan -- <reason>`` on "
-            "the class definition line.",
-            file=sys.stderr,
-        )
+    _report(
+        violations,
+        "extra-forbid",
+        'frozen model(s) missing extra="forbid":',
+        'Add ``extra="forbid"`` to each frozen ConfigDict. A model that '
+        "declares a @computed_field is auto-exempt. Genuine exceptions use a "
+        "per-line opt-out: ``# lint-allow: frozen-extra-forbid -- <reason>`` "
+        "on the class definition line.",
+    )
+    _report(
+        violations,
+        "allow-inf-nan",
+        "frozen model(s) missing allow_inf_nan=False:",
+        "Add ``allow_inf_nan=False`` to each frozen ConfigDict under "
+        "src/synthorg/. Genuine inf/nan-accepting models use a per-line "
+        "opt-out: ``# lint-allow: frozen-allow-inf-nan -- <reason>`` on the "
+        "class definition line.",
+    )
     return 1
 
 

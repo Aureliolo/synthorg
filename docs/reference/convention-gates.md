@@ -150,7 +150,9 @@ Most gates scan `src/synthorg/` only. Those that walk additional trees encode ev
 
 ## PreToolUse hooks (Claude Code + OpenCode)
 
-Some conventions are also enforced *before* the file lands on disk so the offending content never reaches the diff. Bash scripts under `scripts/` registered in `.claude/settings.json` and `.opencode/plugins/synthorg-hooks.ts`:
+Some conventions are also enforced *before* the file lands on disk so the offending content never reaches the diff. Bash scripts under `scripts/` registered in `.claude/settings.json` and `.opencode/plugins/synthorg-hooks.ts`.
+
+The list below covers the convention-enforcing hooks. The `Bash` matcher additionally carries a set of workflow / push-state guards that enforce process rather than code conventions, and so are documented in [claude-reference.md](claude-reference.md) instead: `check_no_repush_after_failure.sh`, `check_push_rebased.sh`, `check_push_throttle.sh`, `check_ci_before_push.sh`, `check_no_throttle_override_creation.sh`, `check_bash_no_write.sh`, `check_git_c_cwd.sh`, `check_no_git_no_verify.sh`, and `check_no_cmd_pager_pipe.sh`. The OpenCode plugin's own header comment enumerates every registered hook across both groups, and is the shortest complete inventory.
 
 - `check_no_edit_baseline.sh`: blocks `Edit` / `Write` on `tests/baselines/*.json`, `scripts/*_baseline.{txt,json}`, and `scripts/_*_baseline.py`.
 - `check_no_baseline_update.sh`: blocks `Bash` invocations of `scripts/check_*.py --update-baseline` / `--update` / `--refresh-baseline`.
@@ -166,13 +168,53 @@ Some conventions are also enforced *before* the file lands on disk so the offend
 - `check_no_bulk_edit.py`: blocks only shell in-place bulk rewrites (`sed -i`, `perl -pi`, redirect-overwrite of a tracked source file). The native `Edit` (incl. `replace_all`) and `Write` tools are intentionally not blocked: they surface a reviewable atomic diff.
 - `check_no_audit_scratch_scripts.sh`: blocks `Edit` / `Write` of a `*.py` / `*.sh` file at the project root or directly under `scripts/` while the `_audit/.audit-run-active` marker exists (the `/codebase-audit` skill creates it in Phase 0 and removes it in Phase 7). Stops audit subagents leaking scratch helper scripts that pollute the diagnostic stream. Scoped, not blanket: inert whenever no audit run is active, so ordinary development is never affected, and a marker older than 12h (left by a crashed run) is auto-ignored and removed. Unlike the other gates here it fails *open* on a parse error, since it is narrow defence-in-depth (the skill's Phase 7 sweep is the backstop).
 
-PostToolUse hooks run *after* an agent edit lands, validating the written file: `check_web_design_system.py` (web design-token compliance on `web/src/` edits) and `check_backend_regional_defaults.py` (region / currency neutrality on backend edits). Both are agent-time only and excluded from CI parity.
+## PostToolUse hooks (Claude Code + OpenCode)
+
+Five PostToolUse hooks run *after* a tool call completes, in two groups.
+
+Three validate the file an `Edit` / `Write` just produced: `check_web_design_system.py` (web design-token compliance on `web/src/` edits), `check_backend_regional_defaults.py` (region / currency neutrality on backend edits), and `run_edit_time_gates.py` (see below).
+
+Two react to a completed `Bash` command and validate nothing: `record_push_throttle.sh` (records a successful `git push` for the throttle window owned by `check_push_throttle.sh`) and `rewarm_mypy_after_sync.sh` (see below). Both are housekeeping rather than gates.
+
+All five are agent-time only and excluded from CI parity, for a mechanical reason rather than an explicit exemption: none is registered in `.pre-commit-config.yaml`, so `check_local_ci_parity.py` never enumerates them. That gate's own docstring spells this out only for the PreToolUse case.
+
+### Edit-time gate dispatcher
+
+`scripts/run_edit_time_gates.py` is a PostToolUse dispatcher, not a gate: it adds no rule of its own and registers nothing in `convention_gate_map.yaml`. It routes the file an agent just wrote to the gates whose verdict for that file is decidable from the file alone, so a violation that would otherwise surface minutes later at push time (on the push budget, leaving a `<hook>-FAILED` marker) surfaces while the change is still in hand.
+
+The routed set is deliberately small. The disqualifying property is needing the whole tree to compute an answer at all: an import graph, endpoint parity, dual-backend test pairing, or a suppression population derived by diffing two whole-tree lint passes (`check_argument_count_suppression.py`). Merely reading a baseline does not disqualify a gate, which is why the module-size and magic-number gates are routed: their baselines are static, already-committed per-path lookups, so a single-file scan gives that file the same verdict the whole-tree run would.
+
+| Gate | Roots | Suffixes |
+| --- | --- | --- |
+| `check_no_stubs.py` | `src/synthorg/` | `.py` |
+| `check_frozen_model_extra_forbid.py` | `src/synthorg/`, `tests/` | `.py` |
+| `check_no_magic_numbers.py` | `src/synthorg/` | `.py` |
+| `check_module_size_budget.py` | `src/synthorg/` | `.py` |
+| `check_no_review_origin_in_code.py` | `src/synthorg/`, `tests/` | `.py`, `.sql` |
+
+Each gate re-filters the path itself, and says so on stderr when it is handed a set of paths none of which it wants, so a dispatcher routing table that has drifted out of step with a gate's own scan root surfaces as a diagnostic rather than as a clean scan. `test_dispatcher_roots_match_gate_scan_roots` pins the two tables together so the drift fails CI instead.
+
+The four gates that had no file-scoped entry point gained a `--files` flag for this, all four delegating to the shared `scripts/_gate_scope.py` helper so the path-resolution, suffix-filter, containment-check and duplicate-removal mechanics cannot diverge between them; `check_no_review_origin_in_code.py` already accepted positional paths for its pre-commit mode. `--files` is refused alongside `--update` / `--update-baseline`, since a baseline written from a partial scan would drop every entry the scan did not visit. The pre-push invocations are unchanged and still scan in full: the flag narrows the agent-time loop only, and the whole-tree run remains the authority.
+
+One deliberate asymmetry: `check_no_magic_numbers.py`'s whole-tree walk enumerates via `git ls-files` and so sees only tracked files, while `--files` accepts any file that exists. A new module can therefore be flagged at edit time before it has been staged. That changes when a violation surfaces, never the eventual push verdict.
+
+### Post-sync mypy re-warm (housekeeping, not a gate)
+
+`scripts/rewarm_mypy_after_sync.sh` is a PostToolUse hook on `Bash`. A `uv sync` rewrites site-packages, which invalidates the resident `dmypy` graph without stopping the daemon; the next check then pays a full cold rebuild (124s against 1.4s warm), and when that check is the pre-push hook a third of the 300s budget is gone before a gate has run.
+
+The hook detaches `run_affected_mypy.py --rewarm` so the rebuild happens off the push path, logging to `synthorg-hooks/mypy-rewarm-last.log` alongside the git-hook logs. `--rewarm` refuses unless the main daemon is **already resident**: it restores a warm state that existed and never creates a new one. That guard is what makes the hook safe to run everywhere. The main daemon holds ~2.5GB (the separate `scripts/` daemon, which `--rewarm` never touches, costs roughly half that again), which is why the worktree helper deliberately does not warm at creation, and why this is a post-sync hook rather than a `SessionStart` one: a session-start warm would fire in every worktree a session opens and exhaust the memory a machine running several of them has spare. Only `uv sync` / `uv add` / `uv remove` match; `uv run` (much the most common invocation) does not.
+
+Because the rebuild is detached, nothing reads its exit code and nothing reads its log unless told to. A failed rebuild therefore drops a `mypy-rewarm-FAILED` marker that the next ordinary `run_affected_mypy.py` run reports once and clears. That is the same idea as the pre-push `<hook>-FAILED` marker, scaled down to a warning rather than a block: a stale graph costs time, never correctness, so it must not stop anyone working. A lock file (`mypy-rewarm.pid`) keeps two syncs in quick succession from detaching two rebuilds that would queue against the same single-threaded daemon and interleave into the same log.
+
+Under Claude Code the payload carries `tool_response`, so a failed `uv sync` correctly skips the re-warm. The OpenCode plugin's `runHookScript` sends only `tool_input`, so there the success check sees no signal and the re-warm runs regardless: the harmless direction, since the cost is one wasted background rebuild and only when a daemon is already resident.
 
 The hook layer is fail-closed: the OpenCode plugin treats hook execution errors as denials, so a misbehaving hook script blocks the action rather than letting it through.
 
 ## SessionEnd hook (housekeeping, not a gate)
 
 One `SessionEnd` hook in `.claude/settings.json` runs `scripts/run_affected_mypy.py --stop`, which enforces nothing and blocks nothing: it releases the worktree's mypy daemons when a session ends cleanly (for why a stray daemon matters, see `_DAEMON_IDLE_TIMEOUT_SECONDS` in `scripts/run_affected_mypy.py`). The hook cannot cover a session that is killed rather than exited, so it is the fast path only; the daemon's own two-hour idle timeout is what guarantees an orphan eventually goes away regardless.
+
+`--stop` stops the daemons concurrently and escalates to `dmypy kill` when a graceful stop stalls. Both matter at session end: `dmypy` is single-threaded, so a `stop` queues behind an in-flight `--rewarm` rebuild and times out, and sequential stops would cost two full timeout windows back to back, landing on the hook's own ceiling. A daemon that survives session end keeps holding a handle on this worktree's interpreter, which is what makes a later `git worktree remove` fail with an error that reads nothing like its cause.
 
 ## Third-party prose / formatting hooks
 

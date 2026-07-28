@@ -99,6 +99,12 @@ import tokenize
 from pathlib import Path
 from typing import Final, TypeGuard, cast, override
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_scope import select_scoped_files  # type: ignore[import-not-found]
+else:
+    from scripts._gate_scope import select_scoped_files
+
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _BASELINE_PATH: Final[Path] = _REPO_ROOT / "scripts" / "no_magic_numbers_baseline.txt"
 
@@ -766,6 +772,52 @@ def _scan_all(
     return hits
 
 
+def _select_scoped_files(
+    project_root: Path,
+    files: list[str],
+    roots: list[Path],
+) -> list[tuple[Path, str]]:
+    """Return the in-scope subset of *files* as ``(absolute, relative)``.
+
+    Applies the same per-file allowlist the whole-tree walk applies, so a
+    file-scoped verdict for a given file matches what the whole-tree run says
+    about that same file.
+
+    One deliberate asymmetry: the whole-tree walk enumerates via ``git
+    ls-files`` and therefore sees only tracked files, while this path accepts
+    any file that exists. A brand-new module can be flagged here before it has
+    been staged, which changes only WHEN a violation surfaces, never the
+    eventual push verdict, since the file must be tracked before it can be
+    pushed. Reporting earlier is the useful direction for an edit-time caller.
+
+    Args:
+        project_root: Resolved repository root.
+        files: Caller-supplied paths, absolute or repo-relative.
+        roots: Scan roots to accept, relative to *project_root*.
+
+    Returns:
+        Paths to scan with their repo-relative form, ordered by that form.
+    """
+    result = select_scoped_files(
+        files,
+        project_root=project_root,
+        roots=roots,
+        suffixes=frozenset({".py"}),
+    )
+    targets = [
+        (scoped.path, scoped.rel)
+        for scoped in result.selected
+        if not _is_file_allowlisted(scoped.rel)
+    ]
+    if not targets:
+        print(
+            f"check_no_magic_numbers: {len(files)} path(s) supplied, none in "
+            "scope; nothing scanned.",
+            file=sys.stderr,
+        )
+    return targets
+
+
 def cmd_update(roots: list[Path], project_root: Path) -> int:
     """Regenerate ``no_magic_numbers_baseline.txt`` from the current tree."""
     try:
@@ -783,7 +835,11 @@ def cmd_update(roots: list[Path], project_root: Path) -> int:
     return 0
 
 
-def cmd_scan(roots: list[Path], project_root: Path) -> int:
+def cmd_scan(
+    roots: list[Path],
+    project_root: Path,
+    files: list[str] | None = None,
+) -> int:
     """Scan and exit non-zero on any new violation outside the baseline."""
     try:
         baseline = _load_baseline(_baseline_path(project_root))
@@ -791,7 +847,14 @@ def cmd_scan(roots: list[Path], project_root: Path) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     try:
-        hits = _scan_all(roots, project_root)
+        if files is not None:
+            hits = [
+                hit
+                for path, rel in _select_scoped_files(project_root, files, roots)
+                for hit in _scan_file(path, rel)
+            ]
+        else:
+            hits = _scan_all(roots, project_root)
     except ScanError as exc:
         print(f"check_no_magic_numbers: {exc}", file=sys.stderr)
         return 2
@@ -812,8 +875,8 @@ def cmd_scan(roots: list[Path], project_root: Path) -> int:
     return 1
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI entry point."""
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """Return the argparse parser used by ``main()``."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--paths",
@@ -832,7 +895,30 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Regenerate scripts/no_magic_numbers_baseline.txt.",
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        default=None,
+        help=(
+            "Scan only these files instead of every tracked file under "
+            "--paths. Paths outside --paths are skipped, and the baseline "
+            "still applies. Used by the agent-time PostToolUse dispatcher; "
+            "the pre-push run always scans in full."
+        ),
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point.
+
+    Args:
+        argv: Argument list; ``None`` reads ``sys.argv``.
+
+    Returns:
+        ``0`` clean, ``1`` on new violations, ``2`` on an argv/config error.
+    """
+    args = _build_arg_parser().parse_args(argv)
 
     try:
         project_root = _resolve_project_root(args.repo_root)
@@ -850,8 +936,16 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     if args.update:
+        if args.files:
+            print(
+                "check_no_magic_numbers: --files cannot be combined with "
+                "--update; a baseline written from a partial scan would drop "
+                "every entry the scan did not visit.",
+                file=sys.stderr,
+            )
+            return 2
         return cmd_update(roots, project_root)
-    return cmd_scan(roots, project_root)
+    return cmd_scan(roots, project_root, args.files)
 
 
 if __name__ == "__main__":

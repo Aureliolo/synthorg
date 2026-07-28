@@ -16,7 +16,7 @@ import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol, cast, override
 
 import pytest
 
@@ -405,16 +405,35 @@ class TestGroupDispatch:
         A sequential implementation passes every other test in this file,
         so the concurrency is pinned directly: each tool waits at a
         rendezvous that only opens once all three have arrived.
+
+        The rendezvous sits in ``communicate`` because that is where the
+        runner blocks. A stub on ``subprocess.run`` is never consulted, and
+        leaves three real audits running against the real tree until the
+        per-test timeout takes the worker down with them.
         """
         barrier = threading.Barrier(len(_MODULE._GROUPS["python-audits"]))
 
-        def _rendezvous(
-            argv: list[str], **_kwargs: object
-        ) -> subprocess.CompletedProcess[str]:
-            barrier.wait(timeout=_BARRIER_TIMEOUT_SECONDS)
-            return subprocess.CompletedProcess(argv, 0, "", "")
+        class _RendezvousProcess(_FakeProcess):
+            """A tool that finishes only once every sibling has started."""
 
-        monkeypatch.setattr(subprocess, "run", _rendezvous)
+            @override
+            def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+                """Block until the whole group has arrived.
+
+                Returns:
+                    The captured ``(stdout, stderr)`` pair.
+
+                Raises:
+                    threading.BrokenBarrierError: When the group never
+                        assembles, i.e. the runner is sequential.
+                """
+                barrier.wait(timeout=_BARRIER_TIMEOUT_SECONDS)
+                return ("out", "err")
+
+        def _open(argv: list[str], **_kwargs: object) -> _RendezvousProcess:
+            return _RendezvousProcess(argv=list(argv), returncode=0)
+
+        monkeypatch.setattr(subprocess, "Popen", _open)
         monkeypatch.setattr(shutil, "which", lambda name: name)
         monkeypatch.setattr("sys.argv", ["run_prepush_hook_group.py", "python-audits"])
 

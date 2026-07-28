@@ -161,6 +161,7 @@ Based on changed files, launch applicable review agents **in parallel** using th
 | Agent | When to launch | subagent_type |
 |---|---|---|
 | **docs-consistency** | **ALWAYS** runs on every PR regardless of change type | `docs-consistency` |
+| **comment-quality-rot** | **ALWAYS** runs on every PR regardless of change type | `comment-quality-rot` |
 | **tool-parity-checker** | Any `.claude/` or `.opencode/` or `opencode.json` or `AGENTS.md` or `CLAUDE.md` file changed | `tool-parity-checker` |
 | **code-reviewer** | Any `src_py` or `test_py` | `code-reviewer` |
 | **python-reviewer** | Any `src_py` or `test_py` | `python-reviewer` |
@@ -184,6 +185,8 @@ Based on changed files, launch applicable review agents **in parallel** using th
 | **go-conventions-enforcer** | Any `cli_go` | `go-conventions-enforcer` |
 | **diagram-syntax-validator** | Any `docs` files changed that contain ` ```d2 ` or ` ```mermaid ` blocks | `diagram-syntax-validator` |
 | **issue-resolution-verifier** | Issue is linked (pre-existing or auto-linked in Phase 2) | `issue-resolution-verifier` |
+| **design-spec-conformance** | Any `src_py` or `web_src` changed | `design-spec-conformance` |
+| **prompt-injection-boundary** | Diff touches prompt construction, tool dispatch, either gateway, or an inbound integration: any file under `src/synthorg/engine/`, `src/synthorg/api/gateway/`, `src/synthorg/api/mcp_gateway/`, `src/synthorg/integrations/`, `src/synthorg/tools/`, `src/synthorg/meta/mcp/`, OR diff contains `wrap_untrusted`, `TAG_`, `require_admin_guardrails`, `visible_tool`, `_DESTRUCTIVE`, `_ACTION_TYPE`, `allowed_repos`, `decision_reason` | `prompt-injection-boundary` |
 
 **If the Task tool fails** (e.g., "Unknown agent type"), fall back to running the check manually using Read/Grep tools on the changed files AND the additional required sources (CLAUDE.md, README.md, docs/design/*.md for the relevant pages). Ensure the issue-resolution-verifier also fetches the full linked issue content via `gh issue view N --json title,body,labels,comments`.
 

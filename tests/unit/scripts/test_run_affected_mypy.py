@@ -945,7 +945,7 @@ def test_main_falls_back_cold_when_the_daemon_gives_no_verdict(
     assert _MODULE.main() == 1
 
 
-@pytest.mark.parametrize("flag", ["warm", "stop", "status"])
+@pytest.mark.parametrize("flag", ["warm", "rewarm", "stop", "status"])
 def test_main_dispatches_each_management_flag(
     monkeypatch: pytest.MonkeyPatch, flag: str
 ) -> None:
@@ -955,6 +955,149 @@ def test_main_dispatches_each_management_flag(
     monkeypatch.setattr(_MODULE, f"_{flag}", lambda: 0)
 
     assert _MODULE.main() == 0
+
+
+def test_rewarm_refuses_when_no_daemon_is_resident(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The guard that keeps this hook from starting daemons everywhere.
+
+    ``_check_daemon`` uses ``dmypy run``, which STARTS a daemon on first use.
+    So if this guard is ever weakened or reordered, a post-sync re-warm would
+    create a ~2.5GB daemon in every worktree a ``uv sync`` touched, which is
+    precisely the outcome the worktree helper's refusal to warm at creation
+    exists to prevent. ``_unreachable`` is the assertion: reaching
+    ``_check_daemon`` at all is the regression.
+    """
+    monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: False)
+    monkeypatch.setattr(_MODULE, "_check_daemon", _unreachable)
+
+    assert _MODULE._rewarm() == 0
+
+
+def test_rewarm_rebuilds_when_the_daemon_is_already_resident(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A resident daemon is re-checked, and a success clears any stale marker."""
+    marker = tmp_path / "mypy-rewarm-FAILED"
+    marker.write_text("stale\n", encoding="utf-8")
+    monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: True)
+    monkeypatch.setattr(_MODULE, "_check_daemon", lambda _daemon: 0)
+    monkeypatch.setattr(_MODULE, "_rewarm_marker", lambda: marker)
+
+    assert _MODULE._rewarm() == 0
+    assert not marker.exists()
+
+
+def test_rewarm_records_a_marker_when_the_rebuild_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A detached failure must leave evidence something later can surface.
+
+    Nothing reads the exit code of a detached process and nothing reads its log
+    unprompted, so without the marker a failed re-warm is invisible and the
+    next check just feels slow for no stated reason.
+    """
+    marker = tmp_path / "mypy-rewarm-FAILED"
+    monkeypatch.setattr(_MODULE, "_daemon_running", lambda _daemon: True)
+    monkeypatch.setattr(_MODULE, "_check_daemon", lambda _daemon: None)
+    monkeypatch.setattr(_MODULE, "_rewarm_marker", lambda: marker)
+
+    assert _MODULE._rewarm() == 2
+    assert marker.is_file()
+
+
+def test_stale_rewarm_failure_is_reported_once_then_cleared(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Reported on the next ordinary check, then cleared so it warns once."""
+    marker = tmp_path / "mypy-rewarm-FAILED"
+    marker.write_text("failed\n", encoding="utf-8")
+    monkeypatch.setattr(_MODULE, "_rewarm_marker", lambda: marker)
+
+    _MODULE.report_stale_rewarm_failure()
+    first = capsys.readouterr().err
+    assert "re-warm" in first
+    assert not marker.exists()
+
+    _MODULE.report_stale_rewarm_failure()
+    assert capsys.readouterr().err == ""
+
+
+def test_stop_escalates_to_a_hard_kill_when_the_graceful_stop_stalls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stalled stop must not leave the daemon holding the worktree open.
+
+    dmypy is single-threaded, so a ``stop`` queues behind an in-flight rebuild
+    and times out. A surviving daemon keeps a handle on this worktree's
+    interpreter, which makes a later ``git worktree remove`` fail for a reason
+    that reads nothing like its cause, so the stall escalates rather than
+    merely being reported.
+    """
+    commands: list[str] = []
+
+    def _fake_result(
+        _daemon: object, command: str, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str] | None:
+        commands.append(command)
+        if command == "stop":
+            return None
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(_MODULE, "_dmypy_result", _fake_result)
+    monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: None)
+    monkeypatch.setattr(_MODULE, "_process_rss_mb", lambda _pid: None)
+    monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)
+
+    assert _MODULE._stop() == 0
+    assert "kill" in commands
+
+
+def test_stop_reports_the_reason_when_the_hard_kill_also_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A daemon that survives both attempts must exit non-zero, and say why.
+
+    This is the branch callers act on: a caller reclaiming memory before a
+    heavy build would otherwise be told the stop succeeded while the process is
+    still resident and still holding the worktree open.
+    """
+
+    def _fake_result(
+        _daemon: object, command: str, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str] | None:
+        stderr = "stop refused\n" if command == "stop" else "kill refused\n"
+        return subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr=stderr
+        )
+
+    monkeypatch.setattr(_MODULE, "_dmypy_result", _fake_result)
+    monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: None)
+    monkeypatch.setattr(_MODULE, "_process_rss_mb", lambda _pid: None)
+    monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)
+
+    assert _MODULE._stop() == 1
+    assert "stop refused" in capsys.readouterr().err
+
+
+def test_stop_failure_detail_is_never_blank(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Both streams empty must still produce a reason, not a dangling dash."""
+
+    def _fake_result(
+        _daemon: object, _command: str, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str] | None:
+        return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
+
+    monkeypatch.setattr(_MODULE, "_dmypy_result", _fake_result)
+    monkeypatch.setattr(_MODULE, "_daemon_pid", lambda _daemon: None)
+    monkeypatch.setattr(_MODULE, "_process_rss_mb", lambda _pid: None)
+    monkeypatch.setattr(_MODULE, "_forget_bounded_lifetime", lambda _daemon: None)
+
+    assert _MODULE._stop() == 1
+    assert "no detail reported" in capsys.readouterr().err
 
 
 def test_full_runs_the_cold_ci_scope_without_a_daemon(

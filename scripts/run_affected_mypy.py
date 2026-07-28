@@ -59,12 +59,14 @@ import subprocess
 import sys
 import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
 from typing import Final, Literal, NamedTuple
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _prepush_scope import (  # type: ignore[import-not-found]
+        GIT_TIMEOUT_SECONDS,
         MIN_MODULE_DEPTH,
         PYPROJECT,
         REPO_ROOT,
@@ -77,6 +79,7 @@ if __package__ in {None, ""}:
     )
 else:
     from scripts._prepush_scope import (
+        GIT_TIMEOUT_SECONDS,
         MIN_MODULE_DEPTH,
         PYPROJECT,
         REPO_ROOT,
@@ -829,6 +832,14 @@ def _parse_args() -> argparse.Namespace:
         help="build the main daemon now so later checks take seconds",
     )
     group.add_argument(
+        "--rewarm",
+        action="store_true",
+        help=(
+            "rebuild the main daemon's graph, but only if it is already "
+            "resident (for use after a dependency sync invalidates it)"
+        ),
+    )
+    group.add_argument(
         "--full",
         action="store_true",
         help="run the cold CI scope now, without consulting a daemon",
@@ -894,35 +905,172 @@ def _warm() -> int:
     return code
 
 
+def _rewarm_marker() -> Path | None:
+    """Return the path of the failed-re-warm marker, or ``None`` if unknown.
+
+    Resolved via ``git rev-parse --git-path`` so it lands in this worktree's
+    own git dir rather than the main checkout's; a worktree's git dir is
+    ``.git/worktrees/<name>/``, so joining ``.git`` by hand would put every
+    worktree's marker in one shared place.
+    """
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "--git-path", "synthorg-hooks"],
+            cwd=_REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except OSError, subprocess.SubprocessError:
+        return None
+    if completed.returncode != 0 or not completed.stdout.strip():
+        return None
+    directory = Path(completed.stdout.strip())
+    if not directory.is_absolute():
+        directory = _REPO_ROOT / directory
+    return directory / "mypy-rewarm-FAILED"
+
+
+def report_stale_rewarm_failure() -> None:
+    """Warn once if the last detached re-warm failed, then clear the marker.
+
+    The re-warm runs detached, so its exit code goes nowhere and its log is
+    only read by someone who already suspects this hook. Without this the
+    failure mode is a mysteriously slow next type check with no attribution --
+    precisely the problem the re-warm exists to remove, reintroduced one layer
+    down. This is the same idea as the pre-push ``<hook>-FAILED`` marker,
+    scaled to a warning rather than a block: a stale graph costs time, never
+    correctness, so it must not stop anyone working.
+    """
+    marker = _rewarm_marker()
+    if marker is None or not marker.is_file():
+        return
+    print(
+        "NOTE: the background mypy re-warm after your last dependency sync "
+        f"failed, so this check may pay a full cold rebuild. See {marker.parent}"
+        "/mypy-rewarm-last.log.",
+        file=sys.stderr,
+    )
+    with contextlib.suppress(OSError):
+        marker.unlink()
+
+
+def _rewarm() -> int:
+    """Rebuild the main daemon's graph, but only if it is already resident.
+
+    A ``uv sync`` rewrites the interpreter's site-packages, which invalidates
+    the resident graph without stopping the daemon: the next check silently
+    pays the full cold rebuild (measured at 124s against 1.4s warm), and if
+    that next check is the pre-push hook it eats a third of the push budget.
+    Re-warming right after the sync moves that cost off the push.
+
+    Guarded on the daemon already running, which is the whole point of a
+    separate mode. Warming unconditionally would start a ~2.5GB daemon in
+    every worktree a sync ever touched, and several open worktrees would then
+    cost more memory than the machine has spare -- exactly why the worktree
+    helper refuses to warm at creation. This only ever restores a warm state
+    that already existed.
+
+    A failure drops a marker rather than only printing, because this runs
+    detached: nothing reads its exit code and nothing reads its log unless
+    told to. ``report_stale_rewarm_failure`` surfaces it on the next check.
+    """
+    if not _daemon_running(_MAIN_DAEMON):
+        print(f"{_MAIN_DAEMON.label} daemon not resident; nothing to re-warm.")
+        return 0
+    print(f"Re-warming the {_MAIN_DAEMON.label} daemon after a dependency sync.")
+    code = _check_daemon(_MAIN_DAEMON)
+    marker = _rewarm_marker()
+    if code is None:
+        print("Daemon failed to rebuild its graph.", file=sys.stderr)
+        if marker is not None:
+            with contextlib.suppress(OSError):
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.write_text(
+                    "the background re-warm after a dependency sync could not "
+                    "rebuild the graph; see mypy-rewarm-last.log\n",
+                    encoding="utf-8",
+                )
+        return 2
+    if marker is not None:
+        with contextlib.suppress(OSError):
+            marker.unlink(missing_ok=True)
+    return code
+
+
+def _stop_one(daemon: _Daemon) -> tuple[int, str | None]:
+    """Stop *daemon*, escalating to a hard kill if the graceful stop stalls.
+
+    Returns ``(reclaimed_mb, failure_detail)``; *failure_detail* is ``None``
+    when the daemon is gone by the end, however it got there.
+
+    The escalation is what makes this reliable at session end. dmypy is a
+    single-threaded request/response daemon, so a ``stop`` queues behind any
+    in-flight ``run`` -- and a detached ``--rewarm`` triggered by an earlier
+    ``uv sync`` can easily still be rebuilding. The graceful stop then times
+    out, and a daemon that survives session end keeps holding a handle on this
+    worktree's interpreter, which is what makes ``git worktree remove`` fail
+    with an error that reads nothing like its actual cause. Reclaiming the
+    memory and releasing the handle outrank letting an unattended rebuild
+    finish, so a stalled stop is escalated rather than merely reported.
+    """
+    pid = _daemon_pid(daemon)
+    rss = _process_rss_mb(pid) if pid is not None else None
+    result = _dmypy_result(
+        daemon, "stop", quiet=True, timeout=_PROCESS_QUERY_TIMEOUT_SECONDS
+    )
+    if result is not None and result.returncode == 0:
+        _forget_bounded_lifetime(daemon)
+        print(f"{daemon.label}: stopped")
+        return rss or 0, None
+    if result is not None and _reports_absent_daemon(result):
+        _forget_bounded_lifetime(daemon)
+        print(f"{daemon.label}: not running")
+        return 0, None
+
+    # A ``dmypy stop`` can fail with both streams empty, and the one line whose
+    # job is to say why must not come out blank.
+    detail = (
+        _first_line(result.stderr) or _first_line(result.stdout)
+        if result is not None
+        else "timed out"
+    ) or "no detail reported"
+    killed = _dmypy_result(
+        daemon, "kill", quiet=True, timeout=_PROCESS_QUERY_TIMEOUT_SECONDS
+    )
+    if killed is not None and (
+        killed.returncode == 0 or _reports_absent_daemon(killed)
+    ):
+        _forget_bounded_lifetime(daemon)
+        print(f"{daemon.label}: stopped (hard kill after: {detail})")
+        return rss or 0, None
+    return 0, detail
+
+
 def _stop() -> int:
     """Stop every daemon in this worktree and report what it reclaimed.
 
     Returns non-zero if any daemon was there but refused to stop, so a caller
     reclaiming memory before a heavy build is not told it succeeded when the
     process is still resident.
+
+    The daemons are stopped concurrently because they are independent, and
+    sequentially they would cost two full ``_PROCESS_QUERY_TIMEOUT_SECONDS``
+    windows back to back -- landing exactly on the SessionEnd hook's own
+    ceiling, where the harness could kill this process before it had even
+    attempted the second daemon or printed why the first failed.
     """
     reclaimed = 0
     failed = False
-    for daemon in _ALL_DAEMONS:
-        pid = _daemon_pid(daemon)
-        rss = _process_rss_mb(pid) if pid is not None else None
-        result = _dmypy_result(
-            daemon, "stop", quiet=True, timeout=_PROCESS_QUERY_TIMEOUT_SECONDS
-        )
-        if result is not None and result.returncode == 0:
-            reclaimed += rss or 0
-            _forget_bounded_lifetime(daemon)
-            print(f"{daemon.label}: stopped")
-        elif result is not None and _reports_absent_daemon(result):
-            _forget_bounded_lifetime(daemon)
-            print(f"{daemon.label}: not running")
-        else:
+    with ThreadPoolExecutor(max_workers=len(_ALL_DAEMONS)) as pool:
+        outcomes = list(pool.map(_stop_one, _ALL_DAEMONS))
+    for daemon, (rss, detail) in zip(_ALL_DAEMONS, outcomes, strict=True):
+        reclaimed += rss
+        if detail is not None:
             failed = True
-            detail = (
-                _first_line(result.stderr) or _first_line(result.stdout)
-                if result is not None
-                else "timed out"
-            )
             print(
                 f"{daemon.label}: stop FAILED -- {detail} "
                 f"(try: dmypy kill --status-file {daemon.status_file})",
@@ -1174,15 +1322,19 @@ def _run_scoped(py_changed: list[str]) -> int:
     return exit_code
 
 
-def main() -> int:
-    """Entry point.
+def _dispatch_management_flag(args: argparse.Namespace) -> int | None:
+    """Run the subcommand *args* selected, or return ``None`` for a type check.
+
+    Args:
+        args: Parsed arguments.
 
     Returns:
-        The mypy exit code (0 when nothing maps to a target).
+        The subcommand's exit code, or ``None`` when none was requested.
     """
-    args = _parse_args()
     if args.warm:
         return _warm()
+    if args.rewarm:
+        return _rewarm()
     if args.stop:
         return _stop()
     if args.status:
@@ -1193,6 +1345,23 @@ def main() -> int:
         return _stop_holder(args.stop_holder)
     if args.full:
         return _run_full()
+    return None
+
+
+def main() -> int:
+    """Entry point.
+
+    Returns:
+        The mypy exit code (0 when nothing maps to a target).
+    """
+    args = _parse_args()
+    dispatched = _dispatch_management_flag(args)
+    if dispatched is not None:
+        return dispatched
+
+    # An ordinary check is the first thing anyone runs after a sync, so it is
+    # where a failed background re-warm has to become visible.
+    report_stale_rewarm_failure()
 
     changed = _resolve_changed_files()
     py_changed = None if changed is None else [f for f in changed if f.endswith(".py")]

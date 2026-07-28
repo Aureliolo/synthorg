@@ -35,12 +35,14 @@ from pathlib import Path
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_scope import select_scoped_files  # type: ignore[import-not-found]
     from _module_size_lib import (  # type: ignore[import-not-found]
         TIER_LIMITS,
         count_loc,
         resolve_tier,
     )
 else:
+    from scripts._gate_scope import select_scoped_files
     from scripts._module_size_lib import (
         TIER_LIMITS,
         count_loc,
@@ -89,6 +91,34 @@ def _iter_source_files(project_root: Path) -> list[Path]:
     return sorted(scan_root.rglob("*.py"))
 
 
+def _select_scoped_files(project_root: Path, files: list[str]) -> list[Path]:
+    """Return the ``src/synthorg/`` subset of *files* as absolute paths.
+
+    Reports what it dropped so a routing table that has drifted out of step
+    with the scan root shows up as a diagnostic rather than as a clean scan.
+
+    Args:
+        project_root: Resolved repository root.
+        files: Caller-supplied paths, absolute or repo-relative.
+
+    Returns:
+        Absolute paths to check, ordered deterministically.
+    """
+    result = select_scoped_files(
+        files,
+        project_root=project_root,
+        roots=[_SCAN_REL],
+        suffixes=frozenset({".py"}),
+    )
+    if not result.selected:
+        print(
+            f"check_module_size_budget: {result.skipped} path(s) supplied, "
+            f"none under {_SCAN_REL.as_posix()}/; nothing scanned.",
+            file=sys.stderr,
+        )
+    return [scoped.path for scoped in result.selected]
+
+
 def _load_baseline(baseline_path: Path) -> dict[str, int]:
     """Parse the baseline JSON; return ``{path: loc}`` mapping.
 
@@ -127,19 +157,31 @@ def _relpath_posix(path: Path, project_root: Path) -> str:
     return path.relative_to(project_root).as_posix()
 
 
-def check(*, project_root: Path, baseline_path: Path) -> list[Violation]:
+def check(
+    *,
+    project_root: Path,
+    baseline_path: Path,
+    files: list[str] | None = None,
+) -> list[Violation]:
     """Run the gate and return every violation.
 
     Args:
         project_root: Resolved repo root.
         baseline_path: Path to the JSON baseline file.
+        files: Restrict the scan to these paths (agent-time mode). ``None``
+            scans every module under ``src/synthorg/``.
 
     Returns:
         Violations in source order (deterministic).
     """
     baseline = _load_baseline(baseline_path)
     violations: list[Violation] = []
-    for path in _iter_source_files(project_root):
+    targets = (
+        _select_scoped_files(project_root, files)
+        if files is not None
+        else _iter_source_files(project_root)
+    )
+    for path in targets:
         tier = resolve_tier(path, project_root=project_root)
         if tier == "generated":
             continue
@@ -212,6 +254,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Regenerate the baseline file from the current tree and exit.",
     )
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        default=None,
+        help=(
+            "Check only these modules instead of the whole scan root. Paths "
+            "outside src/synthorg/ are skipped, and the baseline still "
+            "applies. Used by the agent-time PostToolUse dispatcher; the "
+            "pre-push run always scans in full."
+        ),
+    )
     return parser
 
 
@@ -229,9 +282,21 @@ def main(argv: list[str] | None = None) -> int:
         else project_root / _BASELINE_REL
     )
     if args.update_baseline:
+        if args.files:
+            print(
+                "check_module_size_budget: --files cannot be combined with "
+                "--update-baseline; a baseline written from a partial scan "
+                "would drop every module the scan did not visit.",
+                file=sys.stderr,
+            )
+            return 2
         write_baseline(project_root=project_root, baseline_path=baseline_path)
         return 0
-    violations = check(project_root=project_root, baseline_path=baseline_path)
+    violations = check(
+        project_root=project_root,
+        baseline_path=baseline_path,
+        files=args.files,
+    )
     if not violations:
         return 0
     for violation in violations:

@@ -54,6 +54,12 @@ from typing import TYPE_CHECKING, Final, override
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_scope import select_scoped_files  # type: ignore[import-not-found]
+else:
+    from scripts._gate_scope import select_scoped_files
+
 SCAN_ROOT: Final = Path("src/synthorg")
 _SUPPRESSION_MARKER: Final = "lint-allow: no-stub"
 _ABSTRACT_DECORATORS: Final = frozenset({"abstractmethod", "overload"})
@@ -302,9 +308,51 @@ def _iter_py_files(repo_root: Path) -> Iterable[Path]:
     yield from sorted(base.rglob("*.py"))
 
 
-def _run(repo_root: Path) -> int:
+def _select_scoped_files(repo_root: Path, files: list[str]) -> list[Path]:
+    """Return the in-scope subset of *files*, as absolute paths.
+
+    Reports what it dropped so a routing table that has drifted out of step
+    with ``SCAN_ROOT`` shows up as a diagnostic rather than as a clean scan.
+
+    Args:
+        repo_root: Resolved repository root.
+        files: Caller-supplied paths, absolute or repo-relative.
+
+    Returns:
+        Absolute paths to scan, ordered deterministically.
+    """
+    result = select_scoped_files(
+        files,
+        project_root=repo_root,
+        roots=[SCAN_ROOT],
+        suffixes=frozenset({".py"}),
+    )
+    if not result.selected:
+        print(
+            f"check_no_stubs: {result.skipped} path(s) supplied, none under "
+            f"{SCAN_ROOT.as_posix()}/; nothing scanned.",
+            file=sys.stderr,
+        )
+    return [scoped.path for scoped in result.selected]
+
+
+def _run(repo_root: Path, files: list[str] | None = None) -> int:
+    """Scan the tree (or *files*) and report every stub found.
+
+    Args:
+        repo_root: Resolved repository root.
+        files: Restrict the scan to these paths; ``None`` walks ``SCAN_ROOT``.
+
+    Returns:
+        ``0`` clean, ``1`` on violations.
+    """
     violations: list[Violation] = []
-    for py in _iter_py_files(repo_root):
+    targets = (
+        _select_scoped_files(repo_root, files)
+        if files is not None
+        else _iter_py_files(repo_root)
+    )
+    for py in targets:
         violations.extend(_scan_file(py, repo_root))
     if not violations:
         return 0
@@ -321,17 +369,30 @@ def _run(repo_root: Path) -> int:
     return 1
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """CLI entry point.
+
+    Args:
+        argv: Argument list; ``None`` reads ``sys.argv``.
 
     Returns:
         ``0`` clean, ``1`` on violations, ``2`` on a scan/parse error.
     """
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
-    args = parser.parse_args()
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        default=None,
+        help=(
+            "Scan only these files instead of the whole scan root. Paths "
+            "outside src/synthorg/ are skipped. Used by the agent-time "
+            "PostToolUse dispatcher; the pre-push run always scans in full."
+        ),
+    )
+    args = parser.parse_args(argv)
     try:
-        return _run(args.repo_root.resolve())
+        return _run(args.repo_root.resolve(), args.files)
     except (OSError, UnicodeDecodeError, SyntaxError) as exc:
         print(f"check_no_stubs: scan error: {exc}", file=sys.stderr)
         return 2
