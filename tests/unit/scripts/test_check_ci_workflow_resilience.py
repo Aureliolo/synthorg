@@ -3,7 +3,7 @@
 Loads the script as a module so its private helpers are callable without
 spawning subprocesses.
 
-Covers all six invariants:
+Covers all eight invariants:
 
 * ``timeout-minutes`` required on every job, with the reusable-workflow
   -call exemption (a job whose body is a top-level ``uses:``).
@@ -27,6 +27,12 @@ Covers all six invariants:
 * A resilient-pull ladder's worst case fits inside its job's
   ``timeout-minutes``, resolved per call site and through the composite
   call graph, so the runner cannot reap the job mid-retry.
+* A ladder's ``local-tag`` reaches only a consumer that resolves a local
+  image: a ``run:`` step, or an allowlisted action input. A tag handed to a
+  pulling action, or consumed by nothing at all, is flagged.
+* Every ``docker/**/Dockerfile`` reference BuildKit resolves itself carries
+  a digest, which is what makes the buildx docker.io mirror safe. Build
+  stages and ``${...}`` build args are exempt.
 """
 
 import importlib.util
@@ -86,15 +92,42 @@ def _job(
     return f"{head}    steps:\n{steps}"
 
 
-def _pull(*, attempts: str | None = None, seconds: str | None = None) -> str:
+def _pull(
+    *,
+    attempts: str | None = None,
+    seconds: str | None = None,
+    tag: str | None = None,
+) -> str:
     """A resilient-pull step, optionally overriding the ladder inputs."""
     step = "      - uses: ./.github/actions/docker-pull-resilient\n"
-    overrides = {"attempts": attempts, "pull-timeout-seconds": seconds}
+    overrides = {
+        "attempts": attempts,
+        "pull-timeout-seconds": seconds,
+        "local-tag": tag,
+    }
     given = {key: value for key, value in overrides.items() if value is not None}
     if not given:
         return step
     lines = "".join(f'          {key}: "{value}"\n' for key, value in given.items())
     return f"{step}        with:\n{lines}"
+
+
+def _qemu(image: str) -> str:
+    """A setup-qemu-action step, whose `image:` input always pulls."""
+    return (
+        "      - uses: docker/setup-qemu-action@abc # v4\n"
+        "        with:\n"
+        f"          image: {image}\n"
+    )
+
+
+def _buildx(driver_opts: str) -> str:
+    """A setup-buildx-action step, whose `driver-opts` resolves locally."""
+    return (
+        "      - uses: docker/setup-buildx-action@abc # v4\n"
+        "        with:\n"
+        f"          driver-opts: {driver_opts}\n"
+    )
 
 
 def _enforced(*, guard: bool) -> str:
@@ -119,6 +152,12 @@ _NO_ACTIONS_READ = "does not grant `actions: read`"
 _DROPS_TOKEN = "dropping the caller's token at this boundary"
 _NO_TOKEN_INPUT = "declares no `github-token` input"
 _LADDER_OVERRUNS = "resilient-pull ladder can run up to"
+_TAG_PULLED = "which resolves the reference against a registry"
+_TAG_ORPHANED = "that nothing consumes"
+_TAG_EXPRESSION = "as an unresolved expression"
+
+_TAG = "synthorg-binfmt:qemu-v9.2.2"
+_BUILDKIT_TAG = "synthorg-buildkit:buildx-stable-1"
 
 
 _TOKEN_EXPR = "${{ github.token }}"
@@ -194,7 +233,7 @@ class TestLadder:
         assert "job 'a'" in violations[0]
 
     def test_two_bare_steps_flagged(self, tmp_path: Path) -> None:
-        # The original ci.yml shape: two un-laddered codecov steps. Neither
+        # Two un-laddered codecov steps in one job. Neither
         # carries continue-on-error; both are unguarded uploads.
         violations = _scan(
             tmp_path, _job(_enforced(guard=False) + _enforced(guard=False))
@@ -645,8 +684,8 @@ class TestPullLadderBudget:
         [
             # 2 x 3 x 60 = 360 pull seconds, + 10 + 20 backoff.
             pytest.param(3, 60, 390, id="defaults"),
-            # The pre-fix defaults: 2 x 5 x 300 = 3000, + 10+20+40+80 backoff.
-            pytest.param(5, 300, 3150, id="pre-fix-defaults"),
+            # An oversized ladder: 2 x 5 x 300 = 3000, + 10+20+40+80 backoff.
+            pytest.param(5, 300, 3150, id="oversized-ladder"),
             # A single attempt pays no backoff at all.
             pytest.param(1, 60, 120, id="single-attempt"),
         ],
@@ -666,10 +705,10 @@ class TestPullLadderBudget:
     def test_ladder_inside_its_job_clean(self, tmp_path: Path) -> None:
         assert _scan(tmp_path, _job(_checkout() + _pull(), minutes=15)) == []
 
-    def test_the_pre_fix_defaults_would_have_been_caught(self, tmp_path: Path) -> None:
-        # The regression this invariant exists for: 5 attempts x 300s could
-        # run 3150s inside the 15-minute schema-validate budget, so the
-        # ladder could never exhaust and the job died opaque instead.
+    def test_oversized_ladder_defaults_flagged(self, tmp_path: Path) -> None:
+        # 5 attempts x 300s runs 3150s inside the 15-minute schema-validate
+        # budget, so the ladder can never exhaust and the job dies opaque
+        # instead of naming the failure.
         steps = _checkout() + _pull(attempts="5", seconds="300")
         violations = _scan(tmp_path, _job(steps, minutes=15))
         assert len(violations) == 1
@@ -709,6 +748,259 @@ class TestPullLadderBudget:
         worst = _MODULE._ladder_worst_case_seconds(attempts, timeout)  # type: ignore[attr-defined]
         # schema-validate is the tightest caller at 15 minutes.
         assert worst < 15 * 60
+
+
+class TestLocalTagConsumers:
+    """A ladder's local tag must reach only a consumer that resolves one.
+
+    The tag names an image in the runner's daemon and nowhere else, so handing
+    it to an action that pulls its image input does not weaken the ladder, it
+    makes the step impossible.
+    """
+
+    def test_tag_handed_to_a_pulling_action_flagged(self, tmp_path: Path) -> None:
+        # The blind spot this closes: the step is gated off pull_request, so
+        # this shape is green on every PR yet fails on every push to main.
+        steps = _checkout() + _pull(tag=_TAG) + _qemu(_TAG)
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG_PULLED in violations[0]
+
+    def test_an_allowlisted_consumer_input_clean(self, tmp_path: Path) -> None:
+        steps = (
+            _checkout() + _pull(tag=_BUILDKIT_TAG) + _buildx(f"image={_BUILDKIT_TAG}")
+        )
+        assert _scan(tmp_path, _job(steps, minutes=15)) == []
+
+    def test_an_allowlisted_input_inside_an_expression_clean(
+        self, tmp_path: Path
+    ) -> None:
+        # The live call site wraps the value in a conditional expression, so
+        # the tag has to be found as a token rather than as the whole value.
+        opts = (
+            "${{ github.event_name != 'pull_request'"
+            f" && 'image={_BUILDKIT_TAG}' || '' }}"
+        )
+        steps = _checkout() + _pull(tag=_BUILDKIT_TAG) + _buildx(opts)
+        assert _scan(tmp_path, _job(steps, minutes=15)) == []
+
+    def test_the_same_action_on_a_different_input_is_flagged(
+        self, tmp_path: Path
+    ) -> None:
+        # The allowlist is per input, not per action: driver-opts resolves
+        # locally, an image input on the same action would not.
+        steps = (
+            _checkout()
+            + _pull(tag=_TAG)
+            + "      - uses: docker/setup-buildx-action@abc # v4\n"
+            "        with:\n"
+            f"          image: {_TAG}\n"
+        )
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG_PULLED in violations[0]
+
+    def test_consumption_from_a_run_step_clean(self, tmp_path: Path) -> None:
+        steps = (
+            _checkout()
+            + _pull(tag=_TAG)
+            + f"      - run: docker run --rm --privileged {_TAG} --install arm64\n"
+        )
+        assert _scan(tmp_path, _job(steps, minutes=15)) == []
+
+    def test_consumption_through_a_run_step_env_clean(self, tmp_path: Path) -> None:
+        steps = (
+            _checkout()
+            + _pull(tag=_TAG)
+            + '      - run: docker run --rm --privileged "${BINFMT}" --install arm64\n'
+            "        env:\n"
+            f"          BINFMT: {_TAG}\n"
+        )
+        assert _scan(tmp_path, _job(steps, minutes=15)) == []
+
+    def test_env_on_a_uses_step_does_not_count_as_consumption(
+        self, tmp_path: Path
+    ) -> None:
+        # env on a `uses:` step feeds the action's process, not a shell that
+        # could resolve the tag, so it must not vouch for the ladder.
+        steps = (
+            _checkout() + _pull(tag=_TAG) + "      - uses: some/action@abc # v1\n"
+            "        env:\n"
+            f"          BINFMT: {_TAG}\n"
+        )
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG_ORPHANED in violations[0]
+
+    def test_a_tag_nothing_consumes_is_flagged(self, tmp_path: Path) -> None:
+        steps = _checkout() + _pull(tag="synthorg-orphan:never-used")
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG_ORPHANED in violations[0]
+
+    def test_a_ladder_without_a_local_tag_is_unaffected(self, tmp_path: Path) -> None:
+        assert _scan(tmp_path, _job(_checkout() + _pull(), minutes=15)) == []
+
+    def test_a_longer_tag_does_not_vouch_for_a_shorter_one(
+        self, tmp_path: Path
+    ) -> None:
+        # Substring matching would let the version-bumped tag mark the older
+        # one consumed, masking a real orphan and inventing a violation
+        # against the correct wiring of the longer one.
+        longer = f"{_TAG}0"
+        steps = (
+            _checkout()
+            + _pull(tag=_TAG)
+            + _pull(tag=longer)
+            + f"      - run: docker run --rm --privileged {longer} --install arm64\n"
+        )
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG_ORPHANED in violations[0]
+        assert _TAG in violations[0]
+
+    def test_two_producers_of_one_tag_do_not_self_flag(self, tmp_path: Path) -> None:
+        # A producer is never a consumer: judging it as one would accuse the
+        # ladder of resolving its own output against a registry.
+        steps = (
+            _checkout()
+            + _pull(tag=_TAG)
+            + _pull(tag=_TAG)
+            + f"      - run: docker run --rm --privileged {_TAG} --install arm64\n"
+        )
+        assert _scan(tmp_path, _job(steps, minutes=15)) == []
+
+    def test_consumption_before_the_producer_does_not_count(
+        self, tmp_path: Path
+    ) -> None:
+        # The daemon does not hold the image yet at that point, so an earlier
+        # reference cannot vouch for the ladder.
+        steps = (
+            _checkout()
+            + f"      - run: docker run --rm --privileged {_TAG} --install arm64\n"
+            + _pull(tag=_TAG)
+        )
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG_ORPHANED in violations[0]
+
+    def test_an_expression_valued_tag_is_flagged(self, tmp_path: Path) -> None:
+        # Matching unevaluated text would let an aliased spelling pass, so the
+        # gate fails closed rather than guessing.
+        steps = _checkout() + _pull(tag="${{ inputs.local-tag }}")
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG_EXPRESSION in violations[0]
+
+    def test_a_tag_both_consumed_and_mishandled_reports_only_the_misuse(
+        self, tmp_path: Path
+    ) -> None:
+        steps = (
+            _checkout()
+            + _pull(tag=_TAG)
+            + f"      - run: docker run --rm --privileged {_TAG} --install arm64\n"
+            + _qemu(_TAG)
+        )
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG_PULLED in violations[0]
+
+    def test_tags_are_judged_independently(self, tmp_path: Path) -> None:
+        steps = (
+            _checkout()
+            + _pull(tag=_BUILDKIT_TAG)
+            + _buildx(f"image={_BUILDKIT_TAG}")
+            + _pull(tag=_TAG)
+            + _qemu(_TAG)
+        )
+        violations = _scan(tmp_path, _job(steps, minutes=15))
+        assert len(violations) == 1
+        assert _TAG in violations[0]
+        assert _BUILDKIT_TAG not in violations[0]
+
+    def test_the_composite_form_is_scanned_too(self, tmp_path: Path) -> None:
+        # Every live call site lives in a composite, so the wiring there is
+        # the one that actually has to hold.
+        steps = (
+            "    - uses: ./.github/actions/docker-pull-resilient\n"
+            "      with:\n"
+            f"        local-tag: {_TAG}\n"
+            "    - uses: docker/setup-qemu-action@abc # v4\n"
+            "      with:\n"
+            f"        image: {_TAG}\n"
+        )
+        violations = _scan(tmp_path, _composite(steps))
+        assert len(violations) == 1
+        assert _TAG_PULLED in violations[0]
+
+
+class TestDockerfileDigestPins:
+    """Every reference BuildKit resolves itself must carry a digest.
+
+    The docker.io mirror on the buildx driver is safe only while that holds:
+    a mirror serving different content then fails verification instead of
+    being trusted.
+    """
+
+    _DIGEST = "@sha256:" + "0" * 64
+
+    def _refs(self, text: str) -> list[tuple[int, str]]:
+        refs: list[tuple[int, str]] = _MODULE._dockerfile_refs(text)  # type: ignore[attr-defined]
+        return refs
+
+    def test_syntax_from_and_copy_from_are_all_collected(self) -> None:
+        text = (
+            f"# syntax=docker/dockerfile:1.25{self._DIGEST}\n"
+            f"FROM python:3.14-slim{self._DIGEST} AS builder\n"
+            f"COPY --from=ghcr.io/astral-sh/uv:0.11{self._DIGEST} /uv /bin/\n"
+        )
+        assert [ref for _, ref in self._refs(text)] == [
+            f"docker/dockerfile:1.25{self._DIGEST}",
+            f"python:3.14-slim{self._DIGEST}",
+            f"ghcr.io/astral-sh/uv:0.11{self._DIGEST}",
+        ]
+
+    def test_a_build_stage_is_not_a_registry_reference(self) -> None:
+        # `COPY --from=builder` names a stage in this file, so it can carry no
+        # digest and must not be demanded to.
+        text = (
+            f"FROM python:3.14-slim{self._DIGEST} AS builder\n"
+            "COPY --from=builder /app /app\n"
+        )
+        assert [ref for _, ref in self._refs(text)] == [
+            f"python:3.14-slim{self._DIGEST}"
+        ]
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            pytest.param("FROM ${BASE_IMAGE}\n", id="from-braced"),
+            pytest.param("FROM $BASE_IMAGE\n", id="from-bare"),
+            pytest.param("COPY --from=${STAGE} /app /app\n", id="copy-braced"),
+            pytest.param("COPY --from=$STAGE /app /app\n", id="copy-bare"),
+        ],
+    )
+    def test_a_build_arg_reference_is_exempt(self, line: str) -> None:
+        # Both spellings are legal Dockerfile syntax and neither resolves
+        # against a registry, so neither can carry a digest.
+        assert self._refs(line) == []
+
+    def test_a_numeric_copy_from_index_is_exempt(self) -> None:
+        assert self._refs("COPY --from=0 /app /app\n") == []
+
+    def test_a_platform_flag_does_not_shadow_the_reference(self) -> None:
+        text = f"FROM --platform=linux/amd64 debian:trixie{self._DIGEST}\n"
+        assert [ref for _, ref in self._refs(text)] == [f"debian:trixie{self._DIGEST}"]
+
+    def test_a_tag_only_reference_is_reported(self) -> None:
+        refs = self._refs("FROM python:3.14-slim AS builder\n")
+        assert [ref for _, ref in refs] == ["python:3.14-slim"]
+        assert _MODULE._DIGEST_MARKER not in refs[0][1]  # type: ignore[attr-defined]
+
+    def test_the_live_dockerfiles_are_all_pinned(self) -> None:
+        # The gate is no-baseline, so the tree has to pass from day one.
+        check = _MODULE._check_dockerfile_digest_pins  # type: ignore[attr-defined]
+        assert check() == []
 
 
 class TestScanFileEdgeCases:
