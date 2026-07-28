@@ -412,12 +412,16 @@ async def _persist_tokens(
 ) -> None:
     """Store the tokens through the secret backend and stamp their expiry."""
     token = exchanged.token
-    await catalog.store_oauth_tokens(
+    rotated = await catalog.store_oauth_tokens(
         conn.name,
         access_token=exchanged.access_token,
         refresh_token=token.refresh_token,
     )
-    meta_updates = dict(conn.metadata)
+    # Seed from the row the rotation just re-read, not from the snapshot
+    # taken before the exchange: the IdP round-trip sits between the two,
+    # and the update below replaces the whole mapping, so anything written
+    # to metadata in that window would be silently rolled back.
+    meta_updates = dict(rotated.metadata)
     if token.expires_at:
         meta_updates["token_expires_at"] = token.expires_at.isoformat()
     else:

@@ -54,10 +54,15 @@ _DIMS = 4
 
 
 class _RecordingCursor:
-    """Cursor that records executed statements and returns no rows."""
+    """Cursor that records executed statements and answers a fixed row."""
 
-    def __init__(self, log: list[tuple[str, object]]) -> None:
+    def __init__(
+        self,
+        log: list[tuple[str, object]],
+        row: tuple[object, ...] | None = None,
+    ) -> None:
         self._log = log
+        self._row = row
 
     async def execute(self, statement: str, params: object = None) -> _RecordingCursor:
         self._log.append((statement, params))
@@ -67,34 +72,59 @@ class _RecordingCursor:
         return []
 
     async def fetchone(self) -> object | None:
-        return None
+        return self._row
 
 
-def _recording_connection(log: list[tuple[str, object]]) -> AsyncConnection:
+def _recording_connection(
+    log: list[tuple[str, object]],
+    row: tuple[object, ...] | None = None,
+) -> AsyncConnection:
     """A connection whose statements land in *log* and open no real I/O."""
 
     async def execute(statement: str, params: object = None) -> _RecordingCursor:
-        return await _RecordingCursor(log).execute(statement, params)
+        return await _RecordingCursor(log, row).execute(statement, params)
 
     conn: AsyncConnection = mock_of[AsyncConnection](
         execute=execute,
-        cursor=lambda row_factory=None: _RecordingCursor(log),
+        cursor=lambda row_factory=None: _RecordingCursor(log, row),
         set_autocommit=_anoop,
     )
     return conn
 
 
-def _refusing_connection(exc: psycopg.Error) -> AsyncConnection:
-    """A connection whose ``CREATE EXTENSION`` raises *exc*."""
+def _raising_connection(
+    exc: psycopg.Error,
+    on_statement: str,
+    row: tuple[object, ...] | None = None,
+) -> AsyncConnection:
+    """A connection that raises *exc* for *on_statement*, else answers.
 
-    async def execute(statement: str, params: object = None) -> None:
-        if statement.startswith("CREATE EXTENSION"):
+    Every other statement returns a cursor rather than ``None``: psycopg
+    always hands one back, and a fake that does not turns any new
+    ``fetchone`` on an unrelated statement into a spurious failure here.
+
+    Returns:
+        The fake connection.
+    """
+
+    async def execute(statement: str, params: object = None) -> _RecordingCursor:
+        if statement.startswith(on_statement):
             raise exc
+        return _RecordingCursor([], row)
 
     conn: AsyncConnection = mock_of[AsyncConnection](
         execute=execute, set_autocommit=_anoop
     )
     return conn
+
+
+def _refusing_connection(exc: psycopg.Error) -> AsyncConnection:
+    """A connection whose ``CREATE EXTENSION`` raises *exc*.
+
+    Returns:
+        The fake connection.
+    """
+    return _raising_connection(exc, "CREATE EXTENSION")
 
 
 async def _anoop(*_args: object, **_kwargs: object) -> None:
@@ -178,28 +208,47 @@ class TestBuildLockContention:
         await repo.ensure_ready(_DIMS)
 
         statements = [statement for statement, _ in log]
-        deadline = statements.index(sql.SET_INDEX_BUILD_LOCK_TIMEOUT)
+        timeout_writes = [
+            i
+            for i, (statement, _) in enumerate(log)
+            if statement == sql.SET_STATEMENT_TIMEOUT
+        ]
+        armed, restored = timeout_writes
         acquired = statements.index(sql.ACQUIRE_INDEX_BUILD_LOCK)
-        cleared = statements.index(sql.CLEAR_STATEMENT_TIMEOUT)
         # ``pg_advisory_lock`` waits forever and ``lock_timeout`` does not
         # reach it, so the deadline has to be armed before the wait...
-        assert deadline < acquired < cleared
-        # ...and disarmed before the build, which is legitimately long.
-        assert cleared < next(
+        assert statements.index(sql.SHOW_STATEMENT_TIMEOUT) < armed < acquired
+        assert acquired < restored
+        # ...and lifted before the build, which is legitimately long.
+        assert restored < next(
             i for i, s in enumerate(statements) if s.startswith("CREATE INDEX")
         )
+        assert log[armed][1] == (sql.INDEX_BUILD_LOCK_WAIT,)
+
+    async def test_the_prior_statement_timeout_is_restored_not_reset(self) -> None:
+        # RESET restores the *database* default, so a pooled connection
+        # carrying a caller-set timeout would lose it for every query it
+        # served afterwards.
+        log: list[tuple[str, object]] = []
+        conn = _recording_connection(log, row=("42s",))
+        repo = PostgresMemoryVectorRepository(_pool_over(conn))
+
+        await repo.ensure_ready(_DIMS)
+
+        restored = [
+            params
+            for statement, params in log
+            if statement == sql.SET_STATEMENT_TIMEOUT
+        ][-1]
+        assert restored == ("42s",)
 
     async def test_a_held_lock_degrades_instead_of_blocking(self) -> None:
         # What Postgres raises once ``statement_timeout`` fires on a wait
         # the holder never releases in time.
         cancelled = "canceling statement due to statement timeout"
-
-        async def execute(statement: str, params: object = None) -> None:
-            if statement == sql.ACQUIRE_INDEX_BUILD_LOCK:
-                raise psycopg.errors.QueryCanceled(cancelled)
-
-        conn: AsyncConnection = mock_of[AsyncConnection](
-            execute=execute, set_autocommit=_anoop
+        conn = _raising_connection(
+            psycopg.errors.QueryCanceled(cancelled),
+            sql.ACQUIRE_INDEX_BUILD_LOCK,
         )
         repo = PostgresMemoryVectorRepository(_pool_over(conn))
 

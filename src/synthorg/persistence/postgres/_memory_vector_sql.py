@@ -180,9 +180,17 @@ RELEASE_INDEX_BUILD_LOCK: Final[LiteralString] = (
 # row locks, not the wait inside an advisory-lock function. Sixty seconds
 # clears any build short enough to be worth waiting for, and a longer one
 # self-heals on the next readiness call rather than blocking this one.
-SET_INDEX_BUILD_LOCK_TIMEOUT: Final[LiteralString] = "SET statement_timeout = 60000"
-#: Cleared before the build itself, which is legitimately long-running.
-CLEAR_STATEMENT_TIMEOUT: Final[LiteralString] = "RESET statement_timeout"
+INDEX_BUILD_LOCK_WAIT: Final[str] = "60s"
+
+# The window is bounded by restoring what the session already had, never by
+# ``RESET``: that restores the *database* default, so a pooled connection
+# carrying a caller-set timeout would silently lose it for every query it
+# served afterwards. ``set_config`` takes the value as a bind parameter,
+# which plain ``SET`` cannot.
+SHOW_STATEMENT_TIMEOUT: Final[LiteralString] = "SHOW statement_timeout"
+SET_STATEMENT_TIMEOUT: Final[LiteralString] = (
+    "SELECT set_config('statement_timeout', %s, false)"
+)
 
 # Per-transaction HNSW scan tuning for a filtered dense search (pgvector
 # 0.8+). ``iterative_scan`` keeps the index producing candidates until

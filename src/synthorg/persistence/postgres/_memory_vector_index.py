@@ -97,7 +97,12 @@ class DenseIndexLifecycleMixin:
                 condition.
             psycopg.Error: If the lock statement fails for any other reason.
         """
-        await conn.execute(sql.SET_INDEX_BUILD_LOCK_TIMEOUT)
+        cursor = await conn.execute(sql.SHOW_STATEMENT_TIMEOUT)
+        row = await cursor.fetchone()
+        # ``0`` is how Postgres spells "no timeout", so it is also the safe
+        # assumption when the probe answers nothing.
+        previous = str(row[0]) if row is not None else "0"
+        await conn.execute(sql.SET_STATEMENT_TIMEOUT, (sql.INDEX_BUILD_LOCK_WAIT,))
         try:
             await conn.execute(sql.ACQUIRE_INDEX_BUILD_LOCK, (spec.name,))
         except psycopg.errors.QueryCanceled:
@@ -114,9 +119,10 @@ class DenseIndexLifecycleMixin:
         finally:
             # The build itself is legitimately long-running, so the deadline
             # must not outlive the wait it was set for -- including on the
-            # timeout path, where the connection returns to the pool.
+            # timeout path, where this connection goes back to the pool and
+            # serves queries that never asked to be bounded.
             with contextlib.suppress(psycopg.Error):
-                await conn.execute(sql.CLEAR_STATEMENT_TIMEOUT)
+                await conn.execute(sql.SET_STATEMENT_TIMEOUT, (previous,))
 
     async def _drop_if_invalid(
         self,
