@@ -794,8 +794,8 @@
     },
     "src/synthorg/integrations/connections/catalog.py": {
       "cap": 500,
-      "loc": 471,
-      "ratio": 0.942,
+      "loc": 494,
+      "ratio": 0.988,
       "tier": "code"
     },
     "src/synthorg/integrations/connections/models.py": {
@@ -806,8 +806,8 @@
     },
     "src/synthorg/integrations/errors.py": {
       "cap": 500,
-      "loc": 414,
-      "ratio": 0.828,
+      "loc": 426,
+      "ratio": 0.852,
       "tier": "code"
     },
     "src/synthorg/integrations/feature.py": {
@@ -1679,7 +1679,7 @@
     "synthorg.hr.state": 52,
     "synthorg.hr.training.models": 23,
     "synthorg.integrations.connections.catalog": 40,
-    "synthorg.integrations.connections.models": 75,
+    "synthorg.integrations.connections.models": 76,
     "synthorg.integrations.errors": 72,
     "synthorg.integrations.state": 40,
     "synthorg.knowledge.models": 29,

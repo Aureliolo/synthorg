@@ -235,6 +235,37 @@ class TestConditionValidation:
         with pytest.raises(ValidationError, match="conditionally-visible"):
             _spec(first, second, third)
 
+    def test_a_non_credential_governed_by_a_credential_is_refused(self) -> None:
+        # An edit never re-surfaces stored credentials, so the governing
+        # field reads as blank there and the dependent one resolves to
+        # hidden. For a field that outlives the submission -- a base URL,
+        # a metadata tag -- that silently clears a stored value.
+        source = _text("auth_scheme")
+        dependent = ConnectionFieldMetadata(
+            name=NotBlankStr("base_url"),
+            label=NotBlankStr("URL"),
+            input_type=FieldInputType.URL,
+            placement=FieldPlacement.BASE_URL,
+            visible_when=FieldCondition(
+                field=NotBlankStr("auth_scheme"), values=("bearer",)
+            ),
+        )
+        with pytest.raises(ValidationError, match="never hydrated on edit"):
+            _spec(source, dependent)
+
+    def test_a_credential_governed_by_a_credential_is_allowed(self) -> None:
+        # Within the bucket the pair is answered in the same breath, which
+        # is how the shipped A2A scheme conditions work.
+        source = _text("auth_scheme")
+        dependent = _text("token").model_copy(
+            update={
+                "required_when": FieldCondition(
+                    field=NotBlankStr("auth_scheme"), values=("bearer",)
+                )
+            }
+        )
+        _spec(source, dependent)
+
 
 class TestShippedConditions:
     """The three live rules, checked against the real registry."""

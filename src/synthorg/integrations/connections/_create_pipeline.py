@@ -21,6 +21,7 @@ from synthorg.integrations.connections.models import (
     ConnectionType,
     SecretRef,
 )
+from synthorg.integrations.connections.protocol import AUTH_METHOD_VIEW_KEY
 from synthorg.integrations.connections.types import get_authenticator
 from synthorg.integrations.errors import InvalidConnectionAuthError
 from synthorg.observability import get_logger, safe_error_description
@@ -49,21 +50,24 @@ class ConnectionCreateMixin:
         connection_type: ConnectionType,
         credentials: dict[str, str],
         base_url: str | None = None,
+        auth_method: str | None = None,
     ) -> None:
         """Validate credentials via the type's authenticator before persist.
 
-        ``base_url`` is a top-level column, not a credential, but an
-        authenticator that requires one has to see it: callers reach this
-        through the REST create schema, which carries the two separately.
-        Merging it into the validation view (never into the stored secret)
-        keeps the authenticator the single boundary without asking every
-        caller to duplicate the value.
+        ``base_url`` and ``auth_method`` are top-level columns, not
+        credentials, but an authenticator that requires one has to see it:
+        callers reach this through the REST create schema, which carries
+        them separately. Merging them into the validation view (never into
+        the stored secret) keeps the authenticator the single boundary
+        without asking every caller to duplicate the values.
 
         Args:
             name: Connection name (for error attribution).
             connection_type: Service type whose authenticator validates.
             credentials: Plaintext credentials to validate.
             base_url: The connection's resolved base URL, when it has one.
+            auth_method: The declared auth method, so an authenticator can
+                hold the supplied material to the shape it promises.
 
         Raises:
             InvalidConnectionAuthError: If the type's authenticator
@@ -73,6 +77,8 @@ class ConnectionCreateMixin:
         view = dict(credentials)
         if base_url and "base_url" not in view:
             view["base_url"] = base_url
+        if auth_method and AUTH_METHOD_VIEW_KEY not in view:
+            view[AUTH_METHOD_VIEW_KEY] = auth_method
         try:
             authenticator.validate_credentials(view)
         except InvalidConnectionAuthError:

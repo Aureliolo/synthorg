@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -27,9 +28,33 @@ pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCRIPT = _REPO_ROOT / "scripts" / "git-hooks" / "_run-hook.sh"
-# Generous: the probe runs once per PATH entry at collection, and a WSL shim
-# on a cold distro can take a moment to answer before failing.
+# Generous: a WSL shim on a cold distro can take a moment to answer before
+# failing, and the probe runs at most twice at collection.
 _PROBE_TIMEOUT_SECONDS = 20
+
+
+def _bash_candidates() -> Iterator[str]:
+    """Yield each ``bash`` worth probing, most likely first.
+
+    Both come from :func:`shutil.which`, which reads the environment
+    internally. Walking ``os.environ["PATH"]`` by hand instead would make
+    the resolved interpreter attacker-controlled as far as static analysis
+    is concerned, and every ``subprocess`` call below a command-injection
+    sink, for no gain over asking ``which`` twice.
+
+    Yields:
+        Absolute interpreter paths.
+    """
+    first = shutil.which("bash")
+    if first is not None:
+        yield str(Path(first).resolve())
+    git = shutil.which("git")
+    if git is not None:
+        # Git Bash ships beside git, which is where the usable interpreter
+        # lives on Windows once the bare name above resolves to WSL's shim.
+        sibling = Path(git).resolve().parent.parent / "bin" / "bash.exe"
+        if sibling.is_file():
+            yield str(sibling)
 
 
 def _native_bash() -> str | None:
@@ -46,21 +71,25 @@ def _native_bash() -> str | None:
     over this module that look like wrapper bugs.
 
     Returns:
-        The interpreter path, or ``None`` when none on PATH qualifies.
+        The interpreter path, or ``None`` when no candidate qualifies.
     """
-    for entry in os.environ.get("PATH", "").split(os.pathsep):
-        if not entry:
+    for candidate in _bash_candidates():
+        try:
+            probe = subprocess.run(  # noqa: S603
+                # The path travels as ``$1``, never interpolated into the
+                # script text: a checkout under a directory whose name
+                # contains ``$(...)`` or a backtick would otherwise be
+                # expanded by the shell being probed.
+                [candidate, "-c", 'test -f "$1"', "bash", str(_SCRIPT)],
+                check=False,
+                capture_output=True,
+                timeout=_PROBE_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            # This runs at import. A hung candidate that propagated would
+            # abort collection of the whole module rather than fall
+            # through to the interpreter that does answer.
             continue
-        found = shutil.which("bash", path=entry)
-        if found is None:
-            continue
-        candidate = str(Path(found).resolve())
-        probe = subprocess.run(  # noqa: S603
-            [candidate, "-c", f'test -f "{_SCRIPT}"'],
-            check=False,
-            capture_output=True,
-            timeout=_PROBE_TIMEOUT_SECONDS,
-        )
         if probe.returncode == 0:
             return candidate
     return None

@@ -16,7 +16,10 @@ from synthorg.integrations.connections.http_vendor import (
     resolve_vendor,
 )
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
-from synthorg.integrations.errors import InvalidConnectionAuthError
+from synthorg.integrations.errors import (
+    InvalidConnectionAuthError,
+    InvalidConnectionEndpointError,
+)
 from synthorg.observability.events.integrations import (
     HTTP_VENDOR_METADATA_UNRECOGNISED,
 )
@@ -211,3 +214,47 @@ class TestUpdateWithAVendor:
         updated = await catalog.update("custom-api", base_url=None, sensitive=True)
 
         assert updated.base_url == "https://api.example.test"
+
+    async def test_switching_to_custom_without_a_url_is_refused(self) -> None:
+        # Falling back to the stored endpoint here would persist a
+        # connection labelled 'custom' and still pointed at Brave: the
+        # metadata change lands, the unchanged base_url is dropped as a
+        # no-op, and no later read can tell the two apart.
+        catalog, name = await self._brave()
+
+        with pytest.raises(InvalidConnectionEndpointError, match="requires a base_url"):
+            await catalog.update(
+                name,
+                base_url=None,
+                metadata={METADATA_KEY_VENDOR: HttpVendor.CUSTOM.value},
+            )
+
+        unchanged = await catalog.get_or_raise(name)
+        assert unchanged.base_url == HTTP_VENDOR_PRESETS[HttpVendor.BRAVE].base_url
+        assert unchanged.metadata[METADATA_KEY_VENDOR] == HttpVendor.BRAVE.value
+
+    async def test_switching_to_custom_with_a_url_is_accepted(self) -> None:
+        catalog, name = await self._brave()
+
+        updated = await catalog.update(
+            name,
+            base_url="https://self-hosted.example.test",
+            metadata={METADATA_KEY_VENDOR: HttpVendor.CUSTOM.value},
+        )
+
+        assert updated.base_url == "https://self-hosted.example.test"
+
+    async def test_switching_vendor_repoints_even_when_base_url_is_omitted(
+        self,
+    ) -> None:
+        # A client that omits the key rather than nulling it must not leave
+        # the previous vendor's endpoint in place either: the endpoint is
+        # derived from the vendor, so a vendor change always re-derives it.
+        catalog, name = await self._brave()
+
+        updated = await catalog.update(
+            name,
+            metadata={METADATA_KEY_VENDOR: HttpVendor.EXA.value},
+        )
+
+        assert updated.base_url == HTTP_VENDOR_PRESETS[HttpVendor.EXA].base_url

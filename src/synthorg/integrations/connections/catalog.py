@@ -25,6 +25,7 @@ from synthorg.integrations.connections._credential_resolver import (
     CredentialResolverMixin,
 )
 from synthorg.integrations.connections._oauth_rotation import OAuthRotationMixin
+from synthorg.integrations.connections.http_vendor import resolve_vendor
 from synthorg.integrations.connections.models import (
     Connection,
     ConnectionHealth,
@@ -35,6 +36,7 @@ from synthorg.integrations.connections.repo_scope import validate_repo_scope_ent
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     DuplicateConnectionError,
+    InvalidConnectionEndpointError,
     InvalidRepoScopeError,
 )
 from synthorg.observability import get_logger, safe_error_description
@@ -186,6 +188,7 @@ class ConnectionCatalog(
                 connection_type,
                 credentials,
                 resolved_base_url,
+                auth_method,
             )
             secret_id = str(uuid4())
             connection = self._build_connection(
@@ -380,27 +383,53 @@ class ConnectionCatalog(
         existing: Connection,
         candidate: dict[str, object],
     ) -> None:
-        """Keep a generic-HTTP endpoint resolvable across a PATCH.
+        """Keep a generic-HTTP endpoint honest across a PATCH.
 
         A vendor preset hides the base-URL field, so the form submits an
         explicit null for it on every save. Taken literally that clears the
         endpoint of a working connection and leaves no way to restore it,
         since the field stays hidden. The endpoint is mandatory for this
         type, so a null is never a meaningful value: re-derive it from the
-        declared vendor, and fall back to the stored one when the operator
-        supplied a custom endpoint the preset cannot supply.
+        vendor the update actually declares.
+
+        The stored endpoint is only a safe fallback while the vendor is
+        unchanged. Carrying it across a vendor switch would persist a
+        connection labelled for one service and pointed at another, which
+        no later read can detect, so a switch onto a vendor with no
+        endpoint of its own is refused instead.
+
+        Raises:
+            InvalidConnectionEndpointError: If the update moves the
+                connection onto a vendor that supplies no endpoint and
+                names no replacement.
         """
         if existing.connection_type is not ConnectionType.GENERIC_HTTP:
             return
-        if "base_url" not in candidate or candidate["base_url"]:
+        if candidate.get("base_url"):
             return
-        metadata = candidate.get("metadata", existing.metadata)
-        resolved = self._resolve_base_url(
-            existing.connection_type,
-            None,
-            metadata if isinstance(metadata, dict) else None,
+        declared = candidate.get("metadata", existing.metadata)
+        metadata = declared if isinstance(declared, dict) else None
+        vendor_changed = resolve_vendor(metadata or {}) != resolve_vendor(
+            existing.metadata
         )
-        candidate["base_url"] = NotBlankStr(resolved) if resolved else existing.base_url
+        # An absent key with an unchanged vendor is simply a PATCH that does
+        # not concern the endpoint. An absent key across a vendor switch is
+        # not: leaving it alone would strand the previous vendor's URL just
+        # as surely as honouring a null would.
+        if "base_url" not in candidate and not vendor_changed:
+            return
+        resolved = self._resolve_base_url(existing.connection_type, None, metadata)
+        if resolved:
+            candidate["base_url"] = NotBlankStr(resolved)
+            return
+        if vendor_changed:
+            msg = (
+                "Changing vendor requires a base_url: the new vendor supplies "
+                "no endpoint of its own and the previous vendor's endpoint "
+                "does not carry over"
+            )
+            raise InvalidConnectionEndpointError(msg)
+        candidate["base_url"] = existing.base_url
 
     async def update(
         self,

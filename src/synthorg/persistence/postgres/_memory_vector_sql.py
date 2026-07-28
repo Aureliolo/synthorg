@@ -173,6 +173,17 @@ RELEASE_INDEX_BUILD_LOCK: Final[LiteralString] = (
     "SELECT pg_advisory_unlock(hashtext(%s))"
 )
 
+# ``pg_advisory_lock`` waits forever, and readiness runs during boot while
+# holding the repository's own lock, so a sibling mid-build on an
+# established corpus would hang startup rather than degrade it. The bound
+# has to come from ``statement_timeout``: ``lock_timeout`` covers table and
+# row locks, not the wait inside an advisory-lock function. Sixty seconds
+# clears any build short enough to be worth waiting for, and a longer one
+# self-heals on the next readiness call rather than blocking this one.
+SET_INDEX_BUILD_LOCK_TIMEOUT: Final[LiteralString] = "SET statement_timeout = 60000"
+#: Cleared before the build itself, which is legitimately long-running.
+CLEAR_STATEMENT_TIMEOUT: Final[LiteralString] = "RESET statement_timeout"
+
 # Per-transaction HNSW scan tuning for a filtered dense search (pgvector
 # 0.8+). ``iterative_scan`` keeps the index producing candidates until
 # the filtered LIMIT is satisfied instead of stopping at the first

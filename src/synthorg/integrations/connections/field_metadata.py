@@ -280,6 +280,22 @@ class ConnectionTypeMetadata(BaseModel):
                 f"{condition.field!r} {where}"
             )
             raise ValueError(msg)
+        # An edit never re-surfaces stored credentials, so on that form the
+        # whole credential bucket reads as blank. A condition sourced there
+        # is therefore only answerable while its dependent is answered in
+        # the same breath -- true within the bucket, false for a field that
+        # outlives the submission. Allowing the cross-bucket case would make
+        # an edit silently clear a stored value whose governing field it
+        # cannot see.
+        if (
+            source.placement is FieldPlacement.CREDENTIAL
+            and field.placement is not FieldPlacement.CREDENTIAL
+        ):
+            msg = (
+                f"{field.name!r} {kind} depends on credential-placed field "
+                f"{condition.field!r}, which is never hydrated on edit {where}"
+            )
+            raise ValueError(msg)
         # An unmatchable value is the same dead branch as an unknown field,
         # just spelled differently, and only the registry can catch it. The
         # empty string is exempt: it is how an unanswered select reads, which

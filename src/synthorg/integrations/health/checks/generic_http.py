@@ -159,14 +159,16 @@ class GenericHttpHealthCheck:
         )
         return reason
 
-    async def check(self, connection: Connection) -> HealthReport:
-        """Execute a HEAD (or GET fallback) against ``base_url``.
+    async def _preflight(
+        self,
+        connection: Connection,
+    ) -> DnsValidationOk | HealthReport:
+        """Clear the endpoint for probing, or report why it cannot be.
 
         Returns:
-            A ``HealthReport``: ``HEALTHY`` for an HTTP status < 400,
-            ``UNHEALTHY`` for status >= 400, a network error, or an
-            SSRF policy rejection, and ``UNKNOWN`` when no ``base_url``
-            is configured.
+            The validated host on success; a finished ``HealthReport`` when
+            the connection carries no endpoint or its endpoint fails the
+            SSRF pre-flight.
         """
         if not connection.base_url:
             return HealthReport(
@@ -179,21 +181,35 @@ class GenericHttpHealthCheck:
             connection.base_url,
             self._network_policy,
         )
-        if not isinstance(validation, DnsValidationOk):
-            logger.warning(
-                HEALTH_CHECK_FAILED,
-                connection_name=connection.name,
-                reason="ssrf_policy_rejected_base_url",
-            )
-            # Prefix the consumer-facing detail so dashboards can
-            # distinguish a security rejection from a generic network
-            # failure (both currently surface as UNHEALTHY).
-            return HealthReport(
-                connection_name=connection.name,
-                status=ConnectionStatus.UNHEALTHY,
-                error_detail=f"ssrf_policy_rejected: {validation}",
-                checked_at=datetime.now(UTC),
-            )
+        if isinstance(validation, DnsValidationOk):
+            return validation
+        logger.warning(
+            HEALTH_CHECK_FAILED,
+            connection_name=connection.name,
+            reason="ssrf_policy_rejected_base_url",
+        )
+        # Prefix the consumer-facing detail so dashboards can distinguish a
+        # security rejection from a generic network failure (both currently
+        # surface as UNHEALTHY).
+        return HealthReport(
+            connection_name=connection.name,
+            status=ConnectionStatus.UNHEALTHY,
+            error_detail=f"ssrf_policy_rejected: {validation}",
+            checked_at=datetime.now(UTC),
+        )
+
+    async def check(self, connection: Connection) -> HealthReport:
+        """Execute a HEAD (or GET fallback) against ``base_url``.
+
+        Returns:
+            A ``HealthReport``: ``HEALTHY`` for an HTTP status < 400,
+            ``UNHEALTHY`` for status >= 400, a network error, or an
+            SSRF policy rejection, and ``UNKNOWN`` when no ``base_url``
+            is configured.
+        """
+        validation = await self._preflight(connection)
+        if isinstance(validation, HealthReport):
+            return validation
         headers, failure = await self._auth_headers(connection)
         if headers is None:
             return HealthReport(
@@ -246,40 +262,7 @@ class GenericHttpHealthCheck:
                     if resp.status_code in (_METHOD_NOT_ALLOWED, _NOT_IMPLEMENTED):
                         resp = await client.get(url, headers=headers)
             elapsed = (self._clock.monotonic() - start) * 1000
-            if resp.status_code < _ERROR_THRESHOLD:
-                logger.info(
-                    HEALTH_CHECK_PASSED,
-                    connection_name=connection.name,
-                    latency_ms=elapsed,
-                )
-                return HealthReport(
-                    connection_name=connection.name,
-                    status=ConnectionStatus.HEALTHY,
-                    latency_ms=elapsed,
-                    checked_at=datetime.now(UTC),
-                )
-            # A rate limit says nothing about whether the credential is
-            # valid, so it is reported as its own cause rather than folded
-            # into the generic failure detail an operator would read as one.
-            retry_after = resp.headers.get("Retry-After") or ""
-            rate_limited = resp.status_code == _TOO_MANY_REQUESTS
-            logger.warning(
-                HEALTH_CHECK_FAILED,
-                connection_name=connection.name,
-                status_code=resp.status_code,
-                reason="rate_limited" if rate_limited else "http_error",
-                retry_after=retry_after,
-            )
-            detail = f"HTTP {resp.status_code}"
-            if rate_limited and retry_after:
-                detail = f"{detail} (retry after {retry_after})"
-            return HealthReport(
-                connection_name=connection.name,
-                status=ConnectionStatus.UNHEALTHY,
-                latency_ms=elapsed,
-                error_detail=detail,
-                checked_at=datetime.now(UTC),
-            )
+            return _report_response(connection, resp, elapsed)
         except TimeoutError:
             elapsed = (self._clock.monotonic() - start) * 1000
             logger.warning(
@@ -311,3 +294,50 @@ class GenericHttpHealthCheck:
                 error_detail=scrubbed,
                 checked_at=datetime.now(UTC),
             )
+
+
+def _report_response(
+    connection: Connection,
+    resp: httpx.Response,
+    elapsed: float,
+) -> HealthReport:
+    """Turn a probe response into a health verdict.
+
+    Returns:
+        ``HEALTHY`` below the error threshold, else ``UNHEALTHY`` carrying
+        the status and, for a rate limit, its retry hint.
+    """
+    if resp.status_code < _ERROR_THRESHOLD:
+        logger.info(
+            HEALTH_CHECK_PASSED,
+            connection_name=connection.name,
+            latency_ms=elapsed,
+        )
+        return HealthReport(
+            connection_name=connection.name,
+            status=ConnectionStatus.HEALTHY,
+            latency_ms=elapsed,
+            checked_at=datetime.now(UTC),
+        )
+    # A rate limit says nothing about whether the credential is valid, so it
+    # is reported as its own cause rather than folded into the generic
+    # failure detail an operator would read as one.
+    retry_after = resp.headers.get("Retry-After") or ""
+    rate_limited = resp.status_code == _TOO_MANY_REQUESTS
+    logger.warning(
+        HEALTH_CHECK_FAILED,
+        connection_name=connection.name,
+        status_code=resp.status_code,
+        reason="rate_limited" if rate_limited else "http_error",
+        retry_after=retry_after,
+    )
+    detail = f"HTTP {resp.status_code}"
+    if rate_limited and retry_after:
+        detail = f"{detail} (retry after {retry_after})"
+    return HealthReport(
+        connection_name=connection.name,
+        status=ConnectionStatus.UNHEALTHY,
+        latency_ms=elapsed,
+        error_detail=detail,
+        checked_at=datetime.now(UTC),
+    )

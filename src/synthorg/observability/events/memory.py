@@ -111,6 +111,16 @@ loudly and surfaced as DEGRADED, since the cost grows with the corpus and
 nothing else about the system looks wrong.
 """
 
+MEMORY_DENSE_INDEX_BUILD_CONTENDED: Final[str] = "memory.dense_index.build_contended"
+"""Emitted at WARNING when the build lock was still held at the deadline.
+
+A sibling process is building the same width, which on an established
+corpus can outlast any wait worth blocking a boot for. Distinct from
+:data:`MEMORY_DENSE_INDEX_UNAVAILABLE`, which describes a state nothing
+will fix on its own: this one resolves itself when the other builder
+finishes, and the next readiness call picks the column up.
+"""
+
 MEMORY_DENSE_INDEX_PERMISSION_DENIED: Final[str] = (
     "memory.dense_index.permission_denied"
 )

@@ -21,6 +21,7 @@ import synthorg.persistence.postgres._memory_vector_sql as sql
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_DENSE_COLUMN_STALE,
+    MEMORY_DENSE_INDEX_BUILD_CONTENDED,
     MEMORY_DENSE_INDEX_INVALID,
     MEMORY_DENSE_INDEX_PERMISSION_DENIED,
     MEMORY_DENSE_INDEX_SCAN_FAILED,
@@ -65,7 +66,7 @@ class DenseIndexLifecycleMixin:
             # between two simultaneous builds, and a crash mid-build can
             # leave an INVALID index. A session advisory lock keyed on the
             # column lets at most one process build a given width at a time.
-            await conn.execute(sql.ACQUIRE_INDEX_BUILD_LOCK, (spec.name,))
+            await self._acquire_build_lock(conn, spec)
             try:
                 await self._ensure_extension(conn)
                 await conn.execute(sql.add_vector_column(spec))
@@ -82,6 +83,40 @@ class DenseIndexLifecycleMixin:
         finally:
             with contextlib.suppress(psycopg.Error):
                 await conn.set_autocommit(original_autocommit)
+
+    async def _acquire_build_lock(
+        self,
+        conn: _PoolConnection,
+        spec: sql.DenseColumnSpec,
+    ) -> None:
+        """Take the build lock, bounded so a sibling build cannot hang boot.
+
+        Raises:
+            psycopg.errors.QueryCanceled: If the lock was still held at the
+                deadline, after reporting the contention as its own
+                condition.
+            psycopg.Error: If the lock statement fails for any other reason.
+        """
+        await conn.execute(sql.SET_INDEX_BUILD_LOCK_TIMEOUT)
+        try:
+            await conn.execute(sql.ACQUIRE_INDEX_BUILD_LOCK, (spec.name,))
+        except psycopg.errors.QueryCanceled:
+            logger.warning(
+                MEMORY_DENSE_INDEX_BUILD_CONTENDED,
+                dimensions=self._dimensions,
+                index=sql.index_name(spec),
+                note=(
+                    "another process is building this width; recall stays "
+                    "lexical until it finishes and readiness is retried"
+                ),
+            )
+            raise
+        finally:
+            # The build itself is legitimately long-running, so the deadline
+            # must not outlive the wait it was set for -- including on the
+            # timeout path, where the connection returns to the pool.
+            with contextlib.suppress(psycopg.Error):
+                await conn.execute(sql.CLEAR_STATEMENT_TIMEOUT)
 
     async def _drop_if_invalid(
         self,

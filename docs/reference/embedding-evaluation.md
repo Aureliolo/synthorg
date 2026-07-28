@@ -157,7 +157,7 @@ with a half-precision `halfvec`, so the Postgres backend picks the element type
 from the configured width: `vector` at or below 2000, `halfvec` up to 4000. Above
 4000 no approximate index can be built at all; the dense column is still created
 and dense search still runs, as an exact scan over the corpus, reported at ERROR
-with `memory.dense_index.unavailable`. Recall stays semantic either way, but a
+with `memory.dense_index.unindexable`. Recall stays semantic either way, but a
 width above the ceiling reads every row per query: pin `memory.embedder_dims` at
 or below 2000 on an MRL-capable model, or choose a narrower embedder.
 

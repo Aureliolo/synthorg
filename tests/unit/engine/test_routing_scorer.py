@@ -503,7 +503,17 @@ class TestRoutingScorerConfigInjection:
             "expected exactly one TASK_ROUTING_SCORER_INVALID_CONFIG warning, "
             f"got {len(warns)} (logs={logs})"
         )
+        # Assert the whole payload against the documented envelope rather
+        # than ``weight_sum`` alone: the operator reads the ceilings to
+        # know how far out of band the configuration is, and a warning
+        # that dropped them would still pass a sum-only assertion.
         assert warns[0]["weight_sum"] == pytest.approx(1.6)
+        assert warns[0]["documented_max"] == pytest.approx(0.9)
+        assert warns[0]["warn_ceiling"] == pytest.approx(1.1)
+        assert warns[0]["reason"] == "routing weights exceed the documented maximum"
+        # ``error=`` is reserved for redacted exception text; a
+        # hand-written description must never travel under it.
+        assert "error" not in warns[0]
 
     @pytest.mark.unit
     def test_weight_sum_validator_warns_in_envelope_to_ceiling_band(self) -> None:

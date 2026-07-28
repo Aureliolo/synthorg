@@ -4,12 +4,18 @@ Provides the ``handle_oauth_callback`` function used by the
 OAuth API controller to process authorization code callbacks.
 """
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, NamedTuple, NoReturn
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.models import (
+    Connection,
+    OAuthState,
+    OAuthToken,
+)
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     InvalidStateError,
@@ -184,19 +190,72 @@ async def handle_oauth_callback(
         )
         raise
     credentials = await catalog.get_credentials(conn.name)
+    exchange = _exchange_credentials(conn, credentials)
+    auth_flow = await _resolve_flow(flow, config_resolver)
+    exchanged = await _exchange_code(
+        auth_flow,
+        conn=conn,
+        exchange=exchange,
+        oauth_state=oauth_state,
+        code=code,
+    )
+    await _verify_oidc_binding(
+        exchanged.token,
+        conn=conn,
+        credentials=credentials,
+        oauth_state=oauth_state,
+        client_id=exchange.client_id,
+    )
+    await _persist_tokens(catalog, conn, exchanged)
+    await _consume_state(
+        state_service,
+        state_param=state_param,
+        conn=conn,
+        clock=effective_clock,
+    )
+    return conn.name
 
-    token_url = credentials.get("token_url", "")
-    client_id = credentials.get("client_id", "")
-    client_secret = credentials.get("client_secret", "")
-    missing = [
-        label
-        for label, value in (
-            ("token_url", token_url),
-            ("client_id", client_id),
-            ("client_secret", client_secret),
-        )
-        if not value
-    ]
+
+class _ExchangeCredentials(NamedTuple):
+    """The three fields the token exchange signs with."""
+
+    token_url: str
+    client_id: str
+    client_secret: str
+
+
+class _ExchangedTokens(NamedTuple):
+    """An exchange result whose access token is known to be present.
+
+    The presence check belongs with the exchange that can fail it, but the
+    guarantee has to survive the hand-off to the persist step, which takes
+    a required string. Carrying the narrowed value alongside the token is
+    what lets both hold without either restating the other's check.
+    """
+
+    token: OAuthToken
+    access_token: str
+
+
+def _exchange_credentials(
+    conn: Connection,
+    credentials: Mapping[str, str],
+) -> _ExchangeCredentials:
+    """Read the exchange credentials off the connection.
+
+    Returns:
+        The three fields, all non-empty.
+
+    Raises:
+        TokenExchangeFailedError: If any of them is missing, naming every
+            one that is so a single round trip fixes the connection.
+    """
+    resolved = _ExchangeCredentials(
+        token_url=credentials.get("token_url", ""),
+        client_id=credentials.get("client_id", ""),
+        client_secret=credentials.get("client_secret", ""),
+    )
+    missing = [name for name, value in resolved._asdict().items() if not value]
     if missing:
         logger.warning(
             OAUTH_FLOW_FAILED,
@@ -208,32 +267,58 @@ async def handle_oauth_callback(
             f"credentials: {', '.join(missing)}"
         )
         raise TokenExchangeFailedError(msg)
+    return resolved
 
+
+async def _resolve_flow(
+    flow: AuthorizationCodeFlow | None,
+    config_resolver: ConfigResolver | None,
+) -> AuthorizationCodeFlow:
+    """Return the injected flow, or one built with the operator's timeout.
+
+    Returns:
+        The flow to exchange the code through.
+    """
     if flow is not None:
-        auth_flow = flow
-    else:
-        timeout = await resolve_oauth_http_timeout(config_resolver)
-        if timeout is not None:
-            auth_flow = AuthorizationCodeFlow(http_timeout_seconds=timeout)
-        else:
-            auth_flow = AuthorizationCodeFlow()
+        return flow
+    timeout = await resolve_oauth_http_timeout(config_resolver)
+    if timeout is None:
+        return AuthorizationCodeFlow()
+    return AuthorizationCodeFlow(http_timeout_seconds=timeout)
+
+
+async def _exchange_code(
+    auth_flow: AuthorizationCodeFlow,
+    *,
+    conn: Connection,
+    exchange: _ExchangeCredentials,
+    oauth_state: OAuthState,
+    code: str,
+) -> _ExchangedTokens:
+    """Trade the authorization code for tokens.
+
+    Returns:
+        The token response alongside its access token, which this is what
+        guarantees is present.
+
+    Raises:
+        TokenExchangeFailedError: If the exchange fails, or succeeds
+            without returning an access token.
+    """
     try:
         token = await auth_flow.exchange_code(
-            token_url=token_url,
-            client_id=client_id,
-            client_secret=client_secret,
+            token_url=exchange.token_url,
+            client_id=exchange.client_id,
+            client_secret=exchange.client_secret,
             state=oauth_state,
             code=code,
             redirect_uri=oauth_state.redirect_uri,
         )
     except TokenExchangeFailedError:
-        logger.warning(
-            OAUTH_FLOW_FAILED,
-            connection_name=conn.name,
-        )
+        logger.warning(OAUTH_FLOW_FAILED, connection_name=conn.name)
         raise
-
-    if not token.access_token:
+    access_token = token.access_token
+    if not access_token:
         logger.warning(
             OAUTH_FLOW_FAILED,
             connection_name=conn.name,
@@ -241,106 +326,132 @@ async def handle_oauth_callback(
         )
         msg = "OAuth flow returned no access_token"
         raise TokenExchangeFailedError(msg)
+    return _ExchangedTokens(token=token, access_token=access_token)
 
-    # OIDC ID-token nonce binding (fail-closed matrix). A connection
-    # is "OIDC" iff it carries a ``jwks_uri``. Any asymmetry between
-    # "configured for OIDC" and "id_token returned" is rejected so a
-    # downgrade (IdP silently dropping the id_token) cannot disable
-    # the binding, and an unverifiable id_token cannot slip through.
+
+async def _verify_oidc_binding(
+    token: OAuthToken,
+    *,
+    conn: Connection,
+    credentials: Mapping[str, str],
+    oauth_state: OAuthState,
+    client_id: str,
+) -> None:
+    """Enforce the fail-closed OIDC matrix on the exchange result.
+
+    A connection is "OIDC" iff it carries a ``jwks_uri``. Any asymmetry
+    between "configured for OIDC" and "id_token returned" is rejected so a
+    downgrade (IdP silently dropping the id_token) cannot disable the
+    binding, and an unverifiable id_token cannot slip through.
+
+    Raises:
+        OIDCVerificationError: On any asymmetry, on a configured
+            connection missing its issuer or state nonce, or when the
+            id_token itself fails verification.
+    """
     jwks_uri = credentials.get("jwks_uri", "")
-    oidc_issuer = credentials.get("oidc_issuer", "")
     if jwks_uri and not token.id_token:
-        logger.warning(
-            OAUTH_FLOW_FAILED,
-            connection_name=conn.name,
-            reason="oidc_id_token_missing",
+        _reject_oidc(
+            conn,
+            "oidc_id_token_missing",
+            ("Connection is OIDC-configured but the provider returned no id_token"),
         )
-        msg = "Connection is OIDC-configured but the provider returned no id_token"
-        raise OIDCVerificationError(msg)
     if token.id_token and not jwks_uri:
+        _reject_oidc(
+            conn,
+            "oidc_jwks_uri_missing",
+            ("Provider returned an id_token but connection has no jwks_uri"),
+        )
+    if not (token.id_token and jwks_uri):
+        return
+    oidc_issuer = credentials.get("oidc_issuer", "")
+    if not oidc_issuer:
+        _reject_oidc(
+            conn,
+            "oidc_issuer_missing",
+            ("OIDC connection (jwks_uri set) is missing oidc_issuer"),
+        )
+    if oauth_state.nonce is None:
+        _reject_oidc(
+            conn,
+            "oidc_state_nonce_missing",
+            ("OAuth state carries no nonce; cannot bind the id_token"),
+        )
+    try:
+        await verify_id_token(
+            token.id_token,
+            jwks_uri=jwks_uri,
+            issuer=oidc_issuer,
+            client_id=client_id,
+            expected_nonce=str(oauth_state.nonce),
+        )
+    except OIDCVerificationError:
         logger.warning(
             OAUTH_FLOW_FAILED,
             connection_name=conn.name,
-            reason="oidc_jwks_uri_missing",
+            reason="oidc_id_token_verification_failed",
         )
-        msg = "Provider returned an id_token but connection has no jwks_uri"
-        raise OIDCVerificationError(msg)
-    if token.id_token and jwks_uri:
-        if not oidc_issuer:
-            logger.warning(
-                OAUTH_FLOW_FAILED,
-                connection_name=conn.name,
-                reason="oidc_issuer_missing",
-            )
-            msg = "OIDC connection (jwks_uri set) is missing oidc_issuer"
-            raise OIDCVerificationError(msg)
-        if oauth_state.nonce is None:
-            logger.warning(
-                OAUTH_FLOW_FAILED,
-                connection_name=conn.name,
-                reason="oidc_state_nonce_missing",
-            )
-            msg = "OAuth state carries no nonce; cannot bind the id_token"
-            raise OIDCVerificationError(msg)
-        try:
-            await verify_id_token(
-                token.id_token,
-                jwks_uri=jwks_uri,
-                issuer=oidc_issuer,
-                client_id=client_id,
-                expected_nonce=str(oauth_state.nonce),
-            )
-        except OIDCVerificationError:
-            logger.warning(
-                OAUTH_FLOW_FAILED,
-                connection_name=conn.name,
-                reason="oidc_id_token_verification_failed",
-            )
-            raise
+        raise
 
-    # Persist access/refresh tokens via the secret backend.
+
+def _reject_oidc(conn: Connection, reason: str, msg: str) -> NoReturn:
+    """Report and raise one OIDC-matrix rejection.
+
+    Raises:
+        OIDCVerificationError: Always; the caller has already decided the
+            binding cannot be established.
+    """
+    logger.warning(OAUTH_FLOW_FAILED, connection_name=conn.name, reason=reason)
+    raise OIDCVerificationError(msg)
+
+
+async def _persist_tokens(
+    catalog: ConnectionCatalog,
+    conn: Connection,
+    exchanged: _ExchangedTokens,
+) -> None:
+    """Store the tokens through the secret backend and stamp their expiry."""
+    token = exchanged.token
     await catalog.store_oauth_tokens(
         conn.name,
-        access_token=token.access_token,
+        access_token=exchanged.access_token,
         refresh_token=token.refresh_token,
     )
-
-    # Update connection metadata with token expiry.
     meta_updates = dict(conn.metadata)
     if token.expires_at:
         meta_updates["token_expires_at"] = token.expires_at.isoformat()
     else:
-        # New token has no expiry (non-expiring grant). Drop any
-        # stale ``token_expires_at`` carried over from a prior flow
-        # so we do not incorrectly mark the token as expired later.
+        # A non-expiring grant must also clear any stale stamp carried over
+        # from a prior flow, or the token reads as long expired.
         meta_updates.pop("token_expires_at", None)
     await catalog.update(conn.name, metadata=meta_updates)
 
-    # Mark the state token as consumed AFTER tokens are stored. A
-    # redelivered callback will see ``consumed_at`` and return the
-    # original ``connection_name`` via the replay branch above
-    # without re-exchanging the (single-use) authorization code.
-    # ``mark_consumed`` is the compare-and-set boundary: returns
-    # ``True`` on the winning write, ``False`` if a concurrent
-    # callback won the race and already stamped the row. The False
-    # case is rare (the replay branch above catches it for
-    # *redelivered* callbacks) but possible under genuinely
-    # concurrent in-flight callbacks; surface it as a WARNING so
-    # operators can observe the collision.
-    consumed_winner = await state_service.mark_consumed(
+
+async def _consume_state(
+    state_service: OAuthStateService,
+    *,
+    state_param: str,
+    conn: Connection,
+    clock: Clock,
+) -> None:
+    """Stamp the state consumed, AFTER the tokens are safely stored.
+
+    A redelivered callback then sees ``consumed_at`` and returns the
+    original connection name through the replay branch rather than
+    re-exchanging the single-use authorization code. ``mark_consumed`` is
+    the compare-and-set boundary: ``False`` means a concurrent callback
+    already stamped the row, which the replay branch cannot catch for
+    genuinely simultaneous flights, so it is surfaced rather than ignored.
+    """
+    if await state_service.mark_consumed(
         NotBlankStr(state_param),
         connection_name=NotBlankStr(conn.name),
-        consumed_at=effective_clock.now(),
+        consumed_at=clock.now(),
+    ):
+        logger.info(OAUTH_FLOW_COMPLETED, connection_name=conn.name)
+        return
+    logger.warning(
+        OAUTH_FLOW_COMPLETED,
+        connection_name=conn.name,
+        note="mark_consumed CAS lost; concurrent callback already stamped state",
     )
-    if not consumed_winner:
-        logger.warning(
-            OAUTH_FLOW_COMPLETED,
-            connection_name=conn.name,
-            note="mark_consumed CAS lost; concurrent callback already stamped state",
-        )
-    else:
-        logger.info(
-            OAUTH_FLOW_COMPLETED,
-            connection_name=conn.name,
-        )
-    return conn.name

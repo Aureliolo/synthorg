@@ -374,6 +374,33 @@ describe('isFieldRequired', () => {
   })
 })
 
+describe('resolveConnectionSpec', () => {
+  it('maps both served condition keys onto their camelCase counterparts', () => {
+    // Asserted per key rather than through ``metadataGovernsOtherFields``,
+    // which is true when EITHER maps: a dropped ``required_when`` would
+    // leave every conditional field permanently optional and still satisfy
+    // that helper.
+    const meta: ConnectionTypeMetadata = {
+      ...genericHttpMeta,
+      fields: genericHttpMeta.fields.map((field) =>
+        field.name === 'base_url'
+          ? {
+              ...field,
+              visible_when: { field: 'vendor', values: ['custom'] },
+              required_when: { field: 'vendor', values: ['custom'] },
+            }
+          : field,
+      ),
+    }
+
+    const spec = resolveConnectionSpec(meta)
+    const baseUrl = spec.topLevelFields.find((f) => f.key === 'base_url')
+
+    expect(baseUrl?.visibleWhen).toEqual({ field: 'vendor', values: ['custom'] })
+    expect(baseUrl?.requiredWhen).toEqual({ field: 'vendor', values: ['custom'] })
+  })
+})
+
 describe('metadataGovernsOtherFields', () => {
   it('is true when a credential depends on a metadata field', () => {
     // Answering the governing field first is what keeps the resulting

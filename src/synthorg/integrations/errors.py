@@ -82,6 +82,22 @@ class InvalidConnectionAuthError(IntegrationError):
     default_message: ClassVar[str] = "Connection authentication is invalid"
 
 
+class InvalidConnectionEndpointError(IntegrationError):
+    """A connection's endpoint cannot be resolved from the update.
+
+    Raised when a PATCH moves a generic-HTTP connection onto a vendor that
+    supplies no endpoint of its own without also supplying one. Refused
+    rather than silently retaining the previous vendor's URL, which would
+    leave the connection labelled for one service and pointed at another.
+    The caller supplies the value, so the wire contract is a 422.
+    """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Connection endpoint is unresolvable"
+
+
 class InvalidRepoScopeError(IntegrationError):
     """A forge connection's ``allowed_repos`` entry is malformed or over-broad.
 

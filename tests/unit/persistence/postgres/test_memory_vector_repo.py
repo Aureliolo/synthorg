@@ -28,10 +28,12 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.vector_spec import MemoryVectorSearchSpec
 from synthorg.observability.events.memory import (
+    MEMORY_DENSE_INDEX_BUILD_CONTENDED,
     MEMORY_DENSE_INDEX_PERMISSION_DENIED,
     MEMORY_DENSE_INDEX_UNAVAILABLE,
     MEMORY_DENSE_INDEX_UNINDEXABLE,
 )
+from synthorg.persistence.postgres import _memory_vector_sql as sql
 from synthorg.persistence.postgres._memory_vector_sql import (
     HNSW_HALFVEC_MAX_DIMENSIONS,
     HNSW_VECTOR_MAX_DIMENSIONS,
@@ -164,6 +166,52 @@ class TestDenseBinding:
 
         assert hits == ()
         assert repo.supports_dense_search is False
+
+
+class TestBuildLockContention:
+    """A sibling mid-build must not hang the boot that waits for it."""
+
+    async def test_the_lock_wait_is_bounded_before_the_build(self) -> None:
+        log: list[tuple[str, object]] = []
+        repo = PostgresMemoryVectorRepository(_pool_over(_recording_connection(log)))
+
+        await repo.ensure_ready(_DIMS)
+
+        statements = [statement for statement, _ in log]
+        deadline = statements.index(sql.SET_INDEX_BUILD_LOCK_TIMEOUT)
+        acquired = statements.index(sql.ACQUIRE_INDEX_BUILD_LOCK)
+        cleared = statements.index(sql.CLEAR_STATEMENT_TIMEOUT)
+        # ``pg_advisory_lock`` waits forever and ``lock_timeout`` does not
+        # reach it, so the deadline has to be armed before the wait...
+        assert deadline < acquired < cleared
+        # ...and disarmed before the build, which is legitimately long.
+        assert cleared < next(
+            i for i, s in enumerate(statements) if s.startswith("CREATE INDEX")
+        )
+
+    async def test_a_held_lock_degrades_instead_of_blocking(self) -> None:
+        # What Postgres raises once ``statement_timeout`` fires on a wait
+        # the holder never releases in time.
+        cancelled = "canceling statement due to statement timeout"
+
+        async def execute(statement: str, params: object = None) -> None:
+            if statement == sql.ACQUIRE_INDEX_BUILD_LOCK:
+                raise psycopg.errors.QueryCanceled(cancelled)
+
+        conn: AsyncConnection = mock_of[AsyncConnection](
+            execute=execute, set_autocommit=_anoop
+        )
+        repo = PostgresMemoryVectorRepository(_pool_over(conn))
+
+        with capture_logs() as logs:
+            await repo.ensure_ready(_DIMS)
+
+        assert repo.supports_dense_search is False
+        events = {entry["event"] for entry in logs}
+        # Reported as contention, not as the unavailability an operator
+        # would read as "pgvector is broken": this one clears itself once
+        # the other builder finishes.
+        assert MEMORY_DENSE_INDEX_BUILD_CONTENDED in events
 
 
 class TestExtensionDegradation:
