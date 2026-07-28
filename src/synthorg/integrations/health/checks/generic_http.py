@@ -107,9 +107,13 @@ class _AuthResolution(NamedTuple):
 
 
 class GenericHttpHealthCheck:
-    """Health check via HTTP HEAD to the connection's base URL.
+    """Health check against the connection's base URL.
 
-    Falls back to GET if the server returns 405 or 501 on HEAD.
+    The default probe is a HEAD, falling back to GET if the server
+    answers 405 or 501. A vendor preset overrides that shape when its
+    endpoint needs one to answer at all: ``health_params`` forces a
+    parameterised GET, ``health_body`` a POST carrying that JSON. A
+    vendor-bound connection may therefore never send a HEAD.
 
     The configured ``base_url`` is validated against a
     :class:`NetworkPolicy` before any request is issued, so an operator
@@ -231,7 +235,10 @@ class GenericHttpHealthCheck:
         )
 
     async def check(self, connection: Connection) -> HealthReport:
-        """Execute a HEAD (or GET fallback) against ``base_url``.
+        """Probe ``base_url`` in whichever shape the vendor preset declares.
+
+        A HEAD with a GET fallback by default; a parameterised GET or a
+        POST with a JSON body where the preset says the endpoint needs one.
 
         Returns:
             A ``HealthReport``: ``HEALTHY`` for an HTTP status < 400,
