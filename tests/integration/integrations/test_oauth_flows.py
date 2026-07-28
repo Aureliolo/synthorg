@@ -412,7 +412,7 @@ class TestCallbackOidcBinding:
     async def test_plain_oauth2_skips_verification(self) -> None:
         state_service, catalog, flow = self._harness(credentials={}, id_token=None)
         with patch(
-            "synthorg.integrations.oauth.callback_handler.verify_id_token",
+            "synthorg.integrations.oauth._callback_oidc.verify_id_token",
             autospec=True,
         ) as verify:
             result = await handle_oauth_callback(
@@ -434,7 +434,7 @@ class TestCallbackOidcBinding:
             id_token="h.p.s",
         )
         with patch(
-            "synthorg.integrations.oauth.callback_handler.verify_id_token",
+            "synthorg.integrations.oauth._callback_oidc.verify_id_token",
             autospec=True,
         ) as verify:
             result = await handle_oauth_callback(
@@ -504,7 +504,7 @@ class TestCallbackOidcBinding:
             id_token="h.p.s",
         )
         with patch(
-            "synthorg.integrations.oauth.callback_handler.verify_id_token",
+            "synthorg.integrations.oauth._callback_oidc.verify_id_token",
             autospec=True,
         ) as verify:
             verify.side_effect = OIDCNonceMismatchError("nope")
