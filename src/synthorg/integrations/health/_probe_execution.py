@@ -35,6 +35,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Above any individual checker's own budget, so a checker that bounds
+# itself reports its own reason and only a genuinely stuck one trips this.
 _CHECKER_TIMEOUT: Final[float] = 30.0
 
 

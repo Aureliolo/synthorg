@@ -285,8 +285,13 @@ class CatalogService:
             CatalogEntryNotFoundError: If the entry id is unknown.
             ConnectionNotFoundError: If a required connection is
                 missing from the catalog.
-            InvalidConnectionAuthError: If the bound connection's
-                type does not match the entry's requirement.
+            InvalidConnectionAuthError: If the entry binds a connection
+                it cannot authenticate with: no credential map, no
+                connection named, no catalog to resolve one, or a
+                connection of the wrong type, wrong dialect, or missing
+                a mapped credential field.
+            SecretRetrievalError: If the bound connection's secrets
+                cannot be resolved from the secret backend.
         """
         entry = await self.get_entry(entry_id)
         resolved_connection_name: str | None = None
@@ -302,7 +307,7 @@ class CatalogService:
             # the result, and both checks below read the same credentials.
             creds = await catalog.get_credentials(bound_name)
             require_dialect(entry, entry_id, bound_name, creds)
-            require_mapped_credentials(entry_id, entry, bound_name, creds)
+            require_mapped_credentials(entry, entry_id, bound_name, creds)
         elif connection_name:
             # Entry does not require a connection; ignore and warn.
             logger.warning(

@@ -154,8 +154,8 @@ def require_dialect(
 
 
 def require_mapped_credentials(
-    entry_id: str,
     entry: CatalogEntry,
+    entry_id: str,
     connection_name: str,
     credentials: dict[str, str],
 ) -> None:

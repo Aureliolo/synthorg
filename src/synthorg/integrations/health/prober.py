@@ -45,9 +45,6 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 _DEFAULT_INTERVAL_SECONDS: Final[int] = 300
 _DEFAULT_UNHEALTHY_THRESHOLD: Final[int] = 3
-# Above any individual checker's own budget, so a checker that bounds
-# itself reports its own reason and only a genuinely stuck one trips this.
-_CHECKER_TIMEOUT: Final[float] = 30.0
 
 _CHECK_REGISTRY: Final[MappingProxyType[ConnectionType, ConnectionHealthCheck]] = (
     MappingProxyType(
