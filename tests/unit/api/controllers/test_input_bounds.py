@@ -136,7 +136,7 @@ class TestUpdateConnectionRequest:
         behaviour at the controller layer so a future refactor that
         drops the ``model_fields_set`` check would be caught.
         """
-        from synthorg.integrations.connections.catalog import _UNSET
+        from synthorg.integrations.connections._update_pipeline import _UNSET
 
         # Helper mirroring the controller's logic at
         # ``ConnectionsController.update_connection``.

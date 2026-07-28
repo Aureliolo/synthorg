@@ -37,7 +37,7 @@ from synthorg.api.responses import require_resource_or_404
 from synthorg.engine.workspace.git_backend.forge_api.agent_models import (
     ForgeAccessibleRepo,
 )
-from synthorg.integrations.connections.catalog import _UNSET, _UnsetType
+from synthorg.integrations.connections._update_pipeline import _UNSET, _UnsetType
 from synthorg.integrations.connections.field_metadata import (
     ConnectionTypeMetadata,
     list_connection_type_metadata,

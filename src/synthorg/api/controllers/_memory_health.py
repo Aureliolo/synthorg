@@ -113,6 +113,58 @@ def memory_wiring_health(app_state: AppState) -> MemoryHealth | None:
     return None
 
 
+def _runtime_degradation(
+    backend_name: str,
+    *,
+    dense_available: bool,
+    dense_indexed: bool,
+    consolidation_running: bool,
+) -> MemoryHealth | None:
+    """Name the fault a live, probe-passing backend is still carrying.
+
+    Taken as plain flags rather than the backend itself so this module
+    keeps importing no memory types, which is what stops an import cycle
+    forming back through ``health``.
+
+    Returns:
+        The degradation to report, or ``None`` when memory is durable.
+    """
+    if not dense_available:
+        return MemoryHealth(
+            state=MemoryState.DEGRADED,
+            backend=backend_name,
+            detail=(
+                "Recall is keyword-only: the dense vector index is not "
+                "available, so agents get literal term matches instead of "
+                "related memories. See the memory.dense_index.* log "
+                "events for the cause."
+            ),
+        )
+    if not dense_indexed:
+        return MemoryHealth(
+            state=MemoryState.DEGRADED,
+            backend=backend_name,
+            detail=(
+                "Dense recall works but is unindexed: every search reads "
+                "the whole corpus, so latency grows with it. See the "
+                "memory.dense_index.* log events for which condition "
+                "applies."
+            ),
+        )
+    if not consolidation_running:
+        return MemoryHealth(
+            state=MemoryState.DEGRADED,
+            backend=backend_name,
+            detail=(
+                "Recall works but maintenance is not running: retention "
+                "and per-agent memory caps are not being enforced, so "
+                "memory grows without bound. Check memory.consolidation_"
+                "interval and the consolidation.scheduler.* log events."
+            ),
+        )
+    return None
+
+
 async def resolve_memory_health(
     app_state: AppState,
     *,
@@ -158,40 +210,13 @@ async def resolve_memory_health(
                 "database the memory tables live in."
             ),
         )
-    if not backend.supports_dense_search:
-        return MemoryHealth(
-            state=MemoryState.DEGRADED,
-            backend=backend_name,
-            detail=(
-                "Recall is keyword-only: the dense vector index is not "
-                "available, so agents get literal term matches instead of "
-                "related memories. See the memory.dense_index.* log "
-                "events for the cause."
-            ),
-        )
-    if not backend.dense_search_indexed:
-        return MemoryHealth(
-            state=MemoryState.DEGRADED,
-            backend=backend_name,
-            detail=(
-                "Dense recall works but is unindexed: every search reads "
-                "the whole corpus, so latency grows with it. See the "
-                "memory.dense_index.* log events for which condition "
-                "applies."
-            ),
-        )
-    if memory_slice.consolidation_scheduler is None:
-        return MemoryHealth(
-            state=MemoryState.DEGRADED,
-            backend=backend_name,
-            detail=(
-                "Recall works but maintenance is not running: retention "
-                "and per-agent memory caps are not being enforced, so "
-                "memory grows without bound. Check memory.consolidation_"
-                "interval and the consolidation.scheduler.* log events."
-            ),
-        )
-    return MemoryHealth(state=MemoryState.DURABLE, backend=backend_name)
+    degraded = _runtime_degradation(
+        backend_name,
+        dense_available=backend.supports_dense_search,
+        dense_indexed=backend.dense_search_indexed,
+        consolidation_running=memory_slice.consolidation_scheduler is not None,
+    )
+    return degraded or MemoryHealth(state=MemoryState.DURABLE, backend=backend_name)
 
 
 __all__ = [

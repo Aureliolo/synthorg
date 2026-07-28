@@ -234,6 +234,73 @@ class GenericHttpHealthCheck:
             checked_at=datetime.now(UTC),
         )
 
+    @staticmethod
+    def _pinned_transport(
+        validation: DnsValidationOk,
+    ) -> httpx.AsyncBaseTransport | None:
+        """Bind the TCP connect to the address the pre-flight validated.
+
+        Without the pin, a malicious DNS server can rebind the hostname
+        between the SSRF pre-flight and the request it was meant to clear.
+
+        Returns:
+            The pinned transport, or ``None`` for a literal-IP or
+            allowlisted host, where the pre-flight accepted the address
+            as-is and there is no second resolution to defend.
+        """
+        if not validation.resolved_ips:
+            return None
+        return PinnedDnsTransport(
+            hostname=validation.hostname,
+            ip=validation.resolved_ips[0],
+        )
+
+    async def _run_probe(
+        self,
+        connection: Connection,
+        target: _ProbeTarget,
+        headers: dict[str, str],
+        transport: httpx.AsyncBaseTransport | None,
+    ) -> HealthReport:
+        """Issue the probe and judge whatever comes back.
+
+        Returns:
+            The verdict for the response, the deadline, or the network
+            failure.
+        """
+        start = self._clock.monotonic()
+        try:
+            # ``follow_redirects=False`` is the httpx default but pinned
+            # explicitly: the SSRF pre-flight only validates the initial
+            # ``base_url``, so a 3xx redirect to an internal address
+            # would otherwise bypass the gate.
+            # httpx bounds each operation, not the call: a server dripping
+            # bytes just under the read timeout keeps one request alive
+            # indefinitely, and the HEAD-then-GET fallback would grant each
+            # attempt the full budget. Every probe runs inside one prober
+            # task group, so an unbounded wait here stalls the cycle for
+            # every other connection too.
+            async with (
+                asyncio.timeout(_TIMEOUT),
+                httpx.AsyncClient(
+                    timeout=_TIMEOUT,
+                    follow_redirects=False,
+                    transport=transport,
+                ) as client,
+            ):
+                resp = await _issue_probe(client, target, headers)
+        except TimeoutError:
+            return _deadline_report(
+                connection, (self._clock.monotonic() - start) * 1000
+            )
+        except httpx.HTTPError as exc:
+            return _network_report(
+                connection, exc, (self._clock.monotonic() - start) * 1000
+            )
+        return _report_response(
+            connection, resp, (self._clock.monotonic() - start) * 1000
+        )
+
     async def check(self, connection: Connection) -> HealthReport:
         """Probe ``base_url`` in whichever shape the vendor preset declares.
 
@@ -257,75 +324,12 @@ class GenericHttpHealthCheck:
                 error_detail=failure,
                 checked_at=datetime.now(UTC),
             )
-        start = self._clock.monotonic()
-        # Pin the TCP connect to the first validated IP returned by
-        # ``validate_url_host`` so a malicious DNS server cannot rebind
-        # the hostname between the SSRF pre-flight and the actual
-        # request. ``resolved_ips`` is empty for literal-IP base URLs
-        # and allowlisted hosts (where the pre-flight already accepted
-        # the address as-is); in those cases we fall through to the
-        # default httpx transport, which is identical to the prior
-        # behaviour minus the rebinding window.
-        transport: httpx.AsyncBaseTransport | None = None
-        if validation.resolved_ips:
-            transport = PinnedDnsTransport(
-                hostname=validation.hostname,
-                ip=validation.resolved_ips[0],
-            )
-        target = _probe_target(connection)
-        try:
-            # ``follow_redirects=False`` is the httpx default but pinned
-            # explicitly: the SSRF pre-flight only validates the initial
-            # ``base_url``, so a 3xx redirect to an internal address
-            # would otherwise bypass the gate.
-            # httpx bounds each operation, not the call: a server dripping
-            # bytes just under the read timeout keeps one request alive
-            # indefinitely, and the HEAD-then-GET fallback would grant each
-            # attempt the full budget. Every probe runs inside one prober
-            # task group, so an unbounded wait here stalls the cycle for
-            # every other connection too.
-            async with (
-                asyncio.timeout(_TIMEOUT),
-                httpx.AsyncClient(
-                    timeout=_TIMEOUT,
-                    follow_redirects=False,
-                    transport=transport,
-                ) as client,
-            ):
-                resp = await _issue_probe(client, target, headers)
-            elapsed = (self._clock.monotonic() - start) * 1000
-            return _report_response(connection, resp, elapsed)
-        except TimeoutError:
-            elapsed = (self._clock.monotonic() - start) * 1000
-            logger.warning(
-                HEALTH_CHECK_FAILED,
-                connection_name=connection.name,
-                reason="probe_deadline_exceeded",
-                timeout_seconds=_TIMEOUT,
-            )
-            return HealthReport(
-                connection_name=connection.name,
-                status=ConnectionStatus.UNHEALTHY,
-                latency_ms=elapsed,
-                error_detail=f"probe exceeded {_TIMEOUT}s",
-                checked_at=datetime.now(UTC),
-            )
-        except httpx.HTTPError as exc:
-            elapsed = (self._clock.monotonic() - start) * 1000
-            scrubbed = safe_error_description(exc)
-            logger.warning(
-                HEALTH_CHECK_FAILED,
-                connection_name=connection.name,
-                error_type=type(exc).__name__,
-                error=scrubbed,
-            )
-            return HealthReport(
-                connection_name=connection.name,
-                status=ConnectionStatus.UNHEALTHY,
-                latency_ms=elapsed,
-                error_detail=scrubbed,
-                checked_at=datetime.now(UTC),
-            )
+        return await self._run_probe(
+            connection,
+            _probe_target(connection),
+            headers,
+            self._pinned_transport(validation),
+        )
 
 
 def _report_response(
@@ -371,5 +375,52 @@ def _report_response(
         status=ConnectionStatus.UNHEALTHY,
         latency_ms=elapsed,
         error_detail=detail,
+        checked_at=datetime.now(UTC),
+    )
+
+
+def _deadline_report(connection: Connection, elapsed: float) -> HealthReport:
+    """Turn a probe that outlived its deadline into a health verdict.
+
+    Returns:
+        ``UNHEALTHY`` naming the deadline the probe breached.
+    """
+    logger.warning(
+        HEALTH_CHECK_FAILED,
+        connection_name=connection.name,
+        reason="probe_deadline_exceeded",
+        timeout_seconds=_TIMEOUT,
+    )
+    return HealthReport(
+        connection_name=connection.name,
+        status=ConnectionStatus.UNHEALTHY,
+        latency_ms=elapsed,
+        error_detail=f"probe exceeded {_TIMEOUT}s",
+        checked_at=datetime.now(UTC),
+    )
+
+
+def _network_report(
+    connection: Connection,
+    exc: httpx.HTTPError,
+    elapsed: float,
+) -> HealthReport:
+    """Turn a probe that failed below HTTP into a health verdict.
+
+    Returns:
+        ``UNHEALTHY`` carrying the scrubbed transport error.
+    """
+    scrubbed = safe_error_description(exc)
+    logger.warning(
+        HEALTH_CHECK_FAILED,
+        connection_name=connection.name,
+        error_type=type(exc).__name__,
+        error=scrubbed,
+    )
+    return HealthReport(
+        connection_name=connection.name,
+        status=ConnectionStatus.UNHEALTHY,
+        latency_ms=elapsed,
+        error_detail=scrubbed,
         checked_at=datetime.now(UTC),
     )

@@ -5,28 +5,30 @@ lookup, credential resolution, and health status management.
 
 Behaviour is composed from cohesive mixins: cache + per-name locks
 (``_cache.py``), credential resolution (``_credential_resolver.py``),
-the create pipeline (``_create_pipeline.py``), and OAuth token rotation
+the create pipeline (``_create_pipeline.py``), the update pipeline
+(``_update_pipeline.py``), and OAuth token rotation
 (``_oauth_rotation.py``). This module keeps the orchestration: create,
 update, delete, health, and lookup.
 """
 
 import asyncio
-import copy
 from datetime import UTC, datetime
 from typing import override
 from uuid import uuid4
 
 from synthorg.core.concurrency import RefcountedLockMap
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections._cache import ConnectionCacheMixin
 from synthorg.integrations.connections._create_pipeline import ConnectionCreateMixin
 from synthorg.integrations.connections._credential_resolver import (
     CredentialResolverMixin,
 )
 from synthorg.integrations.connections._oauth_rotation import OAuthRotationMixin
-from synthorg.integrations.connections.http_vendor import (
-    METADATA_KEY_VENDOR,
+from synthorg.integrations.connections._update_pipeline import (
+    _UNSET,
+    ConnectionUpdateMixin,
+    _UnsetType,
+    materialise_update,
 )
 from synthorg.integrations.connections.models import (
     Connection,
@@ -34,12 +36,9 @@ from synthorg.integrations.connections.models import (
     ConnectionStatus,
     ConnectionType,
 )
-from synthorg.integrations.connections.repo_scope import validate_repo_scope_entry
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     DuplicateConnectionError,
-    InvalidConnectionEndpointError,
-    InvalidRepoScopeError,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
@@ -49,7 +48,6 @@ from synthorg.observability.events.integrations import (
     CONNECTION_NOT_FOUND,
     CONNECTION_UPDATE_FAILED,
     CONNECTION_UPDATED,
-    CONNECTION_VALIDATION_FAILED,
     HEALTH_STATUS_TRANSITIONED,
     SECRET_DELETE_FAILED,
     SECRET_DELETED,
@@ -64,39 +62,11 @@ from synthorg.persistence.secret_backends.protocol import (
 logger = get_logger(__name__)
 
 
-def _checked_scope_entry(entry: str) -> str:
-    """Return ``entry`` once it passes repo-scope validation.
-
-    Returns:
-        The unchanged entry.
-
-    Raises:
-        InvalidRepoScopeError: When the entry is malformed or over-broad.
-    """
-    try:
-        validate_repo_scope_entry(entry)
-    except ValueError as exc:
-        raise InvalidRepoScopeError(safe_error_description(exc)) from exc
-    return entry
-
-
-class _UnsetType:
-    """Sentinel type for omitted PATCH fields.
-
-    Defining a dedicated type lets ``mypy`` narrow ``value is _UNSET``
-    properly; the previous ``| object`` annotation accepted any value
-    and defeated narrowing in strict mode.
-    """
-
-
-_UNSET = _UnsetType()
-"""Sentinel value to distinguish 'not provided' from None."""
-
-
 class ConnectionCatalog(
     ConnectionCacheMixin,
     CredentialResolverMixin,
     ConnectionCreateMixin,
+    ConnectionUpdateMixin,
     OAuthRotationMixin,
 ):
     """Central registry for external service connections.
@@ -322,122 +292,6 @@ class ConnectionCatalog(
             1 for c in self._cache.values() if c.connection_type == connection_type
         )
 
-    def _build_update_candidate(
-        self,
-        *,
-        base_url: str | _UnsetType | None,
-        metadata: dict[str, str] | _UnsetType | None,
-        health_check_enabled: bool | _UnsetType | None,
-        webhook_receipt_retention_days: int | _UnsetType | None,
-        sensitive: bool | _UnsetType,
-        allowed_repos: tuple[str, ...] | _UnsetType,
-    ) -> dict[str, object]:
-        """Compose the PATCH candidate dict, normalising explicit nulls.
-
-        Extracted from :meth:`update` so the per-field ``_UNSET`` /
-        ``None`` normalisation does not push the caller over the
-        cyclomatic-complexity budget.  The returned mapping is the
-        proposed update *before* the idempotent-no-op filter
-        compares it against the existing row.
-
-        Returns:
-            A dict of only the fields whose new values were explicitly
-            supplied (omitting ``_UNSET`` sentinels).
-        """
-        candidate: dict[str, object] = {}
-        if base_url is not _UNSET:
-            candidate["base_url"] = NotBlankStr(base_url) if base_url else None
-        if metadata is not _UNSET:
-            # Normalise explicit ``null`` to the canonical empty
-            # mapping used by ``create()``; ``model_copy`` does
-            # not re-run validators so a raw ``None`` would
-            # persist as ``metadata=None`` on the row even
-            # though ``Connection.metadata`` is typed
-            # ``dict[str, str]``.
-            candidate["metadata"] = metadata if metadata is not None else {}
-        if health_check_enabled is not _UNSET:
-            # Same reasoning as ``metadata`` above;
-            # ``create()`` always materialises
-            # ``health_check_enabled=True`` so an explicit-null
-            # clear normalises to the same default.
-            candidate["health_check_enabled"] = (
-                health_check_enabled if health_check_enabled is not None else True
-            )
-        if webhook_receipt_retention_days is not _UNSET:
-            # ``None`` is a meaningful value here -- it clears the
-            # per-connection override and falls back to the global
-            # default.  Pass through verbatim.
-            candidate["webhook_receipt_retention_days"] = webhook_receipt_retention_days
-        if sensitive is not _UNSET:
-            candidate["sensitive"] = sensitive
-        if not isinstance(allowed_repos, _UnsetType):
-            # The scope is a security boundary, so it is validated here at
-            # the persistence entry rather than only in the API DTO: any
-            # other caller of update() would otherwise be able to persist
-            # an over-broad entry that the forge tools then honour.
-            candidate["allowed_repos"] = tuple(
-                NotBlankStr(_checked_scope_entry(r)) for r in allowed_repos
-            )
-        return candidate
-
-    def _repair_vendor_base_url(
-        self,
-        existing: Connection,
-        candidate: dict[str, object],
-    ) -> None:
-        """Keep a generic-HTTP endpoint honest across a PATCH.
-
-        A vendor preset hides the base-URL field, so the form submits an
-        explicit null for it on every save. Taken literally that clears the
-        endpoint of a working connection and leaves no way to restore it,
-        since the field stays hidden. The endpoint is mandatory for this
-        type, so a null is never a meaningful value: re-derive it from the
-        vendor the update actually declares.
-
-        The stored endpoint is only a safe fallback while the vendor is
-        unchanged. Carrying it across a vendor switch would persist a
-        connection labelled for one service and pointed at another, which
-        no later read can detect, so a switch onto a vendor with no
-        endpoint of its own is refused instead.
-
-        Raises:
-            InvalidConnectionEndpointError: If the update moves the
-                connection onto a vendor that supplies no endpoint and
-                names no replacement.
-        """
-        if existing.connection_type is not ConnectionType.GENERIC_HTTP:
-            return
-        if candidate.get("base_url"):
-            return
-        declared = candidate.get("metadata", existing.metadata)
-        metadata = declared if isinstance(declared, dict) else None
-        # Compared as declared labels, not as resolved presets: ``resolve_vendor``
-        # answers ``None`` for "custom" AND for anything it does not recognise,
-        # so comparing presets would read a switch between two such labels as no
-        # change at all -- and leave the old endpoint attached to the new label,
-        # the exact mislabelling the refusal below exists to prevent.
-        vendor_changed = (metadata or {}).get(METADATA_KEY_VENDOR, "") != (
-            existing.metadata.get(METADATA_KEY_VENDOR, "")
-        )
-        # An absent key with an unchanged vendor is simply a PATCH that does
-        # not concern the endpoint. An absent key across a vendor switch is
-        # not: leaving it alone would strand the previous vendor's URL just
-        # as surely as honouring a null would.
-        if "base_url" not in candidate and not vendor_changed:
-            return
-        resolved = self._resolve_base_url(existing.connection_type, None, metadata)
-        if resolved:
-            candidate["base_url"] = NotBlankStr(resolved)
-            return
-        if vendor_changed:
-            msg = (
-                "Changing vendor requires a base_url: the new vendor supplies "
-                "no endpoint of its own and the previous vendor's endpoint "
-                "does not carry over"
-            )
-            raise InvalidConnectionEndpointError(msg)
-        candidate["base_url"] = existing.base_url
-
     async def update(
         self,
         name: str,
@@ -471,54 +325,19 @@ class ConnectionCatalog(
         """
         async with self._name_lock(name):
             existing = await self.get_or_raise(name)
-            # Build candidate updates without seeding ``updated_at`` --
-            # an unchanged PATCH should be a no-op so we can skip
-            # ``save`` and the ``CONNECTION_UPDATED`` audit emit.
-            try:
-                candidate = self._build_update_candidate(
-                    base_url=base_url,
-                    metadata=metadata,
-                    health_check_enabled=health_check_enabled,
-                    webhook_receipt_retention_days=webhook_receipt_retention_days,
-                    sensitive=sensitive,
-                    allowed_repos=allowed_repos,
-                )
-            except Exception as exc:
-                reraise_critical(exc)
-                # ``NotBlankStr`` rejections (e.g. caller passed an
-                # empty ``base_url``) currently bubble with no resource
-                # attribution.  Surface ``connection_name`` + the input
-                # field set before re-raising so the audit log can
-                # explain WHICH PATCH was rejected and why.
-                logger.warning(
-                    CONNECTION_VALIDATION_FAILED,
-                    connection_name=name,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise
+            candidate = self._candidate_or_report(
+                name,
+                base_url=base_url,
+                metadata=metadata,
+                health_check_enabled=health_check_enabled,
+                webhook_receipt_retention_days=webhook_receipt_retention_days,
+                sensitive=sensitive,
+                allowed_repos=allowed_repos,
+            )
             self._repair_vendor_base_url(existing, candidate)
-            # Drop fields whose candidate value matches the persisted
-            # value -- otherwise an idempotent PATCH would still bump
-            # ``updated_at`` and emit a phantom ``CONNECTION_UPDATED``
-            # audit row.
-            real_updates = {
-                key: value
-                for key, value in candidate.items()
-                if getattr(existing, key) != value
-            }
-            if not real_updates:
-                # No-op PATCH; return the existing row unchanged.
+            updated = materialise_update(existing, candidate)
+            if updated is None:
                 return existing
-            real_updates["updated_at"] = datetime.now(UTC)
-            # ``model_copy(update=...)`` skips ``@model_validator``s, so
-            # any nested mutable container we pass in (here ``metadata``)
-            # would leak shared references to callers post-construction.
-            # Deep-copy on the way in so the persisted row owns its own
-            # mapping; matches the create-path's defensive deepcopy.
-            if "metadata" in real_updates:
-                real_updates["metadata"] = copy.deepcopy(real_updates["metadata"])
-            updated = existing.model_copy(update=real_updates)
             try:
                 await self._repo.save(updated)
             except Exception as exc:
