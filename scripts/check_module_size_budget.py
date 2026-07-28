@@ -35,12 +35,14 @@ from pathlib import Path
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_scope import select_scoped_files  # type: ignore[import-not-found]
     from _module_size_lib import (  # type: ignore[import-not-found]
         TIER_LIMITS,
         count_loc,
         resolve_tier,
     )
 else:
+    from scripts._gate_scope import select_scoped_files
     from scripts._module_size_lib import (
         TIER_LIMITS,
         count_loc,
@@ -89,26 +91,32 @@ def _iter_source_files(project_root: Path) -> list[Path]:
     return sorted(scan_root.rglob("*.py"))
 
 
-def _select_source_files(project_root: Path, files: list[str]) -> list[Path]:
+def _select_scoped_files(project_root: Path, files: list[str]) -> list[Path]:
     """Return the ``src/synthorg/`` subset of *files* as absolute paths.
 
-    A path outside the scan root is dropped rather than rejected: callers
-    pass whatever a developer just edited, so deciding scope is this gate's
-    job, not the call site's.
+    Reports what it dropped so a routing table that has drifted out of step
+    with the scan root shows up as a diagnostic rather than as a clean scan.
+
+    Args:
+        project_root: Resolved repository root.
+        files: Caller-supplied paths, absolute or repo-relative.
+
+    Returns:
+        Absolute paths to check, ordered deterministically.
     """
-    scan_root = (project_root / _SCAN_REL).resolve()
-    selected: set[Path] = set()
-    for raw in files:
-        candidate = Path(raw)
-        resolved = (
-            candidate if candidate.is_absolute() else project_root / candidate
-        ).resolve()
-        if resolved.suffix != ".py" or not resolved.is_file():
-            continue
-        if not resolved.is_relative_to(scan_root):
-            continue
-        selected.add(resolved)
-    return sorted(selected)
+    result = select_scoped_files(
+        files,
+        project_root=project_root,
+        roots=[_SCAN_REL],
+        suffixes=frozenset({".py"}),
+    )
+    if not result.selected:
+        print(
+            f"check_module_size_budget: {result.skipped} path(s) supplied, "
+            f"none under {_SCAN_REL.as_posix()}/; nothing scanned.",
+            file=sys.stderr,
+        )
+    return [scoped.path for scoped in result.selected]
 
 
 def _load_baseline(baseline_path: Path) -> dict[str, int]:
@@ -169,7 +177,7 @@ def check(
     baseline = _load_baseline(baseline_path)
     violations: list[Violation] = []
     targets = (
-        _select_source_files(project_root, files)
+        _select_scoped_files(project_root, files)
         if files
         else _iter_source_files(project_root)
     )

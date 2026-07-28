@@ -99,6 +99,12 @@ import tokenize
 from pathlib import Path
 from typing import Final, TypeGuard, cast, override
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _gate_scope import select_scoped_files  # type: ignore[import-not-found]
+else:
+    from scripts._gate_scope import select_scoped_files
+
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _BASELINE_PATH: Final[Path] = _REPO_ROOT / "scripts" / "no_magic_numbers_baseline.txt"
 
@@ -766,40 +772,50 @@ def _scan_all(
     return hits
 
 
-def _selected_targets(
+def _select_scoped_files(
+    project_root: Path,
     files: list[str],
     roots: list[Path],
-    project_root: Path,
 ) -> list[tuple[Path, str]]:
     """Return the in-scope subset of *files* as ``(absolute, relative)``.
 
-    Scope is the same set ``_iter_targets`` would yield, so a file-scoped run
-    can only ever report a subset of what the whole-tree run reports: the
-    per-file allowlist still applies, and a path under none of *roots* is
-    dropped rather than rejected.
+    Applies the same per-file allowlist the whole-tree walk applies, so a
+    file-scoped verdict for a given file matches what the whole-tree run says
+    about that same file.
+
+    One deliberate asymmetry: the whole-tree walk enumerates via ``git
+    ls-files`` and therefore sees only tracked files, while this path accepts
+    any file that exists. A brand-new module can be flagged here before it has
+    been staged, which changes only WHEN a violation surfaces, never the
+    eventual push verdict, since the file must be tracked before it can be
+    pushed. Reporting earlier is the useful direction for an edit-time caller.
+
+    Args:
+        project_root: Resolved repository root.
+        files: Caller-supplied paths, absolute or repo-relative.
+        roots: Scan roots to accept, relative to *project_root*.
+
+    Returns:
+        Paths to scan with their repo-relative form, ordered by that form.
     """
-    in_scope_roots = [
-        resolved
-        for resolved in (_resolve_root(root, project_root) for root in roots)
-        if resolved is not None
+    result = select_scoped_files(
+        files,
+        project_root=project_root,
+        roots=roots,
+        suffixes=frozenset({".py"}),
+    )
+    targets = [
+        (scoped.path, scoped.rel)
+        for scoped in result.selected
+        if not _is_file_allowlisted(scoped.rel)
     ]
-    targets: list[tuple[Path, str]] = []
-    seen: set[str] = set()
-    for raw in files:
-        candidate = Path(raw)
-        resolved_path = (
-            candidate if candidate.is_absolute() else project_root / candidate
-        ).resolve()
-        if resolved_path.suffix != ".py" or not resolved_path.is_file():
-            continue
-        if not any(resolved_path.is_relative_to(root) for root in in_scope_roots):
-            continue
-        rel = resolved_path.relative_to(project_root).as_posix()
-        if rel in seen or _is_file_allowlisted(rel):
-            continue
-        seen.add(rel)
-        targets.append((resolved_path, rel))
-    return sorted(targets, key=lambda pair: pair[1])
+    if not targets:
+        print(
+            f"check_no_magic_numbers: {len(files)} path(s) supplied, none in "
+            "scope; nothing scanned.",
+            file=sys.stderr,
+        )
+    return targets
 
 
 def cmd_update(roots: list[Path], project_root: Path) -> int:
@@ -834,7 +850,7 @@ def cmd_scan(
         if files:
             hits = [
                 hit
-                for path, rel in _selected_targets(files, roots, project_root)
+                for path, rel in _select_scoped_files(project_root, files, roots)
                 for hit in _scan_file(path, rel)
             ]
         else:
@@ -859,8 +875,8 @@ def cmd_scan(
     return 1
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI entry point."""
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """Return the argparse parser used by ``main()``."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--paths",
@@ -890,7 +906,19 @@ def main(argv: list[str] | None = None) -> int:
             "the pre-push run always scans in full."
         ),
     )
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point.
+
+    Args:
+        argv: Argument list; ``None`` reads ``sys.argv``.
+
+    Returns:
+        ``0`` clean, ``1`` on new violations, ``2`` on an argv/config error.
+    """
+    args = _build_arg_parser().parse_args(argv)
 
     try:
         project_root = _resolve_project_root(args.repo_root)

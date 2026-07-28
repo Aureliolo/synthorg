@@ -108,7 +108,7 @@ function runHookScript(
   toolName?: string,
 ): HookOutcome {
   // Pick the interpreter from the script extension. Bash scripts run via
-  // ``bash``; Python scripts run via ``python3`` so the shebang is honored
+  // ``bash``; Python scripts run via ``python3`` so the shebang is honoured
   // on Windows where ``./script.py`` would not resolve, and on modern Linux
   // distros that ship only ``python3`` (no unversioned ``python``). Add new
   // extensions here if a hook script in another language is introduced.
@@ -398,10 +398,9 @@ export const SynthOrgHooks: Plugin = async ({ $, worktree }) => {
             // block-pr-create / no-cd-prefix / no-local-coverage /
             // enforce-parallel-tests: defer to the committed scripts so the
             // rule lives in one place and OpenCode stays in lockstep with
-            // .claude/settings.json. The previous inline regexes had drifted
-            // (the enforce-parallel-tests variant blocked the documented
-            // `pytest -m unit` even though pyproject addopts already pins
-            // -n=8 --dist=loadfile).
+            // .claude/settings.json. Reimplementing any of these as an inline
+            // regex here would give the rule two homes that drift apart, and
+            // the stricter copy then blocks a documented, correct command.
             for (const script of [
               "scripts/check_no_repush_after_failure.sh",
               "scripts/check_no_cmd_pager_pipe.sh",
@@ -561,40 +560,53 @@ export const SynthOrgHooks: Plugin = async ({ $, worktree }) => {
             tool_input: { file_path: filePath },
           });
 
+          // All three audits below run via `python3` and pinned to `worktree`,
+          // for the reasons the daemon-shutdown handler at the bottom of this
+          // file already documents: a relative script path resolved against the
+          // plugin process's own directory can miss the script entirely or
+          // reach a sibling checkout's copy, and `python3` is what resolves on
+          // distros that ship no unversioned `python`.
+          //
+          // `err.stdout` is read FIRST because every one of these scripts
+          // prints its findings to stdout, and Node's execSync puts child
+          // stdout on `error.stdout` while `error.message` carries only
+          // "Command failed: ..." -- reading message first loses the findings.
+          const runAudit = (script: string, timeout: number, label: string) => {
+            try {
+              execSync(`python3 ${script}`, {
+                input: hookPayload,
+                timeout,
+                encoding: "utf-8",
+                cwd: worktree,
+              });
+            } catch (error: unknown) {
+              const err = error as {
+                message?: string;
+                stdout?: string;
+                stderr?: string;
+              };
+              const errMsg = err.stdout || err.stderr || err.message
+                || "Unknown error";
+              throw new Error(`${label} failed for ${filePath}: ${errMsg}`);
+            }
+          };
+
           // check_web_design_system.py: validate design tokens on web file edits
           if (filePath.includes("web/src/")) {
-            try {
-              execSync(
-                `python scripts/check_web_design_system.py`,
-                {
-                  input: hookPayload,
-                  timeout: 10000,
-                  encoding: "utf-8",
-                },
-              );
-            } catch (error: unknown) {
-              const err = error as { message?: string; stderr?: string };
-              const errMsg = err.message || err.stderr || "Unknown error";
-              throw new Error(`Design system check failed for ${filePath}: ${errMsg}`);
-            }
+            runAudit(
+              "scripts/check_web_design_system.py",
+              10000,
+              "Design system check",
+            );
           }
 
           // check_backend_regional_defaults.py: backend regional-defaults audit
           if (filePath.includes("src/synthorg/") && filePath.endsWith(".py")) {
-            try {
-              execSync(
-                `python scripts/check_backend_regional_defaults.py`,
-                {
-                  input: hookPayload,
-                  timeout: 10000,
-                  encoding: "utf-8",
-                },
-              );
-            } catch (error: unknown) {
-              const err = error as { message?: string; stderr?: string };
-              const errMsg = err.message || err.stderr || "Unknown error";
-              throw new Error(`Backend regional-defaults check failed for ${filePath}: ${errMsg}`);
-            }
+            runAudit(
+              "scripts/check_backend_regional_defaults.py",
+              10000,
+              "Backend regional-defaults check",
+            );
           }
 
           // run_edit_time_gates.py: run the file-scoped convention gates that
@@ -602,20 +614,11 @@ export const SynthOrgHooks: Plugin = async ({ $, worktree }) => {
           // here on purpose -- the dispatcher owns the routing table and exits
           // 0 for anything no gate scopes to, so duplicating its scope in this
           // condition would be a second place to keep in sync.
-          try {
-            execSync(
-              `python scripts/run_edit_time_gates.py`,
-              {
-                input: hookPayload,
-                timeout: 30000,
-                encoding: "utf-8",
-              },
-            );
-          } catch (error: unknown) {
-            const err = error as { message?: string; stdout?: string; stderr?: string };
-            const errMsg = err.stdout || err.stderr || err.message || "Unknown error";
-            throw new Error(`Edit-time convention gates failed for ${filePath}: ${errMsg}`);
-          }
+          runAudit(
+            "scripts/run_edit_time_gates.py",
+            30000,
+            "Edit-time convention gates",
+          );
         },
       },
     },
