@@ -146,6 +146,29 @@ class TestBuildConnectionAuthHeaders:
 
         assert headers == {"X-Custom": "v"}
 
+    @pytest.mark.parametrize(
+        "auth_method",
+        [
+            AuthMethod.API_KEY,
+            AuthMethod.BEARER_TOKEN,
+            AuthMethod.OAUTH2,
+            AuthMethod.BASIC_AUTH,
+            AuthMethod.CUSTOM,
+        ],
+    )
+    def test_explicit_header_pair_wins_for_every_auth_method(
+        self, auth_method: AuthMethod
+    ) -> None:
+        # Only API_KEY and CUSTOM read the pair; the rest build their own
+        # scheme and would silently discard the operator's override, or
+        # raise for a field the pair was supposed to replace.
+        headers = build_connection_auth_headers(
+            _connection(None, auth_method=auth_method),
+            {"header_name": "X-Custom", "header_value": "v"},
+        )
+
+        assert headers == {"X-Custom": "v"}
+
     def test_a_preset_without_a_key_raises(self) -> None:
         with pytest.raises(ExternalApiCredentialError, match="Brave"):
             build_connection_auth_headers(_connection(HttpVendor.BRAVE.value), {})

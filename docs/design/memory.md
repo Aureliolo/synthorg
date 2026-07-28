@@ -412,11 +412,12 @@ into one flag. A width above pgvector's 16000-dimension storage ceiling is
 refused outright rather than degraded, since no column could hold it.
 
 Two conditions the index build reports rather than hides: an index a crashed
-build left `INVALID` is dropped and rebuilt (`CREATE INDEX CONCURRENTLY IF NOT
-EXISTS` matches on name alone, so it would otherwise be accepted as present
-forever), and an empty dense column left behind by an earlier width is logged at
-INFO as schema drift, which the orphaned-width error misses because it only
-fires when a leftover column still holds rows.
+build left `INVALID` is dropped and a rebuild attempted (`CREATE INDEX
+CONCURRENTLY IF NOT EXISTS` matches on name alone, so it would otherwise be
+accepted as present forever; either the drop or the rebuild can still fail, and
+readiness reports that separately), and an empty dense column left behind by an
+earlier width is logged at INFO as schema drift, which the orphaned-width error
+misses because it only fires when a leftover column still holds rows.
 
 Setting `embedder_dims` *below* the model's own output width is the one
 sanctioned mismatch: the embedder truncates each vector to its leading

@@ -93,12 +93,15 @@ leftover column still holds rows.
 """
 
 MEMORY_DENSE_INDEX_INVALID: Final[str] = "memory.dense_index.invalid"
-"""Emitted at WARNING when a crash-left invalid index is rebuilt.
+"""Emitted at WARNING when a crash-left invalid index is found.
 
 ``CREATE INDEX CONCURRENTLY IF NOT EXISTS`` matches on name alone, so an
 index abandoned mid-build would otherwise be accepted as present and
-never rebuilt, leaving every dense query on a sequential scan. Reported
-rather than fixed silently: repeated occurrences mean builds keep dying.
+never rebuilt, leaving every dense query on a sequential scan. The event
+marks the start of the drop-and-recreate, not its success: either step
+can still fail, and the readiness path reports that separately. Recorded
+rather than fixed silently, because repeated occurrences mean builds
+keep dying.
 """
 
 MEMORY_DENSE_INDEX_UNINDEXABLE: Final[str] = "memory.dense_index.unindexable"

@@ -32,29 +32,61 @@ from synthorg.tools.network_validator import (
 logger = get_logger(__name__)
 
 
-def _probe_target(connection: Connection) -> tuple[str, dict[str, str]]:
-    """Resolve the URL and query the probe should use.
+class _ProbeTarget(NamedTuple):
+    """The one request the probe should issue."""
 
-    A vendor preset can name a path and the parameters its API needs to
-    answer at all: probing a search endpoint with no query returns a 4xx
-    whatever the credential, which would report every correctly-configured
-    connection as unhealthy. Both come from the code-defined preset, never
-    from operator input, so composing them adds no SSRF surface beyond the
-    host the pre-flight already validated.
+    url: str
+    params: dict[str, str]
+    body: dict[str, str]
+
+
+def _probe_target(connection: Connection) -> _ProbeTarget:
+    """Resolve the URL and payload the probe should use.
+
+    A vendor preset can name a path plus whatever its API needs to answer
+    at all: probing a search endpoint with no query returns a 4xx whatever
+    the credential, and one that accepts only POST returns 405 for any
+    query-string probe. Either would report every correctly-configured
+    connection as unhealthy. All of it comes from the code-defined preset,
+    never from operator input, so composing it adds no SSRF surface beyond
+    the host the pre-flight already validated.
 
     Returns:
-        The probe URL and its query parameters (empty for a plain probe).
+        The probe URL with its query parameters and JSON body; both empty
+        for a plain probe.
     """
     base = connection.base_url or ""
     preset = resolve_vendor(connection.metadata)
     if preset is None:
-        return base, {}
+        return _ProbeTarget(base, {}, {})
     url = (
         f"{base.rstrip('/')}/{preset.health_path.lstrip('/')}"
         if preset.health_path
         else base
     )
-    return url, dict(preset.health_params)
+    return _ProbeTarget(url, dict(preset.health_params), dict(preset.health_body))
+
+
+async def _issue_probe(
+    client: httpx.AsyncClient,
+    target: _ProbeTarget,
+    headers: dict[str, str],
+) -> httpx.Response:
+    """Send the probe in whichever shape the target declares.
+
+    Returns:
+        The response to judge.
+    """
+    if target.body:
+        return await client.post(target.url, headers=headers, json=target.body)
+    if target.params:
+        # A vendor that declares probe parameters needs them to answer at
+        # all, and only a GET carries them meaningfully.
+        return await client.get(target.url, headers=headers, params=target.params)
+    resp = await client.head(target.url, headers=headers)
+    if resp.status_code in (_METHOD_NOT_ALLOWED, _NOT_IMPLEMENTED):
+        return await client.get(target.url, headers=headers)
+    return resp
 
 
 _TIMEOUT: Final[float] = 10.0
@@ -233,7 +265,7 @@ class GenericHttpHealthCheck:
                 hostname=validation.hostname,
                 ip=validation.resolved_ips[0],
             )
-        url, params = _probe_target(connection)
+        target = _probe_target(connection)
         try:
             # ``follow_redirects=False`` is the httpx default but pinned
             # explicitly: the SSRF pre-flight only validates the initial
@@ -253,14 +285,7 @@ class GenericHttpHealthCheck:
                     transport=transport,
                 ) as client,
             ):
-                if params:
-                    # A vendor that declares probe parameters needs them to
-                    # answer at all, and only a GET carries them meaningfully.
-                    resp = await client.get(url, headers=headers, params=params)
-                else:
-                    resp = await client.head(url, headers=headers)
-                    if resp.status_code in (_METHOD_NOT_ALLOWED, _NOT_IMPLEMENTED):
-                        resp = await client.get(url, headers=headers)
+                resp = await _issue_probe(client, target, headers)
             elapsed = (self._clock.monotonic() - start) * 1000
             return _report_response(connection, resp, elapsed)
         except TimeoutError:

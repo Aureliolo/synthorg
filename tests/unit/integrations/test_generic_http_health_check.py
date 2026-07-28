@@ -331,9 +331,9 @@ class TestVendorPresetProbe:
             "synthorg.integrations.health.checks.generic_http.resolve_vendor",
             return_value=preset,
         ):
-            url, _params = _probe_target(conn)
+            target = _probe_target(conn)
 
-        assert url == expected
+        assert target.url == expected
 
 
 class TestSecretLeakScrubbing:

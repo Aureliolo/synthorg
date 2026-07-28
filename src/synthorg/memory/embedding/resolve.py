@@ -150,6 +150,38 @@ def resolve_embedder_config(
     )
     dims_explicit = _dims_overridden(memory_config.embedder, settings_override)
 
+    model, dims = _resolved_or_refused(
+        model, dims, available_models=available_models, tier=tier
+    )
+    if provider is None:
+        provider = _inferred_provider(model)
+
+    return EmbedderConfig(
+        provider=provider,
+        model=model,
+        dims=dims,
+        dims_explicit=dims_explicit,
+    )
+
+
+def _resolved_or_refused(
+    model: str | None,
+    dims: int | None,
+    *,
+    available_models: tuple[str, ...],
+    tier: DeploymentTier,
+) -> tuple[str, int]:
+    """Refuse a width or model the store could never serve.
+
+    Returns:
+        The model and width, both known present and within the ceiling.
+        Returned rather than merely checked so the guarantee survives the
+        hand-off to ``EmbedderConfig``, which takes neither as optional.
+
+    Raises:
+        MemoryConfigError: If nothing resolved a model and width, or if
+            the resolved width exceeds the vector store's ceiling.
+    """
     if model is None or dims is None:
         logger.warning(
             MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
@@ -182,25 +214,25 @@ def resolve_embedder_config(
             f"or set memory.embedder_dims to truncate it."
         )
         raise MemoryConfigError(msg)
+    return model, dims
 
-    # An LMEB-auto-selected open model is served by name (the local /
-    # self-hosted convention litellm dispatches directly), so the
-    # provider mirrors the model. Log the inference rather than doing it
-    # silently: for a hosted provider this same-name assumption is wrong,
-    # and an operator who sees the model fail to embed needs the boot log
-    # to say "the provider was guessed" rather than debugging an opaque
-    # auth error. Set memory.embedder_provider to bind it explicitly.
-    if provider is None:
-        logger.info(
-            MEMORY_EMBEDDER_PROVIDER_INFERRED,
-            model=model,
-            reason="auto-selected model has no explicit provider; using model name",
-        )
-        provider = model
 
-    return EmbedderConfig(
-        provider=provider,
+def _inferred_provider(model: str) -> str:
+    """Return the provider to assume for a model that named none.
+
+    An LMEB-auto-selected open model is served by name (the local /
+    self-hosted convention litellm dispatches directly), so the provider
+    mirrors the model. Logged rather than assumed silently: for a hosted
+    provider that same-name assumption is wrong, and an operator whose
+    model fails to embed needs the boot log to say "the provider was
+    guessed" rather than debugging an opaque auth error.
+
+    Returns:
+        The model name, doubling as the provider.
+    """
+    logger.info(
+        MEMORY_EMBEDDER_PROVIDER_INFERRED,
         model=model,
-        dims=dims,
-        dims_explicit=dims_explicit,
+        reason="auto-selected model has no explicit provider; using model name",
     )
+    return model

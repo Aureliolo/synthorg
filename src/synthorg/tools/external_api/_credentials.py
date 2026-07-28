@@ -122,8 +122,14 @@ def build_connection_auth_headers(
     Raises:
         ExternalApiCredentialError: If no usable credential is present.
     """
-    if credentials.get("header_name") and credentials.get("header_value"):
-        return build_auth_headers(connection.auth_method, credentials)
+    header_name = credentials.get("header_name")
+    header_value = credentials.get("header_value")
+    if header_name and header_value:
+        # Returned verbatim rather than routed through the auth method:
+        # every method other than CUSTOM builds its own scheme and ignores
+        # the pair, so deferring here would drop the override the operator
+        # spelled out (and, for a method whose own field is absent, raise).
+        return {header_name: header_value}
     preset = resolve_vendor(connection.metadata)
     if preset is None:
         return build_auth_headers(connection.auth_method, credentials)

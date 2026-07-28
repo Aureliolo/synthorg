@@ -2,6 +2,7 @@ import type {
   ConnectionFieldMetadata,
   ConnectionType,
   ConnectionTypeMetadata,
+  FieldCondition,
 } from '@/api/types/integrations'
 
 /**
@@ -25,12 +26,6 @@ export interface ConnectionFieldSpec {
   readonly visibleWhen?: FieldCondition
   /** Require this field only while another field holds one of these values. */
   readonly requiredWhen?: FieldCondition
-}
-
-/** A predicate over another field's current value, served by the backend. */
-export interface FieldCondition {
-  readonly field: string
-  readonly values: readonly string[]
 }
 
 /**

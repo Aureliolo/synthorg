@@ -161,7 +161,7 @@ const genericHttpMeta: ConnectionTypeMetadata = {
       placement: 'metadata',
       required: true,
       secret: false,
-      options: ['brave', 'custom'],
+      options: ['example-preset', 'custom'],
       placeholder: '',
       help_text: '',
       capture_mode: null,
@@ -324,8 +324,8 @@ describe('validateConnectionField', () => {
       visibleWhen: { field: 'vendor', values: ['custom'] },
     }
     // Hidden: neither required nor URL-validated, because it does not apply.
-    expect(validateConnectionField(urlSpec, '', { vendor: 'brave' })).toBeNull()
-    expect(validateConnectionField(urlSpec, 'not a url', { vendor: 'brave' })).toBeNull()
+    expect(validateConnectionField(urlSpec, '', { vendor: 'example-preset' })).toBeNull()
+    expect(validateConnectionField(urlSpec, 'not a url', { vendor: 'example-preset' })).toBeNull()
     expect(validateConnectionField(urlSpec, '', { vendor: 'custom' })).toBe(
       'Base URL is required',
     )
@@ -338,11 +338,11 @@ describe('conditionMet', () => {
   })
 
   it('trims the compared value', () => {
-    expect(conditionMet({ field: 'v', values: ['brave'] }, { v: '  brave  ' })).toBe(true)
+    expect(conditionMet({ field: 'v', values: ['example-preset'] }, { v: '  example-preset  ' })).toBe(true)
   })
 
   it('fails for an unset dependency', () => {
-    expect(conditionMet({ field: 'v', values: ['brave'] }, {})).toBe(false)
+    expect(conditionMet({ field: 'v', values: ['example-preset'] }, {})).toBe(false)
   })
 })
 
@@ -369,7 +369,7 @@ describe('isFieldRequired', () => {
       visibleWhen: { field: 'vendor', values: ['custom'] },
     }
 
-    expect(isFieldRequired(hidden, { vendor: 'brave' })).toBe(false)
+    expect(isFieldRequired(hidden, { vendor: 'example-preset' })).toBe(false)
     expect(isFieldRequired(hidden, { vendor: 'custom' })).toBe(true)
   })
 })

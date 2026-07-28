@@ -6,13 +6,16 @@ unrecognised value rather than guessing a vendor.
 """
 
 import pytest
+from pydantic import ValidationError
 from structlog.testing import capture_logs
 
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.http_vendor import (
     HTTP_VENDOR_PRESETS,
     METADATA_KEY_VENDOR,
     HttpVendor,
+    HttpVendorPreset,
     resolve_vendor,
 )
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
@@ -64,6 +67,25 @@ class TestPresets:
 
     def test_custom_has_no_preset(self) -> None:
         assert HttpVendor.CUSTOM not in HTTP_VENDOR_PRESETS
+
+    def test_every_preset_declares_a_probe_its_endpoint_answers(self) -> None:
+        # A search endpoint refuses a bare request, so a preset with neither
+        # a query nor a body probes as unhealthy on a perfectly good key.
+        for vendor, preset in HTTP_VENDOR_PRESETS.items():
+            assert preset.health_params or preset.health_body, (
+                f"{vendor.value} probes its search endpoint with no payload"
+            )
+
+    def test_a_preset_cannot_declare_two_probe_shapes(self) -> None:
+        with pytest.raises(ValidationError, match="not two"):
+            HttpVendorPreset(
+                id=NotBlankStr("example-preset"),
+                label=NotBlankStr("Example"),
+                base_url=NotBlankStr("https://api.example.test/search"),
+                auth_header=NotBlankStr("X-Key"),
+                health_params={"q": "ping"},
+                health_body={"query": "ping"},
+            )
 
     def test_auth_headers_render_the_template(self) -> None:
         tavily = HTTP_VENDOR_PRESETS[HttpVendor.TAVILY]
@@ -243,6 +265,31 @@ class TestUpdateWithAVendor:
         )
 
         assert updated.base_url == "https://self-hosted.example.test"
+
+    async def test_switching_between_two_preset_less_vendors_is_refused(self) -> None:
+        # resolve_vendor answers None for 'custom' AND for anything it does
+        # not recognise, so comparing resolved presets would read this as no
+        # change at all and leave the old endpoint under the new label.
+        catalog = make_in_memory_catalog()
+        await catalog.create(
+            name="custom-api",
+            connection_type=ConnectionType.GENERIC_HTTP,
+            auth_method=AuthMethod.API_KEY.value,
+            credentials={"token": "secret"},
+            base_url="https://api.example.test",
+            metadata={METADATA_KEY_VENDOR: HttpVendor.CUSTOM.value},
+        )
+
+        with pytest.raises(InvalidConnectionEndpointError):
+            await catalog.update(
+                "custom-api",
+                base_url=None,
+                metadata={METADATA_KEY_VENDOR: "some-future-vendor"},
+            )
+
+        unchanged = await catalog.get_or_raise("custom-api")
+        assert unchanged.base_url == "https://api.example.test"
+        assert unchanged.metadata[METADATA_KEY_VENDOR] == HttpVendor.CUSTOM.value
 
     async def test_switching_vendor_repoints_even_when_base_url_is_omitted(
         self,

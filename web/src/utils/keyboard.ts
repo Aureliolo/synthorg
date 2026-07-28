@@ -2,7 +2,7 @@
  * Lower-cased `key` for a keyboard event, or `''` when the event carries none.
  *
  * The DOM types declare `KeyboardEvent.key` as `string`, but events synthesised
- * by the platform and by third-party libraries (Chrome autofill on a password
+ * by the platform and by third-party libraries (browser autofill on a password
  * field, for one) arrive without it, so an unguarded `.toLowerCase()` in a
  * document-level listener throws past the compiler into the global error
  * handler. Taking an optional `key` keeps that guard honest rather than a

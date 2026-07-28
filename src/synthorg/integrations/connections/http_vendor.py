@@ -66,6 +66,10 @@ class HttpVendorPreset(BaseModel):
         health_params: Query parameters the health probe must send. A search
             API rejects a bare request as malformed, which would read as an
             unhealthy connection even with a valid key.
+        health_body: JSON body the health probe must POST. Set for a vendor
+            whose endpoint answers only POST, where a GET (however well
+            formed) returns 405 and every valid credential would read as
+            unhealthy. Mutually exclusive with ``health_params``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -77,6 +81,29 @@ class HttpVendorPreset(BaseModel):
     auth_template: NotBlankStr = "{key}"
     health_path: str = ""
     health_params: dict[str, str] = Field(default_factory=dict)
+    health_body: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _one_probe_shape(self) -> HttpVendorPreset:
+        """Reject a preset that describes two different probes.
+
+        The probe issues one request, so params and a body cannot both
+        apply; declaring both would silently drop one and leave the preset
+        reading as though it had been honoured.
+
+        Returns:
+            The validated preset.
+
+        Raises:
+            ValueError: If both a query and a body are declared.
+        """
+        if self.health_params and self.health_body:
+            msg = (
+                f"vendor {self.id!r} declares both health_params and "
+                f"health_body; the probe sends one request, not two"
+            )
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _template_consumes_the_key(self) -> HttpVendorPreset:
@@ -127,6 +154,9 @@ _TAVILY: Final = HttpVendorPreset(
     base_url=NotBlankStr("https://api.tavily.com/search"),
     auth_header=NotBlankStr("Authorization"),
     auth_template=NotBlankStr("Bearer {key}"),
+    # The endpoint answers POST only, so a query-string probe returns 405
+    # and would report every valid credential as unhealthy.
+    health_body={"query": "ping"},
 )
 
 _EXA: Final = HttpVendorPreset(
@@ -134,6 +164,7 @@ _EXA: Final = HttpVendorPreset(
     label=NotBlankStr("Exa"),
     base_url=NotBlankStr("https://api.exa.ai/search"),
     auth_header=NotBlankStr("x-api-key"),
+    health_body={"query": "ping"},
 )
 
 

@@ -35,9 +35,12 @@ function sourceFiles(dir: string): string[] {
 describe('keydown listeners', () => {
   it('never call .toLowerCase() directly on event.key', () => {
     const offenders = sourceFiles(SRC).filter((file) => {
-      // `utils/keyboard.ts` is the one place allowed to touch it, behind
-      // the optional chain every other call site routes through.
-      if (file.replace(/\\/g, '/').endsWith('utils/keyboard.ts')) return false
+      // `src/utils/keyboard.ts` is the one place allowed to touch it,
+      // behind the optional chain every other call site routes through.
+      // Matched as a whole path, not a suffix: a `keyboard.ts` under any
+      // other `utils/` directory would otherwise exempt itself.
+      const relative = file.replace(/\\/g, '/').slice(SRC.replace(/\\/g, '/').length)
+      if (relative === '/utils/keyboard.ts') return false
       // eslint-disable-next-line security/detect-non-literal-fs-filename
       const source = readFileSync(file, 'utf8')
       return /\.key\s*\.\s*to(Lower|Upper)Case\(/.test(source)

@@ -25,7 +25,9 @@ from synthorg.integrations.connections._credential_resolver import (
     CredentialResolverMixin,
 )
 from synthorg.integrations.connections._oauth_rotation import OAuthRotationMixin
-from synthorg.integrations.connections.http_vendor import resolve_vendor
+from synthorg.integrations.connections.http_vendor import (
+    METADATA_KEY_VENDOR,
+)
 from synthorg.integrations.connections.models import (
     Connection,
     ConnectionHealth,
@@ -409,8 +411,13 @@ class ConnectionCatalog(
             return
         declared = candidate.get("metadata", existing.metadata)
         metadata = declared if isinstance(declared, dict) else None
-        vendor_changed = resolve_vendor(metadata or {}) != resolve_vendor(
-            existing.metadata
+        # Compared as declared labels, not as resolved presets: ``resolve_vendor``
+        # answers ``None`` for "custom" AND for anything it does not recognise,
+        # so comparing presets would read a switch between two such labels as no
+        # change at all -- and leave the old endpoint attached to the new label,
+        # the exact mislabelling the refusal below exists to prevent.
+        vendor_changed = (metadata or {}).get(METADATA_KEY_VENDOR, "") != (
+            existing.metadata.get(METADATA_KEY_VENDOR, "")
         )
         # An absent key with an unchanged vendor is simply a PATCH that does
         # not concern the endpoint. An absent key across a vendor switch is
@@ -458,6 +465,9 @@ class ConnectionCatalog(
 
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
+            InvalidConnectionEndpointError: If the update moves a
+                ``generic_http`` connection onto a vendor that supplies no
+                endpoint of its own and names no replacement.
         """
         async with self._name_lock(name):
             existing = await self.get_or_raise(name)
