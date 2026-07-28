@@ -83,6 +83,11 @@ class WordEmbedder:
         """Width of every vector produced."""
         return len(self._VOCABULARY)
 
+    @property
+    def model_ref(self) -> str:
+        """The provider-qualified identifier the health surface reports."""
+        return "test-provider/word-embedder"
+
     async def embed_many(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
         """Embed each text as a normalised word-presence vector."""
         return tuple(self._embed_one(text) for text in texts)

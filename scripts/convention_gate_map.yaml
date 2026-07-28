@@ -101,6 +101,11 @@ mandatory_rules:
     header: Explicit Provider Binding
     gate: scripts/check_no_provider_auto_pick.py
 
+  - id: claude-md::operator-chosen-embedder
+    file: CLAUDE.md
+    header: Operator-Chosen Embedder
+    gate: scripts/check_no_silent_embedder_fallback.py
+
   - id: claude-md::llm-gateway-binding
     file: CLAUDE.md
     header: LLM Gateway Binding

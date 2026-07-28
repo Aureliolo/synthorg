@@ -323,30 +323,38 @@ async def _resolve_readiness_probe_timeout(app_state: AppState) -> float:
 def _memory_readiness(memory_health: MemoryHealth) -> bool | None:
     """Fold agent memory into the readiness verdict.
 
-    A durable backend that wired but came up DEGRADED (a failed probe, a
-    lost dense index, or maintenance off) is the silent-memory failure
-    this surface exists to catch: keyword-only recall answers every
-    query, so it reads as working memory while returning the wrong
-    things. That fails readiness.
+    Only a wired backend that cannot answer at all (``UNREACHABLE``)
+    blocks: its reads and writes are failing, so serving traffic that
+    depends on recall would produce errors.
 
-    An unwired backend (``OFF``) does not: the config default is
-    ``sqlvector``, so a minimal or not-yet-configured deployment reports
-    ``OFF`` without any durable memory ever having been wired, and
-    blocking on it would fail every such stack's readiness probe.
-    ``inmemory`` is degraded by design and likewise never blocks.
+    A DEGRADED backend does not block. Every degradation in that state
+    still returns correct results and differs only in latency or in
+    matching by term instead of by meaning, so failing readiness for one
+    would take a working system offline. It would also collapse the
+    distinction the memory design requires be kept: "recall got slower"
+    is not "recall changed meaning", and neither is "recall stopped".
+    The degradation is reported on the memory surface, which is where an
+    operator acts on it.
+
+    An unwired backend (``OFF``) does not block either: the config default
+    is ``sqlvector``, so a not-yet-configured deployment reports ``OFF``
+    without any durable memory having been wired. ``inmemory`` is degraded
+    by design and likewise never blocks.
 
     Returns:
-        ``False`` when a durable backend is wired but DEGRADED, ``True``
-        when it is DURABLE, or ``None`` (does not block) for an unwired
-        or inmemory store.
+        ``False`` when a wired backend is UNREACHABLE, ``True`` when it is
+        DURABLE, or ``None`` (does not block) for a degraded, unwired or
+        inmemory store.
     """
     from synthorg.memory.factory import IN_MEMORY_BACKEND  # noqa: PLC0415
 
     if memory_health.backend == IN_MEMORY_BACKEND:
         return None
-    if memory_health.state is MemoryState.OFF:
-        return None
-    return memory_health.state is MemoryState.DURABLE
+    if memory_health.state is MemoryState.UNREACHABLE:
+        return False
+    if memory_health.state is MemoryState.DURABLE:
+        return True
+    return None
 
 
 async def _evaluate_readiness(app_state: AppState) -> ReadinessStatus:

@@ -130,17 +130,31 @@ and instruction stability is preferred (performs consistently regardless of prom
 
 ### Embedder Configuration
 
-`EmbedderConfig` binds an explicit `(provider, model)` pair plus the model's output
-width. Boot resolves it through `resolve_embedder_config`, which reads the
-`memory.embedder_provider` / `embedder_model` / `embedder_dims` settings first and
-otherwise auto-selects an LMEB-ranked model from the providers actually available:
+`EmbedderConfig` binds an explicit `(provider, model)` pair plus the vector width.
+Boot resolves it through `resolve_embedder_config`, which reads the operator's
+`memory.embedder_model` setting (a provider-bound `MODEL_REF`) and the optional
+`memory.embedder_dims` pin, then the YAML override. **It selects nothing**: an
+unresolved binding leaves memory OFF and logs why, and the built-in embedder is
+reachable only by naming it (`builtin` / `hashing`).
+
+The rankings on this page inform that choice; they do not make it. Nothing in the
+codebase reads them, and the tiers below are sizing guidance for an operator.
 
 ```yaml
 memory:
-  embedder_provider: "example-provider"
-  embedder_model: "example-embedding-001"
-  embedder_dims: 3584          # the model's output width, or an MRL truncation of it
+  embedder:
+    provider: "example-provider"
+    model: "example-embedding-001"
+    dims: 2000                 # optional: pin an MRL truncation of the model's width
 ```
+
+When `dims` is not pinned, the width is **measured** rather than looked up:
+`probe_embedder_dims` embeds a short probe string through the chosen pair and
+counts components. A shipped table of catalogued widths cannot be the authority
+here, because it goes stale, cannot cover a model it has never heard of, and
+being wrong by a single component makes every stored vector incomparable. The
+probe doubles as proof the binding works: a model that cannot embed fails at
+selection rather than at the first memory write.
 
 A `dims` value the model cannot produce is a hard failure rather than a warning:
 vectors of the wrong width corrupt recall silently, which is far worse than not
@@ -160,6 +174,12 @@ and dense search still runs, as an exact scan over the corpus, reported at ERROR
 with `memory.dense_index.unindexable`. Recall stays semantic either way, but a
 width above the ceiling reads every row per query: pin `memory.embedder_dims` at
 or below 2000 on an MRL-capable model, or choose a narrower embedder.
+
+That state is reported as DEGRADED on the memory health surface and does **not**
+fail readiness. It answers every query correctly and differs only in latency, so
+gating traffic on it would take a working system offline; it is also terminal,
+since no retry can build an index pgvector refuses for that width, so a readiness
+probe would wait out its whole budget for a condition known at boot.
 
 Changing the embedding model after deployment invalidates every stored vector, because
 embeddings from different models are not comparable. The dense index is therefore keyed

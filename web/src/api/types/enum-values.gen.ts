@@ -620,6 +620,7 @@ export type MemoryLevel = (typeof MEMORY_LEVEL_VALUES)[number]
 export const MEMORY_STATE_VALUES = [
     'durable',
     'degraded',
+    'unreachable',
     'off',
 ] as const
 export type MemoryState = (typeof MEMORY_STATE_VALUES)[number]

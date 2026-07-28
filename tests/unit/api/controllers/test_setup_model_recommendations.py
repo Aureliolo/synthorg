@@ -106,13 +106,14 @@ class TestCandidateRefIsWritable:
 
 @pytest.mark.unit
 class TestSetupModelRecommendationsResponse:
-    def test_embedding_recommendation_requires_its_dims(self) -> None:
-        with pytest.raises(ValidationError):
-            SetupModelRecommendationsResponse(embedding_recommended="embed-001")
-
-    def test_embedding_dims_require_a_recommendation(self) -> None:
-        with pytest.raises(ValidationError):
-            SetupModelRecommendationsResponse(embedding_recommended_dims=1024)
+    def test_embedding_carries_candidates_but_no_recommendation(self) -> None:
+        """The operator names the embedding model, so there is nothing to
+        recommend and no width to prefill alongside it."""
+        response = SetupModelRecommendationsResponse(
+            embedding_candidates=(_candidate(),)
+        )
+        assert response.embedding_candidates[0].ref
+        assert not hasattr(response, "embedding_recommended")
 
     def test_candidates_carry_refs_the_recommendations_can_match(self) -> None:
         candidate = _candidate()

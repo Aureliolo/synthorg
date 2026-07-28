@@ -16,10 +16,7 @@ from litestar import Controller, post
 from litestar.datastructures import State
 
 from synthorg.api.controllers.setup._embedder_setup import (
-    auto_select_embedder,
-)
-from synthorg.api.controllers.setup._embedder_setup import (
-    collect_model_ids as _collect_model_ids,
+    bind_chosen_embedder,
 )
 from synthorg.api.controllers.setup._embedder_setup import (
     ensure_per_feature_models as _ensure_per_feature_models,
@@ -57,7 +54,6 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ValidationError
-from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_COMPLETE_CHECK_ERROR,
@@ -166,11 +162,10 @@ async def _validate_persisted_agents(
         validate_persisted_agents_against_providers(providers_map, persisted_agents)
 
 
-async def _run_embedder_auto_select(
-    app_state: AppState,
+async def _run_embedder_binding(
     settings_svc: SettingsServiceProtocol,
 ) -> str | None:
-    """Best-effort embedder auto-selection. Returns failure reason or None.
+    """Bind the operator's chosen embedder. Returns failure reason or None.
 
     Extracted from ``complete_setup`` for the same line-budget reason
     as :func:`_validate_completion_prereqs`. Non-critical exceptions are
@@ -181,44 +176,17 @@ async def _run_embedder_auto_select(
     Returns:
         The ``str`` value when present, ``None`` otherwise.
     """
-    # A company that booted empty (no providers at startup) has no runtime
-    # registry until post_setup_reinit rebuilds it from the persisted configs
-    # AFTER this best-effort step. Hard-requiring the runtime registry here
-    # would 503 the whole completion on exactly the wizard flow it must
-    # support, so fall back to the persisted providers for the embedder preset
-    # hint -- mirroring the same allowance in ``_validate_completion_prereqs``.
-    provider_registry = app_state.slice(ProvidersStateSlice).registry
-    if provider_registry is not None:
-        provider_preset_name = provider_registry.default_provider_resolved_name()
-    else:
-        # Empty-company boot: no runtime registry / bound default exists yet, so
-        # the embedder's tier-inference hint (NOT an LLM dispatch binding) falls
-        # back to the first persisted provider -- exempt from the no-auto-pick
-        # gate because it is a tier hint, not a dispatch binding.
-        persisted = list(await provider_management_of(app_state).list_providers())
-        provider_preset_name = (
-            persisted[0]  # lint-allow: provider-auto-pick -- tier hint
-            if persisted
-            else None
-        )
-    has_gpu = await _read_has_gpu_setting(settings_svc)
     try:
-        model_ids = await _collect_model_ids(app_state)
-        return await auto_select_embedder(
-            settings_svc=settings_svc,
-            available_model_ids=model_ids,
-            provider_preset_name=provider_preset_name,
-            has_gpu=has_gpu,
-        )
+        return await bind_chosen_embedder(settings_svc=settings_svc)
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
             SETUP_COMPLETE_CHECK_ERROR,
-            check="auto_select_embedder",
+            check="bind_chosen_embedder",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return "Embedder auto-selection raised an unexpected error."
+        return "Binding the chosen embedding model raised an unexpected error."
 
 
 async def _ensure_decomposition_model(
@@ -255,36 +223,6 @@ async def _ensure_decomposition_model(
         return
     await settings_svc.set("coordination", "decomposition_model", model_ref)
     logger.info(SETUP_DECOMPOSITION_MODEL_SELECTED, model_ref=model_ref)
-
-
-async def _read_has_gpu_setting(settings_svc: SettingsServiceProtocol) -> bool | None:
-    """Return the operator-owned ``api/setup_has_gpu`` boolean.
-
-    Returns ``None`` on non-critical read failure (logged at WARNING with
-    exception type + scrubbed description) or if the value is unparseable.
-
-    Returns:
-        The ``bool`` value when present, ``None`` otherwise.
-    """
-    try:
-        entry = await settings_svc.get("api", "setup_has_gpu")
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        reraise_critical(exc)
-        logger.warning(
-            SETUP_COMPLETE_CHECK_ERROR,
-            check="read_has_gpu",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return None
-    raw = normalize_ascii_lowercase_or_default(entry.value)
-    match raw:
-        case "true" | "1" | "yes":
-            return True
-        case "false" | "0" | "no" | "":
-            return False
-        case _:
-            return None
 
 
 class SetupCompletionController(Controller):
@@ -354,16 +292,16 @@ async def _finalize_completion(
 ) -> str | None:
     """Run the gated completion sequence under the held ``_COMPLETE_LOCK``.
 
-    Validates prerequisites, runs best-effort embedder auto-selection, ensures a
+    Validates prerequisites, binds the chosen embedder, ensures a
     decomposition model, rebuilds the runtime, and persists the completion flag
     only after the rebuild returns clean.
 
     Returns:
-        The embedder auto-selection failure reason, or ``None`` on success.
+        The embedder binding failure reason, or ``None`` on success.
     """
     await _check_setup_not_complete(settings_svc)
     await _validate_completion_prereqs(app_state, settings_svc)
-    embedder_failure_reason = await _run_embedder_auto_select(app_state, settings_svc)
+    embedder_failure_reason = await _run_embedder_binding(settings_svc)
     # The coordinator builds eagerly during reinit and requires a non-blank
     # decomposition model; the wizard's picker is optional, so fill a sensible
     # default from the matched roster before the rebuild.

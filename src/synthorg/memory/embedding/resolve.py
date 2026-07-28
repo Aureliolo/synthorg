@@ -1,17 +1,26 @@
-"""Embedder config resolution with priority chain.
+"""Embedder binding resolution.
 
-Resolves an :class:`EmbedderConfig` from the priority chain:
+The operator names the embedding model. This module reads that choice and
+turns it into a usable binding; it does not make the choice, rank
+candidates, infer a provider from a model name, or fall back to anything.
 
-1. Settings override (runtime-editable via dashboard)
+Resolution failing is deliberately an error rather than a silent default:
+memory that cannot embed cannot retrieve by meaning, and degrading quietly
+to keyword matching is how a dead memory layer stays unnoticed. The
+built-in embedder is reachable only by naming it, never by failing into
+it.
+
+Priority, highest first:
+
+1. Settings override (runtime-editable via the dashboard)
 2. YAML config override (``CompanyMemoryConfig.embedder``)
-3. Auto-selection from available models using LMEB rankings
 
-Callers use ``resolve_embedder_config()`` instead of constructing an
-:class:`EmbedderConfig` manually. Resolution failing is deliberately an
-error rather than a silent default: memory that cannot embed cannot
-retrieve by meaning, and degrading quietly to keyword matching is how a
-dead memory layer stays unnoticed.
+The vector width is measured from the model rather than looked up, so a
+model this codebase has never heard of is as usable as one it has.
 """
+
+from collections.abc import Awaitable
+from typing import Protocol
 
 from synthorg.core.vector_limits import STORAGE_MAX_DIMENSIONS
 from synthorg.memory.config import (
@@ -19,20 +28,25 @@ from synthorg.memory.config import (
     EmbedderOverrideConfig,
 )
 from synthorg.memory.embedding.config import EmbedderConfig
-from synthorg.memory.embedding.rankings import DeploymentTier
-from synthorg.memory.embedding.selector import (
-    infer_deployment_tier,
-    select_embedding_model,
-)
+from synthorg.memory.embedding.hashing import BUILTIN_EMBEDDER_DIMS
+from synthorg.memory.embedding.probe import is_builtin_embedder, probe_embedder_dims
 from synthorg.memory.errors import MemoryConfigError
 from synthorg.observability import get_logger
-from synthorg.observability.events.memory import (
-    MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
-    MEMORY_EMBEDDER_AUTO_SELECTED,
-    MEMORY_EMBEDDER_PROVIDER_INFERRED,
-)
+from synthorg.observability.events.memory import MEMORY_EMBEDDER_BUILTIN_SELECTED
 
 logger = get_logger(__name__)
+
+
+class DimsProbe(Protocol):
+    """Measures a model's true output width.
+
+    Injected rather than imported at the call site so a test can resolve a
+    binding without reaching a provider.
+    """
+
+    def __call__(self, *, provider: str, model: str) -> Awaitable[int]:
+        """Return the width *model* emits."""
+        ...
 
 
 def _merge_override(
@@ -63,85 +77,43 @@ def _dims_overridden(*overrides: EmbedderOverrideConfig | None) -> bool:
     """Whether any override in the chain set the vector width itself.
 
     Returns:
-        ``True`` when an operator pinned ``dims`` rather than inheriting the
-        auto-selected model's catalogued width.
+        ``True`` when an operator pinned ``dims`` rather than accepting the
+        model's measured width.
     """
     return any(o is not None and o.dims is not None for o in overrides)
 
 
-def _auto_select_from_lmeb(
-    available_models: tuple[str, ...],
-    tier: DeploymentTier,
-) -> tuple[str | None, int | None]:
-    """Auto-select model and dims from LMEB rankings.
-
-    Tries tier-filtered first, then falls back to all tiers.
-
-    Returns:
-        ``(model_id, dims)`` or ``(None, None)`` if no match.
-    """
-    # The selector falls back to all tiers internally when the inferred tier
-    # has no ranked match, so a single call suffices.
-    selection = select_embedding_model(
-        available_models,
-        deployment_tier=tier,
-    )
-    if selection is not None:
-        logger.info(
-            MEMORY_EMBEDDER_AUTO_SELECTED,
-            model_id=selection.model_id,
-            tier=tier.value,
-            ranking_source=selection.source,
-            ranking_model=selection.ranking_model_id,
-            dims=selection.output_dims,
-        )
-        return selection.model_id, selection.output_dims
-    return None, None
-
-
-def resolve_embedder_config(
+async def resolve_embedder_config(
     memory_config: CompanyMemoryConfig,
-    available_models: tuple[str, ...] = (),
     *,
-    provider_preset_name: str | None = None,
-    has_gpu: bool | None = None,
     settings_override: EmbedderOverrideConfig | None = None,
+    measure_dims: DimsProbe = probe_embedder_dims,
 ) -> EmbedderConfig:
-    """Resolve the effective embedder configuration.
-
-    Priority chain (highest first):
-
-    1. ``settings_override`` (runtime settings from dashboard)
-    2. ``memory_config.embedder`` (YAML config override)
-    3. Auto-selection from ``available_models`` using LMEB rankings
+    """Resolve the operator's embedder choice into a usable binding.
 
     Args:
         memory_config: Company-wide memory configuration.
-        available_models: Model identifiers discovered from the
-            connected provider(s).
-        provider_preset_name: Provider preset name for tier inference.
-        has_gpu: Whether the host has a GPU (for tier inference).
         settings_override: Runtime settings override (highest priority).
+        measure_dims: Probe used to measure the model's width when the
+            operator has not pinned one.
 
     Returns:
         A fully-populated ``EmbedderConfig``.
 
     Raises:
-        MemoryConfigError: If no embedding model can be resolved
-            (no overrides and no LMEB match in available models).
+        MemoryConfigError: If no embedding model was chosen, if a model was
+            chosen without a provider, or if the resolved width exceeds
+            what the vector store can hold.
+        MemoryEmbeddingError: If the chosen model could not be probed. It
+            propagates rather than degrading: a model that cannot answer is
+            not a model memory can be built on.
     """
-    tier = infer_deployment_tier(provider_preset_name, has_gpu=has_gpu)
-    auto_model, auto_dims = _auto_select_from_lmeb(available_models, tier)
-
-    # Apply YAML config override (second priority).
     provider, model, dims = _merge_override(
         memory_config.embedder,
         fallback_provider=None,
-        fallback_model=auto_model,
-        fallback_dims=auto_dims,
+        fallback_model=None,
+        fallback_dims=None,
     )
-
-    # Apply settings override (highest priority).
     provider, model, dims = _merge_override(
         settings_override,
         fallback_provider=provider,
@@ -150,11 +122,27 @@ def resolve_embedder_config(
     )
     dims_explicit = _dims_overridden(memory_config.embedder, settings_override)
 
-    model, dims = _resolved_or_refused(
-        model, dims, available_models=available_models, tier=tier
-    )
-    if provider is None:
-        provider = _inferred_provider(model)
+    provider, model = _chosen_or_refused(provider, model)
+    builtin = is_builtin_embedder(provider, model)
+    if builtin:
+        logger.warning(
+            MEMORY_EMBEDDER_BUILTIN_SELECTED,
+            note=(
+                "the built-in embedder matches shared vocabulary, not "
+                "meaning; recall is materially weaker than with an "
+                "embedding model"
+            ),
+        )
+    if dims is None:
+        # The built-in's width is definitional rather than discoverable:
+        # it is a bucket count this process chooses, so there is nothing
+        # to ask.
+        dims = (
+            BUILTIN_EMBEDDER_DIMS
+            if builtin
+            else await measure_dims(provider=provider, model=model)
+        )
+    _within_storage_ceiling(dims, model=model)
 
     return EmbedderConfig(
         provider=provider,
@@ -164,75 +152,58 @@ def resolve_embedder_config(
     )
 
 
-def _resolved_or_refused(
-    model: str | None,
-    dims: int | None,
-    *,
-    available_models: tuple[str, ...],
-    tier: DeploymentTier,
-) -> tuple[str, int]:
-    """Refuse a width or model the store could never serve.
+def _chosen_or_refused(provider: str | None, model: str | None) -> tuple[str, str]:
+    """Refuse a binding the operator never completed.
 
     Returns:
-        The model and width, both known present and within the ceiling.
-        Returned rather than merely checked so the guarantee survives the
-        hand-off to ``EmbedderConfig``, which takes neither as optional.
+        The provider and model, both known present. Returned rather than
+        merely checked so the guarantee survives the hand-off to
+        ``EmbedderConfig``, which takes neither as optional.
 
     Raises:
-        MemoryConfigError: If nothing resolved a model and width, or if
-            the resolved width exceeds the vector store's ceiling.
+        MemoryConfigError: If no model was chosen, or a model was chosen
+            without the provider that serves it.
     """
-    if model is None or dims is None:
-        logger.warning(
-            MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
-            available_models=len(available_models),
-            tier=tier.value,
-            reason="no LMEB-ranked model available and no override",
-        )
+    if model is None or not model.strip():
         msg = (
-            "Could not resolve embedding model configuration: "
-            "no LMEB-ranked model found in available models "
-            "and no manual override provided"
+            "No embedding model is configured, so agents would start every "
+            "task with no recall. Choose one in setup, or set "
+            "memory.embedder_model."
         )
         raise MemoryConfigError(msg)
-
-    if dims > STORAGE_MAX_DIMENSIONS:
-        # The settings registry caps an operator override, but an
-        # auto-selected width comes from the model ranking and never passes
-        # through it, so without this a wide ranked model reaches the store
-        # and fails inside ALTER TABLE as an opaque driver error.
-        logger.warning(
-            MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
-            model=model,
-            dims=dims,
-            storage_ceiling=STORAGE_MAX_DIMENSIONS,
-            reason="resolved width exceeds the vector store's storage ceiling",
-        )
+    if provider is None or not provider.strip():
+        # Deriving the provider from the model name is what the Explicit
+        # Provider Binding rule forbids, and it produced bindings that
+        # named a provider no registry had.
         msg = (
-            f"Embedding width {dims} exceeds the vector store's ceiling of "
-            f"{STORAGE_MAX_DIMENSIONS}; choose a narrower embedding model "
-            f"or set memory.embedder_dims to truncate it."
+            f"Embedding model {model!r} has no provider bound to it. Every "
+            f"dispatch resolves an explicit (provider, model) pair; set "
+            f'memory.embedder_model to {{"provider": ..., "model_id": '
+            f"{model!r}}}."
         )
         raise MemoryConfigError(msg)
-    return model, dims
+    return provider, model
 
 
-def _inferred_provider(model: str) -> str:
-    """Return the provider to assume for a model that named none.
+def _within_storage_ceiling(dims: int, *, model: str) -> None:
+    """Refuse a width no vector column could hold.
 
-    An LMEB-auto-selected open model is served by name (the local /
-    self-hosted convention litellm dispatches directly), so the provider
-    mirrors the model. Logged rather than assumed silently: for a hosted
-    provider that same-name assumption is wrong, and an operator whose
-    model fails to embed needs the boot log to say "the provider was
-    guessed" rather than debugging an opaque auth error.
+    A width above the store's index ceiling is not refused here: those
+    vectors are stored and searched correctly, just without an approximate
+    index, which the memory health surface reports as degraded. Only a
+    width the store cannot hold at all is fatal.
 
-    Returns:
-        The model name, doubling as the provider.
+    Raises:
+        MemoryConfigError: If the width exceeds the storage ceiling.
     """
-    logger.info(
-        MEMORY_EMBEDDER_PROVIDER_INFERRED,
-        model=model,
-        reason="auto-selected model has no explicit provider; using model name",
+    if dims <= STORAGE_MAX_DIMENSIONS:
+        return
+    msg = (
+        f"Embedding model {model!r} emits {dims} dimensions, above the "
+        f"vector store's ceiling of {STORAGE_MAX_DIMENSIONS}; choose a "
+        f"narrower model, or set memory.embedder_dims to truncate it."
     )
-    return model
+    raise MemoryConfigError(msg)
+
+
+__all__ = ["DimsProbe", "resolve_embedder_config"]

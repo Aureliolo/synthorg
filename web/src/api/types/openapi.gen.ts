@@ -12565,13 +12565,17 @@ export type components = {
          *     Attributes:
          *         DURABLE: Wired on a store that survives restart and retrieves
          *             by meaning.
-         *         DEGRADED: Wired, but not fully: the ephemeral keyword store, a
-         *             failed probe, a missing dense index, or maintenance off.
-         *         OFF: Not wired. Usually no embedding model resolved, which the
+         *         DEGRADED: Wired and answering correctly, but not fully: the
+         *             ephemeral keyword store, the built-in lexical embedder, a
+         *             missing dense index, or maintenance off. Costs latency or
+         *             recall quality, never correctness.
+         *         UNREACHABLE: Wired but not answering. Reads and writes are
+         *             failing, so this is the one memory state that gates traffic.
+         *         OFF: Not wired. Usually no embedding model chosen, which the
          *             startup log records at ERROR.
          * @enum {string}
          */
-        readonly MemoryState: "durable" | "degraded" | "off";
+        readonly MemoryState: "durable" | "degraded" | "unreachable" | "off";
         /** Message */
         readonly Message: {
             /**
@@ -16707,9 +16711,7 @@ export type components = {
             readonly cos_recommended: string | null;
             readonly decomposition_recommended: string | null;
             /** @default [] */
-            readonly embedding_candidates: readonly string[];
-            readonly embedding_recommended: string | null;
-            readonly embedding_recommended_dims: number | null;
+            readonly embedding_candidates: readonly components["schemas"]["SetupModelCandidate"][];
             /** @default [] */
             readonly model_ref_candidates: readonly components["schemas"]["SetupModelCandidate"][];
             readonly narrative_recommended: string | null;

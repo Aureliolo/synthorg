@@ -17,8 +17,9 @@ import type {
 
 // Per-feature model pickers, in render order. Each writes straight through the
 // settings API, so a choice survives independently of the wizard and stays
-// editable in dashboard Settings. All non-embedding pickers select from the
-// full catalogue of provider-bound refs; embedding has its own subset.
+// editable in dashboard Settings. Every picker selects a provider-bound ref;
+// embedding draws from its own list, which is the same catalogue plus the
+// built-in embedder.
 //
 // This tuple is the single source of the key union, so a picker added here
 // without its spec, its recommendation mapping, or a slot in the per-key
@@ -45,19 +46,12 @@ type PickerNamespace =
   | 'chief_of_staff'
   | 'charter'
 
-// How a picker's chosen value is written back. Every per-feature model setting
-// is a backend ``MODEL_REF``, which rejects a provider-less value at write
-// time, so those pickers select a serialized ``{provider, model_id}`` ref.
-// ``memory.embedder_model`` is a plain string setting and takes a bare id.
-type ValueKind = 'model_ref' | 'plain'
-
 interface PickerSpec {
   key: ModelKey
   namespace: PickerNamespace
   settingKey: string
   label: string
   hint: string
-  valueKind: ValueKind
 }
 
 const PICKER_META: Record<ModelKey, Omit<PickerSpec, 'key'>> = {
@@ -66,56 +60,48 @@ const PICKER_META: Record<ModelKey, Omit<PickerSpec, 'key'>> = {
     settingKey: 'decomposition_model',
     label: 'Coordination model',
     hint: 'Used by the coordinator to break briefs into tasks.',
-    valueKind: 'model_ref',
   },
   embedding: {
     namespace: 'memory',
     settingKey: 'embedder_model',
     label: 'Embedding model',
-    hint: 'Powers memory + knowledge.',
-    valueKind: 'plain',
+    hint: 'How agents recall. Nothing is chosen for you; leave it unset and memory stays off.',
   },
   research: {
     namespace: 'research',
     settingKey: 'model',
     label: 'Research model',
     hint: 'The model the research pipeline reasons with.',
-    valueKind: 'model_ref',
   },
   cos: {
     namespace: 'chief_of_staff',
     settingKey: 'chat_model',
     label: 'Chief of Staff model',
     hint: 'Powers the conversational Chief-of-Staff turns.',
-    valueKind: 'model_ref',
   },
   propose: {
     namespace: 'chief_of_staff',
     settingKey: 'propose_model',
     label: 'Request-work model',
     hint: 'Turns natural-language requests into concrete work proposals.',
-    valueKind: 'model_ref',
   },
   routing: {
     namespace: 'chief_of_staff',
     settingKey: 'routing_model',
     label: 'Concern-routing model',
     hint: 'Classifies which role should handle an incoming concern.',
-    valueKind: 'model_ref',
   },
   narrative: {
     namespace: 'chief_of_staff',
     settingKey: 'narrative_model',
     label: 'Run-narrative model',
     hint: 'Writes the documentary-style narrative of a run.',
-    valueKind: 'model_ref',
   },
   charter: {
     namespace: 'charter',
     settingKey: 'interview_model',
     label: 'Project-charter model',
     hint: "Interviews you and drafts a new project's charter.",
-    valueKind: 'model_ref',
   },
 }
 
@@ -135,13 +121,9 @@ function perKey<V>(value: V): Record<ModelKey, V> {
 }
 
 // A partial/garbled recommendations payload can leave a candidate list absent
-// at runtime even though the type marks it required, so both builders below
-// take an optional list and degrade to an empty picker rather than crashing
-// the whole step.
-function plainOptions(ids: readonly string[] | undefined): readonly SelectOption[] {
-  return (ids ?? []).map((id) => ({ value: id, label: id }))
-}
-
+// at runtime even though the type marks it required, so this takes an optional
+// list and degrades to an empty picker rather than crashing the whole step.
+//
 // The option value is the serialized ref the settings write needs; the label
 // names the provider too, so the same model id served by two providers stays
 // distinguishable in the list.
@@ -158,9 +140,50 @@ function optionsFor(
   recs: SetupModelRecommendationsResponse,
   spec: PickerSpec,
 ): readonly SelectOption[] {
-  return spec.valueKind === 'plain'
-    ? plainOptions(recs.embedding_candidates)
-    : refOptions(recs.model_ref_candidates)
+  return refOptions(
+    spec.key === 'embedding' ? recs.embedding_candidates : recs.model_ref_candidates,
+  )
+}
+
+// Embedding has no recommendation, so an unset picker would otherwise render
+// its first option and read as a choice nobody made. A disabled placeholder
+// keeps "nothing selected" visibly distinct from "the built-in is selected".
+function placeholderFor(spec: PickerSpec): string | undefined {
+  return spec.key === 'embedding' ? 'Select an embedding model' : undefined
+}
+
+const BUILTIN_EMBEDDER_PROVIDER = 'builtin'
+
+const BUILTIN_EMBEDDER_HINT =
+  'Running without an embedding model: recall matches shared vocabulary, not meaning, so agents get literal term overlap instead of related memories. Pick a model here to recall by meaning.'
+
+// The warning for the built-in embedder lives on this control rather than in a
+// banner elsewhere: it is a consequence of this choice, so it belongs where the
+// choice is made and disappears when the choice changes.
+function hintFor(spec: PickerSpec, value: string): string {
+  if (spec.key !== 'embedding' || !value) return spec.hint
+  return providerOf(value) === BUILTIN_EMBEDDER_PROVIDER
+    ? BUILTIN_EMBEDDER_HINT
+    : spec.hint
+}
+
+/**
+ * Read the provider out of a serialized model ref.
+ *
+ * @returns The provider name, or an empty string when the value is not a
+ * parseable ref.
+ */
+function providerOf(value: string): string {
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (parsed !== null && typeof parsed === 'object' && 'provider' in parsed) {
+      const { provider } = parsed
+      return typeof provider === 'string' ? provider : ''
+    }
+  } catch {
+    return ''
+  }
+  return ''
 }
 
 function valueOf(entries: readonly SettingEntry[], key: string): string | undefined {
@@ -177,7 +200,10 @@ function recommendedFor(
 ): string | null {
   const byKey: Record<ModelKey, string | null> = {
     decomposition: recs.decomposition_recommended,
-    embedding: recs.embedding_recommended,
+    // Embedding is never recommended: the operator names it, or memory
+    // stays off. A prefilled default here is how a model whose width the
+    // vector store cannot index got chosen without anyone deciding to.
+    embedding: null,
     research: recs.research_recommended,
     cos: recs.cos_recommended,
     propose: recs.propose_recommended,
@@ -200,19 +226,18 @@ interface NamespaceEntries {
 // it (the backend pads after ``:``, the dashboard does not), so canonicalise
 // before comparing: the select preselects by string identity against its
 // option values.
-function canonical(spec: PickerSpec, value: string): string {
-  return spec.valueKind === 'model_ref' ? normalizeModelRef(value) : value
+function canonical(value: string): string {
+  return normalizeModelRef(value)
 }
 
 // Prefer a persisted operator choice, then the backend recommendation,
 // then empty.
 function pickModel(
-  spec: PickerSpec,
   persisted: string | undefined,
   recommended: string | null | undefined,
 ): string {
   const chosen = persisted ?? recommended ?? ''
-  return chosen ? canonical(spec, chosen) : ''
+  return chosen ? canonical(chosen) : ''
 }
 
 function buildChoices(
@@ -223,7 +248,6 @@ function buildChoices(
     (acc, spec) => ({
       ...acc,
       [spec.key]: pickModel(
-        spec,
         valueOf(ns[spec.namespace], spec.settingKey),
         recommendedFor(recs, spec.key),
       ),
@@ -381,20 +405,21 @@ export function WizardModelSelection({ researchEnabled }: WizardModelSelectionPr
     <SectionCard title="Models">
       <div className="space-y-section-gap">
         <p className="text-xs text-muted-foreground">
-          Prefilled with our recommendations. Override any of them now or later
-          in Settings.
+          Prefilled with our recommendations, except the embedding model, which
+          you choose. Override any of them now or later in Settings.
         </p>
 
         {visiblePickers.map((spec) => (
           <SelectField
             key={spec.key}
             label={spec.label}
-            hint={spec.hint}
+            hint={hintFor(spec, models[spec.key])}
             value={models[spec.key]}
             onChange={(value) => {
               selectModel(spec, value)
             }}
             options={optionsFor(recs, spec)}
+            placeholder={placeholderFor(spec)}
           />
         ))}
       </div>

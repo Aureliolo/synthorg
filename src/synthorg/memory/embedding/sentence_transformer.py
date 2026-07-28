@@ -7,8 +7,9 @@ than importing the SDK directly, so the optional dependency is bound at one
 boundary. (Fine-tuning data prep in ``memory/embedding/fine_tune.py`` imports
 ``sentence_transformers`` directly for its training-side API, a separate
 concern.) The default install stays dependency-light -- the embedder raises
-:class:`MemoryEmbedderUnavailableError` when the extra is absent and callers
-degrade to a dependency-free embedder.
+:class:`MemoryEmbedderUnavailableError` when the extra is absent, and that
+error propagates. No caller substitutes another embedder for it: a strategy
+the operator did not choose must never start serving in one they did.
 """
 
 from typing import Final

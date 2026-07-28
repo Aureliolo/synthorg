@@ -258,9 +258,22 @@ Semantic memory cannot start without one, so this is the root cause an
 operator needs when the dashboard reports memory off.
 """
 
-MEMORY_EMBEDDER_AUTO_SELECTED: Final[str] = "memory.embedder.auto_selected"
-MEMORY_EMBEDDER_AUTO_SELECT_FAILED: Final[str] = "memory.embedder.auto_select_failed"
-MEMORY_EMBEDDER_PROVIDER_INFERRED: Final[str] = "memory.embedder.provider_inferred"
+MEMORY_EMBEDDER_PROBED: Final[str] = "memory.embedder.probed"
+"""Emitted at INFO with a model's measured width, at WARNING when the
+probe failed.
+
+The width is the model's own answer rather than a catalogued figure, so
+this event is the record of what the vector column was built for.
+"""
+
+MEMORY_EMBEDDER_BUILTIN_SELECTED: Final[str] = "memory.embedder.builtin_selected"
+"""Emitted at WARNING when the operator chooses the built-in embedder.
+
+Recall becomes lexical, so the choice is recorded even though it was
+deliberate: the log is where an operator debugging poor recall months
+later will look, and by then the reason will not be obvious.
+"""
+
 MEMORY_EMBEDDER_CHECKPOINT_ACTIVE: Final[str] = "memory.embedder.checkpoint_active"
 MEMORY_EMBEDDER_CHECKPOINT_MISSING: Final[str] = "memory.embedder.checkpoint_missing"
 

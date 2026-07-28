@@ -30,6 +30,16 @@ const MODEL_DEFAULT_REF = JSON.stringify({
   model_id: 'model-default',
 })
 
+const EMBED_DEFAULT_REF = JSON.stringify({
+  provider: 'test-provider',
+  model_id: 'embed-default',
+})
+
+const EMBED_BUILTIN_REF = JSON.stringify({
+  provider: 'builtin',
+  model_id: 'hashing',
+})
+
 function buildAgentSummary(
   overrides: Partial<SetupAgentSummary> = {},
 ): SetupAgentSummary {
@@ -153,9 +163,18 @@ export const setupHandlers = [
             ref: MODEL_DEFAULT_REF,
           },
         ],
-        embedding_recommended: 'embed-default',
-        embedding_recommended_dims: 1024,
-        embedding_candidates: ['embed-default'],
+        embedding_candidates: [
+          {
+            provider: 'builtin',
+            model_id: 'hashing',
+            ref: EMBED_BUILTIN_REF,
+          },
+          {
+            provider: 'test-provider',
+            model_id: 'embed-default',
+            ref: EMBED_DEFAULT_REF,
+          },
+        ],
         research_recommended: MODEL_DEFAULT_REF,
         cos_recommended: MODEL_DEFAULT_REF,
         propose_recommended: MODEL_DEFAULT_REF,

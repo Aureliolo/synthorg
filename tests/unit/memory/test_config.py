@@ -146,9 +146,12 @@ class TestEmbedderOverrideConfig:
         assert c.model is None
         assert c.dims is None
 
-    def test_model_requires_dims(self) -> None:
-        with pytest.raises(ValidationError, match="dims"):
-            EmbedderOverrideConfig(model="test-model")
+    def test_model_without_dims_is_the_normal_case(self) -> None:
+        # The width is measured from the model, so requiring it alongside
+        # would make an operator look up a figure the model can answer for.
+        c = EmbedderOverrideConfig(model="test-model")
+        assert c.model == "test-model"
+        assert c.dims is None
 
     def test_model_with_dims_accepted(self) -> None:
         c = EmbedderOverrideConfig(

@@ -17,13 +17,23 @@ export interface DerivedSubsystemStates {
 const _MEMORY_STATES: Record<MemoryState, SubsystemState> = {
   durable: 'ok',
   degraded: 'degraded',
+  unreachable: 'down',
   off: 'down',
 }
 
+/**
+ * State of the HTTP layer itself, which is what this card claims to report.
+ *
+ * Derived from whether the fetch succeeded, never from the readiness verdict
+ * inside it: a parsed response is proof the API answered, so folding the
+ * aggregate verdict in here reported a fully-serving backend as unreachable
+ * whenever any one subsystem was degraded. The aggregate reaches the hero
+ * through the overall roll-up, which is where it belongs.
+ */
 function _apiStateFor(loadState: LoadState): SubsystemState {
   if (loadState.state === 'loading') return 'loading'
   if (loadState.state === 'error') return 'down'
-  if (loadState.state === 'ok') return loadState.data.status === 'ok' ? 'ok' : 'down'
+  if (loadState.state === 'ok') return 'ok'
   return 'unknown'
 }
 
@@ -71,11 +81,17 @@ function _memoryDetailFor(memory: MemoryHealth | null): string | undefined {
   return memory.detail ?? (backend === '' ? undefined : backend)
 }
 
-function _overallStateOf(states: readonly SubsystemState[]): SubsystemState {
+function _overallStateOf(
+  states: readonly SubsystemState[],
+  loadState: LoadState,
+): SubsystemState {
   if (states.includes('down')) return 'down'
   if (states.includes('degraded')) return 'degraded'
   if (states.includes('loading')) return 'loading'
   if (states.includes('unknown')) return 'unknown'
+  // The backend reported itself not ready for something no card covers
+  // (providers, say). Degraded rather than down: it is answering.
+  if (loadState.state === 'ok' && loadState.data.status !== 'ok') return 'degraded'
   return 'ok'
 }
 
@@ -95,13 +111,10 @@ export function deriveHealthSubsystemStates(
   const busState = _booleanProbeState(loadState, messageBus)
   const memoryState = _memoryStateFor(loadState, memory)
   const memoryDetail = _memoryDetailFor(memory)
-  const overallState = _overallStateOf([
-    apiState,
-    wsState,
-    persistenceState,
-    busState,
-    memoryState,
-  ])
+  const overallState = _overallStateOf(
+    [apiState, wsState, persistenceState, busState, memoryState],
+    loadState,
+  )
   return {
     apiState,
     wsState,

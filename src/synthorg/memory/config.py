@@ -135,8 +135,13 @@ class EmbedderOverrideConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _model_requires_dims(self) -> Self:
-        """Require dims when model is set, and model when dims is set.
+    def _dims_requires_model(self) -> Self:
+        """Require a model when dims is set.
+
+        The reverse does not hold: a model without dims is the normal case,
+        because the width is measured from the model rather than declared
+        alongside it. Requiring both would make an operator look up a figure
+        the model itself can answer for.
 
         Returns:
             Result of type ``Self``.
@@ -144,17 +149,6 @@ class EmbedderOverrideConfig(BaseModel):
         Raises:
             ValueError: If an argument fails domain validation.
         """
-        if self.model is not None and self.dims is None:
-            msg = (
-                "dims must be set when model is overridden "
-                "(dimensions are model-dependent)"
-            )
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                field="dims",
-                reason=msg,
-            )
-            raise ValueError(msg)
         if self.dims is not None and self.model is None:
             msg = (
                 "model must be set when dims is overridden "

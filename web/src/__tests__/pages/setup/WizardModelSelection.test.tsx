@@ -21,12 +21,18 @@ function candidate(modelId: string) {
   return { provider: PROVIDER, model_id: modelId, ref: ref(modelId) }
 }
 
+const BUILTIN_REF = JSON.stringify({ provider: 'builtin', model_id: 'hashing' })
+
+// Embedding carries candidates but no recommendation: the operator names the
+// model, and the built-in leads the list as the no-model choice.
 const RECS = {
   decomposition_recommended: ref('large-model-001'),
   model_ref_candidates: [candidate('large-model-001'), candidate('small-model-001')],
-  embedding_recommended: 'embed-large-001',
-  embedding_recommended_dims: 4096,
-  embedding_candidates: ['embed-large-001', 'embed-small-001'],
+  embedding_candidates: [
+    { provider: 'builtin', model_id: 'hashing', ref: BUILTIN_REF },
+    candidate('embed-large-001'),
+    candidate('embed-small-001'),
+  ],
   research_recommended: ref('large-model-001'),
   cos_recommended: ref('small-model-001'),
 }
@@ -70,18 +76,42 @@ describe('WizardModelSelection', () => {
     expect(
       screen.getByLabelText<HTMLSelectElement>('Coordination model').value,
     ).toBe(ref('large-model-001'))
-    // Embedding is a plain string setting, so it stays a bare model id.
-    expect(screen.getByLabelText<HTMLSelectElement>('Embedding model').value).toBe(
-      'embed-large-001',
-    )
     expect(screen.getByLabelText<HTMLSelectElement>('Research model').value).toBe(
       ref('large-model-001'),
     )
     expect(
       screen.getByLabelText<HTMLSelectElement>('Chief of Staff model').value,
     ).toBe(ref('small-model-001'))
-    // Embedding is labelled as powering memory + knowledge.
-    expect(screen.getByText(/Powers memory \+ knowledge/)).toBeInTheDocument()
+  })
+
+  it('leaves the embedding model unselected rather than prefilling one', async () => {
+    // The built-in leads the candidate list, so an empty value that fell
+    // through to the first option would read as a deliberate choice of a
+    // lexical embedder nobody picked.
+    server.use(recommendationsHandler())
+    renderWithRouter(<WizardModelSelection researchEnabled={true} />)
+    await waitFor(() =>
+      expect(screen.getByLabelText('Embedding model')).toBeInTheDocument(),
+    )
+    expect(screen.getByLabelText<HTMLSelectElement>('Embedding model').value).toBe('')
+    expect(
+      screen.getByRole('option', { name: 'Select an embedding model' }),
+    ).toBeInTheDocument()
+  })
+
+  it('warns on the control itself once the built-in embedder is chosen', async () => {
+    server.use(recommendationsHandler())
+    capturePut()
+    renderWithRouter(<WizardModelSelection researchEnabled={true} />)
+    await waitFor(() =>
+      expect(screen.getByLabelText('Embedding model')).toBeInTheDocument(),
+    )
+    fireEvent.change(screen.getByLabelText('Embedding model'), {
+      target: { value: BUILTIN_REF },
+    })
+    await waitFor(() =>
+      expect(screen.getByText(/matches shared vocabulary, not meaning/)).toBeVisible(),
+    )
   })
 
   it('labels each candidate with its provider', async () => {

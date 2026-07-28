@@ -67,8 +67,6 @@ const MODEL_RECS: SetupModelRecommendationsResponse = {
   cos_recommended: null,
   decomposition_recommended: null,
   embedding_candidates: [],
-  embedding_recommended: null,
-  embedding_recommended_dims: null,
   model_ref_candidates: [],
   narrative_recommended: null,
   propose_recommended: null,

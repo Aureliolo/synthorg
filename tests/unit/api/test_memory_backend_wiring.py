@@ -6,6 +6,7 @@ replaces was a silent fallback to an ephemeral keyword store that looked
 like working memory.
 """
 
+import json
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
@@ -39,10 +40,15 @@ def _persistence() -> Any:  # type: ignore[explicit-any]  # mock ergonomics; see
 
 
 def _settings(provider: str, model: str, dims: int) -> Any:  # type: ignore[explicit-any]  # mock ergonomics; see mock_of
-    """A settings service returning an explicit embedder binding."""
+    """A settings service returning an explicit embedder binding.
+
+    The model is a serialized MODEL_REF, matching the setting's type: the
+    provider travels with the model so nothing downstream has to guess it.
+    """
+    bound = json.dumps({"provider": provider, "model_id": model})
+    ref = bound if provider or model else ""
     values = {
-        "embedder_provider": provider,
-        "embedder_model": model,
+        "embedder_model": ref,
         "embedder_dims": dims,
     }
     return mock_of[SettingsService](
