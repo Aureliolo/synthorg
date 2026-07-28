@@ -111,6 +111,16 @@ loudly and surfaced as DEGRADED, since the cost grows with the corpus and
 nothing else about the system looks wrong.
 """
 
+MEMORY_DENSE_SESSION_DISCARDED: Final[str] = "memory.dense_index.session_discarded"
+"""Emitted at ERROR when a build connection could not be restored.
+
+The build runs on a pooled connection, so a failed cleanup is not a
+private problem: the next checkout would inherit a held advisory lock
+(blocking every later builder) or a ``statement_timeout`` it never asked
+for. The connection is closed rather than returned, which costs one
+reconnect and bounds the damage to this checkout.
+"""
+
 MEMORY_DENSE_INDEX_BUILD_CONTENDED: Final[str] = "memory.dense_index.build_contended"
 """Emitted at WARNING when the build lock was still held at the deadline.
 

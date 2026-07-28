@@ -19,6 +19,7 @@ from synthorg.integrations.connections.models import (
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     InvalidStateError,
+    OAuthConfigurationError,
     OIDCVerificationError,
     TokenExchangeFailedError,
 )
@@ -141,55 +142,12 @@ async def handle_oauth_callback(
     logger.info(OAUTH_CALLBACK_RECEIVED, state_prefix=state_param[:8])
 
     effective_clock = clock or SystemClock()
+    resolved = await _resolve_state(state_param, state_service, effective_clock)
+    if isinstance(resolved, _ReplayedCallback):
+        return resolved.connection_name
+    oauth_state = resolved
 
-    oauth_state = await state_service.get(NotBlankStr(state_param))
-    if oauth_state is None:
-        logger.warning(OAUTH_STATE_INVALID, state_prefix=state_param[:8])
-        msg = "Invalid or expired OAuth state token"
-        raise InvalidStateError(msg)
-
-    # Replay branch: a redelivered callback (provider retry, browser
-    # back-button, CDN replay) finds the state already consumed.
-    # Return the original ``connection_name`` without re-exchanging
-    # the authorization code; re-exchange would either fail (codes
-    # are single-use at the IdP) or, for a malicious replay, double-
-    # spend the code at a sibling worker.
-    if oauth_state.consumed_at is not None:
-        connection_name = oauth_state.connection_name_returned
-        # ``_validate_consumed_pair`` on ``OAuthState`` keeps these
-        # two fields in lockstep, so a non-null ``consumed_at``
-        # always pairs with a non-null ``connection_name_returned``.
-        assert connection_name is not None  # noqa: S101 -- model invariant
-        logger.info(
-            OAUTH_FLOW_COMPLETED,
-            connection_name=str(connection_name),
-            replay=True,
-        )
-        return str(connection_name)
-
-    if oauth_state.expires_at < effective_clock.now():
-        await state_service.expire(NotBlankStr(state_param))
-        logger.warning(
-            OAUTH_STATE_INVALID,
-            state_prefix=state_param[:8],
-            reason="expired",
-        )
-        msg = "OAuth state token expired"
-        raise InvalidStateError(msg)
-
-    try:
-        conn = await catalog.get_or_raise(oauth_state.connection_name)
-    except ConnectionNotFoundError:
-        # Its two sibling failure branches above report under this event, so
-        # letting this one reach only the generic request handler would hide
-        # a connection deleted mid-flow from any OAuth-specific alerting.
-        logger.warning(
-            OAUTH_FLOW_FAILED,
-            connection_name=str(oauth_state.connection_name),
-            reason="connection_deleted_mid_flow",
-        )
-        raise
-    credentials = await catalog.get_credentials(conn.name)
+    conn, credentials = await _load_connection(catalog, oauth_state)
     exchange = _exchange_credentials(conn, credentials)
     auth_flow = await _resolve_flow(flow, config_resolver)
     exchanged = await _exchange_code(
@@ -214,6 +172,94 @@ async def handle_oauth_callback(
         clock=effective_clock,
     )
     return conn.name
+
+
+class _ReplayedCallback(NamedTuple):
+    """A redelivered callback, already consumed by an earlier delivery."""
+
+    connection_name: str
+
+
+async def _resolve_state(
+    state_param: str,
+    state_service: OAuthStateService,
+    clock: Clock,
+) -> OAuthState | _ReplayedCallback:
+    """Validate the state token, or report the delivery as a replay.
+
+    Returns:
+        The live state, or a :class:`_ReplayedCallback` when an earlier
+        delivery already consumed it. A redelivered callback (provider
+        retry, browser back-button, CDN replay) must not re-exchange the
+        authorization code: that would either fail, since codes are
+        single-use at the IdP, or double-spend the code at a sibling
+        worker for a malicious replay.
+
+    Raises:
+        InvalidStateError: If the token is unknown or has expired.
+    """
+    oauth_state = await state_service.get(NotBlankStr(state_param))
+    if oauth_state is None:
+        logger.warning(OAUTH_STATE_INVALID, state_prefix=state_param[:8])
+        msg = "Invalid or expired OAuth state token"
+        raise InvalidStateError(msg)
+
+    if oauth_state.consumed_at is not None:
+        connection_name = oauth_state.connection_name_returned
+        # ``_validate_consumed_pair`` on ``OAuthState`` keeps these two
+        # fields in lockstep, so a non-null ``consumed_at`` always pairs
+        # with a non-null ``connection_name_returned``.
+        assert connection_name is not None  # noqa: S101 -- model invariant
+        logger.info(
+            OAUTH_FLOW_COMPLETED,
+            connection_name=str(connection_name),
+            replay=True,
+        )
+        return _ReplayedCallback(connection_name=str(connection_name))
+
+    if oauth_state.expires_at < clock.now():
+        await state_service.expire(NotBlankStr(state_param))
+        logger.warning(
+            OAUTH_STATE_INVALID,
+            state_prefix=state_param[:8],
+            reason="expired",
+        )
+        msg = "OAuth state token expired"
+        raise InvalidStateError(msg)
+    return oauth_state
+
+
+async def _load_connection(
+    catalog: ConnectionCatalog,
+    oauth_state: OAuthState,
+) -> tuple[Connection, Mapping[str, str]]:
+    """Load the connection and its credentials, as one lookup.
+
+    Both reads resolve the same row, and either can lose it to a delete
+    that lands mid-flow. They share a handler so the deletion is reported
+    the same way whichever read observes it.
+
+    Returns:
+        The connection and its decrypted credentials.
+
+    Raises:
+        ConnectionNotFoundError: If the connection was deleted between
+            authorization and callback.
+    """
+    try:
+        conn = await catalog.get_or_raise(oauth_state.connection_name)
+        credentials = await catalog.get_credentials(conn.name)
+    except ConnectionNotFoundError:
+        # The sibling failure branches all report under this event, so
+        # letting this one reach only the generic request handler would
+        # hide a mid-flow deletion from any OAuth-specific alerting.
+        logger.warning(
+            OAUTH_FLOW_FAILED,
+            connection_name=str(oauth_state.connection_name),
+            reason="connection_deleted_mid_flow",
+        )
+        raise
+    return conn, credentials
 
 
 class _ExchangeCredentials(NamedTuple):
@@ -247,8 +293,12 @@ def _exchange_credentials(
         The three fields, all non-empty.
 
     Raises:
-        TokenExchangeFailedError: If any of them is missing, naming every
-            one that is so a single round trip fixes the connection.
+        OAuthConfigurationError: If any of them is missing, naming every
+            one that is so a single round trip fixes the connection. A
+            missing field is deterministic, so this is the non-retryable
+            subclass: retried as a transient exchange failure it would
+            burn the authorization code against a connection that cannot
+            succeed until an operator edits it.
     """
     resolved = _ExchangeCredentials(
         token_url=credentials.get("token_url", ""),
@@ -266,7 +316,7 @@ def _exchange_credentials(
             "Cannot exchange OAuth code: connection is missing "
             f"credentials: {', '.join(missing)}"
         )
-        raise TokenExchangeFailedError(msg)
+        raise OAuthConfigurationError(msg)
     return resolved
 
 

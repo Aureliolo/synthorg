@@ -32,6 +32,7 @@ from synthorg.observability.events.memory import (
     MEMORY_DENSE_INDEX_PERMISSION_DENIED,
     MEMORY_DENSE_INDEX_UNAVAILABLE,
     MEMORY_DENSE_INDEX_UNINDEXABLE,
+    MEMORY_DENSE_SESSION_DISCARDED,
 )
 from synthorg.persistence.postgres import _memory_vector_sql as sql
 from synthorg.persistence.postgres._memory_vector_sql import (
@@ -241,6 +242,32 @@ class TestBuildLockContention:
             if statement == sql.SET_STATEMENT_TIMEOUT
         ][-1]
         assert restored == ("42s",)
+
+    async def test_a_failed_release_discards_the_pooled_connection(self) -> None:
+        # Suppressing this would hand the next checkout a session still
+        # holding the build lock, which blocks every later builder on the
+        # database rather than just this one.
+        closed: list[bool] = []
+        broken = "server closed the connection unexpectedly"
+
+        async def execute(statement: str, params: object = None) -> _RecordingCursor:
+            if statement == sql.RELEASE_INDEX_BUILD_LOCK:
+                raise psycopg.OperationalError(broken)
+            return _RecordingCursor([])
+
+        async def close() -> None:
+            closed.append(True)
+
+        conn: AsyncConnection = mock_of[AsyncConnection](
+            execute=execute, set_autocommit=_anoop, close=close
+        )
+        repo = PostgresMemoryVectorRepository(_pool_over(conn))
+
+        with capture_logs() as logs:
+            await repo.ensure_ready(_DIMS)
+
+        assert closed == [True]
+        assert MEMORY_DENSE_SESSION_DISCARDED in {entry["event"] for entry in logs}
 
     async def test_a_held_lock_degrades_instead_of_blocking(self) -> None:
         # What Postgres raises once ``statement_timeout`` fires on a wait

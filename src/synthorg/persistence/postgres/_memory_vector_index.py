@@ -11,6 +11,7 @@ declares that surface so ``mypy`` checks the mixin in isolation.
 """
 
 import contextlib
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, LiteralString, cast
 
 import psycopg
@@ -26,6 +27,7 @@ from synthorg.observability.events.memory import (
     MEMORY_DENSE_INDEX_PERMISSION_DENIED,
     MEMORY_DENSE_INDEX_SCAN_FAILED,
     MEMORY_DENSE_INDEX_WIDTH_CHANGED,
+    MEMORY_DENSE_SESSION_DISCARDED,
 )
 
 if TYPE_CHECKING:
@@ -74,15 +76,17 @@ class DenseIndexLifecycleMixin:
                     await self._drop_if_invalid(conn, spec)
                     await conn.execute(sql.create_vector_index(spec))
             finally:
-                # A failed DDL statement usually leaves the connection
-                # unusable, so releasing would raise in turn and replace the
-                # error that explains the failure with one that does not. The
-                # lock is session-scoped and dies with the connection anyway.
-                with contextlib.suppress(psycopg.Error):
-                    await conn.execute(sql.RELEASE_INDEX_BUILD_LOCK, (spec.name,))
+                await self._restore_or_discard(
+                    conn,
+                    "release_build_lock",
+                    lambda: conn.execute(sql.RELEASE_INDEX_BUILD_LOCK, (spec.name,)),
+                )
         finally:
-            with contextlib.suppress(psycopg.Error):
-                await conn.set_autocommit(original_autocommit)
+            await self._restore_or_discard(
+                conn,
+                "restore_autocommit",
+                lambda: conn.set_autocommit(original_autocommit),
+            )
 
     async def _acquire_build_lock(
         self,
@@ -121,8 +125,39 @@ class DenseIndexLifecycleMixin:
             # must not outlive the wait it was set for -- including on the
             # timeout path, where this connection goes back to the pool and
             # serves queries that never asked to be bounded.
-            with contextlib.suppress(psycopg.Error):
-                await conn.execute(sql.SET_STATEMENT_TIMEOUT, (previous,))
+            await self._restore_or_discard(
+                conn,
+                "restore_statement_timeout",
+                lambda: conn.execute(sql.SET_STATEMENT_TIMEOUT, (previous,)),
+            )
+
+    async def _restore_or_discard(
+        self,
+        conn: _PoolConnection,
+        action: str,
+        restore: Callable[[], Awaitable[object]],
+    ) -> None:
+        """Undo one session change, closing the connection if that fails.
+
+        These run in ``finally`` blocks, so they must not replace the error
+        that explains the failure. Suppressing outright is not neutral
+        either: the connection is pooled, so a lock left held would block
+        every later builder on this database, and a leftover
+        ``statement_timeout`` would silently bound queries that never asked
+        for one. Closing is what makes the pool discard the session rather
+        than hand the damage to the next caller.
+        """
+        try:
+            await restore()
+        except psycopg.Error as exc:
+            logger.error(
+                MEMORY_DENSE_SESSION_DISCARDED,
+                action=action,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            with contextlib.suppress(Exception):
+                await conn.close()
 
     async def _drop_if_invalid(
         self,

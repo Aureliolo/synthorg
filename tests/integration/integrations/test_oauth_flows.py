@@ -29,7 +29,9 @@ from synthorg.integrations.connections.models import (
     OAuthToken,
 )
 from synthorg.integrations.errors import (
+    ConnectionNotFoundError,
     InvalidStateError,
+    OAuthConfigurationError,
     OIDCNonceMismatchError,
     OIDCVerificationError,
     TokenExchangeFailedError,
@@ -47,6 +49,7 @@ from synthorg.integrations.oauth.pkce import (
     generate_code_verifier,
 )
 from synthorg.integrations.oauth.state_service import OAuthStateService
+from synthorg.observability.events.integrations import OAUTH_FLOW_FAILED
 from synthorg.tools.network_validator import DnsValidationOk
 from tests._shared import JsonDict
 from tests._shared.fake_clock import FakeClock
@@ -146,7 +149,6 @@ class TestAuthorizationCodeFlow:
                 )
 
 
-@pytest.mark.integration
 def _oauth_connection(name: str = "conn-1") -> Connection:
     """A stored OAuth-app connection.
 
@@ -178,6 +180,7 @@ def _oauth_catalog(name: str = "conn-1") -> MagicMock:
     return catalog
 
 
+@pytest.mark.integration
 class TestCallbackHandler:
     async def test_callback_persists_tokens_via_catalog(self) -> None:
         now = datetime.now(UTC)
@@ -310,20 +313,54 @@ class TestCallbackHandler:
         )
         state_service = MagicMock(spec=OAuthStateService)
         state_service.get.return_value = state
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get_or_raise.return_value = Connection(
-            name=NotBlankStr("conn-1"),
-            connection_type=ConnectionType.OAUTH_APP,
-            auth_method=AuthMethod.OAUTH2,
-        )
+        catalog = _oauth_catalog()
         catalog.get_credentials.return_value = {}
-        with pytest.raises(TokenExchangeFailedError):
+        # Missing configuration is deterministic, so it must surface as the
+        # non-retryable subclass: retried as a transient exchange failure it
+        # would burn the single-use code against a connection that cannot
+        # succeed until an operator edits it.
+        with pytest.raises(OAuthConfigurationError) as excinfo:
             await handle_oauth_callback(
                 state_param="state-missing",
                 code="auth-code",
                 state_service=state_service,
                 catalog=catalog,
             )
+        assert excinfo.value.is_retryable is False
+
+    async def test_deletion_during_credential_read_is_reported(self) -> None:
+        # get_credentials resolves the same row as get_or_raise and can lose
+        # it to the same mid-flow delete, so the deletion must report
+        # identically whichever read observes it.
+        now = datetime.now(UTC)
+        state = OAuthState(
+            state_token=NotBlankStr("state-deleted"),
+            connection_name=NotBlankStr("conn-1"),
+            pkce_verifier=NotBlankStr("verifier"),
+            expires_at=now + timedelta(hours=1),
+        )
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
+        catalog = _oauth_catalog()
+        catalog.get_credentials.side_effect = ConnectionNotFoundError("gone")
+
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(ConnectionNotFoundError),
+        ):
+            await handle_oauth_callback(
+                state_param="state-deleted",
+                code="auth-code",
+                state_service=state_service,
+                catalog=catalog,
+            )
+
+        assert [
+            entry
+            for entry in logs
+            if entry.get("event") == OAUTH_FLOW_FAILED
+            and entry.get("reason") == "connection_deleted_mid_flow"
+        ]
 
 
 @pytest.mark.integration
@@ -874,7 +911,6 @@ class TestOAuthLogRedaction:
         mock_path: str,
     ) -> None:
         from synthorg.integrations.errors import (
-            TokenExchangeFailedError,
             TokenRefreshFailedError,
         )
         from synthorg.integrations.oauth.pkce import (
@@ -980,7 +1016,6 @@ class TestOAuthLogRedaction:
         """``logger.warning`` (not ``exception``) carries no ``exc_info``
         field. Without that field, structlog cannot serialize frame-local
         values from the request payload."""
-        from synthorg.integrations.errors import TokenExchangeFailedError
         from synthorg.integrations.oauth.pkce import (
             encrypt_pkce_verifier,
             generate_code_verifier,
