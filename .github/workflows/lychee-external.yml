@@ -15,7 +15,9 @@ name: Link Check (lychee, external)
 #
 # Config is the shared ``lychee.toml``: its ``exclude`` list suppresses
 # anti-bot (403) and rate-limit (429) hosts that are live in a browser,
-# so they never file a bogus issue here.
+# so they never file a bogus issue here. It also exempts research-paper
+# citation hosts on separate grounds: a citation is provenance rather
+# than navigation, so its rot is acceptable and not worth tracking.
 
 on:
   schedule:
@@ -120,8 +122,10 @@ jobs:
           The step summary on that run lists the failing links. These are
           external (remote) links, not link rot in our own docs: fix the
           doc if a link is genuinely wrong, add an exclude to \`lychee.toml\`
-          for a false-positive host (anti-bot 403 / rate-limit 429), or
-          leave this open until the upstream site recovers.
+          for a false-positive host (anti-bot 403 / rate-limit 429) or for a
+          research-paper citation host (provenance, so rot is acceptable and
+          the paper stays findable elsewhere), or leave this open until the
+          upstream site recovers.
           EOF
             echo 'TRACKING_ISSUE_BODY_EOF'
           } >> "$GITHUB_OUTPUT"
