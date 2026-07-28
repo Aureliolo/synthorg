@@ -11,7 +11,8 @@ from collections.abc import Iterator
 import pytest
 from typeguard import suppress_type_checks
 
-from synthorg.integrations.connections.catalog import _UNSET, ConnectionCatalog
+from synthorg.integrations.connections._update_pipeline import _UNSET
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.errors import InvalidRepoScopeError
 
 pytestmark = pytest.mark.unit

@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { normalisedKey } from '@/utils/keyboard'
 
 export interface UseSettingsKeyboardOptions {
   onSave: () => void
@@ -17,7 +18,7 @@ export function useSettingsKeyboard({
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
 
-      if (e.key.toLowerCase() === 's') {
+      if (normalisedKey(e) === 's') {
         e.preventDefault()
         if (canSave) onSave()
       } else if (e.key === '/') {

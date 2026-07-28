@@ -1,5 +1,6 @@
 """Memory namespace setting definitions (fine-tune group in memory_fine_tune)."""
 
+from synthorg.core.vector_limits import STORAGE_MAX_DIMENSIONS
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
@@ -96,11 +97,15 @@ _r.register(
         default=None,
         description=(
             "Override embedding vector dimensions (advanced). Applies on"
-            " the next restart."
+            " the next restart. At or below 2000 the dense index is exact;"
+            " up to 4000 it is built at half precision; above that no"
+            " approximate index can be built and every dense search reads"
+            " the whole corpus."
         ),
         group="Embedding",
         level=SettingLevel.ADVANCED,
         min_value=1,
+        max_value=STORAGE_MAX_DIMENSIONS,
         restart_required=True,
     )
 )

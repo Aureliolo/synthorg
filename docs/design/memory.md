@@ -395,6 +395,37 @@ provider must serve the fine-tuned model under this identifier.
     every stored vector: the store provisions a fresh dimension-suffixed index
     rather than silently mixing incomparable vectors into the existing one.
 
+The configured width also decides how Postgres stores and indexes the column,
+because pgvector caps an HNSW index at 2000 dimensions for a full-precision
+`vector` and 4000 for a half-precision `halfvec`. At or below 2000 the column
+is exact and indexed; up to 4000 it is indexed at half precision; above that no
+approximate index can be built at all, so the column is still created and dense
+search still runs as an exact scan over the corpus, reported at ERROR under
+`memory.dense_index.unindexable`. Recall stays semantic in every case, but an
+unindexed width reads every row per query.
+
+Because that state answers every query correctly and only costs latency, a log
+line alone would never be noticed, so `/health` reports memory `DEGRADED` for
+it: the backend exposes `dense_search_indexed` alongside `supports_dense_search`
+precisely so "recall changed meaning" and "recall got slower" cannot collapse
+into one flag. A width above pgvector's 16000-dimension storage ceiling is
+refused outright rather than degraded, since no column could hold it.
+
+Two conditions the index build reports rather than hides: an index a crashed
+build left `INVALID` is dropped and a rebuild attempted (`CREATE INDEX
+CONCURRENTLY IF NOT EXISTS` matches on name alone, so it would otherwise be
+accepted as present forever; either the drop or the rebuild can still fail, and
+readiness reports that separately), and an empty dense column left behind by an
+earlier width is logged at INFO as schema drift, which the orphaned-width error
+misses because it only fires when a leftover column still holds rows.
+
+Setting `embedder_dims` *below* the model's own output width is the one
+sanctioned mismatch: the embedder truncates each vector to its leading
+components and renormalises, which is how a Matryoshka-trained model is used at
+a smaller width and how a model wider than the index ceiling is brought under
+it. Truncating a model that was not MRL-trained degrades recall, so this only
+ever happens on the operator's explicit instruction, never by inference.
+
 **Container execution:** when `FineTuneExecutionConfig.backend` is `"docker"`, each
 torch-bound pipeline stage (hard-negative mining, training, evaluation) runs inside an
 ephemeral one-shot `synthorg-fine-tune-gpu` (default) or `synthorg-fine-tune-cpu`

@@ -100,6 +100,7 @@ interface ConnectionFieldSetters {
 function useConnectionFieldSetters(
   setForm: React.Dispatch<React.SetStateAction<ConnectionFormState>>,
   setErrors: React.Dispatch<React.SetStateAction<Record<string, string | null>>>,
+  setSubmitted: React.Dispatch<React.SetStateAction<boolean>>,
 ): ConnectionFieldSetters {
   const handleFieldChange = useCallback(
     (group: FieldGroup, key: string, value: string) => {
@@ -116,18 +117,23 @@ function useConnectionFieldSetters(
     [setForm, setErrors],
   )
   const setType = useCallback((type: ConnectionType) => setForm((p) => ({ ...p, type })), [setForm])
-  const clearType = useCallback(
-    () =>
-      setForm((p) => ({
-        ...p,
-        type: null,
-        topLevel: {},
-        credentials: {},
-        metadata: {},
-        allowedRepos: [],
-      })),
-    [setForm],
-  )
+  const clearType = useCallback(() => {
+    setForm((p) => ({
+      ...p,
+      type: null,
+      topLevel: {},
+      credentials: {},
+      metadata: {},
+      allowedRepos: [],
+    }))
+    // Field keys repeat across types, so an error left over from a failed
+    // submit would reattach to the same-named field of whichever type is
+    // picked next and read as a complaint about something untouched. The
+    // prop-driven reset cannot cover this: it only watches the modal's
+    // inputs, and this transition happens entirely inside the form.
+    setErrors({})
+    setSubmitted(false)
+  }, [setForm, setErrors, setSubmitted])
   const setSensitive = useCallback(
     (value: boolean) => setForm((p) => ({ ...p, sensitive: value })),
     [setForm],
@@ -198,7 +204,7 @@ export function useConnectionForm(props: ConnectionFormModalArgs): ConnectionFor
     const meta = connectionTypes.find((t) => t.connection_type === form.type)
     return meta ? resolveConnectionSpec(meta) : null
   }, [form.type, connectionTypes])
-  const setters = useConnectionFieldSetters(setForm, setErrors)
+  const setters = useConnectionFieldSetters(setForm, setErrors, setSubmitted)
 
   const { handleSubmit, submitting } = useConnectionSubmit({
     form,

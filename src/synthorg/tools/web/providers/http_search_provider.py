@@ -290,7 +290,7 @@ class HttpWebSearchProvider:
             )
         headers = {
             "Accept": "application/json",
-            self._preset.auth_header: self._preset.auth_template.format(key=key),
+            **self._preset.auth_headers(key),
         }
         try:
             async with httpx.AsyncClient(

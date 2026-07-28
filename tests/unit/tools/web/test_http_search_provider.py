@@ -10,11 +10,15 @@ disables private-IP blocking so no real DNS/pinning happens (the SSRF path is
 covered separately with a literal private endpoint that needs no network).
 """
 
+import json
+
 import httpx
 import pytest
 import respx
 
 from synthorg.core.resilience.general_retry import GeneralRetryHandler
+from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.http_vendor import HttpVendorPreset
 from synthorg.observability.events.web import WEB_SEARCH_RETRY
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web.errors import (
@@ -30,13 +34,32 @@ from tests._shared.fake_clock import FakeClock
 
 _OPEN_POLICY = NetworkPolicy(block_private_ips=False)
 
+
+def _vendor(
+    vendor_id: str,
+    endpoint: str,
+    auth_header: str,
+    auth_template: str = "{key}",
+) -> HttpVendorPreset:
+    """A fictional vendor identity for the adapter under test."""
+    return HttpVendorPreset(
+        id=NotBlankStr(vendor_id),
+        label=NotBlankStr(vendor_id),
+        base_url=NotBlankStr(endpoint),
+        auth_header=NotBlankStr(auth_header),
+        auth_template=NotBlankStr(auth_template),
+    )
+
+
 # A GET-shaped provider: query + count in the query string, key in a custom
 # header, results nested under ``web.results`` with a ``description`` snippet.
 _GET_PRESET = SearchProviderPreset(
-    id="example-get",
-    endpoint="https://search.example-provider.test/get",
+    vendor=_vendor(
+        "example-get",
+        "https://search.example-provider.test/get",
+        "X-Example-Token",
+    ),
     method="GET",
-    auth_header="X-Example-Token",
     query_key="q",
     count_key="count",
     max_results_cap=20,
@@ -47,11 +70,13 @@ _GET_PRESET = SearchProviderPreset(
 # A POST-shaped provider: query + count in a JSON body with constant extras, a
 # bearer auth header, results at the root ``results`` with a ``content`` snippet.
 _POST_PRESET = SearchProviderPreset(
-    id="example-post",
-    endpoint="https://search.example-provider.test/post",
+    vendor=_vendor(
+        "example-post",
+        "https://search.example-provider.test/post",
+        "Authorization",
+        "Bearer {key}",
+    ),
     method="POST",
-    auth_header="Authorization",
-    auth_template="Bearer {key}",
     query_key="query",
     count_key="max_results",
     extra={"type": "auto"},
@@ -181,8 +206,6 @@ class TestPostShape:
     @pytest.mark.unit
     @respx.mock
     async def test_post_body_carries_query_count_and_extras(self) -> None:
-        import json
-
         route = respx.post(_POST_PRESET.endpoint).mock(
             return_value=httpx.Response(200, json={"results": []})
         )
@@ -203,10 +226,8 @@ class TestFailureModes:
     @pytest.mark.unit
     async def test_private_endpoint_blocked(self) -> None:
         preset = SearchProviderPreset(
-            id="loopback",
-            endpoint="https://127.0.0.1/search",
+            vendor=_vendor("loopback", "https://127.0.0.1/search", "X-Key"),
             method="GET",
-            auth_header="X-Key",
             query_key="q",
             max_results_cap=10,
             snippet_key="snippet",

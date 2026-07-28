@@ -1,9 +1,17 @@
 """Protocols for the connection subsystem."""
 
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import ConnectionType
+
+#: Key under which the create path exposes the declared auth method to an
+#: authenticator. It travels in the validation view rather than the
+#: signature so a type that cares can hold credentials to the shape the
+#: method promises without every other type restating a parameter it
+#: ignores. The dunder spelling cannot collide with a credential field,
+#: whose names are slugs, and the view is never persisted.
+AUTH_METHOD_VIEW_KEY: Final[str] = "__auth_method__"
 
 
 # Central ConnectionType-to-impl registry in connections/types/__init__.py

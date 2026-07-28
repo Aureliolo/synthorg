@@ -6,6 +6,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 
+import { normalisedKey } from '@/utils/keyboard'
 import { useRegisterShortcuts } from '@/hooks/use-shortcut-registry'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
 import { useBoardPolicy, type BoardPolicy } from '@/hooks/useBoardPolicy'
@@ -222,7 +223,7 @@ function useBoardKeyboardShortcuts({
 
 function handleBoardShortcut(event: KeyboardEvent, args: BoardKeyboardShortcutsArgs): void {
   if (!isShortcutAllowed(event)) return
-  const action = BOARD_SHORTCUT_DISPATCH[event.key.toUpperCase()]
+  const action = BOARD_SHORTCUT_DISPATCH[normalisedKey(event)]
   if (!action) return
   event.preventDefault()
   action(args)
@@ -237,9 +238,9 @@ function isShortcutAllowed(event: KeyboardEvent): boolean {
 const BOARD_SHORTCUT_DISPATCH: Readonly<
   Record<string, (args: BoardKeyboardShortcutsArgs) => void>
 > = {
-  D: (args) => args.setShowDeps((current) => !current),
-  T: (args) => args.setShowTerminal((current) => !current),
-  V: (args) => args.onCycleView(),
+  d: (args) => args.setShowDeps((current) => !current),
+  t: (args) => args.setShowTerminal((current) => !current),
+  v: (args) => args.onCycleView(),
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

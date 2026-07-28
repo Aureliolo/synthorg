@@ -1,12 +1,14 @@
 """Generic HTTP health check."""
 
+import asyncio
 from datetime import UTC, datetime
-from typing import Final
+from typing import Final, NamedTuple
 
 import httpx
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.http_vendor import resolve_vendor
 from synthorg.integrations.connections.models import (
     Connection,
     ConnectionStatus,
@@ -19,7 +21,7 @@ from synthorg.observability.events.integrations import (
     HEALTH_CHECK_PASSED,
 )
 from synthorg.tools._dns_pinning import PinnedDnsTransport
-from synthorg.tools.external_api._credentials import build_auth_headers
+from synthorg.tools.external_api._credentials import build_connection_auth_headers
 from synthorg.tools.external_api.errors import ExternalApiCredentialError
 from synthorg.tools.network_validator import (
     DnsValidationOk,
@@ -29,16 +31,89 @@ from synthorg.tools.network_validator import (
 
 logger = get_logger(__name__)
 
+
+class _ProbeTarget(NamedTuple):
+    """The one request the probe should issue."""
+
+    url: str
+    params: dict[str, str]
+    body: dict[str, str]
+
+
+def _probe_target(connection: Connection) -> _ProbeTarget:
+    """Resolve the URL and payload the probe should use.
+
+    A vendor preset can name a path plus whatever its API needs to answer
+    at all: probing a search endpoint with no query returns a 4xx whatever
+    the credential, and one that accepts only POST returns 405 for any
+    query-string probe. Either would report every correctly-configured
+    connection as unhealthy. All of it comes from the code-defined preset,
+    never from operator input, so composing it adds no SSRF surface beyond
+    the host the pre-flight already validated.
+
+    Returns:
+        The probe URL with its query parameters and JSON body; both empty
+        for a plain probe.
+    """
+    base = connection.base_url or ""
+    preset = resolve_vendor(connection.metadata)
+    if preset is None:
+        return _ProbeTarget(base, {}, {})
+    url = (
+        f"{base.rstrip('/')}/{preset.health_path.lstrip('/')}"
+        if preset.health_path
+        else base
+    )
+    return _ProbeTarget(url, dict(preset.health_params), dict(preset.health_body))
+
+
+async def _issue_probe(
+    client: httpx.AsyncClient,
+    target: _ProbeTarget,
+    headers: dict[str, str],
+) -> httpx.Response:
+    """Send the probe in whichever shape the target declares.
+
+    Returns:
+        The response to judge.
+    """
+    if target.body:
+        return await client.post(target.url, headers=headers, json=target.body)
+    if target.params:
+        # A vendor that declares probe parameters needs them to answer at
+        # all, and only a GET carries them meaningfully.
+        return await client.get(target.url, headers=headers, params=target.params)
+    resp = await client.head(target.url, headers=headers)
+    if resp.status_code in (_METHOD_NOT_ALLOWED, _NOT_IMPLEMENTED):
+        return await client.get(target.url, headers=headers)
+    return resp
+
+
 _TIMEOUT: Final[float] = 10.0
 _ERROR_THRESHOLD: Final[int] = 400
 _METHOD_NOT_ALLOWED: Final[int] = 405
 _NOT_IMPLEMENTED: Final[int] = 501
+_TOO_MANY_REQUESTS: Final[int] = 429
+
+_CREDENTIAL_BAD: Final[str] = "credential_misconfigured"
+_STORE_UNAVAILABLE: Final[str] = "secret_store_unavailable"
+
+
+class _AuthResolution(NamedTuple):
+    """Resolved probe headers, or the reason they could not be resolved."""
+
+    headers: dict[str, str] | None
+    reason: str | None
 
 
 class GenericHttpHealthCheck:
-    """Health check via HTTP HEAD to the connection's base URL.
+    """Health check against the connection's base URL.
 
-    Falls back to GET if the server returns 405 or 501 on HEAD.
+    The default probe is a HEAD, falling back to GET if the server
+    answers 405 or 501. A vendor preset overrides that shape when its
+    endpoint needs one to answer at all: ``health_params`` forces a
+    parameterised GET, ``health_body`` a POST carrying that JSON. A
+    vendor-bound connection may therefore never send a HEAD.
 
     The configured ``base_url`` is validated against a
     :class:`NetworkPolicy` before any request is issued, so an operator
@@ -78,31 +153,58 @@ class GenericHttpHealthCheck:
         """Bind the live catalog so the probe can send authenticated requests."""
         self._catalog = catalog
 
-    async def _auth_headers(self, connection: Connection) -> dict[str, str] | None:
-        """Resolve the connection's auth headers, or ``None`` if unresolvable.
+    async def _auth_headers(self, connection: Connection) -> _AuthResolution:
+        """Resolve the connection's auth headers, or say why it could not.
+
+        The two failure causes need to stay apart: a misconfigured credential
+        is deterministic and the operator must re-enter it, whereas a secret
+        backend that is down is transient and retries on its own. Reporting
+        both as one verdict sends the operator to rotate working keys.
 
         Returns:
-            An empty dict for genuinely public endpoints (no auth material) or
-            when no catalog is bound; the auth headers when credentials resolve;
-            or ``None`` when credentials are configured-but-broken (so the caller
-            reports UNHEALTHY rather than a false-green reachability pass).
+            Resolved headers (empty for a public endpoint or an unbound
+            catalog), or a resolution naming the failure cause.
         """
         if self._catalog is None:
-            return {}
+            return _AuthResolution({}, None)
         try:
             credentials = await self._catalog.get_credentials(connection.name)
-            return build_auth_headers(connection.auth_method, credentials)
-        except ExternalApiCredentialError, SecretRetrievalError:
-            return None
+            return _AuthResolution(
+                build_connection_auth_headers(connection, credentials), None
+            )
+        except ExternalApiCredentialError as exc:
+            reason = self._auth_failure(connection, exc, _CREDENTIAL_BAD)
+            return _AuthResolution(None, reason)
+        except SecretRetrievalError as exc:
+            reason = self._auth_failure(connection, exc, _STORE_UNAVAILABLE)
+            return _AuthResolution(None, reason)
 
-    async def check(self, connection: Connection) -> HealthReport:
-        """Execute a HEAD (or GET fallback) against ``base_url``.
+    @staticmethod
+    def _auth_failure(connection: Connection, exc: Exception, reason: str) -> str:
+        """Log the credential failure and return the reason to report.
 
         Returns:
-            A ``HealthReport``: ``HEALTHY`` for an HTTP status < 400,
-            ``UNHEALTHY`` for status >= 400, a network error, or an
-            SSRF policy rejection, and ``UNKNOWN`` when no ``base_url``
-            is configured.
+            The reason, so the log and the health report cannot disagree.
+        """
+        logger.warning(
+            HEALTH_CHECK_FAILED,
+            connection_name=connection.name,
+            reason=reason,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return reason
+
+    async def _preflight(
+        self,
+        connection: Connection,
+    ) -> DnsValidationOk | HealthReport:
+        """Clear the endpoint for probing, or report why it cannot be.
+
+        Returns:
+            The validated host on success; a finished ``HealthReport`` when
+            the connection carries no endpoint or its endpoint fails the
+            SSRF pre-flight.
         """
         if not connection.base_url:
             return HealthReport(
@@ -115,100 +217,210 @@ class GenericHttpHealthCheck:
             connection.base_url,
             self._network_policy,
         )
-        if not isinstance(validation, DnsValidationOk):
-            logger.warning(
-                HEALTH_CHECK_FAILED,
-                connection_name=connection.name,
-                reason="ssrf_policy_rejected_base_url",
-            )
-            # Prefix the consumer-facing detail so dashboards can
-            # distinguish a security rejection from a generic network
-            # failure (both currently surface as UNHEALTHY).
-            return HealthReport(
-                connection_name=connection.name,
-                status=ConnectionStatus.UNHEALTHY,
-                error_detail=f"ssrf_policy_rejected: {validation}",
-                checked_at=datetime.now(UTC),
-            )
-        headers = await self._auth_headers(connection)
-        if headers is None:
-            logger.warning(
-                HEALTH_CHECK_FAILED,
-                connection_name=connection.name,
-                reason="credential_resolution_failed",
-            )
-            return HealthReport(
-                connection_name=connection.name,
-                status=ConnectionStatus.UNHEALTHY,
-                error_detail="credential resolution failed or incomplete",
-                checked_at=datetime.now(UTC),
-            )
+        if isinstance(validation, DnsValidationOk):
+            return validation
+        logger.warning(
+            HEALTH_CHECK_FAILED,
+            connection_name=connection.name,
+            reason="ssrf_policy_rejected_base_url",
+        )
+        # Prefix the consumer-facing detail so dashboards can distinguish a
+        # security rejection from a generic network failure (both currently
+        # surface as UNHEALTHY).
+        return HealthReport(
+            connection_name=connection.name,
+            status=ConnectionStatus.UNHEALTHY,
+            error_detail=f"ssrf_policy_rejected: {validation}",
+            checked_at=datetime.now(UTC),
+        )
+
+    @staticmethod
+    def _pinned_transport(
+        validation: DnsValidationOk,
+    ) -> httpx.AsyncBaseTransport | None:
+        """Bind the TCP connect to the address the pre-flight validated.
+
+        Without the pin, a malicious DNS server can rebind the hostname
+        between the SSRF pre-flight and the request it was meant to clear.
+
+        Returns:
+            The pinned transport, or ``None`` for a literal-IP or
+            allowlisted host, where the pre-flight accepted the address
+            as-is and there is no second resolution to defend.
+        """
+        if not validation.resolved_ips:
+            return None
+        return PinnedDnsTransport(
+            hostname=validation.hostname,
+            ip=validation.resolved_ips[0],
+        )
+
+    async def _run_probe(
+        self,
+        connection: Connection,
+        target: _ProbeTarget,
+        headers: dict[str, str],
+        transport: httpx.AsyncBaseTransport | None,
+    ) -> HealthReport:
+        """Issue the probe and judge whatever comes back.
+
+        Returns:
+            The verdict for the response, the deadline, or the network
+            failure.
+        """
         start = self._clock.monotonic()
-        # Pin the TCP connect to the first validated IP returned by
-        # ``validate_url_host`` so a malicious DNS server cannot rebind
-        # the hostname between the SSRF pre-flight and the actual
-        # request. ``resolved_ips`` is empty for literal-IP base URLs
-        # and allowlisted hosts (where the pre-flight already accepted
-        # the address as-is); in those cases we fall through to the
-        # default httpx transport, which is identical to the prior
-        # behaviour minus the rebinding window.
-        transport: httpx.AsyncBaseTransport | None = None
-        if validation.resolved_ips:
-            transport = PinnedDnsTransport(
-                hostname=validation.hostname,
-                ip=validation.resolved_ips[0],
-            )
         try:
             # ``follow_redirects=False`` is the httpx default but pinned
             # explicitly: the SSRF pre-flight only validates the initial
             # ``base_url``, so a 3xx redirect to an internal address
             # would otherwise bypass the gate.
-            async with httpx.AsyncClient(
-                timeout=_TIMEOUT,
-                follow_redirects=False,
-                transport=transport,
-            ) as client:
-                resp = await client.head(connection.base_url, headers=headers)
-                if resp.status_code in (_METHOD_NOT_ALLOWED, _NOT_IMPLEMENTED):
-                    resp = await client.get(connection.base_url, headers=headers)
-            elapsed = (self._clock.monotonic() - start) * 1000
-            if resp.status_code < _ERROR_THRESHOLD:
-                logger.info(
-                    HEALTH_CHECK_PASSED,
-                    connection_name=connection.name,
-                    latency_ms=elapsed,
-                )
-                return HealthReport(
-                    connection_name=connection.name,
-                    status=ConnectionStatus.HEALTHY,
-                    latency_ms=elapsed,
-                    checked_at=datetime.now(UTC),
-                )
-            logger.warning(
-                HEALTH_CHECK_FAILED,
-                connection_name=connection.name,
-                status_code=resp.status_code,
-            )
-            return HealthReport(
-                connection_name=connection.name,
-                status=ConnectionStatus.UNHEALTHY,
-                latency_ms=elapsed,
-                error_detail=f"HTTP {resp.status_code}",
-                checked_at=datetime.now(UTC),
+            # httpx bounds each operation, not the call: a server dripping
+            # bytes just under the read timeout keeps one request alive
+            # indefinitely, and the HEAD-then-GET fallback would grant each
+            # attempt the full budget. Every probe runs inside one prober
+            # task group, so an unbounded wait here stalls the cycle for
+            # every other connection too.
+            async with (
+                asyncio.timeout(_TIMEOUT),
+                httpx.AsyncClient(
+                    timeout=_TIMEOUT,
+                    follow_redirects=False,
+                    transport=transport,
+                ) as client,
+            ):
+                resp = await _issue_probe(client, target, headers)
+        except TimeoutError:
+            return _deadline_report(
+                connection, (self._clock.monotonic() - start) * 1000
             )
         except httpx.HTTPError as exc:
-            elapsed = (self._clock.monotonic() - start) * 1000
-            scrubbed = safe_error_description(exc)
-            logger.warning(
-                HEALTH_CHECK_FAILED,
-                connection_name=connection.name,
-                error_type=type(exc).__name__,
-                error=scrubbed,
+            return _network_report(
+                connection, exc, (self._clock.monotonic() - start) * 1000
             )
+        return _report_response(
+            connection, resp, (self._clock.monotonic() - start) * 1000
+        )
+
+    async def check(self, connection: Connection) -> HealthReport:
+        """Probe ``base_url`` in whichever shape the vendor preset declares.
+
+        A HEAD with a GET fallback by default; a parameterised GET or a
+        POST with a JSON body where the preset says the endpoint needs one.
+
+        Returns:
+            A ``HealthReport``: ``HEALTHY`` for an HTTP status < 400,
+            ``UNHEALTHY`` for status >= 400, a network error, or an
+            SSRF policy rejection, and ``UNKNOWN`` when no ``base_url``
+            is configured.
+        """
+        validation = await self._preflight(connection)
+        if isinstance(validation, HealthReport):
+            return validation
+        headers, failure = await self._auth_headers(connection)
+        if headers is None:
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
-                latency_ms=elapsed,
-                error_detail=scrubbed,
+                error_detail=failure,
                 checked_at=datetime.now(UTC),
             )
+        return await self._run_probe(
+            connection,
+            _probe_target(connection),
+            headers,
+            self._pinned_transport(validation),
+        )
+
+
+def _report_response(
+    connection: Connection,
+    resp: httpx.Response,
+    elapsed: float,
+) -> HealthReport:
+    """Turn a probe response into a health verdict.
+
+    Returns:
+        ``HEALTHY`` below the error threshold, else ``UNHEALTHY`` carrying
+        the status and, for a rate limit, its retry hint.
+    """
+    if resp.status_code < _ERROR_THRESHOLD:
+        logger.info(
+            HEALTH_CHECK_PASSED,
+            connection_name=connection.name,
+            latency_ms=elapsed,
+        )
+        return HealthReport(
+            connection_name=connection.name,
+            status=ConnectionStatus.HEALTHY,
+            latency_ms=elapsed,
+            checked_at=datetime.now(UTC),
+        )
+    # A rate limit says nothing about whether the credential is valid, so it
+    # is reported as its own cause rather than folded into the generic
+    # failure detail an operator would read as one.
+    retry_after = resp.headers.get("Retry-After") or ""
+    rate_limited = resp.status_code == _TOO_MANY_REQUESTS
+    logger.warning(
+        HEALTH_CHECK_FAILED,
+        connection_name=connection.name,
+        status_code=resp.status_code,
+        reason="rate_limited" if rate_limited else "http_error",
+        retry_after=retry_after,
+    )
+    detail = f"HTTP {resp.status_code}"
+    if rate_limited and retry_after:
+        detail = f"{detail} (retry after {retry_after})"
+    return HealthReport(
+        connection_name=connection.name,
+        status=ConnectionStatus.UNHEALTHY,
+        latency_ms=elapsed,
+        error_detail=detail,
+        checked_at=datetime.now(UTC),
+    )
+
+
+def _deadline_report(connection: Connection, elapsed: float) -> HealthReport:
+    """Turn a probe that outlived its deadline into a health verdict.
+
+    Returns:
+        ``UNHEALTHY`` naming the deadline the probe breached.
+    """
+    logger.warning(
+        HEALTH_CHECK_FAILED,
+        connection_name=connection.name,
+        reason="probe_deadline_exceeded",
+        timeout_seconds=_TIMEOUT,
+    )
+    return HealthReport(
+        connection_name=connection.name,
+        status=ConnectionStatus.UNHEALTHY,
+        latency_ms=elapsed,
+        error_detail=f"probe exceeded {_TIMEOUT}s",
+        checked_at=datetime.now(UTC),
+    )
+
+
+def _network_report(
+    connection: Connection,
+    exc: httpx.HTTPError,
+    elapsed: float,
+) -> HealthReport:
+    """Turn a probe that failed below HTTP into a health verdict.
+
+    Returns:
+        ``UNHEALTHY`` carrying the scrubbed transport error.
+    """
+    scrubbed = safe_error_description(exc)
+    logger.warning(
+        HEALTH_CHECK_FAILED,
+        connection_name=connection.name,
+        error_type=type(exc).__name__,
+        error=scrubbed,
+    )
+    return HealthReport(
+        connection_name=connection.name,
+        status=ConnectionStatus.UNHEALTHY,
+        latency_ms=elapsed,
+        error_detail=scrubbed,
+        checked_at=datetime.now(UTC),
+    )

@@ -136,6 +136,11 @@ class InMemoryBackend:
         """Always ``False``: ranking here is term overlap, not meaning."""
         return False
 
+    @property
+    def dense_search_indexed(self) -> bool:
+        """Always ``False``: there is no dense search here to index."""
+        return False
+
     # -- Capabilities -------------------------------------------------
 
     @property

@@ -10,7 +10,7 @@ two differ only in how rows are fetched, never in how they are ordered.
 import asyncio
 import json
 from datetime import datetime
-from typing import Any, Final, LiteralString, NoReturn, cast
+from typing import Any, Final, LiteralString, NoReturn
 
 import psycopg
 from psycopg import AsyncConnection
@@ -26,15 +26,16 @@ from synthorg.memory.models import MemoryEntry
 from synthorg.memory.vector_spec import MemoryVectorSearchSpec
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
-    MEMORY_DENSE_INDEX_PERMISSION_DENIED,
     MEMORY_DENSE_INDEX_READY,
-    MEMORY_DENSE_INDEX_SCAN_FAILED,
     MEMORY_DENSE_INDEX_UNAVAILABLE,
-    MEMORY_DENSE_INDEX_WIDTH_CHANGED,
+    MEMORY_DENSE_INDEX_UNINDEXABLE,
     MEMORY_ENTRY_COUNT_FAILED,
     MEMORY_ENTRY_DELETE_FAILED,
     MEMORY_ENTRY_RETRIEVAL_FAILED,
     MEMORY_ENTRY_STORE_FAILED,
+)
+from synthorg.persistence.postgres._memory_vector_index import (
+    DenseIndexLifecycleMixin,
 )
 from synthorg.persistence.postgres._memory_vector_rows import rank_lexical, row_to_entry
 
@@ -50,7 +51,7 @@ type _PoolConnection = AsyncConnection[TupleRow]
 _DISTANCE_TO_SCORE_OFFSET: Final[float] = 1.0
 
 
-class PostgresMemoryVectorRepository:
+class PostgresMemoryVectorRepository(DenseIndexLifecycleMixin):
     """Postgres-backed durable agent memory.
 
     The embedding width arrives at :meth:`ensure_ready` rather than here
@@ -64,21 +65,46 @@ class PostgresMemoryVectorRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
         self._dimensions: int | None = None
-        self._dense_ready = False
+        self._ready_width: int | None = None
         self._ready_lock = asyncio.Lock()
 
     @property
+    def _dense_ready(self) -> bool:
+        """Whether the dense column for the configured width is built.
+
+        Latched against the width it was achieved for, not a bare flag: a
+        later call for a different width must rebuild rather than return
+        early over a column that was never created for it.
+        """
+        return self._ready_width is not None and self._ready_width == self._dimensions
+
+    @property
     def supports_dense_search(self) -> bool:
-        """Whether the pgvector column and index are usable."""
+        """Whether dense recall can answer at all, indexed or not."""
         return self._dense_ready
+
+    @property
+    def dense_search_indexed(self) -> bool:
+        """Whether an ANN index backs dense recall.
+
+        False means every dense query scans the whole corpus, which is a
+        real degradation the operator has to be told about separately:
+        recall still returns correct results, so nothing else looks wrong.
+        """
+        return self._dense_ready and self._dense.indexable
+
+    @property
+    def _dense(self) -> sql.DenseColumnSpec:
+        """Storage strategy for the configured embedding width."""
+        return sql.dense_column_spec(self._dimensions or 0)
 
     @property
     def _vector_column(self) -> LiteralString:
         """Dimension-suffixed name of the dense column."""
-        return sql.vector_column(self._dimensions or 0)
+        return self._dense.name
 
     async def ensure_ready(self, dimensions: int | None = None) -> None:
-        """Add the dense column and its HNSW index for *dimensions*.
+        """Add the dense column and, where the width allows, its HNSW index.
 
         Never raises: a pgvector extension that is absent degrades recall
         rather than taking down persistence for every other feature. The
@@ -95,113 +121,50 @@ class PostgresMemoryVectorRepository:
             if self._dimensions is None or self._dense_ready:
                 return
             try:
-                async with self._pool.connection() as conn:
-                    # CREATE INDEX CONCURRENTLY cannot run inside a
-                    # transaction block, and a plain CREATE INDEX would
-                    # hold a lock that blocks memory writes for the whole
-                    # build on an established corpus. Autocommit first,
-                    # before any statement opens a transaction.
-                    original_autocommit = bool(getattr(conn, "autocommit", False))
-                    await conn.set_autocommit(True)
-                    try:
-                        # Serialise builders across processes/pods sharing
-                        # this database: CONCURRENTLY + IF NOT EXISTS is not
-                        # race-free between two simultaneous builds, and a
-                        # crash mid-build can leave an INVALID index. A
-                        # session advisory lock keyed on the column lets at
-                        # most one process build a given width at a time.
-                        await conn.execute(
-                            sql.ACQUIRE_INDEX_BUILD_LOCK, (self._vector_column,)
-                        )
-                        try:
-                            await self._ensure_extension(conn)
-                            await conn.execute(
-                                sql.add_vector_column(
-                                    self._vector_column, self._dimensions
-                                )
-                            )
-                            await conn.execute(
-                                sql.create_vector_index(self._vector_column)
-                            )
-                        finally:
-                            await conn.execute(
-                                sql.RELEASE_INDEX_BUILD_LOCK, (self._vector_column,)
-                            )
-                    finally:
-                        await conn.set_autocommit(original_autocommit)
-            except psycopg.Error as exc:
-                logger.warning(
+                spec = self._dense
+            except ValueError as exc:
+                logger.error(
                     MEMORY_DENSE_INDEX_UNAVAILABLE,
                     dimensions=self._dimensions,
+                    storage_ceiling=sql.STORAGE_MAX_DIMENSIONS,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
                 return
-            self._dense_ready = True
-            logger.info(MEMORY_DENSE_INDEX_READY, dimensions=self._dimensions)
-            await self._report_orphaned_widths()
-
-    async def _ensure_extension(self, conn: _PoolConnection) -> None:
-        """Install pgvector, distinguishing "absent" from "not permitted".
-
-        ``CREATE EXTENSION`` needs superuser because pgvector is not a
-        trusted extension. A least-privilege production role therefore
-        fails here while CI and the bundled image succeed, which is the
-        one degradation an operator is least likely to expect, so it is
-        reported as its own condition rather than folded into a generic
-        "index unavailable" warning.
-
-        Raises:
-            InsufficientPrivilege: If the role may not create the
-                extension, after reporting it as its own condition.
-            psycopg.Error: If the statement fails for any other reason.
-        """
-        try:
-            await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        except psycopg.errors.InsufficientPrivilege:
-            logger.error(
-                MEMORY_DENSE_INDEX_PERMISSION_DENIED,
-                dimensions=self._dimensions,
-                note=(
-                    "the database role may not CREATE EXTENSION vector; install "
-                    "pgvector as a superuser during provisioning, otherwise "
-                    "recall stays lexical-only"
-                ),
-            )
-            raise
-
-    async def _report_orphaned_widths(self) -> None:
-        """Log every dense column left populated at a different width.
-
-        Best-effort: this is a diagnostic, so a failure to look must not
-        cost the caller a working dense index.
-        """
-        try:
-            async with self._pool.connection() as conn:
-                cursor = await conn.execute(
-                    sql.SELECT_VECTOR_COLUMNS, (self._vector_column,)
+            try:
+                async with self._pool.connection() as conn:
+                    await self._build_dense_column(conn, spec)
+            except psycopg.Error as exc:
+                logger.warning(
+                    MEMORY_DENSE_INDEX_UNAVAILABLE,
+                    dimensions=self._dimensions,
+                    element_type=spec.element_type,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                stale = [str(row[0]) for row in await cursor.fetchall()]
-                for column in stale:
-                    # mypy erases LiteralString to str and calls this
-                    # redundant; pyright needs it for psycopg's query types.
-                    literal = cast("LiteralString", column)  # type: ignore[redundant-cast]
-                    cursor = await conn.execute(sql.count_vectors(literal))
-                    row = await cursor.fetchone()
-                    orphaned = int(row[0]) if row is not None else 0
-                    if orphaned:
-                        logger.error(
-                            MEMORY_DENSE_INDEX_WIDTH_CHANGED,
-                            dimensions=self._dimensions,
-                            previous_index=column,
-                            orphaned_vectors=orphaned,
-                        )
-        except psycopg.Error as exc:
-            logger.warning(
-                MEMORY_DENSE_INDEX_SCAN_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+                return
+            self._ready_width = self._dimensions
+            if spec.indexable:
+                logger.info(
+                    MEMORY_DENSE_INDEX_READY,
+                    dimensions=self._dimensions,
+                    element_type=spec.element_type,
+                )
+            else:
+                logger.error(
+                    MEMORY_DENSE_INDEX_UNINDEXABLE,
+                    dimensions=self._dimensions,
+                    element_type=spec.element_type,
+                    vector_ceiling=sql.HNSW_VECTOR_MAX_DIMENSIONS,
+                    halfvec_ceiling=sql.HNSW_HALFVEC_MAX_DIMENSIONS,
+                    note=(
+                        "width exceeds every pgvector HNSW ceiling; dense "
+                        "search runs as an exact scan. Set "
+                        "memory.embedder_dims at or below the ceiling, or "
+                        "choose a narrower embedder."
+                    ),
+                )
+            await self._report_orphaned_widths(spec.name)
 
     async def upsert(
         self,
@@ -250,7 +213,7 @@ class PostgresMemoryVectorRepository:
                     # clears the vector rather than keeping one that
                     # describes text the entry no longer holds.
                     await conn.execute(
-                        sql.set_vector(self._vector_column),
+                        sql.set_vector(self._dense),
                         (
                             sql.encode_vector(embedding)
                             if embedding is not None
@@ -338,7 +301,7 @@ class PostgresMemoryVectorRepository:
                 await conn.execute(sql.SET_DENSE_ITERATIVE_SCAN)
                 await conn.execute(sql.SET_DENSE_EF_SEARCH)
                 cursor = await conn.cursor(row_factory=dict_row).execute(
-                    sql.dense_match(self._vector_column, where),
+                    sql.dense_match(self._dense, where),
                     (sql.encode_vector(spec.embedding), *params, spec.limit),
                 )
                 rows = await cursor.fetchall()

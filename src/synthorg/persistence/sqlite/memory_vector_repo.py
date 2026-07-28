@@ -97,6 +97,16 @@ class SQLiteMemoryVectorRepository:
         return self._dense_ready
 
     @property
+    def dense_search_indexed(self) -> bool:
+        """Whether an ANN index backs dense search.
+
+        ``vec0`` imposes no width ceiling on its index, so a usable dense
+        column here is always an indexed one; the distinction exists for
+        pgvector, whose HNSW ceilings are narrower than what it can store.
+        """
+        return self._dense_ready
+
+    @property
     def _vector_table(self) -> str:
         """Dimension-suffixed name of the dense index table."""
         return f"memory_entries_vec_{self._dimensions}"

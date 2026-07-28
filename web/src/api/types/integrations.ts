@@ -5,6 +5,7 @@ export type {
   Connection,
   ConnectionFieldMetadata,
   ConnectionTypeMetadata,
+  FieldCondition,
   CreateConnectionRequest,
   DeviceLoginPrompt,
   ForgeAccessibleRepo,

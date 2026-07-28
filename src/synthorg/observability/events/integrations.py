@@ -17,6 +17,13 @@ CONNECTION_CREATED: Final[str] = "integrations.connection.created"
 CONNECTION_UPDATED: Final[str] = "integrations.connection.updated"
 CONNECTION_DELETED: Final[str] = "integrations.connection.deleted"
 CONNECTION_NOT_FOUND: Final[str] = "integrations.connection.not_found"
+"""Emitted at DEBUG when a connection lookup finds nothing.
+
+Deliberately not WARNING: the raise is the signal, and a caller for whom
+an absence is exceptional logs its own. Polls asking whether an optional
+integration is configured yet are the common case, and "no" is their
+routine answer.
+"""
 CONNECTION_DUPLICATE: Final[str] = "integrations.connection.duplicate"
 CONNECTION_VALIDATION_FAILED: Final[str] = "integrations.connection.validation_failed"
 CONNECTION_AUTHENTICATOR_MISSING: Final[str] = (
@@ -264,4 +271,9 @@ REGISTRY_API_BLOB_UPLOADED: Final[str] = "integrations.registry_api.blob_uploade
 # -- Registry-target metadata resolution events --------------------------
 REGISTRY_TARGET_METADATA_UNRECOGNISED: Final[str] = (
     "integrations.registry_target.metadata_unrecognised"
+)
+
+# -- HTTP vendor-preset metadata resolution events -----------------------
+HTTP_VENDOR_METADATA_UNRECOGNISED: Final[str] = (
+    "integrations.http_vendor.metadata_unrecognised"
 )

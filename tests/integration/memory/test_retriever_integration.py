@@ -52,6 +52,10 @@ class InMemoryBackend:
     def supports_dense_search(self) -> bool:
         return False
 
+    @property
+    def dense_search_indexed(self) -> bool:
+        return False
+
     async def store(
         self,
         agent_id: str,

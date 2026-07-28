@@ -17,10 +17,11 @@ Three ranking sources are combined, applied in priority order:
 
 Every entry carries a verified ``output_dims`` (the vector-store dimension) as
 a STATIC FALLBACK; dimensions discovered live at ingest (e.g. Ollama's
-``/api/show`` ``embedding_length``) override it, and MRL-capable models can be
-truncated below it at runtime. ``select_embedding_model`` ranks across all
-three sources and returns the operator's ACTUAL catalogue model id, never the
-benchmark id.
+``/api/show`` ``embedding_length``) override it. Setting ``memory.embedder_dims``
+below an MRL-capable model's native width truncates and renormalises each vector
+to that width, which is how a model wider than the vector store's index ceiling
+is brought under it. ``select_embedding_model`` ranks across all three sources
+and returns the operator's ACTUAL catalogue model id, never the benchmark id.
 
 See docs/reference/embedding-evaluation.md for the full analysis.
 """

@@ -4,6 +4,7 @@ import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
+import { normalisedKey } from '@/utils/keyboard'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useCommandPalette } from '@/hooks/useCommandPalette'
 import { useToastStore } from '@/stores/toast'
@@ -18,14 +19,12 @@ export interface CommandPaletteProps {
 function useCommandPaletteShortcut(toggle: () => void): void {
   // Cmd+K / Ctrl+K global toggle. Escape is handled by Base UI Dialog
   // inside cmdk-base's Command.Dialog, so no manual Escape handler.
-  //
-  // Uses toLowerCase() to match both 'k' and 'K' -- with Caps Lock on
-  // (or AZERTY layouts that remap the key), `e.key` reports 'K' for
-  // the same physical keystroke. The sibling useSettingsKeyboard.ts
-  // hook follows the same convention for its Ctrl+S handlers.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey)) {
+      // Auto-repeat would toggle once per repeat, leaving the palette open
+      // or closed by the parity of how long the chord was held.
+      if (e.repeat) return
+      if (normalisedKey(e) === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         toggle()
       }

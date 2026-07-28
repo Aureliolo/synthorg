@@ -145,8 +145,18 @@ class TestAgentTaskScorer:
 
     @pytest.mark.unit
     def test_score_capped_at_one(self) -> None:
-        """Score is capped at 1.0."""
-        scorer = AgentTaskScorer()
+        """Weights that would exceed 1.0 are clamped, not merely bounded.
+
+        The stock weights total 0.6 for this shape, so asserting ``<= 1.0``
+        against them would pass with the clamp deleted; the cap only earns a
+        test against a weight set that would actually overflow it.
+        """
+        scorer = AgentTaskScorer(
+            config=RoutingScorerConfig(
+                primary_skill_weight=0.9,
+                role_match_bonus=0.9,
+            )
+        )
         agent = _make_agent(
             primary=("python", "sql"),
             secondary=("testing",),
@@ -159,7 +169,7 @@ class TestAgentTaskScorer:
         )
 
         candidate = scorer.score(agent, subtask)
-        assert candidate.score <= 1.0
+        assert candidate.score == pytest.approx(1.0)
 
     @pytest.mark.unit
     def test_no_match(self) -> None:
@@ -454,6 +464,23 @@ class TestRoutingScorerConfigInjection:
         assert config.min_score == pytest.approx(0.2)
 
     @pytest.mark.unit
+    def test_weight_sum_validator_stays_silent_on_stock_defaults(self) -> None:
+        """The shipped defaults must not warn about themselves.
+
+        ``0.4 + 0.2 + 0.1 + 0.2`` is 0.9000000000000001 in binary floating
+        point, so an exact ``>`` against the documented 0.9 envelope fires on
+        every construction of the default config.
+        """
+        with capture_logs() as logs:
+            RoutingScorerConfig()
+        warns = [
+            entry
+            for entry in logs
+            if entry.get("event") == TASK_ROUTING_SCORER_INVALID_CONFIG
+        ]
+        assert not warns, f"stock defaults warned about themselves (logs={logs})"
+
+    @pytest.mark.unit
     def test_weight_sum_validator_warns_on_excessive_weights(self) -> None:
         """Sum above the documented ceiling logs a warning but does not raise."""
         # All weights at 0.4 -> sum = 1.6, well above both the
@@ -476,7 +503,17 @@ class TestRoutingScorerConfigInjection:
             "expected exactly one TASK_ROUTING_SCORER_INVALID_CONFIG warning, "
             f"got {len(warns)} (logs={logs})"
         )
+        # Assert the whole payload against the documented envelope rather
+        # than ``weight_sum`` alone: the operator reads the ceilings to
+        # know how far out of band the configuration is, and a warning
+        # that dropped them would still pass a sum-only assertion.
         assert warns[0]["weight_sum"] == pytest.approx(1.6)
+        assert warns[0]["documented_max"] == pytest.approx(0.9)
+        assert warns[0]["warn_ceiling"] == pytest.approx(1.1)
+        assert warns[0]["reason"] == "routing weights exceed the documented maximum"
+        # ``error=`` is reserved for redacted exception text; a
+        # hand-written description must never travel under it.
+        assert "error" not in warns[0]
 
     @pytest.mark.unit
     def test_weight_sum_validator_warns_in_envelope_to_ceiling_band(self) -> None:

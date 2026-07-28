@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from './button'
 import { cn } from '@/lib/utils'
 import { formatNumber } from '@/utils/format'
+import { normalisedKey } from '@/utils/keyboard'
 
 export interface DetailNavBarProps {
   /** Title or summary for the current detail (rendered next to the position counter). */
@@ -64,10 +65,11 @@ export function DetailNavBar({
       return event.metaKey || event.ctrlKey || event.altKey || event.shiftKey
     }
     function onKey(event: KeyboardEvent) {
+      // Each navigation pushes a history entry and remounts the destination,
+      // so a held key would queue one of each per OS auto-repeat tick.
+      if (event.repeat) return
       if (hasModifier(event) || isEditable(event.target)) return
-      // Caps Lock (or any input source that yields uppercase letters)
-      // would otherwise bypass the lowercase membership check.
-      const key = event.key.toLowerCase()
+      const key = normalisedKey(event)
       if (PREV_KEYS.has(key) && canPrev) {
         event.preventDefault()
         onPrev()

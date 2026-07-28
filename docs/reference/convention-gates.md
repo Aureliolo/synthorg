@@ -36,6 +36,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_forge_repo_scoped.py` | push | `tools/forge/` | full | no | none | add |
 | `check_chat_inbound_fenced.py` | push | `integrations/chat_api/inbound/` | full | no | none | add |
 | `check_mcp_server_config_pinned.py` | push | `tools/mcp/config.py` | full | no | none | add |
+| `check_catalog_credential_fields.py` | push | `mcp_catalog/bundled.json` | full | no | none | add |
 | `check_mcp_self_consumer_scoped.py` | push | `engine/mcp_self_consumer.py` | full | no | none | add |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_dead_api_endpoints.py` | push | `api/` + `web/src/` | full | no | `dead_api_endpoints_baseline.txt` | keep |
@@ -124,7 +125,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->102<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->103<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

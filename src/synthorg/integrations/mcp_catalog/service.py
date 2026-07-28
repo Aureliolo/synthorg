@@ -19,8 +19,12 @@ from synthorg.integrations.connections.models import (
 )
 from synthorg.integrations.errors import (
     CatalogEntryNotFoundError,
-    ConnectionNotFoundError,
-    InvalidConnectionAuthError,
+)
+from synthorg.integrations.mcp_catalog._install_validation import (
+    require_bindable,
+    require_dialect,
+    require_mapped_credentials,
+    resolve_matching_connection,
 )
 from synthorg.integrations.mcp_catalog.installations import (
     McpInstallation,
@@ -281,97 +285,29 @@ class CatalogService:
             CatalogEntryNotFoundError: If the entry id is unknown.
             ConnectionNotFoundError: If a required connection is
                 missing from the catalog.
-            InvalidConnectionAuthError: If the bound connection's
-                type does not match the entry's requirement.
+            InvalidConnectionAuthError: If the entry binds a connection
+                it cannot authenticate with: no credential map, no
+                connection named, no catalog to resolve one, or a
+                connection of the wrong type, wrong dialect, or missing
+                a mapped credential field.
+            SecretRetrievalError: If the bound connection's secrets
+                cannot be resolved from the secret backend.
         """
         entry = await self.get_entry(entry_id)
         resolved_connection_name: str | None = None
-        if entry.required_connection_type is not None:
-            if not entry.credential_env_map:
-                # An entry that binds a connection but declares no credential
-                # map would spawn unauthenticated while the operator believes
-                # the bound connection took effect; reject the misconfigured
-                # entry rather than fail silently at connect time.
-                msg = (
-                    f"Catalog entry '{entry_id}' requires a connection but "
-                    "declares no credential_env_map; it cannot use the "
-                    "connection's secrets"
-                )
-                logger.warning(
-                    MCP_SERVER_INSTALL_VALIDATION_FAILED,
-                    entry_id=entry_id,
-                    reason=msg,
-                )
-                raise InvalidConnectionAuthError(msg)
-            if not connection_name:
-                msg = (
-                    f"Catalog entry '{entry_id}' requires a connection "
-                    f"of type {entry.required_connection_type.value!r}"
-                )
-                logger.warning(
-                    MCP_SERVER_INSTALL_VALIDATION_FAILED,
-                    entry_id=entry_id,
-                    reason=msg,
-                )
-                raise InvalidConnectionAuthError(msg)
-            if connection_catalog is None:
-                msg = (
-                    "Connection catalog is required to install an entry "
-                    f"that binds a connection ('{entry_id}')"
-                )
-                logger.warning(
-                    MCP_SERVER_INSTALL_VALIDATION_FAILED,
-                    entry_id=entry_id,
-                    reason=msg,
-                )
-                raise InvalidConnectionAuthError(msg)
-            conn = await connection_catalog.get(connection_name)
-            if conn is None:
-                msg = f"Connection '{connection_name}' not found"
-                logger.warning(
-                    MCP_SERVER_INSTALL_VALIDATION_FAILED,
-                    entry_id=entry_id,
-                    connection_name=connection_name,
-                    reason=msg,
-                )
-                raise ConnectionNotFoundError(msg)
-            if conn.connection_type != entry.required_connection_type:
-                msg = (
-                    f"Connection '{connection_name}' has type "
-                    f"{conn.connection_type.value!r}, but catalog entry "
-                    f"'{entry_id}' requires "
-                    f"{entry.required_connection_type.value!r}"
-                )
-                logger.warning(
-                    MCP_SERVER_INSTALL_VALIDATION_FAILED,
-                    entry_id=entry_id,
-                    connection_name=connection_name,
-                    reason=msg,
-                )
-                raise InvalidConnectionAuthError(msg)
-            if entry.required_dialect is not None:
-                # A database connection's dialect disambiguates entries that
-                # share ConnectionType.DATABASE, which the type check above
-                # cannot. Strip so a stored "  postgres " (which the database
-                # authenticator accepts after trimming) is not spuriously
-                # rejected here.
-                creds = await connection_catalog.get_credentials(connection_name)
-                raw_dialect = creds.get("dialect")
-                dialect = raw_dialect.strip() if isinstance(raw_dialect, str) else None
-                if dialect != entry.required_dialect:
-                    msg = (
-                        f"Connection '{connection_name}' has dialect "
-                        f"{dialect!r}, but catalog entry '{entry_id}' requires "
-                        f"{entry.required_dialect!r}"
-                    )
-                    logger.warning(
-                        MCP_SERVER_INSTALL_VALIDATION_FAILED,
-                        entry_id=entry_id,
-                        connection_name=connection_name,
-                        reason=msg,
-                    )
-                    raise InvalidConnectionAuthError(msg)
-            resolved_connection_name = conn.name
+        required_type = entry.required_connection_type
+        if required_type is not None:
+            bound_name, catalog = require_bindable(
+                entry, entry_id, required_type, connection_name, connection_catalog
+            )
+            resolved_connection_name = await resolve_matching_connection(
+                entry_id, required_type, bound_name, catalog
+            )
+            # Resolved once: each call decrypts every secret ref and deep-copies
+            # the result, and both checks below read the same credentials.
+            creds = await catalog.get_credentials(bound_name)
+            require_dialect(entry, entry_id, bound_name, creds)
+            require_mapped_credentials(entry, entry_id, bound_name, creds)
         elif connection_name:
             # Entry does not require a connection; ignore and warn.
             logger.warning(

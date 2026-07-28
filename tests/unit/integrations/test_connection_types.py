@@ -3,7 +3,8 @@
 import pytest
 from typeguard import suppress_type_checks
 
-from synthorg.integrations.connections.models import ConnectionType
+from synthorg.integrations.connections.models import AuthMethod, ConnectionType
+from synthorg.integrations.connections.protocol import AUTH_METHOD_VIEW_KEY
 from synthorg.integrations.connections.types import get_authenticator
 from synthorg.integrations.errors import InvalidConnectionAuthError
 
@@ -301,18 +302,126 @@ class TestDatabaseAuthenticator:
 class TestGenericHttpAuthenticator:
     """Tests for generic HTTP connection validation."""
 
-    def test_valid_credentials(self) -> None:
+    @pytest.mark.parametrize(
+        "credentials",
+        [
+            {"token": "t"},
+            {"api_key": "k"},
+            {"access_token": "a"},
+            {"header_name": "X-Key", "header_value": "v"},
+            {"username": "u", "password": "p"},
+        ],
+        ids=["token", "api_key", "access_token", "header-pair", "basic"],
+    )
+    def test_valid_credentials(self, credentials: dict[str, str]) -> None:
         auth = get_authenticator(ConnectionType.GENERIC_HTTP)
-        auth.validate_credentials(
-            {
-                "base_url": "https://api.example.com",
-            }
-        )
+        auth.validate_credentials({"base_url": "https://api.example.com"} | credentials)
 
     def test_missing_base_url_rejected(self) -> None:
         auth = get_authenticator(ConnectionType.GENERIC_HTTP)
         with pytest.raises(InvalidConnectionAuthError, match="base_url"):
             auth.validate_credentials({})
+
+    def test_missing_credential_material_rejected(self) -> None:
+        # A vendor preset supplies the base URL, so without this the only
+        # field this type enforced became optional and a connection with no
+        # way to authenticate would be created with no friction at all.
+        auth = get_authenticator(ConnectionType.GENERIC_HTTP)
+        with pytest.raises(InvalidConnectionAuthError, match="credential material"):
+            auth.validate_credentials({"base_url": "https://api.example.com"})
+
+    @pytest.mark.parametrize(
+        "credentials",
+        [
+            {"header_name": "X-Key"},
+            {"header_value": "v"},
+            {"username": "u"},
+            {"password": "p"},
+            {"token": "   "},
+        ],
+        ids=[
+            "half-header",
+            "half-header-value",
+            "half-basic",
+            "half-basic-password",
+            "blank-token",
+        ],
+    )
+    def test_partial_credential_material_rejected(
+        self, credentials: dict[str, str]
+    ) -> None:
+        auth = get_authenticator(ConnectionType.GENERIC_HTTP)
+        with pytest.raises(InvalidConnectionAuthError, match="credential material"):
+            auth.validate_credentials(
+                {"base_url": "https://api.example.com"} | credentials
+            )
+
+    @pytest.mark.parametrize(
+        ("auth_method", "credentials"),
+        [
+            (AuthMethod.BASIC_AUTH, {"token": "t"}),
+            (AuthMethod.BASIC_AUTH, {"api_key": "k"}),
+            (AuthMethod.API_KEY, {"username": "u", "password": "p"}),
+            (AuthMethod.BEARER_TOKEN, {"username": "u", "password": "p"}),
+            (AuthMethod.OAUTH2, {"username": "u", "password": "p"}),
+        ],
+        ids=[
+            "basic-with-token",
+            "basic-with-api-key",
+            "api-key-with-basic",
+            "bearer-with-basic",
+            "oauth2-with-basic",
+        ],
+    )
+    def test_material_for_another_method_rejected(
+        self, auth_method: AuthMethod, credentials: dict[str, str]
+    ) -> None:
+        # Material the declared method never reads fails every call the
+        # connection makes, so accepting it only moves the discovery from
+        # create-time to first use, where it reads as an upstream fault.
+        auth = get_authenticator(ConnectionType.GENERIC_HTTP)
+        with pytest.raises(InvalidConnectionAuthError, match="declared auth method"):
+            auth.validate_credentials(
+                {
+                    "base_url": "https://api.example.com",
+                    AUTH_METHOD_VIEW_KEY: auth_method.value,
+                }
+                | credentials
+            )
+
+    @pytest.mark.parametrize(
+        ("auth_method", "credentials"),
+        [
+            (AuthMethod.BASIC_AUTH, {"username": "u", "password": "p"}),
+            (AuthMethod.API_KEY, {"api_key": "k"}),
+            (AuthMethod.BEARER_TOKEN, {"token": "t"}),
+            (AuthMethod.OAUTH2, {"access_token": "a"}),
+            # A custom header is the escape hatch for a service none of the
+            # standard methods describes, so it satisfies any of them.
+            (AuthMethod.BASIC_AUTH, {"header_name": "X-Key", "header_value": "v"}),
+            # CUSTOM names no shape, so anything usable counts.
+            (AuthMethod.CUSTOM, {"token": "t"}),
+        ],
+        ids=[
+            "basic",
+            "api-key",
+            "bearer",
+            "oauth2",
+            "header-escape-hatch",
+            "custom",
+        ],
+    )
+    def test_material_matching_the_method_accepted(
+        self, auth_method: AuthMethod, credentials: dict[str, str]
+    ) -> None:
+        auth = get_authenticator(ConnectionType.GENERIC_HTTP)
+        auth.validate_credentials(
+            {
+                "base_url": "https://api.example.com",
+                AUTH_METHOD_VIEW_KEY: auth_method.value,
+            }
+            | credentials
+        )
 
 
 @pytest.mark.unit

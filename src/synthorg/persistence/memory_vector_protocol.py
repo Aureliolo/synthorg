@@ -73,6 +73,18 @@ class MemoryVectorRepository(Protocol):
         """
         ...
 
+    @property
+    def dense_search_indexed(self) -> bool:
+        """Whether an ANN index backs dense search, rather than an exact scan.
+
+        Separate from :attr:`supports_dense_search` because the two fail
+        differently: without dense search recall silently changes meaning,
+        whereas an unindexed one still returns the right answers and only
+        costs a full-corpus scan per query. Both need reporting, and a
+        single flag would let the second hide behind the first.
+        """
+        ...
+
     async def upsert(
         self,
         entry: MemoryEntry,

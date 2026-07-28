@@ -2,6 +2,7 @@ import type {
   ConnectionFieldMetadata,
   ConnectionType,
   ConnectionTypeMetadata,
+  FieldCondition,
 } from '@/api/types/integrations'
 
 /**
@@ -21,6 +22,24 @@ export interface ConnectionFieldSpec {
   readonly options?: readonly string[]
   /** Whether the value is a secret captured out of band (never sent inline). */
   readonly secret: boolean
+  /** Show this field only while another field holds one of these values. */
+  readonly visibleWhen?: FieldCondition
+  /** Require this field only while another field holds one of these values. */
+  readonly requiredWhen?: FieldCondition
+}
+
+/**
+ * Whether *condition* holds for the form's current values.
+ *
+ * An absent condition always holds: a field with no dependency is
+ * unconditionally visible and unconditionally governed by its own flag.
+ */
+export function conditionMet(
+  condition: FieldCondition | undefined,
+  values: Readonly<Record<string, string | undefined>>,
+): boolean {
+  if (!condition) return true
+  return condition.values.includes((values[condition.field] ?? '').trim())
 }
 
 /**
@@ -49,6 +68,8 @@ function fieldToSpec(field: ConnectionFieldMetadata): ConnectionFieldSpec {
     ...(field.placeholder ? { placeholder: field.placeholder } : {}),
     ...(field.help_text ? { hint: field.help_text } : {}),
     ...(field.options.length > 0 ? { options: field.options } : {}),
+    ...(field.visible_when ? { visibleWhen: field.visible_when } : {}),
+    ...(field.required_when ? { requiredWhen: field.required_when } : {}),
   }
 }
 
@@ -109,25 +130,46 @@ export function connectionTypeLabel(
   )
 }
 
-const DATABASE_SERVER_FIELDS = new Set(['host', 'port', 'username', 'password'])
-
-/** Embedded (file-based) dialect: server host/port/credentials are optional. */
-const SQLITE_DIALECT = 'sqlite'
+/**
+ * Whether a field is currently shown. A hidden field is neither rendered nor
+ * validated nor submitted: its condition says it does not apply at all.
+ */
+export function isFieldVisible(
+  spec: ConnectionFieldSpec,
+  values: Readonly<Record<string, string | undefined>>,
+): boolean {
+  return conditionMet(spec.visibleWhen, values)
+}
 
 /**
- * Whether a field is required, accounting for the database ``dialect``: the
- * server fields (host/port/username/password) are required for a networked
- * dialect but optional for the file-based SQLite dialect. The dialect's own
- * allowed values come from the field metadata's ``options``, so no dialect
- * list is duplicated here.
+ * Whether any non-metadata field's condition depends on a metadata field.
+ *
+ * Only then does answering metadata first change what the operator is asked
+ * next; otherwise the ordering is arbitrary and demoting the credential.
  */
-function resolveRequired(spec: ConnectionFieldSpec, dialect?: string): boolean {
-  if (spec.required) return true
-  return (
-    DATABASE_SERVER_FIELDS.has(spec.key)
-    && dialect !== undefined
-    && dialect.trim().toLowerCase() !== SQLITE_DIALECT
+export function metadataGovernsOtherFields(spec: ResolvedConnectionSpec): boolean {
+  const metadataKeys = new Set(spec.metadataFields.map((field) => field.key))
+  return [...spec.topLevelFields, ...spec.credentialFields].some(
+    (field) =>
+      (field.visibleWhen && metadataKeys.has(field.visibleWhen.field))
+      || (field.requiredWhen && metadataKeys.has(field.requiredWhen.field)),
   )
+}
+
+/**
+ * Whether a field must be filled in, given the rest of the form.
+ *
+ * Both the unconditional flag and the conditional rule come from the backend
+ * registry: a database host is required for a networked dialect but not for
+ * the embedded one, and which dialects are which is the backend's to say.
+ */
+export function isFieldRequired(
+  spec: ConnectionFieldSpec,
+  values: Readonly<Record<string, string | undefined>>,
+): boolean {
+  if (spec.required) return conditionMet(spec.visibleWhen, values)
+  if (!spec.requiredWhen) return false
+  return conditionMet(spec.requiredWhen, values) && conditionMet(spec.visibleWhen, values)
 }
 
 function validateUrlValue(spec: ConnectionFieldSpec, value: string): string | null {
@@ -158,54 +200,25 @@ function validateNumberValue(spec: ConnectionFieldSpec, value: string): string |
 }
 
 /**
- * Validate a single connection field. For ``database`` connections, pass the
- * current ``dialect`` so the server fields are required for a networked
- * dialect but optional for SQLite. A ``select`` field validates against its
- * own metadata options (no hardcoded value list).
+ * Validate a single connection field against the whole form.
+ *
+ * ``values`` is every field's current value regardless of placement, because
+ * a condition can point at a field in another bucket (a credential-placed
+ * dialect governing credential fields, a metadata-placed vendor governing the
+ * top-level base URL). A ``select`` field validates against its own metadata
+ * options, so no value list is duplicated here.
  */
 export function validateConnectionField(
   spec: ConnectionFieldSpec,
   value: string,
-  dialect?: string,
+  values: Readonly<Record<string, string | undefined>> = {},
 ): string | null {
-  if (resolveRequired(spec, dialect) && !value.trim()) return `${spec.label} is required`
+  if (!isFieldVisible(spec, values)) return null
+  if (isFieldRequired(spec, values) && !value.trim()) return `${spec.label} is required`
   if (spec.type === 'url') return validateUrlValue(spec, value)
   if (spec.type === 'select') return validateSelectValue(spec, value)
   if (spec.type === 'number') return validateNumberValue(spec, value)
   return null
-}
-
-/** Required credential fields per A2A auth scheme. */
-const A2A_SCHEME_REQUIRED_FIELDS: Record<string, readonly string[]> = {
-  api_key: ['api_key'],
-  bearer: ['access_token'],
-  oauth2: ['client_id', 'client_secret'],
-  mtls: ['cert_path', 'key_path'],
-  none: [],
-}
-
-/**
- * Validate A2A peer credentials for the selected auth scheme. Returns a map of
- * field key -> error message for missing required fields, or an empty object
- * when all required fields are present.
- */
-export function validateA2APeerCredentials(
-  authScheme: string,
-  credentials: Record<string, string>,
-): Record<string, string> {
-  const scheme = authScheme || 'api_key'
-  const errors: Record<string, string> = {}
-  if (!(scheme in A2A_SCHEME_REQUIRED_FIELDS)) {
-    errors['_scheme'] = `Unsupported auth scheme: ${scheme}`
-    return errors
-  }
-  const required: readonly string[] = A2A_SCHEME_REQUIRED_FIELDS[scheme]!
-  for (const field of required) {
-    if (!credentials[field]?.trim()) {
-      errors[field] = `Required for ${scheme} auth scheme`
-    }
-  }
-  return errors
 }
 
 export function validateConnectionName(name: string): string | null {

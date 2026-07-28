@@ -139,6 +139,10 @@
 (?i)normalizes
 (?i)normalizing
 (?i)normalization
+(?i)renormalize
+(?i)renormalized
+(?i)renormalizes
+(?i)renormalizing
 (?i)familiarize
 (?i)familiarized
 (?i)familiarizes

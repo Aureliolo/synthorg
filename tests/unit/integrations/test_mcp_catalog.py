@@ -3,11 +3,13 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     AuthMethod,
     CatalogEntry,
@@ -29,6 +31,7 @@ from synthorg.integrations.mcp_catalog.install import (
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.integrations.mcp_catalog.service import CatalogService
 from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
+from tests._shared import mock_of
 
 
 def _connectionless_catalog(tmp_path: Path) -> CatalogService:
@@ -53,6 +56,40 @@ def _connectionless_catalog(tmp_path: Path) -> CatalogService:
                         "transport": "stdio",
                         "capabilities": ["alpha", "beta"],
                         "tags": ["test", "local"],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return CatalogService(catalog_path=catalog_path)
+
+
+def _multi_credential_catalog(tmp_path: Path) -> CatalogService:
+    """A ``CatalogService`` over an entry mapping two credential fields.
+
+    Every bundled entry maps a single field, so nothing otherwise exercises
+    the refusal message's join across several missing names.
+    """
+    catalog_path = tmp_path / "multi-cred-catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "servers": [
+                    {
+                        "id": "multi-cred-mcp",
+                        "name": "Multi Cred",
+                        "description": "Two-credential test server",
+                        "npm_package": "@example/server-multi-cred",
+                        "npm_version": "1.0.0",
+                        "required_connection_type": "generic_http",
+                        "transport": "stdio",
+                        "capabilities": ["search"],
+                        "tags": ["test"],
+                        "credential_env_map": {
+                            "header_name": "HEADER_NAME",
+                            "header_value": "HEADER_VALUE",
+                        },
                     }
                 ]
             }
@@ -237,23 +274,33 @@ class TestCatalogEntryValidation:
             )
 
 
-class FakeConnectionCatalog:
-    """Minimal in-memory catalog used by install tests."""
+def _catalog(*entries: tuple[Connection, dict[str, str]]) -> ConnectionCatalog:
+    """A catalog stub holding *entries*, keyed by connection name.
 
-    def __init__(self) -> None:
-        self._store: dict[str, Connection] = {}
-        self._creds: dict[str, dict[str, str]] = {}
+    ``get_credentials`` raises for an unknown name exactly as the real
+    catalog does; answering with an empty mapping instead would let a test
+    pass against behaviour production never exhibits.
 
-    def add(self, conn: Connection, creds: dict[str, str] | None = None) -> None:
-        self._store[conn.name] = conn
-        if creds is not None:
-            self._creds[conn.name] = creds
+    Returns:
+        A typed stub bound to the supplied connections.
+    """
+    store = {str(conn.name): conn for conn, _ in entries}
+    creds = {str(conn.name): dict(values) for conn, values in entries}
 
-    async def get(self, name: str) -> Connection | None:
-        return self._store.get(name)
+    async def _get(name: str) -> Connection | None:
+        return store.get(name)
 
-    async def get_credentials(self, name: str) -> dict[str, str]:
-        return dict(self._creds.get(name, {}))
+    async def _get_credentials(name: str) -> dict[str, str]:
+        if name not in store:
+            msg = f"Connection '{name}' not found"
+            raise ConnectionNotFoundError(msg)
+        return dict(creds[name])
+
+    catalog: ConnectionCatalog = mock_of[ConnectionCatalog](
+        get=AsyncMock(side_effect=_get),
+        get_credentials=AsyncMock(side_effect=_get_credentials),
+    )
+    return catalog
 
 
 def _make_connection(
@@ -293,19 +340,44 @@ class TestCatalogInstall:
     async def test_install_with_matching_connection(self) -> None:
         service = CatalogService()
         repo = InMemoryMcpInstallationRepository()
-        catalog = FakeConnectionCatalog()
-        catalog.add(_make_connection("primary-search", ConnectionType.GENERIC_HTTP))
+        catalog = _catalog(
+            (
+                _make_connection("primary-search", ConnectionType.GENERIC_HTTP),
+                {"token": "k"},
+            )
+        )
 
         result = await service.install(
             "brave-search-mcp",
             "primary-search",
-            connection_catalog=catalog,  # type: ignore[arg-type]
+            connection_catalog=catalog,
             installations_repo=repo,
         )
         assert result.connection_name == "primary-search"
         stored = await repo.get(NotBlankStr("brave-search-mcp"))
         assert stored is not None
         assert stored.connection_name == "primary-search"
+
+    async def test_install_without_the_mapped_credential_is_refused(self) -> None:
+        # The connection exists and is the right type, but stores nothing
+        # under the field the entry maps: injection would be a silent no-op
+        # and the server would launch unauthenticated.
+        service = CatalogService()
+        repo = InMemoryMcpInstallationRepository()
+        catalog = _catalog(
+            (
+                _make_connection("primary-search", ConnectionType.GENERIC_HTTP),
+                {"api_key": "k"},
+            )
+        )
+
+        with pytest.raises(InvalidConnectionAuthError, match="unauthenticated"):
+            await service.install(
+                "brave-search-mcp",
+                "primary-search",
+                connection_catalog=catalog,
+                installations_repo=repo,
+            )
 
     async def test_install_idempotent(self, tmp_path: Path) -> None:
         service = _connectionless_catalog(tmp_path)
@@ -352,41 +424,52 @@ class TestCatalogInstall:
     async def test_install_connection_not_found(self) -> None:
         service = CatalogService()
         repo = InMemoryMcpInstallationRepository()
-        catalog = FakeConnectionCatalog()
         with pytest.raises(ConnectionNotFoundError):
             await service.install(
                 "brave-search-mcp",
                 "missing",
-                connection_catalog=catalog,  # type: ignore[arg-type]
+                connection_catalog=_catalog(),
                 installations_repo=repo,
             )
 
     async def test_install_connection_type_mismatch(self) -> None:
         service = CatalogService()
         repo = InMemoryMcpInstallationRepository()
-        catalog = FakeConnectionCatalog()
-        catalog.add(_make_connection("wrong-type", ConnectionType.GITHUB))
+        catalog = _catalog((_make_connection("wrong-type", ConnectionType.GITHUB), {}))
         with pytest.raises(InvalidConnectionAuthError):
             await service.install(
                 "brave-search-mcp",
                 "wrong-type",
-                connection_catalog=catalog,  # type: ignore[arg-type]
+                connection_catalog=catalog,
                 installations_repo=repo,
             )
 
-    async def test_install_dialect_match_succeeds(self, tmp_path: Path) -> None:
-        """A database entry binds a connection whose dialect matches."""
+    @pytest.mark.parametrize(
+        "stored_dialect",
+        ["postgres", "  postgres  "],
+        ids=["exact", "padded-whitespace"],
+    )
+    async def test_install_dialect_match_succeeds(
+        self, tmp_path: Path, stored_dialect: str
+    ) -> None:
+        """A database entry binds a connection whose dialect matches.
+
+        The padded case pins the trim: the database authenticator accepts a
+        stored ``"  postgres "``, so rejecting it here would refuse a
+        connection the rest of the system considers valid.
+        """
         service = _dialect_catalog(tmp_path)
         repo = InMemoryMcpInstallationRepository()
-        catalog = FakeConnectionCatalog()
-        catalog.add(
-            _make_connection("pg-conn", ConnectionType.DATABASE),
-            creds={"dialect": "postgres"},
+        catalog = _catalog(
+            (
+                _make_connection("pg-conn", ConnectionType.DATABASE),
+                {"dialect": stored_dialect, "password": "pw"},
+            )
         )
         result = await service.install(
             "test-db-mcp",
             "pg-conn",
-            connection_catalog=catalog,  # type: ignore[arg-type]
+            connection_catalog=catalog,
             installations_repo=repo,
         )
         assert result.connection_name == "pg-conn"
@@ -395,37 +478,41 @@ class TestCatalogInstall:
         """A sqlite-dialect connection cannot bind a postgres-dialect entry."""
         service = _dialect_catalog(tmp_path)
         repo = InMemoryMcpInstallationRepository()
-        catalog = FakeConnectionCatalog()
-        catalog.add(
-            _make_connection("sqlite-conn", ConnectionType.DATABASE),
-            creds={"dialect": "sqlite"},
+        catalog = _catalog(
+            (
+                _make_connection("sqlite-conn", ConnectionType.DATABASE),
+                {"dialect": "sqlite"},
+            )
         )
         with pytest.raises(InvalidConnectionAuthError):
             await service.install(
                 "test-db-mcp",
                 "sqlite-conn",
-                connection_catalog=catalog,  # type: ignore[arg-type]
+                connection_catalog=catalog,
                 installations_repo=repo,
             )
 
-    async def test_install_dialect_match_strips_whitespace(
+    async def test_install_reports_every_missing_mapped_field(
         self, tmp_path: Path
     ) -> None:
-        """A stored dialect with surrounding whitespace still matches."""
-        service = _dialect_catalog(tmp_path)
+        """A multi-field map names all of them, not just the first."""
+        service = _multi_credential_catalog(tmp_path)
         repo = InMemoryMcpInstallationRepository()
-        catalog = FakeConnectionCatalog()
-        catalog.add(
-            _make_connection("pg-conn", ConnectionType.DATABASE),
-            creds={"dialect": "  postgres  "},
+        catalog = _catalog(
+            (
+                _make_connection("bare", ConnectionType.GENERIC_HTTP),
+                {"token": "k"},
+            )
         )
-        result = await service.install(
-            "test-db-mcp",
-            "pg-conn",
-            connection_catalog=catalog,  # type: ignore[arg-type]
-            installations_repo=repo,
-        )
-        assert result.connection_name == "pg-conn"
+        with pytest.raises(InvalidConnectionAuthError) as excinfo:
+            await service.install(
+                "multi-cred-mcp",
+                "bare",
+                connection_catalog=catalog,
+                installations_repo=repo,
+            )
+        assert "'header_name'" in str(excinfo.value)
+        assert "'header_value'" in str(excinfo.value)
 
     async def test_uninstall_existing(self, tmp_path: Path) -> None:
         service = _connectionless_catalog(tmp_path)
@@ -471,7 +558,7 @@ class TestInstallMerge:
         # The connection name is recorded on an explicit field (secrets are
         # resolved and injected at connect time, never persisted here).
         assert server.connection_name == "primary-search"
-        assert server.credential_env_map == {"api_key": "BRAVE_API_KEY"}
+        assert server.credential_env_map == {"token": "BRAVE_API_KEY"}
         assert "SYNTHORG_CONNECTION" not in server.env
 
     async def test_installation_to_server_connectionless(self, tmp_path: Path) -> None:

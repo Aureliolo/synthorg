@@ -10,7 +10,7 @@
       "transport": "stdio",
       "capabilities": ["web_search", "local_search"],
       "tags": ["search", "web"],
-      "credential_env_map": {"api_key": "BRAVE_API_KEY"}
+      "credential_env_map": {"token": "BRAVE_API_KEY"}
     }
   ]
 }

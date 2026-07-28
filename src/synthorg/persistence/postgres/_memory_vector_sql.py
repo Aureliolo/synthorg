@@ -13,25 +13,98 @@ silently mixing incompatible vectors.
 """
 
 import json
-from typing import Final, LiteralString, cast
+from typing import Final, LiteralString, NamedTuple, cast
 
+from synthorg.core import vector_limits
 from synthorg.memory.vector_spec import MemoryVectorSearchSpec
 
+# Re-exported so this module stays the one place the repository and its
+# tests read a width ceiling from, while the values themselves live in the
+# shared leaf the settings registry also validates against.
+HNSW_VECTOR_MAX_DIMENSIONS: Final[int] = vector_limits.HNSW_VECTOR_MAX_DIMENSIONS
+HNSW_HALFVEC_MAX_DIMENSIONS: Final[int] = vector_limits.HNSW_HALFVEC_MAX_DIMENSIONS
+STORAGE_MAX_DIMENSIONS: Final[int] = vector_limits.STORAGE_MAX_DIMENSIONS
 
-def vector_column(dimensions: int) -> LiteralString:
-    """Return the dense column name for a given embedding width.
 
-    The name is interpolated from an ``int`` the repository controls, so
-    it carries no injection surface; the cast narrows it back to
-    ``LiteralString`` for psycopg's query types, which otherwise reject
-    every composed statement built from it.
+class DenseColumnSpec(NamedTuple):
+    """How one embedding width is stored and indexed.
+
+    Attributes:
+        dimensions: The embedding width.
+        name: Dense column name. Width- and type-suffixed so switching
+            embedder re-indexes into a fresh column instead of silently
+            mixing incompatible vectors, and so a width that changes element
+            type never collides with a column an earlier build left behind
+            (``ADD COLUMN IF NOT EXISTS`` would keep the old type).
+        element_type: pgvector type backing the column.
+        indexable: Whether an HNSW index can be built at this width. When
+            ``False`` dense search still works, by exact scan.
+    """
+
+    dimensions: int
+    name: LiteralString
+    element_type: LiteralString
+    indexable: bool
+
+
+def dense_column_spec(dimensions: int) -> DenseColumnSpec:
+    """Resolve the storage strategy for an embedding width.
+
+    Half precision is chosen only where full precision cannot be indexed:
+    ``halfvec`` costs recall against the exact vectors, which is a fair trade
+    for keeping ANN search but not one worth making below 2000 dimensions.
+
+    Returns:
+        The :class:`DenseColumnSpec` for *dimensions*.
+
+    Raises:
+        ValueError: If *dimensions* exceeds what pgvector can store, which
+            no column definition could satisfy. Refused here rather than
+            left to fail inside ``ALTER TABLE``, where it would surface as
+            a generic driver error the repository degrades on silently.
+    """
+    width = int(dimensions)
+    if width > STORAGE_MAX_DIMENSIONS:
+        msg = (
+            f"embedding width {width} exceeds pgvector's storage ceiling "
+            f"of {STORAGE_MAX_DIMENSIONS} dimensions"
+        )
+        raise ValueError(msg)
+    if width <= HNSW_VECTOR_MAX_DIMENSIONS:
+        return DenseColumnSpec(
+            dimensions=width,
+            name=_column_name(f"embedding_{width}"),
+            element_type="vector",
+            indexable=True,
+        )
+    if width <= HNSW_HALFVEC_MAX_DIMENSIONS:
+        return DenseColumnSpec(
+            dimensions=width,
+            name=_column_name(f"embedding_h{width}"),
+            element_type="halfvec",
+            indexable=True,
+        )
+    return DenseColumnSpec(
+        dimensions=width,
+        name=_column_name(f"embedding_{width}"),
+        element_type="vector",
+        indexable=False,
+    )
+
+
+def _column_name(name: str) -> LiteralString:
+    """Narrow a repository-composed column name back to ``LiteralString``.
+
+    The name is interpolated from an ``int`` the repository controls, so it
+    carries no injection surface; psycopg's query types nonetheless reject
+    every statement composed from a plain ``str``.
 
     Returns:
         The column name.
     """
     # mypy erases LiteralString to str and calls the cast redundant;
     # pyright needs it, because psycopg's query types reject a plain str.
-    return cast("LiteralString", f"embedding_{int(dimensions)}")  # type: ignore[redundant-cast]
+    return cast("LiteralString", name)  # type: ignore[redundant-cast]
 
 
 ENTRY_COLUMNS: Final[LiteralString] = (
@@ -98,6 +171,25 @@ SELECT_OLDEST_IDS: Final[LiteralString] = (
 ACQUIRE_INDEX_BUILD_LOCK: Final[LiteralString] = "SELECT pg_advisory_lock(hashtext(%s))"
 RELEASE_INDEX_BUILD_LOCK: Final[LiteralString] = (
     "SELECT pg_advisory_unlock(hashtext(%s))"
+)
+
+# ``pg_advisory_lock`` waits forever, and readiness runs during boot while
+# holding the repository's own lock, so a sibling mid-build on an
+# established corpus would hang startup rather than degrade it. The bound
+# has to come from ``statement_timeout``: ``lock_timeout`` covers table and
+# row locks, not the wait inside an advisory-lock function. Sixty seconds
+# clears any build short enough to be worth waiting for, and a longer one
+# self-heals on the next readiness call rather than blocking this one.
+INDEX_BUILD_LOCK_WAIT: Final[str] = "60s"
+
+# The window is bounded by restoring what the session already had, never by
+# ``RESET``: that restores the *database* default, so a pooled connection
+# carrying a caller-set timeout would silently lose it for every query it
+# served afterwards. ``set_config`` takes the value as a bind parameter,
+# which plain ``SET`` cannot.
+SHOW_STATEMENT_TIMEOUT: Final[LiteralString] = "SHOW statement_timeout"
+SET_STATEMENT_TIMEOUT: Final[LiteralString] = (
+    "SELECT set_config('statement_timeout', %s, false)"
 )
 
 # Per-transaction HNSW scan tuning for a filtered dense search (pgvector
@@ -237,25 +329,58 @@ def document_frequency(where: LiteralString) -> LiteralString:
     )
 
 
-def add_vector_column(column: LiteralString, dimensions: int) -> LiteralString:
+def add_vector_column(spec: DenseColumnSpec) -> LiteralString:
     """Return DDL adding the dense column for a given width.
 
     Returns:
         An ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` statement.
     """
-    return cast(  # type: ignore[redundant-cast]  # see vector_column
+    return cast(  # type: ignore[redundant-cast]  # see _column_name
         "LiteralString",
         f"ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS "
-        f"{column} vector({int(dimensions)})",
+        f"{spec.name} {spec.element_type}({spec.dimensions})",
     )
 
+
+def index_name(spec: DenseColumnSpec) -> LiteralString:
+    """Return the HNSW index name for a dense column.
+
+    Returns:
+        The index name :func:`create_vector_index` builds under.
+    """
+    return _column_name(f"idx_{spec.name}")
+
+
+def drop_vector_index(spec: DenseColumnSpec) -> LiteralString:
+    """Return DDL dropping the dense column's index.
+
+    ``CONCURRENTLY`` for the same reason the build uses it: dropping a
+    large index takes a lock that would otherwise block memory writes.
+
+    Returns:
+        A ``DROP INDEX CONCURRENTLY IF EXISTS`` statement.
+    """
+    return cast(  # type: ignore[redundant-cast]  # see _column_name
+        "LiteralString",
+        f"DROP INDEX CONCURRENTLY IF EXISTS {index_name(spec)}",
+    )
+
+
+SELECT_INDEX_IS_VALID: Final[LiteralString] = (
+    "SELECT i.indisvalid FROM pg_index i "
+    "JOIN pg_class c ON c.oid = i.indexrelid "
+    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE n.nspname = current_schema() AND c.relname = %s"
+)
 
 SELECT_VECTOR_COLUMNS: Final[LiteralString] = (
     "SELECT column_name FROM information_schema.columns "
     # Scope to the connection's own schema so a same-named table in
     # another schema on the search_path cannot surface its columns here.
     "WHERE table_schema = current_schema() AND table_name = 'memory_entries' "
-    "AND column_name LIKE 'embedding\\_%' AND column_name <> %s"
+    # ``%%`` because psycopg parses the query for client-side placeholders
+    # before binding: a bare ``%`` next to a quote reads as a malformed one.
+    "AND column_name LIKE 'embedding\\_%%' AND column_name <> %s"
 )
 
 
@@ -265,13 +390,13 @@ def count_vectors(column: LiteralString) -> LiteralString:
     Returns:
         A ``SELECT COUNT(*)`` over the non-null values of *column*.
     """
-    return cast(  # type: ignore[redundant-cast]  # see vector_column
+    return cast(  # type: ignore[redundant-cast]  # see _column_name
         "LiteralString",
         f"SELECT COUNT(*) FROM memory_entries WHERE {column} IS NOT NULL",  # noqa: S608 -- column name comes from information_schema
     )
 
 
-def create_vector_index(column: LiteralString) -> LiteralString:
+def create_vector_index(spec: DenseColumnSpec) -> LiteralString:
     """Return DDL creating the HNSW index over the dense column.
 
     HNSW is used over IVFFlat because it needs no training pass and
@@ -288,10 +413,22 @@ def create_vector_index(column: LiteralString) -> LiteralString:
 
     Returns:
         A ``CREATE INDEX CONCURRENTLY IF NOT EXISTS`` statement.
+
+    Raises:
+        ValueError: If *spec* is not indexable. The caller decides what an
+            unindexable width means for recall; composing DDL Postgres will
+            reject is never the answer.
     """
+    if not spec.indexable:
+        msg = (
+            f"{spec.dimensions} dimensions exceeds every pgvector HNSW "
+            f"ceiling (vector {HNSW_VECTOR_MAX_DIMENSIONS}, halfvec "
+            f"{HNSW_HALFVEC_MAX_DIMENSIONS})"
+        )
+        raise ValueError(msg)
     return (
-        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_{column} "
-        f"ON memory_entries USING hnsw ({column} vector_l2_ops)"
+        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {index_name(spec)} "
+        f"ON memory_entries USING hnsw ({spec.name} {spec.element_type}_l2_ops)"
     )
 
 
@@ -310,7 +447,7 @@ def encode_vector(embedding: tuple[float, ...]) -> str:
     return f"[{','.join(repr(float(value)) for value in embedding)}]"
 
 
-def dense_match(column: LiteralString, where: LiteralString) -> LiteralString:
+def dense_match(spec: DenseColumnSpec, where: LiteralString) -> LiteralString:
     """Return the KNN query over the dense column.
 
     Uses L2 distance to match the ``vec0`` default on SQLite so both
@@ -321,19 +458,22 @@ def dense_match(column: LiteralString, where: LiteralString) -> LiteralString:
     """
     return (
         f"SELECT {_qualified_columns()}, "  # noqa: S608 -- fragments are repository-built from a typed spec
-        f"e.{column} <-> %s::vector AS distance "
+        f"e.{spec.name} <-> %s::{spec.element_type} AS distance "
         "FROM memory_entries AS e "
-        f"WHERE {where} AND e.{column} IS NOT NULL "
+        f"WHERE {where} AND e.{spec.name} IS NOT NULL "
         # memory_id breaks distance ties so equidistant vectors order
         # identically here, on the SQLite arm, and between runs.
         "ORDER BY distance, e.memory_id LIMIT %s"
     )
 
 
-def set_vector(column: LiteralString) -> LiteralString:
+def set_vector(spec: DenseColumnSpec) -> LiteralString:
     """Return the dense-column update for one entry.
 
     Returns:
         An ``UPDATE`` statement.
     """
-    return f"UPDATE memory_entries SET {column} = %s::vector WHERE memory_id = %s"  # noqa: S608 -- column name is repository-controlled
+    return (
+        f"UPDATE memory_entries SET {spec.name} = %s::{spec.element_type} "  # noqa: S608 -- column name and element type are repository-controlled
+        "WHERE memory_id = %s"
+    )

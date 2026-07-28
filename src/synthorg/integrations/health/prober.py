@@ -14,10 +14,10 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.lifecycle_constants import DEFAULT_DRAIN_TIMEOUT_SECONDS
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
-    ConnectionStatus,
     ConnectionType,
 )
 from synthorg.integrations.errors import IntegrationLifecycleConflictError
+from synthorg.integrations.health._probe_execution import ProbeExecutionMixin
 from synthorg.integrations.health.checks.database import DatabaseHealthCheck
 from synthorg.integrations.health.checks.generic_http import (
     GenericHttpHealthCheck,
@@ -40,7 +40,6 @@ from synthorg.observability.events.integrations import (
     HEALTH_PROBER_CONFIG_INVALID,
     HEALTH_PROBER_STARTED,
     HEALTH_PROBER_STOPPED,
-    HEALTH_STATUS_TRANSITIONED,
 )
 
 logger = get_logger(__name__)
@@ -142,7 +141,7 @@ def bind_github_default_api_url(default_api_url: str) -> None:
         setter(default_api_url)
 
 
-class HealthProberService:
+class HealthProberService(ProbeExecutionMixin):
     """Background service that probes connection health.
 
     Args:
@@ -335,116 +334,10 @@ class HealthProberService:
             )
             return
 
-        # Wrap the catalog load in its own try/except so a transient
-        # backend error cannot cancel sibling probes through a shared
-        # ``TaskGroup``.
-        try:
-            conn = await self._catalog.get(name)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            # Routine catalog-load failure: redacted warning, not
-            # full traceback (see _probe_loop comment).
-            logger.warning(
-                HEALTH_CHECK_FAILED,
-                connection_name=name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                reason="catalog.get failed",
-            )
-            return
+        conn = await self._load_for_probe(name)
         if conn is None:
-            logger.debug(
-                HEALTH_CHECK_FAILED,
-                connection_name=name,
-                error="connection vanished between list and get",
-            )
             return
-
-        try:
-            report = await checker.check(conn)
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            # Routine checker failure: redacted warning, not full
-            # traceback (see _probe_loop comment).
-            logger.warning(
-                HEALTH_CHECK_FAILED,
-                connection_name=name,
-                connection_type=str(connection_type),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                reason="health checker raised unexpected exception",
-            )
+        report = await self._run_checker(checker, conn, connection_type)
+        if report is None:
             return
-
-        old_status = conn.health.status
-        now = self._clock.now()
-        new_status = await self._classify_status(name, report.status)
-
-        # Same principle: an error inside ``update_health`` must not
-        # cancel sibling TaskGroup probes either. The transition log
-        # fires only after the persistence write succeeds (CLAUDE.md
-        # state-transition rule: "Logs fire AFTER the persistence
-        # write succeeds so the audit trail only captures transitions
-        # that actually landed").
-        try:
-            await self._catalog.update_health(
-                name,
-                status=new_status,
-                checked_at=now,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            # Routine catalog-write failure: redacted warning, not
-            # full traceback (see _probe_loop comment).
-            logger.warning(
-                HEALTH_CHECK_FAILED,
-                connection_name=name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                reason="catalog.update_health failed",
-            )
-        else:
-            if old_status != new_status:
-                logger.info(
-                    HEALTH_STATUS_TRANSITIONED,
-                    connection_name=name,
-                    from_status=old_status,
-                    to_status=new_status,
-                    checked_at=now,
-                )
-
-    async def _classify_status(
-        self,
-        name: str,
-        report_status: ConnectionStatus,
-    ) -> ConnectionStatus:
-        """Update the per-name failure counter and resolve the new status.
-
-        Honours ``degraded_threshold``: stay ``HEALTHY`` until the
-        degraded threshold is reached, transition to ``DEGRADED``
-        between the two thresholds, and flip to ``UNHEALTHY`` only
-        once ``unhealthy_threshold`` is hit.
-
-        Returns:
-            The new ``ConnectionStatus`` after applying the failure-count
-            thresholds. ``UNKNOWN`` reports (the checker cannot probe) pass
-            through untouched: neither a success nor a failure.
-        """
-        async with self._failure_lock:
-            if report_status == ConnectionStatus.UNKNOWN:
-                # A checker with nothing to probe (e.g. a cloud LLM provider
-                # whose inference routes through litellm with no base_url)
-                # reports UNKNOWN. Counting it as a failure would escalate a
-                # perfectly healthy provider to UNHEALTHY over successive
-                # cycles, so leave the counter untouched and report UNKNOWN.
-                return ConnectionStatus.UNKNOWN
-            if report_status == ConnectionStatus.HEALTHY:
-                self._failure_counts.pop(name, None)
-                return ConnectionStatus.HEALTHY
-            count = self._failure_counts.get(name, 0) + 1
-            self._failure_counts[name] = count
-            if count >= self._unhealthy_threshold:
-                return ConnectionStatus.UNHEALTHY
-            if count >= self._degraded_threshold:
-                return ConnectionStatus.DEGRADED
-            return ConnectionStatus.HEALTHY
+        await self._record_probe(conn, report)

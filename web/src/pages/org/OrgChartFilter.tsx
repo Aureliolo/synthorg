@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Node } from '@xyflow/react'
+import { normalisedKey } from '@/utils/keyboard'
 import { getNodeLabel } from './node-utils'
 import { OrgChartSearchOverlay } from './OrgChartSearchOverlay'
 
@@ -33,7 +34,8 @@ export function useOrgChartFilter(allNodes: Node[]): OrgChartFilterResult {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+      if (e.repeat) return
+      if ((e.ctrlKey || e.metaKey) && normalisedKey(e) === 'f') {
         e.preventDefault()
         setSearchOpen(true)
       } else if (e.key === 'Escape' && searchOpen) {

@@ -53,6 +53,7 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDING_COST_RECORD_FAILED,
     MEMORY_EMBEDDING_FAILED,
     MEMORY_EMBEDDING_RETRIED,
+    MEMORY_EMBEDDING_TRUNCATED,
 )
 from synthorg.providers.cost_recording import resolve_currency
 
@@ -283,14 +284,7 @@ class ProviderTextEmbedder:
             if not all(math.isfinite(component) for component in vector):
                 msg = f"Embedding response from {self.model_ref!r} is malformed"
                 raise MemoryEmbeddingError(msg)
-            if len(vector) != self._config.dims:
-                msg = (
-                    f"Embedder {self.model_ref!r} returned a {len(vector)}-dim "
-                    f"vector but is configured for {self._config.dims}; the "
-                    f"stored index would be incomparable"
-                )
-                raise MemoryEmbeddingError(msg)
-            slots[index] = vector
+            slots[index] = self._fit_width(vector)
         vectors: list[tuple[float, ...]] = []
         for position, filled in enumerate(slots):
             if filled is None:
@@ -301,6 +295,58 @@ class ProviderTextEmbedder:
                 raise MemoryEmbeddingError(msg)
             vectors.append(filled)
         return tuple(vectors)
+
+    def _fit_width(self, vector: tuple[float, ...]) -> tuple[float, ...]:
+        """Return *vector* at the configured width.
+
+        A model that emits more components than the operator asked for is
+        being used through its Matryoshka representation: the leading
+        components are trained to stand alone, so the tail is dropped and the
+        remainder renormalised to keep distances comparable with vectors the
+        same embedder produced. It is the mechanism this embedder offers for
+        bringing a wide model under a vector store's index ceiling.
+
+        Returns:
+            The vector, truncated and renormalised when the operator pinned a
+            narrower width.
+
+        Raises:
+            MemoryEmbeddingError: If the width differs for any other reason.
+                Padding a short vector, or silently accepting a long one the
+                operator did not ask to narrow, would leave the stored index
+                incomparable.
+        """
+        width = self._config.dims
+        if len(vector) == width:
+            return vector
+        if not (self._config.dims_explicit and len(vector) > width):
+            msg = (
+                f"Embedder {self.model_ref!r} returned a {len(vector)}-dim "
+                f"vector but is configured for {width}; the stored index "
+                f"would be incomparable"
+            )
+            logger.warning(
+                MEMORY_EMBEDDING_FAILED,
+                model=self.model_ref,
+                native_dims=len(vector),
+                target_dims=width,
+                dims_explicit=self._config.dims_explicit,
+                reason="embedder width does not match configuration",
+            )
+            raise MemoryEmbeddingError(msg)
+        logger.debug(
+            MEMORY_EMBEDDING_TRUNCATED,
+            model=self.model_ref,
+            native_dims=len(vector),
+            target_dims=width,
+        )
+        head = vector[:width]
+        norm = math.sqrt(sum(component * component for component in head))
+        if norm == 0.0:
+            # An all-zero head carries no direction; renormalising would
+            # divide by zero and the vector is already at the target width.
+            return head
+        return tuple(component / norm for component in head)
 
 
 __all__ = ["ProviderTextEmbedder"]
