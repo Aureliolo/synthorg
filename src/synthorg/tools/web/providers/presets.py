@@ -9,8 +9,8 @@ The endpoint and auth header are NOT restated here: they are the same facts a
 connection needs, and they live once in
 :mod:`synthorg.integrations.connections.http_vendor`. Two copies would let a
 search call and its connection's health probe disagree about where the service
-is or how it authenticates, which is exactly the drift that made a working key
-read as unhealthy.
+is or how it authenticates, which is the drift that makes a working key read
+as unhealthy.
 
 Response shape per provider (the only thing that differs beyond auth):
 

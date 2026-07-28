@@ -11,6 +11,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.errors import (
+    ConnectionNotFoundError,
     InvalidStateError,
     OIDCVerificationError,
     TokenExchangeFailedError,
@@ -120,6 +121,8 @@ async def handle_oauth_callback(
         The connection name that was updated.
 
     Raises:
+        ConnectionNotFoundError: If the connection was deleted between
+            authorization and callback.
         InvalidStateError: If the state token is invalid or expired.
         TokenExchangeFailedError: If the code exchange fails or the
             exchange credentials (token_url / client_id /
@@ -168,7 +171,18 @@ async def handle_oauth_callback(
         msg = "OAuth state token expired"
         raise InvalidStateError(msg)
 
-    conn = await catalog.get_or_raise(oauth_state.connection_name)
+    try:
+        conn = await catalog.get_or_raise(oauth_state.connection_name)
+    except ConnectionNotFoundError:
+        # Its two sibling failure branches above report under this event, so
+        # letting this one reach only the generic request handler would hide
+        # a connection deleted mid-flow from any OAuth-specific alerting.
+        logger.warning(
+            OAUTH_FLOW_FAILED,
+            connection_name=str(oauth_state.connection_name),
+            reason="connection_deleted_mid_flow",
+        )
+        raise
     credentials = await catalog.get_credentials(conn.name)
 
     token_url = credentials.get("token_url", "")

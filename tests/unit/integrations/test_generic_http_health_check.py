@@ -19,7 +19,14 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.integrations.connections.http_vendor import (
+    HTTP_VENDOR_PRESETS,
+    METADATA_KEY_VENDOR,
+    HttpVendor,
+    HttpVendorPreset,
+)
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
@@ -27,7 +34,10 @@ from synthorg.integrations.connections.models import (
     ConnectionType,
 )
 from synthorg.integrations.errors import SecretRetrievalError
-from synthorg.integrations.health.checks.generic_http import GenericHttpHealthCheck
+from synthorg.integrations.health.checks.generic_http import (
+    GenericHttpHealthCheck,
+    _probe_target,
+)
 from synthorg.tools.network_validator import NetworkPolicy
 from tests._shared import mock_of
 
@@ -48,6 +58,22 @@ def _make_connection(base_url: str) -> Connection:
         connection_type=ConnectionType.GENERIC_HTTP,
         auth_method=AuthMethod.API_KEY,
         base_url=base_url,
+    )
+
+
+def _vendor_connection(vendor: str) -> Connection:
+    """A connection bound to *vendor*, sitting at that vendor's endpoint.
+
+    Returns:
+        The connection.
+    """
+    preset = HTTP_VENDOR_PRESETS[HttpVendor(vendor)]
+    return Connection(
+        name="generic-http-target",
+        connection_type=ConnectionType.GENERIC_HTTP,
+        auth_method=AuthMethod.API_KEY,
+        base_url=preset.base_url,
+        metadata={METADATA_KEY_VENDOR: vendor},
     )
 
 
@@ -204,7 +230,110 @@ class TestAuthenticatedProbe:
         ):
             report = await check.check(conn)
         assert report.status is ConnectionStatus.UNHEALTHY
-        assert "credential" in (report.error_detail or "")
+        # A secret store that is down is transient and clears itself, whereas
+        # a bad credential needs re-entering: reporting both the same way
+        # sends the operator to rotate a key that was never the problem.
+        assert report.error_detail == "secret_store_unavailable"
+
+    async def test_a_missing_key_is_reported_as_misconfiguration(
+        self,
+        respx_mock: object,
+    ) -> None:
+        catalog = mock_of[ConnectionCatalog]()
+        catalog.get_credentials.return_value = {}
+        check = GenericHttpHealthCheck(catalog=catalog)
+        conn = _vendor_connection(HttpVendor.BRAVE.value)
+        with patch(
+            "synthorg.tools.network_validator.resolve_and_check",
+            return_value=("203.0.113.10",),
+        ):
+            report = await check.check(conn)
+        assert report.status is ConnectionStatus.UNHEALTHY
+        assert report.error_detail == "credential_misconfigured"
+
+
+class TestVendorPresetProbe:
+    """A preset names the header its API accepts and the query it needs."""
+
+    async def test_probe_sends_the_vendor_header_and_query(
+        self,
+        respx_mock: object,
+    ) -> None:
+        preset = HTTP_VENDOR_PRESETS[HttpVendor.BRAVE]
+        route = respx_mock.get(preset.base_url).mock(  # type: ignore[attr-defined]
+            return_value=httpx.Response(200),
+        )
+        catalog = mock_of[ConnectionCatalog]()
+        catalog.get_credentials.return_value = {"token": "key-123"}
+        check = GenericHttpHealthCheck(catalog=catalog)
+        with patch(
+            "synthorg.tools.network_validator.resolve_and_check",
+            return_value=("203.0.113.10",),
+        ):
+            report = await check.check(_vendor_connection(HttpVendor.BRAVE.value))
+
+        assert report.status is ConnectionStatus.HEALTHY
+        request = route.calls.last.request
+        # The generic X-API-Key guess would be rejected however valid the key,
+        # and a search endpoint with no query is a 4xx regardless.
+        assert request.headers["X-Subscription-Token"] == "key-123"
+        assert "X-API-Key" not in request.headers
+        assert request.url.params["q"] == "ping"
+
+    async def test_a_rate_limit_reports_its_retry_after(
+        self,
+        respx_mock: object,
+    ) -> None:
+        preset = HTTP_VENDOR_PRESETS[HttpVendor.BRAVE]
+        respx_mock.get(preset.base_url).mock(  # type: ignore[attr-defined]
+            return_value=httpx.Response(429, headers={"Retry-After": "42"}),
+        )
+        catalog = mock_of[ConnectionCatalog]()
+        catalog.get_credentials.return_value = {"token": "key-123"}
+        check = GenericHttpHealthCheck(catalog=catalog)
+        with patch(
+            "synthorg.tools.network_validator.resolve_and_check",
+            return_value=("203.0.113.10",),
+        ):
+            report = await check.check(_vendor_connection(HttpVendor.BRAVE.value))
+
+        # A quota exhausted by the probe itself says nothing about the key.
+        assert report.status is ConnectionStatus.UNHEALTHY
+        assert "42" in (report.error_detail or "")
+
+    @pytest.mark.parametrize(
+        ("base", "path", "expected"),
+        [
+            ("https://api.example.test", "v1/ping", "https://api.example.test/v1/ping"),
+            (
+                "https://api.example.test/",
+                "/v1/ping",
+                "https://api.example.test/v1/ping",
+            ),
+            ("https://api.example.test", "", "https://api.example.test"),
+        ],
+        ids=["joins", "collapses-double-slash", "empty-path-probes-base"],
+    )
+    def test_probe_target_joins_base_and_path(
+        self, base: str, path: str, expected: str
+    ) -> None:
+        # No shipped preset sets health_path today, so nothing else exercises
+        # the join; the first vendor that needs one would find it untested.
+        preset = HttpVendorPreset(
+            id=NotBlankStr("probe-vendor"),
+            label=NotBlankStr("Probe Vendor"),
+            base_url=NotBlankStr(base),
+            auth_header=NotBlankStr("X-Key"),
+            health_path=path,
+        )
+        conn = _make_connection(base)
+        with patch(
+            "synthorg.integrations.health.checks.generic_http.resolve_vendor",
+            return_value=preset,
+        ):
+            url, _params = _probe_target(conn)
+
+        assert url == expected
 
 
 class TestSecretLeakScrubbing:

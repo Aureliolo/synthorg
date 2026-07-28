@@ -15,15 +15,15 @@ silently mixing incompatible vectors.
 import json
 from typing import Final, LiteralString, NamedTuple, cast
 
+from synthorg.core import vector_limits
 from synthorg.memory.vector_spec import MemoryVectorSearchSpec
 
-# pgvector's index ceilings, per element type. A full-precision ``vector``
-# takes an HNSW index up to 2000 dimensions and a half-precision ``halfvec``
-# up to 4000, while either type *stores* up to 16000. A width above the HNSW
-# ceilings is therefore searchable but not ANN-indexable.
-HNSW_VECTOR_MAX_DIMENSIONS: Final[int] = 2000
-HNSW_HALFVEC_MAX_DIMENSIONS: Final[int] = 4000
-STORAGE_MAX_DIMENSIONS: Final[int] = 16000
+# Re-exported so this module stays the one place the repository and its
+# tests read a width ceiling from, while the values themselves live in the
+# shared leaf the settings registry also validates against.
+HNSW_VECTOR_MAX_DIMENSIONS: Final[int] = vector_limits.HNSW_VECTOR_MAX_DIMENSIONS
+HNSW_HALFVEC_MAX_DIMENSIONS: Final[int] = vector_limits.HNSW_HALFVEC_MAX_DIMENSIONS
+STORAGE_MAX_DIMENSIONS: Final[int] = vector_limits.STORAGE_MAX_DIMENSIONS
 
 
 class DenseColumnSpec(NamedTuple):
@@ -56,8 +56,20 @@ def dense_column_spec(dimensions: int) -> DenseColumnSpec:
 
     Returns:
         The :class:`DenseColumnSpec` for *dimensions*.
+
+    Raises:
+        ValueError: If *dimensions* exceeds what pgvector can store, which
+            no column definition could satisfy. Refused here rather than
+            left to fail inside ``ALTER TABLE``, where it would surface as
+            a generic driver error the repository degrades on silently.
     """
     width = int(dimensions)
+    if width > STORAGE_MAX_DIMENSIONS:
+        msg = (
+            f"embedding width {width} exceeds pgvector's storage ceiling "
+            f"of {STORAGE_MAX_DIMENSIONS} dimensions"
+        )
+        raise ValueError(msg)
     if width <= HNSW_VECTOR_MAX_DIMENSIONS:
         return DenseColumnSpec(
             dimensions=width,
@@ -311,6 +323,37 @@ def add_vector_column(spec: DenseColumnSpec) -> LiteralString:
     )
 
 
+def index_name(spec: DenseColumnSpec) -> LiteralString:
+    """Return the HNSW index name for a dense column.
+
+    Returns:
+        The index name :func:`create_vector_index` builds under.
+    """
+    return _column_name(f"idx_{spec.name}")
+
+
+def drop_vector_index(spec: DenseColumnSpec) -> LiteralString:
+    """Return DDL dropping the dense column's index.
+
+    ``CONCURRENTLY`` for the same reason the build uses it: dropping a
+    large index takes a lock that would otherwise block memory writes.
+
+    Returns:
+        A ``DROP INDEX CONCURRENTLY IF EXISTS`` statement.
+    """
+    return cast(  # type: ignore[redundant-cast]  # see _column_name
+        "LiteralString",
+        f"DROP INDEX CONCURRENTLY IF EXISTS {index_name(spec)}",
+    )
+
+
+SELECT_INDEX_IS_VALID: Final[LiteralString] = (
+    "SELECT i.indisvalid FROM pg_index i "
+    "JOIN pg_class c ON c.oid = i.indexrelid "
+    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE n.nspname = current_schema() AND c.relname = %s"
+)
+
 SELECT_VECTOR_COLUMNS: Final[LiteralString] = (
     "SELECT column_name FROM information_schema.columns "
     # Scope to the connection's own schema so a same-named table in
@@ -365,7 +408,7 @@ def create_vector_index(spec: DenseColumnSpec) -> LiteralString:
         )
         raise ValueError(msg)
     return (
-        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_{spec.name} "
+        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {index_name(spec)} "
         f"ON memory_entries USING hnsw ({spec.name} {spec.element_type}_l2_ops)"
     )
 

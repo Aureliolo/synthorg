@@ -101,6 +101,11 @@ class OntologyAwareMemoryBackend:
         """Whether the inner backend ranks by meaning."""
         return self._inner.supports_dense_search
 
+    @property
+    def dense_search_indexed(self) -> bool:
+        """Whether the inner backend's dense search is index-backed."""
+        return self._inner.dense_search_indexed
+
     # ── Enhanced operations ────────────────────────────────────────
 
     async def store(

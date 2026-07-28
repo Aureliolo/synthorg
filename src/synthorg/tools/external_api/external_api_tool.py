@@ -48,7 +48,7 @@ from synthorg.security.autonomy.enums import ActionType, ToolCategory
 from synthorg.security.timeout.protocol import RiskTierClassifier
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.external_api._args import ExternalApiArgs
-from synthorg.tools.external_api._credentials import build_auth_headers
+from synthorg.tools.external_api._credentials import build_connection_auth_headers
 from synthorg.tools.external_api._signature import ApprovalSignature
 from synthorg.tools.external_api._url_guards import (
     _has_dot_segment,
@@ -305,7 +305,7 @@ class ExternalApiTool(BaseTool):
         Returns:
             Mapping from ``str`` to ``str``.
         """
-        return build_auth_headers(conn.auth_method, credentials)
+        return build_connection_auth_headers(conn, credentials)
 
     async def _egress(
         self,

@@ -145,8 +145,18 @@ class TestAgentTaskScorer:
 
     @pytest.mark.unit
     def test_score_capped_at_one(self) -> None:
-        """Score is capped at 1.0."""
-        scorer = AgentTaskScorer()
+        """Weights that would exceed 1.0 are clamped, not merely bounded.
+
+        The stock weights total 0.6 for this shape, so asserting ``<= 1.0``
+        against them would pass with the clamp deleted; the cap only earns a
+        test against a weight set that would actually overflow it.
+        """
+        scorer = AgentTaskScorer(
+            config=RoutingScorerConfig(
+                primary_skill_weight=0.9,
+                role_match_bonus=0.9,
+            )
+        )
         agent = _make_agent(
             primary=("python", "sql"),
             secondary=("testing",),
@@ -159,7 +169,7 @@ class TestAgentTaskScorer:
         )
 
         candidate = scorer.score(agent, subtask)
-        assert candidate.score <= 1.0
+        assert candidate.score == pytest.approx(1.0)
 
     @pytest.mark.unit
     def test_no_match(self) -> None:

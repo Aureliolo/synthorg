@@ -190,7 +190,15 @@ class TunnelManager:
             per-provider readiness).
         """
         selected = await self._selected_id()
-        statuses = [await self._status_of(a) for a in self._adapters.values()]
+        # Each adapter probe can reach a subprocess or a credential lookup
+        # with its own timeout, so awaiting them in turn makes one slow
+        # provider delay every other provider's status on the same fetch.
+        async with asyncio.TaskGroup() as group:
+            tasks = [
+                group.create_task(self._status_of(adapter))
+                for adapter in self._adapters.values()
+            ]
+        statuses = [task.result() for task in tasks]
         return TunnelSnapshot(
             public_url=await self.get_url(),
             selected_provider=selected,

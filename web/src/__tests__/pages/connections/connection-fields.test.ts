@@ -4,6 +4,8 @@ import {
   type ConnectionFieldSpec,
   conditionMet,
   connectionTypeLabel,
+  isFieldRequired,
+  metadataGovernsOtherFields,
   resolveConnectionSpec,
   validateConnectionField,
   validateConnectionName,
@@ -137,6 +139,60 @@ const deployMeta: ConnectionTypeMetadata = {
       placeholder: '',
       help_text: '',
       capture_mode: null,
+      visible_when: null,
+      required_when: null,
+    },
+  ],
+}
+
+/** A metadata field governing a top-level one, the vendor-preset shape. */
+const genericHttpMeta: ConnectionTypeMetadata = {
+  connection_type: 'generic_http',
+  default_auth_method: 'api_key',
+  label: 'Generic HTTP',
+  description: 'An HTTP API behind a key.',
+  required_field_names: ['token'],
+  secret_field_names: ['token'],
+  fields: [
+    {
+      name: 'vendor',
+      label: 'Vendor',
+      input_type: 'select',
+      placement: 'metadata',
+      required: true,
+      secret: false,
+      options: ['brave', 'custom'],
+      placeholder: '',
+      help_text: '',
+      capture_mode: null,
+      visible_when: null,
+      required_when: null,
+    },
+    {
+      name: 'base_url',
+      label: 'Base URL',
+      input_type: 'url',
+      placement: 'base_url',
+      required: false,
+      secret: false,
+      options: [],
+      placeholder: '',
+      help_text: '',
+      capture_mode: null,
+      visible_when: { field: 'vendor', values: ['custom'] },
+      required_when: { field: 'vendor', values: ['custom'] },
+    },
+    {
+      name: 'token',
+      label: 'API Key',
+      input_type: 'password',
+      placement: 'credential',
+      required: true,
+      secret: true,
+      options: [],
+      placeholder: '',
+      help_text: '',
+      capture_mode: 'masked_field',
       visible_when: null,
       required_when: null,
     },
@@ -287,6 +343,52 @@ describe('conditionMet', () => {
 
   it('fails for an unset dependency', () => {
     expect(conditionMet({ field: 'v', values: ['brave'] }, {})).toBe(false)
+  })
+})
+
+describe('isFieldRequired', () => {
+  const conditional: ConnectionFieldSpec = {
+    key: 'host',
+    label: 'Host',
+    type: 'text',
+    required: false,
+    secret: false,
+    requiredWhen: { field: 'dialect', values: ['postgres'] },
+  }
+
+  it('requires the field only while its condition holds', () => {
+    expect(isFieldRequired(conditional, { dialect: 'postgres' })).toBe(true)
+    expect(isFieldRequired(conditional, { dialect: 'sqlite' })).toBe(false)
+  })
+
+  it('never requires a hidden field', () => {
+    // A field the operator cannot see must not block submission.
+    const hidden: ConnectionFieldSpec = {
+      ...conditional,
+      required: true,
+      visibleWhen: { field: 'vendor', values: ['custom'] },
+    }
+
+    expect(isFieldRequired(hidden, { vendor: 'brave' })).toBe(false)
+    expect(isFieldRequired(hidden, { vendor: 'custom' })).toBe(true)
+  })
+})
+
+describe('metadataGovernsOtherFields', () => {
+  it('is true when a credential depends on a metadata field', () => {
+    // Answering the governing field first is what keeps the resulting
+    // content shift below the control the operator is using.
+    const spec = resolveConnectionSpec(genericHttpMeta)
+
+    expect(metadataGovernsOtherFields(spec)).toBe(true)
+  })
+
+  it('is false when the buckets are independent', () => {
+    // Leading with metadata there would only push the credential down the
+    // tab order for no reason.
+    const spec = resolveConnectionSpec(deployMeta)
+
+    expect(metadataGovernsOtherFields(spec)).toBe(false)
   })
 })
 

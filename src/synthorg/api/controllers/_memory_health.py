@@ -169,6 +169,18 @@ async def resolve_memory_health(
                 "events for the cause."
             ),
         )
+    if not backend.dense_search_indexed:
+        return MemoryHealth(
+            state=MemoryState.DEGRADED,
+            backend=backend_name,
+            detail=(
+                "Dense recall works but is unindexed: every search reads "
+                "the whole corpus, so latency grows with it. The "
+                "configured memory.embedder_dims exceeds the vector "
+                "store's index ceiling. See the memory.dense_index.* log "
+                "events for the widths involved."
+            ),
+        )
     if memory_slice.consolidation_scheduler is None:
         return MemoryHealth(
             state=MemoryState.DEGRADED,

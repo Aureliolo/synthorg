@@ -19,6 +19,8 @@ from contextlib import asynccontextmanager
 import psycopg
 import pytest
 from psycopg import AsyncConnection
+from psycopg._queries import PostgresQuery
+from psycopg.adapt import Transformer
 from psycopg_pool import AsyncConnectionPool
 from structlog.testing import capture_logs
 
@@ -28,10 +30,13 @@ from synthorg.memory.vector_spec import MemoryVectorSearchSpec
 from synthorg.observability.events.memory import (
     MEMORY_DENSE_INDEX_PERMISSION_DENIED,
     MEMORY_DENSE_INDEX_UNAVAILABLE,
+    MEMORY_DENSE_INDEX_UNINDEXABLE,
 )
 from synthorg.persistence.postgres._memory_vector_sql import (
     HNSW_HALFVEC_MAX_DIMENSIONS,
     HNSW_VECTOR_MAX_DIMENSIONS,
+    SELECT_VECTOR_COLUMNS,
+    STORAGE_MAX_DIMENSIONS,
     create_vector_index,
     dense_column_spec,
 )
@@ -206,6 +211,23 @@ class TestExtensionDegradation:
         assert log == []
 
 
+class TestOrphanScanQuery:
+    """The orphan scan's SQL must survive psycopg's placeholder parser."""
+
+    def test_the_column_pattern_survives_placeholder_binding(self) -> None:
+        # psycopg parses the query for client-side placeholders before
+        # binding, so a bare ``%`` beside a quote reads as a malformed one and
+        # raises. That is invisible to the recording cursor these tests use,
+        # and the scan swallows psycopg errors, so the whole diagnostic went
+        # unrun in production without a single failure to show for it.
+        pgq = PostgresQuery(Transformer())
+        pgq.convert(SELECT_VECTOR_COLUMNS, ("embedding_768",))
+
+        assert b"LIKE 'embedding\\_%'" in pgq.query
+        assert pgq.params is not None
+        assert len(pgq.params) == 1
+
+
 class TestDenseWidthStrategy:
     """Storage and indexing follow pgvector's per-type HNSW ceilings."""
 
@@ -225,12 +247,26 @@ class TestDenseWidthStrategy:
         # full-precision column an earlier build left at the same width.
         assert spec.name.startswith("embedding_h")
 
+    def test_half_precision_at_the_halfvec_ceiling(self) -> None:
+        # The last indexable width; one more falls to an exact scan.
+        spec = dense_column_spec(HNSW_HALFVEC_MAX_DIMENSIONS)
+
+        assert spec.element_type == "halfvec"
+        assert spec.indexable is True
+
     def test_above_every_ceiling_is_unindexable(self) -> None:
         spec = dense_column_spec(HNSW_HALFVEC_MAX_DIMENSIONS + 1)
 
         assert spec.indexable is False
         with pytest.raises(ValueError, match="HNSW ceiling"):
             create_vector_index(spec)
+
+    def test_beyond_the_storage_ceiling_is_refused(self) -> None:
+        # No column definition could satisfy it, so this fails here rather
+        # than inside ALTER TABLE as a generic driver error the repository
+        # degrades on without saying why.
+        with pytest.raises(ValueError, match="storage ceiling"):
+            dense_column_spec(STORAGE_MAX_DIMENSIONS + 1)
 
     async def test_unindexable_width_still_supports_dense_search(self) -> None:
         log: list[tuple[str, object]] = []
@@ -242,14 +278,25 @@ class TestDenseWidthStrategy:
         # Exact scan beats no semantic recall at all, so the column is built
         # and dense search stays on; the missing index is reported loudly.
         assert repo.supports_dense_search is True
+        # But not as indexed: health reports DEGRADED off this, because
+        # correct-but-full-scan recall looks identical in its answers.
+        assert repo.dense_search_indexed is False
         assert not [s for s, _ in log if s.startswith("CREATE INDEX")]
         assert [s for s, _ in log if "ADD COLUMN" in s]
         assert [
             entry
             for entry in logs
-            if entry.get("event") == MEMORY_DENSE_INDEX_UNAVAILABLE
+            if entry.get("event") == MEMORY_DENSE_INDEX_UNINDEXABLE
             and entry.get("log_level") == "error"
         ]
+
+    async def test_an_indexed_width_reports_itself_as_indexed(self) -> None:
+        log: list[tuple[str, object]] = []
+        repo = PostgresMemoryVectorRepository(_pool_over(_recording_connection(log)))
+
+        await repo.ensure_ready(HNSW_VECTOR_MAX_DIMENSIONS)
+
+        assert repo.dense_search_indexed is True
 
     async def test_half_precision_width_binds_halfvec(self) -> None:
         log: list[tuple[str, object]] = []

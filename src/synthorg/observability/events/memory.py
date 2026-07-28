@@ -57,6 +57,15 @@ MEMORY_EMBEDDING_FAILED: Final[str] = "memory.embedding.failed"
 MEMORY_EMBEDDING_RETRIED: Final[str] = "memory.embedding.retried"
 """Emitted when a transient embedding failure is retried with backoff."""
 
+MEMORY_EMBEDDING_TRUNCATED: Final[str] = "memory.embedding.truncated"
+"""Emitted at DEBUG when a vector is narrowed to the configured width.
+
+The Matryoshka tail is dropped and the head renormalised, which changes
+the stored vector without changing the recall it supports. DEBUG because
+it is the operator's own pinned width being honoured, not a fault, but
+recorded so an unexpected width is traceable to the call that narrowed it.
+"""
+
 MEMORY_EMBEDDING_COST_RECORD_FAILED: Final[str] = "memory.embedding.cost_record_failed"
 """Emitted at WARNING when a batch's spend could not be attributed.
 
@@ -75,6 +84,33 @@ rather than raising so persistence stays up for every non-memory
 feature sharing the connection; the memory backend is what turns this
 into a loud failure at its own boundary.
 """
+MEMORY_DENSE_COLUMN_STALE: Final[str] = "memory.dense_column.stale"
+"""Emitted at INFO for an empty dense column left by an earlier width.
+
+It strands no vectors, so it is not a fault; it is schema drift that no
+other report covers, because the orphaned-width error only fires when a
+leftover column still holds rows.
+"""
+
+MEMORY_DENSE_INDEX_INVALID: Final[str] = "memory.dense_index.invalid"
+"""Emitted at WARNING when a crash-left invalid index is rebuilt.
+
+``CREATE INDEX CONCURRENTLY IF NOT EXISTS`` matches on name alone, so an
+index abandoned mid-build would otherwise be accepted as present and
+never rebuilt, leaving every dense query on a sequential scan. Reported
+rather than fixed silently: repeated occurrences mean builds keep dying.
+"""
+
+MEMORY_DENSE_INDEX_UNINDEXABLE: Final[str] = "memory.dense_index.unindexable"
+"""Emitted at ERROR when the width is too wide for any ANN index.
+
+Distinct from :data:`MEMORY_DENSE_INDEX_UNAVAILABLE`: dense recall still
+answers here, by scanning the whole corpus for every query. Kept rather
+than refused because exact search beats no semantic recall, but reported
+loudly and surfaced as DEGRADED, since the cost grows with the corpus and
+nothing else about the system looks wrong.
+"""
+
 MEMORY_DENSE_INDEX_PERMISSION_DENIED: Final[str] = (
     "memory.dense_index.permission_denied"
 )

@@ -10,7 +10,10 @@ import pytest
 from structlog.testing import capture_logs
 
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
-from synthorg.integrations.errors import ConnectionNotFoundError
+from synthorg.integrations.errors import (
+    ConnectionNotFoundError,
+    SecretRetrievalError,
+)
 from synthorg.observability.events.integrations import CONNECTION_NOT_FOUND
 from tests._shared.connection_catalog import make_in_memory_catalog
 
@@ -22,6 +25,25 @@ class TestQuietCredentialLookup:
         catalog = make_in_memory_catalog()
 
         assert await catalog.get_credentials_or_none("never-created") is None
+
+    async def test_a_broken_secret_still_raises(self) -> None:
+        # Selectively quiet: widening the None to cover a corrupted secret
+        # too would report a broken credential store as "not configured",
+        # a worse failure than either extreme on its own.
+        catalog = make_in_memory_catalog()
+        conn = await catalog.create(
+            name="broken",
+            connection_type=ConnectionType.GENERIC_HTTP,
+            auth_method=AuthMethod.API_KEY.value,
+            credentials={"token": "secret"},
+            base_url="https://api.example.test",
+            metadata={},
+        )
+        for ref in conn.secret_refs:
+            await catalog._secret_backend.delete(ref.secret_id)
+
+        with pytest.raises(SecretRetrievalError):
+            await catalog.get_credentials_or_none("broken")
 
     async def test_absent_connection_does_not_warn(self) -> None:
         catalog = make_in_memory_catalog()

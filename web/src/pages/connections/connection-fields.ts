@@ -147,13 +147,28 @@ export function isFieldVisible(
 }
 
 /**
+ * Whether any non-metadata field's condition depends on a metadata field.
+ *
+ * Only then does answering metadata first change what the operator is asked
+ * next; otherwise the ordering is arbitrary and demoting the credential.
+ */
+export function metadataGovernsOtherFields(spec: ResolvedConnectionSpec): boolean {
+  const metadataKeys = new Set(spec.metadataFields.map((field) => field.key))
+  return [...spec.topLevelFields, ...spec.credentialFields].some(
+    (field) =>
+      (field.visibleWhen && metadataKeys.has(field.visibleWhen.field))
+      || (field.requiredWhen && metadataKeys.has(field.requiredWhen.field)),
+  )
+}
+
+/**
  * Whether a field must be filled in, given the rest of the form.
  *
  * Both the unconditional flag and the conditional rule come from the backend
  * registry: a database host is required for a networked dialect but not for
  * the embedded one, and which dialects are which is the backend's to say.
  */
-function resolveRequired(
+export function isFieldRequired(
   spec: ConnectionFieldSpec,
   values: Readonly<Record<string, string | undefined>>,
 ): boolean {
@@ -204,7 +219,7 @@ export function validateConnectionField(
   values: Readonly<Record<string, string | undefined>> = {},
 ): string | null {
   if (!isFieldVisible(spec, values)) return null
-  if (resolveRequired(spec, values) && !value.trim()) return `${spec.label} is required`
+  if (isFieldRequired(spec, values) && !value.trim()) return `${spec.label} is required`
   if (spec.type === 'url') return validateUrlValue(spec, value)
   if (spec.type === 'select') return validateSelectValue(spec, value)
   if (spec.type === 'number') return validateNumberValue(spec, value)

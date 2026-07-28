@@ -45,6 +45,10 @@ class _FakeMemoryBackend:
     def supports_dense_search(self) -> bool:
         return False
 
+    @property
+    def dense_search_indexed(self) -> bool:
+        return False
+
     async def store(self, agent_id: str, request: MemoryStoreRequest) -> str:
         memory_id = str(uuid4())
         agent_store = self._store.setdefault(agent_id, {})

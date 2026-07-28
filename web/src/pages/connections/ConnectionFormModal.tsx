@@ -1,4 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
+import { useMemo } from 'react'
 import {
   connectionTypeUsesWebhookReceipts,
   type Connection,
@@ -20,7 +21,9 @@ import { useConnectionsStore } from '@/stores/connections'
 import {
   type ConnectionFieldSpec,
   type ResolvedConnectionSpec,
+  isFieldRequired,
   isFieldVisible,
+  metadataGovernsOtherFields,
 } from './connection-fields'
 import { allFormValues, isForgeConnectionType } from './connection-submit'
 import { RepoScopePicker } from './RepoScopePicker'
@@ -35,13 +38,18 @@ export interface ConnectionFormModalProps {
   onClose: () => void
 }
 
-function renderField(
-  spec: ConnectionFieldSpec,
-  value: string,
-  error: string | null,
-  onChange: (value: string) => void,
-  readOnly: boolean,
-) {
+interface RenderFieldArgs {
+  spec: ConnectionFieldSpec
+  value: string
+  error: string | null
+  /** Effective requiredness, which for a conditional field depends on the
+      rest of the form rather than on the field's own flag. */
+  required: boolean
+  onChange: (value: string) => void
+  readOnly: boolean
+}
+
+function renderField({ spec, value, error, required, onChange, readOnly }: RenderFieldArgs) {
   if (spec.type === 'select' && spec.options) {
     return (
       <SelectField
@@ -51,7 +59,7 @@ function renderField(
         options={spec.options.map((o) => ({ value: o, label: o }))}
         hint={spec.hint}
         error={error ?? undefined}
-        required={spec.required}
+        required={required}
         disabled={readOnly}
         onChange={onChange}
       />
@@ -70,7 +78,7 @@ function renderField(
       placeholder={spec.placeholder}
       hint={hint}
       error={error}
-      required={spec.required}
+      required={required}
       disabled={readOnly}
       onValueChange={onChange}
     />
@@ -203,13 +211,14 @@ function ConnectionFieldList({
       {fields
         .filter((field) => isFieldVisible(field, allValues))
         .map((field) =>
-          renderField(
-            field,
-            values[field.key] ?? '',
-            submitted ? (errors[field.key] ?? null) : null,
-            (value) => onChange(field.key, value),
-            false,
-          ),
+          renderField({
+            spec: field,
+            value: values[field.key] ?? '',
+            error: submitted ? (errors[field.key] ?? null) : null,
+            required: isFieldRequired(field, allValues),
+            onChange: (value) => onChange(field.key, value),
+            readOnly: false,
+          }),
         )}
     </>
   )
@@ -262,21 +271,25 @@ function ConnectionFieldSections({
   spec: ResolvedConnectionSpec
   mode: Mode
 }) {
-  const allValues = allFormValues(f.form)
+  const allValues = useMemo(() => allFormValues(f.form), [f.form])
+  // A metadata field that governs the fields below it has to be answered
+  // first, and putting it there keeps the resulting content shift below the
+  // control the operator is using. Where no such dependency exists, leading
+  // with metadata would only push the credential further down the tab order.
+  const metadataLeads = metadataGovernsOtherFields(spec)
+  const metadataList = (
+    <ConnectionFieldList
+      fields={spec.metadataFields}
+      values={f.form.metadata}
+      allValues={allValues}
+      errors={f.errors}
+      submitted={f.submitted}
+      onChange={(key, value) => f.handleFieldChange('metadata', key, value)}
+    />
+  )
   return (
     <>
-      {/* Metadata fields sit on the connection record (non-secret) and stay
-          editable after creation, so they render in both modes. They come
-          first because a vendor preset governs whether the fields below it
-          apply at all. */}
-      <ConnectionFieldList
-        fields={spec.metadataFields}
-        values={f.form.metadata}
-        allValues={allValues}
-        errors={f.errors}
-        submitted={f.submitted}
-        onChange={(key, value) => f.handleFieldChange('metadata', key, value)}
-      />
+      {metadataLeads && metadataList}
 
       <ConnectionFieldList
         fields={spec.topLevelFields}
@@ -297,6 +310,8 @@ function ConnectionFieldSections({
           onChange={(key, value) => f.handleFieldChange('credentials', key, value)}
         />
       )}
+
+      {!metadataLeads && metadataList}
     </>
   )
 }
@@ -315,7 +330,7 @@ function ConnectionFormFields({
   onClose: () => void
 }) {
   return (
-    <form onSubmit={f.handleSubmit} className="flex flex-col gap-4">
+    <form onSubmit={f.handleSubmit} className="flex flex-col gap-section-gap">
       <div className="flex items-center gap-2 text-sm text-text-secondary">
         <TypeBadge type={connectionType} />
         <span>{spec.description}</span>

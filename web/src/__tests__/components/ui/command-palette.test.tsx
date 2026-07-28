@@ -1,4 +1,4 @@
-import { cleanup, render, renderHook, screen } from '@testing-library/react'
+import { render, renderHook, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import {
@@ -75,17 +75,40 @@ describe('CommandPalette', () => {
   it('ignores a synthetic keydown carrying no key', () => {
     const onError = vi.fn()
     window.addEventListener('error', onError)
+    try {
+      render(<CommandPalette />)
+
+      // A plain Event, the shape third-party widgets and browser autofill
+      // dispatch: ``key`` is absent despite the DOM types promising a string.
+      // jsdom reports a listener throw as a window error rather than rethrowing
+      // out of dispatchEvent, which is the same channel that toasts the operator.
+      document.dispatchEvent(new Event('keydown', { bubbles: true }))
+
+      expect(onError).not.toHaveBeenCalled()
+      expect(
+        screen.queryByPlaceholderText('Search commands...'),
+      ).not.toBeInTheDocument()
+    } finally {
+      // jsdom's window outlives each test in a file, so a listener left
+      // attached by a failed assertion would leak into every test after it.
+      window.removeEventListener('error', onError)
+    }
+  })
+
+  it('ignores an auto-repeated chord', async () => {
+    const user = userEvent.setup()
     render(<CommandPalette />)
 
-    // A plain Event, the shape third-party widgets and browser autofill
-    // dispatch: ``key`` is absent despite the DOM types promising a string.
-    // jsdom reports a listener throw as a window error rather than rethrowing
-    // out of dispatchEvent, which is the same channel that toasts the operator.
-    document.dispatchEvent(new Event('keydown', { bubbles: true }))
+    await user.keyboard('{Control>}k{/Control}')
+    expect(screen.getByPlaceholderText('Search commands...')).toBeInTheDocument()
 
-    expect(onError).not.toHaveBeenCalled()
-    expect(screen.queryByPlaceholderText('Search commands...')).not.toBeInTheDocument()
-    window.removeEventListener('error', onError)
+    // A held chord repeats, and toggling per repeat would leave the palette
+    // open or closed by the parity of how long it was held.
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, repeat: true }),
+    )
+
+    expect(screen.getByPlaceholderText('Search commands...')).toBeInTheDocument()
   })
 
   it('closes on Escape', async () => {
@@ -158,6 +181,5 @@ describe('CommandPalette', () => {
     _setOpen(true)
     render(<CommandPalette />)
     expect(screen.queryByText('Mounted Cmd')).not.toBeInTheDocument()
-    cleanup()
   })
 })

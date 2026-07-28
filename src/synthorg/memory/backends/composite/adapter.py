@@ -229,6 +229,15 @@ class CompositeBackend:
         """
         return all(b.supports_dense_search for b in self._unique_backends)
 
+    @property
+    def dense_search_indexed(self) -> bool:
+        """Whether every child's dense search is index-backed.
+
+        Unanimous for the same reason as the capability above: one child
+        scanning its whole corpus sets the latency of any route into it.
+        """
+        return all(b.dense_search_indexed for b in self._unique_backends)
+
     # -- Capabilities -------------------------------------------------
 
     @property

@@ -53,14 +53,24 @@ function parseRetentionDays(raw: string): RetentionResult {
  * vendor governing the top-level base URL), so conditions are evaluated
  * against the whole form rather than the bucket a field happens to sit in.
  */
-export function allFormValues(form: ConnectionFormState): Record<string, string> {
-  return { ...form.topLevel, ...form.metadata, ...form.credentials }
+const formValuesCache = new WeakMap<ConnectionFormState, Readonly<Record<string, string>>>()
+
+export function allFormValues(form: ConnectionFormState): Readonly<Record<string, string>> {
+  // Form state is replaced wholesale on every edit, so its identity is a
+  // sound cache key: a single submit otherwise merges the same three buckets
+  // once per validate/metadata/base-url/credential pass. Frozen because the
+  // result is now shared between those callers.
+  const cached = formValuesCache.get(form)
+  if (cached) return cached
+  const merged = Object.freeze({ ...form.topLevel, ...form.metadata, ...form.credentials })
+  formValuesCache.set(form, merged)
+  return merged
 }
 
 function collectFieldErrors(
   fields: readonly ConnectionFieldSpec[],
   values: Record<string, string>,
-  all: Record<string, string>,
+  all: Readonly<Record<string, string>>,
   into: Record<string, string | null>,
 ): void {
   for (const field of fields) {

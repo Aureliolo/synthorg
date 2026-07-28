@@ -10,6 +10,7 @@ the mixin in isolation.
 
 import copy
 import json
+from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING
 
 from synthorg.integrations.connections.models import Connection
@@ -37,6 +38,10 @@ class CredentialResolverMixin:
             """Load a connection or raise (provided by the host class)."""
             ...
 
+        def _name_lock(self, name: str) -> AbstractAsyncContextManager[None]:
+            """Hold the connection's mutation lock (provided by the host)."""
+            ...
+
     async def get_credentials(self, name: str) -> dict[str, str]:
         """Retrieve decrypted credentials for a connection.
 
@@ -55,8 +60,15 @@ class CredentialResolverMixin:
             SecretRetrievalError: If a referenced secret is missing
                 or cannot be decoded.
         """
-        conn = await self.get_or_raise(name)
-        return await self._resolve_credentials_for(conn)
+        # Held across the lookup and the decrypt: a concurrent delete()
+        # removes the row and then its secrets, so an unlocked reader can
+        # resolve a connection whose secrets are being deleted underneath
+        # it and raise a retrieval fault for a connection that is simply
+        # gone. Deadlock-free because no writer resolves credentials, and
+        # ``get`` itself never takes this lock.
+        async with self._name_lock(name):
+            conn = await self.get_or_raise(name)
+            return await self._resolve_credentials_for(conn)
 
     async def get_credentials_or_none(self, name: str) -> dict[str, str] | None:
         """Retrieve decrypted credentials, or ``None`` when unconfigured.
@@ -79,10 +91,11 @@ class CredentialResolverMixin:
                 secret is missing or cannot be decoded. A broken secret is a
                 fault even when absence is not.
         """
-        conn = await self.get(name)
-        if conn is None:
-            return None
-        return await self._resolve_credentials_for(conn)
+        async with self._name_lock(name):
+            conn = await self.get(name)
+            if conn is None:
+                return None
+            return await self._resolve_credentials_for(conn)
 
     async def _resolve_credentials_for(
         self,

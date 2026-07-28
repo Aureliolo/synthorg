@@ -24,7 +24,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -35,6 +35,7 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 
 METADATA_KEY_VENDOR: Final[str] = "vendor"
+_KEY_PLACEHOLDER: Final[str] = "{key}"
 
 
 class HttpVendor(StrEnum):
@@ -76,6 +77,29 @@ class HttpVendorPreset(BaseModel):
     auth_template: NotBlankStr = "{key}"
     health_path: str = ""
     health_params: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _template_consumes_the_key(self) -> HttpVendorPreset:
+        """Reject a template that would render without the credential.
+
+        ``str.format`` ignores a keyword the template never names, so a
+        template missing ``{key}`` produces a constant header and drops the
+        secret silently: every request would leave authenticated-looking and
+        come back 401, with nothing in the preset to point at.
+
+        Returns:
+            The validated preset.
+
+        Raises:
+            ValueError: If the template never substitutes the key.
+        """
+        if _KEY_PLACEHOLDER not in self.auth_template:
+            msg = (
+                f"auth_template for vendor {self.id!r} must contain "
+                f"{_KEY_PLACEHOLDER!r} or the credential is never sent"
+            )
+            raise ValueError(msg)
+        return self
 
     def auth_headers(self, key: str) -> dict[str, str]:
         """Render this vendor's auth header for *key*.
@@ -121,6 +145,27 @@ HTTP_VENDOR_PRESETS: Final[Mapping[HttpVendor, HttpVendorPreset]] = MappingProxy
     }
 )
 
+# The enum and the registry are maintained separately, and a member added to
+# one but not the other resolves to None: indistinguishable from the operator
+# choosing a custom endpoint, so nothing would report it. Checked at import so
+# it fails the build rather than the connection.
+_UNREGISTERED = {v for v in HttpVendor if v is not HttpVendor.CUSTOM} - set(
+    HTTP_VENDOR_PRESETS
+)
+if _UNREGISTERED:  # pragma: no cover -- import-time guard
+    _NAMES = ", ".join(sorted(v.value for v in _UNREGISTERED))
+    _MSG = f"HttpVendor members with no HTTP_VENDOR_PRESETS entry: {_NAMES}"
+    raise RuntimeError(_MSG)
+
+_MISKEYED = {
+    vendor.value
+    for vendor, preset in HTTP_VENDOR_PRESETS.items()
+    if preset.id != vendor.value
+}
+if _MISKEYED:  # pragma: no cover -- import-time guard
+    _MSG = f"HTTP_VENDOR_PRESETS entries whose id disagrees with their key: {_MISKEYED}"
+    raise RuntimeError(_MSG)
+
 
 def resolve_vendor(metadata: Mapping[str, str]) -> HttpVendorPreset | None:
     """Read the vendor preset from a connection's metadata.
@@ -130,9 +175,9 @@ def resolve_vendor(metadata: Mapping[str, str]) -> HttpVendorPreset | None:
 
     Returns:
         The declared preset, or ``None`` when the connection is a custom
-        endpoint, declares nothing, or names a vendor this build has no
-        preset for. ``None`` means "use the operator's own base URL and
-        generic auth", never a guessed vendor.
+        endpoint, declares nothing, or names a vendor this build does not
+        know. ``None`` means "use the operator's own base URL and generic
+        auth", never a guessed vendor.
     """
     declared = metadata.get(METADATA_KEY_VENDOR, "")
     if not declared or declared == HttpVendor.CUSTOM.value:
@@ -140,22 +185,17 @@ def resolve_vendor(metadata: Mapping[str, str]) -> HttpVendorPreset | None:
     try:
         vendor = HttpVendor(declared)
     except ValueError:
+        # Carry the value that failed: without it the operator is told only
+        # that something was unrecognised, and a typo, a stale vendor and a
+        # case mismatch all read identically.
         logger.warning(
             HTTP_VENDOR_METADATA_UNRECOGNISED,
             field=METADATA_KEY_VENDOR,
+            declared=declared,
             resolved="none",
         )
         return None
-    return HTTP_VENDOR_PRESETS.get(vendor)
-
-
-def preset_for(vendor: HttpVendor) -> HttpVendorPreset | None:
-    """Return the preset for *vendor*, or ``None`` for a custom endpoint.
-
-    Returns:
-        The registered :class:`HttpVendorPreset`, or ``None``.
-    """
-    return HTTP_VENDOR_PRESETS.get(vendor)
+    return HTTP_VENDOR_PRESETS[vendor]
 
 
 __all__ = [
@@ -163,6 +203,5 @@ __all__ = [
     "METADATA_KEY_VENDOR",
     "HttpVendor",
     "HttpVendorPreset",
-    "preset_for",
     "resolve_vendor",
 ]

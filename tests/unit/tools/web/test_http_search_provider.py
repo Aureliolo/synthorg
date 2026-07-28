@@ -10,6 +10,8 @@ disables private-IP blocking so no real DNS/pinning happens (the SSRF path is
 covered separately with a literal private endpoint that needs no network).
 """
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -204,8 +206,6 @@ class TestPostShape:
     @pytest.mark.unit
     @respx.mock
     async def test_post_body_carries_query_count_and_extras(self) -> None:
-        import json
-
         route = respx.post(_POST_PRESET.endpoint).mock(
             return_value=httpx.Response(200, json={"results": []})
         )

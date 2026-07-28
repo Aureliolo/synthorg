@@ -65,6 +65,9 @@ export function DetailNavBar({
       return event.metaKey || event.ctrlKey || event.altKey || event.shiftKey
     }
     function onKey(event: KeyboardEvent) {
+      // Each navigation pushes a history entry and remounts the destination,
+      // so a held key would queue one of each per OS auto-repeat tick.
+      if (event.repeat) return
       if (hasModifier(event) || isEditable(event.target)) return
       const key = normalisedKey(event)
       if (PREV_KEYS.has(key) && canPrev) {

@@ -13,6 +13,7 @@ retrieve by meaning, and degrading quietly to keyword matching is how a
 dead memory layer stays unnoticed.
 """
 
+from synthorg.core.vector_limits import STORAGE_MAX_DIMENSIONS
 from synthorg.memory.config import (
     CompanyMemoryConfig,
     EmbedderOverrideConfig,
@@ -160,6 +161,25 @@ def resolve_embedder_config(
             "Could not resolve embedding model configuration: "
             "no LMEB-ranked model found in available models "
             "and no manual override provided"
+        )
+        raise MemoryConfigError(msg)
+
+    if dims > STORAGE_MAX_DIMENSIONS:
+        # The settings registry caps an operator override, but an
+        # auto-selected width comes from the model ranking and never passes
+        # through it, so without this a wide ranked model reaches the store
+        # and fails inside ALTER TABLE as an opaque driver error.
+        logger.warning(
+            MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
+            model=model,
+            dims=dims,
+            storage_ceiling=STORAGE_MAX_DIMENSIONS,
+            reason="resolved width exceeds the vector store's storage ceiling",
+        )
+        msg = (
+            f"Embedding width {dims} exceeds the vector store's ceiling of "
+            f"{STORAGE_MAX_DIMENSIONS}; choose a narrower embedding model "
+            f"or set memory.embedder_dims to truncate it."
         )
         raise MemoryConfigError(msg)
 

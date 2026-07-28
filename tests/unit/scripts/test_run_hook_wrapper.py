@@ -27,6 +27,9 @@ pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCRIPT = _REPO_ROOT / "scripts" / "git-hooks" / "_run-hook.sh"
+# Generous: the probe runs once per PATH entry at collection, and a WSL shim
+# on a cold distro can take a moment to answer before failing.
+_PROBE_TIMEOUT_SECONDS = 20
 
 
 def _native_bash() -> str | None:
@@ -35,24 +38,31 @@ def _native_bash() -> str | None:
     On a default Windows PATH ``shutil.which("bash")`` finds WSL's
     ``system32\\bash.EXE`` first, and that bash resolves paths inside the
     Linux filesystem: handed ``C:\\...\\_run-hook.sh`` it strips the
-    backslashes and exits 127 before running a line. Git Bash translates the
-    same path, as does any POSIX bash, so the WSL shim is skipped rather than
-    reported as a wrapper failure.
+    backslashes and exits 127 before running a line.
+
+    Each candidate is asked whether it can see the script rather than judged
+    by where it lives: location is only a proxy, and an unusual bash that
+    passed the proxy but failed the requirement would produce failures all
+    over this module that look like wrapper bugs.
 
     Returns:
-        The interpreter path, or ``None`` when only the WSL shim is present.
+        The interpreter path, or ``None`` when none on PATH qualifies.
     """
-    system_root = Path(os.environ.get("SYSTEMROOT", "C:/Windows")).resolve()
     for entry in os.environ.get("PATH", "").split(os.pathsep):
         if not entry:
             continue
         found = shutil.which("bash", path=entry)
         if found is None:
             continue
-        candidate = Path(found).resolve()
-        if system_root in candidate.parents:
-            continue
-        return str(candidate)
+        candidate = str(Path(found).resolve())
+        probe = subprocess.run(  # noqa: S603
+            [candidate, "-c", f'test -f "{_SCRIPT}"'],
+            check=False,
+            capture_output=True,
+            timeout=_PROBE_TIMEOUT_SECONDS,
+        )
+        if probe.returncode == 0:
+            return candidate
     return None
 
 

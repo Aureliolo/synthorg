@@ -53,6 +53,7 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDING_COST_RECORD_FAILED,
     MEMORY_EMBEDDING_FAILED,
     MEMORY_EMBEDDING_RETRIED,
+    MEMORY_EMBEDDING_TRUNCATED,
 )
 from synthorg.providers.cost_recording import resolve_currency
 
@@ -302,8 +303,8 @@ class ProviderTextEmbedder:
         being used through its Matryoshka representation: the leading
         components are trained to stand alone, so the tail is dropped and the
         remainder renormalised to keep distances comparable with vectors the
-        same embedder produced. This is the only way a 4096-dim model fits
-        under a vector store's index ceiling.
+        same embedder produced. It is the mechanism this embedder offers for
+        bringing a wide model under a vector store's index ceiling.
 
         Returns:
             The vector, truncated and renormalised when the operator pinned a
@@ -324,7 +325,21 @@ class ProviderTextEmbedder:
                 f"vector but is configured for {width}; the stored index "
                 f"would be incomparable"
             )
+            logger.warning(
+                MEMORY_EMBEDDING_FAILED,
+                model=self.model_ref,
+                native_dims=len(vector),
+                target_dims=width,
+                dims_explicit=self._config.dims_explicit,
+                reason="embedder width does not match configuration",
+            )
             raise MemoryEmbeddingError(msg)
+        logger.debug(
+            MEMORY_EMBEDDING_TRUNCATED,
+            model=self.model_ref,
+            native_dims=len(vector),
+            target_dims=width,
+        )
         head = vector[:width]
         norm = math.sqrt(sum(component * component for component in head))
         if norm == 0.0:

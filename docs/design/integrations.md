@@ -46,12 +46,15 @@ methods.
 | `llm_provider` | `api_key` | N/A |
 | `tunnel` | `auth_token` | N/A |
 | `deploy` | `token`, `base_url`, `platform`, `environment`, `project` | `HEAD base_url` |
+| `registry` | `token`, `base_url`, `provider`, `repository`, `username`, `auth_host`, `channel`, `default_publish_method` | N/A |
 
 The authoritative per-field metadata (label, input type, required/secret flags, capture mode, placement, conditionality) for every type lives in the backend registry `integrations/connections/field_metadata.py`, exposed read-only via `GET /api/v1/connections/types` and the `connections.field_metadata` MCP tool; the dashboard form and the operator console both render from it.
 
 #### Conditional fields
 
-A field can declare `visible_when` / `required_when`: a predicate over another field's current value. A hidden field is not rendered, not validated, and not submitted. This keeps conditional form logic in the payload the backend serves rather than hardcoded in one client, which is what the pure-API-consumer rule demands and what lets the console prompt exactly what the dashboard shows. The two live rules are a database host being pointless for the embedded dialect, and an A2A credential only applying to the auth scheme that uses it.
+A field can declare `visible_when` / `required_when`: a predicate over another field's current value. A hidden field is not rendered, not validated, and not submitted. This keeps conditional form logic in the payload the backend serves rather than hardcoded in one client, which is what the pure-API-consumer rule demands and what lets the console prompt exactly what the dashboard shows. Three rules are live: a database host is pointless for the embedded dialect, an A2A credential applies only to the auth scheme that uses it, and a generic-HTTP base URL is asked for only when the vendor is `custom`.
+
+The registry validates every condition at import: it must name another field of the same type, that field must not itself be conditionally visible (a hidden field keeps its last value, so chaining would let a stale answer decide a live one), and a condition on a select must name values that select actually offers, bar the empty string that an unanswered select reads as.
 
 #### Vendor presets
 
@@ -270,7 +273,21 @@ Per-type health check implementations with a background `HealthProberService`.
   endpoint needs to answer: probing a search API with the generic `X-API-Key`
   and no query is a 4xx however valid the key, which would report every
   correctly-configured connection as unhealthy. This is the connection type the
-  native web-search feature binds its API key to.
+  native web-search feature binds its API key to. A credential that cannot be
+  resolved reports which of the two causes applied: a misconfigured credential
+  is deterministic and the operator must re-enter it, whereas a secret store
+  that is down is transient and clears itself, and reporting both the same way
+  sends the operator to rotate working keys. A 429 is reported as a rate limit
+  with its `Retry-After`, not as a generic failure.
+- **Probe deadline**: every probe is bounded by one wall-clock deadline rather
+  than by per-operation timeouts alone, and the prober applies its own ceiling
+  on top. Probes share a task group, so an endpoint that drips bytes just under
+  the read timeout would otherwise stall the whole cycle, freezing health
+  reporting for every other connection.
+- **`REGISTRY`** has no registered checker: a container registry answers only
+  under a repository-scoped token exchange, so a generic probe would report
+  `UNHEALTHY` for a correctly-configured connection. See
+  [credentialed-mcp.md](credentialed-mcp.md#registry-targets).
 
 The stdio MCP bridge exposes a parallel liveness surface:
 `MCPToolFactory.server_statuses` records each server's last connect outcome,

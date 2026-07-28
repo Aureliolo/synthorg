@@ -1,7 +1,8 @@
 """Generic HTTP health check."""
 
+import asyncio
 from datetime import UTC, datetime
-from typing import Final
+from typing import Final, NamedTuple
 
 import httpx
 
@@ -50,7 +51,7 @@ def _probe_target(connection: Connection) -> tuple[str, dict[str, str]]:
         return base, {}
     url = (
         f"{base.rstrip('/')}/{preset.health_path.lstrip('/')}"
-        if (preset.health_path)
+        if preset.health_path
         else base
     )
     return url, dict(preset.health_params)
@@ -60,6 +61,17 @@ _TIMEOUT: Final[float] = 10.0
 _ERROR_THRESHOLD: Final[int] = 400
 _METHOD_NOT_ALLOWED: Final[int] = 405
 _NOT_IMPLEMENTED: Final[int] = 501
+_TOO_MANY_REQUESTS: Final[int] = 429
+
+_CREDENTIAL_BAD: Final[str] = "credential_misconfigured"
+_STORE_UNAVAILABLE: Final[str] = "secret_store_unavailable"
+
+
+class _AuthResolution(NamedTuple):
+    """Resolved probe headers, or the reason they could not be resolved."""
+
+    headers: dict[str, str] | None
+    reason: str | None
 
 
 class GenericHttpHealthCheck:
@@ -105,22 +117,47 @@ class GenericHttpHealthCheck:
         """Bind the live catalog so the probe can send authenticated requests."""
         self._catalog = catalog
 
-    async def _auth_headers(self, connection: Connection) -> dict[str, str] | None:
-        """Resolve the connection's auth headers, or ``None`` if unresolvable.
+    async def _auth_headers(self, connection: Connection) -> _AuthResolution:
+        """Resolve the connection's auth headers, or say why it could not.
+
+        The two failure causes need to stay apart: a misconfigured credential
+        is deterministic and the operator must re-enter it, whereas a secret
+        backend that is down is transient and retries on its own. Reporting
+        both as one verdict sends the operator to rotate working keys.
 
         Returns:
-            An empty dict for genuinely public endpoints (no auth material) or
-            when no catalog is bound; the auth headers when credentials resolve;
-            or ``None`` when credentials are configured-but-broken (so the caller
-            reports UNHEALTHY rather than a false-green reachability pass).
+            Resolved headers (empty for a public endpoint or an unbound
+            catalog), or a resolution naming the failure cause.
         """
         if self._catalog is None:
-            return {}
+            return _AuthResolution({}, None)
         try:
             credentials = await self._catalog.get_credentials(connection.name)
-            return build_connection_auth_headers(connection, credentials)
-        except ExternalApiCredentialError, SecretRetrievalError:
-            return None
+            return _AuthResolution(
+                build_connection_auth_headers(connection, credentials), None
+            )
+        except ExternalApiCredentialError as exc:
+            reason = self._auth_failure(connection, exc, _CREDENTIAL_BAD)
+            return _AuthResolution(None, reason)
+        except SecretRetrievalError as exc:
+            reason = self._auth_failure(connection, exc, _STORE_UNAVAILABLE)
+            return _AuthResolution(None, reason)
+
+    @staticmethod
+    def _auth_failure(connection: Connection, exc: Exception, reason: str) -> str:
+        """Log the credential failure and return the reason to report.
+
+        Returns:
+            The reason, so the log and the health report cannot disagree.
+        """
+        logger.warning(
+            HEALTH_CHECK_FAILED,
+            connection_name=connection.name,
+            reason=reason,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return reason
 
     async def check(self, connection: Connection) -> HealthReport:
         """Execute a HEAD (or GET fallback) against ``base_url``.
@@ -157,17 +194,12 @@ class GenericHttpHealthCheck:
                 error_detail=f"ssrf_policy_rejected: {validation}",
                 checked_at=datetime.now(UTC),
             )
-        headers = await self._auth_headers(connection)
+        headers, failure = await self._auth_headers(connection)
         if headers is None:
-            logger.warning(
-                HEALTH_CHECK_FAILED,
-                connection_name=connection.name,
-                reason="credential_resolution_failed",
-            )
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
-                error_detail="credential resolution failed or incomplete",
+                error_detail=failure,
                 checked_at=datetime.now(UTC),
             )
         start = self._clock.monotonic()
@@ -191,11 +223,20 @@ class GenericHttpHealthCheck:
             # explicitly: the SSRF pre-flight only validates the initial
             # ``base_url``, so a 3xx redirect to an internal address
             # would otherwise bypass the gate.
-            async with httpx.AsyncClient(
-                timeout=_TIMEOUT,
-                follow_redirects=False,
-                transport=transport,
-            ) as client:
+            # httpx bounds each operation, not the call: a server dripping
+            # bytes just under the read timeout keeps one request alive
+            # indefinitely, and the HEAD-then-GET fallback would grant each
+            # attempt the full budget. Every probe runs inside one prober
+            # task group, so an unbounded wait here stalls the cycle for
+            # every other connection too.
+            async with (
+                asyncio.timeout(_TIMEOUT),
+                httpx.AsyncClient(
+                    timeout=_TIMEOUT,
+                    follow_redirects=False,
+                    transport=transport,
+                ) as client,
+            ):
                 if params:
                     # A vendor that declares probe parameters needs them to
                     # answer at all, and only a GET carries them meaningfully.
@@ -217,16 +258,41 @@ class GenericHttpHealthCheck:
                     latency_ms=elapsed,
                     checked_at=datetime.now(UTC),
                 )
+            # A rate limit says nothing about whether the credential is
+            # valid, so it is reported as its own cause rather than folded
+            # into the generic failure detail an operator would read as one.
+            retry_after = resp.headers.get("Retry-After") or ""
+            rate_limited = resp.status_code == _TOO_MANY_REQUESTS
             logger.warning(
                 HEALTH_CHECK_FAILED,
                 connection_name=connection.name,
                 status_code=resp.status_code,
+                reason="rate_limited" if rate_limited else "http_error",
+                retry_after=retry_after,
+            )
+            detail = f"HTTP {resp.status_code}"
+            if rate_limited and retry_after:
+                detail = f"{detail} (retry after {retry_after})"
+            return HealthReport(
+                connection_name=connection.name,
+                status=ConnectionStatus.UNHEALTHY,
+                latency_ms=elapsed,
+                error_detail=detail,
+                checked_at=datetime.now(UTC),
+            )
+        except TimeoutError:
+            elapsed = (self._clock.monotonic() - start) * 1000
+            logger.warning(
+                HEALTH_CHECK_FAILED,
+                connection_name=connection.name,
+                reason="probe_deadline_exceeded",
+                timeout_seconds=_TIMEOUT,
             )
             return HealthReport(
                 connection_name=connection.name,
                 status=ConnectionStatus.UNHEALTHY,
                 latency_ms=elapsed,
-                error_detail=f"HTTP {resp.status_code}",
+                error_detail=f"probe exceeded {_TIMEOUT}s",
                 checked_at=datetime.now(UTC),
             )
         except httpx.HTTPError as exc:

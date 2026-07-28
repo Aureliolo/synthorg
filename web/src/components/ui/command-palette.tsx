@@ -21,6 +21,9 @@ function useCommandPaletteShortcut(toggle: () => void): void {
   // inside cmdk-base's Command.Dialog, so no manual Escape handler.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // Auto-repeat would toggle once per repeat, leaving the palette open
+      // or closed by the parity of how long the chord was held.
+      if (e.repeat) return
       if (normalisedKey(e) === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         toggle()

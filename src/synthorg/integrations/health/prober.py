@@ -46,6 +46,9 @@ from synthorg.observability.events.integrations import (
 logger = get_logger(__name__)
 _DEFAULT_INTERVAL_SECONDS: Final[int] = 300
 _DEFAULT_UNHEALTHY_THRESHOLD: Final[int] = 3
+# Above any individual checker's own budget, so a checker that bounds
+# itself reports its own reason and only a genuinely stuck one trips this.
+_CHECKER_TIMEOUT: Final[float] = 30.0
 
 _CHECK_REGISTRY: Final[MappingProxyType[ConnectionType, ConnectionHealthCheck]] = (
     MappingProxyType(
@@ -361,7 +364,21 @@ class HealthProberService:
             return
 
         try:
-            report = await checker.check(conn)
+            # Probes share one task group, which returns only once every
+            # child has, so a checker that never completes stalls the cycle
+            # for every other connection rather than just its own. The
+            # ceiling is per-checker defence: a checker that bounds itself
+            # simply never reaches it.
+            report = await asyncio.wait_for(checker.check(conn), _CHECKER_TIMEOUT)
+        except TimeoutError:
+            logger.warning(
+                HEALTH_CHECK_FAILED,
+                connection_name=name,
+                connection_type=str(connection_type),
+                reason="health checker exceeded its deadline",
+                timeout_seconds=_CHECKER_TIMEOUT,
+            )
+            return
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Routine checker failure: redacted warning, not full

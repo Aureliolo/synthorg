@@ -90,6 +90,16 @@ class MemoryBackend(Protocol):
         """
         ...
 
+    @property
+    def dense_search_indexed(self) -> bool:
+        """Whether dense recall is index-backed rather than a full scan.
+
+        Unindexed dense recall returns correct results, so nothing in the
+        answers reveals it; only latency does, and only once the corpus
+        has grown. Surfaced so health reporting can name it.
+        """
+        ...
+
     async def store(
         self,
         agent_id: NotBlankStr,

@@ -237,10 +237,10 @@ class ConnectionCatalog(
         conn = await self.get(name)
         if conn is None:
             # DEBUG, not WARNING: the raise is the signal, and every caller
-            # for whom an absent connection is exceptional already reports it
-            # with its own context. Warning here spoke for all of them, so an
-            # optional integration nobody has configured logged a warning on
-            # every poll that asked whether it was configured.
+            # for whom an absence is exceptional reports it with its own
+            # context. A warning here would speak for all of them, including
+            # the polls that ask whether an optional integration is
+            # configured yet, for which "no" is the routine answer.
             logger.debug(CONNECTION_NOT_FOUND, connection_name=name)
             msg = f"Connection '{name}' not found"
             raise ConnectionNotFoundError(msg)
@@ -375,6 +375,33 @@ class ConnectionCatalog(
             )
         return candidate
 
+    def _repair_vendor_base_url(
+        self,
+        existing: Connection,
+        candidate: dict[str, object],
+    ) -> None:
+        """Keep a generic-HTTP endpoint resolvable across a PATCH.
+
+        A vendor preset hides the base-URL field, so the form submits an
+        explicit null for it on every save. Taken literally that clears the
+        endpoint of a working connection and leaves no way to restore it,
+        since the field stays hidden. The endpoint is mandatory for this
+        type, so a null is never a meaningful value: re-derive it from the
+        declared vendor, and fall back to the stored one when the operator
+        supplied a custom endpoint the preset cannot supply.
+        """
+        if existing.connection_type is not ConnectionType.GENERIC_HTTP:
+            return
+        if "base_url" not in candidate or candidate["base_url"]:
+            return
+        metadata = candidate.get("metadata", existing.metadata)
+        resolved = self._resolve_base_url(
+            existing.connection_type,
+            None,
+            metadata if isinstance(metadata, dict) else None,
+        )
+        candidate["base_url"] = NotBlankStr(resolved) if resolved else existing.base_url
+
     async def update(
         self,
         name: str,
@@ -431,6 +458,7 @@ class ConnectionCatalog(
                     error=safe_error_description(exc),
                 )
                 raise
+            self._repair_vendor_base_url(existing, candidate)
             # Drop fields whose candidate value matches the persisted
             # value -- otherwise an idempotent PATCH would still bump
             # ``updated_at`` and emit a phantom ``CONNECTION_UPDATED``
@@ -528,6 +556,12 @@ class ConnectionCatalog(
         async with self._name_lock(name):
             existing = await self.get_or_raise(name)
             await self._repo.delete(name)
+            # Drop the cache before deleting the secrets, not after: reads do
+            # not take the name lock, so every await in the cleanup loop below
+            # is a point where a concurrent reader would otherwise be handed a
+            # cached connection whose secrets are already gone, and raise on
+            # retrieval instead of reporting the connection as absent.
+            await self._invalidate_cache()
             for ref in existing.secret_refs:
                 try:
                     deleted = await self._secret_backend.delete(ref.secret_id)
@@ -555,5 +589,4 @@ class ConnectionCatalog(
                         error_type=type(exc).__name__,
                         error=safe_error_description(exc),
                     )
-            await self._invalidate_cache()
             logger.info(CONNECTION_DELETED, connection_name=name)

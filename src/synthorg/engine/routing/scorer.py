@@ -84,14 +84,14 @@ class RoutingScorerConfig(BaseModel):
             + self.role_match_bonus
         )
         if weight_sum > _DOC_WEIGHT_SUM_MAX + _WEIGHT_SUM_TOLERANCE:
+            # ``error=`` carries redacted exception text; this is a
+            # hand-written description, so it travels as ``reason``.
             logger.warning(
                 TASK_ROUTING_SCORER_INVALID_CONFIG,
                 weight_sum=weight_sum,
-                error=(
-                    f"routing weights sum to {weight_sum:.3f} "
-                    f"(documented max ~{_DOC_WEIGHT_SUM_MAX}, hard ceiling "
-                    f"{_WEIGHT_SUM_WARN_CEILING}); final score is still capped at 1.0"
-                ),
+                documented_max=_DOC_WEIGHT_SUM_MAX,
+                warn_ceiling=_WEIGHT_SUM_WARN_CEILING,
+                reason="routing weights exceed the documented maximum",
             )
         return self
 
@@ -155,7 +155,7 @@ class AgentTaskScorer:
             logger.warning(
                 TASK_ROUTING_SCORER_INVALID_CONFIG,
                 min_score=effective_min,
-                error=msg,
+                reason=msg,
             )
             raise ValueError(msg)
         self._min_score = effective_min

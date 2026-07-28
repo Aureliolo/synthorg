@@ -8,6 +8,7 @@ unrecognised value rather than guessing a vendor.
 import pytest
 from structlog.testing import capture_logs
 
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.http_vendor import (
     HTTP_VENDOR_PRESETS,
     METADATA_KEY_VENDOR,
@@ -129,3 +130,84 @@ class TestCreateWithAVendor:
                 credentials={"token": "secret"},
                 metadata={METADATA_KEY_VENDOR: HttpVendor.CUSTOM.value},
             )
+
+    async def test_credential_less_connection_is_refused(self) -> None:
+        # The preset now supplies base_url, so without this guard the one
+        # field this type enforced has become optional and a connection with
+        # no way to authenticate is created with no friction at all.
+        catalog = make_in_memory_catalog()
+
+        with pytest.raises(InvalidConnectionAuthError, match="credential material"):
+            await catalog.create(
+                name="brave-search",
+                connection_type=ConnectionType.GENERIC_HTTP,
+                auth_method=AuthMethod.API_KEY.value,
+                credentials={},
+                metadata={METADATA_KEY_VENDOR: HttpVendor.BRAVE.value},
+            )
+
+
+class TestUpdateWithAVendor:
+    """A PATCH must not clear an endpoint the form was never shown."""
+
+    async def _brave(self, name: str = "brave-search") -> tuple[ConnectionCatalog, str]:
+        """Create a preset-bound connection.
+
+        Returns:
+            The catalog and the connection name.
+        """
+        catalog = make_in_memory_catalog()
+        await catalog.create(
+            name=name,
+            connection_type=ConnectionType.GENERIC_HTTP,
+            auth_method=AuthMethod.API_KEY.value,
+            credentials={"token": "secret"},
+            metadata={METADATA_KEY_VENDOR: HttpVendor.BRAVE.value},
+        )
+        return catalog, name
+
+    async def test_an_unrelated_patch_keeps_the_preset_endpoint(self) -> None:
+        # The base-url field is hidden for a preset vendor, so the form submits
+        # an explicit null on every save. Taken literally that clears the
+        # endpoint of a working connection, and the field stays hidden so
+        # there is no way to put it back.
+        catalog, name = await self._brave()
+
+        updated = await catalog.update(name, base_url=None, sensitive=True)
+
+        assert updated.base_url == HTTP_VENDOR_PRESETS[HttpVendor.BRAVE].base_url
+
+    async def test_switching_vendor_repoints_the_endpoint(self) -> None:
+        catalog, name = await self._brave()
+
+        updated = await catalog.update(
+            name,
+            base_url=None,
+            metadata={METADATA_KEY_VENDOR: HttpVendor.TAVILY.value},
+        )
+
+        assert updated.base_url == HTTP_VENDOR_PRESETS[HttpVendor.TAVILY].base_url
+
+    async def test_an_explicit_base_url_still_wins(self) -> None:
+        catalog, name = await self._brave()
+
+        updated = await catalog.update(name, base_url="https://proxy.example.test")
+
+        assert updated.base_url == "https://proxy.example.test"
+
+    async def test_a_custom_vendor_keeps_the_operators_url(self) -> None:
+        # Nothing can re-derive a custom endpoint, so the stored one stands
+        # rather than being cleared to null.
+        catalog = make_in_memory_catalog()
+        await catalog.create(
+            name="custom-api",
+            connection_type=ConnectionType.GENERIC_HTTP,
+            auth_method=AuthMethod.API_KEY.value,
+            credentials={"token": "secret"},
+            base_url="https://api.example.test",
+            metadata={METADATA_KEY_VENDOR: HttpVendor.CUSTOM.value},
+        )
+
+        updated = await catalog.update("custom-api", base_url=None, sensitive=True)
+
+        assert updated.base_url == "https://api.example.test"

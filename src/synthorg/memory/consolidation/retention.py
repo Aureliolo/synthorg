@@ -49,7 +49,9 @@ class RetentionEnforcer:
     ) -> None:
         self._config = config
         self._backend = backend
-        self._categories_to_check = self._build_categories_to_check(config)
+        self._categories_to_check: tuple[tuple[MemoryCategory, int], ...] = (
+            self._build_categories_to_check(config)
+        )
         # Explicit per-category rules ONLY (not default-filled entries).
         # _resolve_categories depends on this distinction -- do not
         # include categories filled by the company global default here.

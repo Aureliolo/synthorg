@@ -1,6 +1,5 @@
 """Tests for the multi-provider ``TunnelManager`` facade."""
 
-from pathlib import Path
 from typing import override
 from unittest.mock import AsyncMock
 
@@ -242,15 +241,21 @@ class TestCredentials:
         )
 
 
-def _devtunnels_adapter(tmp_path: Path, prompt: DeviceLoginPrompt) -> DevTunnelsAdapter:
-    """A real adapter (``begin_device_login`` type-checks the concrete class)."""
-    adapter = DevTunnelsAdapter(
-        port=3001,
-        download_enabled=False,
-        binary_dir=tmp_path,
-        home_dir=tmp_path,
+def _devtunnels_adapter(prompt: DeviceLoginPrompt) -> DevTunnelsAdapter:
+    """A device-login adapter whose ``begin_login`` yields *prompt*.
+
+    ``begin_device_login`` dispatches on ``isinstance(adapter,
+    DevTunnelsAdapter)`` because ``begin_login`` is not on the adapter
+    protocol, and ``create_autospec`` sets ``__class__`` so the spec
+    satisfies that check without constructing the real adapter.
+    """
+    adapter: DevTunnelsAdapter = mock_of[DevTunnelsAdapter](
+        provider_id="devtunnels",
+        credential_kind=TunnelCredentialKind.DEVICE_LOGIN,
+        begin_login=AsyncMock(return_value=prompt),
+        availability=AsyncMock(return_value=(True, None)),
+        credential_configured=AsyncMock(return_value=False),
     )
-    adapter.begin_login = AsyncMock(return_value=prompt)  # type: ignore[method-assign]
     return adapter
 
 
@@ -274,7 +279,7 @@ class TestDeviceLoginConnectionSeed:
         # reappear moments after the operator deleted it.
         catalog.create.assert_not_called()
 
-    async def test_device_login_seeds_missing_connection(self, tmp_path: Path) -> None:
+    async def test_device_login_seeds_missing_connection(self) -> None:
         catalog = mock_of[ConnectionCatalog](
             get=AsyncMock(return_value=None),
             create=AsyncMock(return_value=None),
@@ -283,7 +288,7 @@ class TestDeviceLoginConnectionSeed:
             verification_uri="https://example.test/login",
             user_code="ABCD-1234",
         )
-        devtunnels = _devtunnels_adapter(tmp_path, prompt)
+        devtunnels = _devtunnels_adapter(prompt)
         manager = _manager(FakeAdapter("cloudflare"), devtunnels, catalog=catalog)
 
         assert await manager.begin_device_login("devtunnels") == prompt
@@ -294,9 +299,7 @@ class TestDeviceLoginConnectionSeed:
         assert kwargs["credentials"] == {}
         assert kwargs["health_check_enabled"] is False
 
-    async def test_seed_is_idempotent_when_already_present(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_seed_is_idempotent_when_already_present(self) -> None:
         # get returns a truthy row: the manager only checks it is not None
         # before deciding the connection already exists.
         catalog = mock_of[ConnectionCatalog](
@@ -307,19 +310,19 @@ class TestDeviceLoginConnectionSeed:
             verification_uri="https://example.test/login",
             user_code="ABCD-1234",
         )
-        devtunnels = _devtunnels_adapter(tmp_path, prompt)
+        devtunnels = _devtunnels_adapter(prompt)
         manager = _manager(FakeAdapter("cloudflare"), devtunnels, catalog=catalog)
 
         await manager.begin_device_login("devtunnels")
 
         catalog.create.assert_not_called()
 
-    async def test_seed_skipped_without_catalog(self, tmp_path: Path) -> None:
+    async def test_seed_skipped_without_catalog(self) -> None:
         prompt = DeviceLoginPrompt(
             verification_uri="https://example.test/login",
             user_code="ABCD-1234",
         )
-        devtunnels = _devtunnels_adapter(tmp_path, prompt)
+        devtunnels = _devtunnels_adapter(prompt)
         manager = _manager(FakeAdapter("cloudflare"), devtunnels, catalog=None)
         # No catalog wired -> no crash, the row appears once persistence is up.
         assert await manager.begin_device_login("devtunnels") == prompt

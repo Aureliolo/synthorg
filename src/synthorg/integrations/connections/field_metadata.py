@@ -87,8 +87,7 @@ class FieldCondition(BaseModel):
     database dialect needs no host, and a vendor-preset endpoint needs no
     base URL. The dashboard is a pure API consumer, so that logic belongs in
     the metadata the backend serves rather than in hardcoded client-side
-    sets, which is where it lived before and which no other consumer of the
-    API could see.
+    sets that no other consumer of the API could see.
 
     Attributes:
         field: Name of the field whose value is examined. Must name another
@@ -234,9 +233,10 @@ class ConnectionTypeMetadata(BaseModel):
 
         Raises:
             ValueError: If a condition names an unknown or self-referential
-                field.
+                field, names a value that field can never hold, or chains
+                off a field that is itself conditional.
         """
-        names = {f.name for f in self.fields}
+        by_name = {f.name: f for f in self.fields}
         for field in self.fields:
             for kind, condition in (
                 ("visible_when", field.visible_when),
@@ -244,20 +244,55 @@ class ConnectionTypeMetadata(BaseModel):
             ):
                 if condition is None:
                     continue
-                if condition.field == field.name:
-                    msg = (
-                        f"{field.name!r} {kind} refers to itself in "
-                        f"{self.connection_type.value!r} metadata"
-                    )
-                    raise ValueError(msg)
-                if condition.field not in names:
-                    msg = (
-                        f"{field.name!r} {kind} refers to unknown field "
-                        f"{condition.field!r} in "
-                        f"{self.connection_type.value!r} metadata"
-                    )
-                    raise ValueError(msg)
+                self._check_condition(field, kind, condition, by_name)
         return self
+
+    def _check_condition(
+        self,
+        field: ConnectionFieldMetadata,
+        kind: str,
+        condition: FieldCondition,
+        by_name: dict[str, ConnectionFieldMetadata],
+    ) -> None:
+        """Validate one condition against the fields of this type.
+
+        Raises:
+            ValueError: If the condition cannot ever be satisfied, or
+                depends on a field that can itself be hidden.
+        """
+        where = f"in {self.connection_type.value!r} metadata"
+        if condition.field == field.name:
+            msg = f"{field.name!r} {kind} refers to itself {where}"
+            raise ValueError(msg)
+        source = by_name.get(condition.field)
+        if source is None:
+            msg = (
+                f"{field.name!r} {kind} refers to unknown field "
+                f"{condition.field!r} {where}"
+            )
+            raise ValueError(msg)
+        # A hidden field keeps its last value so a mis-click does not discard
+        # what was typed, which means chaining would let a stale value from a
+        # field the operator can no longer see decide this one.
+        if source.visible_when is not None:
+            msg = (
+                f"{field.name!r} {kind} depends on conditionally-visible field "
+                f"{condition.field!r} {where}"
+            )
+            raise ValueError(msg)
+        # An unmatchable value is the same dead branch as an unknown field,
+        # just spelled differently, and only the registry can catch it. The
+        # empty string is exempt: it is how an unanswered select reads, which
+        # a condition may legitimately match to mean "still on the default".
+        if source.input_type is FieldInputType.SELECT:
+            declared = set(source.options) | {""}
+            unmatchable = sorted(set(condition.values) - declared)
+            if unmatchable:
+                msg = (
+                    f"{field.name!r} {kind} names {unmatchable} which "
+                    f"{condition.field!r} never offers {where}"
+                )
+                raise ValueError(msg)
 
     @computed_field
     @property

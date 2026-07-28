@@ -154,6 +154,11 @@ class SqlVectorBackend:
         """
         return self._embedder is not None and self._repository.supports_dense_search
 
+    @property
+    def dense_search_indexed(self) -> bool:
+        """Whether the repository's dense column is index-backed."""
+        return self.supports_dense_search and self._repository.dense_search_indexed
+
     async def connect(self) -> None:
         """Prepare the dense index and mark the backend usable.
 
