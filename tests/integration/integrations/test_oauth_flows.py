@@ -147,6 +147,37 @@ class TestAuthorizationCodeFlow:
 
 
 @pytest.mark.integration
+def _oauth_connection(name: str = "conn-1") -> Connection:
+    """A stored OAuth-app connection.
+
+    Returns:
+        The connection.
+    """
+    return Connection(
+        name=NotBlankStr(name),
+        connection_type=ConnectionType.OAUTH_APP,
+        auth_method=AuthMethod.OAUTH2,
+    )
+
+
+def _oauth_catalog(name: str = "conn-1") -> MagicMock:
+    """A catalog double whose rotation honours its real return contract.
+
+    ``store_oauth_tokens`` is typed ``-> Connection``, and the callback
+    reads that row's metadata rather than its own pre-exchange snapshot.
+    A double that answers ``None`` therefore fails on a contract the real
+    catalog never breaks, which reads as a production bug rather than a
+    stale fake.
+
+    Returns:
+        The catalog double.
+    """
+    catalog = MagicMock(spec=ConnectionCatalog)
+    catalog.get_or_raise.return_value = _oauth_connection(name)
+    catalog.store_oauth_tokens.return_value = _oauth_connection(name)
+    return catalog
+
+
 class TestCallbackHandler:
     async def test_callback_persists_tokens_via_catalog(self) -> None:
         now = datetime.now(UTC)
@@ -170,17 +201,13 @@ class TestCallbackHandler:
             *,
             access_token: str,
             refresh_token: str | None = None,
-        ) -> None:
+        ) -> Connection:
             stored_tokens["access"] = access_token
             if refresh_token:
                 stored_tokens["refresh"] = refresh_token
+            return _oauth_connection()
 
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get_or_raise.return_value = Connection(
-            name=NotBlankStr("conn-1"),
-            connection_type=ConnectionType.OAUTH_APP,
-            auth_method=AuthMethod.OAUTH2,
-        )
+        catalog = _oauth_catalog()
         catalog.get_credentials.return_value = {
             "token_url": "https://example.com/token",
             "client_id": "cid",
@@ -206,6 +233,53 @@ class TestCallbackHandler:
         assert stored_tokens == {"access": "new-access", "refresh": "new-refresh"}
         catalog.store_oauth_tokens.assert_awaited_once()
         catalog.update.assert_awaited()
+
+    async def test_metadata_is_seeded_from_the_rotated_row(self) -> None:
+        # The IdP round-trip sits between the connection lookup and this
+        # write, and the update replaces the whole mapping, so seeding from
+        # the pre-exchange snapshot would roll back anything written in
+        # that window.
+        now = datetime.now(UTC)
+        state = OAuthState(
+            state_token=NotBlankStr("state-1"),
+            connection_name=NotBlankStr("conn-1"),
+            pkce_verifier=NotBlankStr("verifier"),
+            redirect_uri="https://app.example.com/cb",
+            created_at=now,
+            expires_at=now + timedelta(hours=1),
+        )
+        state_service = MagicMock(spec=OAuthStateService)
+        state_service.get.return_value = state
+        state_service.mark_consumed.return_value = True
+
+        catalog = _oauth_catalog()
+        catalog.get_credentials.return_value = {
+            "token_url": "https://example.com/token",
+            "client_id": "cid",
+            "client_secret": "csec",
+        }
+        # Written by someone else while the exchange was in flight.
+        catalog.store_oauth_tokens.return_value = _oauth_connection().model_copy(
+            update={"metadata": {"tenant": "acme"}},
+        )
+
+        fake_flow = MagicMock(spec=AuthorizationCodeFlow)
+        fake_flow.exchange_code.return_value = OAuthToken(
+            access_token="new-access",
+            expires_at=now + timedelta(seconds=3600),
+        )
+
+        await handle_oauth_callback(
+            state_param="state-1",
+            code="auth-code",
+            state_service=state_service,
+            catalog=catalog,
+            flow=fake_flow,
+        )
+
+        metadata = catalog.update.await_args.kwargs["metadata"]
+        assert metadata["tenant"] == "acme"
+        assert "token_expires_at" in metadata
 
     async def test_callback_rejects_expired_state(self) -> None:
         past = datetime.now(UTC) - timedelta(hours=2)
@@ -282,28 +356,13 @@ class TestCallbackOidcBinding:
         state_service.get.return_value = state
         state_service.mark_consumed.return_value = True
 
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get_or_raise.return_value = Connection(
-            name=NotBlankStr("conn-1"),
-            connection_type=ConnectionType.OAUTH_APP,
-            auth_method=AuthMethod.OAUTH2,
-        )
+        catalog = _oauth_catalog()
         catalog.get_credentials.return_value = {
             "token_url": "https://example.com/token",
             "client_id": "cid",
             "client_secret": "csec",
             **credentials,
         }
-
-        async def _store(
-            name: str,
-            *,
-            access_token: str,
-            refresh_token: str | None = None,
-        ) -> None:
-            return None
-
-        catalog.store_oauth_tokens.side_effect = _store
 
         fake_flow = MagicMock(spec=AuthorizationCodeFlow)
         fake_flow.exchange_code.return_value = OAuthToken(
@@ -481,12 +540,7 @@ class TestCallbackReplay:
         state_service.get.return_value = state
         state_service.mark_consumed.return_value = True
 
-        catalog = MagicMock(spec=ConnectionCatalog)
-        catalog.get_or_raise.return_value = Connection(
-            name=NotBlankStr("conn-2"),
-            connection_type=ConnectionType.OAUTH_APP,
-            auth_method=AuthMethod.OAUTH2,
-        )
+        catalog = _oauth_catalog("conn-2")
         catalog.get_credentials.return_value = {
             "token_url": "https://example.com/token",
             "client_id": "cid",
