@@ -766,6 +766,42 @@ def _scan_all(
     return hits
 
 
+def _selected_targets(
+    files: list[str],
+    roots: list[Path],
+    project_root: Path,
+) -> list[tuple[Path, str]]:
+    """Return the in-scope subset of *files* as ``(absolute, relative)``.
+
+    Scope is the same set ``_iter_targets`` would yield, so a file-scoped run
+    can only ever report a subset of what the whole-tree run reports: the
+    per-file allowlist still applies, and a path under none of *roots* is
+    dropped rather than rejected.
+    """
+    in_scope_roots = [
+        resolved
+        for resolved in (_resolve_root(root, project_root) for root in roots)
+        if resolved is not None
+    ]
+    targets: list[tuple[Path, str]] = []
+    seen: set[str] = set()
+    for raw in files:
+        candidate = Path(raw)
+        resolved_path = (
+            candidate if candidate.is_absolute() else project_root / candidate
+        ).resolve()
+        if resolved_path.suffix != ".py" or not resolved_path.is_file():
+            continue
+        if not any(resolved_path.is_relative_to(root) for root in in_scope_roots):
+            continue
+        rel = resolved_path.relative_to(project_root).as_posix()
+        if rel in seen or _is_file_allowlisted(rel):
+            continue
+        seen.add(rel)
+        targets.append((resolved_path, rel))
+    return sorted(targets, key=lambda pair: pair[1])
+
+
 def cmd_update(roots: list[Path], project_root: Path) -> int:
     """Regenerate ``no_magic_numbers_baseline.txt`` from the current tree."""
     try:
@@ -783,7 +819,11 @@ def cmd_update(roots: list[Path], project_root: Path) -> int:
     return 0
 
 
-def cmd_scan(roots: list[Path], project_root: Path) -> int:
+def cmd_scan(
+    roots: list[Path],
+    project_root: Path,
+    files: list[str] | None = None,
+) -> int:
     """Scan and exit non-zero on any new violation outside the baseline."""
     try:
         baseline = _load_baseline(_baseline_path(project_root))
@@ -791,7 +831,14 @@ def cmd_scan(roots: list[Path], project_root: Path) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     try:
-        hits = _scan_all(roots, project_root)
+        if files:
+            hits = [
+                hit
+                for path, rel in _selected_targets(files, roots, project_root)
+                for hit in _scan_file(path, rel)
+            ]
+        else:
+            hits = _scan_all(roots, project_root)
     except ScanError as exc:
         print(f"check_no_magic_numbers: {exc}", file=sys.stderr)
         return 2
@@ -832,6 +879,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Regenerate scripts/no_magic_numbers_baseline.txt.",
     )
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        default=None,
+        help=(
+            "Scan only these files instead of every tracked file under "
+            "--paths. Paths outside --paths are skipped, and the baseline "
+            "still applies. Used by the agent-time PostToolUse dispatcher; "
+            "the pre-push run always scans in full."
+        ),
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -850,8 +908,16 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     if args.update:
+        if args.files:
+            print(
+                "check_no_magic_numbers: --files cannot be combined with "
+                "--update; a baseline written from a partial scan would drop "
+                "every entry the scan did not visit.",
+                file=sys.stderr,
+            )
+            return 2
         return cmd_update(roots, project_root)
-    return cmd_scan(roots, project_root)
+    return cmd_scan(roots, project_root, args.files)
 
 
 if __name__ == "__main__":

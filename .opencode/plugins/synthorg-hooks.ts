@@ -30,7 +30,9 @@
  *   PreToolUse (Edit|Write): scripts/check_no_client_state_persistence_hook.sh
  *   PostToolUse (Edit|Write): scripts/check_web_design_system.py
  *   PostToolUse (Edit|Write): scripts/check_backend_regional_defaults.py
+ *   PostToolUse (Edit|Write): scripts/run_edit_time_gates.py
  *   PostToolUse (Bash): scripts/record_push_throttle.sh
+ *   PostToolUse (Bash): scripts/rewarm_mypy_after_sync.sh
  *
  * These committed scripts are the single source of truth for the
  * shared hook rules, so OpenCode (this plugin) and Claude Code
@@ -524,6 +526,22 @@ export const SynthOrgHooks: Plugin = async ({ $, worktree }) => {
             if (denyReason) {
               throw new Error(denyReason);
             }
+            // rewarm_mypy_after_sync.sh: a `uv sync` invalidates the resident
+            // dmypy graph, so re-warm it off the push path. Fail-open like the
+            // SessionEnd counterpart -- it is housekeeping, and the script
+            // itself declines unless a daemon is already resident.
+            //
+            // `runHookScript` sends only `tool_input`, so the script's
+            // did-the-sync-succeed check sees no signal and re-warms either
+            // way. That is the harmless direction: a sync that failed left the
+            // old environment in place, so the worst case is one wasted
+            // background rebuild, against a slow push if it were skipped.
+            runHookScript(
+              "scripts/rewarm_mypy_after_sync.sh",
+              { command },
+              10000,
+              "Bash",
+            );
             return;
           }
           if (input.tool !== "edit" && input.tool !== "write") {
@@ -577,6 +595,26 @@ export const SynthOrgHooks: Plugin = async ({ $, worktree }) => {
               const errMsg = err.message || err.stderr || "Unknown error";
               throw new Error(`Backend regional-defaults check failed for ${filePath}: ${errMsg}`);
             }
+          }
+
+          // run_edit_time_gates.py: run the file-scoped convention gates that
+          // would otherwise only fire whole-tree at pre-push. No path filter
+          // here on purpose -- the dispatcher owns the routing table and exits
+          // 0 for anything no gate scopes to, so duplicating its scope in this
+          // condition would be a second place to keep in sync.
+          try {
+            execSync(
+              `python scripts/run_edit_time_gates.py`,
+              {
+                input: hookPayload,
+                timeout: 30000,
+                encoding: "utf-8",
+              },
+            );
+          } catch (error: unknown) {
+            const err = error as { message?: string; stdout?: string; stderr?: string };
+            const errMsg = err.stdout || err.stderr || err.message || "Unknown error";
+            throw new Error(`Edit-time convention gates failed for ${filePath}: ${errMsg}`);
           }
         },
       },

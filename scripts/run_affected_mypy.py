@@ -829,6 +829,14 @@ def _parse_args() -> argparse.Namespace:
         help="build the main daemon now so later checks take seconds",
     )
     group.add_argument(
+        "--rewarm",
+        action="store_true",
+        help=(
+            "rebuild the main daemon's graph, but only if it is already "
+            "resident (for use after a dependency sync invalidates it)"
+        ),
+    )
+    group.add_argument(
         "--full",
         action="store_true",
         help="run the cold CI scope now, without consulting a daemon",
@@ -891,6 +899,33 @@ def _warm() -> int:
         print("Daemon failed to build.", file=sys.stderr)
         return 2
     _status()
+    return code
+
+
+def _rewarm() -> int:
+    """Rebuild the main daemon's graph, but only if it is already resident.
+
+    A ``uv sync`` rewrites the interpreter's site-packages, which invalidates
+    the resident graph without stopping the daemon: the next check silently
+    pays the full cold rebuild (measured at 124s against 1.4s warm), and if
+    that next check is the pre-push hook it eats a third of the push budget.
+    Re-warming right after the sync moves that cost off the push.
+
+    Guarded on the daemon already running, which is the whole point of a
+    separate mode. Warming unconditionally would start a ~2.5GB daemon in
+    every worktree a sync ever touched, and several open worktrees would then
+    cost more memory than the machine has spare -- exactly why the worktree
+    helper refuses to warm at creation. This only ever restores a warm state
+    that already existed.
+    """
+    if not _daemon_running(_MAIN_DAEMON):
+        print(f"{_MAIN_DAEMON.label} daemon not resident; nothing to re-warm.")
+        return 0
+    print(f"Re-warming the {_MAIN_DAEMON.label} daemon after a dependency sync.")
+    code = _check_daemon(_MAIN_DAEMON)
+    if code is None:
+        print("Daemon failed to rebuild its graph.", file=sys.stderr)
+        return 2
     return code
 
 
@@ -1183,6 +1218,8 @@ def main() -> int:
     args = _parse_args()
     if args.warm:
         return _warm()
+    if args.rewarm:
+        return _rewarm()
     if args.stop:
         return _stop()
     if args.status:

@@ -145,6 +145,11 @@
             "type": "command",
             "command": "python scripts/check_backend_regional_defaults.py",
             "timeout": 10000
+          },
+          {
+            "type": "command",
+            "command": "python scripts/run_edit_time_gates.py",
+            "timeout": 30000
           }
         ]
       },
@@ -155,6 +160,11 @@
             "type": "command",
             "command": "bash scripts/record_push_throttle.sh",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/rewarm_mypy_after_sync.sh",
+            "timeout": 10000
           }
         ]
       }

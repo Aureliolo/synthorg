@@ -44,6 +44,7 @@ Exit codes:
     2 -- internal error parsing a source file.
 """
 
+import argparse
 import ast
 import re
 import sys
@@ -246,17 +247,62 @@ def _check_allow_inf_nan(
     violations.append((path, node.lineno, node.name, "allow-inf-nan"))
 
 
-def main() -> int:
+def _selected_targets(files: list[str]) -> list[tuple[Path, bool]]:
+    """Return ``(path, check_inf_nan)`` for the in-scope subset of *files*.
+
+    The ``allow_inf_nan`` assertion is scoped to ``src/synthorg/`` while the
+    ``extra="forbid"`` one also covers ``tests/``, so the per-file flag has
+    to be derived from which root the path sits under, exactly as the
+    whole-tree walk derives it from which root it is walking.
+    """
+    targets: list[tuple[Path, bool]] = []
+    seen: set[Path] = set()
+    for raw in files:
+        candidate = Path(raw)
+        resolved = (
+            candidate if candidate.is_absolute() else REPO_ROOT / candidate
+        ).resolve()
+        if resolved.suffix != ".py" or not resolved.is_file() or resolved in seen:
+            continue
+        if resolved.is_relative_to(SRC_DIR):
+            check_inf_nan = True
+        elif resolved.is_relative_to(TEST_DIR):
+            check_inf_nan = False
+        else:
+            continue
+        seen.add(resolved)
+        targets.append((resolved, check_inf_nan))
+    return sorted(targets)
+
+
+def main(argv: list[str] | None = None) -> int:
     """Walk the tree and report frozen models missing a required flag."""
-    for scan_root in (SRC_DIR, TEST_DIR):
-        if not scan_root.is_dir():
-            print(f"{scan_root} does not exist", file=sys.stderr)
-            return 2
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        default=None,
+        help=(
+            "Scan only these files instead of src/synthorg/ + tests/. Paths "
+            "outside both roots are skipped. Used by the agent-time "
+            "PostToolUse dispatcher; the pre-push run always scans in full."
+        ),
+    )
+    args = parser.parse_args(argv)
+
     violations: list[tuple[Path, int, str, str]] = []
-    for scan_root in (SRC_DIR, TEST_DIR):
-        check_inf_nan = scan_root == SRC_DIR
-        for path in sorted(scan_root.rglob("*.py")):
+    if args.files:
+        for path, check_inf_nan in _selected_targets(args.files):
             violations.extend(_walk(path, check_inf_nan=check_inf_nan))
+    else:
+        for scan_root in (SRC_DIR, TEST_DIR):
+            if not scan_root.is_dir():
+                print(f"{scan_root} does not exist", file=sys.stderr)
+                return 2
+        for scan_root in (SRC_DIR, TEST_DIR):
+            check_inf_nan = scan_root == SRC_DIR
+            for path in sorted(scan_root.rglob("*.py")):
+                violations.extend(_walk(path, check_inf_nan=check_inf_nan))
     if not violations:
         return 0
     forbid = [v for v in violations if v[3] == "extra-forbid"]

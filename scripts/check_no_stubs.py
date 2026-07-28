@@ -302,9 +302,32 @@ def _iter_py_files(repo_root: Path) -> Iterable[Path]:
     yield from sorted(base.rglob("*.py"))
 
 
-def _run(repo_root: Path) -> int:
+def _select_files(repo_root: Path, files: list[str]) -> list[Path]:
+    """Return the in-scope subset of *files*, as absolute paths.
+
+    A path outside ``SCAN_ROOT`` or with a non-``.py`` suffix is dropped
+    rather than rejected: callers pass whatever a developer just edited,
+    and the gate's scope decision belongs here, not at the call site.
+    """
+    base = (repo_root / SCAN_ROOT).resolve()
+    selected: list[Path] = []
+    for raw in files:
+        candidate = Path(raw)
+        resolved = (
+            candidate if candidate.is_absolute() else repo_root / candidate
+        ).resolve()
+        if resolved.suffix != ".py" or not resolved.is_file():
+            continue
+        if not resolved.is_relative_to(base):
+            continue
+        selected.append(resolved)
+    return sorted(set(selected))
+
+
+def _run(repo_root: Path, files: list[str] | None = None) -> int:
     violations: list[Violation] = []
-    for py in _iter_py_files(repo_root):
+    targets = _select_files(repo_root, files) if files else _iter_py_files(repo_root)
+    for py in targets:
         violations.extend(_scan_file(py, repo_root))
     if not violations:
         return 0
@@ -329,9 +352,19 @@ def main() -> int:
     """
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        default=None,
+        help=(
+            "Scan only these files instead of the whole scan root. Paths "
+            "outside src/synthorg/ are skipped. Used by the agent-time "
+            "PostToolUse dispatcher; the pre-push run always scans in full."
+        ),
+    )
     args = parser.parse_args()
     try:
-        return _run(args.repo_root.resolve())
+        return _run(args.repo_root.resolve(), args.files)
     except (OSError, UnicodeDecodeError, SyntaxError) as exc:
         print(f"check_no_stubs: scan error: {exc}", file=sys.stderr)
         return 2

@@ -166,7 +166,29 @@ Some conventions are also enforced *before* the file lands on disk so the offend
 - `check_no_bulk_edit.py`: blocks only shell in-place bulk rewrites (`sed -i`, `perl -pi`, redirect-overwrite of a tracked source file). The native `Edit` (incl. `replace_all`) and `Write` tools are intentionally not blocked: they surface a reviewable atomic diff.
 - `check_no_audit_scratch_scripts.sh`: blocks `Edit` / `Write` of a `*.py` / `*.sh` file at the project root or directly under `scripts/` while the `_audit/.audit-run-active` marker exists (the `/codebase-audit` skill creates it in Phase 0 and removes it in Phase 7). Stops audit subagents leaking scratch helper scripts that pollute the diagnostic stream. Scoped, not blanket: inert whenever no audit run is active, so ordinary development is never affected, and a marker older than 12h (left by a crashed run) is auto-ignored and removed. Unlike the other gates here it fails *open* on a parse error, since it is narrow defence-in-depth (the skill's Phase 7 sweep is the backstop).
 
-PostToolUse hooks run *after* an agent edit lands, validating the written file: `check_web_design_system.py` (web design-token compliance on `web/src/` edits) and `check_backend_regional_defaults.py` (region / currency neutrality on backend edits). Both are agent-time only and excluded from CI parity.
+PostToolUse hooks run *after* an agent edit lands, validating the written file: `check_web_design_system.py` (web design-token compliance on `web/src/` edits), `check_backend_regional_defaults.py` (region / currency neutrality on backend edits), and `run_edit_time_gates.py` (see below). All three are agent-time only and excluded from CI parity.
+
+### Edit-time gate dispatcher
+
+`scripts/run_edit_time_gates.py` is a PostToolUse dispatcher, not a gate: it adds no rule of its own and registers nothing in `convention_gate_map.yaml`. It routes the file an agent just wrote to the gates whose verdict for that file is decidable from the file alone, so a violation that would otherwise surface minutes later at push time (on the push budget, leaving a `<hook>-FAILED` marker) surfaces while the change is still in hand.
+
+The routed set is deliberately small. A gate needing cross-file context (import graph, endpoint parity, dual-backend test pairing, whole-tree baseline drift) would report a false violation from a single-file scan, so it stays push-only however cheap it looks:
+
+| Gate | Roots | Suffixes |
+| --- | --- | --- |
+| `check_no_stubs.py` | `src/synthorg/` | `.py` |
+| `check_frozen_model_extra_forbid.py` | `src/synthorg/`, `tests/` | `.py` |
+| `check_no_magic_numbers.py` | `src/synthorg/` | `.py` |
+| `check_module_size_budget.py` | `src/synthorg/` | `.py` |
+| `check_no_review_origin_in_code.py` | `src/synthorg/`, `tests/` | `.py`, `.sql` |
+
+Each gate re-filters the path itself, so a routing mistake in the dispatcher can only waste a subprocess, never miss or invent a violation. The four gates that had no file-scoped entry point gained a `--files` flag for this; `check_no_review_origin_in_code.py` already accepted positional paths for its pre-commit mode. `--files` is refused alongside `--update` / `--update-baseline`, since a baseline written from a partial scan would drop every entry the scan did not visit. The pre-push invocations are unchanged and still scan in full: the flag narrows the agent-time loop only, and the whole-tree run remains the authority.
+
+### Post-sync mypy re-warm (housekeeping, not a gate)
+
+`scripts/rewarm_mypy_after_sync.sh` is a PostToolUse hook on `Bash`. A `uv sync` rewrites site-packages, which invalidates the resident `dmypy` graph without stopping the daemon; the next check then pays a full cold rebuild (124s against 1.4s warm), and when that check is the pre-push hook a third of the 300s budget is gone before a gate has run.
+
+The hook detaches `run_affected_mypy.py --rewarm` so the rebuild happens off the push path, logging to `synthorg-hooks/mypy-rewarm-last.log` alongside the git-hook logs. `--rewarm` refuses unless the main daemon is **already resident**: it restores a warm state that existed and never creates a new one. That guard is what makes the hook safe to run everywhere. Each daemon holds ~2.5GB, which is why the worktree helper deliberately does not warm at creation, and why this is a post-sync hook rather than a `SessionStart` one: a session-start warm would fire in every worktree a session opens and exhaust the memory a machine running several of them has spare. Only `uv sync` / `uv add` / `uv remove` match; `uv run` (much the most common invocation) does not.
 
 The hook layer is fail-closed: the OpenCode plugin treats hook execution errors as denials, so a misbehaving hook script blocks the action rather than letting it through.
 
