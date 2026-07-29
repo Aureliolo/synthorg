@@ -485,24 +485,6 @@ _r.register(
     )
 )
 
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.API,
-        key="setup_has_gpu",
-        type=SettingType.BOOLEAN,
-        default="false",
-        description=(
-            "Whether the host running the dashboard has a GPU."
-            " Flipped by the setup wizard (or an operator) and read"
-            " at setup-completion time to steer embedding-model tier"
-            " inference.  No platform probe today -- operator opts"
-            " in explicitly."
-        ),
-        group="Setup",
-        level=SettingLevel.ADVANCED,
-    )
-)
-
 # ── Ticket cleanup / request size / compression ──────────────────
 
 _r.register(

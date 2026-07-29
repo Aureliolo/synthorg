@@ -7,9 +7,7 @@ provider-binding contract: every per-feature model setting is a
 provider-bound pair rather than a bare model id.
 """
 
-from typing import Self
-
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, computed_field
 
 from synthorg.core.types import NotBlankStr
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
@@ -53,24 +51,29 @@ class SetupModelRecommendationsResponse(BaseModel):
     """Wizard model-selection recommendations + candidate lists.
 
     Lets the setup wizard prefill each per-feature model with a sensible
-    default (best-ranked / most-senior catalogue model) while leaving the
-    operator free to override any of them from the full configured catalogue.
+    default (the most-senior catalogue model) while leaving the operator free
+    to override any of them from the full configured catalogue.
 
     Every per-feature model setting is a ``SettingType.MODEL_REF``, which
     rejects a provider-less value at write time, so both the recommendation and
     the candidate list for those pickers are provider-bound: the
     ``*_recommended`` fields carry a serialised ref matching one candidate's
-    ``ref``. The embedding pair is the sole exception -- ``memory.embedder_model``
-    is a plain ``SettingType.STRING``, so it stays a bare model id on both sides.
+    ``ref``.
+
+    Embedding carries candidates but no recommendation. The operator names the
+    embedding model; nothing suggests one, because a suggestion is a decision
+    made without knowing what the deployment's vector store can index, and a
+    width it cannot index degrades every dense search silently.
 
     Attributes:
         model_ref_candidates: The shared provider-bound catalogue every
             MODEL_REF picker selects from (coordination, research, both
             Chief-of-Staff models, concern-routing, run-narrative, charter).
-        embedding_candidates: Catalogue model ids that are embedding-capable
-            (bare ids, not refs).
-        embedding_recommended: Suggested embedding model id (bare), if any.
-        embedding_recommended_dims: Output dims for the suggested embedder.
+        embedding_candidates: Every catalogue model, provider-bound, plus the
+            built-in embedder. Unfiltered: whether a model embeds is the
+            model's answer to a probe, not something a name reveals, and a
+            filter would hide a working embedder this codebase has not heard
+            of.
         decomposition_recommended: Suggested coordination/decomposition model
             ref, if any.
         research_recommended: Suggested research model ref, if any. Research
@@ -88,9 +91,7 @@ class SetupModelRecommendationsResponse(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     model_ref_candidates: tuple[SetupModelCandidate, ...] = ()
-    embedding_candidates: tuple[str, ...] = ()
-    embedding_recommended: NotBlankStr | None = None
-    embedding_recommended_dims: int | None = Field(default=None, ge=1)
+    embedding_candidates: tuple[SetupModelCandidate, ...] = ()
     decomposition_recommended: NotBlankStr | None = None
     research_recommended: NotBlankStr | None = None
     cos_recommended: NotBlankStr | None = None
@@ -98,25 +99,3 @@ class SetupModelRecommendationsResponse(BaseModel):
     routing_recommended: NotBlankStr | None = None
     narrative_recommended: NotBlankStr | None = None
     charter_recommended: NotBlankStr | None = None
-
-    @model_validator(mode="after")
-    def _validate_embedding_pairing(self) -> Self:
-        """Dims and a recommended embedder must be present together.
-
-        Returns:
-            The validated instance (``self``), unchanged.
-
-        Raises:
-            ValueError: When exactly one of ``embedding_recommended`` and
-                ``embedding_recommended_dims`` is set (the wizard cannot
-                prefill a dimension with no model, or vice versa).
-        """
-        if (self.embedding_recommended is None) != (
-            self.embedding_recommended_dims is None
-        ):
-            msg = (
-                "embedding_recommended and embedding_recommended_dims must be "
-                "set together or both omitted"
-            )
-            raise ValueError(msg)
-        return self

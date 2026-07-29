@@ -91,56 +91,62 @@ All scores are NDCG@10 (with instruction prompts unless noted). Source: LMEB pap
 
 ---
 
-## Recommendation
+## What the results show
 
-### For SynthOrg Deployments
+The embedding model is the operator's choice. This section reports what the
+published evaluations measured, grouped by the resource class a deployment can
+afford, so that choice can be an informed one. Nothing here is a default, and
+nothing in the codebase reads it.
 
-The embedding model choice depends on the deployment's resource constraints and primary memory
-retrieval patterns. Three tiers are recommended:
+### Full-resource deployment (GPU server, 7-12B model)
 
-#### Tier 1: Full-resource deployment (GPU server, 7-12B model)
+`bge-multilingual-gemma2` (9B) scores highest overall on LMEB (61.41 NDCG@10)
+and leads on dialogue and social recall (59.60), the hardest category, alongside
+strong episodic (70.88) and procedural (61.40) results and a consistent +1.96
+gain from instruction prompts. `NV-Embed-v2` (7B) leads on semantic recall
+instead (62.18) and scores consistently regardless of prompt formatting.
 
-**Recommended: bge-multilingual-gemma2 (9B)**
+### Mid-resource deployment (consumer GPU, 1-4B model)
 
-- Best overall LMEB score (61.41 NDCG@10)
-- Best dialogue/social memory retrieval (59.60), the hardest category
-- Strong episodic (70.88) and procedural (61.40)
-- Consistent instruction-following (+1.96 gain with prompts)
-- Multilingual support (relevant for international org simulations)
+`Qwen3-Embedding-4B` (4B) scores 59.81 NDCG@10 on procedural recall with a
+reasonable balance across the other memory types, and fits in the 16-24 GB of
+VRAM a consumer GPU offers for inference.
 
-**Alternative: NV-Embed-v2 (7B)** if semantic memory is the priority (best semantic at 62.18)
-and instruction stability is preferred (performs consistently regardless of prompt formatting).
+### CPU-only or embedded deployment (under 1B model)
 
-#### Tier 2: Mid-resource deployment (consumer GPU, 1-4B model)
-
-**Recommended: Qwen3-Embedding-4B (4B)**
-
-- Strong procedural memory performance (59.81 NDCG@10)
-- Reasonable balance across all types
-- Fits on consumer GPUs (16-24 GB VRAM for inference)
-
-#### Tier 3: CPU-only / embedded deployment (< 1B model)
-
-**Recommended: EmbeddingGemma-300M (307M)**
-
-- Surprisingly competitive overall score (56.03 w/o instructions)
-- Runs on CPU with acceptable latency for async memory retrieval
-- Best cost-performance ratio in the LMEB evaluation
-- **Do not use instruction prompts**: performance degrades with instructions for this model
+`EmbeddingGemma-300M` (307M) scores 56.03 without instructions, competitive with
+models an order of magnitude larger, and runs on CPU at a latency asynchronous
+retrieval tolerates. Its scores fall when given instruction prompts, so the
+figure above is measured without them.
 
 ### Embedder Configuration
 
-`EmbedderConfig` binds an explicit `(provider, model)` pair plus the model's output
-width. Boot resolves it through `resolve_embedder_config`, which reads the
-`memory.embedder_provider` / `embedder_model` / `embedder_dims` settings first and
-otherwise auto-selects an LMEB-ranked model from the providers actually available:
+`EmbedderConfig` binds an explicit `(provider, model)` pair plus the vector width.
+Boot resolves it through `resolve_embedder_config`, which reads the YAML override
+below as the base, then applies the operator's `memory.embedder_model` setting (a
+provider-bound `MODEL_REF`) and the optional `memory.embedder_dims` pin over it,
+so a setting wins per field. **It selects nothing**: an unresolved binding leaves
+memory OFF and logs why, and the built-in embedder is reachable only by naming it
+(`builtin` / `hashing`).
+
+The rankings on this page inform that choice; they do not make it. Nothing in the
+codebase reads them, and the tiers below are sizing guidance for an operator.
 
 ```yaml
 memory:
-  embedder_provider: "example-provider"
-  embedder_model: "example-embedding-001"
-  embedder_dims: 3584          # the model's output width, or an MRL truncation of it
+  embedder:
+    provider: "example-provider"
+    model: "example-embedding-001"
+    dims: 2000                 # optional: pin an MRL truncation of the model's width
 ```
+
+When `dims` is not pinned, the width is **measured** rather than looked up:
+`probe_embedder_dims` embeds a short probe string through the chosen pair and
+counts components. A shipped table of catalogued widths cannot be the authority
+here, because it goes stale, cannot cover a model it has never heard of, and
+being wrong by a single component makes every stored vector incomparable. The
+probe doubles as proof the binding works: a model that cannot embed fails at
+selection rather than at the first memory write.
 
 A `dims` value the model cannot produce is a hard failure rather than a warning:
 vectors of the wrong width corrupt recall silently, which is far worse than not
@@ -161,6 +167,12 @@ with `memory.dense_index.unindexable`. Recall stays semantic either way, but a
 width above the ceiling reads every row per query: pin `memory.embedder_dims` at
 or below 2000 on an MRL-capable model, or choose a narrower embedder.
 
+That state is reported as DEGRADED on the memory health surface and does **not**
+fail readiness. It answers every query correctly and differs only in latency, so
+gating traffic on it would take a working system offline; it is also terminal,
+since no retry can build an index pgvector refuses for that width, so a readiness
+probe would wait out its whole budget for a condition known at boot.
+
 Changing the embedding model after deployment invalidates every stored vector, because
 embeddings from different models are not comparable. The dense index is therefore keyed
 by width: a new width indexes into a fresh table (SQLite) or column (Postgres) rather
@@ -179,7 +191,7 @@ first production deployment regardless.
 
 ## Domain Fine-Tuning Pipeline
 
-Even with LMEB-optimised model selection, domain-specific fine-tuning can improve retrieval
+Whichever model an operator picks, domain-specific fine-tuning can improve retrieval
 quality by 10-27% ([NVIDIA blog](https://huggingface.co/blog/nvidia/domain-specific-embedding-finetune),
 tested on NVDocs and Jira datasets). The pipeline requires no manual annotation and runs on a
 single GPU.
@@ -191,8 +203,9 @@ graph LR
     S1["1. Synthetic Data Generation\nOrg docs, ADRs, procedures\nLLM generates query-doc pairs"]
     S2["2. Hard Negative Mining\nBase model embeds all passages,\nselects top-k confusing negatives"]
     S3["3. Contrastive Fine-Tuning\nInfoNCE loss, tau = 0.02\n3 epochs, lr = 1e-5"]
-    S4["4. Deploy\nSave checkpoint,\nupdate embedder config"]
-    S1 --> S2 --> S3 --> S4
+    S4["4. Evaluation\nNDCG@10 A/B against the incumbent,\npromotion gated on a positive margin"]
+    S5["5. Deploy\nSave checkpoint,\nrecord it as active"]
+    S1 --> S2 --> S3 --> S4 --> S5
 ```
 
 ### Stage Details

@@ -8,12 +8,12 @@ import numpy.typing as npt
 import pytest
 
 from synthorg.communication.meeting.embedder import (
-    HashingTextEmbedder,
     build_text_embedder,
     cosine_similarity,
 )
 from synthorg.communication.meeting.errors import MeetingEmbedderUnavailableError
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
+from synthorg.memory.embedding.hashing import HashingTextEmbedder
 from synthorg.memory.embedding.sentence_transformer import (
     SentenceTransformerEmbedder,
 )

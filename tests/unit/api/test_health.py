@@ -6,6 +6,7 @@ topology. The per-component breakdown lives behind authentication on
 ``/health``.
 """
 
+from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -109,6 +110,46 @@ class TestReadinessUnhealthy:
         fake_persistence._connected = False
         fake_message_bus._running = False
         response = await async_test_client.get("/api/v1/readyz")
+        assert response.status_code == 503
+        assert response.json()["data"]["status"] == "unavailable"
+
+
+@pytest.mark.unit
+class TestReadinessMemoryOverHttp:
+    """A degraded memory keeps ``/readyz`` on the value the CLI waits for.
+
+    ``synthorg start`` polls ``/readyz`` and completes only on the literal
+    ``"ok"``; anything else it keeps polling until the timeout and then
+    fails the start. So an embedder above the index ceiling, which is
+    DEGRADED (correct results, exact scan), has to reach the wire as
+    ``ok``/200 rather than merely abstain from the readiness verdict in
+    a helper. Asserted through HTTP because the abstention only becomes
+    ``ok`` after the aggregation drops it.
+    """
+
+    @staticmethod
+    def _patch_memory(state: MemoryState) -> AbstractContextManager[AsyncMock]:
+        return patch(
+            "synthorg.api.controllers.health._resolve_memory_health",
+            AsyncMock(
+                spec=_resolve_memory_health,
+                return_value=MemoryHealth(state=state, backend="sqlvector"),
+            ),
+        )
+
+    async def test_degraded_memory_stays_ready(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        with self._patch_memory(MemoryState.DEGRADED):
+            response = await async_test_client.get("/api/v1/readyz")
+        assert response.status_code == 200
+        assert response.json()["data"]["status"] == "ok"
+
+    async def test_unreachable_memory_gates_traffic(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        with self._patch_memory(MemoryState.UNREACHABLE):
+            response = await async_test_client.get("/api/v1/readyz")
         assert response.status_code == 503
         assert response.json()["data"]["status"] == "unavailable"
 
@@ -295,11 +336,14 @@ class TestResolveMemoryHealth:
         backend: object,
         scheduler: object = object(),
         configured: str = "sqlvector",
+        embedder_ref: str | None = "test-provider/embed-model",
     ) -> AppState:
         app_state = MagicMock(spec=AppState)
         app_state.config = SimpleNamespace(memory=SimpleNamespace(backend=configured))
         app_state.slice.return_value = SimpleNamespace(
-            backend=backend, consolidation_scheduler=scheduler
+            backend=backend,
+            consolidation_scheduler=scheduler,
+            embedder_ref=embedder_ref,
         )
         return app_state
 
@@ -316,11 +360,22 @@ class TestResolveMemoryHealth:
         result = await _resolve_memory_health(app_state)
         assert result.state is MemoryState.DURABLE
 
-    async def test_failed_probe_is_degraded(self) -> None:
+    async def test_failed_probe_is_unreachable(self) -> None:
+        # Distinct from DEGRADED: reads and writes are failing, which is the
+        # one memory condition that gates traffic.
         app_state = self._app_state(backend=self._backend(healthy=False, dense=True))
         result = await _resolve_memory_health(app_state)
-        assert result.state is MemoryState.DEGRADED
+        assert result.state is MemoryState.UNREACHABLE
         assert result.detail is not None
+
+    async def test_builtin_embedder_is_degraded(self) -> None:
+        app_state = self._app_state(
+            backend=self._backend(healthy=True, dense=True),
+            embedder_ref="builtin/hashing",
+        )
+        result = await _resolve_memory_health(app_state)
+        assert result.state is MemoryState.DEGRADED
+        assert "built-in embedder" in (result.detail or "")
 
     async def test_lexical_only_backend_is_degraded(self) -> None:
         # Recall answers every query on keyword matches, so a lost dense
@@ -345,13 +400,14 @@ class TestResolveMemoryHealth:
 
 @pytest.mark.unit
 class TestMemoryReadiness:
-    """Memory joins the readiness verdict only when a durable store was asked.
+    """Only memory that cannot answer at all gates traffic.
 
-    A wired durable backend (e.g. sqlvector) in DEGRADED state fails
-    ``/readyz`` (503). An unwired backend (OFF) does not block: the config
-    default is sqlvector, so a minimal or not-yet-configured deployment
-    reports OFF without durable memory ever wiring. The inmemory store is
-    degraded by design and likewise never blocks, so dev stacks stay ready.
+    A wired durable backend that fails its probe (UNREACHABLE) fails
+    ``/readyz`` (503), because its reads and writes are failing. Every
+    other state serves correct results and must not: DEGRADED differs only
+    in latency or in matching by term rather than meaning, and an unwired
+    backend (OFF) is a not-yet-configured deployment rather than a runtime
+    failure. The inmemory store is degraded by design and never blocks.
     """
 
     @staticmethod
@@ -366,9 +422,17 @@ class TestMemoryReadiness:
         health = self._health(backend="sqlvector", state=MemoryState.DURABLE)
         assert _memory_readiness(health) is True
 
-    def test_durable_backend_degraded_fails_readiness(self) -> None:
-        health = self._health(backend="sqlvector", state=MemoryState.DEGRADED)
+    def test_unreachable_backend_fails_readiness(self) -> None:
+        health = self._health(backend="sqlvector", state=MemoryState.UNREACHABLE)
         assert _memory_readiness(health) is False
+
+    def test_degraded_backend_does_not_block(self) -> None:
+        # An unindexed dense column, or the built-in embedder, answers every
+        # query correctly. Failing readiness for that takes a working system
+        # offline over a latency or recall-quality cost the memory surface
+        # already reports.
+        health = self._health(backend="sqlvector", state=MemoryState.DEGRADED)
+        assert _memory_readiness(health) is None
 
     def test_unwired_backend_does_not_block(self) -> None:
         # OFF is a minimal or not-yet-configured deployment (the config

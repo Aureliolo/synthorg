@@ -1,6 +1,10 @@
 """Memory namespace setting definitions (fine-tune group in memory_fine_tune)."""
 
-from synthorg.core.vector_limits import STORAGE_MAX_DIMENSIONS
+from synthorg.core.vector_limits import (
+    HNSW_HALFVEC_MAX_DIMENSIONS,
+    HNSW_VECTOR_MAX_DIMENSIONS,
+    STORAGE_MAX_DIMENSIONS,
+)
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
@@ -46,29 +50,17 @@ _r.register(
     )
 )
 
-# ── Embedding overrides (advanced) ───────────────────────────────
+# ── Embedding ────────────────────────────────────────────────────
 #
-# All three are read once, by the boot-time backend wiring, to build the
+# Both are read once, by the boot-time backend wiring, to build the
 # embedder and size the dense index. Changing the model mid-process
 # would leave every stored vector at an incomparable width, so these are
 # deliberately restart-scoped rather than hot-reloadable.
-
-_r.register(
-    # lint-allow: restart-required -- read once when the boot path builds
-    # the embedder; a mid-process change would orphan every stored vector.
-    SettingDefinition(
-        namespace=SettingNamespace.MEMORY,
-        key="embedder_provider",
-        type=SettingType.STRING,
-        default=None,
-        description=(
-            "Override embedding provider (advanced). Applies on the next restart."
-        ),
-        group="Embedding",
-        level=SettingLevel.ADVANCED,
-        restart_required=True,
-    )
-)
+#
+# The model is a MODEL_REF rather than a bare string so the type itself
+# refuses a provider-less value at write time. A provider derived from a
+# model name is what the Explicit Provider Binding rule forbids, and it
+# produced bindings naming providers no registry had.
 
 _r.register(
     # lint-allow: restart-required -- read once when the boot path builds
@@ -76,13 +68,17 @@ _r.register(
     SettingDefinition(
         namespace=SettingNamespace.MEMORY,
         key="embedder_model",
-        type=SettingType.STRING,
+        type=SettingType.MODEL_REF,
         default=None,
         description=(
-            "Override embedding model (advanced). Applies on the next restart."
+            "Embedding model agents recall through. Nothing is chosen for"
+            " you: unset means memory stays off. Choose the builtin/hashing"
+            " pair to run without an embedding model, which matches shared"
+            " vocabulary rather than meaning and gives agents materially"
+            " weaker recall. Applies on the next restart."
         ),
         group="Embedding",
-        level=SettingLevel.ADVANCED,
+        level=SettingLevel.BASIC,
         restart_required=True,
     )
 )
@@ -96,11 +92,14 @@ _r.register(
         type=SettingType.INTEGER,
         default=None,
         description=(
-            "Override embedding vector dimensions (advanced). Applies on"
-            " the next restart. At or below 2000 the dense index is exact;"
-            " up to 4000 it is built at half precision; above that no"
-            " approximate index can be built and every dense search reads"
-            " the whole corpus."
+            "Pin the embedding vector width instead of measuring it from"
+            " the model (advanced). Applies on the next restart. At or"
+            f" below {HNSW_VECTOR_MAX_DIMENSIONS} the dense index is exact;"
+            f" up to {HNSW_HALFVEC_MAX_DIMENSIONS} it is built at half"
+            " precision; above that no approximate index can be built and"
+            " every dense search reads the whole corpus. Pinning a width"
+            " below what the model emits truncates each vector, which is"
+            " only sound for a Matryoshka-capable model."
         ),
         group="Embedding",
         level=SettingLevel.ADVANCED,

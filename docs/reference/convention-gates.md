@@ -90,6 +90,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 | `check_no_pre_commit_install_in_docs.py` | commit+push | setup docs | full | no | none | keep |
 | `check_no_provider_auto_pick.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_raw_playwright_imports.py` | push | `src/synthorg/` | full | no | none | keep |
+| `check_no_silent_embedder_fallback.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_no_redundant_timeout.py` | commit+push | `tests/` | staged | yes | none | harden |
 | `check_no_release_please_token.py` | commit+push | `.github/**/*.yml` | staged | yes | none | keep |
 | `check_no_review_origin_in_code.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
@@ -125,7 +126,7 @@ This table is the single source of truth for every custom `scripts/check_*.py` g
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->103<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->104<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 

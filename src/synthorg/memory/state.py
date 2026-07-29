@@ -28,6 +28,7 @@ class MemoryStateSlice(BaseFeatureStateSlice):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     backend: MemoryBackend | None = None
+    embedder_ref: str | None = None
     fine_tune_orchestrator: FineTuneOrchestrator | None = None
     service: MemoryService | None = None
     org_memory_backend: OrgMemoryBackend | None = None

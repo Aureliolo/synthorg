@@ -124,9 +124,11 @@ class MemoryEmbedderUnavailableError(MemoryError):
     """Raised when a neural text embedder's optional extra is not installed.
 
     The ``sentence_transformer`` embedder backs the optional
-    ``sentence-transformers`` extra; this signals the extra is absent so a
-    caller can degrade to the dependency-free hashing embedder (or surface
-    its own layer-specific error).
+    ``sentence-transformers`` extra. A caller may translate this into its own
+    layer-specific error, and must otherwise let it propagate: substituting
+    another embedder for the one the operator chose is what
+    ``check_no_silent_embedder_fallback.py`` forbids, and constructing one in
+    response to this error is the exact shape it looks for.
     """
 
 

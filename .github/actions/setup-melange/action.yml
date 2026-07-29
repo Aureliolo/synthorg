@@ -22,6 +22,13 @@ runs:
     - name: Install melange runner dependencies
       shell: bash
       env:
+        # Without a per-attempt bound the deadline IS the first attempt's
+        # timeout, so a stalled mirror burns all 240s once and the ladder
+        # reports exhaustion "after 1 attempts" -- a retry helper that
+        # cannot retry the fault it exists for. 90s is generous for the
+        # ~15 MB these packages pull and leaves room for a real second
+        # attempt inside the deadline: 90 + 15 + 90 = 195.
+        RETRY_CMD_ATTEMPT_TIMEOUT: "90"
         RETRY_CMD_DEADLINE: "240"
       run: |
         .github/scripts/retry_cmd.sh "apt-get update (melange deps)" \

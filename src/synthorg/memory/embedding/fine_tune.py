@@ -971,8 +971,12 @@ async def deploy_checkpoint(
 ) -> str | None:
     """Stage 5: Deploy a fine-tuned checkpoint.
 
-    Backs up current embedder config and updates it to point
-    to the fine-tuned model.
+    Records the checkpoint and snapshots the embedder settings so a
+    rollback has something to restore. It deliberately does not point
+    ``memory.embedder_model`` at the checkpoint: that setting is a
+    provider-bound model reference, and a filesystem path written into it
+    reaches the boot path as a model name to dispatch on. Which embedder
+    serves stays the operator's explicit choice.
 
     Args:
         checkpoint_path: Path to the fine-tuned model checkpoint.
@@ -1010,7 +1014,6 @@ async def deploy_checkpoint(
         "get",
     ):
         for key in (
-            "embedder_provider",
             "embedder_model",
             "embedder_dims",
         ):
@@ -1040,14 +1043,6 @@ async def deploy_checkpoint(
         backup_path.write_text,
         json.dumps(backup, indent=2),
     )
-
-    # Update settings to point to the fine-tuned model.
-    if hasattr(settings_service, "set"):
-        await settings_service.set(
-            "memory",
-            "embedder_model",
-            checkpoint_path,
-        )
 
     logger.info(
         MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED,

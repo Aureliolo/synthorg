@@ -70,9 +70,9 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.llm.model_tier_policy import tier_for_purpose
 from synthorg.llm.prompt_purpose import PromptPurposeId
-from synthorg.memory.embedding.selector import (
-    list_embedding_candidates,
-    select_embedding_model,
+from synthorg.memory.embedding.hashing import (
+    BUILTIN_EMBEDDER_MODEL,
+    BUILTIN_EMBEDDER_PROVIDER,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
@@ -84,6 +84,18 @@ from synthorg.settings.service import SettingsService
 from synthorg.settings.state import settings_service_of
 
 logger = get_logger(__name__)
+
+
+def _builtin_candidate() -> SetupModelCandidate:
+    """The built-in embedder as a selectable candidate.
+
+    Returns:
+        A candidate naming the built-in provider and model.
+    """
+    return SetupModelCandidate(
+        provider=BUILTIN_EMBEDDER_PROVIDER,
+        model_id=BUILTIN_EMBEDDER_MODEL,
+    )
 
 
 class SetupCompanyController(Controller):
@@ -131,14 +143,15 @@ class SetupCompanyController(Controller):
         self,
         state: State,
     ) -> ApiResponse[SetupModelRecommendationsResponse]:
-        """Recommend + enumerate the wizard's coordinator + embedding models.
+        """Recommend the coordinator model and enumerate embedding candidates.
 
         The wizard prefills the coordinator's decomposition model (a
-        top-cost-tier agent's model) and the memory embedding model (the
-        best-ranked embedder in the catalogue) from these, and lets the operator
-        override either from the candidate lists. Read-only: it persists nothing
-        -- the wizard writes any override through the settings API, and
-        completion auto-selects only when the operator left a value unset.
+        top-cost-tier agent's model) from these and lets the operator override
+        it. The embedding list carries no recommendation: nothing ranks
+        embedders, so the operator names one or memory stays off. Read-only:
+        it persists nothing -- the wizard writes any choice through the
+        settings API, and completion fills in only the decomposition model,
+        and only when the operator left it unset.
 
         Args:
             state: Application state.
@@ -150,8 +163,6 @@ class SetupCompanyController(Controller):
         settings_svc = settings_service_of(app_state)
         agents = await get_existing_agents(settings_svc)
         provider_models = await _collect_provider_models(app_state)
-        model_ids = tuple(model_id for _, model_id in provider_models)
-        selection = select_embedding_model(model_ids)
         capable = pick_decomposition_model_ref(agents)
 
         def _for(purpose: PromptPurposeId) -> str | None:
@@ -175,11 +186,10 @@ class SetupCompanyController(Controller):
             data=SetupModelRecommendationsResponse(
                 decomposition_recommended=_offered(capable),
                 model_ref_candidates=candidates,
-                embedding_recommended=selection.model_id if selection else None,
-                embedding_recommended_dims=(
-                    selection.output_dims if selection else None
-                ),
-                embedding_candidates=list_embedding_candidates(model_ids),
+                # The built-in leads the list so an operator with no
+                # embedding model still has a nameable choice, not an empty
+                # picker that reads as "this step is broken".
+                embedding_candidates=(_builtin_candidate(), *candidates),
                 # Research reuses the capable-model heuristic (its own setting,
                 # not the decomposition model). Each per-feature model is
                 # recommended at its declared tier from the single tier policy.

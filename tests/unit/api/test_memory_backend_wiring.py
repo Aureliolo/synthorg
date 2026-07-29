@@ -8,6 +8,7 @@ like working memory.
 
 from types import SimpleNamespace
 from typing import Any
+from unittest import mock
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,10 +22,15 @@ from synthorg.memory.backends.sqlvector import SqlVectorBackend
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.consolidation.config import ConsolidationConfig
 from synthorg.memory.enums import ConsolidationInterval
+from synthorg.memory.errors import MemoryEmbeddingError
 from synthorg.memory.state import MemoryStateSlice
-from synthorg.observability.events.memory import MEMORY_BACKEND_WIRE_FAILED
+from synthorg.observability.events.memory import (
+    MEMORY_BACKEND_WIRE_FAILED,
+    MEMORY_EMBEDDER_UNRESOLVED,
+)
 from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.service import SettingsService
 from tests._shared import make_app_state, mock_of
 
@@ -39,10 +45,15 @@ def _persistence() -> Any:  # type: ignore[explicit-any]  # mock ergonomics; see
 
 
 def _settings(provider: str, model: str, dims: int) -> Any:  # type: ignore[explicit-any]  # mock ergonomics; see mock_of
-    """A settings service returning an explicit embedder binding."""
+    """A settings service returning an explicit embedder binding.
+
+    The model is a serialized MODEL_REF, matching the setting's type: the
+    provider travels with the model so nothing downstream has to guess it.
+    """
+    bound = serialize_model_ref(ModelRef(provider=provider, model_id=model))
+    ref = bound if provider or model else ""
     values = {
-        "embedder_provider": provider,
-        "embedder_model": model,
+        "embedder_model": ref,
         "embedder_dims": dims,
     }
     return mock_of[SettingsService](
@@ -134,6 +145,96 @@ class TestFailLoud:
     async def test_disconnected_persistence_wires_no_backend(self) -> None:
         app_state = make_app_state(
             settings_service=_settings("test-provider", "test-embed-001", 8),
+        )
+
+        await wire_memory_backend(app_state)
+
+        assert app_state.slice(MemoryStateSlice).backend is None
+
+    async def test_a_probe_failure_wires_no_backend_and_reports_it(self) -> None:
+        """The real boot path, driven through an actual probe failure.
+
+        Every other test here either pins a width (skipping the probe) or
+        leaves the model unset (short-circuiting before it), so the case
+        that matters most, a chosen model that cannot be reached, was only
+        ever exercised at the resolve layer.
+        """
+        app_state = make_app_state(
+            persistence=_persistence(),
+            # Falsy dims leaves the width unpinned, so the probe really runs.
+            settings_service=_settings("test-provider", "test-embed-001", 0),
+        )
+
+        async def _unreachable(**_kwargs: object) -> int:
+            msg = "connection reset"
+            raise MemoryEmbeddingError(msg)
+
+        with (
+            mock.patch(
+                "synthorg.memory.embedding.resolve.probe_embedder_dims",
+                _unreachable,
+            ),
+            capture_logs() as logs,
+        ):
+            await wire_memory_backend(app_state)
+
+        assert app_state.slice(MemoryStateSlice).backend is None
+        unresolved = [e for e in logs if e["event"] == MEMORY_EMBEDDER_UNRESOLVED]
+        assert unresolved, "an operator gets no other signal that memory is off"
+        assert unresolved[-1]["log_level"] == "error"
+
+    async def test_a_probe_failure_never_starts_the_builtin(self) -> None:
+        """The user's hard constraint, at the boot path rather than in unit
+        isolation: a model that cannot embed leaves memory off, and does not
+        hand over to the lexical built-in."""
+        app_state = make_app_state(
+            persistence=_persistence(),
+            settings_service=_settings("test-provider", "test-embed-001", 0),
+        )
+
+        async def _unreachable(**_kwargs: object) -> int:
+            msg = "connection reset"
+            raise MemoryEmbeddingError(msg)
+
+        with mock.patch(
+            "synthorg.memory.embedding.resolve.probe_embedder_dims",
+            _unreachable,
+        ):
+            await wire_memory_backend(app_state)
+
+        assert app_state.slice(MemoryStateSlice).backend is None
+        assert app_state.slice(MemoryStateSlice).embedder_ref is None
+
+    async def test_a_settings_read_failure_wires_no_backend(self) -> None:
+        """A settings outage at boot must not resolve to a default binding."""
+        settings = mock_of[SettingsService](
+            get=AsyncMock(side_effect=RuntimeError("settings backend down")),
+        )
+        app_state = make_app_state(
+            persistence=_persistence(),
+            settings_service=settings,
+        )
+
+        await wire_memory_backend(app_state)
+
+        assert app_state.slice(MemoryStateSlice).backend is None
+
+    async def test_a_legacy_bare_model_value_is_refused(self) -> None:
+        """An install predating the MODEL_REF change holds a bare model id.
+
+        It names a model with no provider, which resolution refuses by name
+        rather than completing on the operator's behalf.
+        """
+        settings = mock_of[SettingsService](
+            get=AsyncMock(
+                side_effect=lambda _ns, key: SimpleNamespace(
+                    value={"embedder_model": "legacy-bare-id", "embedder_dims": 0}[key]
+                ),
+            ),
+        )
+        app_state = make_app_state(
+            persistence=_persistence(),
+            settings_service=settings,
         )
 
         await wire_memory_backend(app_state)

@@ -282,9 +282,11 @@ memory:
   consolidation:
     interval: "daily"               # drives the consolidation scheduler
 
-# The embedder binding is resolved at boot from settings
-# (memory.embedder_provider / embedder_model / embedder_dims), the YAML
-# override, then LMEB auto-selection, in that order.
+# The embedder binding is resolved at boot from the YAML override below,
+# then from settings (memory.embedder_model, a provider-bound MODEL_REF,
+# plus the optional memory.embedder_dims pin), which are applied last and
+# so win per field. Nothing else: an unresolved binding leaves memory off
+# rather than choosing a model.
 ```
 
 Configuration is modelled by `CompanyMemoryConfig` (top-level), `MemoryStorageConfig`
@@ -318,6 +320,57 @@ selected automatically.
 
 ### Embedding Model Selection
 
+**The operator names the embedding model. Nothing selects one.**
+
+`memory.embedder_model` is a `MODEL_REF`, so its type refuses a value that names
+a model without the provider serving it, and the guided setup's picker offers
+the connected providers' catalogue unfiltered plus the built-in embedder. There
+is no ranking table, no recommendation, and no deployment-tier inference. Unset
+means memory stays OFF and says so.
+
+Selection used to be the product's job: a shipped benchmark table ranked models,
+matched one against the operator's catalogue, and read its vector width from a
+static column in the same table. That produced a binding whose width the vector
+store could not index, on a stack whose only embedder was a Matryoshka model
+that could have served any narrower width, and nobody had decided anything.
+
+!!! danger "The built-in embedder is chosen, never fallen back to"
+    `builtin/hashing` is deterministic feature hashing: it matches shared
+    vocabulary, not meaning. It exists so an operator with no embedding model can
+    still run, and it is reachable **only** by naming it. No path substitutes it
+    for a model that failed to load, a provider that went unreachable, a missing
+    optional dependency, or an unset setting, and no embedder is constructed
+    inside an `except` handler. Memory quietly becoming lexical is the same
+    silent-failure class as memory quietly becoming ephemeral, one layer down.
+    Enforced by `check_no_silent_embedder_fallback.py`.
+
+**The vector width is measured, not looked up.** On selection the backend embeds
+a probe string through the chosen pair and counts components
+(`memory/embedding/probe.py`). That is the model's own answer, so a model this
+codebase has never heard of is as usable as one it has, and the call doubles as
+proof the binding works at all: a model that cannot embed fails at selection
+rather than at the first memory write.
+
+The measured width is never written back. `memory.embedder_dims` is the
+operator's own truncation pin, which is how a wide Matryoshka model is brought
+under the index ceiling, and persisting a measurement into it would make the two
+indistinguishable: a width measured for one model would outlive it and be
+applied to the next as though it had been asked for, silently truncating vectors
+from a model it was never measured against. Boot measures again, against
+whatever model is bound then.
+
+The width the probe reports is used as-is, including above pgvector's 4000-
+dimension HNSW ceiling: those vectors are stored and searched correctly, just
+without an approximate index, which the health surface reports as DEGRADED and
+readiness ignores. Truncating automatically would be sound only for a Matryoshka
+model, and knowing which models those are is the shipped-table approach this
+section replaced.
+
+#### Why the rankings were about quality, not selection
+
+The analysis below still holds and is why the reference page is worth reading
+before choosing. It informs an operator's decision; it no longer makes one.
+
 Embedding model quality directly determines memory retrieval accuracy. The
 [LMEB benchmark](https://arxiv.org/abs/2603.12572) (Zhao et al., March 2026) evaluates embedding
 models on long-horizon memory retrieval across four types that map directly to SynthOrg's
@@ -334,23 +387,19 @@ models on long-horizon memory retrieval across four types that map directly to S
 **MTEB scores do not predict memory retrieval quality** (Pearson: -0.115, Spearman: -0.130).
 Embedding model selection must be evaluated on LMEB, not MTEB. See
 [Decision Log](../architecture/decisions.md) and the
-[Embedding Evaluation](../reference/embedding-evaluation.md) reference page for the full analysis,
-model rankings, and deployment tier recommendations.
+[Embedding Evaluation](../reference/embedding-evaluation.md) reference page for the full analysis
+and the measured results by resource class.
 
 Key findings:
 
 - Larger models do not always outperform smaller ones on memory retrieval
 - Dialogue/social memory is the hardest retrieval category for all models
 - Instruction sensitivity varies per model; must be validated per deployment
-- Three deployment tiers are recommended: full-resource (7-12B), mid-resource (1-4B), and
-  CPU-only (< 1B)
+- Results are reported for three resource classes: full-resource (7-12B),
+  mid-resource (1-4B), and CPU-only (< 1B)
 
-**Tier inference inputs** (`auto_select_embedder`):
-
-- **`provider_preset_name`**: the explicit default system provider's resolved name (`ProviderRegistry.default_provider_resolved_name()`), read at setup-completion time; on empty-company boot (no runtime registry yet) it falls back to the first persisted provider as a documented tier-hint exception (never an LLM dispatch binding). When operators use preset names verbatim as provider names (the wizard default), the preset hint steers tier selection; otherwise tier inference falls back to heuristic defaults.
-- **`api.setup.has_gpu`** (yaml path; setting key `setup_has_gpu` under namespace `API`): operator-owned boolean, default `"false"`, advanced level. Flipped by the setup wizard (or directly by an operator) and read via `_read_has_gpu_setting(settings_service)`.  Accepts `true`/`1`/`yes` (-> True) and `false`/`0`/`no`/empty (-> False), case-insensitive; any other value returns `None` (unknown) silently, while a settings-service read failure logs a WARNING and also returns `None`.  There is no platform probe today; the signal is operator-declared, not auto-detected.
-
-Tier fallback is not a single CPU/GPU switch.  `auto_select_embedder` uses preset-name and capability heuristics to pick a `GPU_CONSUMER` or `GPU_FULL` tier when `has_gpu` is `True` or `None`; the tier only collapses to the CPU-only default when the operator has selected a local/self-hosted preset *and* has explicitly set `has_gpu=False`.  Missing or unparseable inputs degrade gracefully and never block setup completion.
+Those classes describe what was measured, for an operator sizing a deployment.
+They are not tiers this codebase infers, and nothing reads them.
 
 ### Domain-Specific Embedding Fine-Tuning
 

@@ -276,8 +276,8 @@ export interface CompletionSlice {
   /**
    * Warning surfaced after a successful completion when the backend
    * succeeded with ``setup_complete=true`` but reported a non-fatal
-   * post-completion warning (e.g. embedder auto-selection produced no
-   * ranked model). Distinct from ``completionError`` which represents
+   * post-completion warning (e.g. the operator's chosen embedder could
+   * not be bound). Distinct from ``completionError`` which represents
    * a HARD failure that left ``setup_complete=false``. Cleared when
    * the wizard is reset.
    */

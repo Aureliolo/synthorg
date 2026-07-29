@@ -104,6 +104,7 @@ _GATES: tuple[str, ...] = (
     "check_no_ghost_wiring",
     "check_no_hardcoded_model_default",
     "check_no_provider_auto_pick",
+    "check_no_silent_embedder_fallback",
     "check_gateway_explicit_binding",
     "check_credentialed_mcp_governed",
     "check_governed_destructive_tools",
