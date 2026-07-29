@@ -32,7 +32,6 @@ to the checkpoint flow.
 
 import asyncio
 import json
-from collections.abc import Awaitable
 from typing import ClassVar, Literal
 
 from synthorg.core.critical_errors import reraise_critical
@@ -60,7 +59,6 @@ from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
-    safe_error_description,
 )
 from synthorg.observability.events.memory import (
     MEMORY_CHECKPOINT_BACKUP_UNAVAILABLE,
@@ -90,6 +88,53 @@ logger = get_logger(__name__)
 # the newly-written key untouched (it may be masking a real prior
 # value we could not capture).
 _PriorSettingState = Literal["was_set", "was_unset", "read_failed"]
+
+
+async def _restore_backup_key(
+    settings: SettingsAccessor,
+    key: str,
+    value: object,
+    *,
+    checkpoint_id: str,
+) -> None:
+    """Re-write one backed-up ``memory.<key>`` value.
+
+    A backup outlives the settings schema that produced it, so a key it
+    names may since have been retired, and a value it holds may no longer
+    be one that key accepts. Neither is a rollback failure: both are
+    logged with the reason and skipped, so one unrestorable key cannot
+    abort the restore of every surviving one. The operator sees which keys
+    did not come back rather than a half-applied rollback reported as
+    complete. Anything else propagates.
+
+    A free function rather than a method: it reads no service state beyond
+    the accessor handed to it, so hanging it off the service would only
+    dilute what that class is about.
+    """
+    from synthorg.settings.errors import (  # noqa: PLC0415 -- cycle break
+        SettingNotFoundError,
+        SettingValidationError,
+    )
+
+    # A structured value (a MODEL_REF pair) must round-trip as JSON;
+    # ``str()`` on a mapping yields a Python repr the validator rejects.
+    rendered = value if isinstance(value, str) else json.dumps(value)
+    try:
+        await settings.set("memory", key, rendered)
+    except SettingNotFoundError:
+        logger.warning(
+            MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
+            checkpoint_id=checkpoint_id,
+            step=f"restore_{key}",
+            reason="setting_retired_since_backup",
+        )
+    except SettingValidationError:
+        logger.warning(
+            MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
+            checkpoint_id=checkpoint_id,
+            step=f"restore_{key}",
+            reason="backed_up_value_rejected_by_current_schema",
+        )
 
 
 class CheckpointNotFoundError(NotFoundError):
@@ -524,7 +569,8 @@ class MemoryService:
                     raise CheckpointRollbackCorruptError(msg)
                 backup: dict[str, object] = parsed
                 for key, value in backup.items():
-                    await self._restore_backup_key(
+                    await _restore_backup_key(
+                        self._settings,
                         key,
                         value,
                         checkpoint_id=checkpoint_id,
@@ -741,49 +787,6 @@ class MemoryService:
             raise MemoryBackendUnsupportedError(msg)
         return self._orchestrator
 
-    async def _restore_backup_key(
-        self,
-        key: str,
-        value: object,
-        *,
-        checkpoint_id: str,
-    ) -> None:
-        """Re-write one backed-up ``memory.<key>`` value.
-
-        A backup outlives the settings schema that produced it, so a key
-        it names may since have been retired, and a value it holds may no
-        longer be one that key accepts. Neither is a rollback failure:
-        both are logged with the reason and skipped, so one unrestorable
-        key cannot abort the restore of every surviving one. The operator
-        sees which keys did not come back rather than a half-applied
-        rollback reported as complete. Anything else propagates.
-        """
-        assert self._settings is not None  # noqa: S101 - guarded by caller
-        from synthorg.settings.errors import (  # noqa: PLC0415 -- cycle break
-            SettingNotFoundError,
-            SettingValidationError,
-        )
-
-        # A structured value (a MODEL_REF pair) must round-trip as JSON;
-        # ``str()`` on a mapping yields a Python repr the validator rejects.
-        rendered = value if isinstance(value, str) else json.dumps(value)
-        try:
-            await self._settings.set("memory", key, rendered)
-        except SettingNotFoundError:
-            logger.warning(
-                MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
-                checkpoint_id=checkpoint_id,
-                step=f"restore_{key}",
-                reason="setting_retired_since_backup",
-            )
-        except SettingValidationError:
-            logger.warning(
-                MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
-                checkpoint_id=checkpoint_id,
-                step=f"restore_{key}",
-                reason="backed_up_value_rejected_by_current_schema",
-            )
-
     async def _read_setting(
         self,
         key: str,
@@ -841,43 +844,3 @@ class MemoryService:
             # and leaves the newly-written value in place.
             return None, "read_failed"
         return value.value, "was_set"
-
-    @staticmethod
-    async def _rollback_step(
-        coro: Awaitable[object],
-        *,
-        checkpoint_id: str,
-        step: str,
-    ) -> None:
-        """Run *coro* in a rollback path, logging any failure at WARNING.
-
-        Rollback failures must never shadow the original deploy error
-        (which is already being raised up the call stack), but they
-        must be audit-visible so operators know the config may be in
-        an inconsistent state. Uses the rollback-specific event so
-        alerting can distinguish primary deploy failures from partial
-        rollback conditions.
-        """
-        try:
-            await coro
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            reraise_critical(exc)
-            # Emit both the aggregate event (broad dashboards /
-            # alerting) AND the step-specific event so alerts can pick
-            # up partial-rollback conditions distinctly from the
-            # overall rollback failure signal.
-            logger.warning(
-                MEMORY_CHECKPOINT_ROLLBACK_FAILED,
-                checkpoint_id=checkpoint_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                stage="rollback",
-                step=step,
-            )
-            log_exception_redacted(
-                logger,
-                MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
-                exc,
-                checkpoint_id=checkpoint_id,
-                step=step,
-            )
