@@ -25,9 +25,11 @@ import math
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.memory.embedding.config import EmbedderConfig
 from synthorg.memory.embedding.dispatch import (
+    DEFAULT_EMBED_TIMEOUT_SECONDS,
     embedding_retry_handler,
     format_model_ref,
     record_embedding_cost,
+    with_deadline,
 )
 from synthorg.memory.errors import MemoryEmbeddingError
 from synthorg.observability import get_logger, safe_error_description
@@ -47,6 +49,8 @@ class ProviderTextEmbedder:
         cost_tracker: Sink for per-batch spend. ``None`` leaves the call
             unmetered, which is correct only where no tracker exists
             (tests, the trackerless eval harness).
+        timeout_seconds: Wall-clock ceiling for one batch, retries
+            included.
     """
 
     def __init__(
@@ -54,9 +58,11 @@ class ProviderTextEmbedder:
         config: EmbedderConfig,
         *,
         cost_tracker: CostTrackerProtocol | None = None,
+        timeout_seconds: float = DEFAULT_EMBED_TIMEOUT_SECONDS,
     ) -> None:
         self._config = config
         self._cost_tracker = cost_tracker
+        self._timeout_seconds = timeout_seconds
         self._retry = embedding_retry_handler()
 
     @property
@@ -83,9 +89,9 @@ class ProviderTextEmbedder:
             One vector per input text, in the same order.
 
         Raises:
-            MemoryEmbeddingError: If the call fails, returns the wrong
-                number of vectors, or returns a vector of unexpected
-                width.
+            MemoryEmbeddingError: If the call fails, exceeds the deadline,
+                returns the wrong number of vectors, or returns a vector
+                of unexpected width.
             MemoryError: Propagated; a system-level failure must not be
                 reclassified as an embedding fault.
             RecursionError: Propagated, for the same reason.
@@ -95,11 +101,27 @@ class ProviderTextEmbedder:
         from litellm import aembedding  # noqa: PLC0415 -- heavy import, call-time
 
         try:
-            response = await self._retry.execute(
-                lambda: aembedding(model=self.model_ref, input=list(texts))
+            response = await with_deadline(
+                lambda: self._retry.execute(
+                    lambda: aembedding(model=self.model_ref, input=list(texts))
+                ),
+                timeout_seconds=self._timeout_seconds,
             )
         except MemoryError, RecursionError:
             raise
+        except TimeoutError as exc:
+            logger.warning(
+                MEMORY_EMBEDDING_FAILED,
+                model=self.model_ref,
+                batch_size=len(texts),
+                timeout_seconds=self._timeout_seconds,
+                reason="deadline_exceeded",
+            )
+            msg = (
+                f"Embedding call for {self.model_ref!r} did not answer "
+                f"within {self._timeout_seconds:g}s"
+            )
+            raise MemoryEmbeddingError(msg) from exc
         except Exception as exc:
             logger.warning(
                 MEMORY_EMBEDDING_FAILED,

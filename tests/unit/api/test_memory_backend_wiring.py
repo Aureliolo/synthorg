@@ -6,7 +6,6 @@ replaces was a silent fallback to an ephemeral keyword store that looked
 like working memory.
 """
 
-import json
 from types import SimpleNamespace
 from typing import Any
 from unittest import mock
@@ -31,6 +30,7 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.persistence.memory_vector_protocol import MemoryVectorRepository
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.service import SettingsService
 from tests._shared import make_app_state, mock_of
 
@@ -50,7 +50,7 @@ def _settings(provider: str, model: str, dims: int) -> Any:  # type: ignore[expl
     The model is a serialized MODEL_REF, matching the setting's type: the
     provider travels with the model so nothing downstream has to guess it.
     """
-    bound = json.dumps({"provider": provider, "model_id": model})
+    bound = serialize_model_ref(ModelRef(provider=provider, model_id=model))
     ref = bound if provider or model else ""
     values = {
         "embedder_model": ref,

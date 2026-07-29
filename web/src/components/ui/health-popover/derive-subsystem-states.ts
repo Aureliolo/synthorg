@@ -87,15 +87,16 @@ function _overallStateOf(
   loadState: LoadState,
 ): SubsystemState {
   if (states.includes('down')) return 'down'
+  // Above every softer verdict, because the probe fan-out timing out
+  // answers 503 with every component null, which reads as five `unknown`
+  // cards. Ranked below them this branch was unreachable on exactly the
+  // outage it exists to catch. Down, not degraded: the backend already
+  // decided it is not serving, and a refusal none of the cards explains
+  // is the least understood outage, not the mildest.
+  if (loadState.state === 'ok' && loadState.data.status !== 'ok') return 'down'
   if (states.includes('degraded')) return 'degraded'
   if (states.includes('loading')) return 'loading'
   if (states.includes('unknown')) return 'unknown'
-  // Every input the backend weighs has its own card above, so reaching
-  // here means it refused traffic for a reason none of them explains.
-  // Down, not degraded: the backend already decided it is not serving,
-  // and showing five green cards under a softer word is how an outage
-  // reads as fine.
-  if (loadState.state === 'ok' && loadState.data.status !== 'ok') return 'down'
   return 'ok'
 }
 

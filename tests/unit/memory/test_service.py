@@ -31,6 +31,7 @@ from synthorg.memory.service import (
     CheckpointRollbackCorruptError,
     CheckpointRollbackUnavailableError,
     MemoryService,
+    _restore_backup_key,
 )
 from synthorg.settings import (
     definitions as _settings_definitions,  # noqa: F401 -- side-effect import populates the registry
@@ -502,6 +503,37 @@ class TestMemoryServiceRollback:
         written = {(ns, key) for ns, key, _ in settings.set_calls}
         assert ("memory", "embedder_dims") in written
         assert ("memory", "embedder_provider") not in written
+
+    @pytest.mark.parametrize("exc_cls", [MemoryError, RecursionError, RuntimeError])
+    async def test_restore_tolerates_only_schema_drift(
+        self,
+        exc_cls: type[BaseException],
+    ) -> None:
+        """Everything but a retired key and a rejected value propagates.
+
+        The helper narrows to the two ways a backup outlives its schema.
+        Widening that to a broad ``except`` would turn a failed restore
+        into a rollback reported as complete, and would swallow the
+        interpreter-level failures nothing may absorb.
+        """
+
+        class _Raises:
+            async def get(self, namespace: str, key: str) -> SettingValue:
+                raise NotImplementedError
+
+            async def set(self, namespace: str, key: str, value: str) -> object:
+                raise exc_cls
+
+            async def delete(self, namespace: str, key: str) -> None:
+                raise NotImplementedError
+
+        with pytest.raises(exc_cls):
+            await _restore_backup_key(
+                _Raises(),
+                "embedder_dims",
+                "768",
+                checkpoint_id="ckpt-1",
+            )
 
     async def test_rollback_returns_success_when_artifacts_consistent(
         self,

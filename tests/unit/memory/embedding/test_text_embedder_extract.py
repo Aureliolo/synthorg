@@ -6,6 +6,7 @@ its declared ``index`` so a memory is never stored against another's
 vector.
 """
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -120,3 +121,36 @@ class TestConfiguredWidth:
 
         with pytest.raises(MemoryEmbeddingError, match="incomparable"):
             embedder._extract(response, expected=1)
+
+
+class TestServingDeadline:
+    """The serving call is bounded on the same terms as the probe.
+
+    This one sits on the read path of every recall and the write path of
+    every memory, so an endpoint that accepts the connection and never
+    answers holds its worker for as long as the provider keeps the socket
+    open. Retry alone does not bound that: nothing ever fails.
+    """
+
+    async def test_an_unanswered_batch_is_bounded_by_its_deadline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import litellm
+
+        async def _never_answers(**_kwargs: object) -> object:
+            await asyncio.Event().wait()
+            raise AssertionError  # unreachable; satisfies the return type
+
+        monkeypatch.setattr(litellm, "aembedding", _never_answers)
+        embedder = ProviderTextEmbedder(
+            EmbedderConfig(
+                provider="test-provider",
+                model="example-medium-001",
+                dims=2,
+                dims_explicit=False,
+            ),
+            timeout_seconds=0.05,
+        )
+
+        with pytest.raises(MemoryEmbeddingError, match="did not answer within"):
+            await embedder.embed_many(("hello",))

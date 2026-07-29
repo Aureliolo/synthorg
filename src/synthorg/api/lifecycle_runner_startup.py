@@ -331,7 +331,11 @@ async def _run_startup(  # noqa: PLR0913
             meeting_scheduler=meeting_scheduler,
             backup_service=backup_service,
             approval_timeout_scheduler=approval_timeout_scheduler,
-            settings_dispatcher=settings_dispatcher,
+            # The constructor-supplied dispatcher is None on the auto-wire
+            # path, where the live one lands on ``tasks`` instead. Reading
+            # only the parameter left the dispatcher auto_wire_settings had
+            # just started running past the boot that gave up on it.
+            settings_dispatcher=settings_dispatcher or tasks.auto_wired_dispatcher,
             bridge=bridge,
             message_bus=message_bus,
             persistence=persistence,
@@ -343,6 +347,7 @@ async def _run_startup(  # noqa: PLR0913
                 RuntimeStateSlice
             ).distributed_backend_services,
         )
+        tasks.auto_wired_dispatcher = None
 
     await _safe_startup(
         persistence=persistence,

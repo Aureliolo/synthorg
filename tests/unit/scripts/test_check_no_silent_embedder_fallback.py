@@ -192,10 +192,10 @@ def test_an_aliased_import_does_not_hide_a_construction(
     _write(
         tmp_path,
         "aliased.py",
-        "from synthorg.memory.embedding.hashing import HashingTextEmbedder as HTE\n"
+        "from synthorg.memory.embedding.hashing import HashingTextEmbedder as Lex\n"
         "\n"
         "def build():\n"
-        "    return HTE(dims=1024)\n",
+        "    return Lex(dims=1024)\n",
     )
     assert _load().main(["--repo-root", str(tmp_path)]) == 1
     assert "aliased.py:4" in capsys.readouterr().err
@@ -282,3 +282,61 @@ def test_unparseable_source_fails_closed(
 
 def test_missing_tree_fails_closed(tmp_path: Path) -> None:
     assert _load().main(["--repo-root", str(tmp_path)]) == 2
+
+
+def test_meeting_embedder_may_construct_the_builtin(tmp_path: Path) -> None:
+    """The meeting detector's ``hashing`` strategy is an operator's choice."""
+    _write(
+        tmp_path,
+        "communication/meeting/embedder.py",
+        "def build():\n    return HashingTextEmbedder(dims=256)\n",
+    )
+    assert _load().main(["--repo-root", str(tmp_path)]) == 0
+
+
+def test_files_mode_flags_a_violation(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``--files`` is the mode the edit-time runner drives."""
+    _write(
+        tmp_path,
+        "sneaky.py",
+        "def build():\n    return HashingTextEmbedder(dims=1024)\n",
+    )
+    target = tmp_path / "src" / "synthorg" / "sneaky.py"
+    exit_code = _load().main(["--repo-root", str(tmp_path), "--files", str(target)])
+    assert exit_code == 1
+    assert "sneaky.py:2" in capsys.readouterr().err
+
+
+def test_files_mode_ignores_a_file_outside_the_scan_root(tmp_path: Path) -> None:
+    """A test constructing the built-in is outside the population, not a hit.
+
+    Both modes must police the same files, or the same tree passes or
+    fails depending only on how the gate was invoked.
+    """
+    outside = tmp_path / "tests" / "unit" / "test_embedder.py"
+    outside.parent.mkdir(parents=True, exist_ok=True)
+    outside.write_text(
+        "def fake():\n    return HashingTextEmbedder(dims=8)\n", encoding="utf-8"
+    )
+    exit_code = _load().main(["--repo-root", str(tmp_path), "--files", str(outside)])
+    assert exit_code == 0
+
+
+def test_files_mode_fails_closed_outside_the_repo_root(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A path from another tree is a caller error, not an empty scan."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    stray = elsewhere / "stray.py"
+    stray.write_text("def build():\n    pass\n", encoding="utf-8")
+    repo_root = tmp_path / "repo"
+    (repo_root / "src" / "synthorg").mkdir(parents=True)
+
+    exit_code = _load().main(["--repo-root", str(repo_root), "--files", str(stray)])
+    assert exit_code == 2
+    assert "outside the repository root" in capsys.readouterr().err

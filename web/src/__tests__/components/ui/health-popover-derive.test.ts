@@ -41,7 +41,38 @@ describe('deriveHealthSubsystemStates api mapping', () => {
       false,
     )
     expect(states.apiState).toBe('ok')
-    expect(states.overallState).toBe('degraded')
+    // Degraded memory abstains from readiness, so it cannot be why the
+    // backend refused: the refusal is unexplained, which is down.
+    expect(states.overallState).toBe('down')
+  })
+
+  it('reports the timed-out probe fan-out as down rather than unknown', () => {
+    // A readiness probe that exceeds its budget answers 503 with every
+    // component null, so all three boolean cards read `unknown`. Ranked
+    // above the refusal, that verdict hid the outage behind the mildest
+    // word the panel has.
+    const states = deriveHealthSubsystemStates(
+      {
+        state: 'ok',
+        data: {
+          status: 'unavailable',
+          persistence: null,
+          message_bus: null,
+          providers: null,
+          telemetry: 'disabled',
+          memory: { state: 'durable', backend: 'sqlvector', detail: null },
+          version: '0.6.4',
+          uptime_seconds: 1,
+        },
+        fetchedAt: FETCHED_AT,
+      },
+      true,
+      false,
+      false,
+    )
+    expect(states.persistenceState).toBe('unknown')
+    expect(states.busState).toBe('unknown')
+    expect(states.overallState).toBe('down')
   })
 
   it('reports the API down only when the fetch itself failed', () => {

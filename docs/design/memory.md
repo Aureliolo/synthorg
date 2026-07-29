@@ -282,10 +282,11 @@ memory:
   consolidation:
     interval: "daily"               # drives the consolidation scheduler
 
-# The embedder binding is resolved at boot from settings
-# (memory.embedder_model, a provider-bound MODEL_REF, plus the optional
-# memory.embedder_dims pin), then the YAML override. Nothing else: an
-# unresolved binding leaves memory off rather than choosing a model.
+# The embedder binding is resolved at boot from the YAML override below,
+# then from settings (memory.embedder_model, a provider-bound MODEL_REF,
+# plus the optional memory.embedder_dims pin), which are applied last and
+# so win per field. Nothing else: an unresolved binding leaves memory off
+# rather than choosing a model.
 ```
 
 Configuration is modelled by `CompanyMemoryConfig` (top-level), `MemoryStorageConfig`

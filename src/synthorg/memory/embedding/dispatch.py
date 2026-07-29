@@ -3,10 +3,10 @@
 
 The width probe and the serving embedder call the same provider, the same
 way, for the same reasons. Keeping the identifier format, the
-transient-fault classification, the retry budget and the cost attribution
-here rather than restating them at each call site is what stops the two
-paths drifting: they did, and the probe ended up with no retry, no
-deadline and no cost record while its sibling had all three.
+transient-fault classification, the retry budget, the deadline and the
+cost attribution here rather than restating them at each call site is
+what stops the two paths drifting: they did, and each ended up missing a
+protection the other had.
 """
 
 import asyncio
@@ -55,6 +55,14 @@ PROVIDER_MODEL_SEPARATOR: Final[str] = "/"
 RETRY_MAX_ATTEMPTS: Final[int] = 3
 RETRY_BASE_SECONDS: Final[float] = 0.5
 RETRY_CAP_SECONDS: Final[float] = 8.0
+
+#: Wall-clock ceiling for one serving batch, retries included. Wider than
+#: the probe's because a probe is one short string while a batch is many,
+#: but bounded for the same reason: this call sits on the read path of
+#: every recall and the write path of every memory, so an endpoint that
+#: accepts the connection and never answers would hold its worker for as
+#: long as the provider cared to keep the socket open.
+DEFAULT_EMBED_TIMEOUT_SECONDS: Final[float] = 60.0
 
 # Cost attribution needs an owner. Embedding is issued by the memory
 # subsystem on behalf of the whole company rather than by any one agent
@@ -183,6 +191,7 @@ async def record_embedding_cost(
 
 
 __all__ = [
+    "DEFAULT_EMBED_TIMEOUT_SECONDS",
     "PROVIDER_MODEL_SEPARATOR",
     "RETRYABLE_EMBEDDING_ERRORS",
     "RETRY_BASE_SECONDS",

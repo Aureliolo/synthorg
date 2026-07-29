@@ -1,6 +1,10 @@
 """Memory namespace setting definitions (fine-tune group in memory_fine_tune)."""
 
-from synthorg.core.vector_limits import STORAGE_MAX_DIMENSIONS
+from synthorg.core.vector_limits import (
+    HNSW_HALFVEC_MAX_DIMENSIONS,
+    HNSW_VECTOR_MAX_DIMENSIONS,
+    STORAGE_MAX_DIMENSIONS,
+)
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
@@ -90,11 +94,12 @@ _r.register(
         description=(
             "Pin the embedding vector width instead of measuring it from"
             " the model (advanced). Applies on the next restart. At or"
-            " below 2000 the dense index is exact; up to 4000 it is built"
-            " at half precision; above that no approximate index can be"
-            " built and every dense search reads the whole corpus. Pinning"
-            " a width below what the model emits truncates each vector,"
-            " which is only sound for a Matryoshka-capable model."
+            f" below {HNSW_VECTOR_MAX_DIMENSIONS} the dense index is exact;"
+            f" up to {HNSW_HALFVEC_MAX_DIMENSIONS} it is built at half"
+            " precision; above that no approximate index can be built and"
+            " every dense search reads the whole corpus. Pinning a width"
+            " below what the model emits truncates each vector, which is"
+            " only sound for a Matryoshka-capable model."
         ),
         group="Embedding",
         level=SettingLevel.ADVANCED,

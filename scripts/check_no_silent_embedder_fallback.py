@@ -109,8 +109,8 @@ def _import_aliases(tree: ast.Module) -> dict[str, str]:
     """Map local aliases back to the tracked names they were imported under.
 
     Both rules read the name written at the call site, so an aliased import
-    was invisible to them: ``import HashingTextEmbedder as HTE`` followed by
-    ``HTE()`` matched neither the allowlist check nor the handler check, and
+    was invisible to them: ``import HashingTextEmbedder as Lex`` followed by
+    ``Lex()`` matched neither the allowlist check nor the handler check, and
     a one-word rename defeated the whole gate.
 
     Returns:
@@ -339,6 +339,35 @@ def _scan(paths: list[Path], repo_root: Path) -> list[str]:
     return violations
 
 
+def _files_in_scan_root(files: list[Path], repo_root: Path) -> list[Path]:
+    """Narrow ``--files`` to the population the tree scan already covers.
+
+    The edit-time runner hands this gate whatever the agent touched, so
+    without this a test that legitimately constructs the built-in embedder
+    would be reported as a violation the whole-tree run does not see. The
+    two modes have to police the same files or the gate's verdict depends
+    on how it was invoked.
+
+    Returns:
+        The Python files under the scan root, in the caller's order.
+
+    Raises:
+        ValueError: If a path lies outside the repository root entirely.
+            That is a caller error rather than an out-of-scope file, and
+            the gate fails closed on it rather than scanning nothing.
+    """
+    root = (repo_root / _SCAN_ROOT_REL).resolve()
+    scoped: list[Path] = []
+    for path in files:
+        if path.suffix != ".py" or not path.is_file():
+            continue
+        resolved = path.resolve()
+        resolved.relative_to(repo_root.resolve())
+        if resolved.is_relative_to(root):
+            scoped.append(path)
+    return scoped
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point.
 
@@ -351,16 +380,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     repo_root: Path = args.repo_root
-    if args.files is not None:
-        paths = [p for p in args.files if p.suffix == ".py" and p.is_file()]
-    else:
-        root = repo_root / _SCAN_ROOT_REL
-        if not root.is_dir():
-            print(f"error: {_SCAN_ROOT_REL} is not a directory", file=sys.stderr)
-            return 2
-        paths = list(root.rglob("*.py"))
-
     try:
+        if args.files is not None:
+            paths = _files_in_scan_root(args.files, repo_root)
+        else:
+            root = repo_root / _SCAN_ROOT_REL
+            if not root.is_dir():
+                print(f"error: {_SCAN_ROOT_REL} is not a directory", file=sys.stderr)
+                return 2
+            paths = list(root.rglob("*.py"))
         violations = _scan(paths, repo_root)
     except GateSourceError as exc:
         print(f"FAIL (scan could not read a file): {exc}", file=sys.stderr)

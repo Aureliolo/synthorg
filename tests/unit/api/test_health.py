@@ -6,6 +6,7 @@ topology. The per-component breakdown lives behind authentication on
 ``/health``.
 """
 
+from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -109,6 +110,46 @@ class TestReadinessUnhealthy:
         fake_persistence._connected = False
         fake_message_bus._running = False
         response = await async_test_client.get("/api/v1/readyz")
+        assert response.status_code == 503
+        assert response.json()["data"]["status"] == "unavailable"
+
+
+@pytest.mark.unit
+class TestReadinessMemoryOverHttp:
+    """A degraded memory keeps ``/readyz`` on the value the CLI waits for.
+
+    ``synthorg start`` polls ``/readyz`` and completes only on the literal
+    ``"ok"``; anything else it keeps polling until the timeout and then
+    fails the start. So an embedder above the index ceiling, which is
+    DEGRADED (correct results, exact scan), has to reach the wire as
+    ``ok``/200 rather than merely abstain from the readiness verdict in
+    a helper. Asserted through HTTP because the abstention only becomes
+    ``ok`` after the aggregation drops it.
+    """
+
+    @staticmethod
+    def _patch_memory(state: MemoryState) -> AbstractContextManager[AsyncMock]:
+        return patch(
+            "synthorg.api.controllers.health._resolve_memory_health",
+            AsyncMock(
+                spec=_resolve_memory_health,
+                return_value=MemoryHealth(state=state, backend="sqlvector"),
+            ),
+        )
+
+    async def test_degraded_memory_stays_ready(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        with self._patch_memory(MemoryState.DEGRADED):
+            response = await async_test_client.get("/api/v1/readyz")
+        assert response.status_code == 200
+        assert response.json()["data"]["status"] == "ok"
+
+    async def test_unreachable_memory_gates_traffic(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        with self._patch_memory(MemoryState.UNREACHABLE):
+            response = await async_test_client.get("/api/v1/readyz")
         assert response.status_code == 503
         assert response.json()["data"]["status"] == "unavailable"
 

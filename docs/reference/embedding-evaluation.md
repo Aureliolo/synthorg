@@ -122,11 +122,12 @@ figure above is measured without them.
 ### Embedder Configuration
 
 `EmbedderConfig` binds an explicit `(provider, model)` pair plus the vector width.
-Boot resolves it through `resolve_embedder_config`, which reads the operator's
-`memory.embedder_model` setting (a provider-bound `MODEL_REF`) and the optional
-`memory.embedder_dims` pin, then the YAML override. **It selects nothing**: an
-unresolved binding leaves memory OFF and logs why, and the built-in embedder is
-reachable only by naming it (`builtin` / `hashing`).
+Boot resolves it through `resolve_embedder_config`, which reads the YAML override
+below as the base, then applies the operator's `memory.embedder_model` setting (a
+provider-bound `MODEL_REF`) and the optional `memory.embedder_dims` pin over it,
+so a setting wins per field. **It selects nothing**: an unresolved binding leaves
+memory OFF and logs why, and the built-in embedder is reachable only by naming it
+(`builtin` / `hashing`).
 
 The rankings on this page inform that choice; they do not make it. Nothing in the
 codebase reads them, and the tiers below are sizing guidance for an operator.
